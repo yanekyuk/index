@@ -9,6 +9,7 @@ import { History, SendHorizontal, Inbox } from "lucide-react";
 import { useIntents, useConnections } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
+import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 
@@ -207,13 +208,7 @@ export default function InboxPage() {
                 <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{connection.user.name}</h2>
                 <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
                   <span>
-                    {new Date(connection.lastUpdated).toLocaleString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+                    {formatDate(connection.lastUpdated)}
                   </span>
                 </div>
               </div>
@@ -250,7 +245,15 @@ export default function InboxPage() {
   if (loading) {
     return (
       <ClientLayout>
-        <div className="py-8 text-center text-gray-500">Loading inbox...</div>
+        <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+          backgroundImage: 'url(/grid.png)',
+          backgroundColor: 'white',
+          backgroundSize: '888px'
+        }}>
+          <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-2 text-center text-gray-500">
+            <div className="py-8 text-center text-gray-500">Loading...</div>
+          </div>
+        </div>
       </ClientLayout>
     );
   }

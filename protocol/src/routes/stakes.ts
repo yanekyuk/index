@@ -5,7 +5,7 @@ import { intents, users, intentStakes, agents, userConnectionEvents, indexes, in
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
-import { generateUserSynthesis, type SynthesisUserContext } from '../lib/synthesis';
+import { synthesizeVibeCheck } from '../lib/synthesis';
 
 const router = Router();
 
@@ -47,7 +47,7 @@ router.get('/intent/:id/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar
+        userIntro: users.intro
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
@@ -67,7 +67,7 @@ router.get('/intent/:id/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             agents: {}
@@ -94,14 +94,6 @@ router.get('/intent/:id/by-user',
         return acc;
       }, {} as Record<string, any>);
 
-      // Get the intent data for synthesis
-      const intentData = await db.select({
-        summary: intents.summary,
-        payload: intents.payload
-      })
-      .from(intents)
-      .where(eq(intents.id, id))
-      .limit(1);
 
       // Format results with synthesis summaries
       const result = (await Promise.all(Object.values(userStakes)
@@ -118,21 +110,11 @@ router.get('/intent/:id/by-user',
           };
 
           // Generate synthesis summary for this user (intent detail context)
-          const synthesisContext: SynthesisUserContext = {
-            user: user.user,
-            intents: [{
-              intent: { 
-                id: id, 
-                summary: intentData[0]?.summary || "", 
-                payload: intentData[0]?.payload || "" 
-              },
-              agents: Object.values(user.agents)
-            }]
-          };
-          userResult.synthesis = await generateUserSynthesis(
-            synthesisContext,
-            `${user.user.name} brings valuable expertise that could complement your work on this goal.`
-          );
+          userResult.synthesis = await synthesizeVibeCheck({
+            targetUserId: user.user.id,
+            contextUserId: req.user!.id,
+            intentIds: [id]
+          });
 
           return userResult;
         })
@@ -205,7 +187,7 @@ router.get('/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar
+        userIntro: users.intro
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
@@ -232,7 +214,7 @@ router.get('/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             intentGroups: {},
@@ -263,7 +245,7 @@ router.get('/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
+              intro: stake.userIntro
             },
             stake: BigInt(0),
             reasoning: new Set()
@@ -279,7 +261,7 @@ router.get('/by-user',
           stakesByUser[userId].allAgents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
+              intro: stake.userIntro
             },
             stake: BigInt(0)
           };
@@ -310,14 +292,10 @@ router.get('/by-user',
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
           // Generate synthesis summary for this user
-          const synthesisContext: SynthesisUserContext = {
-            user: userStakes.user,
-            intents: intents
-          };
-          const synthesis = await generateUserSynthesis(
-            synthesisContext,
-            `${userStakes.user.name} brings valuable expertise that could complement your work across multiple areas.`
-          );
+          const synthesis = await synthesizeVibeCheck({
+            targetUserId: userStakes.user.id,
+            contextUserId: req.user!.id
+          });
 
           return {
             user: userStakes.user,
@@ -408,7 +386,7 @@ router.get('/index/:code/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar,
+        userIntro: users.intro,
         intentId: intents.id,
         intentSummary: intents.summary,
         intentPayload: intents.payload,
@@ -447,7 +425,7 @@ router.get('/index/:code/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             intentGroups: {},
@@ -475,7 +453,6 @@ router.get('/index/:code/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
             },
             stake: BigInt(0),
             reasoning: new Set()
@@ -518,14 +495,10 @@ router.get('/index/:code/by-user',
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
           // Generate synthesis summary for this user
-          const synthesisContext: SynthesisUserContext = {
-            user: userStakes.user,
-            intents: intents
-          };
-          const synthesis = await generateUserSynthesis(
-            synthesisContext,
-            `${userStakes.user.name} brings valuable expertise that could complement your work in this shared context.`
-          );
+          const synthesis = await synthesizeVibeCheck({
+            targetUserId: userStakes.user.id,
+            contextUserId: req.user!.id
+          });
 
           return {
             user: userStakes.user,

@@ -1,14 +1,14 @@
 import { Router, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, userConnectionEvents, connectionAction, intents, intentStakes, agents } from '../lib/schema';
+import { users, userConnectionEvents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
-import { generateUserSynthesis, type SynthesisUserContext } from '../lib/synthesis';
+import { synthesizeVibeCheck } from '../lib/synthesis';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnectionDeclinedEmail } from '../lib/email-handlers';
 
 const router = Router();
+
 
 // Get connections by user (aggregated current state)
 router.get('/by-user',
@@ -99,76 +99,11 @@ router.get('/by-user',
           let synthesis = "";
           
           if (includeSynthesis) {
-            // Get user intents and agent stakes for synthesis
-            const userIntents = await db.select({
-              id: intents.id,
-              summary: intents.summary,
-              payload: intents.payload
-            })
-            .from(intents)
-            .where(eq(intents.userId, conn.otherUserId));
-
-            if (userIntents.length > 0) {
-              const intentIds = userIntents.map(intent => intent.id);
-              
-              // Get stakes for these intents
-              const stakes = await db.select({
-                stake: intentStakes.stake,
-                reasoning: intentStakes.reasoning,
-                stakeIntents: intentStakes.intents,
-                agentName: agents.name,
-                agentAvatar: agents.avatar
-              })
-              .from(intentStakes)
-              .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-              .where(and(
-                isNull(agents.deletedAt),
-                sql`EXISTS(
-                  SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-                  WHERE intent_id IN (${sql.join(intentIds.map(id => sql`${id}`), sql`, `)})
-                )`
-              ));
-
-              // Group stakes by intent
-              const intentStakeMap: Record<string, any[]> = {};
-              stakes.forEach(stake => {
-                stake.stakeIntents.forEach(intentId => {
-                  if (intentIds.includes(intentId)) {
-                    if (!intentStakeMap[intentId]) {
-                      intentStakeMap[intentId] = [];
-                    }
-                    intentStakeMap[intentId].push({
-                      agent: {
-                        name: stake.agentName,
-                        avatar: stake.agentAvatar
-                      },
-                      reasoning: stake.reasoning
-                    });
-                  }
-                });
-              });
-
-              // Build synthesis context
-              const synthesisContext: SynthesisUserContext = {
-                user: {
-                  id: user.id,
-                  name: user.name
-                },
-                intents: userIntents.map(intent => ({
-                  intent: {
-                    id: intent.id,
-                    summary: intent.summary,
-                    payload: intent.payload
-                  },
-                  agents: intentStakeMap[intent.id] || []
-                }))
-              };
-
-              synthesis = await generateUserSynthesis(
-                synthesisContext,
-                `${user.name} brings valuable expertise that could complement your work.`
-              );
-            }
+            synthesis = await synthesizeVibeCheck({
+              targetUserId: conn.otherUserId,
+              contextUserId: userId,
+              options: { characterLimit: 1000 }
+            });
           }
 
           return {
