@@ -30,7 +30,9 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
     }
 
     // Get user details from Privy
-    const privyUser = await privyClient.getUser(claims.userId);
+    const privyUser = await privyClient.getUserById(claims.userId);
+    
+
 
     // Find or create user in our database
     let user = await db.select({
@@ -43,24 +45,30 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
 
     if (user.length === 0) {
       // Create new user if not exists
-      // Get email from linked accounts - prioritize verified email
-      let userEmail = null;
-      let userName = `User ${claims.userId.slice(-8)}`;
+      // Find email and name from linked accounts
+      let userEmail = privyUser.email?.address;
+      let userName = null;
       
-      if (privyUser.email?.address) {
-        userEmail = privyUser.email.address;
-        userName = privyUser.email.address;
-      }
-      
-      // If we have linked accounts, try to find an email there
-      if (!userEmail && privyUser.linkedAccounts) {
+      // Look for email in any linked account
+      if (privyUser.linkedAccounts) {
         for (const account of privyUser.linkedAccounts) {
-          if (account.type === 'email' && account.address) {
-            userEmail = account.address;
-            userName = account.address;
-            break;
+          if ('email' in account && account.email && !userEmail) {
+            userEmail = account.email;
+          }
+          if ('name' in account && account.name && !userName) {
+            userName = account.name;
           }
         }
+      }
+      
+      // Fallback name if none found
+      if (!userName) {
+        userName = `User ${claims.userId.slice(-8)}`;
+      }
+      
+      // Email is required, skip if not found
+      if (!userEmail) {
+        return res.status(400).json({ error: 'Email required for account creation' });
       }
 
       const newUser = await db.insert(users).values({
@@ -83,8 +91,19 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       const existingUser = user[0];
       let updatedEmail = existingUser.email;
       
-      if (privyUser.email?.address && privyUser.email.address !== existingUser.email) {
-        updatedEmail = privyUser.email.address;
+      // Find current email from linked accounts
+      let currentEmail = null;
+      if (privyUser.linkedAccounts) {
+        for (const account of privyUser.linkedAccounts) {
+          if ('email' in account && account.email) {
+            currentEmail = account.email;
+            break;
+          }
+        }
+      }
+      
+      if (currentEmail && currentEmail !== existingUser.email) {
+        updatedEmail = currentEmail;
         
         await db.update(users)
           .set({ 
