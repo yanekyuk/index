@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, indexes, intentIndexes, intentStakes, agents } from '../lib/schema';
@@ -10,7 +10,7 @@ import {
   triggerBrokersOnIntentUpdated, 
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
-import { BaseContextBroker } from '../agents/context_brokers/base';
+import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 
 const router = Router();
 
@@ -157,6 +157,7 @@ router.get('/:id',
       const intentData = intent[0];
       const hasAccess = intentData.userId === req.user!.id;
 
+      console.log('hasAccess', hasAccess, intentData.userId, req.user!.id);
       if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -215,22 +216,14 @@ router.post('/',
 
       const { payload, isIncognito = false, indexIds = [] } = req.body;
 
-      // Verify index IDs exist and user has access to them
+      // Verify index IDs exist and user has intent write access to them
       if (indexIds.length > 0) {
-        const validIndexes = await db.select({ id: indexes.id })
-          .from(indexes)
-          .where(and(
-            isNull(indexes.deletedAt),
-            eq(indexes.userId, req.user!.id)
-          ));
-
-        const validIndexIds = validIndexes.map(idx => idx.id);
-        const invalidIds = indexIds.filter((id: string) => !validIndexIds.includes(id));
-
-        if (invalidIds.length > 0) {
+        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        
+        if (!accessCheck.hasAccess) {
           return res.status(400).json({ 
-            error: 'Some index IDs are invalid or you don\'t have access to them',
-            invalidIds 
+            error: accessCheck.error,
+            invalidIds: accessCheck.invalidIds 
           });
         }
       }
@@ -310,22 +303,14 @@ router.put('/:id',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Verify index IDs exist and user has access to them if indexIds is provided
+      // Verify index IDs exist and user has intent write access to them if indexIds is provided
       if (indexIds !== undefined && indexIds.length > 0) {
-        const validIndexes = await db.select({ id: indexes.id })
-          .from(indexes)
-          .where(and(
-            isNull(indexes.deletedAt),
-            eq(indexes.userId, req.user!.id)
-          ));
-
-        const validIndexIds = validIndexes.map(idx => idx.id);
-        const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
-
-        if (invalidIds.length > 0) {
+        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        
+        if (!accessCheck.hasAccess) {
           return res.status(400).json({ 
-            error: 'Some index IDs are invalid or you don\'t have access to them',
-            invalidIds 
+            error: accessCheck.error,
+            invalidIds: accessCheck.invalidIds 
           });
         }
       }
@@ -471,151 +456,6 @@ router.patch('/:id/unarchive',
   }
 );
 
-// Add indexes to intent
-router.post('/:id/indexes',
-  authenticatePrivy,
-  [
-    param('id').isUUID(),
-    body('indexIds').isArray(),
-    body('indexIds.*').isUUID(),
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-      const { indexIds } = req.body;
-
-      // Check if intent exists and user owns it
-      const intent = await db.select({ id: intents.id, userId: intents.userId })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
-
-      if (intent.length === 0) {
-        return res.status(404).json({ error: 'Intent not found' });
-      }
-
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      // Verify index IDs exist and user has access to them
-      const validIndexes = await db.select({ id: indexes.id })
-        .from(indexes)
-        .where(and(
-          isNull(indexes.deletedAt),
-          eq(indexes.userId, req.user!.id)
-        ));
-
-      const validIndexIds = validIndexes.map(idx => idx.id);
-      const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
-
-      if (invalidIds.length > 0) {
-        return res.status(400).json({ 
-          error: 'Some index IDs are invalid or you don\'t have access to them',
-          invalidIds 
-        });
-      }
-
-      // Check for existing relationships to avoid duplicates
-      const existingRelations = await db.select({ indexId: intentIndexes.indexId })
-        .from(intentIndexes)
-        .where(eq(intentIndexes.intentId, id));
-
-      const existingIndexIds = existingRelations.map(rel => rel.indexId);
-      const newIndexIds = indexIds.filter((indexId: string) => !existingIndexIds.includes(indexId));
-
-      // Insert new relationships
-      if (newIndexIds.length > 0) {
-        await db.insert(intentIndexes).values(
-          newIndexIds.map((indexId: string) => ({
-            intentId: id,
-            indexId: indexId
-          }))
-        );
-      }
-
-      return res.json({
-        message: 'Indexes added to intent successfully',
-        addedCount: newIndexIds.length,
-        skippedCount: indexIds.length - newIndexIds.length
-      });
-    } catch (error) {
-      console.error('Add indexes to intent error:', error);
-      return res.status(500).json({ error: 'Failed to add indexes to intent' });
-    }
-  }
-);
-
-// Remove indexes from intent
-router.delete('/:id/indexes',
-  authenticatePrivy,
-  [
-    param('id').isUUID(),
-    query('indexIds').custom((value) => {
-      // Handle both single string and array of strings
-      if (typeof value === 'string') {
-        return true; // Single indexId
-      }
-      if (Array.isArray(value)) {
-        return value.every(id => typeof id === 'string');
-      }
-      return false;
-    }),
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-      let indexIds = req.query.indexIds;
-
-      // Normalize indexIds to array
-      if (typeof indexIds === 'string') {
-        indexIds = [indexIds];
-      }
-      if (!Array.isArray(indexIds)) {
-        return res.status(400).json({ error: 'indexIds must be provided as query parameter' });
-      }
-
-      // Check if intent exists and user owns it
-      const intent = await db.select({ id: intents.id, userId: intents.userId })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
-
-      if (intent.length === 0) {
-        return res.status(404).json({ error: 'Intent not found' });
-      }
-
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      // Remove the relationships
-      const deleteResult = await db.delete(intentIndexes)
-        .where(and(
-          eq(intentIndexes.intentId, id),
-          inArray(intentIndexes.indexId, indexIds as string[])
-        ));
-
-      return res.json({
-        message: 'Indexes removed from intent successfully',
-        removedCount: indexIds.length
-      });
-    } catch (error) {
-      console.error('Remove indexes from intent error:', error);
-      return res.status(500).json({ error: 'Failed to remove indexes from intent' });
-    }
-  }
-);
-
-
 export default router; 
+
+

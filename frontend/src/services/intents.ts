@@ -81,16 +81,8 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   },
 
   // Get stakes by index code for a shared index
-  getStakesByIndexCode: async (code: string): Promise<StakesByUserResponse[]> => {
-    const response = await api.get<StakesByUserResponse[]>(`/stakes/index/${code}/by-user`);
-    return response;
-  },
-
-  // Run vibecheck analysis for an index
-  runVibeCheck: async (code: string, intentPayload: string): Promise<{ synthesis: string; score: number }> => {
-    const response = await api.post<{ synthesis: string; score: number }>(`/stakes/index/${code}/vibecheck`, {
-      intent_payload: intentPayload
-    });
+  getStakesByIndexCode: async (code: string): Promise<IntentStakesByUserResponse[]> => {
+    const response = await api.get<IntentStakesByUserResponse[]>(`/stakes/index/share/${code}/by-user`);
     return response;
   },
 
@@ -99,6 +91,18 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     const response = await api.post<APIResponse<Intent>>('/intents', data);
     if (!response.intent) {
       throw new Error('Failed to create intent');
+    }
+    return response.intent;
+  },
+
+  // Create intent via share code
+  createIntentViaShareCode: async (code: string, payload: string, isIncognito: boolean = false): Promise<Intent> => {
+    const response = await api.post<APIResponse<Intent>>(`/indexes/share/${code}/intents`, {
+      payload,
+      isIncognito
+    });
+    if (!response.intent) {
+      throw new Error('Failed to create intent via share code');
     }
     return response.intent;
   },
@@ -117,17 +121,10 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     await api.delete(`/intents/${id}`);
   },
 
-  // Add indexes to intent
-  addIndexesToIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    await api.post(`/intents/${intentId}/indexes`, { indexIds });
-  },
 
-  // Remove indexes from intent
-  removeIndexesFromIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    // For DELETE with body, we can use a POST with _method override or use query params
-    // Using query params approach:
-    const queryParams = indexIds.map(id => `indexIds[]=${id}`).join('&');
-    await api.delete(`/intents/${intentId}/indexes?${queryParams}`);
+  // Remove intent from index
+  removeIntentFromIndex: async (indexId: string, intentId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/intents/${intentId}`);
   },
 
   // Archive intent
