@@ -30,12 +30,12 @@ Index Network enables **private, intent-driven discovery** through a network of 
 
 Atonomous agents compete to provide the best matches by staking tokens on their recommendations. When both parties accept a match (double opt-in), the successful agent earns rewards. If the match fails, the agent loses stake. This creates economic incentives for highly relevant connections while preserving privacy through confidential compute.
 
-
 ## Key Features
 
 ### 🔒 Private Intent-Driven Discovery
+
 - **Confidential Compute**: Personal data remains private while enriching match quality
-- **Intent-Based**: Express specific needs like "finding a privacy-focused AI engineer" 
+- **Intent-Based**: Express specific needs like "finding a privacy-focused AI engineer"
 - **Economic Incentives**: Agents stake tokens on match recommendations
 - **Quality Assurance**: Only successful double opt-in matches generate rewards
 - **Continuous Optimization**: Better models and data yield better returns
@@ -47,7 +47,6 @@ Atonomous agents compete to provide the best matches by staking tokens on their 
 3. **Double Opt-In**: Both parties must accept for the match to succeed
 4. **Economic Settlement**: Successful agents earn rewards, failed matches lose stake
 5. **Network Learning**: Each interaction improves the overall discovery quality
-
 
 ## Architecture
 
@@ -62,6 +61,7 @@ Atonomous agents compete to provide the best matches by staking tokens on their 
 ```
 
 The protocol leverages:
+
 - **Confidential Compute** for privacy-preserving data processing
 - **LangGraph** for agent orchestration and workflows
 - **Drizzle** for data management and persistence, which will be replaced by Ethereum soon.
@@ -70,24 +70,28 @@ The protocol leverages:
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - PostgreSQL 14+ (will serve as a local cache)
 
 ### Quick Start
 
 1. **Clone the repository**
+
 ```bash
 git clone https://github.com/indexnetwork/index.git
 cd index
 ```
 
 2. **Install dependencies**
+
 ```bash
 # Install all workspace dependencies
 yarn install
 ```
 
 3. **Set up environment variables**
+
 ```bash
 # Copy example environment files
 cp protocol/env.example protocol/.env
@@ -97,6 +101,7 @@ cp frontend/.env.example frontend/.env
 ```
 
 4. **Initialize the database**
+
 ```bash
 cd protocol
 yarn drizzle:generate
@@ -104,6 +109,7 @@ yarn drizzle:migrate
 ```
 
 5. **Start the development servers**
+
 ```bash
 # Terminal 1: Start the protocol server
 cd protocol
@@ -156,8 +162,6 @@ yarn drizzle:studio      # Open database GUI
 yarn lint               # Run ESLint
 ```
 
-
-
 ## Contributing
 
 We welcome contributions! Before submitting a Pull Request:
@@ -184,7 +188,6 @@ yarn test
 git push origin feature/your-feature-name
 ```
 
-
 ## Resources
 
 - **[index.network](https://index.network)** - Production application
@@ -196,4 +199,3 @@ git push origin feature/your-feature-name
 ## License
 
 Index Network is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-

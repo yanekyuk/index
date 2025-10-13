@@ -7,15 +7,16 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db';
 import { intents, users, intentIndexes } from '../lib/schema';
 import { eq } from 'drizzle-orm';
-import { checkIndexAccessByCode } from '../lib/index-access';
+import { getIndexWithPermissions } from '../lib/index-access';
 import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/file-processing';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
+import { getTempPath } from '../lib/paths';
 
 const router = Router();
 
 // Configure multer for temporary file uploads
-const tempUploadDir = path.join(__dirname, '../../uploads/temp');
+const tempUploadDir = getTempPath('vibecheck');
 if (!fs.existsSync(tempUploadDir)) {
   fs.mkdirSync(tempUploadDir, { recursive: true });
 }
@@ -100,7 +101,7 @@ setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
 // Separate function to handle vibe check logic
 const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string, payloadText?: string) => {
   // Check access to the shared index
-  const accessCheck = await checkIndexAccessByCode(code);
+  const accessCheck = await getIndexWithPermissions({ code });
   if (!accessCheck.hasAccess) {
     return {
       success: false,
@@ -260,7 +261,6 @@ router.post('/intent-suggestion',
           fileIds, 
           payload, // textInstruction
           [], // existingIntents
-          [], // existingSuggestions
           5, // count
           30000 // timeoutMs
         );

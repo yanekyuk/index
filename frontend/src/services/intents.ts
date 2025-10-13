@@ -6,7 +6,6 @@ import {
   CreateIntentRequest, 
   UpdateIntentRequest,
   IntentStakesByUserResponse,
-  StakesByUserResponse,
 } from '../lib/types';
 
 // Transform config agents to match Agent interface
@@ -42,18 +41,15 @@ export const agents: Agent[] = [
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all intents with pagination
-  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, indexId?: string): Promise<PaginatedResponse<Intent>> => {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      archived: archived.toString()
-    });
+  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, indexIds?: string[]): Promise<PaginatedResponse<Intent>> => {
+    const requestBody = {
+      page,
+      limit,
+      archived,
+      ...(indexIds && indexIds.length > 0 && { indexIds })
+    };
     
-    if (indexId) {
-      params.append('indexId', indexId);
-    }
-    
-    const response = await api.get<PaginatedResponse<Intent>>(`/intents?${params}`);
+    const response = await api.post<PaginatedResponse<Intent>>('/intents/list', requestBody);
     return response;
   },
 
@@ -69,20 +65,18 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
 
 
   // Get stakes by user for an intent
-  getIntentStakesByUser: async (intentId: string): Promise<IntentStakesByUserResponse[]> => {
-    const response = await api.get<IntentStakesByUserResponse[]>(`/stakes/intent/${intentId}/by-user`);
-    return response;
-  },
-
-  // Get all stakes for the user
-  getAllStakes: async (): Promise<StakesByUserResponse[]> => {
-    const response = await api.get<StakesByUserResponse[]>(`/stakes/by-user`);
+  getIntentStakesByUser: async (intentId: string, indexIds?: string[]): Promise<IntentStakesByUserResponse[]> => {
+    const requestBody = {
+      ...(indexIds && indexIds.length > 0 && { indexIds })
+    };
+    
+    const response = await api.post<IntentStakesByUserResponse[]>(`/stakes/intent/${intentId}/by-user`, requestBody);
     return response;
   },
 
   // Get stakes by index code for a shared index
   getStakesByIndexCode: async (code: string): Promise<IntentStakesByUserResponse[]> => {
-    const response = await api.get<IntentStakesByUserResponse[]>(`/stakes/index/share/${code}/by-user`);
+    const response = await api.get<IntentStakesByUserResponse[]>(`/discover/index/share/${code}/by-user`);
     return response;
   },
 
@@ -135,6 +129,28 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   // Unarchive intent
   unarchiveIntent: async (id: string): Promise<void> => {
     await api.patch(`/intents/${id}/unarchive`);
+  },
+
+  // Suggest tags based on user intents and prompt
+  suggestTags: async (prompt: string, indexId?: string, maxSuggestions?: number): Promise<{
+    suggestions: Array<{
+      value: string;
+      score: number;
+    }>;
+    intentCount: number;
+  }> => {
+    const response = await api.post<{
+      suggestions: Array<{
+        value: string;
+        score: number;
+      }>;
+      intentCount: number;
+    }>('/intents/suggest-tags', {
+      prompt,
+      indexId,
+      maxSuggestions
+    });
+    return response;
   }
 });
 

@@ -29,11 +29,10 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
-**Technical Implementation**: Index-based access control with five permission levels:
+**Technical Implementation**: Index-based access control with four permission levels:
 - `can-read`: View intents in the index
 - `can-write`: Add intents to the index  
 - `can-write-intents`: Create and modify intents in the index
-- `can-view-files`: Access supporting documents
 - `can-discover`: Participate in discovery within this context
 
 ### 3. Agent-Mediated Context
@@ -110,11 +109,11 @@ abstract class BaseContextBroker {
 When agents identify potential connections, they create "stakes" – records that commit to a relationship between specific intents:
 
 ```typescript
-interface IntentStake {
-  intents: string[];        // Array of related intent IDs (references only)
-  stake: bigint;           // Confidence score (future: economic stake)
-  reasoning: string;       // Explanation shared with users (privacy-safe)
-  agentId: string;        // Which agent created this stake
+interface Stake {
+  intents: string[];       // Array of related intent IDs (references only)
+  amount: bigint;          // Confidence score (future: economic stake)
+  reasoning: string;       // Explanation shared with users (privacy-aware)
+  agent: DID;              // Which agent created this stake
 }
 ```
 
@@ -328,7 +327,7 @@ POST /api/indexes/{id}/members
 **File Processing**:
 ```typescript
 // Upload files for intent generation
-POST /api/indexes/{indexId}/files
+POST /api/files
 // FormData with file attachment
 
 // Get AI-generated intent suggestions
@@ -445,4 +444,3 @@ const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
 });
 
 ```
-

@@ -14,9 +14,13 @@ export interface User {
 export interface Index {
   id: string;
   title: string;
-  linkPermissions?: {
-    permissions: string[];
-    code: string;
+  prompt?: string | null;
+  permissions?: {
+    joinPolicy: 'anyone' | 'invite_only';
+    invitationLink: {
+      code: string;
+    } | null;
+    allowGuestVibeCheck: boolean;
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -30,18 +34,18 @@ export interface Index {
     files: number;
     members: number;
   };
-  files?: IndexFile[];
+  files?: FileRecord[];
   members?: IndexMember[];
   suggestedIntents?: SuggestedIntent[];
 }
 
-export interface IndexFile {
+export interface FileRecord {
   id: string;
   name: string;
   type: string;
-  size: number;
+  size: number | string;
   createdAt: string;
-  indexId: string;
+  url?: string;
 }
 
 export interface IndexMember {
@@ -182,14 +186,14 @@ export interface APIResponse<T> {
 // Request types
 export interface CreateIndexRequest {
   title: string;
+  prompt?: string;
+  joinPolicy?: 'anyone' | 'invite_only';
 }
 
 export interface UpdateIndexRequest {
   title?: string;
-  linkPermissions?: {
-    permissions: string[];
-    code: string;
-  } | null;
+  prompt?: string | null;
+  joinPolicy?: 'anyone' | 'invite_only';
 }
 
 export interface CreateIntentRequest {
@@ -217,7 +221,7 @@ export interface CreateMarketPositionRequest {
 
 // File upload response
 export interface FileUploadResponse {
-  file: IndexFile;
+  file: FileRecord;
   message: string;
 }
 

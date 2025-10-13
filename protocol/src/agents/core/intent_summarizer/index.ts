@@ -4,7 +4,7 @@
  * Minimal implementation that takes input text and generates summaries to desired length.
  */
 
-import { llm } from "../../../lib/agents";
+import { traceableLlm } from "../../../lib/agents";
 
 // Type definitions
 export interface SummaryResult {
@@ -63,8 +63,16 @@ Generate a concise summary:`;
       setTimeout(() => reject(new Error('Summarization timeout')), timeout);
     });
 
+    const summarizeCall = traceableLlm(
+      "intent-summarizer",
+      [],
+      {
+        original_length: text.length,
+        target_length: maxLength
+      }
+    );
     const response = await Promise.race([
-      llm.invoke(prompt),
+      summarizeCall(prompt),
       timeoutPromise
     ]);
 
@@ -104,14 +112,3 @@ export async function summarizeIntent(
 
   return result.success ? result.summary || null : null;
 }
-
-/**
- * Batch summarize multiple texts
- */
-export async function summarizeMultiple(
-  texts: string[],
-  options: SummarizeOptions = {}
-): Promise<SummaryResult[]> {
-  const promises = texts.map(text => summarizeText(text, options));
-  return Promise.all(promises);
-} 

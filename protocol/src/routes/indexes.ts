@@ -1,12 +1,21 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexes, users, files, indexMembers, intentIndexes, intents } from '../lib/schema';
+import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
-import { checkIndexAccess, checkIndexOwnership, checkIndexAccessByCode } from '../lib/index-access';
-import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
+import { 
+  checkIndexAccess, 
+  checkIndexOwnership, 
+  getIndexWithPermissions, 
+  getUserAccessibleIndexIds,
+  checkIndexIntentWriteAccess,
+  validateOwnershipChange,
+  EVERYONE_USER_ID
+} from '../lib/index-access';
+import { Events } from '../lib/events';
+import { IntentService } from '../services/intent-service';
+// Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
 
@@ -31,20 +40,34 @@ router.get('/',
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
 
-      // Users can only see their own indexes or indexes they're members of
+      // Get all accessible index IDs for the user
+      const accessibleIndexIds = await getUserAccessibleIndexIds(req.user!.id);
+      
+      if (accessibleIndexIds.length === 0) {
+        return res.json({
+          indexes: [],
+          pagination: {
+            current: page,
+            total: 0,
+            count: 0,
+            totalCount: 0
+          }
+        });
+      }
+
       const whereCondition = and(
         isNull(indexes.deletedAt),
-        or(
-          eq(indexes.userId, req.user!.id),
-          // Check if user is a member of the index
-          exists(
-            db.select({ indexId: indexMembers.indexId })
-              .from(indexMembers)
-              .where(and(
-                eq(indexMembers.indexId, indexes.id),
-                eq(indexMembers.userId, req.user!.id)
-              ))
-          )
+        // User must be a member of the index (including owners)
+        exists(
+          db.select({ indexId: indexMembers.indexId })
+            .from(indexMembers)
+            .where(and(
+              eq(indexMembers.indexId, indexes.id),
+              or(
+                eq(indexMembers.userId, req.user!.id),
+                eq(indexMembers.userId, EVERYONE_USER_ID)
+              )
+            ))
         )
       ) ?? isNull(indexes.deletedAt);
 
@@ -52,15 +75,20 @@ router.get('/',
         db.select({
           id: indexes.id,
           title: indexes.title,
-          linkPermissions: indexes.linkPermissions,
+          prompt: indexes.prompt,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
-          userId: indexes.userId,
+          ownerId: indexMembers.userId,
           userName: users.name,
           userEmail: users.email,
           userAvatar: users.avatar
         }).from(indexes)
-          .innerJoin(users, eq(indexes.userId, users.id))
+          .innerJoin(indexMembers, and(
+            eq(indexes.id, indexMembers.indexId),
+            sql`'owner' = ANY(${indexMembers.permissions})`
+          ))
+          .innerJoin(users, eq(indexMembers.userId, users.id))
           .where(whereCondition)
           .orderBy(desc(indexes.createdAt))
           .offset(skip)
@@ -68,36 +96,35 @@ router.get('/',
 
         db.select({ count: count() })
           .from(indexes)
-          .innerJoin(users, eq(indexes.userId, users.id))
+          .innerJoin(indexMembers, and(
+            eq(indexes.id, indexMembers.indexId),
+            sql`'owner' = ANY(${indexMembers.permissions})`
+          ))
           .where(whereCondition)
       ]);
 
-      // Get file counts for each index
+      // Get member counts
       const indexesWithCounts = await Promise.all(
         indexesResult.map(async (index) => {
-          const [fileCount, memberCount] = await Promise.all([
-            db.select({ count: count() })
-              .from(files)
-              .where(and(eq(files.indexId, index.id), isNull(files.deletedAt))),
+          const [memberCount] = await Promise.all([
             db.select({ count: count() })
               .from(indexMembers)
               .where(eq(indexMembers.indexId, index.id))
           ]);
-
           return {
             id: index.id,
             title: index.title,
-            linkPermissions: index.linkPermissions,
+            prompt: index.prompt,
+            permissions: index.permissions,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
             user: {
-              id: index.userId,
+              id: index.ownerId,
               name: index.userName,
               email: index.userEmail,
               avatar: index.userAvatar
             },
             _count: {
-              files: fileCount[0].count,
               members: memberCount[0].count
             }
           };
@@ -194,32 +221,25 @@ router.get('/:id',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        linkPermissions: indexes.linkPermissions,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
-        userId: indexes.userId,
+        ownerId: indexMembers.userId,
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatar
       }).from(indexes)
-        .innerJoin(users, eq(indexes.userId, users.id))
+        .innerJoin(indexMembers, and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
         .limit(1);
 
       // Get related data
-      const [indexFiles, indexMembersData, intentCount] = await Promise.all([
-        db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10),
-
+      const [indexMembersData, intentCount] = await Promise.all([
         db.select({
           userId: indexMembers.userId,
           userName: users.name,
@@ -242,19 +262,16 @@ router.get('/:id',
       const result = {
         id: indexData.id,
         title: indexData.title,
-        linkPermissions: indexData.linkPermissions,
+        prompt: indexData.prompt,
+        permissions: indexData.permissions,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
         user: {
-          id: indexData.userId,
+          id: indexData.ownerId,
           name: indexData.userName,
           email: indexData.userEmail,
           avatar: indexData.userAvatar
         },
-        files: indexFiles.map(file => ({
-          ...file,
-          size: file.size.toString()
-        })),
         members: indexMembersData.map(member => ({
           id: member.userId,
           name: member.userName,
@@ -264,7 +281,6 @@ router.get('/:id',
           createdAt: member.memberCreatedAt
         })),
         _count: {
-          files: indexFiles.length,
           members: indexMembersData.length,
           intents: intentCount[0].count
         }
@@ -283,6 +299,8 @@ router.post('/',
   authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
+    body('prompt').optional().trim(),
+    body('joinPolicy').optional().isIn(['anyone', 'invite_only']),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -291,18 +309,36 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title } = req.body;
+      const { title, prompt, joinPolicy } = req.body;
+
+      // Set up permissions with joinPolicy
+      const finalJoinPolicy = joinPolicy || 'invite_only';
+      const permissions = {
+        joinPolicy: finalJoinPolicy,
+        invitationLink: finalJoinPolicy === 'invite_only' ? { code: crypto.randomUUID() } : null,
+        allowGuestVibeCheck: false
+      };
 
       const newIndex = await db.insert(indexes).values({
         title,
-        userId: req.user!.id,
+        prompt: prompt || null,
+        permissions,
       }).returning({
         id: indexes.id,
         title: indexes.title,
-        linkPermissions: indexes.linkPermissions,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        userId: indexes.userId
+        updatedAt: indexes.updatedAt
+      });
+
+      // Add creator as owner member
+      await db.insert(indexMembers).values({
+        indexId: newIndex[0].id,
+        userId: req.user!.id,
+        permissions: ['owner'],
+        prompt: prompt || null, // Use index prompt as default member prompt
+        autoAssign: true
       });
 
       // Get user information
@@ -317,18 +353,17 @@ router.post('/',
       const result = {
         id: newIndex[0].id,
         title: newIndex[0].title,
-        linkPermissions: newIndex[0].linkPermissions,
+        permissions: newIndex[0].permissions,
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
         user: {
-          id: newIndex[0].userId,
+          id: req.user!.id, // Use the requesting user ID as owner
           name: userData[0].name,
           email: userData[0].email,
           avatar: userData[0].avatar
         },
         _count: {
-          files: 0,
-          members: 0
+          members: 1 // Now has 1 member (the owner)
         }
       };
 
@@ -349,10 +384,10 @@ router.put('/:id',
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
-    body('linkPermissions').optional().isObject(),
-    body('linkPermissions.permissions').optional().isArray(),
-    body('linkPermissions.permissions.*').optional().isString(),
-    body('linkPermissions.code').optional().isString(),
+    body('prompt').optional().trim(),
+    body('permissions').optional().isObject(),
+    body('permissions.joinPolicy').optional().isIn(['anyone', 'invite_only']),
+    body('permissions.allowGuestVibeCheck').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -362,47 +397,46 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, linkPermissions } = req.body;
+      const { title, prompt, permissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
-      // Validate link permissions if provided
-      if (linkPermissions) {
-        if (!linkPermissions.permissions || !Array.isArray(linkPermissions.permissions)) {
-          return res.status(400).json({ 
-            error: 'linkPermissions must have a permissions array' 
-          });
-        }
+      // Handle permissions update if provided
+      let updatedPermissions = undefined;
+      if (permissions) {
+        // Get existing permissions to merge with updates
+        const existingIndex = await db.select({
+          permissions: indexes.permissions
+        }).from(indexes)
+          .where(eq(indexes.id, id))
+          .limit(1);
         
-        const validLinkPermissions = ['can-discover', 'can-view-files', 'can-write-intents'];
-        const invalidPermissions = linkPermissions.permissions.filter((p: string) => !validLinkPermissions.includes(p));
-        if (invalidPermissions.length > 0) {
-          return res.status(400).json({ 
-            error: 'Invalid link permissions',
-            invalidPermissions 
-          });
-        }
+        const currentPermissions = existingIndex[0]?.permissions || {
+          joinPolicy: 'invite_only',
+          invitationLink: null,
+          allowGuestVibeCheck: false
+        };
 
-        // Generate code only if not provided (preserve existing codes)
-        if (!linkPermissions.code) {
-          // Check for existing code
-          const existingIndex = await db.select({
-            linkPermissions: indexes.linkPermissions
-          }).from(indexes)
-            .where(eq(indexes.id, id))
-            .limit(1);
-          
-          const existingCode = existingIndex[0]?.linkPermissions?.code;
-          linkPermissions.code = existingCode || crypto.randomUUID();
-        }
+        updatedPermissions = {
+          joinPolicy: permissions.joinPolicy || currentPermissions.joinPolicy,
+          allowGuestVibeCheck: permissions.allowGuestVibeCheck !== undefined 
+            ? permissions.allowGuestVibeCheck 
+            : currentPermissions.allowGuestVibeCheck,
+          invitationLink: currentPermissions.invitationLink || (
+            permissions.joinPolicy === 'invite_only' 
+              ? { code: crypto.randomUUID() }
+              : null
+          )
+        };
       }
 
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
-      if (linkPermissions !== undefined) updateData.linkPermissions = linkPermissions;
+      if (prompt !== undefined) updateData.prompt = prompt || null; // Allow empty string to clear prompt
+      if (updatedPermissions !== undefined) updateData.permissions = updatedPermissions;
 
       const updatedIndex = await db.update(indexes)
         .set(updateData)
@@ -410,13 +444,21 @@ router.put('/:id',
         .returning({
           id: indexes.id,
           title: indexes.title,
-          linkPermissions: indexes.linkPermissions,
+          prompt: indexes.prompt,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
-          updatedAt: indexes.updatedAt,
-          userId: indexes.userId
+          updatedAt: indexes.updatedAt
         });
 
       const result = updatedIndex[0];
+
+      // If index prompt changed, trigger centralized event
+      if (prompt !== undefined) {
+        Events.Index.onPromptUpdated({
+          indexId: id,
+          promptChanged: true
+        });
+      }
 
       return res.json({
         message: 'Index updated successfully',
@@ -497,7 +539,7 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -516,11 +558,19 @@ router.post('/:id/members',
         return res.status(400).json({ error: 'User is already a member of this index' });
       }
 
+      // Get index prompt to use as default member prompt
+      const indexData = await db.select({ prompt: indexes.prompt })
+        .from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
       // Add member
       await db.insert(indexMembers).values({
         indexId: id,
         userId,
         permissions,
+        prompt: indexData[0]?.prompt || null, // Use index prompt as default member prompt
+        autoAssign: true // Temporary: always set to true for now
       });
 
       // Get member details
@@ -578,6 +628,12 @@ router.delete('/:id/members/:userId',
         return res.status(404).json({ error: 'Member not found' });
       }
 
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, userId, []);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
+      }
+
       // Remove member
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
@@ -586,6 +642,47 @@ router.delete('/:id/members/:userId',
     } catch (error) {
       console.error('Remove member error:', error);
       return res.status(500).json({ error: 'Failed to remove member' });
+    }
+  }
+);
+
+// Leave index (remove self as member)
+router.post('/:id/leave',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if user is a member
+      const membership = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+        .limit(1);
+
+      if (membership.length === 0) {
+        return res.status(404).json({ error: 'You are not a member of this index' });
+      }
+
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, req.user!.id, []);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
+      }
+
+      // Remove member
+      await db.delete(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+      return res.json({ message: 'Successfully left the index' });
+    } catch (error) {
+      console.error('Leave index error:', error);
+      return res.status(500).json({ error: 'Failed to leave index' });
     }
   }
 );
@@ -615,7 +712,7 @@ router.patch('/:id/members/:userId',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -632,6 +729,12 @@ router.patch('/:id/members/:userId',
 
       if (existingMember.length === 0) {
         return res.status(404).json({ error: 'Member not found' });
+      }
+
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, userId, permissions);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
       }
 
       // Update member permissions
@@ -666,13 +769,13 @@ router.patch('/:id/members/:userId',
   }
 );
 
-// Update public permissions for direct link sharing
-router.patch('/:id/link-permissions',
+// Update index permissions (joinPolicy, allowGuestVibeCheck)
+router.patch('/:id/permissions',
   authenticatePrivy,
   [
     param('id').isUUID(),
-    body('permissions').isArray(),
-    body('permissions.*').isString(),
+    body('joinPolicy').optional().isIn(['anyone', 'invite_only']),
+    body('allowGuestVibeCheck').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -682,60 +785,130 @@ router.patch('/:id/link-permissions',
       }
 
       const { id } = req.params;
-      const { permissions } = req.body;
+      const { joinPolicy, allowGuestVibeCheck } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
-      // Validate link permissions
-      const validLinkPermissions = ['can-discover', 'can-view-files', 'can-write-intents'];
-      const invalidPermissions = permissions.filter((p: string) => !validLinkPermissions.includes(p));
-      if (invalidPermissions.length > 0) {
-        return res.status(400).json({ 
-          error: 'Invalid link permissions',
-          invalidPermissions 
-        });
-      }
-
-      // Get existing index to preserve existing code
+      // Get existing permissions
       const existingIndex = await db.select({
-        linkPermissions: indexes.linkPermissions
+        permissions: indexes.permissions
       }).from(indexes)
         .where(eq(indexes.id, id))
         .limit(1);
 
-      // Create link permissions object preserving existing code or generating new one
-      const existingCode = existingIndex[0]?.linkPermissions?.code;
-      const linkPermissions = permissions.length > 0 
-        ? { permissions, code: existingCode || crypto.randomUUID() }
-        : null;
+      const currentPermissions = existingIndex[0]?.permissions || {
+        joinPolicy: 'invite_only',
+        invitationLink: null,
+        allowGuestVibeCheck: false
+      };
+
+      // Update permissions
+      const finalJoinPolicy = joinPolicy || currentPermissions.joinPolicy;
+      const updatedPermissions = {
+        joinPolicy: finalJoinPolicy,
+        allowGuestVibeCheck: allowGuestVibeCheck !== undefined 
+          ? allowGuestVibeCheck 
+          : currentPermissions.allowGuestVibeCheck,
+        invitationLink: finalJoinPolicy === 'invite_only'
+          ? (currentPermissions.invitationLink || { code: crypto.randomUUID() })
+          : null
+      };
 
       const updatedIndex = await db.update(indexes)
-        .set({ 
-          linkPermissions,
+        .set({
+          permissions: updatedPermissions,
           updatedAt: new Date()
         })
         .where(eq(indexes.id, id))
         .returning({
           id: indexes.id,
           title: indexes.title,
-          linkPermissions: indexes.linkPermissions,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
-          updatedAt: indexes.updatedAt,
-          userId: indexes.userId
+          updatedAt: indexes.updatedAt
         });
 
       const result = updatedIndex[0];
 
       return res.json({
-        message: 'Link permissions updated successfully',
+        message: 'Index permissions updated successfully',
         index: result
       });
     } catch (error) {
-      console.error('Update link permissions error:', error);
-      return res.status(500).json({ error: 'Failed to update link permissions' });
+      console.error('Update index permissions error:', error);
+      return res.status(500).json({ error: 'Failed to update index permissions' });
+    }
+  }
+);
+
+// Regenerate invitation link
+router.patch('/:id/regenerate-invitation',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Get existing permissions
+      const existingIndex = await db.select({
+        permissions: indexes.permissions
+      }).from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      const currentPermissions = existingIndex[0]?.permissions || {
+        joinPolicy: 'invite_only',
+        invitationLink: null,
+        allowGuestVibeCheck: false
+      };
+
+      // Only regenerate if it's invite_only
+      if (currentPermissions.joinPolicy !== 'invite_only') {
+        return res.status(400).json({ error: 'Can only regenerate invitation links for private indexes' });
+      }
+
+      // Generate new invitation link
+      const updatedPermissions = {
+        ...currentPermissions,
+        invitationLink: { code: crypto.randomUUID() }
+      };
+
+      const updatedIndex = await db.update(indexes)
+        .set({
+          permissions: updatedPermissions,
+          updatedAt: new Date()
+        })
+        .where(eq(indexes.id, id))
+        .returning({
+          id: indexes.id,
+          title: indexes.title,
+          permissions: indexes.permissions,
+          createdAt: indexes.createdAt,
+          updatedAt: indexes.updatedAt
+        });
+
+      const result = updatedIndex[0];
+
+      return res.json({
+        message: 'Invitation link regenerated successfully',
+        index: result
+      });
+    } catch (error) {
+      console.error('Regenerate invitation link error:', error);
+      return res.status(500).json({ error: 'Failed to regenerate invitation link' });
     }
   }
 );
@@ -779,6 +952,111 @@ router.get('/:id/members',
   }
 );
 
+// Get member settings for the current user (works for both owners and members)
+router.get('/:id/member-settings',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+
+      // Get full index data for title and prompt
+      const indexInfo = await db.select({
+        title: indexes.title,
+        prompt: indexes.prompt
+      }).from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      // Get member-specific settings (works for both owners and regular members)
+      const membership = await db.select({
+        prompt: indexMembers.prompt,
+        autoAssign: indexMembers.autoAssign,
+        permissions: indexMembers.permissions
+      }).from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+        .limit(1);
+
+      return res.json({
+        indexTitle: indexInfo[0].title,
+        indexPrompt: indexInfo[0].prompt,
+        memberPrompt: membership[0]?.prompt || null,
+        autoAssign: membership[0]?.autoAssign || false,
+        permissions: membership[0]?.permissions || [],
+        isOwner: isOwner
+      });
+    } catch (error) {
+      console.error('Get member settings error:', error);
+      return res.status(500).json({ error: 'Failed to fetch member settings' });
+    }
+  }
+);
+
+// Update member settings for the current user (works for both owners and members)
+router.put('/:id/member-settings',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    body('prompt').optional().trim(),
+    body('autoAssign').optional().isBoolean(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { prompt, autoAssign } = req.body;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      // Update member settings (works for both owners and regular members)
+      const updateData: any = { updatedAt: new Date() };
+      if (prompt !== undefined) updateData.prompt = prompt || null;
+      if (autoAssign !== undefined) updateData.autoAssign = autoAssign;
+
+      await db.update(indexMembers)
+        .set(updateData)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+      // If prompt or autoAssign changed, trigger centralized event
+      if (prompt !== undefined || autoAssign !== undefined) {
+        Events.Member.onSettingsUpdated({
+          userId: req.user!.id,
+          indexId: id,
+          promptChanged: prompt !== undefined,
+          autoAssignChanged: autoAssign !== undefined
+        });
+      }
+
+      return res.json({ message: 'Member settings updated successfully' });
+    } catch (error) {
+      console.error('Update member settings error:', error);
+      return res.status(500).json({ error: 'Failed to update member settings' });
+    }
+  }
+);
+
 // Access index by share code (public endpoint)
 router.get('/share/:code',
   [
@@ -793,7 +1071,7 @@ router.get('/share/:code',
 
       const { code } = req.params;
 
-      const accessCheck = await checkIndexAccessByCode(code);
+      const accessCheck = await getIndexWithPermissions({ code });
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -804,37 +1082,24 @@ router.get('/share/:code',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        linkPermissions: indexes.linkPermissions,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
-        userId: indexes.userId,
+        ownerId: indexMembers.userId,
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatar
       }).from(indexes)
-        .innerJoin(users, eq(indexes.userId, users.id))
+        .innerJoin(indexMembers, and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(eq(indexes.id, indexData.id), isNull(indexes.deletedAt)))
         .limit(1);
 
       const indexResult = index[0];
       
-      // Check if can-view-files permission exists
-      const canViewFiles = indexResult.linkPermissions?.permissions?.includes('can-view-files');
-      
-      let indexFiles: any[] = [];
-      if (canViewFiles) {
-        indexFiles = await db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10);
-      }
       
       const result = {
         id: indexResult.id,
@@ -842,20 +1107,11 @@ router.get('/share/:code',
         createdAt: indexResult.createdAt,
         updatedAt: indexResult.updatedAt,
         user: {
-          id: indexResult.userId,
+          id: indexResult.ownerId,
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },
-        ...(canViewFiles && {
-          files: indexFiles.map(file => ({
-            ...file,
-            size: file.size.toString()
-          }))
-        }),
-        linkPermissions: indexResult.linkPermissions,
-        _count: {
-          files: indexFiles.length,
-        }
+        permissions: indexResult.permissions,
       };
 
       return res.json({ index: result });
@@ -893,7 +1149,7 @@ router.delete('/:indexId/intents/:intentId',
       }
 
       // Verify user has intent write access to the index being removed
-      const accessCheck = await checkIndexOwnership(indexId, req.user!.id);
+      const accessCheck = await checkIndexIntentWriteAccess(indexId, req.user!.id);
       
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status || 403).json({ 
@@ -950,7 +1206,7 @@ router.post('/share/:code/intents',
       const { payload, isIncognito = false } = req.body;
 
       // Check access to the shared index
-      const accessCheck = await checkIndexAccessByCode(code);
+      const accessCheck = await getIndexWithPermissions({ code });
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -962,35 +1218,16 @@ router.post('/share/:code/intents',
         return res.status(403).json({ error: 'Shared index does not allow intent creation' });
       }
 
-      const summary = await summarizeIntent(payload);
-      
-      const newIntent = await db.insert(intents).values({
+      const newIntent = await IntentService.createIntent({
         payload,
-        summary,
-        isIncognito,
         userId: req.user!.id,
-      }).returning({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        isIncognito: intents.isIncognito,
-        createdAt: intents.createdAt,
-        updatedAt: intents.updatedAt,
-        userId: intents.userId
+        isIncognito,
+        indexIds: [sharedIndexData.id]
       });
-
-      // Associate with the shared index
-      await db.insert(intentIndexes).values({
-        intentId: newIntent[0].id,
-        indexId: sharedIndexData.id
-      });
-
-      // Trigger context brokers for new intent
-      triggerBrokersOnIntentCreated(newIntent[0].id);
 
       return res.status(201).json({
         message: 'Intent created successfully via shared index',
-        intent: newIntent[0]
+        intent: newIntent
       });
     } catch (error) {
       console.error('Create intent via share code error:', error);
@@ -1028,7 +1265,7 @@ router.get('/:indexId/intents',
       }
 
       // Check if user has read permission (owner has all permissions by default)
-      const isOwner = accessCheck.indexData?.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
       const hasReadPermission = accessCheck.memberPermissions?.includes('can-read');
       
       if (!isOwner && !hasReadPermission) {
@@ -1103,6 +1340,246 @@ router.get('/:indexId/intents',
     } catch (error) {
       console.error('Get index intents error:', error);
       return res.status(500).json({ error: 'Failed to fetch index intents' });
+    }
+  }
+);
+
+// Get member intents - returns indexed intents for the current user
+router.get('/:id/member-intents',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      // Get intents that are already in this index for this user
+      const indexedIntents = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        createdAt: intents.createdAt
+      }).from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(and(
+          eq(intentIndexes.indexId, id),
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt)
+        ))
+        .orderBy(desc(intents.createdAt));
+
+      return res.json({ intents: indexedIntents });
+    } catch (error) {
+      console.error('Get member intents error:', error);
+      return res.status(500).json({ error: 'Failed to fetch member intents' });
+    }
+  }
+);
+
+// Get index summary for onboarding
+router.get('/:id/summary',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if user is the owner of the index
+      const ownerCheck = await db.select({
+        userId: indexMembers.userId
+      }).from(indexMembers)
+        .where(and(
+          eq(indexMembers.indexId, id),
+          eq(indexMembers.userId, req.user!.id),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .limit(1);
+
+      if (ownerCheck.length === 0) {
+        return res.status(403).json({ error: 'Only index owners can view summary' });
+      }
+
+      // Get all members
+      const membersResult = await db.select({
+        userId: users.id,
+        userName: users.name,
+        userAvatar: users.avatar
+      }).from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(eq(indexMembers.indexId, id))
+        .orderBy(desc(indexMembers.createdAt));
+
+      // Get total intent count
+      const [intentCountResult] = await db.select({ count: count() })
+        .from(intentIndexes)
+        .where(eq(intentIndexes.indexId, id));
+
+      // Get example intents (recent ones, limit 5) - only user's intents
+      const exampleIntentsResult = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt
+      }).from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(and(
+          eq(intentIndexes.indexId, id),
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt)
+        ))
+        .orderBy(desc(intents.createdAt))
+        .limit(5);
+
+      const summary = {
+        totalIntents: intentCountResult.count,
+        exampleIntents: exampleIntentsResult,
+        members: membersResult.map(member => ({
+          id: member.userId,
+          name: member.userName,
+          avatar: member.userAvatar
+        }))
+      };
+
+      return res.json(summary);
+    } catch (error) {
+      console.error('Get index summary error:', error);
+      return res.status(500).json({ error: 'Failed to fetch index summary' });
+    }
+  }
+);
+
+// Add intent to index (works for both owners and members)
+router.post('/:id/member-intents/:intentId',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    param('intentId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id, intentId } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+
+      // Check if intent exists and belongs to the user
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(
+          eq(intents.id, intentId),
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt)
+        ))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found or does not belong to you' });
+      }
+
+      // Check if intent is already in the index
+      const existingRelation = await db.select({ intentId: intentIndexes.intentId })
+        .from(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, id)
+        ))
+        .limit(1);
+
+      if (existingRelation.length > 0) {
+        return res.status(400).json({ error: 'Intent is already in this index' });
+      }
+
+      // Add the intent to the index
+      await db.insert(intentIndexes).values({
+        intentId,
+        indexId: id
+      });
+
+      return res.json({ message: 'Intent added to index successfully' });
+    } catch (error) {
+      console.error('Add member intent error:', error);
+      return res.status(500).json({ error: 'Failed to add intent to index' });
+    }
+  }
+);
+
+// Remove intent from index (works for both owners and members)
+router.delete('/:id/member-intents/:intentId',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    param('intentId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id, intentId } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
+
+      // Check if intent exists and belongs to the user
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(
+          eq(intents.id, intentId),
+          eq(intents.userId, req.user!.id)
+        ))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found or does not belong to you' });
+      }
+
+      // Remove the intent from the index
+      await db.delete(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, id)
+        ));
+
+      return res.json({ message: 'Intent removed from index successfully' });
+    } catch (error) {
+      console.error('Remove member intent error:', error);
+      return res.status(500).json({ error: 'Failed to remove intent from index' });
     }
   }
 );

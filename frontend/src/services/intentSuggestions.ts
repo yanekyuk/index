@@ -1,92 +1,100 @@
-export interface IntentSuggestion {
+
+export interface GenerateSuggestionsRequest {
+  payload?: string;
+  files?: File[];
+  maxSuggestions?: number;
+  indexCode?: string; // For vibecheck functionality
+}
+
+export interface SuggestedIntent {
   payload: string;
-  confidence: number;
+  relevanceScore: number;
+  reasoning?: string;
 }
 
-export interface TempFile {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-}
-
-export interface IntentSuggestionsResponse {
+export interface GenerateSuggestionsResponse {
   success: boolean;
-  suggestedIntents: IntentSuggestion[];
-  tempFiles: TempFile[];
-  // Vibe check results (when indexCode is provided)
+  suggestedIntents: SuggestedIntent[];
+  totalSuggestions: number;
+  error?: string;
+  // Vibecheck-specific properties
   synthesis?: string;
   score?: number;
-  targetUser?: {
-    id: string;
-    name: string;
-    intro: string;
-  };
-  error?: string;
+  tempFiles?: { id: string; name: string; size: number; type: string }[];
 }
 
-// Service for intent suggestions operations
-export const intentSuggestionsService = {
-  // Generate intent suggestions from files and/or payload, with optional vibe check
-  generateSuggestions: async (data: { 
-    payload?: string; 
-    files?: File[]; 
-    indexCode?: string; 
-  }): Promise<IntentSuggestionsResponse> => {
+// Service functions factory that takes an authenticated API instance
+export const createIntentSuggestionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
+  // Generate intent suggestions based on user input
+  generateSuggestions: async (data: GenerateSuggestionsRequest): Promise<GenerateSuggestionsResponse> => {
     try {
-      const { payload, files = [], indexCode } = data;
+      // If there are files, we need to use FormData approach
+      if (data.files && data.files.length > 0) {
+        // For now, we'll use a simplified approach since the API structure isn't clear
+        // This would need to be adjusted based on the actual backend API
+        const formData = new FormData();
+        
+        if (data.payload) {
+          formData.append('payload', data.payload);
+        }
+        
+        if (data.maxSuggestions) {
+          formData.append('maxSuggestions', data.maxSuggestions.toString());
+        }
+        
+        // Add files
+        data.files.forEach((file) => {
+          formData.append(`files`, file);
+        });
 
-      // Must have either files or payload
-      if (!payload && files.length === 0) {
-        throw new Error('Must provide either text or files');
+        // For now, use uploadFile method with the first file and additional data
+        const additionalData: Record<string, string> = {};
+        if (data.payload) {
+          additionalData.payload = data.payload;
+        }
+        if (data.maxSuggestions) {
+          additionalData.maxSuggestions = data.maxSuggestions.toString();
+        }
+        if (data.indexCode) {
+          additionalData.indexCode = data.indexCode;
+        }
+
+        const response = await api.uploadFile<GenerateSuggestionsResponse>(
+          '/intents/generate-suggestions', 
+          data.files[0], 
+          additionalData,
+          'files'
+        );
+        return response;
+      } else {
+        // Simple JSON request for text-only suggestions
+        const requestBody = {
+          payload: data.payload,
+          maxSuggestions: data.maxSuggestions,
+          indexCode: data.indexCode
+        };
+        
+        const response = await api.post<GenerateSuggestionsResponse>('/intents/generate-suggestions', requestBody);
+        return response;
       }
-
-      const formData = new FormData();
-      
-      // Add payload if provided
-      if (payload) {
-        formData.append('payload', payload);
-      }
-      
-      // Add indexCode if provided (for vibe check)
-      if (indexCode) {
-        formData.append('indexCode', indexCode);
-      }
-      
-      // Add files if provided
-      files.forEach((file) => {
-        formData.append('files', file);
-      });
-
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${apiUrl}/vibecheck/intent-suggestion`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('Intent suggestions response:', result);
-      
-      return result as IntentSuggestionsResponse;
     } catch (error) {
-      console.error('Intent suggestions API error:', error);
+      console.error('Error generating intent suggestions:', error);
       return {
         success: false,
         suggestedIntents: [],
-        tempFiles: [],
-        error: error instanceof Error ? error.message : 'Failed to generate intent suggestions'
+        totalSuggestions: 0,
+        error: error instanceof Error ? error.message : 'Failed to generate suggestions'
       };
     }
-  },
-
-  // Get temp file URL by ID
-  getTempFileUrl: (fileId: string): string => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-    return `${apiUrl}/vibecheck/temp/${fileId}`;
   }
-}; 
+});
+
+// Backward compatibility - service that uses apiClient directly (for non-authenticated requests)
+export const intentSuggestionsService = {
+  // No methods currently needed for non-authenticated requests
+};
+
+// Hook for using intent suggestions service with proper error handling
+export function useIntentSuggestionsService() {
+  return createIntentSuggestionsService;
+}

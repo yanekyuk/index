@@ -3,68 +3,74 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
-import { History, SendHorizontal, Inbox } from "lucide-react";
-import { useIntents, useConnections, useSynthesis } from "@/contexts/APIContext";
+import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
+import DiscoveryForm from "@/components/DiscoveryForm";
+import { useIndexFilter } from "@/contexts/IndexFilterContext";
 
-const validTabs = ['discover', 'inbox', 'pending', 'history'];
+const validTabs = ['discover', 'requests'];
 
 export default function InboxPage() {
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
   const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
   const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
-  const [historyConnections, setHistoryConnections] = useState<UserConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [discoveryIntentIds, setDiscoveryIntentIds] = useState<string[] | undefined>(undefined);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
+  const { selectedIndexIds } = useIndexFilter();
   
   // URL parameter handling
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
-    validTabs.includes(urlTab || '') ? (urlTab as string) : 'inbox'
+    urlTab && validTabs.includes(urlTab) ? urlTab : 'discover'
   );
 
-    const intentsService = useIntents();
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
+  const discoverService = useDiscover();
 
   const handleTabChange = (newTab: string) => {
+    if (!validTabs.includes(newTab)) return;
+    
     setActiveTab(newTab);
     const params = new URLSearchParams(searchParams.toString());
     
-    if (newTab === 'inbox') {
-      // Remove tab parameter for inbox (default)
+    if (newTab === 'discover') {
+      // Remove tab parameter for discover (default)
       params.delete('tab');
       const queryString = params.toString();
-      router.replace(`/inbox${queryString ? `?${queryString}` : ''}`);
+      router.push(`/inbox${queryString ? `?${queryString}` : ''}`);
     } else {
       params.set('tab', newTab);
-      router.replace(`/inbox?${params.toString()}`);
+      router.push(`/inbox?${params.toString()}`);
     }
   };
 
-  const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[]) => {
-    if (fetchedSynthesesRef.current.has(targetUserId)) {
+  const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[], indexIds?: string[]) => {
+    const cacheKey = `${targetUserId}-${(indexIds || []).sort().join(',')}`;
+    if (fetchedSynthesesRef.current.has(cacheKey)) {
       return; // Already fetched or in progress
     }
 
-    fetchedSynthesesRef.current.add(targetUserId);
+    fetchedSynthesesRef.current.add(cacheKey);
     setSynthesisLoading(prev => ({ ...prev, [targetUserId]: true }));
 
     try {
       const response = await synthesisService.generateVibeCheck({
         targetUserId,
-        intentIds
+        intentIds,
+        indexIds
       });
       setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
     } catch (error) {
@@ -78,33 +84,62 @@ export default function InboxPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch connections and stakes
-      const [inboxData, pendingData, historyData, stakesData] = await Promise.all([
-        connectionsService.getConnectionsByUser('inbox'),
-        connectionsService.getConnectionsByUser('pending'),
-        connectionsService.getConnectionsByUser('history'),
-        intentsService.getAllStakes()
+      // Determine indexIds to pass to API calls
+      const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
+      
+      // Fetch connections and discover data
+      const [inboxData, pendingData, discoverData] = await Promise.all([
+        connectionsService.getConnectionsByUser('inbox', apiIndexIds),
+        connectionsService.getConnectionsByUser('pending', apiIndexIds),
+        discoverService.discoverUsers({ 
+          indexIds: apiIndexIds, 
+          intentIds: discoveryIntentIds,
+          excludeDiscovered: true, 
+          limit: 50 
+        })
       ]);
 
+      // Transform discover data to match StakesByUserResponse format
+      const transformedStakesData: StakesByUserResponse[] = (discoverData?.results || []).map(result => ({
+        user: {
+          id: result.user.id,
+          name: result.user.name,
+          avatar: result.user.avatar || '',
+        },
+        intents: (result.intents || []).map(stake => ({
+          intent: {
+            id: stake.intent.id,
+            summary: stake.intent.summary,
+            payload: stake.intent.payload,
+            updatedAt: stake.intent.createdAt, // Using createdAt as updatedAt not available
+          },
+          totalStake: String(stake.totalStake),
+          agents: [] // The new API doesn't return agent-specific stakes
+        }))
+      }));
+
       // Set data for each tab
-      setDiscoverStakes(stakesData);
+      setDiscoverStakes(transformedStakesData);
       setInboxConnections(inboxData.connections);
       setPendingConnections(pendingData.connections);
-      setHistoryConnections(historyData.connections);
+
+      // Clear previous synthesis cache when filters change
+      fetchedSynthesesRef.current.clear();
+      setSyntheses({});
 
       // Automatically fetch synthesis for all users
       const allUserIds = new Set<string>();
       
       // Collect user IDs from discover stakes
-      stakesData.forEach(stake => allUserIds.add(stake.user.id));
+      transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
       
       // Collect user IDs from connections
-      [...inboxData.connections, ...pendingData.connections, ...historyData.connections]
+      [...inboxData.connections, ...pendingData.connections]
         .forEach(connection => allUserIds.add(connection.user.id));
 
-      // Fetch synthesis for all unique users
+      // Fetch synthesis for all unique users with current index filter
       allUserIds.forEach(userId => {
-        fetchSynthesis(userId);
+        fetchSynthesis(userId, undefined, apiIndexIds);
       });
 
     } catch (error) {
@@ -112,23 +147,26 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [intentsService, connectionsService, fetchSynthesis]);
+  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntentIds]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+
   // Sync tab state with URL changes
   useEffect(() => {
     const urlTab = searchParams.get('tab');
-    if (validTabs.includes(urlTab || '')) {
-      setActiveTab(urlTab as string);
+    if (urlTab && validTabs.includes(urlTab)) {
+      setActiveTab(urlTab);
+    } else if (!urlTab) {
+      // Default to discover when no tab is specified
+      setActiveTab('discover');
     }
   }, [searchParams]);
 
   const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
     try {
-      console.log(`Connection action: ${action} for user: ${userId}`);
       
       // Call the appropriate connection service method
       switch (action) {
@@ -157,35 +195,24 @@ export default function InboxPage() {
     }
   };
 
-  const getConnectionStatus = (tabType: 'discover' | 'inbox' | 'pending' | 'history'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
-    switch (tabType) {
-      case 'discover':
+
+  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+    if (tabType === 'discover') {
         return 'none'; // suggestions for new connections
-      case 'inbox':
-        return 'pending_received'; // items awaiting your response
-      case 'pending':
-        return 'pending_sent'; // you acted, awaiting them
-      case 'history':
-        return 'connected'; // resolved states
-      default:
-        return 'none';
     }
+    
+    if (tabType === 'requests') {
+      if (viewType === 'sent') {
+        return 'pending_sent'; // you acted, awaiting them
+      } else {
+        return 'pending_received'; // items awaiting your response
+      }
+    }
+    
+    return 'none';
   };
 
-  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'inbox' | 'pending' | 'history') => {
-    // Get all unique agents across all intents for this user
-    const allAgents = userStake.intents.flatMap(intent => intent.agents);
-    const uniqueAgents = allAgents.reduce((acc, current) => {
-      const existing = acc.find(agent => agent.agent.name === current.agent.name);
-      if (!existing) {
-        acc.push(current);
-      } else {
-        // Sum stakes if agent appears multiple times
-        existing.stake = (parseFloat(existing.stake) + parseFloat(current.stake)).toString();
-      }
-      return acc;
-    }, [] as typeof allAgents);
-
+  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'requests') => {
     return (
       <div key={userStake.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
@@ -202,9 +229,11 @@ export default function InboxPage() {
             <div>
               <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{userStake.user.name}</h2>
               <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                <span>{userStake.intents.length} mutual intent{userStake.intents.length !== 1 ? 's' : ''}</span>
-                <span>•</span>
-                <span>{uniqueAgents.length} backing agent{uniqueAgents.length !== 1 ? 's' : ''}</span>
+                {userStake.intents.length > 0 ? (
+                  <span>{userStake.intents.length} mutual intent{userStake.intents.length !== 1 ? 's' : ''}</span>
+                ) : (
+                  <span>Potential connection</span>
+                )}
               </div>
             </div>
           </div>
@@ -213,7 +242,7 @@ export default function InboxPage() {
             <ConnectionActions
               userId={userStake.user.id}
               userName={userStake.user.name}
-              connectionStatus={getConnectionStatus(tabType)}
+              connectionStatus={getConnectionStatus(tabType, requestsView)}
               onAction={handleConnectionAction}
               size="sm"
             />
@@ -240,44 +269,28 @@ export default function InboxPage() {
           </div>
         )}
 
-        { false && 
-        <div className="mb-4">
-          <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
-          <div className="flex flex-wrap gap-2">
-            {userStake.intents.map((intentConnection) => (
-              <Link key={intentConnection.intent.id} href={`/intents/${intentConnection.intent.id}`} className="hover:bg-blue-50 transition-colors">
-                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors  bg-gray-50 border border-gray-200">
+        {userStake.intents.length > 0 && (
+          <div className="mb-4">
+            <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
+            <div className="flex flex-wrap gap-2">
+              {userStake.intents.map((intentConnection) => (
+                <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
                   <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
                   <span className="text-gray-400 text-xs">
                     ({intentConnection.totalStake})
                   </span>
                 </div>
-              </Link>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>}
+        )}
 
-        {false &&
-        <div>
-          <h3 className="font-medium text-gray-700 mb-2 text-sm">Who's backing this connection</h3>
-          <div className="flex flex-wrap gap-2">
-            {uniqueAgents.map((agent) => (
-              <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                  <Image src={getAvatarUrl(agent.agent)} alt={agent.agent.name} width={16} height={16} />
-                </div>
-                <span className="font-medium text-gray-900">{agent.agent.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        }
         </div>
       </div>
     );
   };
 
-  const renderConnectionCard = (connection: UserConnection, tabType: 'inbox' | 'pending' | 'history') => {
+  const renderConnectionCard = (connection: UserConnection, tabType: 'requests') => {
     return (
       <div key={connection.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
@@ -303,7 +316,7 @@ export default function InboxPage() {
               <ConnectionActions
                 userId={connection.user.id}
                 userName={connection.user.name}
-                connectionStatus={getConnectionStatus(tabType)}
+                connectionStatus={getConnectionStatus(tabType, requestsView)}
                 onAction={handleConnectionAction}
                 size="sm"
               />
@@ -352,120 +365,115 @@ export default function InboxPage() {
 
   return (
     <ClientLayout>
-      <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+      <div className="w-full border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
           backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
           backgroundSize: '888px'
         }}>
 
         <div className="flex flex-col justify-between mb-4">
+          {/* Header section */}
+          <div className="space-y-4">
+            {/* Discovery input section */}
+            {activeTab === 'discover' && (
+              <DiscoveryForm 
+                onRequestsClick={() => handleTabChange('requests')}
+                requestsCount={inboxConnections.length + pendingConnections.length}
+                onSubmit={(intentIds) => {
+                  // Set the discovery intent filter and refetch data
+                  setDiscoveryIntentIds(intentIds);
+                }}
+              />
+            )}
+            
+            {/* Requests view button */}
+            {activeTab === 'requests' && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => handleTabChange('discover')}
+                  className="font-ibm-plex-mono px-4 py-3 border border-black bg-black text-white hover:bg-gray-800 flex items-center gap-2"
+                >
+                  Back to Discovery
+                  <span className="bg-white text-black text-xs px-2 py-1 rounded">
+                    {discoverStakes.length}
+                  </span>
+                </button>
+                </div>
+            )}
+            </div>
+
           <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
-            <div className="flex flex-row items-end justify-between">
-              <Tabs.List className="overflow-x-auto flex justify-between w-full text-sm text-black">
-                <div className="flex bg-white ">
-                  <Tabs.Trigger value="discover" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    Discover ({discoverStakes.length})
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="inbox" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    <div className="flex items-center gap-2">
-                      <Inbox size={16} />
-                      Inbox ({inboxConnections.length})
-                    </div>
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="pending" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    <div className="flex items-center gap-2">
-                      <SendHorizontal size={16} />
-                      Pending ({pendingConnections.length})
-                    </div>
-                  </Tabs.Trigger>
-                </div>
-                <Tabs.Trigger value="history" className="bg-white font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  <div className="flex items-center gap-2">
-                    <History size={16} />
-                    History ({historyConnections.length})
-                  </div>
-                </Tabs.Trigger>
-              </Tabs.List>
-            </div>
 
-            {/* Section Descriptions */}
-            <div>
-              <Tabs.Content value="discover" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Discover new people based on contextual relevance. You're deciding whether to initiate a connection.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="inbox" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Incoming connection requests from real users. Use this tab to respond to others who want to connect with you.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="pending" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Requests you've sent to others and are still awaiting a response. Cancel if no longer relevant.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="history" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Resolved connections — accepted, declined, skipped, or canceled. A passive log of what's already been handled.
-                  </p>
-                </div>
-              </Tabs.Content>
-            </div>
-
-            {/* Discover Tab Content - Connection suggestions */}
-            <Tabs.Content value="discover" className="mt-4">
+            {/* Discover Content - Connection suggestions */}
+            {activeTab === 'discover' && (
+              <div className="mt-4">
               {discoverStakes.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No connection suggestions available right now.
-                </div>
+                <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                <Image 
+                  className="h-auto"
+                  src={'/loading2.gif'} 
+                  alt="Loading..." 
+                  width={300} 
+                  height={200} 
+                  style={{
+                    imageRendering: 'auto',
+                  }}
+                />
+                <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
+                No mutual intents for now, it's not you, the world's just being shy.
+                </p>
+              </div>
               ) : (
                 discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))
               )}
-            </Tabs.Content>
-
-            {/* Inbox Tab Content - Incoming requests */}
-            <Tabs.Content value="inbox" className="mt-4">
-              {inboxConnections.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No incoming connection requests. All caught up!
                 </div>
-              ) : (
-                inboxConnections.map((connection) => renderConnectionCard(connection, 'inbox'))
-              )}
-            </Tabs.Content>
+            )}
 
-            {/* Pending Tab Content - Outgoing requests */}
-            <Tabs.Content value="pending" className="mt-4">
-              {pendingConnections.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No pending requests. You haven't sent any connection requests recently.
-                </div>
-              ) : (
-                pendingConnections.map((connection) => renderConnectionCard(connection, 'pending'))
-              )}
-            </Tabs.Content>
+            {/* Requests Content - Incoming/Outgoing requests */}
+            {activeTab === 'requests' && (
+              <div className="">
+                <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent')}>
+                  <Tabs.List className="overflow-x-auto inline-flex text-sm text-black">
+                    <Tabs.Trigger value="received" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white">
+                      Incoming
+                      {inboxConnections.length > 0 && (
+                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
+                          {inboxConnections.length}
+                        </span>
+                      )}
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="sent" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white  data-[state=active]:bg-black data-[state=active]:text-white">
+                      Sent
+                      {pendingConnections.length > 0 && (
+                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
+                          {pendingConnections.length}
+                        </span>
+                      )}
+                    </Tabs.Trigger>
+                  </Tabs.List>
 
-            {/* History Tab Content - Resolved connections */}
-            <Tabs.Content value="history" className="mt-4">
-              {historyConnections.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No completed connections yet.
+                  <Tabs.Content value="received" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                    {inboxConnections.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        No incoming connection requests. All caught up!
+                      </div>
+                    ) : (
+                      inboxConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                    )}
+                  </Tabs.Content>
+
+                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                    {pendingConnections.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        No sent requests.
+                      </div>
+                    ) : (
+                      pendingConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                    )}
+                  </Tabs.Content>
+                </Tabs.Root>
                 </div>
-              ) : (
-                historyConnections.map((connection) => renderConnectionCard(connection, 'history'))
               )}
-            </Tabs.Content>
           </Tabs.Root>
         </div>
       </div>

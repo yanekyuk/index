@@ -5,7 +5,7 @@
  * Takes file text from one user, infers their intent, and compares with another person's intents.
  */
 
-import { llm } from "../../../lib/agents";
+import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
 
 // Type definitions
@@ -139,9 +139,17 @@ This isn't just adjacent thinking — it's a chance to push the boundaries of wh
     });
 
     console.log('Prompt:', prompt);
-    const modelWithStructure = llm.withStructuredOutput(VibeCheckSchema);
+    const vibeCheckCall = traceableStructuredLlm(
+      "vibe-check-text",
+      ["vibe-checker", "structured-output"],
+      {
+        other_user_id: otherUserData.user.id,
+        other_user_name: otherUserData.user.name,
+        intents_count: otherUserData.intents.length
+      }
+    );
     const response = await Promise.race([
-      modelWithStructure.invoke(prompt),
+      vibeCheckCall(prompt, VibeCheckSchema),
       timeoutPromise
     ]);
 

@@ -6,9 +6,10 @@ import { ArrowUpRight } from "lucide-react";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
-import { getAvatarUrl, getIndexFileUrl } from "@/lib/file-utils";
+import { getAvatarUrl } from "@/lib/file-utils";
 import { usePrivy } from '@privy-io/react-auth';
-import { useConnections, useIndexes, useIntents } from '@/contexts/APIContext';
+import { useConnections, useIndexes, useIntents, useFiles } from '@/contexts/APIContext';
+import { createIntentSuggestionsService } from '@/services/intentSuggestions';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
@@ -18,7 +19,6 @@ import { formatDate } from "@/lib/utils";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from 'next/navigation';
 import IntentForm from '@/components/IntentForm';
-import { intentSuggestionsService } from '@/services/intentSuggestions';
 
 interface SharePageProps {
   params: Promise<{
@@ -33,10 +33,11 @@ type SharePageState = {
   user: User | null;
   
   // Flow state
-  step: 'loading' | 'ready' | 'vibecheck-running' | 'vibecheck-results' | 'auth-required' | 'onboarding-required' | 'connection-processing' | 'connection-sent' | 'error';
+  step: 'loading' | 'ready' | 'vibecheck-running' | 'vibecheck-results' | 'auth-required' | 'connection-processing' | 'connection-sent' | 'error';
   
   // Data
   uploadedFiles: File[];
+  tempFiles: { id: string; name: string; size: number; type: string }[];
   vibeCheckResults: { aiSynthesis?: string; score?: number; suggestedIntents?: { payload: string; confidence: number }[] };
   error: string | null;
   
@@ -53,6 +54,7 @@ export default function SharePage({ params }: SharePageProps) {
     user: null,
     step: 'loading',
     uploadedFiles: [],
+    tempFiles: [],
     vibeCheckResults: {},
     error: null,
     autoRequestConnection: false,
@@ -65,6 +67,8 @@ export default function SharePage({ params }: SharePageProps) {
   const connectionsService = useConnections();
   const indexesService = useIndexes();
   const intentsService = useIntents();
+  const filesService = useFiles();
+  const intentSuggestionsService = createIntentSuggestionsService(api);
   const router = useRouter();
 
   // Main flow effect - handles all the complex logic in one place
@@ -90,6 +94,7 @@ export default function SharePage({ params }: SharePageProps) {
                     score: storedResults.score,
                     suggestedIntents: storedResults.suggestedIntents || []
                   },
+                  tempFiles: parsed.tempFiles || [],
                   step: 'vibecheck-results',
                   autoRequestConnection: parsed.autoRequest || false
                 }));
@@ -121,9 +126,6 @@ export default function SharePage({ params }: SharePageProps) {
             }
             break;
 
-          case 'onboarding-required':
-            // User needs to complete onboarding - modal will be shown
-            break;
 
           case 'connection-processing':
             if (authenticated && state.index?.user?.id) {
@@ -156,7 +158,7 @@ export default function SharePage({ params }: SharePageProps) {
                       if (response.ok) {
                         const blob = await response.blob();
                         const file = new File([blob], tempFile.name, { type: tempFile.type });
-                        await indexesService.uploadFile(newIndex.id, file);
+                        await filesService.uploadFile(file);
                       }
                     } catch (error) {
                       console.warn('Failed to retrieve temp file:', error);
@@ -217,7 +219,7 @@ export default function SharePage({ params }: SharePageProps) {
             // Check if needs onboarding
             if (!response.user.intro || response.user.intro.trim() === '') {
               if (state.autoRequestConnection) {
-                setState(prev => ({ ...prev, step: 'onboarding-required' }));
+                window.location.href = '/onboarding';
               }
             } else {
               // User is ready, check if should auto-connect
@@ -238,44 +240,6 @@ export default function SharePage({ params }: SharePageProps) {
     }
   }, [state.step, authenticated, ready, resolvedParams.code, state.autoRequestConnection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for onboarding completion from Header modal
-  useEffect(() => {
-    // Check for existing onboarding completion flag
-    const checkOnboardingCompletion = () => {
-      if (state.step === 'onboarding-required') {
-        try {
-          const completed = localStorage.getItem('onboarding_completed');
-          if (completed) {
-            setState(prev => ({ ...prev, step: 'connection-processing' }));
-            localStorage.removeItem('onboarding_completed');
-          }
-        } catch (error) {
-          console.warn('Failed to check onboarding completion:', error);
-        }
-      }
-    };
-
-    // Check initially
-    checkOnboardingCompletion();
-
-    // Listen for storage changes (from other tabs/windows)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'onboarding_completed' && state.step === 'onboarding-required') {
-        setState(prev => ({ ...prev, step: 'connection-processing' }));
-        localStorage.removeItem('onboarding_completed');
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Poll for changes in the same tab (since localStorage events don't fire in same tab)
-    const pollInterval = setInterval(checkOnboardingCompletion, 500);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
-    };
-  }, [state.step]);
 
   // Event handlers
   const handleIntentFormSubmit = useCallback(async (data: { payload: string; files: File[]; vibeCheckIndex?: string }) => {
@@ -301,8 +265,12 @@ export default function SharePage({ params }: SharePageProps) {
           vibeCheckResults: { 
             aiSynthesis: result.synthesis || '', 
             score: result.score || 0,
-            suggestedIntents: result.suggestedIntents || []
+            suggestedIntents: result.suggestedIntents.map(intent => ({
+              payload: intent.payload,
+              confidence: intent.relevanceScore
+            })) || []
           },
+          tempFiles: result.tempFiles || [],
           step: 'vibecheck-results'
         }));
         
@@ -312,7 +280,10 @@ export default function SharePage({ params }: SharePageProps) {
             results: [{ 
               aiSynthesis: result.synthesis || '', 
               score: result.score || 0,
-              suggestedIntents: result.suggestedIntents || []
+              suggestedIntents: result.suggestedIntents.map(intent => ({
+                payload: intent.payload,
+                confidence: intent.relevanceScore
+              })) || []
             }],
             tempFiles: result.tempFiles,
             autoRequest: state.autoRequestConnection
@@ -325,7 +296,7 @@ export default function SharePage({ params }: SharePageProps) {
       console.error('Intent suggestion error:', error);
       setState(prev => ({ ...prev, step: 'error', error: 'Failed to process request' }));
     }
-  }, [state.index, resolvedParams.code, state.autoRequestConnection]);
+  }, [state.index, resolvedParams.code, state.autoRequestConnection, intentSuggestionsService]);
 
   const handleRequestConnection = useCallback(() => {
     if (!ready || !authenticated) {
@@ -338,11 +309,7 @@ export default function SharePage({ params }: SharePageProps) {
     }
 
     if (!state.user?.intro || state.user.intro.trim() === '') {
-      setState(prev => ({ 
-        ...prev, 
-        step: 'onboarding-required',
-        autoRequestConnection: true 
-      }));
+      window.location.href = '/onboarding';
       return;
     }
 
@@ -396,8 +363,7 @@ export default function SharePage({ params }: SharePageProps) {
   }
 
   // Check permissions
-  const canViewFiles = state.index.linkPermissions?.permissions.includes('can-view-files') || false;
-  const canDiscover = state.index.linkPermissions?.permissions.includes('can-discover') || false;
+  const canDiscover = true;
 
   return (
     <ClientLayout>
@@ -428,39 +394,45 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         </div>
 
-        {canViewFiles && (
+        {(state.uploadedFiles.length > 0 || state.tempFiles.length > 0) && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="space-y-3 w-full">
               <div className="flex justify-between items-center">
-                <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
+                <h2 className="text-xl mt-2 font-semibold text-gray-900">Your Uploads</h2>
               </div>
               <div className="space-y-2 flex-1">
-                {state.index.files?.map((file, fileIndex) => (
-                  <div
-                    key={fileIndex}
-                    className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          className="p-0"
-                          size="lg"
-                          onClick={() => {
-                            const fileUrl = getIndexFileUrl(file);
-                            window.open(fileUrl, '_blank');
-                          }}
-                        >
-                          <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
-                          <ArrowUpRight className="ml-1 h-4 w-4" />
-                        </Button>
+                {state.uploadedFiles.length > 0
+                  ? state.uploadedFiles.map((file, i) => (
+                      <div key={`upl-${i}`} className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-medium font-ibm-plex-mono text-gray-900">{file.name}</span>
+                          </div>
+                          <p className="text-sm text-gray-500">{file.size} bytes</p>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-500">
-                        {file.size} bytes • {formatDate(file.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                    ))
+                  : state.tempFiles.map((f, i) => (
+                      <div key={`tmp-${i}`} className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              className="p-0"
+                              size="lg"
+                              onClick={() => {
+                                const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                                window.open(`${base}/vibecheck/temp/${f.id}`, '_blank');
+                              }}
+                            >
+                              <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{f.name}</h4>
+                              <ArrowUpRight className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-sm text-gray-500">{f.size} bytes</p>
+                        </div>
+                      </div>
+                    ))}
               </div>
             </div>
           </div>
@@ -480,7 +452,7 @@ export default function SharePage({ params }: SharePageProps) {
                 <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Running vibecheck...</h3>
               )}
               
-              {(state.step === 'vibecheck-results' || state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.step === 'connection-sent') && (
+              {(state.step === 'vibecheck-results' || state.step === 'auth-required'  || state.step === 'connection-processing' || state.step === 'connection-sent') && (
                 <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">What could happen here</h3>
               )}
               
@@ -508,7 +480,7 @@ export default function SharePage({ params }: SharePageProps) {
                 </div>
               )}
 
-              {(state.step === 'vibecheck-results' || state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.step === 'connection-sent') && (
+              {(state.step === 'vibecheck-results' || state.step === 'auth-required'  || state.step === 'connection-processing' || state.step === 'connection-sent') && (
                 <div className="mt-4 space-y-4">
                   <div className="mb-4">
                     <div className="bg-white py-3">
@@ -587,11 +559,10 @@ export default function SharePage({ params }: SharePageProps) {
                           variant="bordered"
                           className="flex-1 text-white border-black border-b-2"
                           style={{ background: state.connectionRequestSent ? '#6b7280' : '#3f6ed9' }}
-                          disabled={state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.connectionRequestSent}
+                          disabled={state.step === 'auth-required'  || state.step === 'connection-processing' || state.connectionRequestSent}
                         >
                           {state.connectionRequestSent ? 'Request sent' :
                            state.step === 'auth-required' ? 'Authenticating...' : 
-                           state.step === 'onboarding-required' ? 'Complete Onboarding' : 
                            state.step === 'connection-processing' ? 'Processing Connection...' :
                            'Request Connection'}
                         </Button>
@@ -604,7 +575,7 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         )}
 
-        {!canViewFiles && !canDiscover && (
+        {!canDiscover && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-center items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="text-center">
               <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-2">Limited Access</h3>

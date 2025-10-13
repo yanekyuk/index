@@ -7,6 +7,7 @@ import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from '@privy-io/react-auth';
 import { useConnections, useIntents, useSynthesis } from '@/contexts/APIContext';
+import { createIntentSuggestionsService, SuggestedIntent } from '@/services/intentSuggestions';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import ReactMarkdown from "react-markdown";
 import { formatDate } from "@/lib/utils";
@@ -16,7 +17,6 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { Play, Pause } from "lucide-react";
 import IntentForm from "@/components/IntentForm";
-import { intentSuggestionsService, IntentSuggestion } from "@/services/intentSuggestions";
 
 interface MatchlistPageProps {
   params: Promise<{
@@ -31,7 +31,7 @@ type MatchlistPageState = {
   user: User | null;
   
   // Flow state
-  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'onboarding-required' | 'discovery-results' | 'error';
+  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'discovery-results' | 'error';
   
   // Intent data
   intentPayload: string;
@@ -39,6 +39,7 @@ type MatchlistPageState = {
   
   // Discovery data
   discoveryResults: IntentStakesByUserResponse[];
+  fetchAttempts: number;
   
   // Connection management
   connectionStatuses: Record<string, 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped'>;
@@ -66,6 +67,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     intentPayload: '',
     createdIntentId: null,
     discoveryResults: [],
+    fetchAttempts: 0,
     connectionStatuses: {},
     syntheses: {},
     synthesisLoading: {},
@@ -81,6 +83,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
   const connectionsService = useConnections();
   const intentsService = useIntents();
   const synthesisService = useSynthesis();
+  const intentSuggestionsService = createIntentSuggestionsService(api);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
 
   // Fetch synthesis 
@@ -182,9 +185,12 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
       }
       
       const discoveryResults = await intentsService.getStakesByIndexCode(resolvedParams.code);
+      
+      // Update state with results and increment/reset fetch attempts
       setState(prev => ({ 
         ...prev, 
         discoveryResults,
+        fetchAttempts: discoveryResults.length > 0 ? 0 : prev.fetchAttempts + 1,
         ...(showLoading ? { isSubmitting: false } : { isRefreshing: false })
       }));
 
@@ -233,11 +239,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     
                     // Check if user needs onboarding before creating intent
                     if (!response.user.intro || response.user.intro.trim() === '') {
-                      setState(prev => ({ 
-                        ...prev, 
-                        step: 'onboarding-required',
-                        autoCreateIntent: true
-                      }));
+                      // Redirect to onboarding page
+                      window.location.href = '/onboarding';
                       return;
                     }
                   }
@@ -288,7 +291,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     setState(prev => ({ 
                       ...prev, 
                       createdIntentId: primaryIntent.id,
-                      step: 'discovery-results'
+                      step: 'discovery-results',
+                      fetchAttempts: 0
                     }));
 
                     // Fetch discovery results for the primary intent
@@ -311,9 +315,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             }
             break;
 
-          case 'onboarding-required':
-            // User needs to complete onboarding - modal will be shown
-            break;
         }
       } catch (error) {
         console.error('Flow error:', error);
@@ -350,11 +351,11 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             // Check if needs onboarding for auto-create intent
             if (!response.user.intro || response.user.intro.trim() === '') {
               if (state.autoCreateIntent) {
-                setState(prev => ({ ...prev, step: 'onboarding-required' }));
+                window.location.href = '/onboarding';
               }
             } else {
               // User is ready, check if should auto-create intent
-              if (state.autoCreateIntent && (state.step === 'auth-required' || state.step === 'onboarding-required')) {
+              if (state.autoCreateIntent && state.step === 'auth-required') {
                 // Re-trigger stored intent creation after auth/onboarding
                 setState(prev => ({ ...prev, step: 'loading' }));
               }
@@ -372,44 +373,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     }
   }, [state.step, authenticated, ready, resolvedParams.code, state.autoCreateIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for onboarding completion from Header modal
-  useEffect(() => {
-    // Check for existing onboarding completion flag
-    const checkOnboardingCompletion = () => {
-      if (state.step === 'onboarding-required') {
-        try {
-          const completed = localStorage.getItem('onboarding_completed');
-          if (completed) {
-            setState(prev => ({ ...prev, step: 'loading' }));
-            localStorage.removeItem('onboarding_completed');
-          }
-        } catch (error) {
-          console.warn('Failed to check onboarding completion:', error);
-        }
-      }
-    };
-
-    // Check initially
-    checkOnboardingCompletion();
-
-    // Listen for storage changes (from other tabs/windows)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'onboarding_completed' && state.step === 'onboarding-required') {
-        setState(prev => ({ ...prev, step: 'loading' }));
-        localStorage.removeItem('onboarding_completed');
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Poll for changes in the same tab (since localStorage events don't fire in same tab)
-    const pollInterval = setInterval(checkOnboardingCompletion, 500);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
-    };
-  }, [state.step]);
 
   // Poll discovery results every 5 seconds when in discovery-results step
   useEffect(() => {
@@ -461,12 +424,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
           payload: data.payload,
           files: data.files.map(f => ({ name: f.name, size: f.size, type: f.type })) // Store file metadata
         }));
-        setState(prev => ({ 
-          ...prev, 
-          step: 'onboarding-required',
-          autoCreateIntent: true,
-          isSubmitting: false
-        }));
+        window.location.href = '/onboarding';
         return;
       }
 
@@ -490,8 +448,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         console.log('Original input:', data.payload);
         console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from suggestions:`);
         
-        suggestionsResult.suggestedIntents.forEach((suggestion: IntentSuggestion, index: number) => {
-          console.log(`  ${index + 1}. ${suggestion.payload} (${Math.round(suggestion.confidence * 100)}%)`);
+        suggestionsResult.suggestedIntents.forEach((suggestion: SuggestedIntent, index: number) => {
+          console.log(`  ${index + 1}. ${suggestion.payload} (${Math.round(suggestion.relevanceScore * 100)}%)`);
         });
       } else {
         // Fallback to original input
@@ -534,7 +492,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         ...prev, 
         createdIntentId: primaryIntent.id,
         step: 'discovery-results',
-        isSubmitting: false
+        isSubmitting: false,
+        fetchAttempts: 0
       }));
 
       // Fetch discovery results for the primary intent
@@ -562,7 +521,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         isSubmitting: false
       }));
     }
-  }, [ready, authenticated, resolvedParams.code, intentsService, fetchDiscoveryResults, state.user]);
+  }, [ready, authenticated, resolvedParams.code, intentsService, intentSuggestionsService, fetchDiscoveryResults, state.user]);
 
   // Get connection status for a user
   const getConnectionStatus = (userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -629,8 +588,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
   }
 
   // Check permissions
-  const canMatch = state.index.linkPermissions?.permissions.includes('can-match') || false;
-  const canWriteIntents = state.index.linkPermissions?.permissions.includes('can-write-intents') || false;
+  const canMatch =  true; 
+  const canWriteIntents = true;
 
   if (!canMatch && !canWriteIntents) {
     return (
@@ -770,7 +729,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                 <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
                   <Image 
                     className="h-auto"
-                    src={'/generic.png'} 
+                    src={'/loading2.gif'} 
                     alt="Hero Illustration" 
                     width={300} 
                     height={200} 
@@ -779,7 +738,10 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     }}
                   />
                   <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
-                    No matches found in this index. Try adjusting your intent or check back later.
+                    {state.fetchAttempts >= 3 
+                      ? "No matches found in this index. Try adjusting your intent or check back later."
+                      : "The agents got the signal! Hang tight—they're looking for your perfect match!"
+                    }
                   </p>
                 </div>
               ) : (

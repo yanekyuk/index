@@ -6,12 +6,18 @@ import { createIndexesService } from '@/services/indexes';
 import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
+import { createDiscoverService } from '@/services/discover';
+import { createFilesService } from '@/services/files';
+import { createSyncService } from '@/services/sync';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
   intentsService: ReturnType<typeof createIntentsService>;
   connectionsService: ReturnType<typeof createConnectionsService>;
   synthesisService: ReturnType<typeof createSynthesisService>;
+  discoverService: ReturnType<typeof createDiscoverService>;
+  filesService: ReturnType<typeof createFilesService>;
+  syncService: ReturnType<typeof createSyncService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -29,7 +35,10 @@ export function APIProvider({ children }: { children: ReactNode }) {
       indexesService: createIndexesService(api),
       intentsService: createIntentsService(api),
       connectionsService: createConnectionsService(api),
-      synthesisService: createSynthesisService(api)
+      synthesisService: createSynthesisService(api),
+      discoverService: createDiscoverService(api),
+      filesService: createFilesService(api),
+      syncService: createSyncService(api)
     };
     apiRef.current = api;
   }
@@ -68,4 +77,19 @@ export function useConnections() {
 export function useSynthesis() {
   const { synthesisService } = useAPI();
   return synthesisService;
-} 
+}
+
+export function useDiscover() {
+  const { discoverService } = useAPI();
+  return discoverService;
+}
+
+export function useFiles() {
+  const { filesService } = useAPI();
+  return filesService;
+}
+
+export function useSync() {
+  const { syncService } = useAPI();
+  return syncService;
+}

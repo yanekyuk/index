@@ -1,30 +1,39 @@
 import { Button } from "@/components/ui/button";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { useAuthenticatedAPI } from '@/lib/api';
-import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
+import { useIndexes } from '@/contexts/APIContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
+import LibraryModal from '@/components/modals/LibraryModal';
+import CreateIndexModal from '@/components/modals/CreateIndexModal';
 
 interface HeaderProps {
   showNavigation?: boolean;
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
 }
 
-export default function Header({ showNavigation = true }: HeaderProps) {
+export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { login, logout, authenticated, ready } = usePrivy();
+  const { user, refetchUser } = useAuthContext();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [userLoading, setUserLoading] = useState(false);
-  const [isOnboarding, setIsOnboarding] = useState(false);
-  const api = useAuthenticatedAPI();
+  const indexesService = useIndexes();
+  const { addIndex } = useIndexesState();
+  const { success, error } = useNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Memoize alpha parameter check to prevent unnecessary re-runs
@@ -46,55 +55,49 @@ export default function Header({ showNavigation = true }: HeaderProps) {
     }
   }, [alphaParam, pathname]);
 
-  // Memoize user fetch function to prevent recreation on every render
-  const fetchUser = useCallback(async () => {
-    if (!authenticated || userLoading) return;
-    
-    setUserLoading(true);
-    try {
-      const response = await api.get<APIResponse<User>>('/auth/me');
-      if (response.user) {
-        setUser(response.user);
-        
-        // Check if user needs onboarding (empty intro)
-        if (!response.user.intro || response.user.intro.trim() === '') {
-          setIsOnboarding(true);
-          setProfileModalOpen(true);
-        } else {
-          try {
-            localStorage.setItem('onboarding_completed', Date.now().toString());
-          } catch (error) {
-            console.warn('Failed to store onboarding completion:', error);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch user:', error);
-    } finally {
-      setUserLoading(false);
-    }
-  }, [authenticated, api, userLoading]);
-
-  // Fetch user data when authenticated and ready
+  // Handle onboarding check when user data is available
   useEffect(() => {
-    if (ready && authenticated && !user && !userLoading) {
-      fetchUser();
+    const onboardingCompleted = localStorage.getItem('onboarding_completed');
+    if (user && authenticated && !onboardingCompleted) {
+      router.push('/onboarding');
+      return;
     }
-  }, [ready, authenticated, user, userLoading, fetchUser]);
+  }, [user, authenticated, router]);
+
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
+    try {
+      const createRequest = {
+        title: indexData.name,
+        prompt: indexData.prompt,
+        joinPolicy: indexData.joinPolicy
+      };
+      
+      const newIndex = await indexesService.createIndex(createRequest);
+      addIndex(newIndex); // Update global state immediately
+      setCreateIndexModalOpen(false);
+      success('Index created successfully');
+    } catch (err) {
+      console.error('Error creating index:', err);
+      error('Failed to create index');
+    }
+  }, [indexesService, addIndex, success, error]);
+
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [dropdownOpen]);
 
   // Memoize the navigation logic to avoid recalculating on every render
   const navigationItems = useMemo(() => [
@@ -116,52 +119,15 @@ export default function Header({ showNavigation = true }: HeaderProps) {
       label: "Inbox"
     },
     {
-      href: "/indexes",
-      icon: (color: string) => (
-        <Image 
-          src="/icon-folder.svg" 
-          width={48} 
-          height={48}
-          className="object-contain p-1"
-          alt="Indexes icon"
-          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-        />
-      ),
-      label: "Indexes"
-    },
-    {
-      href: "/intents",
-      icon: (color: string) => (
-        <Image 
-          src="/icon-intent.svg" 
-          width={44} 
-          height={44}
-          className="object-contain p-1"
-          alt="Intents icon"
-          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-        />
-      ),
-      label: "Intents"
-    },
-    {
       href: "/integrate",
       icon: (color: string) => (
-        <svg 
-          width={44}
-          height={44}
-          viewBox="0 0 24 24" 
-          fill="none" 
-          xmlns="http://www.w3.org/2000/svg"
+        <Blocks 
+          size={48}
+          color={color}
           className="object-contain p-1"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M14 2v6h6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M16 13H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M16 17H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M10 9H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        />
       ),
-      label: "Integrate"
+      label: "Build"
     }
   ], []);
 
@@ -174,9 +140,9 @@ export default function Header({ showNavigation = true }: HeaderProps) {
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
-                alt="Index Protocol" 
-                width={200} 
-                height={48}
+                alt="Index Network" 
+                width={100} 
+                height={36}
                 className="object-contain"
               />
             </div>
@@ -190,14 +156,30 @@ export default function Header({ showNavigation = true }: HeaderProps) {
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
-        <div className="flex items-center">
-          <Link href={authenticated ? "/indexes" : "/"}>
+        <div className="flex items-center gap-2">
+          {/* Mobile-only sidebar toggle */}
+          {onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              aria-label="Toggle sidebar"
+              aria-expanded={!!isSidebarOpen}
+              aria-controls="app-sidebar"
+              className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-sm border border-[#9f9f9f] bg-white text-[#1f1f1f] hover:bg-gray-50 dark:border-[#555] dark:bg-[#1f1f1f] dark:text-gray-100 dark:hover:bg-[#2a2a2a]"
+            >
+              {/* simple icon without adding deps */}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M3 12h12M3 18h18" />
+              </svg>
+            </button>
+          )}
+          <Link href={authenticated ? "/inbox" : "/"}>
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
-                alt="Index Protocol" 
-                width={200} 
-                height={48}
+                alt="Index Network" 
+                width={100} 
+                height={36}
                 className="object-contain"
               />
             </div>
@@ -238,18 +220,38 @@ export default function Header({ showNavigation = true }: HeaderProps) {
                     <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
-                        setProfileModalOpen(true);
                         setDropdownOpen(false);
+                        setProfileModalOpen(true);
                       }}
                     >
                       <Settings className="h-4 w-4 mr-2" />
                       Profile Settings
                     </button>
                     <button
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        setLibraryModalOpen(true);
+                      }}
+                    >
+                      <Library className="h-4 w-4 mr-2" />
+                      My Library
+                    </button>
+                    <button
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        setCreateIndexModalOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Index
+                    </button>
+                    <button
                       className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
                       onClick={() => {
-                        logout();
                         setDropdownOpen(false);
+                        logout();
                       }}
                     >
                       <LogIn className="h-4 w-4 mr-2" />
@@ -331,21 +333,25 @@ export default function Header({ showNavigation = true }: HeaderProps) {
       {/* Profile Settings Modal */}
       <ProfileSettingsModal
         open={profileModalOpen}
-        onOpenChange={(open) => {
-          setProfileModalOpen(open);
-          if (!open && isOnboarding) {
-            setIsOnboarding(false);
-            // Store onboarding completion in localStorage for other components
-            try {
-              localStorage.setItem('onboarding_completed', Date.now().toString());
-            } catch (error) {
-              console.warn('Failed to store onboarding completion:', error);
-            }
-          }
-        }}
+        onOpenChange={setProfileModalOpen}
         user={user}
-        onUserUpdate={setUser}
-        isOnboarding={isOnboarding}
+        onUserUpdate={async () => {
+          // Refetch user data from AuthContext
+          await refetchUser();
+        }}
+      />
+
+      {/* Library Modal */}
+      <LibraryModal
+        open={libraryModalOpen}
+        onOpenChange={setLibraryModalOpen}
+      />
+
+      {/* Create Index Modal */}
+      <CreateIndexModal
+        open={createIndexModalOpen}
+        onOpenChange={setCreateIndexModalOpen}
+        onSubmit={handleCreateIndex}
       />
     </div>
   );

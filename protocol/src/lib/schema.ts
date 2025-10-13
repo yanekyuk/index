@@ -1,23 +1,30 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
 export const connectionAction = pgEnum('connection_action', [
   'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
 ]);
+// Polymorphic source type for intents
+export const sourceType = pgEnum('source_type', ['file', 'integration', 'link']);
 
 // Tables
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   privyId: text('privy_id').notNull().unique(),
-  email: text('email'),
+  // Email is required and must be unique.
+  email: text('email').notNull(),
   name: text('name').notNull(),
   intro: text('intro'),
   avatar: text('avatar'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (table) => ({
+  // Enforce uniqueness on all emails (email is NOT NULL).
+  usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
+}));
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -29,25 +36,39 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   userId: uuid('user_id').notNull().references(() => users.id),
+  // Polymorphic nullable source (file | integration | link)
+  sourceId: uuid('source_id'),
+  sourceType: sourceType('source_type'),
+  // Vector embedding for semantic search (3072 dimensions for text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 3072 }),
 });
 
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
-  linkPermissions: json('link_permissions').$type<{
-    permissions: string[];
-    code: string;
-  } | null>().default(null),
+  prompt: text('prompt'), // Defines what people can share in this index
+  permissions: json('permissions').$type<{
+    joinPolicy: 'anyone' | 'invite_only';
+    invitationLink: {
+      code: string;
+    } | null;
+    allowGuestVibeCheck: boolean;
+  }>().default({
+    joinPolicy: 'invite_only',
+    invitationLink: null,
+    allowGuestVibeCheck: false
+  }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-  userId: uuid('user_id').notNull().references(() => users.id),
 });
 
 export const indexMembers = pgTable('index_members', {
   indexId: uuid('index_id').notNull().references(() => indexes.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   permissions: text('permissions').array().notNull().default([]),
+  prompt: text('prompt'), // Defines what the member is sharing (defaults to index prompt)
+  autoAssign: boolean('auto_assign').notNull().default(false), // Whether system auto-generates or respects manual edits
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
@@ -59,7 +80,7 @@ export const files = pgTable('files', {
   name: text('name').notNull(),
   size: bigint('size', { mode: 'bigint' }).notNull(),
   type: text('type').notNull(),
-  indexId: uuid('index_id').notNull().references(() => indexes.id),
+  userId: uuid('user_id').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -83,6 +104,21 @@ export const userConnectionEvents = pgTable('user_connection_events', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+export const userIntegrations = pgTable('integrations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  integrationType: varchar('integration_type', { length: 50 }).notNull(),
+  connectedAccountId: varchar('connected_account_id', { length: 255 }),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  redirectUrl: text('redirect_url'),
+  connectedAt: timestamp('connected_at'),
+  lastSyncAt: timestamp('last_sync_at'),
+  indexId: uuid('index_id').notNull().references(() => indexes.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at')
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   intents: many(intents),
@@ -99,23 +135,28 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
     references: [users.id],
   }),
   indexes: many(intentIndexes),
+  // Soft polymorphic joins (only one applies based on sourceType)
+  file: one(files, {
+    fields: [intents.sourceId],
+    references: [files.id],
+    relationName: 'intent_file',
+  }),
+  integration: one(userIntegrations, {
+    fields: [intents.sourceId],
+    references: [userIntegrations.id],
+    relationName: 'intent_integration',
+  }),
+  link: one(indexLinks, {
+    fields: [intents.sourceId],
+    references: [indexLinks.id],
+    relationName: 'intent_link',
+  }),
 }));
 
-export const indexesRelations = relations(indexes, ({ one, many }) => ({
-  user: one(users, {
-    fields: [indexes.userId],
-    references: [users.id],
-  }),
+export const indexesRelations = relations(indexes, ({ many }) => ({
   members: many(indexMembers),
-  files: many(files),
   intents: many(intentIndexes),
-}));
-
-export const filesRelations = relations(files, ({ one }) => ({
-  index: one(indexes, {
-    fields: [files.indexId],
-    references: [indexes.id],
-  }),
+  integrations: many(userIntegrations),
 }));
 
 
@@ -172,6 +213,25 @@ export const intentStakesRelations = relations(intentStakes, ({ one }) => ({
   }),
 }));
 
+// Links: manage crawlable URLs per user (optionally associated with an index)
+const linksTable = pgTable('links', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  lastSyncAt: timestamp('last_sync_at'),
+  lastStatus: text('last_status'),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+// Backward-compatible export names
+export const indexLinks = linksTable;
+export const links = linksTable;
+
+// Integration Items mapping (dedupe across integrations; provider='web' for crawled pages)
+export type IndexLink = typeof linksTable.$inferSelect;
+export type NewIndexLink = typeof linksTable.$inferInsert;
+
 export const userConnectionEventsRelations = relations(userConnectionEvents, ({ one }) => ({
   initiatorUser: one(users, {
     fields: [userConnectionEvents.initiatorUserId],
@@ -182,6 +242,17 @@ export const userConnectionEventsRelations = relations(userConnectionEvents, ({ 
     fields: [userConnectionEvents.receiverUserId],
     references: [users.id],
     relationName: 'receivedConnections',
+  }),
+}));
+
+export const userIntegrationsRelations = relations(userIntegrations, ({ one }) => ({
+  user: one(users, {
+    fields: [userIntegrations.userId],
+    references: [users.id],
+  }),
+  index: one(indexes, {
+    fields: [userIntegrations.indexId],
+    references: [indexes.id],
   }),
 }));
 
@@ -202,3 +273,5 @@ export type IntentStake = typeof intentStakes.$inferSelect;
 export type NewIntentStake = typeof intentStakes.$inferInsert;
 export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
 export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;
+export type UserIntegration = typeof userIntegrations.$inferSelect;
+export type NewUserIntegration = typeof userIntegrations.$inferInsert;

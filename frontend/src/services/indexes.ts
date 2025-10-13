@@ -2,17 +2,15 @@ import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
 import { 
   Index, 
-  IndexFile, 
   Intent,
   PaginatedResponse, 
   APIResponse, 
   CreateIndexRequest, 
-  UpdateIndexRequest, 
-  FileUploadResponse 
+  UpdateIndexRequest
 } from '../lib/types';
 
 // Re-export types for convenience
-export type { Index, IndexFile };
+export type { Index };
 
 // Member interface for API responses
 interface Member {
@@ -32,7 +30,6 @@ export interface SuggestedIntent {
   isAdded?: boolean;
 }
 
-// Service functions that accept API instance as parameter
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
@@ -81,17 +78,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${id}`);
   },
 
-  // Upload file to index
-  uploadFile: async (indexId: string, file: File): Promise<IndexFile> => {
-    const response = await api.uploadFile<FileUploadResponse>(`/indexes/${indexId}/files`, file);
-    return response.file;
-  },
-
-  // Delete file from index
-  deleteFile: async (indexId: string, fileId: string): Promise<void> => {
-    await api.delete(`/indexes/${indexId}/files/${fileId}`);
-  },
-
   // Member Management
   // Add member to index with specific permissions
   addMember: async (indexId: string, userId: string, permissions: string[]): Promise<Member> => {
@@ -127,14 +113,21 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.members || [];
   },
 
-  // Public Permissions Management
-  // Update link permissions for direct link sharing
-  updateLinkPermissions: async (indexId: string, permissions: string[]): Promise<Index> => {
-    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/link-permissions`, { 
-      permissions 
-    });
+  // Permissions Management
+  // Update index permissions (joinPolicy, allowGuestVibeCheck)
+  updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/permissions`, permissions);
     if (!response.index) {
-      throw new Error('Failed to update link permissions');
+      throw new Error('Failed to update permissions');
+    }
+    return response.index;
+  },
+
+  // Regenerate invitation link for private indexes
+  regenerateInvitationLink: async (indexId: string): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/regenerate-invitation`);
+    if (!response.index) {
+      throw new Error('Failed to regenerate invitation link');
     }
     return response.index;
   },
@@ -231,8 +224,6 @@ export const indexesService = {
   createIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   updateIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   deleteIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  uploadFile: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  deleteFile: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   addMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   removeMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   addSuggestedIntent: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); }

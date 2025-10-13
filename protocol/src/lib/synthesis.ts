@@ -5,6 +5,7 @@ import db from './db';
 import { users as usersTable, intents, intentStakes, agents } from './schema';
 import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
+import { getAccessibleIntents } from './intent-access';
 
 interface SynthesisOptions extends VibeCheckOptions {}
 
@@ -22,10 +23,11 @@ export async function synthesizeVibeCheck(params: {
   targetUserName?: string;
   contextUserId?: string; // User requesting analysis - their intents will be analyzed
   intentIds?: string[]; // Specific context user's intents to focus on (if no contextUserId)
+  indexIds?: string[]; // Index filtering for secure access
   options?: SynthesisOptions;
 }): Promise<string> {
   try {
-    const { targetUserId, contextUserId, intentIds, options } = params;
+    const { targetUserId, contextUserId, intentIds, indexIds, options } = params;
 
     // Get target user info
     const targetUser = await db.select({
@@ -43,27 +45,38 @@ export async function synthesizeVibeCheck(params: {
 
     const user = targetUser[0];
 
-    // Get intents to analyze (should be context user's intents)
+    // Get context intents using secure generic function
     let contextIntentIds: string[] = [];
     if (contextUserId) {
-      const contextIntents = await db.select({ id: intents.id })
-        .from(intents)
-        .where(eq(intents.userId, contextUserId));
-      contextIntentIds = contextIntents.map(i => i.id);
+      const contextIntentsResult = await getAccessibleIntents(contextUserId, {
+        indexIds: indexIds,
+        intentIds: intentIds,
+        includeOwnIntents: true
+      });
+      contextIntentIds = contextIntentsResult.intents.map(i => i.id);
     } else if (intentIds) {
-      contextIntentIds = intentIds;
+      // Even when intentIds are provided, we need to validate them through proper access control
+      // This requires a contextUserId - without it, we can't validate access
+      console.warn('Synthesis called with intentIds but no contextUserId - cannot validate access');
+      return "";
     }
 
     if (contextIntentIds.length === 0) {
       return "";
     }
 
-    // Get target user's intents for filtering stakes
-    let targetIntentIds: string[] = [];
-    const targetIntents = await db.select({ id: intents.id })
-      .from(intents)
-      .where(eq(intents.userId, targetUserId));
-    targetIntentIds = targetIntents.map(i => i.id);
+    // Ensure contextUserId is defined before proceeding
+    if (!contextUserId) {
+      console.warn('Synthesis called without contextUserId');
+      return "";
+    }
+
+    // Get target user's intents using secure generic function
+    const targetIntentsResult = await getAccessibleIntents(targetUserId, {
+      indexIds: indexIds,
+      includeOwnIntents: true
+    });
+    const targetIntentIds = targetIntentsResult.intents.map(i => i.id);
 
     // Get stakes data - find stakes that connect context user's intents with target user's intents
     const stakes = await db.select({
@@ -81,7 +94,7 @@ export async function synthesizeVibeCheck(params: {
     .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
     .where(and(
       isNull(agents.deletedAt),
-      eq(intents.userId, contextUserId || targetUserId), // Context user's intents
+      eq(intents.userId, contextUserId), // Context user's intents (authenticated user)
       inArray(intents.id, contextIntentIds),
       // Stakes must also include at least one intent from target user
       targetIntentIds.length > 0 ? sql`EXISTS(
@@ -149,10 +162,11 @@ export async function synthesizeVibeCheck(params: {
 export async function synthesizeIntro(params: {
   senderUserId: string;
   recipientUserId: string;
+  indexIds?: string[]; // Index filtering for secure access
   options?: IntroOptions;
 }): Promise<string> {
   try {
-    const { senderUserId, recipientUserId } = params;
+    const { senderUserId, recipientUserId, indexIds } = params;
 
     // Get users
     const userRecords = await db.select({
@@ -169,14 +183,14 @@ export async function synthesizeIntro(params: {
     const senderUser = userRecords.find(u => u.id === senderUserId);
     const recipientUser = userRecords.find(u => u.id === recipientUserId);
 
-    // Get reasonings for both users from shared stakes
-    const [senderIntents, recipientIntents] = await Promise.all([
-      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, senderUserId)),
-      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, recipientUserId))
+    // Get intents for both users using secure generic function
+    const [senderIntentsResult, recipientIntentsResult] = await Promise.all([
+      getAccessibleIntents(senderUserId, { indexIds, includeOwnIntents: true }),
+      getAccessibleIntents(recipientUserId, { indexIds, includeOwnIntents: true })
     ]);
 
-    const senderIntentIds = senderIntents.map(i => i.id);
-    const recipientIntentIds = recipientIntents.map(i => i.id);
+    const senderIntentIds = senderIntentsResult.intents.map(i => i.id);
+    const recipientIntentIds = recipientIntentsResult.intents.map(i => i.id);
 
     if (senderIntentIds.length === 0 || recipientIntentIds.length === 0) {
       return "";
@@ -218,10 +232,12 @@ export async function synthesizeIntro(params: {
 
     const introData: IntroMakerData = {
       sender: {
+        id: senderUser!.id,
         userName: senderUser!.name,
         reasonings: senderReasonings
       },
       recipient: {
+        id: recipientUser!.id,
         userName: recipientUser!.name,
         reasonings: recipientReasonings
       }
