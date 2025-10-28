@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import * as Tabs from "@radix-ui/react-tabs";
@@ -35,14 +35,14 @@ export default function InboxPage() {
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
 
   // UI State
-  const [loading, setLoading] = useState(true);
+  const [discoveryLoading, setDiscoveryLoading] = useState(true);
+  const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
   const [isDragging, setIsDragging] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // Refs
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
-  const lastDataRef = useRef<string>('');
   const lastRefreshTimeRef = useRef<number>(0);
   const dragCounterRef = useRef(0);
   const discoveryFormRef = useRef<DiscoveryFormRef>(null);
@@ -56,6 +56,17 @@ export default function InboxPage() {
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
+
+  // Memoize API parameters to prevent unnecessary recreations
+  const apiIndexIds = useMemo(() => 
+    selectedIndexIds.length > 0 ? selectedIndexIds : undefined,
+    [selectedIndexIds]
+  );
+
+  const apiIntentIds = useMemo(() => 
+    discoveryIntents?.map(i => i.id),
+    [discoveryIntents]
+  );
 
   // Fetch synthesis for a user
   const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[], indexIds?: string[]) => {
@@ -82,21 +93,15 @@ export default function InboxPage() {
     }
   }, [synthesisService]);
 
-  // Fetch all inbox data
-  const fetchData = useCallback(async () => {
+  // Fetch discovery data (default tab - priority)
+  const fetchDiscovery = useCallback(async () => {
     try {
-      const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
-      
-      const [inboxData, pendingData, discoverData] = await Promise.all([
-        connectionsService.getConnectionsByUser('inbox', apiIndexIds),
-        connectionsService.getConnectionsByUser('pending', apiIndexIds),
-        discoverService.discoverUsers({ 
-          indexIds: apiIndexIds, 
-          intentIds: discoveryIntents?.map(i => i.id),
-          excludeDiscovered: true, 
-          limit: 50 
-        })
-      ]);
+      const discoverData = await discoverService.discoverUsers({ 
+        indexIds: apiIndexIds, 
+        intentIds: apiIntentIds,
+        excludeDiscovered: true, 
+        limit: 50 
+      });
 
       // Transform discover data
       const transformedStakesData: StakesByUserResponse[] = (discoverData?.results || []).map(result => ({
@@ -117,42 +122,62 @@ export default function InboxPage() {
         }))
       }));
 
-      // Check if data has changed
-      const currentDataHash = JSON.stringify({
-        discover: transformedStakesData.map(s => ({ userId: s.user.id, intentIds: s.intents.map(i => i.intent.id) })),
-        inbox: inboxData.connections.map(c => c.user.id),
-        pending: pendingData.connections.map(c => c.user.id)
+      setDiscoverStakes(transformedStakesData);
+
+      // Fetch synthesis for discovery users
+      transformedStakesData.forEach(stake => {
+        fetchSynthesis(stake.user.id, undefined, apiIndexIds);
       });
-      
-      if (currentDataHash !== lastDataRef.current) {
-        lastDataRef.current = currentDataHash;
-        
-        setDiscoverStakes(transformedStakesData);
-        setInboxConnections(inboxData.connections);
-        setPendingConnections(pendingData.connections);
 
-        // Clear and refetch synthesis
-        fetchedSynthesesRef.current.clear();
-        setSyntheses({});
-
-        const allUserIds = new Set<string>();
-        transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
-        [...inboxData.connections, ...pendingData.connections]
-          .forEach(connection => allUserIds.add(connection.user.id));
-
-        allUserIds.forEach(userId => {
-          fetchSynthesis(userId, undefined, apiIndexIds);
-        });
-      }
-      
       lastRefreshTimeRef.current = Date.now();
+    } catch (error) {
+      console.error('Error fetching discovery:', error);
+    } finally {
+      setDiscoveryLoading(false);
+    }
+  }, [discoverService, fetchSynthesis, apiIndexIds, apiIntentIds]);
+
+  // Fetch connections data (non-blocking background load)
+  const fetchConnections = useCallback(async () => {
+    try {
+      const [inboxData, pendingData] = await Promise.all([
+        connectionsService.getConnectionsByUser('inbox', apiIndexIds),
+        connectionsService.getConnectionsByUser('pending', apiIndexIds),
+      ]);
+
+      setInboxConnections(inboxData.connections);
+      setPendingConnections(pendingData.connections);
+
+      // Fetch synthesis for connection users
+      [...inboxData.connections, ...pendingData.connections].forEach(connection => {
+        fetchSynthesis(connection.user.id, undefined, apiIndexIds);
+      });
 
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching connections:', error);
     } finally {
-      setLoading(false);
+      setConnectionsLoading(false);
     }
-  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds, discoveryIntents]);
+  }, [connectionsService, fetchSynthesis, apiIndexIds]);
+
+  // Fetch all data - initial load (clears syntheses)
+  const fetchData = useCallback(async () => {
+    setDiscoveryLoading(true);
+    setConnectionsLoading(true);
+    fetchedSynthesesRef.current.clear();
+    setSyntheses({});
+    
+    // Load discovery first (default tab), connections in background
+    fetchDiscovery();
+    fetchConnections();
+  }, [fetchDiscovery, fetchConnections]);
+
+  // Refresh data - auto-refresh (preserves syntheses to avoid glitch)
+  const refreshData = useCallback(async () => {
+    // Don't show loading states or clear syntheses on refresh
+    fetchDiscovery();
+    fetchConnections();
+  }, [fetchDiscovery, fetchConnections]);
 
   // Tab change handler
   const handleTabChange = (newTab: string) => {
@@ -228,12 +253,12 @@ export default function InboxPage() {
     const intervalId = setInterval(() => {
       const timeSinceLastRefresh = Date.now() - lastRefreshTimeRef.current;
       if (timeSinceLastRefresh >= 5000) {
-        fetchData();
+        refreshData();
       }
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [fetchData]);
+  }, [refreshData]);
 
   // Drag and drop for file upload
   useEffect(() => {
@@ -288,7 +313,7 @@ export default function InboxPage() {
   }, [activeTab, discoveryIntents]);
 
   // Render user card component
-  const renderUserCard = (
+  const renderUserCard = useCallback((
     data: StakesByUserResponse | UserConnection, 
     tabType: 'discover' | 'requests'
   ) => {
@@ -383,24 +408,8 @@ export default function InboxPage() {
         </div>
       </div>
     );
-  };
+  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, fetchData]);
 
-  // Loading state
-  if (loading) {
-    return (
-      <ClientLayout>
-        <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-          backgroundImage: 'url(/grid.png)',
-          backgroundColor: 'white',
-          backgroundSize: '888px'
-        }}>
-          <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-2 text-center text-gray-500">
-            <div className="py-8 text-center text-gray-500">Loading...</div>
-          </div>
-        </div>
-      </ClientLayout>
-    );
-  }
 
   return (
     <ClientLayout>
@@ -476,9 +485,13 @@ export default function InboxPage() {
                   className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap h-[54px]"
                 >
                   View Requests
-                  <span className="bg-black text-white text-xs px-2 py-1 rounded">
-                    {inboxConnections.length + pendingConnections.length}
-                  </span>
+                  {connectionsLoading ? (
+                    <span className="bg-black text-white text-xs px-2 py-1 rounded">0</span>
+                  ) : (
+                    <span className="bg-black text-white text-xs px-2 py-1 rounded">
+                      {inboxConnections.length + pendingConnections.length}
+                    </span>
+                  )}
                 </button>
               </div>
             )}
@@ -504,7 +517,21 @@ export default function InboxPage() {
             {/* Discover Content */}
             {activeTab === 'discover' && (
               <div className="mt-4">
-                {discoverStakes.length === 0 ? (
+                {discoveryLoading ? (
+                  <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                    <Image 
+                      className="h-auto"
+                      src="/loading2.gif"
+                      alt="Loading..." 
+                      width={300} 
+                      height={200} 
+                      style={{ imageRendering: 'auto' }}
+                    />
+                    <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                      Finding your people...
+                    </h3>
+                  </div>
+                ) : discoverStakes.length === 0 ? (
                   <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
                     <Image 
                       className="h-auto"
