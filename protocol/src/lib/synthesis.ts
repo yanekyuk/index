@@ -88,6 +88,7 @@ export async function synthesizeVibeCheck(params: {
     .where(and(
       isNull(agents.deletedAt),
       eq(intents.userId, contextUserId), // Context user's intents (authenticated user)
+      sql`array_length(${intentStakes.intents}, 1) > 1`, // Exclude single-intent confidence stakes
       sql`EXISTS(
         SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
         WHERE intent_id IN (${sql.join(contextIntentIds.map(id => sql`${id}`), sql`, `)})
@@ -98,7 +99,9 @@ export async function synthesizeVibeCheck(params: {
         WHERE i2.id::text = ANY(${intentStakes.intents})
         AND i2.user_id = ${targetUserId}
       )`
-    ));
+    ))
+    .orderBy(sql`${intentStakes.stake} DESC`)
+    .limit(3);
 
     if (stakes.length === 0) {
       return "";
@@ -190,6 +193,7 @@ export async function synthesizeIntro(params: {
     .innerJoin(agents, eq(intentStakes.agentId, agents.id))
     .where(and(
       isNull(agents.deletedAt),
+      sql`array_length(${intentStakes.intents}, 1) > 1`, // Exclude single-intent confidence stakes
       sql`EXISTS(
         SELECT 1 FROM ${intents} i1
         WHERE i1.id::text = ANY(${intentStakes.intents})

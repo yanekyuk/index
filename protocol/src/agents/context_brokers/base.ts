@@ -110,7 +110,7 @@ export abstract class BaseContextBroker {
       }
 
       // Use pgvector for semantic similarity search with IVFFlat index
-      // Get top 10 most similar intents using cosine distance
+      // Get top 50 most similar intents using cosine distance (increased for user grouping)
       // Exclude intents from the same user to avoid stake validation errors
       const similarIntents = await this.db
         .select({
@@ -130,13 +130,14 @@ export abstract class BaseContextBroker {
               AND ${intents.archivedAt} IS NULL`
         )
         .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
-        .limit(10);
+        .limit(50);
 
       console.log(`Found ${similarIntents.length} similar intents using vector search`);
+      console.log(similarIntents);
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents
-        //.filter(intent => intent.similarity > 0.75) // Adjust threshold as needed
+        .filter(intent => intent.similarity > 0.30) // 50% cosine similarity threshold
         .map(intent => ({
           intent: {
             id: intent.id,
@@ -160,8 +161,100 @@ export abstract class BaseContextBroker {
     }
   }
 
+  /**
+   * Get inference confidence for an intent
+   * Returns null if no confidence stake exists
+   */
+  protected async getIntentConfidence(intentId: string, inferrerAgentId: string): Promise<{
+    confidence: number;
+    isExplicit: boolean;
+  } | null> {
+    const stakes = await this.db.select()
+      .from(intentStakes)
+      .where(and(
+        sql`array_length(${intentStakes.intents}, 1) = 1`,
+        sql`${intentStakes.intents} @> ARRAY[${intentId}]`,
+        eq(intentStakes.agentId, inferrerAgentId)
+      ))
+      .limit(1);
+    
+    if (stakes.length === 0) return null;
+    
+    const isExplicit = stakes[0].reasoning.includes('explicit');
+    const confidence = Number(stakes[0].stake) / 100;
+    
+    return { confidence, isExplicit };
+  }
+
+  /**
+   * Calculate weighted stake based on intent confidence
+   * Brokers should use this when creating stakes to weight by inference confidence
+   */
+  protected async calculateWeightedStake(
+    intentId: string,
+    baseStake: bigint,
+    inferrerAgentId: string
+  ): Promise<bigint> {
+    const confidenceData = await this.getIntentConfidence(intentId, inferrerAgentId);
+    
+    // If no confidence data, return base stake (manually created intents)
+    if (!confidenceData) return baseStake;
+
+    console.log(`confidenceData`, confidenceData, baseStake);
+    
+    // Apply confidence multiplier
+    const weighted = Number(baseStake) * confidenceData.confidence;
+    return BigInt(Math.floor(weighted));
+  }
+
   protected readonly stakeManager = new (class {
     constructor(private broker: BaseContextBroker) {}
+
+    /**
+     * Create an inference confidence stake for a single intent
+     * Same params as createStake but validates single intent only
+     */
+    async createInferenceStake(params: {
+      intents: string[];
+      stake: bigint;
+      reasoning: string;
+      agentId: string;
+    }): Promise<void> {
+      // Validate exactly one intent
+      if (params.intents.length !== 1) {
+        throw new Error('Inference stakes must have exactly one intent');
+      }
+      
+      const intentId = params.intents[0];
+      
+      // Validate intent exists
+      const intentExists = await this.broker.db.select({ id: intents.id })
+        .from(intents)
+        .where(eq(intents.id, intentId))
+        .limit(1);
+      
+      if (intentExists.length === 0) {
+        throw new Error('Intent does not exist');
+      }
+      
+      // Check if inference stake already exists (don't duplicate)
+      const existingStake = await this.broker.db.select()
+        .from(intentStakes)
+        .where(and(
+          sql`${intentStakes.intents}::text[] = ARRAY[${intentId}::text]`,
+          eq(intentStakes.agentId, params.agentId)
+        ))
+        .limit(1);
+      
+      if (existingStake.length === 0) {
+        await this.broker.db.insert(intentStakes).values({
+          intents: [intentId],
+          stake: params.stake,
+          reasoning: params.reasoning,
+          agentId: params.agentId
+        });
+      }
+    }
 
     async createStake(params: {
       intents: string[];
@@ -199,10 +292,16 @@ export abstract class BaseContextBroker {
       // Check if stake already exists for this exact set of intents
       const existingStake = await this.broker.db.select()
         .from(intentStakes)
-        .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
-        .then(rows => rows[0]);
+        .where(and(
+          sql`${intentStakes.intents}::text[] = ARRAY[${sql.join(sortedIntents.map(id => sql`${id}::text`), sql`, `)}]`,
+          eq(intentStakes.agentId, params.agentId)
+        ))
+        .limit(1)
+        //.then(rows => rows[0]);
 
-      if (!existingStake) {
+      console.log('Existing stake:', existingStake);
+
+      if (existingStake.length === 0) {
         // Create new stake
         await this.broker.db.insert(intentStakes)
           .values({

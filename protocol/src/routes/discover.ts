@@ -41,7 +41,7 @@ function isValidUrlCandidate(u: string): boolean {
 
 // Helper function to extract URLs from text
 function extractUrlsFromText(text: string): string[] {
-  const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[^\s]*)?/g;
+  const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?(?:\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?/g;
   const matches = text.match(urlRegex);
   return matches ? matches.filter(isValidUrlCandidate) : [];
 }
@@ -191,6 +191,8 @@ router.post('/new',
             sourceId: undefined,
             sourceType: 'discovery_form',
             isIncognito: false,
+            confidence: 1.0,
+            inferenceType: 'explicit',
           });
 
           generatedIntents.push(createdIntent);
@@ -214,7 +216,8 @@ router.post('/new',
           1,  // generate 1 intent
           60000 // 60 second timeout
         );
-
+        
+        console.log(`panzer`,intentResult.intents);
         if (intentResult.success && intentResult.intents.length > 0) {
           console.log(`✅ Generated ${intentResult.intents.length} intents`);
           
@@ -230,6 +233,8 @@ router.post('/new',
                 sourceId: sourceId,
                 sourceType: 'discovery_form',
                 isIncognito: false,
+                confidence: generatedIntent.confidence,
+                inferenceType: generatedIntent.type
               });
 
               generatedIntents.push(createdIntent);

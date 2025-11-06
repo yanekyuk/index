@@ -26,6 +26,7 @@ import discoverRoutes from './routes/discover';
 import linksRoutes from './routes/links';
 import syncRoutes from './routes/sync';
 import queueRoutes from './routes/queue';
+import adminRoutes from './routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,7 +35,7 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(helmet());
 app.use(cors());
-app.use(morgan('combined'));
+// app.use(morgan('combined')); // Temporarily disabled
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -64,6 +65,8 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/synthesis', synthesisRoutes);
 app.use('/api/discover', discoverRoutes);
 app.use('/api/queue', queueRoutes);
+
+app.use('/api/admin', adminRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

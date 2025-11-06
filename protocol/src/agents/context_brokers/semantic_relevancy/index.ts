@@ -1,156 +1,483 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes } from '../../../lib/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and, desc } from 'drizzle-orm';
 import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
-import { addBrokerJob } from '../../../lib/queue/llm-queue';
+import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
     super(agentId);
   }
 
+  /**
+   * Main entry point - processes intent and finds relevant user matches
+   */
   async onIntentCreated(intentId: string): Promise<void> {
+    const startTime = Date.now();
     console.log(`🤖 SemanticRelevancyBroker: Processing intent ${intentId}`);
     
-    // Directly discover related intents and queue pair processing jobs
-    await this.discoverAndQueueRelatedIntents(intentId);
+    const newIntent = await this.getIntent(intentId);
+    if (!newIntent) return;
+
+    const topUsers = await this.findTopUsersByIntentSimilarity(newIntent);
+    console.log(`🔍 Found ${topUsers.length} relevant users`);
+
+    await this.processUserRelationships(newIntent, topUsers);
+    
+    const duration = Date.now() - startTime;
+    console.log(`✅ Completed in ${duration}ms`);
   }
 
   /**
-   * Discover related intents and queue individual pair processing jobs
+   * Get intent from database
    */
-  async discoverAndQueueRelatedIntents(currentIntentId: string): Promise<void> {
-    // Get the current intent
-    const currentIntent = await this.db.select()
+  private async getIntent(intentId: string): Promise<any | null> {
+    const rows = await this.db.select()
       .from(intents)
-      .where(eq(intents.id, currentIntentId))
-      .then(rows => rows[0]);
+      .where(eq(intents.id, intentId));
+    
+    if (rows.length === 0) {
+      console.error(`Intent ${intentId} not found`);
+      return null;
+    }
+    
+    return rows[0];
+  }
 
-    if (!currentIntent) {
-      console.error(`Intent ${currentIntentId} not found`);
-      return;
+  /**
+   * Process all user relationships
+   */
+  private async processUserRelationships(
+    newIntent: any,
+    topUsers: Array<{ userId: string; intents: any[]; maxSimilarity: number }>
+  ): Promise<void> {
+    for (const targetUser of topUsers) {
+      try {
+        await this.evaluateUserRelationship(newIntent, targetUser);
+      } catch (error) {
+        console.error(`Error evaluating relationship with user ${targetUser.userId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Find top 10 users grouped by intent similarity
+   */
+  private async findTopUsersByIntentSimilarity(newIntent: any): Promise<Array<{
+    userId: string;
+    intents: any[];
+    maxSimilarity: number;
+  }>> {
+    // Find similar intents using vector search (limit 50 to ensure we get enough variety)
+    const similarIntents = await this.findSemanticallyRelatedIntents(newIntent);
+    
+    // Group by userId
+    const userMap = new Map<string, {
+      userId: string;
+      intents: any[];
+      maxSimilarity: number;
+    }>();
+
+    for (const relatedIntentData of similarIntents) {
+      const relatedIntent = relatedIntentData.intent || relatedIntentData;
+      const userId = relatedIntent.userId;
+      const similarity = relatedIntentData.score || 0;
+
+      if (!userMap.has(userId)) {
+        userMap.set(userId, {
+          userId,
+          intents: [],
+          maxSimilarity: 0
+        });
+      }
+
+      const userData = userMap.get(userId)!;
+      userData.intents.push(relatedIntent);
+      userData.maxSimilarity = Math.max(userData.maxSimilarity, similarity);
     }
 
-    console.log('🔍 Discovering related intents for:', currentIntentId);
+    // Sort by max similarity and take top 10 users
+    return Array.from(userMap.values())
+      .sort((a, b) => b.maxSimilarity - a.maxSimilarity)
+      .slice(0, 10);
+  }
 
-    // Find semantically related intents
-    const relatedIntents = await this.findSemanticallyRelatedIntents(currentIntent);
-    console.log('Found related intents:', relatedIntents.length);
+  /**
+   * Evaluate user relationship with two-stage LLM approach
+   */
+  private async evaluateUserRelationship(
+    newIntent: any,
+    targetUser: { userId: string; intents: any[]; maxSimilarity: number }
+  ): Promise<void> {
+    console.log(`\n👥 Evaluating: ${newIntent.userId} ↔ ${targetUser.userId}`);
 
-    // Queue individual pair processing jobs
-    const queuePromises = relatedIntents.map(async (relatedIntentData) => {
-      try {
-        // Handle different return formats from vector search vs LLM fallback
-        const relatedIntent = relatedIntentData.intent || relatedIntentData;
-        const relatedIntentId = relatedIntent.id;
-        
-        if (!relatedIntentId) {
-          console.error('Related intent missing ID:', relatedIntentData);
-          return;
-        }
-        
-        // Queue individual pair processing job
-        await addBrokerJob({
-          intentId: currentIntentId,
-          relatedIntentId,
-          userId: currentIntent.userId,
-          brokerType: 'semantic_relevancy'
-        }, 3); // Lower priority than discovery job
-        
-      } catch (error) {
-        console.error(`Error queueing pair job for intent ${relatedIntentData?.intent?.id || relatedIntentData?.id || 'unknown'}:`, error);
+    await this.db.transaction(async (tx) => {
+      // Get and lock existing stakes between these users
+      const existingStakes = await this.getExistingStakes(tx, newIntent.userId, targetUser.userId);
+      console.log(`   🔒 Found ${existingStakes.length} existing stakes (locked)`);
+
+      // Stage 1: Find mutual intents
+      const mutualResults = await this.findMutualIntents(newIntent, targetUser.intents);
+      console.log(`   ✅ Stage 1: ${mutualResults.length} mutual intents (≥70 score)`);
+
+      // Skip if no mutual intents and no existing stakes
+      if (mutualResults.length === 0 && existingStakes.length === 0) {
+        console.log(`   ⏭️  Skipping - no mutual intents or existing stakes`);
+        return;
       }
+
+      // Stage 2: Rank all candidates and get top 3
+      const candidatePairs = this.buildCandidatePairs(newIntent.id, mutualResults, existingStakes);
+      const rankingResult = await this.rankIntentPairs(candidatePairs);
+      console.log(`   ✅ Stage 2: Selected top ${rankingResult.top3IntentPairs.length} pairs`);
+
+      // Execute: Delete all existing, insert top 3
+      await this.updateStakes(tx, existingStakes, rankingResult.top3IntentPairs, candidatePairs);
+      console.log(`   ✔️  Committed - ${rankingResult.top3IntentPairs.length} stakes`);
+    });
+  }
+
+  /**
+   * Get existing stakes between two users with row lock
+   */
+  private async getExistingStakes(tx: any, userId1: string, userId2: string) {
+    return await tx.select({
+      id: intentStakes.id,
+      stake: intentStakes.stake,
+      intents: intentStakes.intents,
+      reasoning: intentStakes.reasoning
+    })
+    .from(intentStakes)
+    .where(and(
+      eq(intentStakes.agentId, this.agentId),
+      sql`EXISTS (
+        SELECT 1 FROM ${intents} i1
+        WHERE i1.id::text = ANY(${intentStakes.intents})
+        AND i1.user_id = ${userId1}
+      )`,
+      sql`EXISTS (
+        SELECT 1 FROM ${intents} i2
+        WHERE i2.id::text = ANY(${intentStakes.intents})
+        AND i2.user_id = ${userId2}
+      )`
+    ))
+    .orderBy(desc(intentStakes.stake))
+    .for('update');
+  }
+
+  /**
+   * Find mutual intents between new intent and target intents
+   */
+  private async findMutualIntents(newIntent: any, targetIntents: any[]) {
+    const mutualityPromises = targetIntents.map(async (targetIntent) => {
+      const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
+      console.log(`   🔍 Evaluation: ${evaluation?.isMutual} ${evaluation?.confidenceScore}`);
+      
+      if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
+        return {
+          targetIntentId: targetIntent.id,
+          score: evaluation.confidenceScore,
+          reasoning: evaluation.reasoning
+        };
+      }
+      return null;
     });
 
-    // Wait for all queue operations to complete
-    await Promise.allSettled(queuePromises);
-    console.log(`✅ Queued ${relatedIntents.length} intent pair processing jobs for ${currentIntentId}`);
+    const results = await Promise.all(mutualityPromises);
+    return results.filter(r => r !== null);
   }
 
   /**
-   * Process a specific intent pair for mutual relevancy
+   * Build candidate pairs from mutual results and existing stakes
    */
-  async processIntentPair(currentIntentId: string, relatedIntentId: string): Promise<void> {
-    console.log('🤝 Processing intent pair:', currentIntentId, 'vs', relatedIntentId);
-    
-    // Get both intents
-    const [currentIntent, relatedIntent] = await Promise.all([
-      this.db.select().from(intents).where(eq(intents.id, currentIntentId)).then(rows => rows[0]),
-      this.db.select().from(intents).where(eq(intents.id, relatedIntentId)).then(rows => rows[0])
-    ]);
+  private buildCandidatePairs(
+    newIntentId: string,
+    mutualResults: Array<{ targetIntentId: string; score: number; reasoning: string }>,
+    existingStakes: Array<{ id: string; stake: bigint; intents: string[]; reasoning: string }>
+  ) {
+    return [
+      ...mutualResults.map(r => ({
+        type: 'new' as const,
+        newIntentId,
+        targetIntentId: r.targetIntentId,
+        score: r.score,
+        reasoning: r.reasoning
+      })),
+      ...existingStakes.map(stake => ({
+        type: 'existing' as const,
+        stakeId: stake.id,
+        newIntentId: stake.intents[0],
+        targetIntentId: stake.intents[1],
+        score: Number(stake.stake),
+        reasoning: stake.reasoning
+      }))
+    ];
+  }
 
-    if (!currentIntent || !relatedIntent) {
-      console.error('One or both intents not found:', currentIntentId, relatedIntentId);
-      return;
+  /**
+   * Update stakes: delete existing and insert top 3
+   */
+  private async updateStakes(
+    tx: any,
+    existingStakes: Array<{ id: string }>,
+    top3Pairs: Array<{ newIntentId: string; targetIntentId: string }>,
+    candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
+  ) {
+    // Delete all existing stakes
+    for (const stake of existingStakes) {
+      await tx.delete(intentStakes).where(eq(intentStakes.id, stake.id));
     }
 
-    // Define Zod schema for structured mutual intent check
+    // Insert top 3
+    for (const pair of top3Pairs) {
+      const pairData = candidatePairs.find(
+        c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
+      );
+      
+      if (pairData) {
+        const sortedIntents = [pair.newIntentId, pair.targetIntentId].sort();
+        
+        const stake1 = await this.calculateWeightedStake(
+          pair.newIntentId, 
+          BigInt(Math.round(pairData.score)),
+          INTENT_INFERRER_AGENT_ID
+        );
+        const stake2 = await this.calculateWeightedStake(
+          pair.targetIntentId,
+          BigInt(Math.round(pairData.score)),
+          INTENT_INFERRER_AGENT_ID
+        );
+        
+        const finalStake = stake1 < stake2 ? stake1 : stake2;
+        
+        await tx.insert(intentStakes).values({
+          intents: sortedIntents,
+          stake: finalStake,
+          reasoning: pairData.reasoning,
+          agentId: this.agentId
+        });
+      }
+    }
+  }
+
+  /**
+   * Evaluate mutuality with STRICTER criteria (existing structure)
+   */
+  private async evaluateMutualityStrict(
+    newIntent: any,
+    targetIntent: any
+  ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
     const MutualIntentSchema = z.object({
       isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. If not mutual, provide empty string.")
+      reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. If not mutual, provide empty string."),
+      confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
     });
 
-    // System message: Define role and evaluation criteria
     const systemMessage = {
       role: "system",
       content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
 
-Mutual criteria:
-- Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
-- Both intents could lead to a valuable connection or collaboration
-- There's bidirectional value (not just one-way interest)
+CRITICAL: You MUST provide specific scores. 
 
-Examples:
-✅ MUTUAL: "Seeking AI investors" + "Looking for AI startups to fund" → Both want to connect
-✅ MUTUAL: "Need React developers" + "Looking for projects to build with React" → Complementary
-❌ NOT MUTUAL: "Seeking investors" + "Seeking investors" → Same need, no complement
-❌ NOT MUTUAL: "Looking for designers" + "Looking for investors" → Unrelated needs`
+STRICT Mutual criteria (INCREASED RIGOR):
+- Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
+- Both intents could lead to HIGH-VALUE connection or collaboration
+- There's bidirectional value (not just one-way interest)
+- IMMEDIATELY actionable and valuable
+- Specific, not vague connections
+- EXCLUDE "adjacent but non-dependent" roles (e.g., designer + engineer unless explicitly co-building the same thing)
+- EXCLUDE "same-side" roles (e.g., both hiring, both seeking mentors, both seeking funding)
+- **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
+Score threshold: Must be >= 70 to qualify as mutual
+
+CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
+
+95-100: EXCEPTIONAL MATCH
+- Perfect complementary fit (e.g., "seed investor" + "seeking seed funding")
+- Highly specific and aligned
+- Both parties' exact needs met
+- Immediate, obvious value
+
+85-94: STRONG MATCH
+- Clear complementary value but with minor gaps
+- Strong alignment with some flexibility needed
+- Specific enough to be actionable
+- High confidence but not perfect
+
+75-84: GOOD MATCH
+- Solid mutual benefit but requires some interpretation
+- Generally aligned but may need clarification
+- Actionable with moderate effort
+- Some specificity gaps
+
+70-74: ACCEPTABLE MATCH (THRESHOLD)
+- Meets minimum criteria for mutual relevance
+- Has potential but less certain
+- May need significant qualification
+- Borderline actionable
+
+Below 70: NOT MUTUAL
+- Reject these outright
+
+SCORING EXAMPLES (study these closely):
+- "Seeking pre-seed AI investors" + "Investing in pre-seed AI companies" → 98 (perfect stage + sector match)
+- "Need React developer for 3-month project" + "Available for React contract work" → 92 (clear but timeline unconfirmed)
+- "Looking for design partners" + "Seeking startups needing UI/UX help" → 87 (aligned but vague scope)
+- "Seeking technical cofounder" + "Open to cofounder opportunities in tech" → 81 (mutual but broad)
+- "Interested in blockchain projects" + "Building DeFi tools, need advisors" → 76 (related but role unclear)
+- "Want to learn about AI" + "Teaching AI fundamentals" → 73 (educational match but commitment unclear)
+- "Hiring React dev" + "Mentoring junior devs" → 45 (adjacent but not mutual)
+- "Building AI tool" + "Looking for UI designer" → 60 (related but not mutual unless explicitly for same project)
+- "Looking for networking in SF" + "Attending SF tech events" → 65 (too vague, REJECT)
+- "Seeking customers" + "Seeking customers" → 20 (same need, REJECT)
+
+IMPORTANT: 
+- Use the full 70-100 range
+- Be critical and precise
+- Most matches should be 75-90, not 95-100
+- Only exceptional perfect matches deserve 95+
+- Differentiate based on specificity, clarity, and actionability`
     };
 
-    // User message: Provide the two intents to compare
     const userMessage = {
       role: "user",
       content: `Analyze these intents for mutual relevance:
 
-Intent 1: ${currentIntent.payload}
-Intent 2: ${relatedIntent.payload}
+"${newIntent.payload}" (Intent ID: ${newIntent.id})
+"${targetIntent.payload}" (Intent ID: ${targetIntent.id})
 
-Are these mutually relevant? If yes, explain why in one sentence.`
+Are these mutually relevant with high confidence (>= 70 score)? Provide score and reasoning.`
     };
 
-    const reasoningCall = traceableStructuredLlm(
-      "semantic-relevancy",
-      {
-        agent_type: "semantic_relevancy_broker",
-        operation: "reasoning_generation",
-        current_intent_id: currentIntentId,
-        related_intent_id: relatedIntentId
-      }
-    );
-    
-    const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
-    
-    // Only create stake if the intents are mutually related
-    if (response.isMutual && response.reasoning.trim()) {
-      await this.stakeManager.createStake({
-        intents: [currentIntentId, relatedIntentId],
-        stake: BigInt(100),
-        reasoning: response.reasoning,
-        agentId: this.agentId
-      });
-      console.log(`✅ Created stake for mutually related intents: ${currentIntentId} ↔ ${relatedIntentId}`);
-    } else {
-      console.log(`⏭️  Skipped stake - intents ${currentIntentId} and ${relatedIntentId} are not mutually related`);
+    try {
+      const reasoningCall = traceableStructuredLlm(
+        "semantic-relevancy",
+        {
+          agent_type: "semantic_relevancy_broker",
+          operation: "mutuality_evaluation",
+          new_intent_id: newIntent.id,
+          target_intent_id: targetIntent.id
+        }
+      );
+      
+      const response = await reasoningCall([systemMessage, userMessage], MutualIntentSchema);
+      return {
+        isMutual: response.isMutual,
+        confidenceScore: response.confidenceScore,
+        reasoning: response.reasoning
+      };
+    } catch (error) {
+      console.error(`Error evaluating mutuality:`, error);
+      return null;
     }
   }
 
+  /**
+   * Rank all candidate pairs and return top 3
+   */
+  private async rankIntentPairs(
+    candidatePairs: Array<{
+      type: 'new' | 'existing';
+      newIntentId: string;
+      targetIntentId: string;
+      score: number;
+      reasoning: string;
+      stakeId?: string;
+    }>
+  ): Promise<{ top3IntentPairs: Array<{ newIntentId: string; targetIntentId: string }> }> {
+    if (candidatePairs.length === 0) {
+      return { top3IntentPairs: [] };
+    }
+
+    // If 3 or fewer candidates, return all
+    if (candidatePairs.length <= 3) {
+      return {
+        top3IntentPairs: candidatePairs.map(c => ({
+          newIntentId: c.newIntentId,
+          targetIntentId: c.targetIntentId
+        }))
+      };
+    }
+
+    const RankingSchema = z.object({
+      top3IntentPairs: z.array(z.object({
+        newIntentId: z.string(),
+        targetIntentId: z.string()
+      })).max(3).describe("Top 3 intent pair IDs ranked by mutual value quality")
+    });
+
+    const systemMessage = {
+      role: "system",
+      content: `You are a ranking system for intent pairs between two users.
+
+Task: Select the TOP 3 intent pairs that represent the BEST mutual value opportunities.
+
+Candidates include:
+- NEW pairs: From recent mutuality evaluation (scored >= 70)
+- EXISTING pairs: Current stakes between these users
+
+Ranking criteria (in priority order):
+1. **Score/Quality**: Higher confidence scores indicate stronger mutual value
+2. **Specificity**: More specific intents are more actionable than vague ones
+3. **Actionability**: Can both parties immediately act on this connection?
+4. **Complementarity**: How well do the intents complement each other?
+
+Strategy:
+- Don't just pick the 3 highest scores mechanically
+- Consider the overall value profile for the user relationship
+- Diversity can be valuable (different types of collaboration)
+- But quality always trumps diversity
+
+Return exactly 3 pairs (or fewer if less than 3 candidates exist).`
+    };
+
+    const userMessage = {
+      role: "user",
+      content: `Rank these intent pairs and return the top 3:
+
+${candidatePairs.map((c, i) => 
+  `${i + 1}. ${c.type.toUpperCase()} - Pair between Intent ${c.newIntentId} and Intent ${c.targetIntentId}
+   Score: ${c.score}
+   Reasoning: ${c.reasoning}`
+).join('\n\n')}
+
+Return the top 3 pairs by quality (prioritize higher scores).`
+    };
+
+    try {
+      const rankingCall = traceableStructuredLlm(
+        "semantic-relevancy",
+        {
+          agent_type: "semantic_relevancy_broker",
+          operation: "ranking",
+          candidate_count: candidatePairs.length
+        }
+      );
+      
+      const response = await rankingCall([systemMessage, userMessage], RankingSchema);
+      return {
+        top3IntentPairs: response.top3IntentPairs || []
+      };
+    } catch (error) {
+      console.error(`Error ranking pairs:`, error);
+      // Fallback: return top 3 by score
+      return {
+        top3IntentPairs: candidatePairs
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+          .map(c => ({
+            newIntentId: c.newIntentId,
+            targetIntentId: c.targetIntentId
+          }))
+      };
+    }
+  }
 
   async onIntentUpdated(intentId: string): Promise<void> {
     console.log(`🤖 SemanticRelevancyBroker: Processing updated intent ${intentId}`);
-    
-    // Directly discover related intents and queue pair processing jobs
-    await this.discoverAndQueueRelatedIntents(intentId);
+    // Reprocess like new intent
+    await this.onIntentCreated(intentId);
   }
 
   async onIntentArchived(intentId: string): Promise<void> {
@@ -158,4 +485,4 @@ Are these mutually relevant? If yes, explain why in one sentence.`
     await this.db.delete(intentStakes)
       .where(sql`${intentStakes.intents} @> ARRAY[${intentId}]`);
   }
-} 
+}
