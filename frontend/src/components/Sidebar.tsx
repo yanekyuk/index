@@ -7,7 +7,6 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { Index as IndexType } from '@/lib/types';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
-import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import { Shield, ArrowLeft, Inbox, Users, Settings, Plug, Crown } from 'lucide-react';
 import { useAdmin } from '@/contexts/APIContext';
 
@@ -28,7 +27,6 @@ export default function Sidebar() {
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
-  const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
   const { setSelectedIndexIds } = useIndexFilter();
   
@@ -241,7 +239,7 @@ export default function Sidebar() {
                     </div>
                     <div className="flex items-center gap-1">
                       {/* Admin button for owners */}
-                      {isOwner && index.fullIndex?.permissions?.requireApproval && (
+                      {isOwner && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -280,14 +278,6 @@ export default function Sidebar() {
           open={!!memberSettingsIndex}
           onOpenChange={(open) => !open && setMemberSettingsIndex(null)}
           index={memberSettingsIndex}
-        />
-      )}
-
-      {ownerSettingsIndex && (
-        <OwnerSettingsModal
-          open={!!ownerSettingsIndex}
-          onOpenChange={(open) => !open && setOwnerSettingsIndex(null)}
-          index={ownerSettingsIndex}
         />
       )}
     </div>
