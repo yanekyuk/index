@@ -103,8 +103,8 @@ export const intents = pgTable('intents', {
   // Polymorphic nullable source (file | integration | link)
   sourceId: uuid('source_id'),
   sourceType: sourceType('source_type'),
-  // Vector embedding for semantic search (3072 dimensions for text-embedding-3-large)
-  embedding: vector('embedding', { dimensions: 3072 }),
+  // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 2000 }),
 });
 
 export const indexes = pgTable('indexes', {

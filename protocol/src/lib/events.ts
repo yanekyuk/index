@@ -37,6 +37,13 @@ export class IntentEvents {
    * Triggered when a new intent is created
    */
   static async onCreated(event: IntentEvent): Promise<void> {
+
+    const intentEventsDisabled = process.env.DISABLE_INTENT_EVENTS === 'disabled';
+    if (intentEventsDisabled) {
+      console.log('IntentEvents.onCreated disabled');
+      return;
+    }
+
     try {
       // Get all eligible indexes for this user
       const eligibleIndexes = await db.select({
