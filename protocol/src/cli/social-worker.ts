@@ -19,28 +19,30 @@ type Opts = {
   type?: string;
   silent?: boolean;
   userId?: string;
+  runAll?: boolean;
 };
 
 let isShuttingDown = false;
 
-const TWITTER_SYNC_DELAY_MS = parseInt(process.env.TWITTER_SYNC_DELAY_MS || '3600000'); // 1 hour default
-const ENRICHMENT_SYNC_DELAY_MS = parseInt(process.env.LINKEDIN_SYNC_DELAY_MS || '3600000'); // 1 hour default
+const TWITTER_SYNC_DELAY_MS = parseInt(process.env.TWITTER_SYNC_DELAY_MS || '14400000'); // 4 hours default
+const ENRICHMENT_SYNC_DELAY_MS = parseInt(process.env.ENRICHMENT_SYNC_DELAY_MS || '3600000'); // 1 hour default
 
 async function main(): Promise<void> {
   const program = new Command();
 
   program
     .name('social-worker')
-    .description('Run a continuous social media sync worker for Twitter and profile enrichment')
-    .option('--type <type>', 'Sync type: twitter, linkedin (enrichment), or all (default: all)')
+    .description('Run social media sync worker for Twitter and profile enrichment')
+    .option('--type <type>', 'Sync type: twitter, enrichment, or all (default: all)')
     .option('--userId <userId>', 'Sync specific user ID (if provided, runs once and exits)')
+    .option('--run-all', 'Run sync for all users once and exit (instead of continuous worker)')
     .option('--silent', 'Suppress non-error output')
     .action(async (opts: Opts) => {
       const syncType = opts.type || 'all';
 
       if (opts.silent) setLevel('error');
 
-      log.info('Starting social worker', { syncType, userId: opts.userId });
+      log.info('Starting social worker', { syncType, userId: opts.userId, runAll: opts.runAll });
 
       // Handle graceful shutdown
       const shutdown = () => {
@@ -56,7 +58,7 @@ async function main(): Promise<void> {
       if (opts.userId) {
         if (syncType === 'twitter') {
           await syncSingleTwitterUser(opts.userId);
-        } else if (syncType === 'linkedin') {
+        } else if (syncType === 'enrichment') {
           await syncSingleEnrichmentUser(opts.userId);
         } else {
           await syncSingleUserAll(opts.userId);
@@ -66,10 +68,24 @@ async function main(): Promise<void> {
         return;
       }
 
+      // If --run-all is provided, run once for all users and exit
+      if (opts.runAll) {
+        if (syncType === 'twitter') {
+          await syncAllTwitterUsersOnce();
+        } else if (syncType === 'enrichment') {
+          await enrichAllUsersOnce();
+        } else {
+          await syncAllUsersOnce();
+        }
+        log.info('All users sync complete');
+        process.exit(0);
+        return;
+      }
+
       // Otherwise, run continuous workers
       if (syncType === 'twitter') {
         await runTwitterWorker();
-      } else if (syncType === 'linkedin') {
+      } else if (syncType === 'enrichment') {
         await runEnrichmentWorker();
       } else {
         await runAllSocialWorkers();
@@ -81,7 +97,18 @@ async function main(): Promise<void> {
 
   program.addHelpText(
     'after',
-    '\nExamples:\n  yarn social-worker --type twitter\n  yarn social-worker --type linkedin\n  yarn social-worker --type all --silent\n  yarn social-worker --type twitter --userId abc123\n'
+    '\nExamples:\n' +
+    '  # Continuous workers (every 4 hours for Twitter):\n' +
+    '  yarn social-worker --type twitter\n' +
+    '  yarn social-worker --type enrichment\n' +
+    '  yarn social-worker --type all --silent\n' +
+    '\n' +
+    '  # Run once for all users:\n' +
+    '  yarn social-worker --type twitter --run-all\n' +
+    '  yarn social-worker --type enrichment --run-all\n' +
+    '\n' +
+    '  # Sync single user:\n' +
+    '  yarn social-worker --type twitter --userId abc123\n'
   );
 
   try {
@@ -96,7 +123,8 @@ async function main(): Promise<void> {
 async function syncSingleTwitterUser(userId: string): Promise<void> {
   try {
     log.info('Syncing single Twitter user', { userId });
-    const result = await syncTwitterUser(userId);
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const result = await syncTwitterUser(userId, fourHoursAgo);
     if (result.success) {
       log.info('Twitter sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
     } else {
@@ -128,8 +156,9 @@ async function syncSingleEnrichmentUser(userId: string): Promise<void> {
 async function syncSingleUserAll(userId: string): Promise<void> {
   try {
     log.info('Syncing all social media for single user', { userId });
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
     const [twitterResult, enrichmentResult] = await Promise.all([
-      syncTwitterUser(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
+      syncTwitterUser(userId, fourHoursAgo).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
       enrichUserProfile(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
     ]);
     
@@ -179,6 +208,58 @@ async function runEnrichmentWorker(): Promise<void> {
       });
       await sleep(ENRICHMENT_SYNC_DELAY_MS);
     }
+  }
+}
+
+async function syncAllTwitterUsersOnce(): Promise<void> {
+  try {
+    log.info('Running Twitter sync for all users (once)');
+    const result = await syncAllTwitterUsers();
+    log.info('Twitter sync for all users complete', {
+      usersProcessed: result.usersProcessed,
+      intentsGenerated: result.intentsGenerated,
+      locationUpdated: result.locationUpdated,
+      errors: result.errors
+    });
+  } catch (error) {
+    log.error('Twitter sync for all users error', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    process.exit(1);
+  }
+}
+
+async function enrichAllUsersOnce(): Promise<void> {
+  try {
+    log.info('Running enrichment for all users (once)');
+    const result = await enrichAllUsers();
+    log.info('Enrichment for all users complete', {
+      usersProcessed: result.usersProcessed,
+      intentsGenerated: result.intentsGenerated,
+      locationUpdated: result.locationUpdated,
+      errors: result.errors
+    });
+  } catch (error) {
+    log.error('Enrichment for all users error', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    process.exit(1);
+  }
+}
+
+async function syncAllUsersOnce(): Promise<void> {
+  try {
+    log.info('Running full social sync for all users (once)');
+    const result = await syncAllSocialMedia();
+    log.info('Full social sync for all users complete', {
+      twitter: result.twitter,
+      enrichment: result.enrichment
+    });
+  } catch (error) {
+    log.error('Full social sync for all users error', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    process.exit(1);
   }
 }
 

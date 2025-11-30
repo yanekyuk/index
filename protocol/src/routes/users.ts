@@ -5,7 +5,7 @@ import { users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 import { User, UpdateProfileRequest } from '../types';
-import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
 
 const router = Router();
 
@@ -106,6 +106,11 @@ router.put('/:id',
       // Trigger social sync if socials changed
       if (socials !== undefined) {
         checkAndTriggerSocialSync(id, oldSocials, socials);
+      }
+
+      // Check enrichment eligibility if name or intro fields were updated
+      if (name !== undefined || intro !== undefined) {
+        checkAndTriggerEnrichment(id);
       }
 
       return res.json({ 

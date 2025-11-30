@@ -1,6 +1,43 @@
 import snowflake from 'snowflake-sdk';
 import { log } from './log';
 
+snowflake.configure({ logLevel: 'ERROR' });
+
+// Suppress Snowflake SDK info logs by overriding console methods temporarily
+const originalConsoleInfo = console.info;
+const originalConsoleLog = console.log;
+let snowflakeLoggingSuppressed = false;
+
+function suppressSnowflakeLogs() {
+  if (snowflakeLoggingSuppressed) return;
+  snowflakeLoggingSuppressed = true;
+  
+  console.info = (...args: any[]) => {
+    const message = args[0]?.toString() || '';
+    // Only suppress Snowflake SDK connection logs
+    if (message.includes('Creating new connection object') || 
+        message.includes('Creating Connection') ||
+        message.includes('Connection[') ||
+        message.includes('Trying to initialize Easy Logging') ||
+        message.includes('No client config detected') ||
+        message.includes('Easy Logging')) {
+      return;
+    }
+    originalConsoleInfo.apply(console, args);
+  };
+  
+  console.log = (...args: any[]) => {
+    const message = args[0]?.toString() || '';
+    if (message.includes('[level:"INFO"') && message.includes('snowflake')) {
+      return;
+    }
+    originalConsoleLog.apply(console, args);
+  };
+}
+
+// Suppress logs immediately
+suppressSnowflakeLogs();
+
 const SNOWFLAKE_ACCOUNT = process.env.SNOWFLAKE_ACCOUNT || '';
 const SNOWFLAKE_USERNAME = process.env.SNOWFLAKE_USERNAME || '';
 const SNOWFLAKE_PASSWORD = process.env.SNOWFLAKE_PASSWORD || '';
@@ -146,9 +183,65 @@ export async function fetchTwitterProfile(username: string): Promise<TwitterProf
 }
 
 /**
- * Fetch recent tweets from Snowflake by user ID
+ * Fetch Twitter profiles from Snowflake by usernames (bulk)
+ * @param usernames Array of Twitter usernames
+ * @returns Map of username -> TwitterProfile
  */
-export async function fetchTwitterTweets(posterId: string, limit: number = 50): Promise<TwitterTweet[]> {
+export async function fetchTwitterProfilesBulk(usernames: string[]): Promise<Map<string, TwitterProfile>> {
+  const profileMap = new Map<string, TwitterProfile>();
+  
+  if (!SNOWFLAKE_ACCOUNT || !SNOWFLAKE_USERNAME || !SNOWFLAKE_PASSWORD || usernames.length === 0) {
+    return profileMap;
+  }
+
+  let connection: SnowflakeConnection | null = null;
+
+  try {
+    connection = await createConnection();
+
+    // Build IN clause with placeholders
+    const placeholders = usernames.map(() => '?').join(',');
+    const sqlText = `
+      SELECT ID, NAME, DISPLAY_NAME, BIO, LOCATION, 
+             FOLLOWING_COUNT, FOLLOWERS_COUNT, TWEETS_COUNT
+      FROM twitter_profiles
+      WHERE name IN (${placeholders})
+    `;
+
+    const rows = await executeQuery<TwitterProfile>(connection, sqlText, usernames);
+
+    // Map results by username (NAME field)
+    for (const profile of rows) {
+      profileMap.set(profile.NAME, profile);
+    }
+
+    log.info('Fetched Twitter profiles bulk', { requested: usernames.length, found: rows.length });
+    return profileMap;
+  } catch (error) {
+    log.error('Failed to fetch Twitter profiles bulk', { usernameCount: usernames.length, error: (error as Error).message });
+    return profileMap;
+  } finally {
+    if (connection) {
+      connection.destroy((err: any) => {
+        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+      });
+    }
+  }
+}
+
+/**
+ * Fetch recent tweets from Snowflake by user ID
+ * @param posterId Twitter user ID
+ * @param limit Maximum number of tweets to fetch
+ * @param sinceTimestamp Optional timestamp to filter tweets (only fetch tweets after this time)
+ * @param useWorkerTable If true, uses TWITTER_TWEETS_3_DAY table (for worker sync), otherwise uses TWITTER_TWEETS (for initial sync)
+ */
+export async function fetchTwitterTweets(
+  posterId: string, 
+  limit: number = 50,
+  sinceTimestamp?: Date,
+  useWorkerTable: boolean = false
+): Promise<TwitterTweet[]> {
   if (!SNOWFLAKE_ACCOUNT || !SNOWFLAKE_USERNAME || !SNOWFLAKE_PASSWORD) {
     return [];
   }
@@ -158,21 +251,135 @@ export async function fetchTwitterTweets(posterId: string, limit: number = 50): 
   try {
     connection = await createConnection();
 
-    // Query using actual schema columns
-    const sqlText = `
-      SELECT ID, POSTER_ID, TEXT, TIMESTAMP, LIKES, REPOSTS, VIEWS
-      FROM TWITTER_TWEETS
-      WHERE POSTER_ID = ?
-      ORDER BY TIMESTAMP DESC
-      LIMIT ?
-    `;
+    // Choose table based on sync type
+    const tableName = useWorkerTable ? 'TWITTER_TWEETS_3_DAY' : 'TWITTER_TWEETS';
 
-    const rows = await executeQuery<TwitterTweet>(connection, sqlText, [posterId, limit]);
+    // Build query with optional timestamp filter
+    let sqlText = `
+      SELECT ID, POSTER_ID, TEXT, TIMESTAMP, LIKES, REPOSTS, VIEWS
+      FROM ${tableName}
+      WHERE POSTER_ID = ?
+    `;
+    const params: any[] = [posterId];
+
+    if (sinceTimestamp) {
+      const unixTimestamp = Math.floor(sinceTimestamp.getTime() / 1000);
+      sqlText += ` AND TIMESTAMP >= ${unixTimestamp}`;
+    }
+
+    sqlText += ` ORDER BY TIMESTAMP DESC LIMIT ?`;
+    params.push(limit);
+
+    const rows = await executeQuery<TwitterTweet>(connection, sqlText, params);
 
     return rows;
   } catch (error) {
     log.error('Failed to fetch Twitter tweets', { posterId, error: (error as Error).message });
     return [];
+  } finally {
+    if (connection) {
+      connection.destroy((err: any) => {
+        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+      });
+    }
+  }
+}
+
+/**
+ * Fetch recent tweets from Snowflake for multiple users (bulk)
+ * Uses a subquery with twitter_profiles to match by username
+ * @param usernames Array of Twitter usernames
+ * @param sinceTimestamp Optional timestamp to filter tweets (only fetch tweets after this time)
+ * @param limitPerUser Maximum number of tweets per user
+ * @param useWorkerTable If true, uses TWITTER_TWEETS_3_DAY table (for worker sync), otherwise uses TWITTER_TWEETS (for initial sync)
+ * @returns Map of username -> TwitterTweet[]
+ */
+export async function fetchTwitterTweetsBulk(
+  usernames: string[],
+  sinceTimestamp?: Date,
+  limitPerUser: number = 100,
+  useWorkerTable: boolean = false
+): Promise<Map<string, TwitterTweet[]>> {
+  const tweetsMap = new Map<string, TwitterTweet[]>();
+  
+  if (!SNOWFLAKE_ACCOUNT || !SNOWFLAKE_USERNAME || !SNOWFLAKE_PASSWORD || usernames.length === 0) {
+    return tweetsMap;
+  }
+
+  let connection: SnowflakeConnection | null = null;
+
+  try {
+    connection = await createConnection();
+
+    // Choose table based on sync type
+    const tableName = useWorkerTable ? 'TWITTER_TWEETS_3_DAY' : 'TWITTER_TWEETS';
+
+    // Build query using subquery to match usernames to poster IDs
+    // Use ROW_NUMBER() to limit tweets per user
+    const placeholders = usernames.map(() => '?').join(',');
+    let sqlText = `
+      WITH ranked_tweets AS (
+        SELECT 
+          t.ID, 
+          t.POSTER_ID, 
+          t.TEXT, 
+          t.TIMESTAMP, 
+          t.LIKES, 
+          t.REPOSTS, 
+          t.VIEWS,
+          p.NAME as USERNAME,
+          ROW_NUMBER() OVER (PARTITION BY t.POSTER_ID ORDER BY t.TIMESTAMP DESC) as rn
+        FROM ${tableName} t
+        INNER JOIN twitter_profiles p ON t.POSTER_ID = p.ID
+        WHERE p.NAME IN (${placeholders})
+    `;
+    const params: any[] = [...usernames];
+
+    if (sinceTimestamp) {
+      const unixTimestamp = Math.floor(sinceTimestamp.getTime() / 1000);
+      sqlText += ` AND t.TIMESTAMP >= ${unixTimestamp}`;
+    }
+
+    sqlText += `
+      )
+      SELECT ID, POSTER_ID, TEXT, TIMESTAMP, LIKES, REPOSTS, VIEWS, USERNAME
+      FROM ranked_tweets
+      WHERE rn <= ?
+      ORDER BY USERNAME, TIMESTAMP DESC
+    `;
+    params.push(limitPerUser);
+
+    const rows = await executeQuery<any>(connection, sqlText, params);
+
+    // Group tweets by username
+    for (const row of rows) {
+      const username = row.USERNAME;
+      if (!tweetsMap.has(username)) {
+        tweetsMap.set(username, []);
+      }
+      tweetsMap.get(username)!.push({
+        ID: row.ID,
+        POSTER_ID: row.POSTER_ID,
+        TEXT: row.TEXT,
+        TIMESTAMP: row.TIMESTAMP,
+        LIKES: row.LIKES,
+        REPOSTS: row.REPOSTS,
+        VIEWS: row.VIEWS,
+      });
+    }
+
+    log.info('Fetched Twitter tweets bulk', { 
+      requestedUsers: usernames.length, 
+      usersWithTweets: tweetsMap.size,
+      totalTweets: rows.length 
+    });
+    return tweetsMap;
+  } catch (error) {
+    log.error('Failed to fetch Twitter tweets bulk', { 
+      usernameCount: usernames.length, 
+      error: (error as Error).message 
+    });
+    return tweetsMap;
   } finally {
     if (connection) {
       connection.destroy((err: any) => {

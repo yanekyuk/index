@@ -5,7 +5,7 @@ import db from '../lib/db';
 import { users } from '../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { User, UpdateProfileRequest, OnboardingState } from '../types';
-import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
 
 const router = Router();
 
@@ -80,6 +80,11 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
     // Trigger social sync if socials changed
     if (socials !== undefined) {
       checkAndTriggerSocialSync(req.user!.id, oldSocials, socials);
+    }
+
+    // Check enrichment eligibility if name or intro fields were updated
+    if (name !== undefined || intro !== undefined) {
+      checkAndTriggerEnrichment(req.user!.id);
     }
 
     return res.json({ user: updatedUser[0] });

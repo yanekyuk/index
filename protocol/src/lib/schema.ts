@@ -16,6 +16,7 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
   indexId?: string;  // Persisted index ID for flow 2
   invitationCode?: string;  // Store which invitation was used (reference only)
+  enrichmentHash?: string;  // Hash of name+email combination to track enrichment per parameter set
 }
 
 // Social links type
