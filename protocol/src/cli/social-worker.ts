@@ -24,7 +24,7 @@ type Opts = {
 
 let isShuttingDown = false;
 
-const TWITTER_SYNC_DELAY_MS = parseInt(process.env.TWITTER_SYNC_DELAY_MS || '14400000'); // 4 hours default
+const TWITTER_SYNC_DELAY_MS = parseInt(process.env.TWITTER_SYNC_DELAY_MS || '3600000'); // 1 hour default
 const ENRICHMENT_SYNC_DELAY_MS = parseInt(process.env.ENRICHMENT_SYNC_DELAY_MS || '3600000'); // 1 hour default
 
 async function main(): Promise<void> {
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   program.addHelpText(
     'after',
     '\nExamples:\n' +
-    '  # Continuous workers (every 4 hours for Twitter):\n' +
+    '  # Continuous workers (every 1 hour for Twitter):\n' +
     '  yarn social-worker --type twitter\n' +
     '  yarn social-worker --type enrichment\n' +
     '  yarn social-worker --type all --silent\n' +
@@ -123,8 +123,8 @@ async function main(): Promise<void> {
 async function syncSingleTwitterUser(userId: string): Promise<void> {
   try {
     log.info('Syncing single Twitter user', { userId });
-    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
-    const result = await syncTwitterUser(userId, fourHoursAgo);
+    // Pass undefined to use integration's lastSyncAt (worker mode behavior)
+    const result = await syncTwitterUser(userId, undefined);
     if (result.success) {
       log.info('Twitter sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
     } else {
@@ -156,9 +156,9 @@ async function syncSingleEnrichmentUser(userId: string): Promise<void> {
 async function syncSingleUserAll(userId: string): Promise<void> {
   try {
     log.info('Syncing all social media for single user', { userId });
-    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    // Pass undefined to use integration's lastSyncAt (worker mode behavior)
     const [twitterResult, enrichmentResult] = await Promise.all([
-      syncTwitterUser(userId, fourHoursAgo).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
+      syncTwitterUser(userId, undefined).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
       enrichUserProfile(userId).catch(err => ({ success: false, error: err instanceof Error ? err.message : String(err) })),
     ]);
     
@@ -180,7 +180,8 @@ async function runTwitterWorker(): Promise<void> {
       await syncAllTwitterUsers();
       
       if (!isShuttingDown) {
-        log.info(`Twitter cycle complete, next sync in ${TWITTER_SYNC_DELAY_MS / 1000 / 60} minutes`);
+        const minutes = Math.floor(TWITTER_SYNC_DELAY_MS / 1000 / 60);
+        log.info(`Twitter cycle complete, next sync in ${minutes} minute${minutes !== 1 ? 's' : ''}`);
         await sleep(TWITTER_SYNC_DELAY_MS);
       }
     } catch (error) {

@@ -58,10 +58,16 @@ export interface SlackConfig {
   selectedChannels?: string[]; // Array of channel IDs to sync
 }
 
+// Twitter-specific configuration
+export interface TwitterConfig {
+  username: string; // Twitter username extracted from URL
+}
+
 // Integration configuration type
 export interface IntegrationConfigType {
   directorySync?: DirectorySyncConfig;
   slack?: SlackConfig;
+  twitter?: TwitterConfig;
 }
 
 // Tables

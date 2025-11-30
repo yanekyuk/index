@@ -2,7 +2,7 @@ import { log } from '../../log';
 import { fetchTwitterProfile, fetchTwitterTweets, fetchTwitterProfilesBulk, fetchTwitterTweetsBulk, extractTwitterUsername } from '../../snowflake';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 import db from '../../db';
-import { users } from '../../schema';
+import { users, userIntegrations } from '../../schema';
 import { eq, isNull, and, inArray } from 'drizzle-orm';
 
 export interface TwitterSyncResult {
@@ -12,8 +12,73 @@ export interface TwitterSyncResult {
   error?: string;
 }
 
-export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | null): Promise<TwitterSyncResult> {
+export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | null, integrationId?: string): Promise<TwitterSyncResult> {
   try {
+    let integration: typeof userIntegrations.$inferSelect | null = null;
+    let username: string | null = null;
+
+    // Try to get integration record if integrationId provided, otherwise fetch by userId
+    if (integrationId) {
+      const integrationRecords = await db.select()
+        .from(userIntegrations)
+        .where(
+          and(
+            eq(userIntegrations.id, integrationId),
+            eq(userIntegrations.userId, userId),
+            eq(userIntegrations.integrationType, 'twitter'),
+            isNull(userIntegrations.deletedAt)
+          )
+        )
+        .limit(1);
+      
+      if (integrationRecords.length > 0) {
+        integration = integrationRecords[0];
+        username = (integration.config as any)?.twitter?.username || null;
+      }
+    } else {
+      // Fallback: fetch integration by userId
+      const integrationRecords = await db.select()
+        .from(userIntegrations)
+        .where(
+          and(
+            eq(userIntegrations.userId, userId),
+            eq(userIntegrations.integrationType, 'twitter'),
+            isNull(userIntegrations.indexId),
+            isNull(userIntegrations.deletedAt)
+          )
+        )
+        .limit(1);
+      
+      if (integrationRecords.length > 0) {
+        integration = integrationRecords[0];
+        username = (integration.config as any)?.twitter?.username || null;
+      }
+    }
+
+    // Backward compatibility: if no integration found, check socials.x
+    if (!username) {
+      const userRecords = await db.select()
+        .from(users)
+        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+        .limit(1);
+
+      if (userRecords.length === 0) {
+        return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'User not found' };
+      }
+
+      const user = userRecords[0];
+      const twitterUrl = user.socials?.x;
+
+      if (!twitterUrl) {
+        return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'No Twitter URL found' };
+      }
+
+      username = extractTwitterUsername(twitterUrl);
+      if (!username) {
+        return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Invalid Twitter username format' };
+      }
+    }
+
     // Get user from database
     const userRecords = await db.select()
       .from(users)
@@ -25,22 +90,11 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
     }
 
     const user = userRecords[0];
-    const twitterUrl = user.socials?.x;
-
-    if (!twitterUrl) {
-      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'No Twitter URL found' };
-    }
-
-    // Extract username from URL or handle
-    const username = extractTwitterUsername(twitterUrl);
-    if (!username) {
-      return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Invalid Twitter username format' };
-    }
 
     // Determine sync behavior:
     // - If sinceTimestamp is null (profile update): fetch all tweets (no timestamp filter)
-    // - If sinceTimestamp is provided: use it (worker sync with 4-hour lookback)
-    // - Otherwise: default to 4-hour lookback
+    // - If sinceTimestamp is provided: use it (explicit timestamp)
+    // - Otherwise: use integration's lastSyncAt if available, or undefined (fetch all for first sync)
     let syncSince: Date | undefined;
     let fetchAllTweets = false;
     
@@ -50,14 +104,20 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       syncSince = undefined;
       log.info('Syncing Twitter user (profile update, fetching all tweets)', { userId, username });
     } else if (sinceTimestamp) {
-      // Explicit timestamp provided (worker sync)
+      // Explicit timestamp provided
       syncSince = sinceTimestamp;
       log.info('Syncing Twitter user', { userId, username, syncSince: syncSince.toISOString() });
     } else {
-      // Default: 4-hour lookback (worker sync)
-      const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
-      syncSince = fourHoursAgo;
-      log.info('Syncing Twitter user (default)', { userId, username, syncSince: syncSince.toISOString() });
+      // Worker mode: always use integration's lastSyncAt if available
+      if (integration?.lastSyncAt) {
+        syncSince = new Date(integration.lastSyncAt);
+        log.info('Syncing Twitter user (using lastSyncAt)', { userId, username, syncSince: syncSince.toISOString() });
+      } else {
+        // First sync: fetch all tweets
+        fetchAllTweets = true;
+        syncSince = undefined;
+        log.info('Syncing Twitter user (first sync, fetching all tweets)', { userId, username });
+      }
     }
 
     // Fetch profile from Snowflake
@@ -111,6 +171,13 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       instruction: 'Generate intents from Twitter tweets',
     }, 6);
 
+    // Update integration's lastSyncAt
+    if (integration) {
+      await db.update(userIntegrations)
+        .set({ lastSyncAt: new Date() })
+        .where(eq(userIntegrations.id, integration.id));
+    }
+
     log.info('Twitter sync complete', { userId, username, tweetsProcessed: tweets.length, locationUpdated });
 
     return {
@@ -132,11 +199,11 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
 /**
  * Sync multiple Twitter users in bulk (optimized for batch processing)
  * Fetches profiles and tweets for all users in one query each
- * @param userBatch Array of user records from database (must have id, socials, location, onboarding fields)
- * @param sinceTimestamp Optional timestamp to filter tweets (defaults to 4 hours ago)
+ * @param integrationBatch Array of integration records with joined user records (from syncAllTwitterUsers)
+ * @param sinceTimestamp Optional explicit timestamp (if provided, overrides lastSyncAt)
  */
 export async function syncTwitterUsersBulk(
-  userBatch: Array<typeof users.$inferSelect>,
+  integrationBatch: Array<{ integration: typeof userIntegrations.$inferSelect; user: typeof users.$inferSelect }>,
   sinceTimestamp?: Date
 ): Promise<{ usersProcessed: number; intentsGenerated: number; locationUpdated: number; errors: number }> {
   const stats = {
@@ -148,17 +215,37 @@ export async function syncTwitterUsersBulk(
 
   try {
     // Extract usernames and create mapping
-    const usernameToUser = new Map<string, typeof userBatch[0]>();
+    const usernameToData = new Map<string, { user: typeof users.$inferSelect; integration: typeof userIntegrations.$inferSelect; lastSyncAt?: Date; fetchAll?: boolean }>();
     const usernames: string[] = [];
 
-    for (const user of userBatch) {
-      const twitterUrl = user.socials?.x;
-      if (!twitterUrl) continue;
+    for (const { integration, user } of integrationBatch) {
+      const config = integration.config as any;
+      const username = config?.twitter?.username;
 
-      const username = extractTwitterUsername(twitterUrl);
-      if (!username) continue;
+      if (!username) {
+        stats.errors++;
+        log.warn('Twitter integration missing username in config', { userId: user.id, integrationId: integration.id });
+        continue;
+      }
 
-      usernameToUser.set(username, user);
+      // Worker mode: always use integration's lastSyncAt if available
+      // If explicit sinceTimestamp provided, use that instead
+      let effectiveSinceTimestamp: Date | undefined;
+      let fetchAll = false;
+      
+      if (sinceTimestamp) {
+        // Explicit timestamp provided (overrides lastSyncAt)
+        effectiveSinceTimestamp = sinceTimestamp;
+      } else if (integration.lastSyncAt) {
+        // Use integration's lastSyncAt (incremental sync)
+        effectiveSinceTimestamp = new Date(integration.lastSyncAt);
+      } else {
+        // First sync: fetch all tweets
+        fetchAll = true;
+        effectiveSinceTimestamp = undefined;
+      }
+
+      usernameToData.set(username, { user, integration, lastSyncAt: effectiveSinceTimestamp, fetchAll });
       usernames.push(username);
     }
 
@@ -166,30 +253,71 @@ export async function syncTwitterUsersBulk(
       return stats;
     }
 
+    // Group integrations by sync timestamp for efficient bulk fetching
+    const syncTimestampGroups = new Map<string, string[]>();
+    const fetchAllUsernames: string[] = [];
+    
+    for (const username of usernames) {
+      const data = usernameToData.get(username);
+      if (!data) continue;
+      
+      if (data.fetchAll) {
+        // First sync: fetch all tweets
+        fetchAllUsernames.push(username);
+      } else if (data.lastSyncAt) {
+        // Incremental sync: group by timestamp
+        const syncKey = data.lastSyncAt.toISOString();
+        if (!syncTimestampGroups.has(syncKey)) {
+          syncTimestampGroups.set(syncKey, []);
+        }
+        syncTimestampGroups.get(syncKey)!.push(username);
+      }
+    }
+
     log.info('Syncing Twitter users bulk', { 
-      userCount: usernames.length, 
-      syncSince: sinceTimestamp?.toISOString() 
+      userCount: usernames.length,
+      incrementalSyncGroups: syncTimestampGroups.size,
+      firstSyncCount: fetchAllUsernames.length
     });
 
     // Fetch all profiles in one query
     const profilesMap = await fetchTwitterProfilesBulk(usernames);
     
-    // Determine sync timestamp (4 hours ago or sinceTimestamp)
-    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
-    const syncSince = sinceTimestamp || fourHoursAgo;
-
-    // Fetch all tweets in one query
-    // Use TWITTER_TWEETS_3_DAY for worker sync
-    const tweetsMap = await fetchTwitterTweetsBulk(usernames, syncSince, 100, true);
+    // Fetch tweets for incremental sync groups (by timestamp)
+    const tweetsMap = new Map<string, any[]>();
+    for (const [syncKey, groupUsernames] of syncTimestampGroups.entries()) {
+      const sampleData = usernameToData.get(groupUsernames[0]);
+      const syncSince = sampleData?.lastSyncAt;
+      
+      if (syncSince) {
+        // Use TWITTER_TWEETS_3_DAY for worker sync
+        const groupTweetsMap = await fetchTwitterTweetsBulk(groupUsernames, syncSince, 100, true);
+        
+        // Merge into main tweets map
+        for (const [username, tweets] of groupTweetsMap.entries()) {
+          tweetsMap.set(username, tweets);
+        }
+      }
+    }
+    
+    // Fetch all tweets for first-time syncs (no timestamp filter)
+    if (fetchAllUsernames.length > 0) {
+      const fetchAllTweetsMap = await fetchTwitterTweetsBulk(fetchAllUsernames, undefined, 100, true);
+      for (const [username, tweets] of fetchAllTweetsMap.entries()) {
+        tweetsMap.set(username, tweets);
+      }
+    }
 
     // Process each user
-    const userIdsToUpdate: string[] = [];
+    const integrationsToUpdate: Array<{ integrationId: string }> = [];
     const locationUpdates: Array<{ userId: string; location: string }> = [];
     const intentJobs: Array<{ userId: string; tweetObjects: any[] }> = [];
 
     for (const username of usernames) {
-      const user = usernameToUser.get(username);
-      if (!user) continue;
+      const data = usernameToData.get(username);
+      if (!data) continue;
+      
+      const { user, integration } = data;
 
       try {
         const profile = profilesMap.get(username);
@@ -219,7 +347,7 @@ export async function syncTwitterUsersBulk(
         
         if (tweets.length === 0) {
           // Update last sync time even if no new tweets
-          userIdsToUpdate.push(user.id);
+          integrationsToUpdate.push({ integrationId: integration.id });
           stats.usersProcessed++;
           log.info('No new tweets found', { userId: user.id, username });
           continue;
@@ -241,7 +369,7 @@ export async function syncTwitterUsersBulk(
         }));
 
         intentJobs.push({ userId: user.id, tweetObjects });
-        userIdsToUpdate.push(user.id);
+        integrationsToUpdate.push({ integrationId: integration.id });
         stats.usersProcessed++;
         log.info('Queued intent generation', { userId: user.id, username, tweetCount: tweets.length });
       } catch (error) {
@@ -288,6 +416,22 @@ export async function syncTwitterUsersBulk(
       }
     }
 
+    // Batch update integration lastSyncAt
+    if (integrationsToUpdate.length > 0) {
+      const now = new Date();
+      for (const { integrationId } of integrationsToUpdate) {
+        try {
+          await db.update(userIntegrations)
+            .set({ lastSyncAt: now })
+            .where(eq(userIntegrations.id, integrationId));
+        } catch (error) {
+          log.error('Failed to update integration lastSyncAt', { 
+            integrationId, 
+            error: (error as Error).message 
+          });
+        }
+      }
+    }
 
     log.info('Twitter bulk sync complete', { 
       usersProcessed: stats.usersProcessed,
