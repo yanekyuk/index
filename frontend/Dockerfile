@@ -19,9 +19,10 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_STATIC_URL=$NEXT_PUBLIC_STATIC_URL
 ENV NEXT_PUBLIC_GLOBAL_INDEX_ID=$NEXT_PUBLIC_GLOBAL_INDEX_ID
 
-COPY package.json yarn.lock ./
+COPY frontend/package.json frontend/yarn.lock ./
 RUN yarn install --frozen-lockfile
-COPY . .
+COPY frontend/ ./
+COPY protocol/src/types ./src/types
 RUN yarn build
 
 # Production stage
