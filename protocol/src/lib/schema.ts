@@ -7,7 +7,7 @@ export const connectionAction = pgEnum('connection_action', [
   'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE', 'OWNER_APPROVE', 'OWNER_DENY'
 ]);
 // Polymorphic source type for intents
-export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form']);
+export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form', 'enrichment']);
 
 // Onboarding state type
 export interface OnboardingState {

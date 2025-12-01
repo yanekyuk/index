@@ -111,8 +111,8 @@ export async function enrichUserProfile(userId: string, generateIntents: boolean
             await IntentService.createIntent({
               payload: intentData.payload,
               userId,
-              sourceId: userId,
-              sourceType: 'integration',
+              sourceId: undefined, // No specific integration record for enrichment-based intents
+              sourceType: 'enrichment',
               confidence: intentData.confidence,
               inferenceType: intentData.type,
             });
