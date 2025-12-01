@@ -12,7 +12,7 @@ export interface CreateIntentOptions {
   isIncognito?: boolean;
   indexIds?: string[];
   sourceId?: string;
-  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form';
+  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
   confidence: number; // 0-1, required
   inferenceType: 'explicit' | 'implicit'; // required
   createdAt?: Date;

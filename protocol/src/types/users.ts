@@ -13,6 +13,7 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
   indexId?: UUID | null;
   invitationCode?: string;
+  enrichmentHash?: string;  // Hash of name+email combination to track enrichment per parameter set
 }
 
 export interface User {

@@ -7,7 +7,7 @@ export const connectionAction = pgEnum('connection_action', [
   'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE', 'OWNER_APPROVE', 'OWNER_DENY'
 ]);
 // Polymorphic source type for intents
-export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form']);
+export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form', 'enrichment']);
 
 // Onboarding state type
 export interface OnboardingState {
@@ -16,6 +16,7 @@ export interface OnboardingState {
   currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
   indexId?: string;  // Persisted index ID for flow 2
   invitationCode?: string;  // Store which invitation was used (reference only)
+  enrichmentHash?: string;  // Hash of name+email combination to track enrichment per parameter set
 }
 
 // Social links type
@@ -45,6 +46,7 @@ export interface DirectorySyncConfig {
     github?: string;
     website?: string;
   };
+  excludedColumns?: string[];
   lastSyncAt?: string;
   lastSyncStatus?: 'success' | 'error' | 'partial';
   lastSyncError?: string;
@@ -56,10 +58,16 @@ export interface SlackConfig {
   selectedChannels?: string[]; // Array of channel IDs to sync
 }
 
+// Twitter-specific configuration
+export interface TwitterConfig {
+  username: string; // Twitter username extracted from URL
+}
+
 // Integration configuration type
 export interface IntegrationConfigType {
   directorySync?: DirectorySyncConfig;
   slack?: SlackConfig;
+  twitter?: TwitterConfig;
 }
 
 // Tables
@@ -96,8 +104,8 @@ export const intents = pgTable('intents', {
   // Polymorphic nullable source (file | integration | link)
   sourceId: uuid('source_id'),
   sourceType: sourceType('source_type'),
-  // Vector embedding for semantic search (3072 dimensions for text-embedding-3-large)
-  embedding: vector('embedding', { dimensions: 3072 }),
+  // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 2000 }),
 });
 
 export const indexes = pgTable('indexes', {
