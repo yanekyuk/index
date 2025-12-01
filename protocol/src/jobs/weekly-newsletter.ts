@@ -14,6 +14,7 @@ async function getUsersForStake(stakeId: string, intentIds: string[]) {
         userEmail: users.email,
         userRole: users.intro, // Using intro as a proxy for role/title for now
         userTimezone: users.timezone,
+        userOnboarding: users.onboarding,
         intentId: intents.id
     })
         .from(intents)
@@ -117,6 +118,12 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
         // 4. Send emails
         for (const [userId, data] of userMatches.entries()) {
             if (data.matches.length < 1) continue;
+
+            // Check if user has completed onboarding
+            if (!data.user.userOnboarding?.completedAt) {
+                // console.log(`Skipping ${data.user.userEmail} - Onboarding not completed`);
+                continue;
+            }
 
             // Check if it's Monday 9 AM in the user's timezone
             const userTimezone = data.user.userTimezone || 'UTC';
