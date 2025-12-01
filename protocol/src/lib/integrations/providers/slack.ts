@@ -117,7 +117,7 @@ interface SlackApiResponse {
 
 /**
  * Initialize Slack integration sync.
- * Fetches messages, processes per user, resolves users, adds to index, and queues intent generation.
+ * Fetches messages, processes each message individually, resolves users, adds to index, and queues intent generation.
  */
 export async function initSlack(
   integrationId: string,
@@ -400,9 +400,9 @@ export async function initSlack(
             });
           }
           
-          // Process this page of messages per user
-          if (pageMessages.length > 0) {
-            const result = await processMessagesPerUser(pageMessages, integration.id, integration.indexId!);
+          // Process each message individually
+          for (const message of pageMessages) {
+            const result = await processMessage(message, integration.id, integration.indexId!);
             totalIntentsGenerated += result.intentsGenerated;
             totalUsersProcessed += result.usersProcessed;
             totalNewUsersCreated += result.newUsersCreated;
@@ -456,112 +456,61 @@ export async function initSlack(
 }
 
 /**
- * Process messages per user - extract users, resolve them, add to index, queue intents
+ * Process a single message - resolve user, add to index, queue intent generation
  */
-async function processMessagesPerUser(
-  messages: SlackMessage[],
+async function processMessage(
+  message: SlackMessage,
   integrationId: string,
   indexId: string
 ): Promise<{ intentsGenerated: number; usersProcessed: number; newUsersCreated: number }> {
-  // Extract unique users from messages
-  const userMap = new Map<string, { email: string; name: string; avatar?: string; providerId: string }>();
-  
-  for (const message of messages) {
-    if (!message.user_profile) continue;
-    const slackUserId = message.user;
-    if (userMap.has(slackUserId)) continue;
-    
-    userMap.set(slackUserId, {
-      email: message.user_profile.email,
-      name: message.user_profile.name,
-      avatar: message.user_profile.avatar,
-      providerId: slackUserId
-    });
-  }
-  
-  if (userMap.size === 0) {
+  if (!message.user_profile) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
   
-  // Resolve each user and add to index
-  const resolvedUsers = new Map<string, { id: string; name: string; email: string; isNewUser: boolean }>();
-  let newUsersCreated = 0;
-  
-  for (const [providerId, userInfo] of userMap.entries()) {
-    try {
-      const resolvedUser = await resolveIntegrationUser({
-        email: userInfo.email,
-        providerId,
-        name: userInfo.name,
-        provider: 'slack',
-        avatar: userInfo.avatar,
-        updateEmptyFields: true
-      });
-      
-      if (!resolvedUser) {
-        log.error('Failed to resolve user', { providerId, email: userInfo.email });
-        continue;
-      }
-      
-      await ensureIndexMembership(resolvedUser.id, indexId);
-      
-      if (resolvedUser.isNewUser) {
-        newUsersCreated++;
-      }
-      
-      resolvedUsers.set(providerId, resolvedUser);
-    } catch (error) {
-      log.error('Failed to resolve user', {
-        providerId,
-        error: error instanceof Error ? error.message : String(error)
-      });
+  try {
+    // Resolve user
+    const resolvedUser = await resolveIntegrationUser({
+      email: message.user_profile.email,
+      providerId: message.user,
+      name: message.user_profile.name,
+      provider: 'slack',
+      avatar: message.user_profile.avatar,
+      updateEmptyFields: true
+    });
+    
+    if (!resolvedUser) {
+      log.error('Failed to resolve user', { providerId: message.user, email: message.user_profile.email });
+      return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
+    
+    await ensureIndexMembership(resolvedUser.id, indexId);
+    
+    const newUsersCreated = resolvedUser.isNewUser ? 1 : 0;
+    
+    // Queue intent generation for this message
+    await addGenerateIntentsJob({
+      userId: resolvedUser.id,
+      sourceId: integrationId,
+      sourceType: 'integration',
+      objects: [message],
+      instruction: `Generate intents based on Slack messages`,
+      indexId,
+      intentCount: MAX_INTENTS_PER_USER,
+      ...(message.metadata?.createdAt && { createdAt: message.metadata.createdAt })
+    }, 6);
+    
+    return {
+      intentsGenerated: 1,
+      usersProcessed: 1,
+      newUsersCreated
+    };
+  } catch (error) {
+    log.error('Failed to process message', {
+      providerId: message.user,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
-  
-  if (resolvedUsers.size === 0) {
-    return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated };
-  }
-  
-  // Queue intent generation per user
-  let createdAt: Date | undefined;
-  if (messages.length > 0 && messages[0]?.metadata?.createdAt) {
-    createdAt = messages[0].metadata.createdAt;
-  }
-  
-  let intentsGenerated = 0;
-  for (const [providerId, user] of resolvedUsers.entries()) {
-    try {
-      // Filter messages to only include messages from this user
-      const userMessages = messages.filter(msg => msg.user === providerId);
-      
-      if (userMessages.length === 0) {
-        continue; // Skip if no messages for this user
-      }
-      
-      await addGenerateIntentsJob({
-        userId: user.id,
-        sourceId: integrationId,
-        sourceType: 'integration',
-        objects: userMessages,
-        instruction: `Generate intents based on Slack messages`,
-        indexId,
-        intentCount: MAX_INTENTS_PER_USER,
-        ...(createdAt && { createdAt })
-      }, 6);
-      intentsGenerated++;
-    } catch (error) {
-      log.error('Failed to queue intent generation', {
-        userId: user.id,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  }
-  
-  return {
-    intentsGenerated,
-    usersProcessed: resolvedUsers.size,
-    newUsersCreated
-  };
 }
 
 /**
