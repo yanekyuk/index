@@ -8,18 +8,26 @@ export const sendEmail = async (options: {
   html: string;
   text: string;
 }) => {
-  if (!process.env.RESEND_API_KEY || !resend) {
-    console.warn('RESEND_API_KEY not configured, email not sent');
+  // SAFETY: Override recipient for testing
+  const isTestMode = process.env.ENABLE_EMAIL_TESTING === 'true';
+  const recipient = isTestMode ? 'yanki@index.network' : options.to;
+
+  if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
+    console.warn('RESEND_API_KEY not configured or disabled, email not sent');
     return;
   }
 
-  console.log('Email is disabled for now: not from mainnet yet');
-  return;
+  if (!isTestMode) {
+    console.log('Email is disabled for now: not from mainnet yet');
+    return;
+  }
+
+  console.log(`[TEST MODE] Sending email to ${recipient} (Original: ${options.to})`);
 
   try {
     const result = await resend!.emails.send({
       from: 'Index Network <updates@agent.index.network>',
-      to: options.to,
+      to: recipient,
       replyTo: 'hello@index.network',
       subject: options.subject,
       html: options.html,
