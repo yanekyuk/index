@@ -103,7 +103,7 @@ export default function InboxPage() {
         indexIds: apiIndexIds, 
         intentIds: apiIntentIds,
         excludeDiscovered: true, 
-        limit: 50 
+        limit: 25 
       });
 
       // Transform discover data
