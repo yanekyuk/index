@@ -6,7 +6,8 @@ export const connectionRequestTemplate = (fromUserName: string, toUserName: stri
       <p>You’ve got a new connection request on Index, <strong>${fromUserName}</strong> wants to connect with you.</p>
       
       <div style="margin: 20px 0;">
-        <a href="https://index.network/inbox" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Go to Index to approve</a>
+        <span style="font-size: 1.2em; vertical-align: middle; margin-right: 5px;">👉</span>
+        <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em;">Go to Index to approve</a>
       </div>
       
       ${synthesis ? `
