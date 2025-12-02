@@ -240,7 +240,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                       <Library className="h-4 w-4 mr-2" />
                       My Library
                     </button>
-                    <button
+                    {/* <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
                         setDropdownOpen(false);
@@ -249,7 +249,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Create Index
-                    </button>
+                    </button> */}
                     <button
                       className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
                       onClick={() => {
