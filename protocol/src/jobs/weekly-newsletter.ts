@@ -53,7 +53,6 @@ async function hasConnectionEvent(user1Id: string, user2Id: string) {
 
 export async function sendWeeklyNewsletter(now: Date = new Date()) {
     console.log('Starting weekly newsletter job...');
-
     try {
         // Optimization: Only run if it's possible to be Monday 9 AM anywhere on Earth
         // Window: Sunday 19:00 UTC (UTC+14) to Monday 21:00 UTC (UTC-12)
@@ -78,7 +77,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
         console.log(`Found ${recentStakes.length} stakes from the last 7 days.`);
 
-        const userMatches = new Map<string, { user: any, matches: Match[] }>();
+        const userMatches = new Map<string, { user: any, matches: Match[], matchedUserIds: Set<string> }>();
 
         for (const stake of recentStakes) {
             const participants = await getUsersForStake(stake.id, stake.intents);
@@ -96,23 +95,31 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // 3. Add to user matches
             // For P1, match is P2
             if (!userMatches.has(p1.userId)) {
-                userMatches.set(p1.userId, { user: p1, matches: [] });
+                userMatches.set(p1.userId, { user: p1, matches: [], matchedUserIds: new Set() });
             }
-            userMatches.get(p1.userId)!.matches.push({
-                name: p2.userName,
-                role: p2.userRole?.split('\n')[0].substring(0, 50) || 'Index User', // Simple truncation for role
-                reasoning: stake.reasoning
-            });
+            const p1Data = userMatches.get(p1.userId)!;
+            if (!p1Data.matchedUserIds.has(p2.userId)) {
+                p1Data.matches.push({
+                    name: p2.userName,
+                    role: p2.userRole || 'Index User', // Removed aggressive truncation
+                    reasoning: stake.reasoning
+                });
+                p1Data.matchedUserIds.add(p2.userId);
+            }
 
             // For P2, match is P1
             if (!userMatches.has(p2.userId)) {
-                userMatches.set(p2.userId, { user: p2, matches: [] });
+                userMatches.set(p2.userId, { user: p2, matches: [], matchedUserIds: new Set() });
             }
-            userMatches.get(p2.userId)!.matches.push({
-                name: p1.userName,
-                role: p1.userRole?.split('\n')[0].substring(0, 50) || 'Index User',
-                reasoning: stake.reasoning
-            });
+            const p2Data = userMatches.get(p2.userId)!;
+            if (!p2Data.matchedUserIds.has(p1.userId)) {
+                p2Data.matches.push({
+                    name: p1.userName,
+                    role: p1.userRole || 'Index User', // Removed aggressive truncation
+                    reasoning: stake.reasoning
+                });
+                p2Data.matchedUserIds.add(p1.userId);
+            }
         }
 
         // 4. Send emails
@@ -145,7 +152,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
             const template = weeklyNewsletterTemplate(data.user.userName, data.matches);
 
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV === 'development' && process.env.ENABLE_EMAIL_TESTING !== 'true') {
                 console.log(`[DEV] Would send email to ${data.user.userEmail}:`);
                 console.log(`Subject: ${template.subject}`);
                 console.log(`Body preview: ${template.text.substring(0, 200)}...`);
