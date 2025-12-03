@@ -282,134 +282,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     newIntent: any,
     targetIntent: any
   ): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
-    const MutualIntentSchema = z.object({
-      isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
-      reasoning: z.string().describe("One sentence explanation. If mutual, explain why using subject matter. If not mutual, provide empty string."),
-      confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
-    });
-
-    const systemMessage = {
-      role: "system",
-      content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
-
-CRITICAL: You MUST provide specific scores. 
-
-REASONING GUIDELINES:
-- When isMutual is true: Explain the complementary relationship in one clear sentence
-- Reference intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research')
-- NEVER use position references: 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'
-- Focus on why the connection creates bidirectional value
-- When isMutual is false: Return empty string
-
-STRICT Mutual criteria (INCREASED RIGOR):
-- Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
-- Both intents could lead to HIGH-VALUE connection or collaboration
-- There's bidirectional value (not just one-way interest)
-- IMMEDIATELY actionable and valuable
-- Specific, not vague connections
-- EXCLUDE "adjacent but non-dependent" roles (e.g., designer + engineer unless explicitly co-building the same thing)
-- EXCLUDE "same-side" roles (e.g., both hiring, both seeking mentors, both seeking funding)
-- **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
-Score threshold: Must be >= 70 to qualify as mutual
-
-TIMING CONSIDERATION:
-- Evaluate whether timing matters based on intent nature
-- Time-sensitive intents (hiring, funding, events, deadlines, immediate needs): older intents reduce relevance
-- Evergreen intents (interests, skills, learning, broad topics): age matters less
-- If one or both intents are clearly stale for their context, reduce confidence score accordingly
-- For time-sensitive intents older than a few months, consider reducing score by 5-15 points
-
-CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
-
-95-100: EXCEPTIONAL MATCH
-- Perfect complementary fit (e.g., "seed investor" + "seeking seed funding")
-- Highly specific and aligned
-- Both parties' exact needs met
-- Immediate, obvious value
-- Good timing alignment for the intent type
-
-85-94: STRONG MATCH
-- Clear complementary value but with minor gaps
-- Strong alignment with some flexibility needed
-- Specific enough to be actionable
-- High confidence but not perfect
-
-75-84: GOOD MATCH
-- Solid mutual benefit but requires some interpretation
-- Generally aligned but may need clarification
-- Actionable with moderate effort
-- Some specificity gaps
-
-70-74: ACCEPTABLE MATCH (THRESHOLD)
-- Meets minimum criteria for mutual relevance
-- Has potential but less certain
-- May need significant qualification
-- Borderline actionable
-
-Below 70: NOT MUTUAL
-- Reject these outright
-- Includes time-sensitive intents that are too stale
-
-SCORING EXAMPLES (study these closely):
-- "Seeking pre-seed AI investors" + "Investing in pre-seed AI companies" → 98 (perfect stage + sector match)
-- "Need React developer for 3-month project" + "Available for React contract work" → 92 (clear but timeline unconfirmed)
-- "Looking for design partners" + "Seeking startups needing UI/UX help" → 87 (aligned but vague scope)
-- "Seeking technical cofounder" + "Open to cofounder opportunities in tech" → 81 (mutual but broad)
-- "Interested in blockchain projects" + "Building DeFi tools, need advisors" → 76 (related but role unclear)
-- "Want to learn about AI" + "Teaching AI fundamentals" → 73 (educational match but commitment unclear)
-- "Hiring React dev" + "Mentoring junior devs" → 45 (adjacent but not mutual)
-- "Building AI tool" + "Looking for UI designer" → 60 (related but not mutual unless explicitly for same project)
-- "Looking for networking in SF" + "Attending SF tech events" → 65 (too vague, REJECT)
-- "Seeking customers" + "Seeking customers" → 20 (same need, REJECT)
-
-IMPORTANT: 
-- Use the full 70-100 range
-- Be critical and precise
-- Most matches should be 75-90, not 95-100
-- Only exceptional perfect matches deserve 95+
-- Differentiate based on specificity, clarity, actionability, and timing context`
-    };
-
-    const newIntentAge = format(new Date(newIntent.createdAt));
-    const targetIntentAge = format(new Date(targetIntent.createdAt));
-
-    const userMessage = {
-      role: "user",
-      content: `Analyze these intents for mutual relevance:
-
-"${newIntent.payload}" (Intent ID: ${newIntent.id}, created ${newIntentAge})
-"${targetIntent.payload}" (Intent ID: ${targetIntent.id}, created ${targetIntentAge})
-
-Are these mutually relevant with high confidence (>= 70 score)? Consider timing in your evaluation. Provide score and reasoning.`
-    };
-
-    try {
-      const reasoningCall = traceableStructuredLlm(
-        "semantic-relevancy",
-        {
-          agent_type: "semantic_relevancy_broker",
-          operation: "mutuality_evaluation",
-          new_intent_id: newIntent.id,
-          target_intent_id: targetIntent.id
-        }
-      );
-
-      const callWithRetry = withTimeoutAndRetry(reasoningCall, {
-        timeoutMs: 10000, // 30 seconds timeout
-        maxRetries: 2,
-        retryDelayMs: 1000
-      });
-
-      const response = await callWithRetry([systemMessage, userMessage], MutualIntentSchema);
-
-      return {
-        isMutual: response.isMutual,
-        confidenceScore: response.confidenceScore,
-        reasoning: response.reasoning
-      };
-    } catch (error: any) {
-      return null;
-    }
+    return evaluateIntentPairMutuality(newIntent, targetIntent);
   }
 
   /**
@@ -573,3 +446,143 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
       .where(sql`${intentStakes.intents} @> ARRAY[${intentId}::uuid]`);
   }
 }
+
+/**
+ * Standalone function to evaluate mutuality between two intents
+ * Can be used for testing or by other agents
+ */
+export async function evaluateIntentPairMutuality(
+  newIntent: any,
+  targetIntent: any
+): Promise<{ isMutual: boolean; confidenceScore: number; reasoning: string } | null> {
+  const MutualIntentSchema = z.object({
+    isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
+    reasoning: z.string().describe("One sentence explanation. If mutual, explain why using subject matter. If not mutual, provide empty string."),
+    confidenceScore: z.number().min(0).max(100).describe("Precise confidence score 0-100. Use full range 70-100 for mutual matches. Avoid round numbers like 100, 90, 80. Be specific: 87, 76, 92, etc.")
+  });
+
+  const systemMessage = {
+    role: "system",
+    content: `You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance (both relate to or complement each other).
+
+CRITICAL: You MUST provide specific scores. 
+
+REASONING GUIDELINES:
+- When isMutual is true: Explain the complementary relationship in one clear sentence
+- Reference intents by their subject matter (e.g., 'the immersive experience project' and 'the blockchain growth research')
+- NEVER use position references: 'intent 1', 'intent 2', 'both intents', 'first intent', or 'second intent'
+- Focus on why the connection creates bidirectional value
+- When isMutual is false: Return empty string
+
+STRICT Mutual criteria (INCREASED RIGOR):
+- Both intents seek things that complement each other (e.g., investor + startup, designer + developer)
+- Both intents could lead to HIGH-VALUE connection or collaboration
+- There's bidirectional value (not just one-way interest)
+- IMMEDIATELY actionable and valuable
+- Specific, not vague connections
+- EXCLUDE "adjacent but non-dependent" roles (e.g., designer + engineer unless explicitly co-building the same thing)
+- EXCLUDE "same-side" roles (e.g., both hiring, both seeking mentors, both seeking funding)
+- **STRICTLY EXCLUDE** A-seeks-Role AND B-seeks-Role (e.g., A needs an engineer, B needs a designer) - these are company-level needs, not a mutual intent pair.
+Score threshold: Must be >= 70 to qualify as mutual
+
+TIMING CONSIDERATION:
+- Evaluate whether timing matters based on intent nature
+- Time-sensitive intents (hiring, funding, events, deadlines, immediate needs): older intents reduce relevance
+- Evergreen intents (interests, skills, learning, broad topics): age matters less
+- If one or both intents are clearly stale for their context, reduce confidence score accordingly
+- For time-sensitive intents older than a few months, consider reducing score by 5-15 points
+
+CONFIDENCE SCORING RUBRIC (BE PRECISE AND VARIED):
+
+95-100: EXCEPTIONAL MATCH
+- Perfect complementary fit (e.g., "seed investor" + "seeking seed funding")
+- Highly specific and aligned
+- Both parties' exact needs met
+- Immediate, obvious value
+- Good timing alignment for the intent type
+
+85-94: STRONG MATCH
+- Clear complementary value but with minor gaps
+- Strong alignment with some flexibility needed
+- Specific enough to be actionable
+- High confidence but not perfect
+
+75-84: GOOD MATCH
+- Solid mutual benefit but requires some interpretation
+- Generally aligned but may need clarification
+- Actionable with moderate effort
+- Some specificity gaps
+
+70-74: ACCEPTABLE MATCH (THRESHOLD)
+- Meets minimum criteria for mutual relevance
+- Has potential but less certain
+- May need significant qualification
+- Borderline actionable
+
+Below 70: NOT MUTUAL
+- Reject these outright
+- Includes time-sensitive intents that are too stale
+
+SCORING EXAMPLES (study these closely):
+- "Seeking pre-seed AI investors" + "Investing in pre-seed AI companies" → 98 (perfect stage + sector match)
+- "Need React developer for 3-month project" + "Available for React contract work" → 92 (clear but timeline unconfirmed)
+- "Looking for design partners" + "Seeking startups needing UI/UX help" → 87 (aligned but vague scope)
+- "Seeking technical cofounder" + "Open to cofounder opportunities in tech" → 81 (mutual but broad)
+- "Interested in blockchain projects" + "Building DeFi tools, need advisors" → 76 (related but role unclear)
+- "Want to learn about AI" + "Teaching AI fundamentals" → 73 (educational match but commitment unclear)
+- "Hiring React dev" + "Mentoring junior devs" → 45 (adjacent but not mutual)
+- "Building AI tool" + "Looking for UI designer" → 60 (related but not mutual unless explicitly for same project)
+- "Looking for networking in SF" + "Attending SF tech events" → 65 (too vague, REJECT)
+- "Seeking customers" + "Seeking customers" → 20 (same need, REJECT)
+
+IMPORTANT: 
+- Use the full 70-100 range
+- Be critical and precise
+- Most matches should be 75-90, not 95-100
+- Only exceptional perfect matches deserve 95+
+- Differentiate based on specificity, clarity, actionability, and timing context`
+  };
+
+  const newIntentAge = newIntent.createdAt ? format(new Date(newIntent.createdAt)) : 'just now';
+  const targetIntentAge = targetIntent.createdAt ? format(new Date(targetIntent.createdAt)) : 'just now';
+
+  const userMessage = {
+    role: "user",
+    content: `Analyze these intents for mutual relevance:
+
+"${newIntent.payload}" (Intent ID: ${newIntent.id || 'new'}, created ${newIntentAge})
+"${targetIntent.payload}" (Intent ID: ${targetIntent.id || 'target'}, created ${targetIntentAge})
+
+Are these mutually relevant with high confidence (>= 70 score)? Consider timing in your evaluation. Provide score and reasoning.`
+  };
+
+  try {
+    const reasoningCall = traceableStructuredLlm(
+      "semantic-relevancy",
+      {
+        agent_type: "semantic_relevancy_broker",
+        operation: "mutuality_evaluation",
+        new_intent_id: newIntent.id,
+        target_intent_id: targetIntent.id
+      }
+    );
+
+    const callWithRetry = withTimeoutAndRetry(reasoningCall, {
+      timeoutMs: 10000, // 30 seconds timeout
+      maxRetries: 2,
+      retryDelayMs: 1000
+    });
+
+    const response = await callWithRetry([systemMessage, userMessage], MutualIntentSchema);
+
+    return {
+      isMutual: response.isMutual,
+      confidenceScore: response.confidenceScore,
+      reasoning: response.reasoning
+    };
+  } catch (error: any) {
+    console.error('Error in evaluateIntentPairMutuality:', error);
+    return null;
+  }
+}
+
