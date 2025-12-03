@@ -120,8 +120,8 @@ export default function FeedbackWidget() {
       ) : (
         <div className="relative w-full h-full flex flex-col p-4">
           <textarea
-            className="w-full flex-1 resize-none focus:outline-none text-sm placeholder-gray-400 mb-2"
-            placeholder="Feedback"
+            className="w-full flex-1 resize-none focus:outline-none text-sm text-black placeholder-gray-400 mb-2"
+            placeholder="Share your feedback or suggestions..."
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             onPaste={handlePaste}
