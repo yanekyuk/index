@@ -14,6 +14,7 @@ async function getUsersForStake(stakeId: string, intentIds: string[]) {
         userEmail: users.email,
         userRole: users.intro, // Using intro as a proxy for role/title for now
         userTimezone: users.timezone,
+        userLastWeeklyEmailSentAt: users.lastWeeklyEmailSentAt,
         userOnboarding: users.onboarding,
         intentId: intents.id
     })
@@ -67,17 +68,18 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             return;
         }
 
-        // 1. Get stakes created in the last 7 days
+        // 1. Get stakes created in the last 7 days (fallback) or since last email
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+        // We fetch all recent stakes first, then filter per-user based on their last sent time
         const recentStakes = await db.select()
             .from(intentStakes)
             .where(gt(intentStakes.createdAt, sevenDaysAgo));
 
         console.log(`Found ${recentStakes.length} stakes from the last 7 days.`);
 
-        const userMatches = new Map<string, { user: any, matches: Match[] }>();
+        const userMatches = new Map<string, { user: any, matches: Match[], matchedUserIds: Set<string> }>();
 
         for (const stake of recentStakes) {
             const participants = await getUsersForStake(stake.id, stake.intents);
@@ -95,25 +97,37 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // 3. Add to user matches
             // For P1, match is P2
             if (!userMatches.has(p1.userId)) {
-                userMatches.set(p1.userId, { user: p1, matches: [] });
+                userMatches.set(p1.userId, { user: p1, matches: [], matchedUserIds: new Set() });
             }
             const p1Data = userMatches.get(p1.userId)!;
-            p1Data.matches.push({
-                name: p2.userName,
-                role: p2.userRole || 'Index User', // Removed aggressive truncation
-                reasoning: stake.reasoning
-            });
+
+            // Filter based on P1's last sent time
+            const p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
+            if (stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId)) {
+                p1Data.matches.push({
+                    name: p2.userName,
+                    role: p2.userRole || 'Index User',
+                    reasoning: stake.reasoning
+                });
+                p1Data.matchedUserIds.add(p2.userId);
+            }
 
             // For P2, match is P1
             if (!userMatches.has(p2.userId)) {
-                userMatches.set(p2.userId, { user: p2, matches: [] });
+                userMatches.set(p2.userId, { user: p2, matches: [], matchedUserIds: new Set() });
             }
             const p2Data = userMatches.get(p2.userId)!;
-            p2Data.matches.push({
-                name: p1.userName,
-                role: p1.userRole || 'Index User', // Removed aggressive truncation
-                reasoning: stake.reasoning
-            });
+
+            // Filter based on P2's last sent time
+            const p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
+            if (stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId)) {
+                p2Data.matches.push({
+                    name: p1.userName,
+                    role: p1.userRole || 'Index User',
+                    reasoning: stake.reasoning
+                });
+                p2Data.matchedUserIds.add(p1.userId);
+            }
         }
 
         // 4. Send emails
@@ -157,6 +171,12 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
                     html: template.html,
                     text: template.text
                 });
+
+                // Update lastWeeklyEmailSentAt
+                await db.update(users)
+                    .set({ lastWeeklyEmailSentAt: new Date() })
+                    .where(eq(users.id, userId));
+
                 console.log(`Sent newsletter to ${data.user.userEmail}`);
             }
         }
