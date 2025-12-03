@@ -77,7 +77,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
         console.log(`Found ${recentStakes.length} stakes from the last 7 days.`);
 
-        const userMatches = new Map<string, { user: any, matches: Match[], matchedUserIds: Set<string> }>();
+        const userMatches = new Map<string, { user: any, matches: Match[] }>();
 
         for (const stake of recentStakes) {
             const participants = await getUsersForStake(stake.id, stake.intents);
@@ -95,31 +95,25 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // 3. Add to user matches
             // For P1, match is P2
             if (!userMatches.has(p1.userId)) {
-                userMatches.set(p1.userId, { user: p1, matches: [], matchedUserIds: new Set() });
+                userMatches.set(p1.userId, { user: p1, matches: [] });
             }
             const p1Data = userMatches.get(p1.userId)!;
-            if (!p1Data.matchedUserIds.has(p2.userId)) {
-                p1Data.matches.push({
-                    name: p2.userName,
-                    role: p2.userRole || 'Index User', // Removed aggressive truncation
-                    reasoning: stake.reasoning
-                });
-                p1Data.matchedUserIds.add(p2.userId);
-            }
+            p1Data.matches.push({
+                name: p2.userName,
+                role: p2.userRole || 'Index User', // Removed aggressive truncation
+                reasoning: stake.reasoning
+            });
 
             // For P2, match is P1
             if (!userMatches.has(p2.userId)) {
-                userMatches.set(p2.userId, { user: p2, matches: [], matchedUserIds: new Set() });
+                userMatches.set(p2.userId, { user: p2, matches: [] });
             }
             const p2Data = userMatches.get(p2.userId)!;
-            if (!p2Data.matchedUserIds.has(p1.userId)) {
-                p2Data.matches.push({
-                    name: p1.userName,
-                    role: p1.userRole || 'Index User', // Removed aggressive truncation
-                    reasoning: stake.reasoning
-                });
-                p2Data.matchedUserIds.add(p1.userId);
-            }
+            p2Data.matches.push({
+                name: p1.userName,
+                role: p1.userRole || 'Index User', // Removed aggressive truncation
+                reasoning: stake.reasoning
+            });
         }
 
         // 4. Send emails

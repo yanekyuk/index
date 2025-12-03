@@ -32,11 +32,11 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     const rows = await this.db.select()
       .from(intents)
       .where(eq(intents.id, intentId));
-    
+
     if (rows.length === 0) {
       return null;
     }
-    
+
     return rows[0];
   }
 
@@ -55,7 +55,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         return { success: false };
       }
     });
-    
+
     await Promise.all(userEvaluations);
   }
 
@@ -69,7 +69,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }>> {
     // Find similar intents using vector search (limit 50 to ensure we get enough variety)
     const similarIntents = await this.findSemanticallyRelatedIntents(newIntent);
-    
+
     // Group by userId
     const userMap = new Map<string, {
       userId: string;
@@ -99,7 +99,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     const topUsers = Array.from(userMap.values())
       .sort((a, b) => b.maxSimilarity - a.maxSimilarity)
       .slice(0, 20);
-    
+
     return topUsers;
   }
 
@@ -139,21 +139,21 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       intents: intentStakes.intents,
       reasoning: intentStakes.reasoning
     })
-    .from(intentStakes)
-    .where(and(
-      eq(intentStakes.agentId, this.agentId),
-      sql`EXISTS (
+      .from(intentStakes)
+      .where(and(
+        eq(intentStakes.agentId, this.agentId),
+        sql`EXISTS (
         SELECT 1 FROM ${intents} i1
         WHERE i1.id = ANY(${intentStakes.intents})
         AND i1.user_id = ${userId1}
       )`,
-      sql`EXISTS (
+        sql`EXISTS (
         SELECT 1 FROM ${intents} i2
         WHERE i2.id = ANY(${intentStakes.intents})
         AND i2.user_id = ${userId2}
       )`
-    ))
-    .orderBy(desc(intentStakes.stake));
+      ))
+      .orderBy(desc(intentStakes.stake));
   }
 
   /**
@@ -162,7 +162,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   private async findMutualIntents(newIntent: any, targetIntents: any[]) {
     const mutualityPromises = targetIntents.map(async (targetIntent) => {
       const evaluation = await this.evaluateMutualityStrict(newIntent, targetIntent);
-      
+
       if (evaluation && evaluation.isMutual && evaluation.confidenceScore >= 70) {
         return {
           targetIntentId: targetIntent.id,
@@ -185,23 +185,48 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     mutualResults: Array<{ targetIntentId: string; score: number; reasoning: string }>,
     existingStakes: Array<{ id: string; stake: bigint; intents: string[]; reasoning: string }>
   ) {
-    return [
-      ...mutualResults.map(r => ({
-        type: 'new' as const,
-        newIntentId,
-        targetIntentId: r.targetIntentId,
-        score: r.score,
-        reasoning: r.reasoning
-      })),
-      ...existingStakes.map(stake => ({
-        type: 'existing' as const,
-        stakeId: stake.id,
-        newIntentId: stake.intents[0],
-        targetIntentId: stake.intents[1],
-        score: Number(stake.stake),
-        reasoning: stake.reasoning
-      }))
-    ];
+    // 1. Add all new mutual results first (they are fresh)
+    const candidates: Array<{
+      type: 'new' | 'existing';
+      newIntentId: string;
+      targetIntentId: string;
+      score: number;
+      reasoning: string;
+      stakeId?: string;
+    }> = mutualResults.map(r => ({
+      type: 'new' as const,
+      newIntentId,
+      targetIntentId: r.targetIntentId,
+      score: r.score,
+      reasoning: r.reasoning
+    }));
+
+    // 2. Track which target intents we already have candidates for
+    const existingTargetIds = new Set(candidates.map(c => c.targetIntentId));
+
+    // 3. Add existing stakes ONLY if we don't already have a fresh candidate for that target intent
+    for (const stake of existingStakes) {
+      // Identify which intent in the stake is the target (the one that isn't newIntentId)
+      const targetId = stake.intents.find(id => id !== newIntentId);
+
+      // Safety check: if for some reason newIntentId isn't in the stake (shouldn't happen given the query),
+      // or if we can't find a target, skip it.
+      if (!targetId) continue;
+
+      if (!existingTargetIds.has(targetId)) {
+        candidates.push({
+          type: 'existing' as const,
+          stakeId: stake.id,
+          newIntentId,
+          targetIntentId: targetId,
+          score: Number(stake.stake),
+          reasoning: stake.reasoning
+        });
+        existingTargetIds.add(targetId);
+      }
+    }
+
+    return candidates;
   }
 
   /**
@@ -223,12 +248,12 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       const pairData = candidatePairs.find(
         c => c.newIntentId === pair.newIntentId && c.targetIntentId === pair.targetIntentId
       );
-      
+
       if (pairData) {
         const sortedIntents = [pair.newIntentId, pair.targetIntentId].sort();
-        
+
         const stake1 = await this.calculateWeightedStake(
-          pair.newIntentId, 
+          pair.newIntentId,
           BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
@@ -237,9 +262,9 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
           BigInt(Math.round(pair.score)),
           INTENT_INFERRER_AGENT_ID
         );
-        
+
         const finalStake = stake1 < stake2 ? stake1 : stake2;
-        
+
         await db.insert(intentStakes).values({
           intents: sortedIntents,
           stake: finalStake,
@@ -368,15 +393,15 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
           target_intent_id: targetIntent.id
         }
       );
-      
+
       const callWithRetry = withTimeoutAndRetry(reasoningCall, {
         timeoutMs: 10000, // 30 seconds timeout
         maxRetries: 2,
         retryDelayMs: 1000
       });
-      
+
       const response = await callWithRetry([systemMessage, userMessage], MutualIntentSchema);
-      
+
       return {
         isMutual: response.isMutual,
         confidenceScore: response.confidenceScore,
@@ -427,7 +452,7 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
       .select({ id: intents.id, createdAt: intents.createdAt, payload: intents.payload })
       .from(intents)
       .where(sql`${intents.id} IN (${sql.join([...intentIds].map(id => sql`${id}`), sql`, `)})`);
-    
+
     intentRecords.forEach(record => {
       intentData.set(record.id, {
         createdAt: new Date(record.createdAt),
@@ -478,11 +503,11 @@ Return the top 10 pairs with new scores.`
 
 <candidate_pairs>
 ${candidatePairs.map((c, i) => {
-  const newIntentData = intentData.get(c.newIntentId);
-  const targetIntentData = intentData.get(c.targetIntentId);
-  const formatTimeAgo = (date: Date | undefined) => date ? format(date) : 'unknown';
-  
-  return `<pair index="${i + 1}" type="${c.type.toUpperCase()}">
+        const newIntentData = intentData.get(c.newIntentId);
+        const targetIntentData = intentData.get(c.targetIntentId);
+        const formatTimeAgo = (date: Date | undefined) => date ? format(date) : 'unknown';
+
+        return `<pair index="${i + 1}" type="${c.type.toUpperCase()}">
   <intent_a>
     <id>${c.newIntentId}</id>
     <created>${formatTimeAgo(newIntentData?.createdAt)}</created>
@@ -495,7 +520,7 @@ ${candidatePairs.map((c, i) => {
   </intent_b>
   <reasoning>${c.reasoning}</reasoning>
 </pair>`;
-}).join('\n\n')}
+      }).join('\n\n')}
 </candidate_pairs>
 
 Return the top 10 pairs with new scores based on semantic quality and contextual recency.`
@@ -510,15 +535,15 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
           candidate_count: candidatePairs.length
         }
       );
-      
+
       const callWithRetry = withTimeoutAndRetry(rankingCall, {
         timeoutMs: 60000, // 60 seconds timeout for ranking (larger payload)
         maxRetries: 2,
         retryDelayMs: 1000
       });
-      
+
       const response = await callWithRetry([systemMessage, userMessage], RankingSchema);
-      
+
       return {
         rankedPairs: response.rankedPairs || []
       };
