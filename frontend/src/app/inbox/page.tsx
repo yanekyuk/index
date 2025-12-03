@@ -61,12 +61,12 @@ export default function InboxPage() {
   const discoverService = useDiscover();
 
   // Memoize API parameters to prevent unnecessary recreations
-  const apiIndexIds = useMemo(() => 
+  const apiIndexIds = useMemo(() =>
     selectedIndexIds.length > 0 ? selectedIndexIds : undefined,
     [selectedIndexIds]
   );
 
-  const apiIntentIds = useMemo(() => 
+  const apiIntentIds = useMemo(() =>
     discoveryIntents?.map(i => i.id),
     [discoveryIntents]
   );
@@ -99,11 +99,11 @@ export default function InboxPage() {
   // Fetch discovery data (default tab - priority)
   const fetchDiscovery = useCallback(async () => {
     try {
-      const discoverData = await discoverService.discoverUsers({ 
-        indexIds: apiIndexIds, 
+      const discoverData = await discoverService.discoverUsers({
+        indexIds: apiIndexIds,
         intentIds: apiIntentIds,
-        excludeDiscovered: true, 
-        limit: 50 
+        excludeDiscovered: true,
+        limit: 50
       });
 
       // Transform discover data
@@ -171,7 +171,7 @@ export default function InboxPage() {
     setConnectionsLoading(true);
     fetchedSynthesesRef.current.clear();
     setSyntheses({});
-    
+
     // Load discovery first (default tab), connections in background
     fetchDiscovery();
     fetchConnections();
@@ -187,10 +187,10 @@ export default function InboxPage() {
   // Tab change handler
   const handleTabChange = (newTab: string) => {
     if (!validTabs.includes(newTab)) return;
-    
+
     setActiveTab(newTab);
     const params = new URLSearchParams(searchParams.toString());
-    
+
     if (newTab === 'discover') {
       params.delete('tab');
       const queryString = params.toString();
@@ -203,7 +203,48 @@ export default function InboxPage() {
 
   // Connection action handler
   const handleConnectionAction = useCallback(async (action: ConnectionAction, userId: string) => {
+    // Optimistic update helper
+    const updateLocalState = () => {
+      // Find the user in any of the lists
+      const inboxUser = inboxConnections.find(c => c.user.id === userId);
+      const pendingUser = pendingConnections.find(c => c.user.id === userId);
+      const historyUser = historyConnections.find(c => c.user.id === userId);
+      const userConnection = inboxUser || pendingUser || historyUser;
+
+      if (!userConnection) return;
+
+      // Remove from all lists initially
+      setInboxConnections(prev => prev.filter(c => c.user.id !== userId));
+      setPendingConnections(prev => prev.filter(c => c.user.id !== userId));
+      setHistoryConnections(prev => prev.filter(c => c.user.id !== userId));
+
+      // Add to appropriate list based on action
+      const now = new Date().toISOString();
+      const updatedConnection = { ...userConnection, lastUpdated: now, status: action };
+
+      switch (action) {
+        case 'ACCEPT':
+          setHistoryConnections(prev => [updatedConnection, ...prev]);
+          break;
+        case 'DECLINE':
+          setHistoryConnections(prev => [updatedConnection, ...prev]);
+          break;
+        case 'SKIP':
+          setHistoryConnections(prev => [updatedConnection, ...prev]);
+          break;
+        case 'REQUEST':
+          setPendingConnections(prev => [updatedConnection, ...prev]);
+          break;
+        case 'CANCEL':
+          setHistoryConnections(prev => [updatedConnection, ...prev]);
+          break;
+      }
+    };
+
     try {
+      // Apply optimistic update
+      updateLocalState();
+
       switch (action) {
         case 'REQUEST':
           await connectionsService.requestConnection(userId);
@@ -221,11 +262,15 @@ export default function InboxPage() {
           await connectionsService.cancelConnection(userId);
           break;
       }
-      await fetchData();
+
+      // Refresh data in background without loading state
+      await refreshData();
     } catch (error) {
       console.error('Error handling connection action:', error);
+      // Revert on error would go here, but for now we'll just refresh to get true state
+      await fetchData();
     }
-  }, [connectionsService, fetchData]);
+  }, [connectionsService, refreshData, fetchData, inboxConnections, pendingConnections, historyConnections]);
 
   // Handler for opening user profile modal
   const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }) => {
@@ -279,7 +324,7 @@ export default function InboxPage() {
       e.preventDefault();
       e.stopPropagation();
       if (activeTab !== 'discover' || discoveryIntents) return;
-      
+
       dragCounterRef.current++;
       if (e.dataTransfer?.types.includes('Files')) {
         setIsDragging(true);
@@ -305,7 +350,7 @@ export default function InboxPage() {
       e.stopPropagation();
       dragCounterRef.current = 0;
       setIsDragging(false);
-      
+
       if (activeTab !== 'discover' || discoveryIntents) return;
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         discoveryFormRef.current?.handleFileDrop(e.dataTransfer.files);
@@ -327,7 +372,7 @@ export default function InboxPage() {
 
   // Render user card component
   const renderUserCard = useCallback((
-    data: StakesByUserResponse | UserConnection, 
+    data: StakesByUserResponse | UserConnection,
     tabType: 'discover' | 'requests'
   ) => {
     const isStakeCard = 'intents' in data;
@@ -403,7 +448,7 @@ export default function InboxPage() {
                   </div>
                 </div>
               ) : (
-                <SynthesisMarkdown 
+                <SynthesisMarkdown
                   content={syntheses[user.id]}
                   className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm"
                   onArchive={fetchData}
@@ -429,7 +474,7 @@ export default function InboxPage() {
             backgroundColor: 'rgba(0, 0, 0, 0.2)'
           }}
         >
-          <div 
+          <div
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: 'url(/noise.jpg)',
@@ -447,10 +492,10 @@ export default function InboxPage() {
       )}
 
       <div className="w-full border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-          backgroundImage: 'url(/grid.png)',
-          backgroundColor: 'white',
-          backgroundSize: '888px'
-        }}>
+        backgroundImage: 'url(/grid.png)',
+        backgroundColor: 'white',
+        backgroundSize: '888px'
+      }}>
 
         <div className="flex flex-col justify-between mb-4">
           {/* Header section */}
@@ -460,7 +505,7 @@ export default function InboxPage() {
               <div className="flex gap-4 items-start">
                 {!discoveryIntents ? (
                   <div className="flex-1">
-                    <DiscoveryForm 
+                    <DiscoveryForm
                       ref={discoveryFormRef}
                       onSubmit={(intents) => {
                         setDiscoveryIntents(intents);
@@ -479,7 +524,7 @@ export default function InboxPage() {
                         aria-label="Clear filter"
                       >
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 4L4 12M4 4L12 12" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+                          <path d="M12 4L4 12M4 4L12 12" stroke="white" strokeWidth="2" strokeLinecap="round" />
                         </svg>
                       </button>
                     </div>
@@ -501,7 +546,7 @@ export default function InboxPage() {
                 </button>
               </div>
             )}
-            
+
             {/* Requests view button */}
             {activeTab === 'requests' && (
               <div className="flex justify-between items-end">
@@ -509,57 +554,51 @@ export default function InboxPage() {
                 <div className="flex gap-0">
                   <button
                     onClick={() => setRequestsView('received')}
-                    className={`font-ibm-plex-mono px-6 py-2 border border-black  border-b-2 border-r-0 flex items-center gap-2 ${
-                      requestsView === 'received' 
-                        ? 'bg-black text-white' 
+                    className={`font-ibm-plex-mono px-6 py-2 border border-black  border-b-2 border-r-0 flex items-center gap-2 ${requestsView === 'received'
+                        ? 'bg-black text-white'
                         : 'bg-white text-black hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     Inbox
                     {inboxConnections.length > 0 && (
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        requestsView === 'received'
+                      <span className={`text-xs px-2 py-1 rounded ${requestsView === 'received'
                           ? 'bg-white text-black'
                           : 'bg-black text-white'
-                      }`}>
+                        }`}>
                         {inboxConnections.length}
                       </span>
                     )}
                   </button>
                   <button
                     onClick={() => setRequestsView('sent')}
-                    className={`font-ibm-plex-mono px-6 py-2 border border-black border-b-2 border-r-0 border-l-0 flex items-center gap-2 ${
-                      requestsView === 'sent' 
-                        ? 'bg-black text-white' 
+                    className={`font-ibm-plex-mono px-6 py-2 border border-black border-b-2 border-r-0 border-l-0 flex items-center gap-2 ${requestsView === 'sent'
+                        ? 'bg-black text-white'
                         : 'bg-white text-black hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     Sent
                     {pendingConnections.length > 0 && (
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        requestsView === 'sent'
+                      <span className={`text-xs px-2 py-1 rounded ${requestsView === 'sent'
                           ? 'bg-white text-black'
                           : 'bg-black text-white'
-                      }`}>
+                        }`}>
                         {pendingConnections.length}
                       </span>
                     )}
                   </button>
                   <button
                     onClick={() => setRequestsView('history')}
-                    className={`font-ibm-plex-mono px-6 py-2 border border-b-2 border-black border-l-0 flex items-center gap-2 ${
-                      requestsView === 'history' 
-                        ? 'bg-black text-white' 
+                    className={`font-ibm-plex-mono px-6 py-2 border border-b-2 border-black border-l-0 flex items-center gap-2 ${requestsView === 'history'
+                        ? 'bg-black text-white'
                         : 'bg-white text-black hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     History
                     {historyConnections.length > 0 && (
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        requestsView === 'history'
+                      <span className={`text-xs px-2 py-1 rounded ${requestsView === 'history'
                           ? 'bg-white text-black'
                           : 'bg-black text-white'
-                      }`}>
+                        }`}>
                         {historyConnections.length}
                       </span>
                     )}
@@ -578,113 +617,113 @@ export default function InboxPage() {
                 </button>
               </div>
             )}
-            </div>
+          </div>
 
           {/* Discover Content */}
           {activeTab === 'discover' && (
-              <div className="mt-4">
-                {discoveryLoading ? (
-                  <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
-                    <Image 
-                      className="h-auto"
-                      src="/loading2.gif"
-                      alt="Loading..." 
-                      width={300} 
-                      height={200} 
-                      style={{ imageRendering: 'auto' }}
-                    />
-                    <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
-                      Finding your people...
-                    </h3>
-                  </div>
-                ) : discoverStakes.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
-                    <Image 
-                      className="h-auto"
-                      src={!discoveryIntents ? '/generic.png' : '/loading2.gif'} 
-                      alt="Loading..." 
-                      width={300} 
-                      height={200} 
-                      style={{ imageRendering: 'auto' }}
-                    />
-                    {showSuccessMessage ? (
-                      <>
-                        <h3 className="text-gray-900 font-bold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
-                          Got the signal!
-                        </h3>
-                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
-                          Passing it along to the right folks, let's see what unfolds.
-                        </p>
-                      </>
-                    ) : !discoveryIntents ? (
-                      <>
-                        <button
-                          onClick={() => discoveryFormRef.current?.focus()}
-                          className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:text-black transition-colors"
-                        >
-                          Find your people
-                        </button>
-                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
-                          Share what you're looking for or drop a file above to discover relevant connections.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
-                          No relevant connections for now.
-                        </h3>
-                        <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
-                          It's not you, the world's just being shy. Don't worry, I'll keep looking.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))
-                )}
-              </div>
-            )}
+            <div className="mt-4">
+              {discoveryLoading ? (
+                <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                  <Image
+                    className="h-auto"
+                    src="/loading2.gif"
+                    alt="Loading..."
+                    width={300}
+                    height={200}
+                    style={{ imageRendering: 'auto' }}
+                  />
+                  <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                    Finding your people...
+                  </h3>
+                </div>
+              ) : discoverStakes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                  <Image
+                    className="h-auto"
+                    src={!discoveryIntents ? '/generic.png' : '/loading2.gif'}
+                    alt="Loading..."
+                    width={300}
+                    height={200}
+                    style={{ imageRendering: 'auto' }}
+                  />
+                  {showSuccessMessage ? (
+                    <>
+                      <h3 className="text-gray-900 font-bold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                        Got the signal!
+                      </h3>
+                      <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                        Passing it along to the right folks, let's see what unfolds.
+                      </p>
+                    </>
+                  ) : !discoveryIntents ? (
+                    <>
+                      <button
+                        onClick={() => discoveryFormRef.current?.focus()}
+                        className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:text-black transition-colors"
+                      >
+                        Find your people
+                      </button>
+                      <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                        Share what you're looking for or drop a file above to discover relevant connections.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 text-center">
+                        No relevant connections for now.
+                      </h3>
+                      <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
+                        It's not you, the world's just being shy. Don't worry, I'll keep looking.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                discoverStakes.map((userStake) => renderUserCard(userStake, 'discover'))
+              )}
+            </div>
+          )}
 
-            {/* Requests Content */}
-            {activeTab === 'requests' && (
-              <div className="mt-4">
-                {requestsView === 'received' && (
-                  <>
-                    {inboxConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
-                        No incoming connection requests. All caught up!
-                      </div>
-                    ) : (
-                      inboxConnections.map((connection) => renderUserCard(connection, 'requests'))
-                    )}
-                  </>
-                )}
+          {/* Requests Content */}
+          {activeTab === 'requests' && (
+            <div className="mt-4">
+              {requestsView === 'received' && (
+                <>
+                  {inboxConnections.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
+                      No incoming connection requests. All caught up!
+                    </div>
+                  ) : (
+                    inboxConnections.map((connection) => renderUserCard(connection, 'requests'))
+                  )}
+                </>
+              )}
 
-                {requestsView === 'sent' && (
-                  <>
-                    {pendingConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
-                        No sent requests.
-                      </div>
-                    ) : (
-                      pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
-                    )}
-                  </>
-                )}
+              {requestsView === 'sent' && (
+                <>
+                  {pendingConnections.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
+                      No sent requests.
+                    </div>
+                  ) : (
+                    pendingConnections.map((connection) => renderUserCard(connection, 'requests'))
+                  )}
+                </>
+              )}
 
-                {requestsView === 'history' && (
-                  <>
-                    {historyConnections.length === 0 ? (
-                      <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
-                        No connection history yet.
-                      </div>
-                    ) : (
-                      historyConnections.map((connection) => renderUserCard(connection, 'requests'))
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+              {requestsView === 'history' && (
+                <>
+                  {historyConnections.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500 bg-white border border-b-2 border-gray-800">
+                      No connection history yet.
+                    </div>
+                  ) : (
+                    historyConnections.map((connection) => renderUserCard(connection, 'requests'))
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
