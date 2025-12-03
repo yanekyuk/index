@@ -38,7 +38,7 @@ async function main() {
     const { users, files, indexLinks, intents, intentStakes } = await import('../lib/schema.js');
     const { IntentService } = await import('../lib/intent-service.js');
     const { discoverUsers } = await import('../lib/discover.js');
-    const { sendConnectionRequestEmail } = await import('../lib/email/email-handlers.js');
+    const { sendConnectionRequestNotification } = await import('../lib/notification-service.js');
 
     console.log('\n🚀 Starting Expanded CLI Test Suite...\n');
 
@@ -181,7 +181,7 @@ async function main() {
         console.log(`(Emails should be redirected to ${process.env.TESTING_EMAIL_ADDRESS || 'yanki@index.network'})`);
 
         try {
-            await sendConnectionRequestEmail(alice.id, bob.id);
+            await sendConnectionRequestNotification(alice.id, bob.id);
             console.log(`✅ sendConnectionRequestEmail completed without error.`);
             console.log(`👉 CHECK YOUR EMAIL (${process.env.TESTING_EMAIL_ADDRESS || 'yanki@index.network'}) for a message with subject related to "Connection Request"`);
         } catch (error) {

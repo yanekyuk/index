@@ -75,6 +75,11 @@ export const sendEmail = async (options: {
       text: options.text
     });
 
+    if (result.error) {
+      console.error('Resend returned error:', result.error);
+      throw new Error(`Resend error: ${result.error.message}`);
+    }
+
     console.log('Email sent successfully:', result);
     return result;
   } catch (error) {

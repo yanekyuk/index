@@ -4,7 +4,7 @@ import db from '../lib/db';
 import { users, userConnectionEvents, intents, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
-import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnectionDeclinedEmail } from '../lib/email/email-handlers';
+import { sendConnectionRequestNotification, sendConnectionAcceptedNotification, sendConnectionDeclinedNotification } from '../lib/notification-service';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { ConnectionEvent, ConnectionsByUserResponse, CreateConnectionActionRequest } from '../types';
 
@@ -34,9 +34,9 @@ router.post('/by-user',
       // Use generic validation function
       const { validIndexIds, error } = await validateAndGetAccessibleIndexIds(userId, indexIds);
       if (error) {
-        return res.status(error.status).json({ 
+        return res.status(error.status).json({
           error: error.message,
-          invalidIds: error.invalidIds 
+          invalidIds: error.invalidIds
         });
       }
 
@@ -52,21 +52,21 @@ router.post('/by-user',
         eventType: userConnectionEvents.eventType,
         createdAt: userConnectionEvents.createdAt,
       })
-      .from(userConnectionEvents)
-      .where(
-        or(
-          eq(userConnectionEvents.initiatorUserId, userId),
-          eq(userConnectionEvents.receiverUserId, userId)
+        .from(userConnectionEvents)
+        .where(
+          or(
+            eq(userConnectionEvents.initiatorUserId, userId),
+            eq(userConnectionEvents.receiverUserId, userId)
+          )
         )
-      )
-      .orderBy(desc(userConnectionEvents.createdAt));
+        .orderBy(desc(userConnectionEvents.createdAt));
 
       // Aggregate events by other user to get current state
       const connectionStates = new Map();
-      
+
       for (const event of allEvents) {
         const otherUserId = event.initiatorUserId === userId ? event.receiverUserId : event.initiatorUserId;
-        
+
         if (!connectionStates.has(otherUserId)) {
           connectionStates.set(otherUserId, {
             otherUserId,
@@ -115,14 +115,14 @@ router.post('/by-user',
         return res.json({ connections: [] });
       }
 
-      
+
       const otherUsers = await db.select({
         id: users.id,
         name: users.name,
         avatar: users.avatar
       })
-      .from(users)
-      .where(inArray(users.id, otherUserIds));
+        .from(users)
+        .where(inArray(users.id, otherUserIds));
 
       // Generate connections array with optional synthesis
       const connections = await Promise.all(
@@ -214,10 +214,10 @@ router.post('/actions',
       switch (action) {
         case 'REQUEST':
           // Can request if no prior connection or if previously declined/skipped
-          isValidAction = !currentState || 
-                         currentState === 'DECLINE' || 
-                         currentState === 'SKIP' ||
-                         currentState === 'CANCEL';
+          isValidAction = !currentState ||
+            currentState === 'DECLINE' ||
+            currentState === 'SKIP' ||
+            currentState === 'CANCEL';
           break;
         case 'SKIP':
           // Can skip if receiving a request
@@ -238,8 +238,8 @@ router.post('/actions',
       }
 
       if (!isValidAction) {
-        return res.status(400).json({ 
-          error: `Cannot ${action.toLowerCase()} in current state: ${currentState}` 
+        return res.status(400).json({
+          error: `Cannot ${action.toLowerCase()} in current state: ${currentState}`
         });
       }
 
@@ -254,15 +254,15 @@ router.post('/actions',
 
       // Send appropriate emails asynchronously (fire-and-forget)
       if (action === 'REQUEST') {
-        sendConnectionRequestEmail(userId, targetUserId).catch(emailError => {
+        sendConnectionRequestNotification(userId, targetUserId).catch(emailError => {
           console.error('Failed to send connection request email:', emailError);
         });
       } else if (action === 'ACCEPT') {
-        sendConnectionAcceptedEmail(userId, targetUserId).catch(emailError => {
+        sendConnectionAcceptedNotification(userId, targetUserId).catch(emailError => {
           console.error('Failed to send connection accepted email:', emailError);
         });
       } else if (action === 'DECLINE') {
-        sendConnectionDeclinedEmail(targetUserId).catch(emailError => {
+        sendConnectionDeclinedNotification(targetUserId).catch(emailError => {
           console.error('Failed to send connection declined email:', emailError);
         });
       }

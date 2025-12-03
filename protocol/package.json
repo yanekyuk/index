@@ -63,6 +63,7 @@
     "timeago.js": "^4.0.2",
     "unstructured-client": "^0.27.0",
     "uuid": "^11.1.0",
+    "vitest": "^4.0.15",
     "zod": "^3.22.4"
   },
   "devDependencies": {
