@@ -1,5 +1,6 @@
 import { getRedisClient } from '../redis';
 
+
 export interface QueueJob<T = any> {
   id: string;
   action: string;
@@ -28,7 +29,9 @@ export class PriorityQueue<T = any> {
 
   async getNextJob(): Promise<QueueJob<T> | null> {
     const result = await this.redis.zpopmax(this.queueKey);
-    if (!result || result.length === 0) return null;
+    if (!result || result.length === 0) {
+      return null;
+    }
 
     try {
       return JSON.parse(result[0]);

@@ -8,6 +8,7 @@ import {
 } from './email/email.module';
 import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
 
+
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
     const [user1Intents, user2Intents] = await Promise.all([
         db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user1Id)),
@@ -34,19 +35,14 @@ async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise
 
 async function waitForStake(user1Id: string, user2Id: string): Promise<boolean> {
     for (let i = 0; i < 6; i++) {
-        console.log(`waitForStake: attempt ${i + 1} to check stake between ${user1Id} and ${user2Id}`);
         const hasStake = await checkStakeBetweenUsers(user1Id, user2Id);
-        console.log(`waitForStake: checkStakeBetweenUsers result: ${hasStake}`);
         if (hasStake) {
-            console.log('waitForStake: stake found, returning true');
             return true;
         }
         if (i < 5) {
-            console.log('waitForStake: stake not found, waiting 10 seconds before retry');
             await new Promise(resolve => setTimeout(resolve, 10000));
         }
     }
-    console.log('waitForStake: no stake found after 3 attempts, returning false');
     return false;
 }
 
@@ -117,9 +113,6 @@ export async function sendConnectionAcceptedNotification(accepterUserId: string,
             return;
         }
 
-        console.log('accepterUserId', accepterUserId);
-        console.log('initiatorUserId', initiatorUserId);
-
         // Generate intro synthesis
         const synthesisMarkdown = await synthesizeIntro(
             accepterUserId,
@@ -137,7 +130,7 @@ export async function sendConnectionAcceptedNotification(accepterUserId: string,
             synthesis
         );
     } catch (error) {
-        console.error('Failed to send connection accepted email:', error);
+        console.error(`Failed to send connection accepted email: ${error}`);
         throw error;
     }
 }

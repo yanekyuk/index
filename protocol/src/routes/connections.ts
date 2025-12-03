@@ -8,6 +8,8 @@ import { sendConnectionRequestNotification, sendConnectionAcceptedNotification, 
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { ConnectionEvent, ConnectionsByUserResponse, CreateConnectionActionRequest } from '../types';
 
+
+
 const router = Router();
 
 
@@ -254,17 +256,11 @@ router.post('/actions',
 
       // Send appropriate emails asynchronously (fire-and-forget)
       if (action === 'REQUEST') {
-        sendConnectionRequestNotification(userId, targetUserId).catch(emailError => {
-          console.error('Failed to send connection request email:', emailError);
-        });
+        sendConnectionRequestNotification(userId, targetUserId).catch(console.error);
       } else if (action === 'ACCEPT') {
-        sendConnectionAcceptedNotification(userId, targetUserId).catch(emailError => {
-          console.error('Failed to send connection accepted email:', emailError);
-        });
+        sendConnectionAcceptedNotification(userId, targetUserId).catch(console.error);
       } else if (action === 'DECLINE') {
-        sendConnectionDeclinedNotification(targetUserId).catch(emailError => {
-          console.error('Failed to send connection declined email:', emailError);
-        });
+        sendConnectionDeclinedNotification(targetUserId).catch(console.error);
       }
 
       return res.json({
