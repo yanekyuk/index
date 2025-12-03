@@ -1,8 +1,8 @@
 import cron from 'node-cron';
 import db from '../lib/db';
 import { intentStakes, intents, users, userConnectionEvents } from '../lib/schema';
-import { sendEmail } from '../lib/email/email';
-import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter';
+import { sendEmail } from '../lib/email/transport.helper';
+import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter.template';
 import { and, eq, gt, inArray, or, sql, desc } from 'drizzle-orm';
 import { toZonedTime, format } from 'date-fns-tz';
 

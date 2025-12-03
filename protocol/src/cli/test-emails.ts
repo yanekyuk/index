@@ -4,10 +4,10 @@ import { writeFile } from 'fs/promises';
 
 config({ path: resolve(__dirname, '../../.env.development') });
 
-import { connectionRequestTemplate } from '../lib/email/templates/connection-request';
-import { connectionAcceptedTemplate } from '../lib/email/templates/connection-accepted';
-import { weeklyNewsletterTemplate } from '../lib/email/templates/weekly-newsletter';
-import { sendEmail } from '../lib/email/email';
+import { connectionRequestTemplate } from '../lib/email/templates/connection-request.template';
+import { connectionAcceptedTemplate } from '../lib/email/templates/connection-accepted.template';
+import { weeklyNewsletterTemplate } from '../lib/email/templates/weekly-newsletter.template';
+import { sendEmail } from '../lib/email/transport.helper';
 
 import { vibeCheck, OtherUserData } from '../agents/external/vibe_checker/index';
 
