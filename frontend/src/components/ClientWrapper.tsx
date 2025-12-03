@@ -13,20 +13,20 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   // Define known routes to detect 404 pages
   const knownRoutes = useMemo(() => ['/', '/inbox', '/simulation', '/onboarding', '/l', '/i', '/admin'], []);
-  const isKnownRoute = knownRoutes.some(route => 
-    pathname === route || 
+  const isKnownRoute = knownRoutes.some(route =>
+    pathname === route ||
     pathname?.startsWith(route + '/')
   );
   // Show sidebar only on app pages (exclude landing '/', onboarding, invitation, and index join pages)
-  const showSidebar = useMemo(() => 
-    pathname !== '/' && pathname !== '/onboarding' && !pathname?.startsWith('/l/') && !pathname?.startsWith('/i/') && knownRoutes.filter(route => route !== '/' && route !== '/onboarding' && route !== '/l' && route !== '/i').some(route => 
+  const showSidebar = useMemo(() =>
+    pathname !== '/' && pathname !== '/onboarding' && !pathname?.startsWith('/l/') && !pathname?.startsWith('/i/') && knownRoutes.filter(route => route !== '/' && route !== '/onboarding' && route !== '/l' && route !== '/i').some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     ), [pathname, knownRoutes]);
-  
+
   // Hide header buttons on special pages (onboarding and invitation)
-  const showHeaderButtons = useMemo(() => 
+  const showHeaderButtons = useMemo(() =>
     pathname !== '/onboarding' && !pathname?.startsWith('/l/') && !pathname?.startsWith('/i/'), [pathname]);
-  
+
   // Don't render header on 404 pages (unknown routes)
   if (!isKnownRoute && pathname) {
     return (
@@ -35,12 +35,12 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
       </main>
     );
   }
-  
+
   return (
     <IndexesProvider>
       <IndexFilterProvider>
         <div className="backdrop relative min-h-screen">
-        <style jsx>{`
+          <style jsx>{`
           .backdrop:after {
             content: "";
             position: fixed;
@@ -54,35 +54,35 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             z-index: -1;
           }
         `}</style>
-        
-        {/* Header stays persistent across page changes */}
-        <div className="max-w-7xl mx-auto px-2">
-          <Header 
-            showNavigation={false}
-            showHeaderButtons={showHeaderButtons}
-            onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
-            isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
-          />
-        </div>
-        
-        {/* Page content with sidebar */}
-        <main>
-          <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
-            {/* Sidebar */}
-            {showSidebar && (
-              <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
-                <Sidebar />
-              </aside>
-            )}
-            
-            {/* Main content area */}
-            <div className={`w-full ${showSidebar ? 'lg:w-3/4' : ''}`}>
-              <div className="space-y-6 h-full">
-                {children}
+
+          {/* Header stays persistent across page changes */}
+          <div className="max-w-7xl mx-auto px-2">
+            <Header
+              showNavigation={false}
+              showHeaderButtons={showHeaderButtons}
+              onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
+              isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
+            />
+          </div>
+
+          {/* Page content with sidebar */}
+          <main>
+            <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
+              {/* Sidebar */}
+              {showSidebar && (
+                <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
+                  <Sidebar />
+                </aside>
+              )}
+
+              {/* Main content area */}
+              <div className={`w-full ${showSidebar ? 'lg:w-3/4' : ''}`}>
+                <div className="space-y-6 h-full">
+                  {children}
+                </div>
               </div>
             </div>
-          </div>
-        </main>
+          </main>
         </div>
       </IndexFilterProvider>
     </IndexesProvider>
