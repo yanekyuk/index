@@ -5,6 +5,14 @@ import { sendEmail } from '../lib/email/transport.helper';
 import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter.template';
 import { and, eq, gt, inArray, or, sql, desc } from 'drizzle-orm';
 import { toZonedTime, format } from 'date-fns-tz';
+import { synthesizeVibeCheck } from '../lib/synthesis';
+
+function stripNamePrefix(text: string, name: string) {
+    if (!text || !name) return text;
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escapedName}\\s*-\\s*`, 'i');
+    return text.replace(regex, '');
+}
 
 // Helper to get users involved in a stake
 async function getUsersForStake(stakeId: string, intentIds: string[]) {
@@ -101,32 +109,45 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             }
             const p1Data = userMatches.get(p1.userId)!;
 
-            // Filter based on P1's last sent time
-            const p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
-            if (stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId)) {
-                p1Data.matches.push({
-                    name: p2.userName,
-                    role: p2.userRole || 'Index User',
-                    reasoning: stake.reasoning
-                });
-                p1Data.matchedUserIds.add(p2.userId);
-            }
-
             // For P2, match is P1
             if (!userMatches.has(p2.userId)) {
                 userMatches.set(p2.userId, { user: p2, matches: [], matchedUserIds: new Set() });
             }
             const p2Data = userMatches.get(p2.userId)!;
 
-            // Filter based on P2's last sent time
+            // Check if we need to process matches
+            const p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
             const p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
-            if (stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId)) {
-                p2Data.matches.push({
-                    name: p1.userName,
-                    role: p1.userRole || 'Index User',
-                    reasoning: stake.reasoning
-                });
-                p2Data.matchedUserIds.add(p1.userId);
+
+            const p1NeedsMatch = stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId);
+            const p2NeedsMatch = stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId);
+
+            if (p1NeedsMatch || p2NeedsMatch) {
+                // Fetch vibe checks in parallel if needed
+                const [vibeForP1, vibeForP2] = await Promise.all([
+                    p1NeedsMatch ? synthesizeVibeCheck(p1.userId, p2.userId) : Promise.resolve(null),
+                    p2NeedsMatch ? synthesizeVibeCheck(p2.userId, p1.userId) : Promise.resolve(null)
+                ]);
+
+                if (p1NeedsMatch) {
+                    const role = vibeForP1?.subject ? stripNamePrefix(vibeForP1.subject, p2.userName) : (p2.userRole || 'Index User');
+                    p1Data.matches.push({
+                        name: p2.userName,
+                        role: role,
+                        reasoning: vibeForP1?.synthesis || stake.reasoning
+                    });
+                    p1Data.matchedUserIds.add(p2.userId);
+                }
+
+                if (p2NeedsMatch) {
+                    const role = vibeForP2?.subject ? stripNamePrefix(vibeForP2.subject, p1.userName) : (p1.userRole || 'Index User');
+                    p2Data.matches.push({
+                        name: p1.userName,
+                        role: role,
+                        reasoning: vibeForP2?.synthesis || stake.reasoning
+                    });
+                    p2Data.matchedUserIds.add(p1.userId);
+                }
             }
         }
 
