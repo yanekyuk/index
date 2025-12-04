@@ -225,19 +225,23 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
                 console.log(`Subject: ${template.subject}`);
                 console.log(`Body preview: ${template.text.substring(0, 200)}...`);
             } else {
-                await sendEmail({
-                    to: data.user.userEmail,
-                    subject: template.subject,
-                    html: template.html,
-                    text: template.text
-                });
+                try {
+                    await sendEmail({
+                        to: data.user.userEmail,
+                        subject: template.subject,
+                        html: template.html,
+                        text: template.text
+                    });
 
-                // Update lastWeeklyEmailSentAt
-                await db.update(users)
-                    .set({ lastWeeklyEmailSentAt: new Date() })
-                    .where(eq(users.id, userId));
+                    // Update lastWeeklyEmailSentAt
+                    await db.update(users)
+                        .set({ lastWeeklyEmailSentAt: new Date() })
+                        .where(eq(users.id, userId));
 
-                console.log(`Sent newsletter to ${data.user.userEmail}`);
+                    console.log(`Sent newsletter to ${data.user.userEmail}`);
+                } catch (err) {
+                    console.error(`Failed to send newsletter to ${data.user.userEmail} (userId: ${userId})`, err);
+                }
             }
         }
 
