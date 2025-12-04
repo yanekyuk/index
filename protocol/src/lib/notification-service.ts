@@ -7,7 +7,7 @@ import {
     sendConnectionDeclinedEmail
 } from './email/email.module';
 import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
-
+import DOMPurify from 'isomorphic-dompurify';
 
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
     const [user1Intents, user2Intents] = await Promise.all([
@@ -78,7 +78,8 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
 
         // Convert markdown to HTML
         const { marked } = await import('marked');
-        const synthesis = await marked.parse(synthesisMarkdown);
+        const rawHtml = await marked.parse(synthesisMarkdown);
+        const synthesis = DOMPurify.sanitize(rawHtml);
 
         await sendConnectionRequestEmail(
             receiver[0].email,
