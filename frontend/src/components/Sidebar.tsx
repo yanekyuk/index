@@ -183,10 +183,7 @@ export default function Sidebar() {
         </>
       ) : (
         /* Normal Sidebar */
-        <div className="bg-white rounded-sm border-black border p-3 pb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-black">Networks</h2>
-          </div>
+        <div className="bg-white rounded-sm border-black border p-3 pb-6 pt-6">
           
           <div className="space-y-1.5">
             {loading ? (

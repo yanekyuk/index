@@ -190,20 +190,20 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         </div>
         {showHeaderButtons && (
           authenticated ? (
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setLibraryModalOpen(true)}
-                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[1px] hover:bg-gray-50 transition-colors h-[48px] w-[132px]"
+                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[132px]"
               >
-                <Library className="h-6 w-6" strokeWidth={2} />
-                <span className="text-black font-medium font-ibm-plex-mono text-[18px] leading-[23px]">
+                <Library className="h-6 w-6 text-black" strokeWidth={2} />
+                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
                   Library
                 </span>
               </button>
 
               <div className="relative" ref={dropdownRef}>
                 <div
-                  className="flex items-center justify-center px-3 py-2 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[1px] cursor-pointer hover:bg-gray-50 transition-colors h-[48px] w-[80px]"
+                  className="flex items-center justify-center px-3 py-2 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] cursor-pointer hover:bg-gray-50 transition-colors h-[48px] w-[80px]"
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
                   <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">

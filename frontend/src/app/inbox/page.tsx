@@ -50,6 +50,9 @@ export default function InboxPage() {
   const dragCounterRef = useRef(0);
   const discoveryFormRef = useRef<DiscoveryFormRef>(null);
   const popoverControlRef = useRef<{ close: () => void } | null>(null);
+  const hasInitialFetchRef = useRef(false);
+  const isFetchingRef = useRef(false);
+  const prevFiltersRef = useRef<string>('');
 
   // Context Hooks
   const { selectedIndexIds } = useIndexFilter();
@@ -165,23 +168,35 @@ export default function InboxPage() {
     }
   }, [connectionsService, fetchSynthesis, apiIndexIds]);
 
-  // Fetch all data - initial load (clears syntheses)
-  const fetchData = useCallback(async () => {
-    setDiscoveryLoading(true);
-    setConnectionsLoading(true);
-    fetchedSynthesesRef.current.clear();
-    setSyntheses({});
+  // Unified fetch function - handles both initial load and refresh
+  const fetchData = useCallback(async (options?: { 
+    showLoading?: boolean; 
+    clearSyntheses?: boolean;
+  }) => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      return;
+    }
+    isFetchingRef.current = true;
     
-    // Load discovery first (default tab), connections in background
-    fetchDiscovery();
-    fetchConnections();
-  }, [fetchDiscovery, fetchConnections]);
-
-  // Refresh data - auto-refresh (preserves syntheses to avoid glitch)
-  const refreshData = useCallback(async () => {
-    // Don't show loading states or clear syntheses on refresh
-    fetchDiscovery();
-    fetchConnections();
+    const { showLoading = true, clearSyntheses = true } = options || {};
+    
+    try {
+      if (showLoading) {
+        setDiscoveryLoading(true);
+        setConnectionsLoading(true);
+      }
+      
+      if (clearSyntheses) {
+        fetchedSynthesesRef.current.clear();
+        setSyntheses({});
+      }
+      
+      // Load discovery and connections in parallel
+      await Promise.all([fetchDiscovery(), fetchConnections()]);
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, [fetchDiscovery, fetchConnections]);
 
   // Tab change handler
@@ -256,22 +271,52 @@ export default function InboxPage() {
     }
   }, [searchParams]);
 
-  // Initial data fetch
+  // Initial data fetch - only run once on mount
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!hasInitialFetchRef.current) {
+      hasInitialFetchRef.current = true;
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  // Refetch when filters change (but not on initial mount)
+  useEffect(() => {
+    if (!hasInitialFetchRef.current) {
+      return;
+    }
+    
+    // Serialize filter values for comparison
+    const currentFilters = JSON.stringify({
+      indexIds: apiIndexIds?.sort() || [],
+      intentIds: apiIntentIds?.sort() || []
+    });
+    
+    // Only refetch if filters actually changed
+    if (prevFiltersRef.current !== currentFilters) {
+      prevFiltersRef.current = currentFilters;
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiIndexIds, apiIntentIds]); // Only depend on actual filter values
 
   // Auto-refresh every 5 seconds
   useEffect(() => {
     const intervalId = setInterval(() => {
+      // Don't trigger if there's a pending request
+      if (isFetchingRef.current) {
+        return;
+      }
+      
       const timeSinceLastRefresh = Date.now() - lastRefreshTimeRef.current;
       if (timeSinceLastRefresh >= 5000) {
-        refreshData();
+        // Auto-refresh: preserve syntheses and don't show loading to avoid UI glitches
+        fetchData({ showLoading: false, clearSyntheses: false });
       }
-    }, 5000);
+    }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [refreshData]);
+  }, [fetchData]);
 
   // Drag and drop for file upload
   useEffect(() => {

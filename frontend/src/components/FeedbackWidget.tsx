@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Image as ImageIcon, X, Loader2 } from "lucide-react";
+import { Image as ImageIcon, X, Loader2, MessageSquare } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
 
 export default function FeedbackWidget() {
@@ -115,13 +115,14 @@ export default function FeedbackWidget() {
             gap: "8px",
           }}
         >
-          Feedback
+          <MessageSquare className="w-4 h-4" />
+           Feedback
         </button>
       ) : (
         <div className="relative w-full h-full flex flex-col p-4">
           <textarea
             className="w-full flex-1 resize-none focus:outline-none text-sm text-black placeholder-gray-400 mb-2"
-            placeholder="Share your feedback or suggestions..."
+            placeholder="Unleash your thoughts! How can we make your experience better? (Stories, rants, metaphors, and wild suggestions welcome.)"
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             onPaste={handlePaste}
