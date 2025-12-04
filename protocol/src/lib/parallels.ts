@@ -8,26 +8,7 @@ const parallelClient = new Parallel({
   apiKey: PARALLELS_API_KEY,
 });
 
-interface ParallelsExtractResponse {
-  data?: Array<{
-    url: string;
-    content?: string;
-    excerpt?: string;
-  }>;
-  error?: string;
-}
 
-interface ParallelsTaskResponse {
-  output?: {
-    content?: {
-      intro?: string;
-      location?: string;
-    };
-    intro?: string;
-    location?: string;
-  };
-  error?: string;
-}
 
 export async function extractUrlContent(url: string): Promise<string | null> {
   if (!PARALLELS_API_KEY) {
@@ -85,80 +66,97 @@ export interface GenerateIntroOutput {
   biography: string | null;
 }
 
-export async function generateIntro(input: GenerateIntroInput): Promise<GenerateIntroOutput | null> {
+export interface GenerateSummaryInput {
+  name?: string;
+  email?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
+}
+
+export interface GeneratedIntent {
+  intent: string;
+  confidence: 'low' | 'medium' | 'high';
+  date: string;
+}
+
+export interface GenerateSummaryOutput {
+  intro: string | null;
+  location: string | null;
+  intents: GeneratedIntent[];
+}
+
+export interface SummaryStreamEvent {
+  type: 'status' | 'progress' | 'result' | 'error';
+  message?: string;
+  data?: GenerateSummaryOutput;
+}
+
+
+/**
+ * Generate summary with intro, location, and intents using Parallel AI
+ * Streams events via callback for real-time updates
+ */
+export async function generateSummaryWithIntents(
+  input: GenerateSummaryInput,
+  onEvent?: (event: SummaryStreamEvent) => void
+): Promise<GenerateSummaryOutput | null> {
   if (!PARALLELS_API_KEY) {
     throw new Error('PARALLELS_API_KEY not configured');
   }
 
   try {
-    // Map input to match schema (linkedin_profile, twitter_profile)
-    // Only include fields that have values
-    const mappedInput: Record<string, string> = {};
-    
-    if (input.email?.trim()) {
-      mappedInput.email = input.email.trim();
-    }
-    
-    if (input.linkedin?.trim()) {
-      mappedInput.linkedin_profile = input.linkedin.trim();
-    }
-    
-    if (input.twitter?.trim()) {
-      mappedInput.twitter_profile = input.twitter.trim();
-    }
+    // Build input object
+    const cleanedInput: Record<string, string> = {};
     
     if (input.name?.trim()) {
-      mappedInput.name = input.name.trim();
+      cleanedInput.name = input.name.trim();
     }
     
-    // Ensure at least one field is provided
-    if (Object.keys(mappedInput).length === 0) {
-      log.error('No valid fields provided to generateIntro', { input, mappedInput });
-      return null;
+    if (input.email?.trim()) {
+      cleanedInput.email = input.email.trim();
     }
-
-    // Ensure all values are strings (not undefined/null)
-    const cleanedInput: Record<string, string> = {};
-    for (const [key, value] of Object.entries(mappedInput)) {
-      if (value && typeof value === 'string' && value.trim()) {
-        cleanedInput[key] = value.trim();
-      }
+    
+    if (input.linkedin_url?.trim()) {
+      cleanedInput.linkedin_url = input.linkedin_url.trim();
+    }
+    
+    if (input.twitter_url?.trim()) {
+      cleanedInput.twitter_url = input.twitter_url.trim();
     }
     
     if (Object.keys(cleanedInput).length === 0) {
-      log.error('Cleaned input is empty after filtering', { mappedInput });
+      log.error('No valid fields provided to generateSummaryWithIntents', { input });
+      onEvent?.({ type: 'error', message: 'Hmm, I need something to work with. Could you share your name, email, or a profile link?' });
       return null;
     }
-    
-    log.info('Calling Parallels task API', { 
-      fieldCount: Object.keys(cleanedInput).length, 
-      fields: Object.keys(cleanedInput),
-      cleanedInput
-    });
 
-    // Use the official Parallel SDK
-    const taskRun = await parallelClient.taskRun.create({
+    log.info('Starting summary generation', { fields: Object.keys(cleanedInput) });
+    onEvent?.({ type: 'status', message: 'Let me get to know you...' });
+
+    // Create task with events enabled using beta API
+    const taskRun = await parallelClient.beta.taskRun.create({
       input: cleanedInput,
       processor: 'base',
-      
+      enable_events: true,
+      betas: ['events-sse-2025-07-24'],
       task_spec: {
         input_schema: {
           json_schema: {
             properties: {
               email: {
-                description: 'The email address of the person.',
+                description: 'The email address of the person to analyze for intents.',
                 type: 'string',
               },
-              linkedin_profile: {
-                description: 'The LinkedIn profile URL of the person.',
+              linkedin_url: {
+                description: 'The LinkedIn profile URL of the person to analyze for intents.',
                 type: 'string',
               },
               name: {
-                description: 'The full name of the person.',
+                description: 'The name of the person to analyze for intents.',
                 type: 'string',
               },
-              twitter_profile: {
-                description: 'The Twitter profile URL of the person.',
+              twitter_url: {
+                description: 'The Twitter profile URL of the person to analyze for intents.',
                 type: 'string',
               },
             },
@@ -210,19 +208,152 @@ Starting from mathematics and machine learning research, with a growing fascinat
 **Example 5**  
 Grounded in civic tech and cooperative product design, with experience building tools that support collective action. Drawn to long-term trust, resource pooling, and structures that let communities govern themselves. Focus now rests on models for shared digital stewardship and smoother group coordination.
 
-Derived from available information such as name, email, LinkedIn profile, and Twitter profile. If insufficient information is available to generate a meaningful intro, return 'Intro unavailable'.`,
+If insufficient information, return 'Intro unavailable'`,
                 type: 'string',
               },
               location: {
-                description: 'The primary geographical location (city, state, or country) associated with the individual, inferred from available information such as their name, email, LinkedIn profile, and Twitter profile. If a specific location cannot be determined, return \'Location unavailable\'.',
+                description: 'The primary geographical location (city, state, or country) associated with the individual. If cannot be determined, return "Location unavailable".',
                 type: 'string',
               },
-              biography: {
-                description: 'A comprehensive biography or full profile description of the individual, derived from available information such as their name, email, LinkedIn profile, and Twitter profile. This should be a detailed, informative text that captures their background, work experience, interests, and current focus. Include explicit times (dates, years, durations) for all work experience, education, and other timeline events. If insufficient information is available to generate a meaningful biography, return \'Biography unavailable\'.',
-                type: 'string',
+              intents: {
+                description: `You extract social intents from content.
+
+Rules:
+1. Intents must be substantial and meaningful, not procedural calls-to-action
+2. Remove temporal markers ("Now", "Currently", "Just") - focus on the actual intent
+3. Skip generic instructions ("fill out form", "apply here", "contact us", "pass it along")
+4. Combine related technical requirements into cohesive intents, not fragmented lists
+5. Forward-looking (what they seek/offer), not backward-looking (what they've done)
+6. Intents MUST be self-contained with enough context to be understood independently
+7. Add relevant context from surrounding content to make intents substantial
+
+EXPLICIT (directly stated) → preserve core statement but add relevant context to make it self-contained
+
+IMPLICIT (inferred) → express through topic/direction in source tone, not as role-seeking
+
+Examples:
+
+Content: "Looking for Rust devs. Been thinking about privacy-preserving computation."
+
+✅ "Looking for Rust devs to work on privacy-preserving computation" (explicit, self-contained)
+
+✅ "Thinking about privacy-preserving computation" (implicit)
+
+❌ "Looking for Rust devs" (too short, not self-contained)
+
+❌ "Seeking collaborators in privacy tech" (constructed role)
+
+Content: "PhD on climate models. The question is making them accessible to smaller groups."
+
+✅ "Figuring out how to make climate models accessible" (implicit, in source tone)
+
+✅ "Working on climate modeling approaches" (implicit)
+
+❌ "Looking for research partners" (constructed role)
+
+❌ "Seeking collaboration opportunities" (constructed role)
+
+Content: "Now looking for a founding engineer. Fill out the form if interested."
+
+✅ "Looking for a founding engineer" (explicit, temporal marker removed, but needs more context if available)
+
+❌ "Fill out the form if interested" (procedural call-to-action)
+
+❌ "Now looking for a founding engineer" (keep temporal marker)
+
+Content: "Looking for Founding Fullstack Engineer to build protocol for private, intent-driven discovery. Apply here."
+
+✅ "Looking for Founding Fullstack Engineer to build protocol for private, intent-driven discovery" (explicit, self-contained)
+
+❌ "Looking for Founding Fullstack Engineer" (too short, not self-contained)
+
+❌ "Apply here" (procedural call-to-action)
+
+Content: "Been playing with agent coordination. Not sure anyone's solved the game theory."
+
+✅ "Playing with agent coordination mechanisms" (implicit, keeps casual tone)
+
+✅ "Figuring out game theory for agent systems" (implicit)
+
+❌ "Need game theory experts" (constructed role)
+
+❌ "Seeking technical advisors" (constructed role)
+
+Content: "Building tools for decentralized research. The hard part is incentive alignment."
+
+✅ "Building tools for decentralized research" (implicit)
+
+✅ "Figuring out incentive alignment for research networks" (implicit)
+
+❌ "Looking for partners in research infrastructure" (constructed role)
+
+Content: "Job posting: Need experience with Next.js, React, TypeScript, Postgres, Redis, Docker."
+
+✅ "Looking for fullstack engineering experience (Next.js, React, TypeScript, Postgres, Redis)" (cohesive)
+
+❌ "Need experience with Next.js" (fragmented)
+
+❌ "Need experience with React" (fragmented)
+
+❌ "Need experience with TypeScript" (fragmented)
+
+Content: "Exploring how privacy and discovery can coexist. Interested in agent-native protocols."
+
+✅ "Exploring how privacy and discovery can coexist" (implicit, as stated)
+
+✅ "Interested in agent-native protocols" (implicit)
+
+❌ "Seeking privacy researchers" (constructed role)
+
+Content: "Open to consulting in distributed systems. Working on consensus mechanisms."
+
+✅ "Open to consulting in distributed systems" (explicit)
+
+✅ "Working on consensus mechanisms" (implicit)
+
+❌ "Looking for consulting opportunities" (rephrased explicit wrong)
+
+Content: "Trying to understand how trust emerges in P2P networks. No clear answer yet."
+
+✅ "Trying to understand how trust emerges in P2P networks" (implicit, keeps exploratory tone)
+
+✅ "Exploring trust models without central authority" (implicit)
+
+❌ "Seeking P2P networking experts" (constructed role)
+
+Pattern: 
+
+- Explicit → preserve exactly, remove temporal markers
+- Implicit → what they're doing/exploring, not who they're seeking
+- Skip procedural instructions and calls-to-action
+- Combine related items into cohesive intents
+- Keep the voice: casual stays casual, technical stays technical, exploratory stays exploratory
+
+Generate intents naturally, you decide how many intents to generate (typically 3-10).`,
+                items: {
+                  additionalProperties: false,
+                  properties: {
+                    confidence: {
+                      description: 'The confidence level that this intent accurately represents the user\'s current activity or goals. Use "high" for explicit intents, "medium" for well-supported implicit intents, and "low" for inferred intents with less evidence.',
+                      enum: ['low', 'medium', 'high'],
+                      type: 'string',
+                    },
+                    date: {
+                      description: 'The date on which the user is observed or inferred to currently have this intent.',
+                      type: 'string',
+                    },
+                    intent: {
+                      description: 'Substantial, self-contained social intent following all the rules above. Must be meaningful, forward-looking, and contain enough context to stand alone.',
+                      type: 'string',
+                    },
+                  },
+                  required: ['date', 'confidence', 'intent'],
+                  type: 'object',
+                },
+                type: 'array',
               },
             },
-            required: ['intro', 'location', 'biography'],
+            required: ['intro', 'location', 'intents'],
             type: 'object',
           },
           type: 'json',
@@ -231,44 +362,185 @@ Derived from available information such as name, email, LinkedIn profile, and Tw
     });
 
     log.info('Task created', { runId: taskRun.run_id });
+    onEvent?.({ type: 'status', message: 'Reading about you...' });
 
-    // Poll for result using the SDK's built-in method
-    const runResult = await parallelClient.taskRun.result(taskRun.run_id, {
-      timeout: 3600, // 1 hour timeout
-    });
+    // Stream events using SDK with simplified event handling
+    const eventStream = await parallelClient.beta.taskRun.events(taskRun.run_id);
+    let finalResult: GenerateSummaryOutput | null = null;
+    let hasCompleted = false;
+    
+    // Collect links and batch them
+    const allLinks: Set<string> = new Set();
+    let linksProcessedCount = 0;
+    let inFinalStages = false;
+    
+    // Final stage messages - more human and quirky
+    const finalStages = [
+      'Figuring out where you\'re based...',
+      'Crafting your story...',
+      'Reading between the lines...',
+      'Making sure I got it right...',
+    ];
+    
+    // Varied link collection messages
+    const linkMessages = [
+      (count: number, total: number) => `Found ${count} interesting things about you...`,
+      (count: number, total: number) => `Reading through ${count} profiles...`,
+      (count: number, total: number) => `Checking out ${count} links...`,
+      (count: number, total: number) => `Scanned ${count} sources so far...`,
+      (count: number, total: number) => `Going through ${count} pages about you...`,
+    ];
+    let linkMessageIndex = 0;
+    let finalStageIndex = 0;
 
-    log.info('Task completed', { runId: taskRun.run_id, hasOutput: !!runResult.output, output: runResult.output });
+    // Timer for batching links (every 2 seconds)
+    const linkBatchInterval = setInterval(() => {
+      if (!inFinalStages && allLinks.size > linksProcessedCount) {
+        const batchSize = 10;
+        const linksArray = Array.from(allLinks);
+        const batch = linksArray.slice(linksProcessedCount, linksProcessedCount + batchSize);
+        
+        if (batch.length > 0) {
+          linksProcessedCount += batch.length;
+          // Rotate through different message styles
+          const messageFn = linkMessages[linkMessageIndex % linkMessages.length];
+          linkMessageIndex++;
+          onEvent?.({
+            type: 'progress',
+            message: messageFn(linksProcessedCount, allLinks.size),
+          });
+        }
+      }
+    }, 2000);
 
-    if (runResult.output) {
-      const output = runResult.output as any;
-      // Handle nested content structure (output.content.intro, output.content.location)
-      const content = output.content || output;
+    // Timer for final stage updates (every 3 seconds)
+    const finalStageInterval = setInterval(() => {
+      if (inFinalStages && finalStageIndex < finalStages.length) {
+        onEvent?.({ type: 'progress', message: finalStages[finalStageIndex] });
+        finalStageIndex++;
+      }
+    }, 3000);
+
+    try {
+      for await (const event of eventStream) {
+        if (event.type === 'task_run.state') {
+          const status = event.run.status;
+          if (status === 'completed') {
+            hasCompleted = true;
+            clearInterval(linkBatchInterval);
+            clearInterval(finalStageInterval);
+            if (event.output) {
+              const output = event.output as any;
+              const content = output.content || output;
+              
+              const intro = content.intro && 
+                            content.intro !== 'Intro unavailable' && 
+                            content.intro.trim() !== '' ? content.intro : null;
+              
+              const location = content.location && 
+                               content.location !== 'Location unavailable' && 
+                               content.location.trim() !== '' ? content.location : null;
+              
+              const intents: GeneratedIntent[] = (content.intents || []).map((i: any) => ({
+                intent: i.intent,
+                confidence: i.confidence || 'medium',
+                date: i.date || new Date().toISOString().split('T')[0],
+              }));
+
+              finalResult = { intro, location, intents };
+              onEvent?.({ type: 'result', data: finalResult });
+            }
+          } else if (status === 'failed' || status === 'cancelled') {
+            hasCompleted = true;
+            clearInterval(linkBatchInterval);
+            clearInterval(finalStageInterval);
+            const errorMsg = event.run.error?.message || 'Something went wrong while researching you. Mind trying again?';
+            onEvent?.({ type: 'error', message: errorMsg });
+            return null;
+          }
+        } else if (event.type === 'task_run.progress_stats') {
+          // Collect links from source stats
+          if (event.source_stats.sources_read_sample) {
+            for (const link of event.source_stats.sources_read_sample) {
+              allLinks.add(link);
+            }
+          }
+          
+          // Transition to final stages when progress > 50%
+          if (event.progress_meter > 50 && !inFinalStages) {
+            inFinalStages = true;
+            finalStageIndex = 0;
+          }
+        } else if (event.type === 'error') {
+          hasCompleted = true;
+          clearInterval(linkBatchInterval);
+          clearInterval(finalStageInterval);
+          const errorMsg = event.error?.message || 'Oops, hit a snag. Let me try that again...';
+          onEvent?.({ type: 'error', message: errorMsg });
+          return null;
+        }
+      }
       
-      // Return null for unavailable fields instead of placeholder strings
-      // Filter out any "unavailable" placeholder strings from the API response
-      const intro = content.intro || content.bio;
-      const location = content.location;
-      const biography = content.biography || content.bio;
-      
-      return {
-        intro: intro && 
-               intro !== 'Intro unavailable' && 
-               intro !== 'Bio unavailable' && 
-               intro.trim() !== '' ? intro : null,
-        location: location && 
-                  location !== 'Location unavailable' && 
-                  location.trim() !== '' ? location : null,
-        biography: biography && 
-                   biography !== 'Biography unavailable' && 
-                   biography.trim() !== '' ? biography : null,
-      };
+      clearInterval(linkBatchInterval);
+      clearInterval(finalStageInterval);
+    } catch (streamError: any) {
+      clearInterval(linkBatchInterval);
+      clearInterval(finalStageInterval);
+      log.error('Error streaming events', { error: streamError.message });
+      // Fallback to result endpoint if streaming fails
+      if (!hasCompleted) {
+        try {
+          const result = await parallelClient.beta.taskRun.result(taskRun.run_id, {
+            betas: ['events-sse-2025-07-24'],
+          });
+          
+          if (result?.output) {
+            const output = result.output as any;
+            const content = output.content || output;
+            
+            const intro = content.intro && 
+                          content.intro !== 'Intro unavailable' && 
+                          content.intro.trim() !== '' ? content.intro : null;
+            
+            const location = content.location && 
+                             content.location !== 'Location unavailable' && 
+                             content.location.trim() !== '' ? content.location : null;
+            
+            const intents: GeneratedIntent[] = (content.intents || []).map((i: any) => ({
+              intent: i.intent,
+              confidence: i.confidence || 'medium',
+              date: i.date || new Date().toISOString().split('T')[0],
+            }));
+
+            finalResult = { intro, location, intents };
+            onEvent?.({ type: 'result', data: finalResult });
+            return finalResult;
+          }
+        } catch (resultError: any) {
+          log.error('Failed to get result after stream error', { error: resultError.message });
+          onEvent?.({ type: 'error', message: resultError.message || 'Had trouble finishing up. Could you try again?' });
+          return null;
+        }
+      }
+      throw streamError;
     }
 
-    log.warn('No output in result', { runResult });
+    log.info('Task completed', { runId: taskRun.run_id, hasResult: !!finalResult });
+
+    if (finalResult) {
+      return finalResult;
+    }
+
+    onEvent?.({ type: 'error', message: 'Hmm, I couldn\'t find enough info to create your profile. Mind sharing a bit more?' });
     return null;
   } catch (error) {
-    log.error('Failed to generate intro', { error: (error as Error).message });
+    const errorMessage = (error as Error).message;
+    log.error('Failed to generate summary', { error: errorMessage });
+    onEvent?.({ type: 'error', message: errorMessage });
     return null;
   }
 }
+
+// Export the parallel client for direct access if needed
+export { parallelClient };
 

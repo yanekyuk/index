@@ -13,10 +13,9 @@ export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 
 export interface OnboardingState {
   completedAt?: string;  // ISO timestamp when completed
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
   indexId?: string;  // Persisted index ID for flow 2
   invitationCode?: string;  // Store which invitation was used (reference only)
-  enrichmentHash?: string;  // Hash of name+email combination to track enrichment per parameter set
 }
 
 // Social links type

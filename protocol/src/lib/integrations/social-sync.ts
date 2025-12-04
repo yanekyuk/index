@@ -1,21 +1,13 @@
 import { log } from '../log';
 import { syncTwitterUser, syncTwitterUsersBulk } from './providers/twitter';
-import { enrichUserProfile } from './providers/profile-enrich';
 import db from '../db';
 import { users, userIntegrations } from '../schema';
 import { isNotNull, isNull, and, eq } from 'drizzle-orm';
-import crypto from 'crypto';
 import { extractTwitterUsername } from '../snowflake';
 import { IntegrationConfigType } from '../schema';
 
 export interface SocialSyncResult {
   twitter: {
-    usersProcessed: number;
-    intentsGenerated: number;
-    locationUpdated: number;
-    errors: number;
-  };
-  enrichment: {
     usersProcessed: number;
     intentsGenerated: number;
     locationUpdated: number;
@@ -88,68 +80,13 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
   }
 }
 
-export async function enrichAllUsers(): Promise<SocialSyncResult['enrichment']> {
-  const stats = {
-    usersProcessed: 0,
-    intentsGenerated: 0,
-    locationUpdated: 0,
-    errors: 0,
-  };
-
-  try {
-    // Get all users with LinkedIn or Twitter profiles for enrichment
-    const usersForEnrichment = await db.select()
-      .from(users)
-      .where(
-        and(
-          isNull(users.deletedAt),
-          isNotNull(users.socials)
-        )
-      );
-
-    const eligibleUsers = usersForEnrichment.filter(
-      user => user.socials?.linkedin || user.socials?.x
-    );
-
-    log.info('Starting user enrichment', { userCount: eligibleUsers.length });
-
-    for (const user of eligibleUsers) {
-      try {
-        const result = await enrichUserProfile(user.id);
-        stats.usersProcessed++;
-        
-        if (result.success) {
-          if (result.intentsGenerated > 0) stats.intentsGenerated++;
-          if (result.locationUpdated) stats.locationUpdated++;
-        } else {
-          stats.errors++;
-          log.warn('User enrichment failed', { userId: user.id, error: result.error });
-        }
-      } catch (error) {
-        stats.errors++;
-        log.error('User enrichment error', { userId: user.id, error: (error as Error).message });
-      }
-    }
-
-    log.info('User enrichment complete', stats);
-    return stats;
-  } catch (error) {
-    log.error('User enrichment batch error', { error: (error as Error).message });
-    return stats;
-  }
-}
-
 export async function syncAllSocialMedia(): Promise<SocialSyncResult> {
   log.info('Starting full social media sync');
 
-  const [twitter, enrichment] = await Promise.all([
-    syncAllTwitterUsers(),
-    enrichAllUsers(),
-  ]);
+  const twitter = await syncAllTwitterUsers();
 
   return {
     twitter,
-    enrichment,
   };
 }
 
@@ -158,31 +95,17 @@ export async function syncAllSocialMedia(): Promise<SocialSyncResult> {
  * Trigger social media sync when user updates their socials field
  * This runs asynchronously and doesn't block the API response
  */
-export async function triggerSocialSync(userId: string, socialType: 'twitter' | 'enrichment'): Promise<void> {
+export async function triggerSocialSync(userId: string): Promise<void> {
   // Run syncs asynchronously without blocking
   setImmediate(async () => {
     try {
-      if (socialType === 'twitter') {
-        log.info('Triggering Twitter sync (profile update)', { userId });
-        // For profile update trigger, fetch all tweets (no timestamp filter)
-        await syncTwitterUser(userId, null);
-      } else if (socialType === 'enrichment') {
-        log.info('Triggering enrichment sync', { userId });
-        await enrichUserProfile(userId); // Includes intro generation and intent generation from biography
-      }
+      log.info('Triggering Twitter sync (profile update)', { userId });
+      // For profile update trigger, fetch all tweets (no timestamp filter)
+      await syncTwitterUser(userId, null);
     } catch (error) {
-      log.error('Social sync trigger error', { userId, socialType, error: (error as Error).message });
+      log.error('Social sync trigger error', { userId, error: (error as Error).message });
     }
   });
-}
-
-/**
- * Generate hash for name+email combination to track enrichment per parameter set
- */
-function generateEnrichmentHash(name: string, email: string): string {
-  return crypto.createHash('sha256')
-    .update(`${name}:${email}`)
-    .digest('hex');
 }
 
 /**
@@ -250,126 +173,8 @@ async function ensureTwitterIntegration(userId: string, twitterUrl: string): Pro
 }
 
 /**
- * Check if user meets enrichment criteria and trigger enrichment
- * - Don't enrich if user has customized their intro
- * - Only enrich once per name+email combination
- * This runs asynchronously and doesn't block the API response
- */
-export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
-  // Run check asynchronously without blocking
-  setImmediate(async () => {
-    try {
-      // Fetch current user state from database
-      const userRecords = await db.select({
-        name: users.name,
-        email: users.email,
-        intro: users.intro,
-        onboarding: users.onboarding,
-      })
-        .from(users)
-        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-        .limit(1);
-
-      if (userRecords.length === 0) {
-        log.warn('User not found for enrichment check', { userId });
-        return;
-      }
-
-      const user = userRecords[0];
-      
-      // Don't enrich if user has customized their intro
-      if (user.intro) {
-        log.info('User has customized intro, skipping enrichment', { userId });
-        return;
-      }
-
-      // Check if enrichment condition is met: name exists AND email exists
-      if (!user.name || !user.email) {
-        log.info('Enrichment condition not met: missing name or email', { userId });
-        return;
-      }
-
-      // Generate hash for current name+email combination
-      const currentHash = generateEnrichmentHash(user.name, user.email);
-      
-      // Get existing enrichment hash from onboarding
-      const onboarding = (user.onboarding || {}) as any;
-      const existingHash = onboarding.enrichmentHash;
-      
-      // Only enrich if we haven't enriched for this name+email combination before
-      if (existingHash === currentHash) {
-        log.info('Enrichment already done for this name+email combination', { userId, hash: currentHash });
-        return;
-      }
-
-      // Update enrichment hash atomically
-      // Note: Multiple processes might update simultaneously, so we'll verify after update
-      await db.update(users)
-        .set({
-          onboarding: {
-            ...onboarding,
-            enrichmentHash: currentHash,
-          },
-        })
-        .where(and(eq(users.id, userId), isNull(users.deletedAt)));
-      
-      // Re-fetch immediately to check if hash was successfully set
-      // This helps detect race conditions where another process might have set it first
-      const verifyRecords = await db.select({
-        name: users.name,
-        email: users.email,
-        intro: users.intro,
-        onboarding: users.onboarding,
-      })
-        .from(users)
-        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-        .limit(1);
-      
-      if (verifyRecords.length === 0) {
-        log.warn('User not found after hash update', { userId });
-        return;
-      }
-      
-      const verifyUser = verifyRecords[0];
-      const verifyOnboarding = (verifyUser.onboarding || {}) as any;
-      const verifyHash = verifyOnboarding.enrichmentHash;
-      
-      // Final checks before triggering enrichment:
-      // 1. Hash must match what we tried to set
-      // 2. Hash must have changed from what we saw initially (proves we were the one who set it)
-      // 3. User still doesn't have intro (hasn't customized)
-      // 4. Name and email still exist
-      // This prevents duplicate enrichment if another process already enriched
-      const hashWasUpdated = verifyHash === currentHash && existingHash !== currentHash;
-      
-      if (hashWasUpdated && !verifyUser.intro && verifyUser.name && verifyUser.email) {
-        log.info('Enrichment condition met, triggering enrichment', { userId, hash: currentHash });
-        await triggerSocialSync(userId, 'enrichment');
-      } else {
-        if (verifyHash !== currentHash) {
-          log.info('Enrichment hash was updated by another process, skipping enrichment', { 
-            userId, 
-            expectedHash: currentHash,
-            actualHash: verifyHash 
-          });
-        } else if (!hashWasUpdated && existingHash === currentHash) {
-          log.info('Enrichment hash was already set before update, skipping enrichment', { userId, hash: currentHash });
-        } else if (verifyUser.intro) {
-          log.info('User customized intro during enrichment check, skipping enrichment', { userId });
-        } else {
-          log.info('Enrichment condition no longer met, skipping enrichment', { userId });
-        }
-      }
-    } catch (error) {
-      log.error('Enrichment check error', { userId, error: (error as Error).message });
-    }
-  });
-}
-
-/**
  * Check if socials field changed and trigger appropriate syncs
  * Twitter sync is triggered when Twitter changes
- * Enrichment is checked when socials are updated (but triggered based on name/email/intro condition)
  */
 export function checkAndTriggerSocialSync(
   userId: string,
@@ -387,7 +192,7 @@ export function checkAndTriggerSocialSync(
       if (newTwitter && newTwitter !== oldTwitter) {
         // Twitter URL added or changed - create/update integration record
         await ensureTwitterIntegration(userId, newTwitter);
-        triggerSocialSync(userId, 'twitter');
+        triggerSocialSync(userId);
       } else if (!newTwitter && oldTwitter) {
         // Twitter URL removed - soft-delete integration record
         await db.update(userIntegrations)
@@ -406,10 +211,6 @@ export function checkAndTriggerSocialSync(
       log.error('Error managing Twitter integration', { userId, error: (error as Error).message });
     }
   });
-
-  // Check enrichment eligibility when socials are updated
-  // (enrichment triggers based on name/email/intro condition, not social changes)
-  checkAndTriggerEnrichment(userId);
 }
 
 /**
@@ -484,4 +285,3 @@ export async function migrateTwitterUsersToIntegrations(): Promise<{ migrated: n
     return { migrated, errors };
   }
 }
-
