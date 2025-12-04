@@ -133,7 +133,6 @@ export abstract class BaseContextBroker {
         .limit(10);
 
       console.log(`Found ${similarIntents.length} similar intents using vector search`);
-      console.log(similarIntents);
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents
@@ -149,7 +148,6 @@ export abstract class BaseContextBroker {
           score: intent.similarity
         }));
 
-      console.log('Related intents (vector similarity):', relatedIntents.length);
       return relatedIntents;
 
     } catch (error) {

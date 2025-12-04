@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks, Library, Plus } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -39,7 +39,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
 
   // Memoize alpha parameter check to prevent unnecessary re-runs
   const alphaParam = searchParams.get('alpha');
-  
+
   useEffect(() => {
     // Check if alpha parameter is in searchParams
     if (alphaParam !== null) {
@@ -58,7 +58,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     if (user?.id && authenticated && pathname !== '/onboarding') {
       // Check if user has completed onboarding using database field
       const hasCompletedOnboarding = user.onboarding?.completedAt;
-      
+
       // Only redirect if user hasn't completed onboarding AND hasn't filled their intro
       if (!hasCompletedOnboarding) {
         router.push('/onboarding');
@@ -74,7 +74,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         prompt: indexData.prompt,
         joinPolicy: indexData.joinPolicy
       };
-      
+
       const newIndex = await indexesService.createIndex(createRequest);
       addIndex(newIndex); // Update global state immediately
       setCreateIndexModalOpen(false);
@@ -107,16 +107,16 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     {
       href: "/inbox",
       icon: (color: string) => (
-        <svg 
+        <svg
           width={44}
           height={44}
-          viewBox="0 0 24 24" 
-          fill="none" 
+          viewBox="0 0 24 24"
+          fill="none"
           xmlns="http://www.w3.org/2000/svg"
           className="object-contain p-1"
         >
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <polyline points="22,6 12,13 2,6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="22,6 12,13 2,6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ),
       label: "Inbox"
@@ -124,7 +124,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     {
       href: "/integrate",
       icon: (color: string) => (
-        <Blocks 
+        <Blocks
           size={48}
           color={color}
           className="object-contain p-1"
@@ -141,10 +141,10 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         <div className="flex items-center">
           <Link href="/">
             <div className="relative mr-2 cursor-pointer">
-              <Image 
-                src="/logo-black.svg" 
-                alt="Index Network" 
-                width={100} 
+              <Image
+                src="/logo-black.svg"
+                alt="Index Network"
+                width={100}
                 height={36}
                 className="object-contain"
               />
@@ -178,10 +178,10 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
           )}
           <Link href={authenticated ? "/inbox" : "/"}>
             <div className="relative mr-2 cursor-pointer">
-              <Image 
-                src="/logo-black.svg" 
-                alt="Index Network" 
-                width={100} 
+              <Image
+                src="/logo-black.svg"
+                alt="Index Network"
+                width={100}
                 height={36}
                 className="object-contain"
               />
@@ -190,57 +190,55 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         </div>
         {showHeaderButtons && (
           authenticated ? (
-            <div className="relative" ref={dropdownRef}>
-              <div 
-                className="flex items-center px-4 py-2 border border-[#9f9f9f] border-1 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => setDropdownOpen(!dropdownOpen)}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLibraryModalOpen(true)}
+                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[132px]"
               >
-                <div className="w-8 h-8 rounded-full overflow-hidden mr-3">
-                <Image
+                <Library className="h-6 w-6 text-black" strokeWidth={2} />
+                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
+                  Library
+                </span>
+              </button>
+
+              <div className="relative" ref={dropdownRef}>
+                <div
+                  className="flex items-center justify-center px-3 py-2 gap-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] cursor-pointer hover:bg-gray-50 transition-colors h-[48px] w-[80px]"
+                  onClick={() => setDropdownOpen(!dropdownOpen)}
+                >
+                  <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+                    <Image
                       src={getAvatarUrl(user)}
                       alt={user?.name || 'User'}
                       width={32}
                       height={32}
                       className="w-full h-full object-cover"
                     />
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-black transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
-                <span className="text-gray-900 font-medium mr-2">
-                  {user?.name || 'User'}
-                </span>
-                <svg 
-                  className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
 
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border rounded-lg shadow-lg z-50">
-                  <div className="py-1">
-                    <button
-                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setProfileModalOpen(true);
-                      }}
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Profile Settings
-                    </button>
-                    <button
-                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setLibraryModalOpen(true);
-                      }}
-                    >
-                      <Library className="h-4 w-4 mr-2" />
-                      My Library
-                    </button>
-                    <button
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[1px] z-50">
+                    <div className="py-1">
+                      <button
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setProfileModalOpen(true);
+                        }}
+                      >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Profile Settings
+                      </button>
+                      {/* <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
                         setDropdownOpen(false);
@@ -249,24 +247,25 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Create Index
-                    </button>
-                    <button
-                      className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        logout();
-                      }}
-                    >
-                      <LogIn className="h-4 w-4 mr-2" />
-                      Logout
-                    </button>
+                    </button> */}
+                      <button
+                        className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          logout();
+                        }}
+                      >
+                        <LogIn className="h-4 w-4 mr-2" />
+                        Logout
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ) : isAlpha ? (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="flex items-center px-3 py-5"
               onClick={login}
             >
@@ -274,8 +273,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               <span className="hidden sm:inline mx-2">Login</span>
             </Button>
           ) : (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="flex items-center px-3 py-5"
               onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
             >
@@ -286,30 +285,28 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         )}
       </header>
 
-      { showNavigation && 
-      <div className="w-full flex justify-center my-6">
-        <div className="flex gap-8">
-          {navigationItems.map((item) => {
-            const isActive = pathname?.startsWith(item.href);
-            const color = isActive ? "#f59e0b" : "#6b7280";
-            
-            return (
-              <Link key={item.href} href={item.href} className="cursor-pointer">
-                <div className="flex flex-col items-center cursor-pointer">
-                  <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                    {item.icon(color)}
-                  </div>
-                  <span className={`text-sm font-ibm-plex-mono ${isActive ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                    {item.label}
-                  </span>
-                </div>
-              </Link>
-            );
-          })}
+      {showNavigation &&
+        <div className="w-full flex justify-center my-6">
+          <div className="flex gap-8">
+            {navigationItems.map((item) => {
+              const isActive = pathname?.startsWith(item.href);
+              const color = isActive ? "#f59e0b" : "#6b7280";
 
-         
+              return (
+                <Link key={item.href} href={item.href} className="cursor-pointer">
+                  <div className="flex flex-col items-center cursor-pointer">
+                    <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
+                      {item.icon(color)}
+                    </div>
+                    <span className={`text-sm font-ibm-plex-mono ${isActive ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+                      {item.label}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </div>
-      </div>
       }
 
       {/* Profile Settings Modal */}

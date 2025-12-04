@@ -190,10 +190,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       )
     )
     // Group by stake to get all intents for each stake
-    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning)
-    // Add pagination
-    .limit(limit)
-    .offset((page - 1) * limit);
+    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning);
 
   // This query finds stakes with the authenticated user's intents
   // Then we process them to find discovered users
@@ -202,7 +199,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
   // - Stakes that contain intents from other users (discovered users)
   // - Index coherence (all intents in stake exist in same index)
   // - Groups by stake to get all intents per stake
-  // - Includes pagination
+  // Note: Pagination is applied as post-filter after sorting by totalStake
 
   const results = await mainQuery;
 
@@ -352,20 +349,21 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     };
   });
 
-  // Sort by bucket first (newer first), then by stake within bucket
-  bucketedResults.sort((a, b) => {
-    // First sort by bucket (newer first)
-    if (a.bucket !== b.bucket) return a.bucket - b.bucket;
-    // Then by stake within bucket
-    return b.totalStake - a.totalStake;
-  });
+  // Sort by totalStake descending
+  bucketedResults.sort((a, b) => b.totalStake - a.totalStake);
+
+  // Apply pagination as post-filter
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedResults = bucketedResults.slice(startIndex, endIndex);
+  const totalResults = bucketedResults.length;
 
   return {
-    results: bucketedResults,
+    results: paginatedResults,
     pagination: {
       page,
       limit,
-      hasNext: results.length === limit,
+      hasNext: endIndex < totalResults,
       hasPrev: page > 1
     }
   };

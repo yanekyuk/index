@@ -54,10 +54,5 @@ describe.skipIf(!runIntegration)('Email Handlers Integration (Real Emails)', () 
         expect(true).toBe(true);
     });
 
-    afterAll(async () => {
-        const { emailQueueProcessor } = await import('../queue/email.processor');
-        await emailQueueProcessor.waitForAll();
-        // Give a little extra time for the last email to actually send
-        await wait(2000);
-    });
+
 });

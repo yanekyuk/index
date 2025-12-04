@@ -50,6 +50,9 @@ export default function InboxPage() {
   const dragCounterRef = useRef(0);
   const discoveryFormRef = useRef<DiscoveryFormRef>(null);
   const popoverControlRef = useRef<{ close: () => void } | null>(null);
+  const hasInitialFetchRef = useRef(false);
+  const isFetchingRef = useRef(false);
+  const prevFiltersRef = useRef<string>('');
 
   // Context Hooks
   const { selectedIndexIds } = useIndexFilter();
@@ -103,7 +106,7 @@ export default function InboxPage() {
         indexIds: apiIndexIds,
         intentIds: apiIntentIds,
         excludeDiscovered: true,
-        limit: 50
+        limit: 25
       });
 
       // Transform discover data
@@ -165,23 +168,35 @@ export default function InboxPage() {
     }
   }, [connectionsService, fetchSynthesis, apiIndexIds]);
 
-  // Fetch all data - initial load (clears syntheses)
-  const fetchData = useCallback(async () => {
-    setDiscoveryLoading(true);
-    setConnectionsLoading(true);
-    fetchedSynthesesRef.current.clear();
-    setSyntheses({});
+  // Unified fetch function - handles both initial load and refresh
+  const fetchData = useCallback(async (options?: {
+    showLoading?: boolean;
+    clearSyntheses?: boolean;
+  }) => {
+    // Prevent concurrent fetches
+    if (isFetchingRef.current) {
+      return;
+    }
+    isFetchingRef.current = true;
 
-    // Load discovery first (default tab), connections in background
-    fetchDiscovery();
-    fetchConnections();
-  }, [fetchDiscovery, fetchConnections]);
+    const { showLoading = true, clearSyntheses = true } = options || {};
 
-  // Refresh data - auto-refresh (preserves syntheses to avoid glitch)
-  const refreshData = useCallback(async () => {
-    // Don't show loading states or clear syntheses on refresh
-    fetchDiscovery();
-    fetchConnections();
+    try {
+      if (showLoading) {
+        setDiscoveryLoading(true);
+        setConnectionsLoading(true);
+      }
+
+      if (clearSyntheses) {
+        fetchedSynthesesRef.current.clear();
+        setSyntheses({});
+      }
+
+      // Load discovery and connections in parallel
+      await Promise.all([fetchDiscovery(), fetchConnections()]);
+    } finally {
+      isFetchingRef.current = false;
+    }
   }, [fetchDiscovery, fetchConnections]);
 
   // Tab change handler
@@ -264,13 +279,13 @@ export default function InboxPage() {
       }
 
       // Refresh data in background without loading state
-      await refreshData();
+      await fetchData({ showLoading: false, clearSyntheses: false });
     } catch (error) {
       console.error('Error handling connection action:', error);
       // Revert on error would go here, but for now we'll just refresh to get true state
       await fetchData();
     }
-  }, [connectionsService, refreshData, fetchData, inboxConnections, pendingConnections, historyConnections]);
+  }, [connectionsService, fetchData, inboxConnections, pendingConnections, historyConnections]);
 
   // Handler for opening user profile modal
   const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }) => {
@@ -301,22 +316,52 @@ export default function InboxPage() {
     }
   }, [searchParams]);
 
-  // Initial data fetch
+  // Initial data fetch - only run once on mount
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!hasInitialFetchRef.current) {
+      hasInitialFetchRef.current = true;
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  // Refetch when filters change (but not on initial mount)
+  useEffect(() => {
+    if (!hasInitialFetchRef.current) {
+      return;
+    }
+
+    // Serialize filter values for comparison
+    const currentFilters = JSON.stringify({
+      indexIds: apiIndexIds?.sort() || [],
+      intentIds: apiIntentIds?.sort() || []
+    });
+
+    // Only refetch if filters actually changed
+    if (prevFiltersRef.current !== currentFilters) {
+      prevFiltersRef.current = currentFilters;
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiIndexIds, apiIntentIds]); // Only depend on actual filter values
 
   // Auto-refresh every 5 seconds
   useEffect(() => {
     const intervalId = setInterval(() => {
+      // Don't trigger if there's a pending request
+      if (isFetchingRef.current) {
+        return;
+      }
+
       const timeSinceLastRefresh = Date.now() - lastRefreshTimeRef.current;
       if (timeSinceLastRefresh >= 5000) {
-        refreshData();
+        // Auto-refresh: preserve syntheses and don't show loading to avoid UI glitches
+        fetchData({ showLoading: false, clearSyntheses: false });
       }
-    }, 5000);
+    }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [refreshData]);
+  }, [fetchData]);
 
   // Drag and drop for file upload
   useEffect(() => {
@@ -555,15 +600,15 @@ export default function InboxPage() {
                   <button
                     onClick={() => setRequestsView('received')}
                     className={`font-ibm-plex-mono px-6 py-2 border border-black  border-b-2 border-r-0 flex items-center gap-2 ${requestsView === 'received'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-black hover:bg-gray-50'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-black hover:bg-gray-50'
                       }`}
                   >
                     Inbox
                     {inboxConnections.length > 0 && (
                       <span className={`text-xs px-2 py-1 rounded ${requestsView === 'received'
-                          ? 'bg-white text-black'
-                          : 'bg-black text-white'
+                        ? 'bg-white text-black'
+                        : 'bg-black text-white'
                         }`}>
                         {inboxConnections.length}
                       </span>
@@ -572,15 +617,15 @@ export default function InboxPage() {
                   <button
                     onClick={() => setRequestsView('sent')}
                     className={`font-ibm-plex-mono px-6 py-2 border border-black border-b-2 border-r-0 border-l-0 flex items-center gap-2 ${requestsView === 'sent'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-black hover:bg-gray-50'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-black hover:bg-gray-50'
                       }`}
                   >
                     Sent
                     {pendingConnections.length > 0 && (
                       <span className={`text-xs px-2 py-1 rounded ${requestsView === 'sent'
-                          ? 'bg-white text-black'
-                          : 'bg-black text-white'
+                        ? 'bg-white text-black'
+                        : 'bg-black text-white'
                         }`}>
                         {pendingConnections.length}
                       </span>
@@ -589,15 +634,15 @@ export default function InboxPage() {
                   <button
                     onClick={() => setRequestsView('history')}
                     className={`font-ibm-plex-mono px-6 py-2 border border-b-2 border-black border-l-0 flex items-center gap-2 ${requestsView === 'history'
-                        ? 'bg-black text-white'
-                        : 'bg-white text-black hover:bg-gray-50'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-black hover:bg-gray-50'
                       }`}
                   >
                     History
                     {historyConnections.length > 0 && (
                       <span className={`text-xs px-2 py-1 rounded ${requestsView === 'history'
-                          ? 'bg-white text-black'
-                          : 'bg-black text-white'
+                        ? 'bg-white text-black'
+                        : 'bg-black text-white'
                         }`}>
                         {historyConnections.length}
                       </span>

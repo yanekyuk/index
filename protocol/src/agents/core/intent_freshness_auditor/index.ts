@@ -6,7 +6,7 @@
  */
 
 import db from '../../../lib/db';
-import { intents } from '../../../lib/schema';
+import { intents, users } from '../../../lib/schema';
 import { isNull, eq } from 'drizzle-orm';
 import { traceableStructuredLlm } from '../../../lib/agents';
 import { z } from 'zod';
@@ -58,23 +58,30 @@ EVERGREEN INTENTS (rarely expire without explicit markers):
 - Building long-term projects or companies
 - Core professional identity statements
 
+INTRO COMPATIBILITY - If the user has an intro (bio), old intents that are incompatible with the intro should be expired:
+- If the intro describes a different role, company, or focus than the intent, the intent is likely outdated
+- If the intro indicates the user has moved on from what the intent describes, mark it expired
+- If the intro contradicts the intent (e.g., intro says "currently building X" but intent says "looking to build Y"), expire the intent
+
 EXPIRATION GUIDELINES:
 - A "looking for work" intent from 4+ months ago is likely stale (either found work or gave up)
 - A "seeking co-founder" intent from 6+ months ago is probably outdated
 - An event attendance from 2+ weeks ago is definitely expired
 - General interests and expertise are evergreen regardless of age
 - Consider context: "building X" is ongoing, "looking to build X" may expire
+- If user has an intro that contradicts or supersedes the intent, expire it
 
 An intent is NOT EXPIRED if:
 - It's evergreen in nature (expertise, interests, ongoing projects)
 - It's recent enough for its type (job search under 2 months, etc.)
 - Context suggests ongoing relevance
 - It's a statement of capability rather than seeking
+- It's compatible with the user's current intro
 
 Confidence scoring:
-- 90-100: Clear expired temporal markers OR obviously stale for its intent type
-- 75-89: Strong signals of expiration (time-sensitive intent that's aged out)
-- 70-74: Probable expiration (intent type + age suggest staleness)
+- 90-100: Clear expired temporal markers OR obviously stale for its intent type OR incompatible with intro
+- 75-89: Strong signals of expiration (time-sensitive intent that's aged out or intro incompatibility)
+- 70-74: Probable expiration (intent type + age suggest staleness or minor intro conflicts)
 - Below 70: Not confident enough to archive
 
 Be thoughtful about intent types but err on the side of caution.`;
@@ -84,11 +91,12 @@ Be thoughtful about intent types but err on the side of caution.`;
  */
 export async function auditIntentFreshness(intentId: string): Promise<FreshnessResult> {
   try {
-    // Fetch intent
+    // Fetch intent with user info
     const intentRows = await db.select({
       id: intents.id,
       payload: intents.payload,
-      createdAt: intents.createdAt
+      createdAt: intents.createdAt,
+      userId: intents.userId
     })
       .from(intents)
       .where(eq(intents.id, intentId))
@@ -99,6 +107,13 @@ export async function auditIntentFreshness(intentId: string): Promise<FreshnessR
     }
 
     const intent = intentRows[0];
+
+    // Fetch user intro if available
+    const userRows = await db.select({ intro: users.intro })
+      .from(users)
+      .where(eq(users.id, intent.userId))
+      .limit(1);
+    const userIntro = userRows[0]?.intro;
 
     const FreshnessSchema = z.object({
       isExpired: z.boolean().describe("Whether the intent has expired"),
@@ -113,9 +128,9 @@ export async function auditIntentFreshness(intentId: string): Promise<FreshnessR
       content: `Analyze this intent for expiration:
 
 Intent: "${intent.payload}"
-Created: ${timeAgo}
+Created: ${timeAgo}${userIntro ? `\n\nUser Intro (Bio): "${userIntro}"` : ''}
 
-Is this intent expired? Provide confidence score.`
+Is this intent expired? ${userIntro ? 'Consider if the intent is incompatible with the user\'s current intro.' : ''} Provide confidence score.`
     };
     
 
@@ -128,7 +143,6 @@ Is this intent expired? Provide confidence score.`
       }
     );
 
-    console.log('🔍 Calling intent freshness auditor...', JSON.stringify([{ role: "system", content: SYSTEM_PROMPT }, userMessage], null, 2));
     const response = await freshnessCall(
       [{ role: "system", content: SYSTEM_PROMPT }, userMessage],
       FreshnessSchema
@@ -139,7 +153,6 @@ Is this intent expired? Provide confidence score.`
       confidenceScore: response.confidenceScore
     };
   } catch (error) {
-    console.error(`Error auditing intent ${intentId}:`, error);
     throw error;
   }
 }
@@ -157,23 +170,40 @@ async function archiveIntent(intentId: string, userId: string): Promise<void> {
     })
     .where(eq(intents.id, intentId));
 
-  // Trigger centralized intent archived event
-  Events.Intent.onArchived({
-    intentId,
-    userId
+
+}
+
+/**
+ * Process a single intent with timeout
+ */
+async function processIntentWithTimeout(intent: { id: string; userId: string }, timeoutMs: number): Promise<{ archived: boolean }> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
   });
+
+  const processPromise = (async () => {
+    const result = await auditIntentFreshness(intent.id);
+    
+    if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
+      await archiveIntent(intent.id, intent.userId);
+      return { archived: true };
+    }
+    
+    return { archived: false };
+  })();
+
+  return Promise.race([processPromise, timeoutPromise]);
 }
 
 /**
  * Audit all non-archived intents and archive expired ones
+ * Maintains 100 concurrent operations at any time
  */
 export async function auditAllIntents(): Promise<{
   audited: number;
   archived: number;
   errors: number;
 }> {
-  console.log('🔍 Starting intent freshness audit...');
-
   const allIntents = await db.select({
     id: intents.id,
     userId: intents.userId,
@@ -183,72 +213,53 @@ export async function auditAllIntents(): Promise<{
     .from(intents)
     .where(isNull(intents.archivedAt));
 
-  console.log(`📊 Found ${allIntents.length} non-archived intents to audit`);
-
-  const CHUNK_SIZE = 100;
+  const CONCURRENT_LIMIT = 100;
+  const TIMEOUT_MS = 40000;
   let totalAudited = 0;
   let totalArchived = 0;
   let totalErrors = 0;
+  let intentIndex = 0;
 
-  // Process in chunks of 100
-  for (let i = 0; i < allIntents.length; i += CHUNK_SIZE) {
-    const chunk = allIntents.slice(i, i + CHUNK_SIZE);
-    const chunkNum = Math.floor(i / CHUNK_SIZE) + 1;
-    const totalChunks = Math.ceil(allIntents.length / CHUNK_SIZE);
+  const activePromises = new Set<Promise<void>>();
+
+  console.log(`Starting audit of ${allIntents.length} intents with concurrency limit ${CONCURRENT_LIMIT}...`);
+
+  // Process intents concurrently, maintaining CONCURRENT_LIMIT active operations
+  while (intentIndex < allIntents.length || activePromises.size > 0) {
+    // Start new operations up to the limit
+    while (activePromises.size < CONCURRENT_LIMIT && intentIndex < allIntents.length) {
+      const intent = allIntents[intentIndex++];
+      
+      const promise = processIntentWithTimeout(intent, TIMEOUT_MS)
+        .then((result) => {
+          totalAudited++;
+          if (result.archived) {
+            totalArchived++;
+          }
+        })
+        .catch((error) => {
+          totalErrors++;
+          console.error(`Error processing intent ${intent.id}:`, error.message);
+        })
+        .finally(() => {
+          activePromises.delete(promise);
+        });
+
+      activePromises.add(promise);
+    }
+
+    // Wait for at least one operation to complete before starting more
+    if (activePromises.size > 0) {
+      await Promise.race(Array.from(activePromises));
+    }
     
-    console.log(`\n📦 Processing chunk ${chunkNum}/${totalChunks} (${chunk.length} intents)...`);
-
-    const results = await Promise.allSettled(
-      chunk.map(async (intent) => {
-        const result = await auditIntentFreshness(intent.id);
-        
-        // Get time ago for this intent
-        const intentData = await db.select({ createdAt: intents.createdAt })
-          .from(intents)
-          .where(eq(intents.id, intent.id))
-          .limit(1);
-        const timeAgo = intentData[0] ? format(intentData[0].createdAt) : 'unknown';
-        
-        // Always log the full analysis for debugging
-        console.log('\n' + '='.repeat(80));
-        console.log(`📝 Intent: "${intent.summary}`);
-        console.log(`⏰ Created: ${timeAgo}`);
-        console.log(`❓ Is Expired: ${result.isExpired ? '✅ YES' : '❌ NO'}`);
-        console.log(`📊 Confidence: ${result.confidenceScore}%`);
-        
-        if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
-          console.log(`🗑️  ACTION: Archiving (above ${CONFIDENCE_THRESHOLD}% threshold)`);
-          await archiveIntent(intent.id, intent.userId);
-          return { archived: true };
-        } else if (result.isExpired) {
-          console.log(`⏭️  ACTION: Skipping (below ${CONFIDENCE_THRESHOLD}% confidence threshold)`);
-        } else {
-          console.log(`✨ ACTION: Keeping (not expired)`);
-        }
-        console.log('='.repeat(80));
-        
-        return { archived: false };
-      })
-    );
-
-    const chunkAudited = results.filter(r => r.status === 'fulfilled').length;
-    const chunkArchived = results.filter(r => r.status === 'fulfilled' && r.value.archived).length;
-    const chunkErrors = results.filter(r => r.status === 'rejected').length;
-
-    results.forEach((result, idx) => {
-      if (result.status === 'rejected') {
-        console.error(`❌ Error processing intent ${chunk[idx].id}:`, result.reason);
-      }
-    });
-
-    totalAudited += chunkAudited;
-    totalArchived += chunkArchived;
-    totalErrors += chunkErrors;
-
-    console.log(`✅ Chunk ${chunkNum} complete: ${chunkAudited} audited, ${chunkArchived} archived, ${chunkErrors} errors`);
+    // Log progress occasionally (every 100 processed)
+    if (totalAudited % 100 === 0 && totalAudited > 0) {
+       console.log(`Progress: audited=${totalAudited}, archived=${totalArchived}, errors=${totalErrors}`);
+    }
   }
 
-  console.log(`\n✅ Audit complete: ${totalAudited} audited, ${totalArchived} archived, ${totalErrors} errors`);
+  console.log(`Final Summary: audited=${totalAudited}, archived=${totalArchived}, errors=${totalErrors}`);
 
   return { audited: totalAudited, archived: totalArchived, errors: totalErrors };
 }
