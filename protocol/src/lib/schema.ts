@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -171,7 +171,10 @@ export const userConnectionEvents = pgTable('user_connection_events', {
   eventType: connectionAction('connection_action').notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => ({
+  initiatorIdx: index('user_connection_events_initiator_idx').on(table.initiatorUserId),
+  receiverIdx: index('user_connection_events_receiver_idx').on(table.receiverUserId),
+}));
 
 export const userIntegrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),

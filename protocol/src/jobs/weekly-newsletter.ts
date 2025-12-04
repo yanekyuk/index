@@ -60,19 +60,54 @@ async function hasConnectionEvent(user1Id: string, user2Id: string) {
     return events.length > 0;
 }
 
+// Helper to parse cron string "m h dom mon dow"
+function parseNewsletterSchedule() {
+    const schedule = process.env.WEEKLY_NEWSLETTER_CRON_DATE || '0 9 * * 1';
+    const parts = schedule.split(' ');
+    // Default to Monday 9am if invalid
+    let targetDay = 1; // Monday
+    let targetHour = 9;
+    let targetMinute = 0;
+
+    if (parts.length >= 5) {
+        const m = parseInt(parts[0], 10);
+        const h = parseInt(parts[1], 10);
+        const d = parseInt(parts[4], 10);
+        if (!isNaN(h) && !isNaN(d)) {
+            targetHour = h;
+            targetDay = d === 7 ? 0 : d; // Normalize 7 to 0 (Sunday)
+            targetMinute = m;
+        }
+    }
+    return { targetDay, targetHour, targetMinute };
+}
+
 export async function sendWeeklyNewsletter(now: Date = new Date()) {
     console.log('Starting weekly newsletter job...');
     try {
-        // Optimization: Only run if it's possible to be Monday 9 AM anywhere on Earth
-        // Window: Sunday 19:00 UTC (UTC+14) to Monday 21:00 UTC (UTC-12)
+        const { targetDay, targetHour, targetMinute } = parseNewsletterSchedule();
+
+        // Optimization: Only run if it's possible to be TargetDay TargetHour anywhere on Earth
+        // Window: TargetUTC - 14h to TargetUTC + 12h
         const utcDay = now.getUTCDay(); // 0 = Sunday, 1 = Monday
         const utcHour = now.getUTCHours();
+        const utcMinute = now.getUTCMinutes();
 
-        const isSundayLate = utcDay === 0 && utcHour >= 19;
-        const isMondayEarly = utcDay === 1 && utcHour <= 21;
+        const currentWeeklyHour = utcDay * 24 + utcHour;
+        const targetWeeklyHour = targetDay * 24 + targetHour;
+        const hoursInWeek = 168;
 
-        if (!isSundayLate && !isMondayEarly) {
-            // console.log('Skipping weekly newsletter job - Outside of global Monday 9 AM window');
+        // Calculate difference accounting for week wrap
+        // diff will be (current - target) in hours
+        let diff = (currentWeeklyHour - targetWeeklyHour + hoursInWeek) % hoursInWeek;
+        // Normalize to [-hoursInWeek/2, hoursInWeek/2] to handle wrap around
+        if (diff > hoursInWeek / 2) diff -= hoursInWeek;
+
+        // Check if we are within the window [-14, +12]
+        // -14 means current is 14 hours BEFORE target (UTC+14 is at target)
+        // +12 means current is 12 hours AFTER target (UTC-12 is at target)
+        if (diff < -14 || diff > 12) {
+            // console.log('Skipping weekly newsletter job - Outside of global window');
             return;
         }
 
@@ -161,7 +196,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
                 continue;
             }
 
-            // Check if it's Monday 9 AM in the user's timezone
+            // Check if it's Target Day and Target Hour in the user's timezone
             const userTimezone = data.user.userTimezone || 'UTC';
             // const now = new Date(); // Use the passed 'now'
             const zonedDate = toZonedTime(now, userTimezone);
@@ -170,10 +205,14 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // format(zonedDate, 'H', { timeZone: userTimezone }) -> '9' for 9 AM
             const dayOfWeek = format(zonedDate, 'i', { timeZone: userTimezone });
             const hour = format(zonedDate, 'H', { timeZone: userTimezone });
+            const minute = format(zonedDate, 'm', { timeZone: userTimezone });
 
-            // Monday is '1' in date-fns (ISO week)
-            if (dayOfWeek !== '1' || hour !== '9') {
-                // console.log(`Skipping ${data.user.userEmail} (Timezone: ${userTimezone}) - Local time is ${dayOfWeek} ${hour}:00`);
+            // format 'i' returns 1(Mon)..7(Sun)
+            // targetDay is 0(Sun)..6(Sat)
+            const targetDayISO = targetDay === 0 ? '7' : targetDay.toString();
+
+            if (dayOfWeek !== targetDayISO || parseInt(hour, 10) !== targetHour || parseInt(minute, 10) !== targetMinute) {
+                // console.log(`Skipping ${data.user.userEmail} (Timezone: ${userTimezone}) - Local time is ${dayOfWeek} ${hour}:${minute}`);
                 continue;
             }
 
@@ -209,11 +248,12 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
     }
 }
 
-// Schedule: Every hour
+// Schedule: Every hour at the configured minute
 export const initWeeklyNewsletterJob = () => {
-    // Run every hour at minute 0
-    cron.schedule('0 * * * *', () => {
+    const { targetMinute } = parseNewsletterSchedule();
+    // Run every hour at the configured minute
+    cron.schedule(`${targetMinute} * * * *`, () => {
         sendWeeklyNewsletter();
     });
-    console.log('📅 Weekly newsletter job scheduled (Hourly check)');
+    console.log(`📅 Weekly newsletter job scheduled (Hourly check at minute ${targetMinute})`);
 };
