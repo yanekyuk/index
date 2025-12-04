@@ -62,6 +62,8 @@ export class QueueProcessor {
 
     distributionLoop().catch(error => {
       // Distribution loop crashed
+      console.error(`Distribution loop crashed:`, error);
+      this.isRunning = false;
     });
   }
 

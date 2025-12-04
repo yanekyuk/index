@@ -167,7 +167,7 @@ async function main() {
         if (bobFound) {
             console.log(`✅ Alice discovered Bob!`);
             console.log(`   Total Stake: ${bobFound.totalStake}`);
-            console.log(`   Reasoning: ${bobFound.intents[0].reasonings[0]}`);
+            console.log(`   Reasoning: ${bobFound.intents?.[0]?.reasonings?.[0] ?? 'N/A'}`);
         } else {
             console.error(`❌ Alice did NOT discover Bob. Discovery results:`, JSON.stringify(discoveryResults.results.map(r => r.user.name), null, 2));
             // Don't fail hard, proceed to email test if possible
