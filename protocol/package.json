@@ -65,7 +65,6 @@
     "timeago.js": "^4.0.2",
     "unstructured-client": "^0.27.0",
     "uuid": "^11.1.0",
-    "vitest": "^4.0.15",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -83,7 +82,8 @@
     "eslint": "^8.56.0",
     "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.15"
   },
   "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
 }
