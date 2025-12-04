@@ -136,7 +136,7 @@ export async function generateSummaryWithIntents(
     // Create task with events enabled using beta API
     const taskRun = await parallelClient.beta.taskRun.create({
       input: cleanedInput,
-      processor: 'base',
+      processor: 'core-fast',
       enable_events: true,
       betas: ['events-sse-2025-07-24'],
       task_spec: {

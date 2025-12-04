@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -104,7 +104,9 @@ export const intents = pgTable('intents', {
   sourceType: sourceType('source_type'),
   // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
   embedding: vector('embedding', { dimensions: 2000 }),
-});
+}, (table) => [
+  index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
+]);
 
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),

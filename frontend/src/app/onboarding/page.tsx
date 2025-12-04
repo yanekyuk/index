@@ -349,8 +349,8 @@ export default function OnboardingPage() {
         return;
       }
       
-      // Start with profile if intro not filled
-      if (!user.intro) {
+      // If no step info saved, always start with profile (step one)
+      if (!user.onboarding?.currentStep) {
         setCurrentStep('profile');
         return;
       }
