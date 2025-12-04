@@ -125,6 +125,9 @@ export default function OnboardingPage() {
   // Public indexes for join_indexes step
   const [publicIndexes, setPublicIndexes] = useState<Array<Index>>([]);
   const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
+  // User's already joined indexes (including private ones)
+  const [joinedIndexes, setJoinedIndexes] = useState<Array<Index>>([]);
+  const [joinedIndexesLoaded, setJoinedIndexesLoaded] = useState(false);
   const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
 
   // Mock indexes for the final step (fallback if no public indexes)
@@ -444,24 +447,42 @@ export default function OnboardingPage() {
     }
   }, [currentStep, api]);
 
-  // Load public indexes when on join_indexes step
+  // Load public indexes and user's joined indexes when on join_indexes step
   useEffect(() => {
-    const loadPublicIndexes = async () => {
-      if (currentStep === 'join_indexes' && !publicIndexesLoaded) {
-        try {
-          const response = await indexService.discoverPublicIndexes(1, 20);
-          setPublicIndexes(response.data || []);
-          setPublicIndexesLoaded(true);
-        } catch (error) {
-          console.error('Failed to load public indexes:', error);
-          // Keep mock data as fallback
-          setPublicIndexesLoaded(true);
+    const loadIndexes = async () => {
+      if (currentStep === 'join_indexes') {
+        // Load public indexes
+        if (!publicIndexesLoaded) {
+          try {
+            const response = await indexService.discoverPublicIndexes(1, 20);
+            setPublicIndexes(response.data || []);
+            setPublicIndexesLoaded(true);
+          } catch (error) {
+            console.error('Failed to load public indexes:', error);
+            setPublicIndexesLoaded(true);
+          }
+        }
+
+        // Load user's already joined indexes (includes private ones they've joined)
+        if (!joinedIndexesLoaded) {
+          try {
+            const response = await indexService.getIndexes(1, 50);
+            // Filter to only include private indexes (invite_only) that user has joined
+            const privateJoined = (response.data || []).filter(index => 
+              index.permissions?.joinPolicy === 'invite_only'
+            );
+            setJoinedIndexes(privateJoined);
+            setJoinedIndexesLoaded(true);
+          } catch (error) {
+            console.error('Failed to load joined indexes:', error);
+            setJoinedIndexesLoaded(true);
+          }
         }
       }
     };
 
-    loadPublicIndexes();
-  }, [currentStep, publicIndexesLoaded, indexService]);
+    loadIndexes();
+  }, [currentStep, publicIndexesLoaded, joinedIndexesLoaded, indexService]);
 
   // Load index summary when reaching invite_members step and reload every second
   useEffect(() => {
@@ -1757,21 +1778,45 @@ export default function OnboardingPage() {
         );
 
       case 'join_indexes':
-        const indexesToShow = publicIndexes.length > 0 ? publicIndexes : mockIndexes.map(m => ({
-          id: m.id,
-          title: m.name,
-          prompt: m.description,
-          permissions: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          user: { id: '', name: '', email: null, avatar: null },
-          _count: { members: m.members, files: 0 },
-          isMember: false
-        }));
+        // Combine public indexes and user's already-joined private indexes
+        // Deduplicate by ID, prioritizing membership status from joinedIndexes
+        const allIndexesMap = new Map<string, Index>();
+        
+        // Add public indexes first
+        publicIndexes.forEach(index => {
+          allIndexesMap.set(index.id, { ...index, isMember: index.isMember || false });
+        });
+        
+        // Add user's joined private indexes (mark as member)
+        // If an index already exists, update it to ensure isMember is true
+        joinedIndexes.forEach(index => {
+          const existing = allIndexesMap.get(index.id);
+          if (existing) {
+            // Update existing entry to mark as member
+            allIndexesMap.set(index.id, { ...existing, isMember: true });
+          } else {
+            // Add new private index that user has joined
+            allIndexesMap.set(index.id, { ...index, isMember: true });
+          }
+        });
+        
+        const indexesToShow = allIndexesMap.size > 0 
+          ? Array.from(allIndexesMap.values())
+          : mockIndexes.map(m => ({
+              id: m.id,
+              title: m.name,
+              prompt: m.description,
+              permissions: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              user: { id: '', name: '', email: null, avatar: null },
+              _count: { members: m.members, files: 0 },
+              isMember: false
+            }));
 
         const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
           // Skip if this is mock data
-          if (!publicIndexes.length && mockIndexes.find(m => m.id === index.id)) {
+          if (allIndexesMap.size === 0 && mockIndexes.find(m => m.id === index.id)) {
             // Just toggle for mock data
             setSelectedIndexes(prev => {
               const next = new Set(prev);
@@ -1795,10 +1840,22 @@ export default function OnboardingPage() {
             await indexService.joinIndex(index.id);
             setSelectedIndexes(prev => new Set(prev).add(index.id));
             success(`Joined ${index.title}!`);
-            // Update the index in the list
+            // Update the index in both lists
             setPublicIndexes(prev => prev.map(idx => 
               idx.id === index.id ? { ...idx, isMember: true } : idx
             ));
+            // If it's a private index, also add it to joinedIndexes
+            if (index.permissions?.joinPolicy === 'invite_only') {
+              setJoinedIndexes(prev => {
+                const exists = prev.find(idx => idx.id === index.id);
+                if (!exists) {
+                  return [...prev, { ...index, isMember: true }];
+                }
+                return prev.map(idx => 
+                  idx.id === index.id ? { ...idx, isMember: true } : idx
+                );
+              });
+            }
             // Refresh indexes context
             await refreshIndexes();
           } catch (err) {
@@ -1818,7 +1875,7 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            {!publicIndexesLoaded ? (
+            {(!publicIndexesLoaded || !joinedIndexesLoaded) ? (
               <div className="flex justify-center pb-12">
                 <div className="h-8 w-8 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
               </div>
