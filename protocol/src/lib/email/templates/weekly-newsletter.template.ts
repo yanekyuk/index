@@ -5,10 +5,18 @@ export interface Match {
 }
 
 export const weeklyNewsletterTemplate = (recipientName: string, matches: Match[]) => {
+  const escapeHtml = (str: string) => {
+    return str.replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   const matchesHtml = matches.map((match) => `
     <div style="margin-bottom: 20px;">
-      <p><strong>${match.name}${match.role ? ` — <em>${match.role}</em>` : ''}</strong></p>
-      <p>${match.reasoning}</p>
+      <p><strong>${escapeHtml(match.name)}${match.role ? ` — <em>${escapeHtml(match.role)}</em>` : ''}</strong></p>
+      <p>${escapeHtml(match.reasoning)}</p>
     </div>
   `).join('');
 

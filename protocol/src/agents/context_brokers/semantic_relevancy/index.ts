@@ -568,7 +568,7 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
     );
 
     const callWithRetry = withTimeoutAndRetry(reasoningCall, {
-      timeoutMs: 10000, // 30 seconds timeout
+      timeoutMs: 10000, // 10 seconds timeout
       maxRetries: 2,
       retryDelayMs: 1000
     });
