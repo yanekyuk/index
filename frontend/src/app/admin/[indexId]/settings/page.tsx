@@ -18,13 +18,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
 import { INTEGRATIONS } from '@/config/integrations';
-
-interface Member {
-  id: string;
-  name: string;
-  permissions: string[];
-  avatar?: string;
-}
+import { Member } from '@/services/indexes';
 
 interface IntegrationItem {
   id: string | null;
@@ -157,6 +151,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
       setSuggestedUsers(users.map(user => ({
         id: user.id,
         name: user.name,
+        email: user.email,
         avatar: user.avatar,
         permissions: []
       })));
