@@ -132,6 +132,7 @@ export default function FeedbackWidget() {
           
           {selectedImage && (
             <div className="relative w-full h-24 mb-3 bg-gray-50 rounded border border-gray-100 flex items-center justify-center overflow-hidden group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={selectedImage} alt="Preview" className="h-full object-contain" />
               <button
                 onClick={() => setSelectedImage(undefined)}
