@@ -5,6 +5,7 @@ export class EmailQueueProcessor {
     private isRunning = false;
     private processingPromise: Promise<void> | null = null;
     private readonly RATE_LIMIT_MS = 500; // 2 requests per second
+    private inFlight = 0;
 
     start() {
         if (this.isRunning) return;
@@ -38,19 +39,22 @@ export class EmailQueueProcessor {
     }
 
     private async processJob(job: EmailJob) {
+        this.inFlight++;
         try {
             console.log(`Processing email job ${job.id} for ${job.data.to}`);
             await executeSendEmail(job.data);
         } catch (error) {
             console.error(`Failed to process email job ${job.id}:`, error);
             // Ideally we would have retry logic here, but for now we just log
+        } finally {
+            this.inFlight--;
         }
     }
 
     // Helper for testing to wait until queue is empty
     async waitForAll() {
         let size = await emailQueue.getQueueSize();
-        while (size > 0) {
+        while (size > 0 || this.inFlight > 0) {
             await new Promise(resolve => setTimeout(resolve, 100));
             size = await emailQueue.getQueueSize();
         }
