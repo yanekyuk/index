@@ -12,14 +12,35 @@ import {
 export type { Index };
 
 // Member interface for API responses
-interface Member {
+export interface Member {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  avatar?: string | null;
+  intro?: string | null;
+  location?: string | null;
+  socials?: {
+    x?: string;
+    linkedin?: string;
+    github?: string;
+    websites?: string[];
+  } | null;
   permissions: string[];
+  metadata?: Record<string, string | string[]> | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+// Response interface for getMembers with pagination
+export interface GetMembersResponse {
+  members: Member[];
+  metadataKeys: string[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 // Legacy interface for backward compatibility
@@ -128,14 +149,44 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get members of an index
-  getMembers: async (indexId: string, searchQuery?: string): Promise<Member[]> => {
-    const params = new URLSearchParams();
-    if (searchQuery) {
-      params.append('q', searchQuery);
+  getMembers: async (
+    indexId: string, 
+    options?: {
+      searchQuery?: string;
+      page?: number;
+      limit?: number;
+      metadataFilters?: Record<string, string[]>;
     }
-    const url = `/indexes/${indexId}/members${searchQuery ? `?${params.toString()}` : ''}`;
-    const response = await api.get<{ members: Member[] }>(url);
-    return response.members || [];
+  ): Promise<GetMembersResponse> => {
+    const params = new URLSearchParams();
+    
+    if (options?.searchQuery) {
+      params.append('q', options.searchQuery);
+    }
+    
+    if (options?.page) {
+      params.append('page', options.page.toString());
+    }
+    
+    if (options?.limit) {
+      params.append('limit', options.limit.toString());
+    }
+    
+    // Add metadata filters
+    if (options?.metadataFilters) {
+      for (const [key, values] of Object.entries(options.metadataFilters)) {
+        values.forEach(value => params.append(key, value));
+      }
+    }
+    
+    const url = `/indexes/${indexId}/members${params.toString() ? `?${params.toString()}` : ''}`;
+    const response = await api.get<GetMembersResponse>(url);
+    
+    return {
+      members: response.members || [],
+      metadataKeys: response.metadataKeys || [],
+      pagination: response.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 }
+    };
   },
 
   // Permissions Management

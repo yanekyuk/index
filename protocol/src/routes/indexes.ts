@@ -1070,7 +1070,9 @@ router.get('/:id/members',
   authenticatePrivy,
   [
     param('id').isUUID(),
-    query('q').optional().isString()
+    query('q').optional().isString(),
+    query('page').optional().isInt({ min: 1 }).toInt(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -1081,32 +1083,109 @@ router.get('/:id/members',
 
       const { id } = req.params;
       const searchQuery = req.query.q as string | undefined;
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 20;
+      const offset = (page - 1) * limit;
 
       const accessCheck = await checkUserIndexAccess(id, req.user!.id);
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
-      // Build the where clause with optional search filter
-      const whereConditions = [eq(indexMembers.indexId, id)];
-      if (searchQuery && searchQuery.trim()) {
-        whereConditions.push(ilike(users.name, `%${searchQuery.trim()}%`));
+      // Extract metadata filters from query params (any param not in the standard list)
+      const metadataFilters: Record<string, string[]> = {};
+      const standardParams = ['q', 'page', 'limit'];
+      
+      for (const [key, value] of Object.entries(req.query)) {
+        if (!standardParams.includes(key) && value) {
+          // Support both single values and arrays
+          metadataFilters[key] = Array.isArray(value) ? value as string[] : [value as string];
+        }
       }
 
+      // Build the where clause with optional search and metadata filters
+      const whereConditions = [eq(indexMembers.indexId, id)];
+      
+      // Search filter - search in name, email, and metadata values
+      if (searchQuery && searchQuery.trim()) {
+        const searchTerm = `%${searchQuery.trim()}%`;
+        whereConditions.push(
+          or(
+            ilike(users.name, searchTerm),
+            ilike(users.email, searchTerm),
+            sql`EXISTS (
+              SELECT 1 FROM jsonb_each_text(${indexMembers.metadata}::jsonb)
+              WHERE value ILIKE ${searchTerm}
+            )`
+          )!
+        );
+      }
+
+      // Metadata filters - each key must match one of the provided values
+      for (const [key, values] of Object.entries(metadataFilters)) {
+        if (values.length > 0) {
+          whereConditions.push(
+            sql`EXISTS (
+              SELECT 1 FROM jsonb_each_text(${indexMembers.metadata}::jsonb)
+              WHERE key = ${key} AND value = ANY(${values}::text[])
+            )`
+          );
+        }
+      }
+
+      // Get total count for pagination
+      const totalResult = await db.select({ count: count() })
+        .from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(and(...whereConditions));
+      
+      const total = Number(totalResult[0]?.count || 0);
+      const totalPages = Math.ceil(total / limit);
+
+      // Get members with full user data and metadata
       const members = await db.select({
         id: users.id,
         name: users.name,
+        email: users.email,
         avatar: users.avatar,
+        intro: users.intro,
+        location: users.location,
+        socials: users.socials,
         permissions: indexMembers.permissions,
+        metadata: indexMembers.metadata,
         createdAt: indexMembers.createdAt,
         updatedAt: indexMembers.updatedAt
       }).from(indexMembers)
         .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(...whereConditions))
         .orderBy(desc(indexMembers.createdAt))
-        .limit(5);
+        .limit(limit)
+        .offset(offset);
 
-      return res.json({ members });
+      // Get all unique metadata keys for this index
+      const metadataKeysResult = await db.select({
+        metadata: indexMembers.metadata
+      }).from(indexMembers)
+        .where(eq(indexMembers.indexId, id));
+      
+      const metadataKeysSet = new Set<string>();
+      for (const row of metadataKeysResult) {
+        if (row.metadata && typeof row.metadata === 'object') {
+          Object.keys(row.metadata).forEach(key => metadataKeysSet.add(key));
+        }
+      }
+      const metadataKeys = Array.from(metadataKeysSet).sort();
+
+      return res.json({ 
+        members,
+        metadataKeys,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages
+        }
+      });
     } catch (error) {
       console.error('Get members error:', error);
       return res.status(500).json({ error: 'Failed to get members' });

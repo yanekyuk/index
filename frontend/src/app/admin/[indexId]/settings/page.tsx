@@ -109,7 +109,8 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
   const loadMembers = useCallback(async (searchQuery?: string) => {
     if (!indexId || !user?.id) return;
     try {
-      const membersList = await indexesService.getMembers(indexId, searchQuery);
+      const response = await indexesService.getMembers(indexId, { searchQuery });
+      const membersList = response.members;
       setMembers(membersList);
       
       // Find current user's permissions
