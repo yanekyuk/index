@@ -37,14 +37,14 @@ ${match.reasoning}
         
         <div style="margin: 20px 0;">
           <span style="font-size: 1.2em; vertical-align: middle; margin-right: 5px;">👉</span>
-          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000;">Go to your Inbox</a>
+          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
         </div>
         
         ${matchesHtml}
         
         <div style="margin: 20px 0;">
           <span style="font-size: 1.2em; vertical-align: middle; margin-right: 5px;">👉</span>
-          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000;">Go to your Inbox</a>
+          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
         </div>
         
         <p>—Index, keeping your next moves within reach</p>

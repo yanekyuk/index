@@ -1,6 +1,6 @@
 export const connectionDeclinedTemplate = (senderName: string) => ({
-    subject: `No connection this time — and that's totally fine`,
-    html: `
+  subject: `No connection this time — and that's totally fine`,
+  html: `
     <div style="font-family: Arial, sans-serif;">
       <p>Hey ${senderName},</p>
       <p>Just a quick note — your connection request isn't looking to connect right now.</p>
@@ -10,11 +10,11 @@ export const connectionDeclinedTemplate = (senderName: string) => ({
       <p>—Your discovery agent, always listening</p>
       
       <div style="margin-top: 30px;">
-        <a href="https://index.network" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Update on Index</a>
+        <a href="https://index.network" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Update on Index</a>
       </div>
     </div>
   `,
-    text: `Hey ${senderName},
+  text: `Hey ${senderName},
 
 Just a quick note — your connection request isn't looking to connect right now.
 
