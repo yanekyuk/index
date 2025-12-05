@@ -43,13 +43,6 @@ export interface GetMembersResponse {
   };
 }
 
-// Legacy interface for backward compatibility
-export interface SuggestedIntent {
-  id: string;
-  payload: string;
-  isAdded?: boolean;
-}
-
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
@@ -310,7 +303,6 @@ export const indexesService = {
   deleteIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   addMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   removeMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  addSuggestedIntent: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); }
 };
 
 // Hook for using indexes service with proper error handling

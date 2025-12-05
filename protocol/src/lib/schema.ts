@@ -293,7 +293,7 @@ const linksTable = pgTable('links', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
-// Backward-compatible export names
+// Export aliases for the links table
 export const indexLinks = linksTable;
 export const links = linksTable;
 

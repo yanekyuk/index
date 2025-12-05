@@ -23,7 +23,7 @@ export const getIndexIntegrations = () =>
 export const getUserIntegrations = () => 
   INTEGRATIONS.filter(i => i.userIntegration && i.enabled);
 
-// Get array of integration configs for UI display (backward compatibility)
+// Get array of integration configs for UI display
 export const getIntegrationsList = () => {
   return INTEGRATIONS.map(config => ({
     id: null, // Will be set when connected

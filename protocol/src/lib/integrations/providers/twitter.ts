@@ -55,7 +55,7 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       }
     }
 
-    // Backward compatibility: if no integration found, check socials.x
+    // Fallback: if no integration found, check socials.x
     if (!username) {
       const userRecords = await db.select()
         .from(users)

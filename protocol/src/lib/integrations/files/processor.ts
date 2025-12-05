@@ -21,7 +21,6 @@ export async function processFiles(
   const indexId = typeof source === 'object' ? source.indexId : undefined;
 
   const existingIntents = await IntentService.getUserIntents(userId);
-  const count = sourceType === 'link' ? 1 : 5; // 1 for links, 5 for files
   
   const tempDir = getTempPath('sync', `${userId}-${Date.now()}`);
   await fs.promises.mkdir(tempDir, { recursive: true });
@@ -42,7 +41,6 @@ export async function processFiles(
       fileIds,
       'Generate intents based on content',
       Array.from(existingIntents),
-      count,
       60000
     );
 

@@ -217,7 +217,6 @@ router.post('/new',
           contentObjects,
           instructionText.trim() || undefined,
           [], // no existing intents
-          1,  // generate 1 intent
           60000 // 60 second timeout
         );
         

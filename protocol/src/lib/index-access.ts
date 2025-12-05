@@ -169,7 +169,6 @@ export const checkIndexOwnership = async (indexId: string, userId: string): Prom
   if (!result.hasAccess || !result.permissions.includes('owner')) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
-  // Convert UserAccessResult to IndexAccessResult for backward compatibility
   return {
     hasAccess: true,
     indexData: result.indexData,
@@ -186,7 +185,6 @@ export const checkIndexAdminAccess = async (indexId: string, userId: string): Pr
   if (!result.hasAccess || (!result.permissions.includes('owner') && !result.permissions.includes('admin'))) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
-  // Convert UserAccessResult to IndexAccessResult for backward compatibility
   return {
     hasAccess: true,
     indexData: result.indexData,

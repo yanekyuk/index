@@ -226,14 +226,12 @@ async function inferIntents(
 
 /**
  * Core intent analysis function that works with any content
- * Uses dynamic inference with backward compatibility
  */
 export async function analyzeContent(
   content: string,
   itemCount: number,
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   try {
@@ -267,7 +265,6 @@ export async function analyzeContent(
 
     console.log(`✅ Generated ${intents.length} intents`);
 
-    // Convert to old format for backward compatibility
     const inferredIntents: InferredIntent[] = intents.map(intent => ({
       payload: intent.intent,
       confidence: intent.confidence,
@@ -292,7 +289,6 @@ export async function analyzeObjects(
   objects: any[],
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   if (!objects.length) {
@@ -325,7 +321,6 @@ export async function analyzeObjects(
     processedObjects,
     textInstruction,
     existingIntents,
-    count,
     timeoutMs
   );
 }
@@ -338,7 +333,6 @@ export async function analyzeFolder(
   fileIds: string[],
   textInstruction?: string,
   existingIntents: string[] = [],
-  count: number = 5, // Ignored - kept for backward compatibility
   timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   try {
@@ -401,7 +395,6 @@ export async function analyzeFolder(
       processedFiles,
       textInstruction,
       existingIntents,
-      count,
       timeoutMs
     );
 
