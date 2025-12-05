@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import db from '../lib/db';
-import { intentStakes, intents, users, userConnectionEvents } from '../lib/schema';
+import { intentStakes, intents, users, userConnectionEvents, userNotificationSettings } from '../lib/schema';
 import { sendEmail } from '../lib/email/transport.helper';
 import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter.template';
 import { and, eq, gt, inArray, or, sql, desc } from 'drizzle-orm';
@@ -24,10 +24,12 @@ async function getUsersForStake(stakeId: string, intentIds: string[]) {
         userTimezone: users.timezone,
         userLastWeeklyEmailSentAt: users.lastWeeklyEmailSentAt,
         userOnboarding: users.onboarding,
+        notificationPreferences: userNotificationSettings.preferences,
         intentId: intents.id
     })
         .from(intents)
         .innerJoin(users, eq(intents.userId, users.id))
+        .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
         .where(inArray(intents.id, intentIds));
 
     // We expect exactly 2 users for a stake
@@ -193,6 +195,12 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // Check if user has completed onboarding
             if (!data.user.userOnboarding?.completedAt) {
                 // console.log(`Skipping ${data.user.userEmail} - Onboarding not completed`);
+                continue;
+            }
+
+            // Check user preference
+            if (data.user.notificationPreferences?.weeklyNewsletter === false) {
+                console.log(`Skipping weekly newsletter for ${data.user.userEmail} due to user preference`);
                 continue;
             }
 

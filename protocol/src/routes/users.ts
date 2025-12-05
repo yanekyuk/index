@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users } from '../lib/schema';
+import { users, userNotificationSettings } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 import { User, UpdateProfileRequest } from '../types';
@@ -56,6 +56,7 @@ router.put('/:id',
     body('intro').optional().trim().isLength({ max: 500 }),
     body('avatar').optional().isURL(),
     body('socials').optional().isObject(),
+    body('notificationPreferences').optional().isObject(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -65,7 +66,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, intro, avatar, location, socials } = req.body;
+      const { name, intro, avatar, location, socials, notificationPreferences } = req.body;
 
       if (req.user!.id !== id) {
         return res.status(403).json({ error: 'Access denied' });
@@ -103,6 +104,34 @@ router.put('/:id',
         return res.status(404).json({ error: 'User not found' });
       }
 
+      // Update notification preferences if provided
+      let updatedPreferences = null;
+      if (notificationPreferences !== undefined) {
+        const existingSettings = await db.select()
+          .from(userNotificationSettings)
+          .where(eq(userNotificationSettings.userId, id))
+          .limit(1);
+
+        if (existingSettings.length > 0) {
+          const settings = await db.update(userNotificationSettings)
+            .set({
+              preferences: notificationPreferences,
+              updatedAt: new Date()
+            })
+            .where(eq(userNotificationSettings.userId, id))
+            .returning();
+          updatedPreferences = settings[0].preferences;
+        } else {
+          const settings = await db.insert(userNotificationSettings)
+            .values({
+              userId: id,
+              preferences: notificationPreferences
+            })
+            .returning();
+          updatedPreferences = settings[0].preferences;
+        }
+      }
+
       // Trigger social sync if socials changed
       if (socials !== undefined) {
         checkAndTriggerSocialSync(id, oldSocials, socials);
@@ -113,9 +142,14 @@ router.put('/:id',
         checkAndTriggerEnrichment(id);
       }
 
-      return res.json({ 
+      const finalUser = {
+        ...updatedUser[0],
+        notificationPreferences: updatedPreferences
+      };
+
+      return res.json({
         message: 'User updated successfully',
-        user: updatedUser[0]
+        user: finalUser
       });
     } catch (error) {
       console.error('Update user error:', error);
@@ -142,7 +176,7 @@ router.delete('/:id',
       }
 
       const deletedUser = await db.update(users)
-        .set({ 
+        .set({
           deletedAt: new Date(),
           updatedAt: new Date()
         })

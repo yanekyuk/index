@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import {
     sendConnectionRequestEmail,
     sendConnectionAcceptedEmail,
-    sendConnectionDeclinedEmail
+
 } from '../notification.sender';
 
 // Load environment variables
@@ -45,14 +45,7 @@ describe.skipIf(!runIntegration)('Email Handlers Integration (Real Emails)', () 
         await wait(1000); // Rate limit buffer
     });
 
-    it('should send a real connection declined email', async () => {
-        console.log(`Sending real connection declined email to ${testEmail}...`);
-        await sendConnectionDeclinedEmail(
-            testEmail,
-            'Alice Integration'
-        );
-        expect(true).toBe(true);
-    });
+
 
 
 });

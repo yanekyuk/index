@@ -1,7 +1,6 @@
 import { sendEmail } from './transport.helper';
 import { connectionRequestTemplate } from './templates/connection-request.template';
 import { connectionAcceptedTemplate } from './templates/connection-accepted.template';
-import { connectionDeclinedTemplate } from './templates/connection-declined.template';
 
 export async function sendConnectionRequestEmail(
   to: string,
@@ -25,26 +24,15 @@ export async function sendConnectionAcceptedEmail(
   accepterName: string,
   synthesisHtml: string
 ): Promise<void> {
-  const template = connectionAcceptedTemplate(initiatorName, accepterName, synthesisHtml);
-  await sendEmail({
-    to,
-    subject: template.subject,
-    html: template.html,
-    text: template.text
-  });
-}
+  const recipients = Array.isArray(to) ? to : [to];
 
-export async function sendConnectionDeclinedEmail(
-  to: string,
-  initiatorName: string
-): Promise<void> {
-  console.warn('Skipping connection declined email for ' + to);
-  return;
-  const template = connectionDeclinedTemplate(initiatorName);
-  await sendEmail({
-    to,
-    subject: template.subject,
-    html: template.html,
-    text: template.text
-  });
+  for (const recipient of recipients) {
+    const template = connectionAcceptedTemplate(initiatorName, accepterName, synthesisHtml);
+    await sendEmail({
+      to: recipient,
+      subject: template.subject,
+      html: template.html,
+      text: template.text
+    });
+  }
 }

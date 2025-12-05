@@ -1,10 +1,9 @@
 import db from './db';
-import { users, intents, intentStakes } from './schema';
+import { users, intents, intentStakes, userNotificationSettings } from './schema';
 import { eq, sql, and } from 'drizzle-orm';
 import {
     sendConnectionRequestEmail,
-    sendConnectionAcceptedEmail,
-    sendConnectionDeclinedEmail
+    sendConnectionAcceptedEmail
 } from './email/email.module';
 import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
 import DOMPurify from 'isomorphic-dompurify';
@@ -46,8 +45,26 @@ async function waitForStake(user1Id: string, user2Id: string): Promise<boolean> 
     return false;
 }
 
+// Helper to check user notification settings
+async function checkConnectionUpdatesEnabled(userId: string): Promise<boolean> {
+    const settings = await db.select({ preferences: userNotificationSettings.preferences })
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, userId))
+        .limit(1);
+
+    // Default to true if no settings found or preference not set
+    return settings[0]?.preferences?.connectionUpdates ?? true;
+}
+
 export async function sendConnectionRequestNotification(initiatorUserId: string, receiverUserId: string): Promise<void> {
     try {
+        // Check if receiver has connection updates enabled
+        const shouldSend = await checkConnectionUpdatesEnabled(receiverUserId);
+        if (!shouldSend) {
+            console.log(`User ${receiverUserId} has connection updates disabled, skipping connection request email`);
+            return;
+        }
+
         // Check for stake between users with retry logic
         const hasStake = await waitForStake(initiatorUserId, receiverUserId);
         if (!hasStake) {
@@ -96,6 +113,12 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
 
 export async function sendConnectionAcceptedNotification(accepterUserId: string, initiatorUserId: string): Promise<void> {
     try {
+        // Check notification settings for both users
+        const [accepterEnabled, initiatorEnabled] = await Promise.all([
+            checkConnectionUpdatesEnabled(accepterUserId),
+            checkConnectionUpdatesEnabled(initiatorUserId)
+        ]);
+
         // Check for stake between users with retry logic
         const hasStake = await waitForStake(accepterUserId, initiatorUserId);
         if (!hasStake) {
@@ -125,37 +148,28 @@ export async function sendConnectionAcceptedNotification(accepterUserId: string,
         const rawHtml = await marked.parse(synthesisMarkdown);
         const synthesis = DOMPurify.sanitize(rawHtml);
 
-        await sendConnectionAcceptedEmail(
-            [initiator[0].email, accepter[0].email],
-            initiator[0].name,
-            accepter[0].name,
-            synthesis
-        );
-    } catch (error) {
-        console.error(`Failed to send connection accepted email: ${error}`);
-        throw error;
-    }
-}
-
-export async function sendConnectionDeclinedNotification(initiatorUserId: string): Promise<void> {
-    try {
-        // Get initiator details for decline notification
-        const initiator = await db.select({ name: users.name, email: users.email })
-            .from(users)
-            .where(eq(users.id, initiatorUserId))
-            .limit(1);
-
-        if (!initiator[0]?.email || !initiator[0]?.name) {
-            console.log('Missing required user data for connection declined email');
-            return;
+        // Send to initiator if enabled
+        if (initiatorEnabled) {
+            await sendConnectionAcceptedEmail(
+                [initiator[0].email],
+                initiator[0].name,
+                accepter[0].name,
+                synthesis
+            );
         }
 
-        await sendConnectionDeclinedEmail(
-            initiator[0].email,
-            initiator[0].name
-        );
+        // Send to accepter if enabled
+        if (accepterEnabled) {
+            await sendConnectionAcceptedEmail(
+                [accepter[0].email],
+                initiator[0].name,
+                accepter[0].name,
+                synthesis
+            );
+        }
+
     } catch (error) {
-        console.error('Failed to send connection declined email:', error);
+        console.error(`Failed to send connection accepted email: ${error}`);
         throw error;
     }
 }

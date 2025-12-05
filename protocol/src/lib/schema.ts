@@ -27,6 +27,11 @@ export interface UserSocials {
   websites?: string[];
 }
 
+export interface NotificationPreferences {
+  connectionUpdates: boolean;
+  weeklyNewsletter: boolean;
+}
+
 // Directory sync configuration type
 export interface DirectorySyncConfig {
   enabled: boolean;
@@ -91,6 +96,18 @@ export const users = pgTable('users', {
   // Enforce uniqueness on all emails (email is NOT NULL).
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
 }));
+
+export const userNotificationSettings = pgTable('user_notification_settings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  preferences: json('preferences').$type<NotificationPreferences>().default({
+    connectionUpdates: true,
+    weeklyNewsletter: true,
+  }),
+  unsubscribeToken: uuid('unsubscribe_token').defaultRandom().notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -193,12 +210,23 @@ export const userIntegrations = pgTable('integrations', {
 });
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
   indexes: many(indexes),
   memberOf: many(indexMembers),
   initiatedConnections: many(userConnectionEvents, { relationName: 'initiatedConnections' }),
   receivedConnections: many(userConnectionEvents, { relationName: 'receivedConnections' }),
+  notificationSettings: one(userNotificationSettings, {
+    fields: [users.id],
+    references: [userNotificationSettings.userId],
+  }),
+}));
+
+export const userNotificationSettingsRelations = relations(userNotificationSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [userNotificationSettings.userId],
+    references: [users.id],
+  }),
 }));
 
 
@@ -348,3 +376,5 @@ export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
 export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;
 export type UserIntegration = typeof userIntegrations.$inferSelect;
 export type NewUserIntegration = typeof userIntegrations.$inferInsert;
+export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
+export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;

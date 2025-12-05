@@ -2,7 +2,7 @@ import { Router, Response, Request } from 'express';
 import { privyClient } from '../lib/privy';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
-import { users } from '../lib/schema';
+import { users, userNotificationSettings } from '../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { User, UpdateProfileRequest, OnboardingState } from '../types';
 import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
@@ -12,26 +12,33 @@ const router = Router();
 // Verify access token and get user info
 router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const user = await db.select({
-      id: users.id,
-      privyId: users.privyId,
-      name: users.name,
-      intro: users.intro,
-      avatar: users.avatar,
-      location: users.location,
-      socials: users.socials,
-      onboarding: users.onboarding,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt
-    }).from(users)
+    const userResult = await db.select({
+      user: users,
+      settings: userNotificationSettings
+    })
+      .from(users)
+      .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
       .where(eq(users.id, req.user!.id))
       .limit(1);
 
-    if (user.length === 0) {
+    if (userResult.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    return res.json({ user: user[0] });
+    const { user, settings } = userResult[0];
+
+    // Merge settings into user object for frontend compatibility
+    const userWithPreferences = {
+      ...user,
+      notificationPreferences: settings?.preferences || {
+        connectionRequest: true,
+        connectionAccepted: true,
+        connectionRejected: true,
+        weeklyNewsletter: true,
+      }
+    };
+
+    return res.json({ user: userWithPreferences });
   } catch (error) {
     console.error('Get user error:', error);
     return res.status(500).json({ error: 'Failed to get user info' });
@@ -41,7 +48,7 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
 // Update user profile
 router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, intro, avatar, location, timezone, socials } = req.body;
+    const { name, intro, avatar, location, timezone, socials, notificationPreferences } = req.body;
 
     // Get old socials before update
     const currentUser = await db.select({ socials: users.socials })
@@ -50,7 +57,8 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
       .limit(1);
     const oldSocials = currentUser[0]?.socials || null;
 
-    const updatedUser = await db.update(users)
+    // Update user fields
+    const updatedUserResult = await db.update(users)
       .set({
         ...(name && { name }),
         ...(intro !== undefined && { intro }),
@@ -61,22 +69,50 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
         updatedAt: new Date()
       })
       .where(eq(users.id, req.user!.id))
-      .returning({
-        id: users.id,
-        privyId: users.privyId,
-        name: users.name,
-        intro: users.intro,
-        avatar: users.avatar,
-        location: users.location,
-        timezone: users.timezone,
-        socials: users.socials,
-        onboarding: users.onboarding,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt
-      });
+      .returning();
 
-    if (updatedUser.length === 0) {
+    if (updatedUserResult.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update notification preferences if provided
+    let updatedPreferences = null;
+    if (notificationPreferences !== undefined) {
+      const existingSettings = await db.select()
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, req.user!.id))
+        .limit(1);
+
+      if (existingSettings.length > 0) {
+        const settings = await db.update(userNotificationSettings)
+          .set({
+            preferences: notificationPreferences,
+            updatedAt: new Date()
+          })
+          .where(eq(userNotificationSettings.userId, req.user!.id))
+          .returning();
+        updatedPreferences = settings[0].preferences;
+      } else {
+        const settings = await db.insert(userNotificationSettings)
+          .values({
+            userId: req.user!.id,
+            preferences: notificationPreferences
+          })
+          .returning();
+        updatedPreferences = settings[0].preferences;
+      }
+    } else {
+      // Fetch existing preferences if not updating
+      const settings = await db.select()
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, req.user!.id))
+        .limit(1);
+      updatedPreferences = settings[0]?.preferences || {
+        connectionRequest: true,
+        connectionAccepted: true,
+        connectionRejected: true,
+        weeklyNewsletter: true,
+      };
     }
 
     // Trigger social sync if socials changed
@@ -89,7 +125,12 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
       checkAndTriggerEnrichment(req.user!.id);
     }
 
-    return res.json({ user: updatedUser[0] });
+    const finalUser = {
+      ...updatedUserResult[0],
+      notificationPreferences: updatedPreferences
+    };
+
+    return res.json({ user: finalUser });
   } catch (error) {
     console.error('Update profile error:', error);
     return res.status(500).json({ error: 'Failed to update profile' });

@@ -4,7 +4,7 @@ import db from '../lib/db';
 import { users, userConnectionEvents, intents, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
-import { sendConnectionRequestNotification, sendConnectionAcceptedNotification, sendConnectionDeclinedNotification } from '../lib/notification-service';
+import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { ConnectionEvent, ConnectionsByUserResponse, CreateConnectionActionRequest } from '../types';
 
@@ -259,8 +259,6 @@ router.post('/actions',
         sendConnectionRequestNotification(userId, targetUserId).catch(console.error);
       } else if (action === 'ACCEPT') {
         sendConnectionAcceptedNotification(userId, targetUserId).catch(console.error);
-      } else if (action === 'DECLINE') {
-        sendConnectionDeclinedNotification(targetUserId).catch(console.error);
       }
 
       return res.json({

@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     sendConnectionRequestEmail,
-    sendConnectionAcceptedEmail,
-    sendConnectionDeclinedEmail
+    sendConnectionAcceptedEmail
 } from '../notification.sender';
 import * as emailModule from '../transport.helper';
 import * as templatesModule from '../templates/connection-request.template'; // We need to mock specific templates now
 import * as connectionAcceptedTemplateModule from '../templates/connection-accepted.template';
-import * as connectionDeclinedTemplateModule from '../templates/connection-declined.template';
 
 // Mock dependencies
 vi.mock('../transport.helper', () => ({
@@ -20,9 +18,7 @@ vi.mock('../templates/connection-request.template', () => ({
 vi.mock('../templates/connection-accepted.template', () => ({
     connectionAcceptedTemplate: vi.fn(() => ({ subject: 'Accepted Subject', html: '<p>Accepted HTML</p>', text: 'Accepted Text' }))
 }));
-vi.mock('../templates/connection-declined.template', () => ({
-    connectionDeclinedTemplate: vi.fn(() => ({ subject: 'Declined Subject', html: '<p>Declined HTML</p>', text: 'Declined Text' }))
-}));
+
 
 describe('Email Handlers', () => {
     beforeEach(() => {
@@ -68,20 +64,5 @@ describe('Email Handlers', () => {
         });
     });
 
-    describe('sendConnectionDeclinedEmail', () => {
-        it('should call sendEmail with correct arguments', async () => {
-            const to = 'alice@example.com';
-            const initiatorName = 'Alice';
-
-            await sendConnectionDeclinedEmail(to, initiatorName);
-
-            expect(connectionDeclinedTemplateModule.connectionDeclinedTemplate).toHaveBeenCalledWith(initiatorName);
-            expect(emailModule.sendEmail).toHaveBeenCalledWith({
-                to,
-                subject: 'Declined Subject',
-                html: '<p>Declined HTML</p>',
-                text: 'Declined Text'
-            });
-        });
-    });
 });
+
