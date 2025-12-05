@@ -1,4 +1,4 @@
-export const connectionAcceptedTemplate = (senderName: string, recipientName: string, synthesis?: string) => ({
+export const connectionAcceptedTemplate = (senderName: string, recipientName: string, synthesis?: string, unsubscribeUrl?: string) => ({
   subject: `${senderName} <> ${recipientName} - something’s here`,
   html: `
     <div style="font-family: Arial, sans-serif;">
@@ -14,6 +14,12 @@ export const connectionAcceptedTemplate = (senderName: string, recipientName: st
       
       <p>No formal intros needed - just reply here and pick it up from wherever feels right.</p>
       <p>—Your discovery agent, quietly cheering from the background</p>
+
+      ${unsubscribeUrl ? `
+        <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.8em; color: #888;">
+          <p>You received this email because you have enabled <strong>Connection Updates</strong> in your notification settings. <a href="${unsubscribeUrl}" style="color: #888; text-decoration: underline;">Unsubscribe</a></p>
+        </div>
+      ` : ''}
     </div>
   `,
   text: `Hey ${senderName} and ${recipientName},
@@ -27,5 +33,7 @@ ${synthesis}
 
 ` : ''}No formal intros needed - just reply here and pick it up from wherever feels right.
 
-—Your discovery agent, quietly cheering from the background`
+—Your discovery agent, quietly cheering from the background
+
+${unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : ''}`
 });

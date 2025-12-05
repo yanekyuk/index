@@ -1,4 +1,4 @@
-export const connectionRequestTemplate = (fromUserName: string, toUserName: string, synthesis?: string, subject?: string) => ({
+export const connectionRequestTemplate = (fromUserName: string, toUserName: string, synthesis?: string, subject?: string, unsubscribeUrl?: string) => ({
   subject: subject || `✨ ${fromUserName} wants to connect with you`,
   html: `
     <div style="font-family: Arial, sans-serif;">
@@ -17,6 +17,12 @@ export const connectionRequestTemplate = (fromUserName: string, toUserName: stri
       
       <p>If you want to move it forward, I’ll make the introduction. If not, everything stays quiet.</p>
       <p>—Index</p>
+
+      ${unsubscribeUrl ? `
+        <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.8em; color: #888;">
+          <p>You received this email because you have enabled <strong>Connection Updates</strong> in your notification settings. <a href="${unsubscribeUrl}" style="color: #888; text-decoration: underline;">Unsubscribe</a></p>
+        </div>
+      ` : ''}
     </div>
   `,
   text: `Hey ${toUserName},
@@ -30,5 +36,7 @@ ${synthesis}
 
 ` : ''}If you want to move it forward, I’ll make the introduction. If not, everything stays quiet.
 
-—Index`
+—Index
+
+${unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : ''}`
 });

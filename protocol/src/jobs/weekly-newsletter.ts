@@ -25,6 +25,7 @@ async function getUsersForStake(stakeId: string, intentIds: string[]) {
         userLastWeeklyEmailSentAt: users.lastWeeklyEmailSentAt,
         userOnboarding: users.onboarding,
         notificationPreferences: userNotificationSettings.preferences,
+        unsubscribeToken: userNotificationSettings.unsubscribeToken,
         intentId: intents.id
     })
         .from(intents)
@@ -85,6 +86,7 @@ function parseNewsletterSchedule() {
 }
 
 export async function sendWeeklyNewsletter(now: Date = new Date()) {
+    console.time('WeeklyNewsletterJob');
     console.log('Starting weekly newsletter job...');
     try {
         const { targetDay, targetHour, targetMinute } = parseNewsletterSchedule();
@@ -110,23 +112,32 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
         // +12 means current is 12 hours AFTER target (UTC-12 is at target)
         if (diff < -14 || diff > 12) {
             // console.log('Skipping weekly newsletter job - Outside of global window');
+            console.log('Skipping weekly newsletter job - Outside of global window');
+            console.timeEnd('WeeklyNewsletterJob');
             return;
         }
 
         // 1. Get stakes created in the last 7 days (fallback) or since last email
         const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 1);
 
         // We fetch all recent stakes first, then filter per-user based on their last sent time
+        console.time('FetchStakes');
         const recentStakes = await db.select()
             .from(intentStakes)
             .where(gt(intentStakes.createdAt, sevenDaysAgo));
 
+        console.timeEnd('FetchStakes');
         console.log(`Found ${recentStakes.length} stakes from the last 7 days.`);
+
+        console.time('ProcessStakes');
 
         const userMatches = new Map<string, { user: any, matches: Match[], matchedUserIds: Set<string> }>();
 
+        let stakeIndex = 0;
         for (const stake of recentStakes) {
+            stakeIndex++;
+            if (stakeIndex % 10 === 0) console.log(`Processing stake ${stakeIndex}/${recentStakes.length}`);
             const participants = await getUsersForStake(stake.id, stake.intents);
             if (!participants) continue;
 
@@ -161,10 +172,12 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
             if (p1NeedsMatch || p2NeedsMatch) {
                 // Fetch vibe checks in parallel if needed
+                console.time(`SynthesizeVibeCheck-${stake.id}`);
                 const [vibeForP1, vibeForP2] = await Promise.all([
                     p1NeedsMatch ? synthesizeVibeCheck(p1.userId, p2.userId) : Promise.resolve(null),
                     p2NeedsMatch ? synthesizeVibeCheck(p2.userId, p1.userId) : Promise.resolve(null)
                 ]);
+                console.timeEnd(`SynthesizeVibeCheck-${stake.id}`);
 
                 if (p1NeedsMatch) {
                     const role = vibeForP1?.subject ? stripNamePrefix(vibeForP1.subject, p2.userName) : (p2.userRole || 'Index User');
@@ -188,7 +201,10 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             }
         }
 
+        console.timeEnd('ProcessStakes');
+
         // 4. Send emails
+        console.time('SendEmails');
         for (const [userId, data] of userMatches.entries()) {
             if (data.matches.length < 1) continue;
 
@@ -226,19 +242,30 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
             console.log(`Preparing newsletter for ${data.user.userName} (${data.user.userEmail}) with ${data.matches.length} matches. Timezone: ${userTimezone}`);
 
-            const template = weeklyNewsletterTemplate(data.user.userName, data.matches);
+            const API_URL = process.env.API_URL || 'https://api.index.network';
+            let unsubscribeUrl: string | undefined;
+            if (data.user.unsubscribeToken) {
+                unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${data.user.unsubscribeToken}&type=weeklyNewsletter`;
+            }
+
+            const template = weeklyNewsletterTemplate(data.user.userName, data.matches, unsubscribeUrl);
 
             if (process.env.NODE_ENV === 'development' && process.env.ENABLE_EMAIL_TESTING !== 'true') {
                 console.log(`[DEV] Would send email to ${data.user.userEmail}:`);
                 console.log(`Subject: ${template.subject}`);
                 console.log(`Body preview: ${template.text.substring(0, 200)}...`);
+                console.log(`Unsubscribe: ${unsubscribeUrl}`);
             } else {
                 try {
                     await sendEmail({
                         to: data.user.userEmail,
                         subject: template.subject,
                         html: template.html,
-                        text: template.text
+                        text: template.text,
+                        headers: unsubscribeUrl ? {
+                            'List-Unsubscribe': `<mailto:hello@index.network?subject=Unsubscribe>, <${unsubscribeUrl}>`,
+                            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+                        } : undefined
                     });
 
                     // Update lastWeeklyEmailSentAt
@@ -253,10 +280,13 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             }
         }
 
+        console.timeEnd('SendEmails');
         console.log('Weekly newsletter job completed.');
+        console.timeEnd('WeeklyNewsletterJob');
 
     } catch (error) {
         console.error('Error running weekly newsletter job:', error);
+        console.timeEnd('WeeklyNewsletterJob');
     }
 }
 

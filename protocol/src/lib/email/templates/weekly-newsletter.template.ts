@@ -4,7 +4,7 @@ export interface Match {
   reasoning: string;
 }
 
-export const weeklyNewsletterTemplate = (recipientName: string, matches: Match[]) => {
+export const weeklyNewsletterTemplate = (recipientName: string, matches: Match[], unsubscribeUrl?: string) => {
   const escapeHtml = (str: string) => {
     return str.replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -48,6 +48,12 @@ ${match.reasoning}
         </div>
         
         <p>—Index, keeping your next moves within reach</p>
+
+        ${unsubscribeUrl ? `
+          <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px; font-size: 0.8em; color: #888;">
+            <p>You received this email because you have enabled <strong>Weekly Newsletter</strong> in your notification settings. <a href="${unsubscribeUrl}" style="color: #888; text-decoration: underline;">Unsubscribe</a></p>
+          </div>
+        ` : ''}
       </div>
     `,
     text: `Hey ${recipientName},
@@ -62,6 +68,8 @@ ${matchesText}
 
 👉 Go to your Inbox: https://index.network/inbox
 
-—Index, keeping your next moves within reach`
+—Index, keeping your next moves within reach
+
+${unsubscribeUrl ? `Unsubscribe: ${unsubscribeUrl}` : ''}`
   };
 };
