@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks, Library } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library, User as UserIcon } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -11,6 +11,7 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
+import PreferencesModal from '@/components/modals/PreferencesModal';
 import LibraryModal from '@/components/modals/LibraryModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
 
@@ -29,6 +30,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const { user, refetchUser } = useAuthContext();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -235,8 +237,18 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                           setProfileModalOpen(true);
                         }}
                       >
+                        <UserIcon className="h-4 w-4 mr-2" />
+                        Profile
+                      </button>
+                      <button
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setPreferencesModalOpen(true);
+                        }}
+                      >
                         <Settings className="h-4 w-4 mr-2" />
-                        Profile Settings
+                        Preferences
                       </button>
                       {/* <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
@@ -313,6 +325,17 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       <ProfileSettingsModal
         open={profileModalOpen}
         onOpenChange={setProfileModalOpen}
+        user={user}
+        onUserUpdate={async () => {
+          // Refetch user data from AuthContext
+          await refetchUser();
+        }}
+      />
+
+      {/* Preferences Modal */}
+      <PreferencesModal
+        open={preferencesModalOpen}
+        onOpenChange={setPreferencesModalOpen}
         user={user}
         onUserUpdate={async () => {
           // Refetch user data from AuthContext
