@@ -29,6 +29,7 @@
     "@langchain/core": "^0.3.77",
     "@langchain/openai": "^0.6.13",
     "@privy-io/server-auth": "^1.26.1",
+    "@sentry/node": "^10.29.0",
     "@types/ioredis": "^4.28.10",
     "axios": "^1.6.0",
     "commander": "^13.1.0",
