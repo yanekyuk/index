@@ -1,5 +1,5 @@
 import db from '../../lib/db';
-import { intents, intentStakes, type IntentStake, agents, intentIndexes } from '../../lib/schema';
+import { intents, intentStakes, intentStakeItems, type IntentStake, agents, intentIndexes } from '../../lib/schema';
 import { eq, or, desc, like, sql, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getAccessibleIntents } from '../../lib/intent-access';
 import { generateEmbedding } from '../../lib/embeddings';
@@ -42,9 +42,12 @@ export abstract class BaseContextBroker {
    * Get all stakes for a specific intent
    */
   protected async getStakesForIntent(intentId: string): Promise<IntentStake[]> {
-    return this.db.select()
+    // Use join table for fast indexed lookup
+    const results = await this.db.select({ stake: intentStakes })
       .from(intentStakes)
-      .where(sql`${intentStakes.intents} @> ARRAY[${intentId}::uuid]`);
+      .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+      .where(eq(intentStakeItems.intentId, intentId));
+    return results.map(r => r.stake);
   }
 
   /**
@@ -225,13 +228,13 @@ export abstract class BaseContextBroker {
       
       const intentId = params.intents[0];
       
-      // Validate intent exists
-      const intentExists = await this.broker.db.select({ id: intents.id })
+      // Validate intent exists and get user_id
+      const intentData = await this.broker.db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
         .where(eq(intents.id, intentId))
         .limit(1);
       
-      if (intentExists.length === 0) {
+      if (intentData.length === 0) {
         throw new Error('Intent does not exist');
       }
       
@@ -245,11 +248,18 @@ export abstract class BaseContextBroker {
         .limit(1);
       
       if (existingStake.length === 0) {
-        await this.broker.db.insert(intentStakes).values({
+        // Create stake and insert into join table
+        const [newStake] = await this.broker.db.insert(intentStakes).values({
           intents: [intentId],
           stake: params.stake,
           reasoning: params.reasoning,
           agentId: params.agentId
+        }).returning({ id: intentStakes.id });
+        
+        await this.broker.db.insert(intentStakeItems).values({
+          stakeId: newStake.id,
+          intentId: intentId,
+          userId: intentData[0].userId
         });
       }
     }
@@ -294,18 +304,27 @@ export abstract class BaseContextBroker {
           sql`${intentStakes.intents} = ARRAY[${sql.join(sortedIntents.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
           eq(intentStakes.agentId, params.agentId)
         ))
-        .limit(1)
-        //.then(rows => rows[0]);
+        .limit(1);
 
       console.log('Existing stake:', existingStake);
 
       if (existingStake.length === 0) {
-        // Create new stake
-        await this.broker.db.insert(intentStakes)
+        // Create new stake and insert into join table
+        const [newStake] = await this.broker.db.insert(intentStakes)
           .values({
             ...params,
             intents: sortedIntents
-          });
+          })
+          .returning({ id: intentStakes.id });
+        
+        // Insert into join table with denormalized user_id
+        await this.broker.db.insert(intentStakeItems).values(
+          intentOwners.map(intent => ({
+            stakeId: newStake.id,
+            intentId: intent.id,
+            userId: intent.userId
+          }))
+        );
       }
     }
 
