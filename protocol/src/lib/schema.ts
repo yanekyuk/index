@@ -13,10 +13,9 @@ export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 
 export interface OnboardingState {
   completedAt?: string;  // ISO timestamp when completed
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
   indexId?: string;  // Persisted index ID for flow 2
   invitationCode?: string;  // Store which invitation was used (reference only)
-  enrichmentHash?: string;  // Hash of name+email combination to track enrichment per parameter set
 }
 
 // Social links type
@@ -124,7 +123,9 @@ export const intents = pgTable('intents', {
   sourceType: sourceType('source_type'),
   // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
   embedding: vector('embedding', { dimensions: 2000 }),
-});
+}, (table) => [
+  index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
+]);
 
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -303,6 +304,13 @@ export const intentStakes = pgTable('intent_stakes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Join table for fast stake lookups by user/intent (created by migration)
+export const intentStakeItems = pgTable('intent_stake_items', {
+  stakeId: uuid('stake_id').notNull(),
+  intentId: uuid('intent_id').notNull(),
+  userId: uuid('user_id').notNull(),
+});
+
 export const agentsRelations = relations(agents, ({ many }) => ({
   stakes: many(intentStakes),
 }));
@@ -325,7 +333,7 @@ const linksTable = pgTable('links', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
-// Backward-compatible export names
+// Export aliases for the links table
 export const indexLinks = linksTable;
 export const links = linksTable;
 

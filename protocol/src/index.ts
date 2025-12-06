@@ -1,13 +1,10 @@
+// Import this first! Must be before any other imports
+import './instrument';
+
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Load environment-specific .env file
-const envFile = `.env.${process.env.NODE_ENV || 'development'}`;
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 console.log('process.env', process.env);
 import { initializeBrokers } from './agents/context_brokers/connector';
@@ -73,6 +70,9 @@ app.use('/api/queue', queueRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+// Sentry error handler must be before other error handlers
+Sentry.setupExpressErrorHandler(app);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

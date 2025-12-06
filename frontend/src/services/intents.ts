@@ -57,7 +57,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   }
 });
 
-// Backward compatibility - service that uses apiClient directly (for non-authenticated requests)
+// Service that uses apiClient directly (for non-authenticated requests)
 export const intentsService = {
   // No methods currently needed for non-authenticated requests
 };

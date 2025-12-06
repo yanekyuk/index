@@ -11,7 +11,7 @@ console.log(process.env.DATABASE_URL);
 import { Command } from 'commander';
 import { eq } from 'drizzle-orm';
 import db, { closeDb } from '../lib/db';
-import { intents, intentIndexes, intentStakes, indexMembers, indexes, users } from '../lib/schema';
+import { intents, intentIndexes, intentStakes, intentStakeItems, indexMembers, indexes, users } from '../lib/schema';
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 import { generateEmbedding } from '../lib/embeddings';
@@ -123,12 +123,19 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         const intentPair = [intentIds[i], intentIds[j]].sort();
 
         try {
-          await db.insert(intentStakes).values({
+          // Create stake
+          const [newStake] = await db.insert(intentStakes).values({
             intents: intentPair,
             stake: BigInt(100),
             reasoning: `${createdUsers[i].name} and ${createdUsers[j].name} should connect`,
             agentId: SEMANTIC_RELEVANCY_AGENT_ID,
-          });
+          }).returning({ id: intentStakes.id });
+
+          // Insert into join table with denormalized user_id
+          await db.insert(intentStakeItems).values([
+            { stakeId: newStake.id, intentId: intentIds[i], userId: createdUsers[i].id },
+            { stakeId: newStake.id, intentId: intentIds[j], userId: createdUsers[j].id }
+          ]);
         } catch { }
       }
     }

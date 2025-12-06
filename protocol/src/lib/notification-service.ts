@@ -1,6 +1,6 @@
 import db from './db';
-import { users, intents, intentStakes, userNotificationSettings } from './schema';
-import { eq, sql, and } from 'drizzle-orm';
+import { users, intents, intentStakes, intentStakeItems, userNotificationSettings } from './schema';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import {
     sendConnectionRequestEmail,
     sendConnectionAcceptedEmail
@@ -23,9 +23,15 @@ async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise
 
     const stakes = await db.select({ id: intentStakes.id })
         .from(intentStakes)
+        .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
         .where(and(
-            sql`${intentStakes.intents} && ARRAY[${sql.join(user1IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
-            sql`${intentStakes.intents} && ARRAY[${sql.join(user2IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`
+            // Filter to stakes involving both users
+            inArray(intentStakeItems.userId, [user1Id, user2Id])
+        ))
+        .groupBy(intentStakes.id)
+        .having(and(
+            // Both users must be present
+            sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`
         ))
         .limit(1);
 

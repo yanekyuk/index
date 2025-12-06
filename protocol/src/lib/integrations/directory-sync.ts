@@ -128,9 +128,7 @@ export async function syncDirectoryMembers(
 
     const indexPrompt = indexData[0]?.prompt || null;
 
-    // Profile fields that update user profile if empty
-    const profileFields = ['name', 'intro', 'location', 'twitter', 'website'];
-    
+
     const addedMembers: string[] = [];
     const errors: Array<{ record: any; error: string }> = [];
 

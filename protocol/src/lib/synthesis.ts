@@ -2,7 +2,7 @@ import { vibeCheck, type VibeCheckOptions } from '../agents/external/vibe_checke
 import { introMaker, type IntroMakerData } from '../agents/external/intro_maker';
 import { cache } from './redis';
 import db from './db';
-import { users as usersTable, intents, intentStakes, agents, intentIndexes } from './schema';
+import { users as usersTable, intents, intentStakes, intentStakeItems, agents, intentIndexes } from './schema';
 import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getAccessibleIntents } from './intent-access';
@@ -57,36 +57,33 @@ export async function synthesizeVibeCheck(
     if (!contextIntentIds.length) return { synthesis: "", subject: "" };
 
     // Get top 3 stakes connecting context and target user intents
-    // Optimized: use uuid[] instead of text[], leverage GIN index, remove redundant checks
+    // Uses denormalized user_id in intentStakeItems for fast indexed lookups
+    // Optional index filtering via LEFT JOIN (null = not in index)
     const stakes = await db
-      .select({ stake: intentStakes.stake, stakeIntents: intentStakes.intents })
+      .select({ 
+        stakeId: intentStakes.id,
+        stake: intentStakes.stake, 
+        stakeIntents: intentStakes.intents 
+      })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-      .innerJoin(intents, sql`${intents.id} = ANY(${intentStakes.intents})`)
+      .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+      .leftJoin(intentIndexes, eq(intentIndexes.intentId, intentStakeItems.intentId))
       .where(and(
         isNull(agents.deletedAt),
-        eq(intents.userId, contextUserId),
-        sql`array_length(${intentStakes.intents}, 1) = 2`,
-        sql`${intentStakes.intents} && ARRAY[${sql.join(contextIntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
-        sql`EXISTS(
-          SELECT 1 FROM ${intents} i2
-          WHERE i2.id = ANY(${intentStakes.intents})
-          AND i2.user_id = ${targetUserId}
-        )`,
-        ...(indexIds?.length ? [
-          sql`EXISTS(
-            SELECT 1 FROM ${intentIndexes} ii1
-            WHERE ii1.intent_id = ${intents.id}
-            AND ii1.index_id = ANY(ARRAY[${sql.join(indexIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[])
-          )`,
-          sql`EXISTS(
-            SELECT 1 FROM ${intents} i2
-            INNER JOIN ${intentIndexes} ii2 ON ii2.intent_id = i2.id
-            WHERE i2.id = ANY(${intentStakes.intents})
-            AND i2.user_id = ${targetUserId}
-            AND ii2.index_id = ANY(ARRAY[${sql.join(indexIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[])
-          )`
-        ] : [])
+        // Filter to stakes involving both users
+        inArray(intentStakeItems.userId, [contextUserId, targetUserId]),
+        // At least one intent must be in contextIntentIds
+        inArray(intentStakeItems.intentId, contextIntentIds),
+        // Index filtering (if specified)
+        ...(indexIds?.length ? [inArray(intentIndexes.indexId, indexIds)] : [])
+      ))
+      .groupBy(intentStakes.id, intentStakes.stake, intentStakes.intents)
+      .having(and(
+        // Exactly 2 intents (pair stake)
+        sql`COUNT(DISTINCT ${intentStakeItems.intentId}) = 2`,
+        // Both users must be present
+        sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`
       ))
       .orderBy(sql`${intentStakes.stake} DESC`)
       .limit(3);
@@ -194,16 +191,23 @@ export async function synthesizeIntro(
     const recipient = users.find(u => u.id === recipientUserId)!;
 
     // Get shared stakes between both users
-    // Optimized: use uuid[] instead of text[], leverage GIN index
+    // Uses denormalized user_id for fast indexed lookups
     const stakes = await db
       .select({ reasoning: intentStakes.reasoning, stakeIntents: intentStakes.intents })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+      .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
       .where(and(
         isNull(agents.deletedAt),
-        sql`array_length(${intentStakes.intents}, 1) > 1`,
-        sql`EXISTS(SELECT 1 FROM ${intents} i1 WHERE i1.id = ANY(${intentStakes.intents}) AND i1.user_id = ${senderUserId})`,
-        sql`EXISTS(SELECT 1 FROM ${intents} i2 WHERE i2.id = ANY(${intentStakes.intents}) AND i2.user_id = ${recipientUserId})`
+        // Filter to stakes involving both users
+        inArray(intentStakeItems.userId, [senderUserId, recipientUserId])
+      ))
+      .groupBy(intentStakes.id, intentStakes.reasoning, intentStakes.intents)
+      .having(and(
+        // Multi-intent stakes only (not single confidence stakes)
+        sql`COUNT(DISTINCT ${intentStakeItems.intentId}) > 1`,
+        // Both users must be present
+        sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`
       ));
 
     if (!stakes.length) return "";

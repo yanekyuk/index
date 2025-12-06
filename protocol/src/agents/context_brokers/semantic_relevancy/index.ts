@@ -1,6 +1,6 @@
 import { BaseContextBroker } from '../base';
-import { intents, intentStakes } from '../../../lib/schema';
-import { eq, sql, and, desc } from 'drizzle-orm';
+import { intents, intentStakes, intentStakeItems } from '../../../lib/schema';
+import { eq, sql, and, desc, inArray } from 'drizzle-orm';
 import { traceableStructuredLlm, withTimeoutAndRetry } from "../../../lib/agents";
 import { z } from "zod";
 import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
@@ -133,6 +133,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
    * Get existing stakes between two users
    */
   private async getExistingStakes(db: any, userId1: string, userId2: string) {
+    // Use denormalized user_id for fast indexed lookup
     return await db.select({
       id: intentStakes.id,
       stake: intentStakes.stake,
@@ -140,19 +141,13 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       reasoning: intentStakes.reasoning
     })
       .from(intentStakes)
+      .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
       .where(and(
         eq(intentStakes.agentId, this.agentId),
-        sql`EXISTS (
-        SELECT 1 FROM ${intents} i1
-        WHERE i1.id = ANY(${intentStakes.intents})
-        AND i1.user_id = ${userId1}
-      )`,
-        sql`EXISTS (
-        SELECT 1 FROM ${intents} i2
-        WHERE i2.id = ANY(${intentStakes.intents})
-        AND i2.user_id = ${userId2}
-      )`
+        inArray(intentStakeItems.userId, [userId1, userId2])
       ))
+      .groupBy(intentStakes.id, intentStakes.stake, intentStakes.intents, intentStakes.reasoning)
+      .having(sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`)
       .orderBy(desc(intentStakes.stake));
   }
 
@@ -238,9 +233,25 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     rankedPairs: Array<{ newIntentId: string; targetIntentId: string; score: number }>,
     candidatePairs: Array<{ newIntentId: string; targetIntentId: string; score: number; reasoning: string }>
   ) {
-    // Delete all existing stakes
+    // Delete all existing stakes (CASCADE will handle join table)
     for (const stake of existingStakes) {
       await db.delete(intentStakes).where(eq(intentStakes.id, stake.id));
+    }
+
+    // Collect all intent IDs to fetch user_ids in one query
+    const allIntentIds = new Set<string>();
+    for (const pair of rankedPairs) {
+      allIntentIds.add(pair.newIntentId);
+      allIntentIds.add(pair.targetIntentId);
+    }
+
+    // Fetch user_ids for all intents
+    const intentUserMap = new Map<string, string>();
+    if (allIntentIds.size > 0) {
+      const intentData = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(inArray(intents.id, Array.from(allIntentIds)));
+      intentData.forEach((i: { id: string; userId: string }) => intentUserMap.set(i.id, i.userId));
     }
 
     // Insert top 10
@@ -265,12 +276,22 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
 
         const finalStake = stake1 < stake2 ? stake1 : stake2;
 
-        await db.insert(intentStakes).values({
+        // Insert stake and get ID
+        const [newStake] = await db.insert(intentStakes).values({
           intents: sortedIntents,
           stake: finalStake,
           reasoning: pairData.reasoning,
           agentId: this.agentId
-        });
+        }).returning({ id: intentStakes.id });
+
+        // Insert into join table with denormalized user_id
+        await db.insert(intentStakeItems).values(
+          sortedIntents.map(intentId => ({
+            stakeId: newStake.id,
+            intentId,
+            userId: intentUserMap.get(intentId)!
+          }))
+        );
       }
     }
   }
@@ -585,4 +606,3 @@ Are these mutually relevant with high confidence (>= 70 score)? Consider timing 
     return null;
   }
 }
-

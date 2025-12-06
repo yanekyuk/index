@@ -270,7 +270,6 @@ export class QueueProcessor {
         1, // itemCount
         data.instruction,
         Array.from(existingIntents),
-        undefined,
         60000
       );
     } else if (data.objects) {
@@ -279,7 +278,6 @@ export class QueueProcessor {
         data.objects,
         data.instruction,
         Array.from(existingIntents),
-        undefined,
         60000
       );
     }

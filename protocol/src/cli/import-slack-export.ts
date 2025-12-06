@@ -110,7 +110,7 @@ async function processMessage(message: SlackMessage, integrationId: string, inde
   if (!user) return 0;
 
   const existingIntents = await IntentService.getUserIntents(user.id);
-  const result = await analyzeObjects([message], 'Generate intents based on integration data', Array.from(existingIntents), undefined, 60000);
+  const result = await analyzeObjects([message], 'Generate intents based on integration data', Array.from(existingIntents), 60000);
 
   let count = 0;
   if (result?.success && result.intents) {

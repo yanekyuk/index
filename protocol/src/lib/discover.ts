@@ -1,6 +1,6 @@
-import { eq, ne, sql, and, or } from 'drizzle-orm';
+import { eq, ne, sql, and, or, inArray } from 'drizzle-orm';
 import db from './db';
-import { users, intents, intentStakes, intentIndexes, userConnectionEvents, indexMembers } from './schema';
+import { users, intents, intentStakes, intentStakeItems, intentIndexes, userConnectionEvents, indexMembers } from './schema';
 import { getUserAccessibleIndexIds } from './index-access';
 
 export interface DiscoverFilters {
@@ -125,18 +125,29 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     };
   }
 
-  // Main query to find users who have staked on authenticated user's intents
-  const mainQuery = db
+  // Step 1: Get stake IDs that contain authenticated user's intents (fast indexed lookup)
+  const authStakeIds = await db
+    .selectDistinct({ stakeId: intentStakeItems.stakeId })
+    .from(intentStakeItems)
+    .where(inArray(intentStakeItems.intentId, userIntentIds));
+
+  if (!authStakeIds.length) {
+    return {
+      results: [],
+      pagination: { page, limit, hasNext: false, hasPrev: page > 1 }
+    };
+  }
+
+  // Step 2: Get multi-user stakes from those IDs
+  const baseQuery = db
     .select({
-      // Get the stake ID
       stakeId: intentStakes.id,
       stake: intentStakes.stake,
       reasoning: intentStakes.reasoning,
-      // Collect all intent information from this stake
       intents: sql<any[]>`ARRAY_AGG(
         jsonb_build_object(
-          'intentId', intentId.id,
-          'userId', ${intents.userId},
+          'intentId', ${intentStakeItems.intentId},
+          'userId', ${intentStakeItems.userId},
           'intent', jsonb_build_object(
             'id', ${intents.id},
             'payload', ${intents.payload},
@@ -147,61 +158,13 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       )`,
     })
     .from(intentStakes)
-    // Explode the stake.intents array into individual rows for filtering
-    // This allows us to match each intent ID separately
-    .innerJoin(
-      sql`UNNEST(${intentStakes.intents}::uuid[]) as intentId(id)`,
-      sql`TRUE`
-    )
-    // Join with intents table to get intent details
-    .innerJoin(intents, sql`intentId.id = ${intents.id}`)
-    // Join with users table to get user details (will use later)
-    .innerJoin(users, eq(users.id, intents.userId))
-    
-    .where(
-      and(
-        // Exclude single-intent confidence stakes
-        sql`array_length(${intentStakes.intents}, 1) > 1`,
-        
-        // Only stakes that contain authenticated user's intents
-        userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
+    .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+    .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
+    .where(inArray(intentStakes.id, authStakeIds.map(s => s.stakeId)))
+    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning)
+    .having(sql`COUNT(DISTINCT ${intentStakeItems.userId}) > 1`);
 
-        // Check if all intents in the stake exist in the same index (skip if using explicit intentIds)
-        ...(targetIndexIds !== undefined ? [
-          sql`EXISTS (
-            SELECT 1
-            FROM ${intentIndexes} ii1
-            WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
-            ${targetIndexIds && targetIndexIds.length > 0
-              ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-              : sql``}
-            GROUP BY ii1.index_id
-            HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
-          )`
-        ] : []),
-
-        // Ensure stake contains intents from users other than authenticated user
-        sql`EXISTS (
-          SELECT 1
-          FROM UNNEST(${intentStakes.intents}::uuid[]) as check_intent_id
-          JOIN ${intents} check_intent ON check_intent.id = check_intent_id
-          WHERE check_intent.user_id != ${authenticatedUserId}
-        )`
-      )
-    )
-    // Group by stake to get all intents for each stake
-    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning);
-
-  // This query finds stakes with the authenticated user's intents
-  // Then we process them to find discovered users
-  // It filters by:
-  // - Stakes that contain authenticated user's intents
-  // - Stakes that contain intents from other users (discovered users)
-  // - Index coherence (all intents in stake exist in same index)
-  // - Groups by stake to get all intents per stake
-  // Note: Pagination is applied as post-filter after sorting by totalStake
-
-  const results = await mainQuery;
+  const results = await baseQuery;
 
   // Process stakes to find discovered users
   // Map: userId -> user data with aggregated intents and stakes

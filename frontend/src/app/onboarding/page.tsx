@@ -21,8 +21,9 @@ import { formatDate } from "@/lib/utils";
 import { useIndexesState } from "@/contexts/IndexesContext";
 import { useAuth as useAuthService, useFiles, useLinks } from "@/contexts/APIContext";
 import { QueueStatus } from "@/services/queue";
+import { usePrivy } from "@privy-io/react-auth";
 
-type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+type OnboardingStep = 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
 type OnboardingFlow = 1 | 2 | 3;
 
 interface IntegrationState {
@@ -47,7 +48,7 @@ interface FlowConfig {
 
 const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
   1: { // Personal flow
-    steps: ['profile', 'connections', 'join_indexes'],
+    steps: ['profile', 'summary', 'join_indexes'],
     features: {
       showSlackDiscord: false,
       requireIndexId: false,
@@ -57,7 +58,7 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
     },
   },
   2: { // Community flow
-    steps: ['profile', 'create_index', 'connections', 'invite_members'],
+    steps: ['profile', 'summary', 'create_index', 'connections', 'invite_members'],
     features: {
       showSlackDiscord: true,
       requireIndexId: true,
@@ -67,7 +68,7 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
     },
   },
   3: { // Invitation flow
-    steps: ['profile', 'connections'],
+    steps: ['profile', 'summary'],
     features: {
       showSlackDiscord: false,
       requireIndexId: false,
@@ -93,11 +94,10 @@ export default function OnboardingPage() {
   const { success, error } = useNotifications();
   const { user, refetchUser } = useAuthContext();
   const { refreshIndexes } = useIndexesState();
+  const { getAccessToken } = usePrivy();
 
   // Profile step states
   const [name, setName] = useState('');
-  const [intro, setIntro] = useState('');
-  const [location, setLocation] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +106,7 @@ export default function OnboardingPage() {
   const [socialX, setSocialX] = useState('');
   const [socialLinkedin, setSocialLinkedin] = useState('');
   const [socialGithub, setSocialGithub] = useState('');
-  const [websites, setWebsites] = useState<string[]>([]);
+  const [websites, setWebsites] = useState<string[]>(['']);
 
   // Connections step states
   const [integrations, setIntegrations] = useState<IntegrationState[]>([]);
@@ -125,6 +125,9 @@ export default function OnboardingPage() {
   // Public indexes for join_indexes step
   const [publicIndexes, setPublicIndexes] = useState<Array<Index>>([]);
   const [publicIndexesLoaded, setPublicIndexesLoaded] = useState(false);
+  // User's already joined indexes (including private ones)
+  const [joinedIndexes, setJoinedIndexes] = useState<Array<Index>>([]);
+  const [joinedIndexesLoaded, setJoinedIndexesLoaded] = useState(false);
   const [isJoiningIndex, setIsJoiningIndex] = useState<string | null>(null);
 
   // Mock indexes for the final step (fallback if no public indexes)
@@ -148,6 +151,20 @@ export default function OnboardingPage() {
 
   const [, setMemberCount] = useState(0);
   const [summaryLoaded, setSummaryLoaded] = useState(false);
+
+  // Summary step states
+  interface GeneratedIntent {
+    intent: string;
+    confidence: 'low' | 'medium' | 'high';
+    date: string;
+  }
+  const [summaryGenerating, setSummaryGenerating] = useState(false);
+  const [summaryComplete, setSummaryComplete] = useState(false);
+  const [summaryStatusMessage, setSummaryStatusMessage] = useState('');
+  const [generatedIntro, setGeneratedIntro] = useState<string | null>(null);
+  const [generatedLocation, setGeneratedLocation] = useState<string | null>(null);
+  const [generatedIntents, setGeneratedIntents] = useState<GeneratedIntent[]>([]);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   
   // Memoized display values to prevent glitching during reloads
   const [displayIntents, setDisplayIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
@@ -302,8 +319,6 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (user) {
       setName(user.name || '');
-      setIntro(user.intro || '');
-      setLocation(user.location || '');
       
       // Pre-fill socials if they exist
       if (user.socials) {
@@ -312,6 +327,9 @@ export default function OnboardingPage() {
         setSocialGithub(user.socials.github || '');
         if (user.socials.websites && user.socials.websites.length > 0) {
           setWebsites(user.socials.websites);
+        } else {
+          // Always show at least one empty website input
+          setWebsites(['']);
         }
       }
       
@@ -331,8 +349,8 @@ export default function OnboardingPage() {
         return;
       }
       
-      // Start with profile if intro not filled
-      if (!user.intro) {
+      // If no step info saved, always start with profile (step one)
+      if (!user.onboarding?.currentStep) {
         setCurrentStep('profile');
         return;
       }
@@ -429,24 +447,42 @@ export default function OnboardingPage() {
     }
   }, [currentStep, api]);
 
-  // Load public indexes when on join_indexes step
+  // Load public indexes and user's joined indexes when on join_indexes step
   useEffect(() => {
-    const loadPublicIndexes = async () => {
-      if (currentStep === 'join_indexes' && !publicIndexesLoaded) {
-        try {
-          const response = await indexService.discoverPublicIndexes(1, 20);
-          setPublicIndexes(response.data || []);
-          setPublicIndexesLoaded(true);
-        } catch (error) {
-          console.error('Failed to load public indexes:', error);
-          // Keep mock data as fallback
-          setPublicIndexesLoaded(true);
+    const loadIndexes = async () => {
+      if (currentStep === 'join_indexes') {
+        // Load public indexes
+        if (!publicIndexesLoaded) {
+          try {
+            const response = await indexService.discoverPublicIndexes(1, 20);
+            setPublicIndexes(response.data || []);
+            setPublicIndexesLoaded(true);
+          } catch (error) {
+            console.error('Failed to load public indexes:', error);
+            setPublicIndexesLoaded(true);
+          }
+        }
+
+        // Load user's already joined indexes (includes private ones they've joined)
+        if (!joinedIndexesLoaded) {
+          try {
+            const response = await indexService.getIndexes(1, 50);
+            // Filter to only include private indexes (invite_only) that user has joined
+            const privateJoined = (response.data || []).filter(index => 
+              index.permissions?.joinPolicy === 'invite_only'
+            );
+            setJoinedIndexes(privateJoined);
+            setJoinedIndexesLoaded(true);
+          } catch (error) {
+            console.error('Failed to load joined indexes:', error);
+            setJoinedIndexesLoaded(true);
+          }
         }
       }
     };
 
-    loadPublicIndexes();
-  }, [currentStep, publicIndexesLoaded, indexService]);
+    loadIndexes();
+  }, [currentStep, publicIndexesLoaded, joinedIndexesLoaded, indexService]);
 
   // Load index summary when reaching invite_members step and reload every second
   useEffect(() => {
@@ -463,6 +499,81 @@ export default function OnboardingPage() {
       return () => clearInterval(interval);
     }
   }, [currentStep, loadIndexSummary]);
+
+  // Generate summary when entering summary step
+  useEffect(() => {
+    if (currentStep === 'summary' && !summaryGenerating && !summaryComplete && !summaryError) {
+      const generateSummary = async () => {
+        setSummaryGenerating(true);
+        setSummaryStatusMessage('Starting analysis...');
+        setSummaryError(null);
+
+        try {
+          const token = await getAccessToken();
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/generate-summary`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to start summary generation');
+          }
+
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error('No response stream available');
+          }
+
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+                  
+                  if (event.type === 'status' || event.type === 'progress') {
+                    setSummaryStatusMessage(event.message || '');
+                  } else if (event.type === 'result' && event.data) {
+                    setGeneratedIntro(event.data.intro);
+                    setGeneratedLocation(event.data.location);
+                    setGeneratedIntents(event.data.intents || []);
+                    setSummaryComplete(true);
+                    setSummaryStatusMessage('');
+                  } else if (event.type === 'error') {
+                    setSummaryError(event.message || 'An error occurred');
+                    setSummaryGenerating(false);
+                  } else if (event.type === 'done') {
+                    setSummaryGenerating(false);
+                  }
+                } catch {
+                  // Ignore parse errors for incomplete JSON
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Summary generation error:', err);
+          setSummaryError((err as Error).message);
+        } finally {
+          setSummaryGenerating(false);
+        }
+      };
+
+      generateSummary();
+    }
+  }, [currentStep, summaryGenerating, summaryComplete, summaryError, getAccessToken]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     return await authService.uploadAvatar(file);
@@ -528,8 +639,6 @@ export default function OnboardingPage() {
       
       const updatedUser = await authService.updateProfile({
         name: name.trim(),
-        intro: intro.trim(),
-        location: location.trim() || undefined,
         avatar: avatarFilename || undefined,
         socials: Object.keys(socials).length > 0 ? socials : undefined,
       });
@@ -800,7 +909,7 @@ export default function OnboardingPage() {
             <div className="mb-5">
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Introduce yourself</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                Set up your profile to get started with Index Network.
+                Set up your profile to get started with Index.
               </p>
             </div>
 
@@ -852,27 +961,6 @@ export default function OnboardingPage() {
                   placeholder="John Doe"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Intro</label>
-                <Textarea
-                  placeholder="Tell us about yourself in a few words"
-                  value={intro}
-                  onChange={(e) => setIntro(e.target.value)}
-                  className="w-full min-h-[60px]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Location</label>
-                <Input
-                  type="text"
-                  placeholder="Brooklyn, NY"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
                   className="w-full"
                 />
               </div>
@@ -933,13 +1021,15 @@ export default function OnboardingPage() {
                       placeholder="https://example.com"
                       className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setWebsites(websites.filter((_, i) => i !== index))}
-                      className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
-                    >
-                      ×
-                    </button>
+                    {websites.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setWebsites(websites.filter((_, i) => i !== index))}
+                        className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                 ))}
 
@@ -960,6 +1050,211 @@ export default function OnboardingPage() {
               <Button
                 onClick={handleProfileSubmit}
                 disabled={!name.trim() || isLoading}
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
+              >
+                {isLoading ? 'Saving...' : 'Next'}
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 'summary':
+        const handleRemoveIntent = (index: number) => {
+          setGeneratedIntents(prev => prev.filter((_, i) => i !== index));
+        };
+
+        const handleSaveSummary = async () => {
+          setIsLoading(true);
+          try {
+            // Update user profile with generated intro and location if they exist
+            const updates: { intro?: string; location?: string } = {};
+            if (generatedIntro) updates.intro = generatedIntro;
+            if (generatedLocation) updates.location = generatedLocation;
+            
+            if (Object.keys(updates).length > 0) {
+              await authService.updateProfile(updates);
+            }
+
+            // Create intents from generated list
+            if (generatedIntents.length > 0) {
+              for (const intent of generatedIntents) {
+                try {
+                  await api.post('/intents', {
+                    payload: intent.intent,
+                    confidence: intent.confidence,
+                  });
+                } catch (err) {
+                  console.error('Failed to create intent:', err);
+                }
+              }
+            }
+
+            // Update onboarding state and move to next step
+            const nextStep = getNextStep('summary');
+            await authService.updateOnboardingState({
+              currentStep: nextStep
+            });
+
+            await refetchUser();
+            setCurrentStep(nextStep);
+          } catch (err) {
+            console.error('Error saving summary:', err);
+            error('Failed to save summary');
+          } finally {
+            setIsLoading(false);
+          }
+        };
+
+        return (
+          <div className="max-w-3xl mx-auto">
+            <div className="mb-5">
+              <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">
+                {summaryGenerating ? "Getting to know you" : "Here's what we found"}
+              </h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono">
+                {summaryGenerating 
+                  ? "We're reading about you and discovering your intents. This will just take a moment..."
+                  : "We've generated your intro and discovered your intents. Review and adjust as needed."}
+              </p>
+            </div>
+
+            {/* Status message while generating */}
+            {summaryGenerating && (
+              <div className="mb-6 p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
+                <div className="flex items-center gap-3">
+                  <div className="h-4 w-4 border-2 border-[#006D4B] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[14px] font-ibm-plex-mono text-[#333]">
+                    {summaryStatusMessage || 'Generating...'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Error state */}
+            {summaryError && (
+              <div className="mb-6 p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-sm">
+                <p className="text-[14px] font-ibm-plex-mono text-[#DC2626]">
+                  {summaryError}
+                </p>
+                <Button
+                  onClick={() => {
+                    setSummaryError(null);
+                    setSummaryComplete(false);
+                  }}
+                  variant="outline"
+                  className="mt-3 text-sm"
+                >
+                  Try again
+                </Button>
+              </div>
+            )}
+
+            {/* Generated content */}
+            {summaryComplete && (
+              <div className="space-y-3">
+                {/* Generated Intro */}
+                {generatedIntro && (
+                  <div>
+                    <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Intro</label>
+                    <Textarea
+                      value={generatedIntro}
+                      onChange={(e) => setGeneratedIntro(e.target.value)}
+                      className="w-full min-h-[120px]"
+                    />
+                  </div>
+                )}
+
+                {/* Generated Location */}
+                {generatedLocation && (
+                  <div>
+                    <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Location</label>
+                    <Input
+                      value={generatedLocation}
+                      onChange={(e) => setGeneratedLocation(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Generated Intents */}
+                {generatedIntents.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-black font-ibm-plex-mono">
+                      Your Intents ({generatedIntents.length})
+                    </label>
+                    <p className="text-[13px] text-[#666] font-ibm-plex-mono mb-3">
+                      These represent what you're looking for and working on. Remove any that don't fit.
+                    </p>
+                    <div className="space-y-1">
+                      {generatedIntents.map((intent, index) => (
+                        <div
+                          key={index}
+                          className="group flex items-start gap-1 px-3 py-1.5 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
+                        >
+                          <span className="flex-1 text-[#1976D2] text-[13px] font-ibm-plex-mono">
+                            {intent.intent}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveIntent(index)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#90CAF9] rounded transition-all"
+                            aria-label="Remove intent"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#1976D2]">
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No intents generated */}
+                {generatedIntents.length === 0 && !generatedIntro && !generatedLocation && (
+                  <div className="p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
+                    <p className="text-[14px] font-ibm-plex-mono text-[#666]">
+                      We couldn't find enough information to generate a summary. You can add more details in the next steps.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Loading placeholders */}
+            {summaryGenerating && !summaryComplete && (
+              <div className="space-y-6">
+                <div>
+                  <div className="h-4 w-16 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                  <div className="h-20 bg-[#F5F5F5] rounded animate-pulse"></div>
+                </div>
+                <div>
+                  <div className="h-4 w-20 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                  <div className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
+                </div>
+                <div>
+                  <div className="h-4 w-24 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                  <div className="space-y-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-8">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep(getPreviousStep('summary'))}
+                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
+              >
+                Back
+              </Button>
+              <Button
+                onClick={handleSaveSummary}
+                disabled={!summaryComplete || isLoading}
                 className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
                 {isLoading ? 'Saving...' : 'Next'}
@@ -1483,21 +1778,45 @@ export default function OnboardingPage() {
         );
 
       case 'join_indexes':
-        const indexesToShow = publicIndexes.length > 0 ? publicIndexes : mockIndexes.map(m => ({
-          id: m.id,
-          title: m.name,
-          prompt: m.description,
-          permissions: null,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          user: { id: '', name: '', email: null, avatar: null },
-          _count: { members: m.members, files: 0 },
-          isMember: false
-        }));
+        // Combine public indexes and user's already-joined private indexes
+        // Deduplicate by ID, prioritizing membership status from joinedIndexes
+        const allIndexesMap = new Map<string, Index>();
+        
+        // Add public indexes first
+        publicIndexes.forEach(index => {
+          allIndexesMap.set(index.id, { ...index, isMember: index.isMember || false });
+        });
+        
+        // Add user's joined private indexes (mark as member)
+        // If an index already exists, update it to ensure isMember is true
+        joinedIndexes.forEach(index => {
+          const existing = allIndexesMap.get(index.id);
+          if (existing) {
+            // Update existing entry to mark as member
+            allIndexesMap.set(index.id, { ...existing, isMember: true });
+          } else {
+            // Add new private index that user has joined
+            allIndexesMap.set(index.id, { ...index, isMember: true });
+          }
+        });
+        
+        const indexesToShow = allIndexesMap.size > 0 
+          ? Array.from(allIndexesMap.values())
+          : mockIndexes.map(m => ({
+              id: m.id,
+              title: m.name,
+              prompt: m.description,
+              permissions: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              user: { id: '', name: '', email: null, avatar: null },
+              _count: { members: m.members, files: 0 },
+              isMember: false
+            }));
 
         const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
           // Skip if this is mock data
-          if (!publicIndexes.length && mockIndexes.find(m => m.id === index.id)) {
+          if (allIndexesMap.size === 0 && mockIndexes.find(m => m.id === index.id)) {
             // Just toggle for mock data
             setSelectedIndexes(prev => {
               const next = new Set(prev);
@@ -1521,10 +1840,22 @@ export default function OnboardingPage() {
             await indexService.joinIndex(index.id);
             setSelectedIndexes(prev => new Set(prev).add(index.id));
             success(`Joined ${index.title}!`);
-            // Update the index in the list
+            // Update the index in both lists
             setPublicIndexes(prev => prev.map(idx => 
               idx.id === index.id ? { ...idx, isMember: true } : idx
             ));
+            // If it's a private index, also add it to joinedIndexes
+            if (index.permissions?.joinPolicy === 'invite_only') {
+              setJoinedIndexes(prev => {
+                const exists = prev.find(idx => idx.id === index.id);
+                if (!exists) {
+                  return [...prev, { ...index, isMember: true }];
+                }
+                return prev.map(idx => 
+                  idx.id === index.id ? { ...idx, isMember: true } : idx
+                );
+              });
+            }
             // Refresh indexes context
             await refreshIndexes();
           } catch (err) {
@@ -1544,7 +1875,7 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            {!publicIndexesLoaded ? (
+            {(!publicIndexesLoaded || !joinedIndexesLoaded) ? (
               <div className="flex justify-center pb-12">
                 <div className="h-8 w-8 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
               </div>

@@ -6,6 +6,7 @@ import { users, userNotificationSettings } from '../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { User, UpdateProfileRequest, OnboardingState } from '../types';
 import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
+import { generateSummaryWithIntents, GenerateSummaryInput, SummaryStreamEvent } from '../lib/parallels';
 
 const router = Router();
 
@@ -216,6 +217,86 @@ router.delete('/account', authenticatePrivy, async (req: AuthRequest, res: Respo
   } catch (error) {
     console.error('Delete account error:', error);
     return res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// Generate summary with intro, location, and intents using Parallel AI (SSE)
+router.post('/generate-summary', authenticatePrivy, async (req: AuthRequest, res: Response) => {
+  try {
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    // Get user data
+    const userRecords = await db.select({
+      name: users.name,
+      email: users.email,
+      socials: users.socials,
+    })
+      .from(users)
+      .where(eq(users.id, req.user!.id))
+      .limit(1);
+
+    if (userRecords.length === 0) {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'User not found' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const user = userRecords[0];
+    const socials = (user.socials || {}) as { x?: string; linkedin?: string };
+
+    // Build input for Parallel
+    const input: GenerateSummaryInput = {
+      name: user.name || undefined,
+      email: user.email || undefined,
+    };
+
+    // Convert LinkedIn username to URL if needed
+    if (socials.linkedin) {
+      const linkedinValue = String(socials.linkedin).trim();
+      if (linkedinValue) {
+        input.linkedin_url = linkedinValue.startsWith('http')
+          ? linkedinValue
+          : `https://www.linkedin.com/in/${linkedinValue}`;
+      }
+    }
+
+    // Convert Twitter username to URL if needed
+    if (socials.x) {
+      const twitterValue = String(socials.x).trim();
+      if (twitterValue) {
+        if (twitterValue.startsWith('http')) {
+          input.twitter_url = twitterValue;
+        } else {
+          const username = twitterValue.replace(/^@/, '');
+          input.twitter_url = `https://x.com/${username}`;
+        }
+      }
+    }
+
+    // Stream events to client
+    const sendEvent = (event: SummaryStreamEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    // Generate summary with streaming events
+    await generateSummaryWithIntents(input, sendEvent);
+
+    // End the stream
+    res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+    res.end();
+  } catch (error) {
+    console.error('Generate summary error:', error);
+    try {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Failed to generate summary' })}\n\n`);
+      res.end();
+    } catch {
+      // Response already ended
+    }
   }
 });
 
