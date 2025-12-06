@@ -1,5 +1,5 @@
 import db from './db';
-import { intents, intentIndexes, intentStakes } from './schema';
+import { intents, intentIndexes, intentStakes, intentStakeItems } from './schema';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { generateEmbedding } from './embeddings';
 import { Events } from './events';
@@ -154,11 +154,18 @@ export class IntentService {
 
       // Create inference stake (always required)
       try {
-        await db.insert(intentStakes).values({
+        const [newStake] = await db.insert(intentStakes).values({
           intents: [createdIntent.id],
           stake: BigInt(Math.floor(confidence * 100)),
           reasoning: `Inferred as ${inferenceType} intent`,
           agentId: INTENT_INFERRER_AGENT_ID
+        }).returning({ id: intentStakes.id });
+        
+        // Insert into join table with denormalized user_id
+        await db.insert(intentStakeItems).values({
+          stakeId: newStake.id,
+          intentId: createdIntent.id,
+          userId: createdIntent.userId
         });
         console.log(`[IntentService.createIntent] ✅ Created inference stake for intent ${createdIntent.id}: ${inferenceType} (${confidence})`);
       } catch (error) {

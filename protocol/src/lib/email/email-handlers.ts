@@ -1,29 +1,18 @@
 import db from '../db';
-import { users, intents, intentStakes } from '../schema';
-import { eq, sql, and } from 'drizzle-orm';
+import { users, intents, intentStakes, intentStakeItems } from '../schema';
+import { eq, sql, and, inArray } from 'drizzle-orm';
 import { sendEmail } from './email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from './email-templates';
 import { synthesizeVibeCheck, synthesizeIntro } from '../synthesis';
   
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
-  const [user1Intents, user2Intents] = await Promise.all([
-    db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user1Id)),
-    db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user2Id))
-  ]);
-
-  const user1IntentIds = user1Intents.map(i => i.id);
-  const user2IntentIds = user2Intents.map(i => i.id);
-
-  if (user1IntentIds.length === 0 || user2IntentIds.length === 0) {
-    return false;
-  }
-
+  // Use denormalized user_id for fast indexed lookup
   const stakes = await db.select({ id: intentStakes.id })
     .from(intentStakes)
-    .where(and(
-      sql`${intentStakes.intents} && ARRAY[${sql.join(user1IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`,
-      sql`${intentStakes.intents} && ARRAY[${sql.join(user2IntentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`
-    ))
+    .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+    .where(inArray(intentStakeItems.userId, [user1Id, user2Id]))
+    .groupBy(intentStakes.id)
+    .having(sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`)
     .limit(1);
 
   return stakes.length > 0;

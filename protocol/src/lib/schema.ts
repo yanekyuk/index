@@ -271,6 +271,13 @@ export const intentStakes = pgTable('intent_stakes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Join table for fast stake lookups by user/intent (created by migration)
+export const intentStakeItems = pgTable('intent_stake_items', {
+  stakeId: uuid('stake_id').notNull(),
+  intentId: uuid('intent_id').notNull(),
+  userId: uuid('user_id').notNull(),
+});
+
 export const agentsRelations = relations(agents, ({ many }) => ({
   stakes: many(intentStakes),
 }));
