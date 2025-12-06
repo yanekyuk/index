@@ -13,10 +13,14 @@ export const weeklyNewsletterTemplate = (recipientName: string, matches: Match[]
       .replace(/'/g, '&#039;');
   }
 
+  const formatReasoning = (text: string) => {
+    return escapeHtml(text).replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="text-decoration: underline;">$1</a>');
+  }
+
   const matchesHtml = matches.map((match) => `
     <div style="margin-bottom: 20px;">
       <p><strong>${escapeHtml(match.name)}${match.role ? ` — <em>${escapeHtml(match.role)}</em>` : ''}</strong></p>
-      <p>${escapeHtml(match.reasoning)}</p>
+      <p>${formatReasoning(match.reasoning)}</p>
     </div>
   `).join('');
 
