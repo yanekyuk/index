@@ -76,7 +76,7 @@ function parseNewsletterSchedule() {
         const m = parseInt(parts[0], 10);
         const h = parseInt(parts[1], 10);
         const d = parseInt(parts[4], 10);
-        if (!isNaN(h) && !isNaN(d)) {
+        if (!isNaN(m) && !isNaN(h) && !isNaN(d)) {
             targetHour = h;
             targetDay = d === 7 ? 0 : d; // Normalize 7 to 0 (Sunday)
             targetMinute = m;
