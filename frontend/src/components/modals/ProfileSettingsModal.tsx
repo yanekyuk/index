@@ -62,6 +62,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [name, setName] = useState(user?.name || '');
   const [intro, setIntro] = useState(user?.intro || '');
   const [location, setLocation] = useState(user?.location || '');
+  const [timezone, setTimezone] = useState(user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -146,6 +147,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
         intro: intro || undefined,
         location: location || undefined,
         avatar: avatarFilename || undefined,
+        timezone: timezone || undefined,
         socials: Object.keys(socials).length > 0 ? socials : undefined,
       });
 
@@ -164,6 +166,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       setName(user.name);
       setIntro(user.intro || '');
       setLocation(user.location || '');
+      setTimezone(user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
       setAvatarFile(null);
       setAvatarPreview(null);
       setAvatarError(null);
@@ -271,6 +274,32 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Brooklyn, NY"
               />
+            </div>
+
+            {/* Timezone Field */}
+            <div>
+              <label htmlFor="timezone" className="text-md font-medium font-ibm-plex-mono text-black">
+                <div className="mb-2">Timezone</div>
+              </label>
+              <div className="relative">
+                <select
+                  id="timezone"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                >
+                  {Intl.supportedValuesOf('timeZone').map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
+              </div>
             </div>
 
             {/* Social Links Section */}
