@@ -56,6 +56,10 @@ async function runTest() {
             throw new Error('Failed to analyze content');
         }
 
+        if (!aliceAnalysis.intents.length || !bobAnalysis.intents.length) {
+            throw new Error('No intents generated from content analysis');
+        }
+
         const aliceIntentPayload = aliceAnalysis.intents[0].payload;
         const bobIntentPayload = bobAnalysis.intents[0].payload;
 
