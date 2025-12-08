@@ -43,6 +43,7 @@ export default function InboxPage() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [optimisticStatus, setOptimisticStatus] = useState<Record<string, ConnectionAction | null>>({});
 
   // Refs
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
@@ -257,9 +258,6 @@ export default function InboxPage() {
     };
 
     try {
-      // Apply optimistic update
-      updateLocalState();
-
       switch (action) {
         case 'REQUEST':
           await connectionsService.requestConnection(userId);
@@ -278,12 +276,20 @@ export default function InboxPage() {
           break;
       }
 
+      // Update local state after successful server response
+      updateLocalState();
+      setOptimisticStatus(prev => ({ ...prev, [userId]: action }));
+
       // Refresh data in background without loading state
       await fetchData({ showLoading: false, clearSyntheses: false });
     } catch (error) {
       console.error('Error handling connection action:', error);
-      // Revert on error would go here, but for now we'll just refresh to get true state
-      await fetchData();
+
+      // Refresh to get true state
+      await fetchData({ showLoading: false, clearSyntheses: false });
+
+      // Re-throw so the UI component can handle it
+      throw error;
     }
   }, [connectionsService, fetchData, inboxConnections, pendingConnections, historyConnections]);
 
@@ -294,7 +300,19 @@ export default function InboxPage() {
   }, []);
 
   // Helper: Get connection status for rendering
-  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent' | 'history'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType: 'received' | 'sent' | 'history' | undefined, userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+    // Check optimistic status first
+    if (optimisticStatus[userId]) {
+      const action = optimisticStatus[userId];
+      switch (action) {
+        case 'REQUEST': return 'pending_sent';
+        case 'SKIP': return 'skipped';
+        case 'ACCEPT': return 'connected';
+        case 'DECLINE': return 'declined';
+        case 'CANCEL': return 'none'; // effectively resets to none for discover
+      }
+    }
+
     if (tabType === 'discover') {
       return 'none';
     }
@@ -468,7 +486,7 @@ export default function InboxPage() {
               <ConnectionActions
                 userId={user.id}
                 userName={user.name}
-                connectionStatus={getConnectionStatus(tabType, requestsView)}
+                connectionStatus={getConnectionStatus(tabType, requestsView, user.id)}
                 onAction={handleConnectionAction}
                 size="sm"
               />

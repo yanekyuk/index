@@ -28,14 +28,27 @@ export default function ConnectionActions({
 
   const handleAction = async (action: ConnectionAction) => {
     if (disabled || isLoading) return;
-    
+
     setIsLoading(true);
     try {
       await onAction(action, userId);
-      
-      
-      if (action === 'ACCEPT') {
-        success("Connection accepted!", "Your intro email is on the way. Stay tuned!");
+
+      switch (action) {
+        case 'REQUEST':
+          success("Request Sent", "Your request for connection is being processed.");
+          break;
+        case 'CANCEL':
+          success("Request Withdrawn", "Connection request withdrawn.");
+          break;
+        case 'ACCEPT':
+          success("Connection Accepted", "Your intro email is on the way. Stay tuned!");
+          break;
+        case 'DECLINE':
+          success("Connection Declined", "The connection request has been declined.");
+          break;
+        case 'SKIP':
+          success("Suggestion Skipped", "We'll show you fewer people like this.");
+          break;
       }
     } catch (err) {
       console.error('Connection action failed:', err);
