@@ -119,7 +119,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
         // 1. Get stakes created in the last 7 days (fallback) or since last email
         const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 1);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
         // We fetch all recent stakes first, then filter per-user based on their last sent time
         console.time('FetchStakes');
