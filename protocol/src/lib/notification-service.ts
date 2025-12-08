@@ -9,9 +9,22 @@ import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
 import DOMPurify from 'isomorphic-dompurify';
 
 async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise<boolean> {
-    const [user1Intents, user2Intents] = await Promise.all([
+    const [user1Intents, user2Intents, stakes] = await Promise.all([
         db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user1Id)),
-        db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user2Id))
+        db.select({ id: intents.id }).from(intents).where(eq(intents.userId, user2Id)),
+        db.select({ id: intentStakes.id })
+            .from(intentStakes)
+            .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+            .where(and(
+                // Filter to stakes involving both users
+                inArray(intentStakeItems.userId, [user1Id, user2Id])
+            ))
+            .groupBy(intentStakes.id)
+            .having(and(
+                // Both users must be present
+                sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`
+            ))
+            .limit(1)
     ]);
 
     const user1IntentIds = user1Intents.map(i => i.id);
@@ -20,20 +33,6 @@ async function checkStakeBetweenUsers(user1Id: string, user2Id: string): Promise
     if (user1IntentIds.length === 0 || user2IntentIds.length === 0) {
         return false;
     }
-
-    const stakes = await db.select({ id: intentStakes.id })
-        .from(intentStakes)
-        .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
-        .where(and(
-            // Filter to stakes involving both users
-            inArray(intentStakeItems.userId, [user1Id, user2Id])
-        ))
-        .groupBy(intentStakes.id)
-        .having(and(
-            // Both users must be present
-            sql`COUNT(DISTINCT ${intentStakeItems.userId}) = 2`
-        ))
-        .limit(1);
 
     return stakes.length > 0;
 }

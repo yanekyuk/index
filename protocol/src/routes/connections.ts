@@ -174,33 +174,34 @@ router.post('/actions',
         return res.status(400).json({ error: 'Cannot connect to yourself' });
       }
 
-      // Verify target user exists
-      const targetUser = await db.select()
-        .from(users)
-        .where(and(eq(users.id, targetUserId), isNull(users.deletedAt)))
-        .limit(1);
+      const [targetUser, latestEvent] = await Promise.all([
+        // Verify target user exists
+        db.select()
+          .from(users)
+          .where(and(eq(users.id, targetUserId), isNull(users.deletedAt)))
+          .limit(1),
+        // Get the latest connection event
+        db.select()
+          .from(userConnectionEvents)
+          .where(
+            or(
+              and(
+                eq(userConnectionEvents.initiatorUserId, userId),
+                eq(userConnectionEvents.receiverUserId, targetUserId)
+              ),
+              and(
+                eq(userConnectionEvents.initiatorUserId, targetUserId),
+                eq(userConnectionEvents.receiverUserId, userId)
+              )
+            )
+          )
+          .orderBy(desc(userConnectionEvents.createdAt))
+          .limit(1)
+      ]);
 
       if (targetUser.length === 0) {
         return res.status(404).json({ error: 'Target user not found' });
       }
-
-      // Get the latest connection event between these users to determine current state
-      const latestEvent = await db.select()
-        .from(userConnectionEvents)
-        .where(
-          or(
-            and(
-              eq(userConnectionEvents.initiatorUserId, userId),
-              eq(userConnectionEvents.receiverUserId, targetUserId)
-            ),
-            and(
-              eq(userConnectionEvents.initiatorUserId, targetUserId),
-              eq(userConnectionEvents.receiverUserId, userId)
-            )
-          )
-        )
-        .orderBy(desc(userConnectionEvents.createdAt))
-        .limit(1);
 
       const currentState = latestEvent[0]?.eventType;
 
