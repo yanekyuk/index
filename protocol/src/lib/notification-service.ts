@@ -89,9 +89,6 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
             return;
         }
 
-        console.log('receiverUserId', receiverUserId);
-        console.log('initiatorUserId', initiatorUserId);
-
         // Generate synthesis for the receiver
         const { synthesis: synthesisMarkdown, subject } = await synthesizeVibeCheck(
             receiverUserId,
