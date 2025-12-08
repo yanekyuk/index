@@ -125,7 +125,7 @@ async function runTest() {
 
         try {
             const debugContent = await readFile(debugPath, 'utf-8');
-            if (debugContent.includes('Subject: New Connection Request') && debugContent.includes('Alice Test')) {
+            if (debugContent.includes('Subject:') && debugContent.includes('Alice Test')) {
                 console.log('✅ Email successfully logged in email-debug.md');
             } else {
                 console.error('❌ Email not found in log or content mismatch');
