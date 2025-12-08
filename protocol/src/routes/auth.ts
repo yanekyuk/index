@@ -32,9 +32,7 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
     const userWithPreferences = {
       ...user,
       notificationPreferences: settings?.preferences || {
-        connectionRequest: true,
-        connectionAccepted: true,
-        connectionRejected: true,
+        connectionUpdates: true,
         weeklyNewsletter: true,
       }
     };
