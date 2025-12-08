@@ -192,6 +192,8 @@ export const userConnectionEvents = pgTable('user_connection_events', {
 }, (table) => ({
   initiatorIdx: index('user_connection_events_initiator_idx').on(table.initiatorUserId),
   receiverIdx: index('user_connection_events_receiver_idx').on(table.receiverUserId),
+  // Compound index for optimizing fetch-latest-event query
+  initiatorReceiverCreatedIdx: index('initiator_receiver_created_idx').on(table.initiatorUserId, table.receiverUserId, table.createdAt),
 }));
 
 export const userIntegrations = pgTable('integrations', {
@@ -309,7 +311,10 @@ export const intentStakeItems = pgTable('intent_stake_items', {
   stakeId: uuid('stake_id').notNull(),
   intentId: uuid('intent_id').notNull(),
   userId: uuid('user_id').notNull(),
-});
+}, (table) => ({
+  stakeIdx: index('intent_stake_items_stake_idx').on(table.stakeId),
+  userIdx: index('intent_stake_items_user_idx').on(table.userId),
+}));
 
 export const agentsRelations = relations(agents, ({ many }) => ({
   stakes: many(intentStakes),
