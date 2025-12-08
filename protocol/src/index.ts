@@ -28,6 +28,7 @@ import queueRoutes from './routes/queue';
 import adminRoutes from './routes/admin';
 import feedbackRoutes from './routes/feedback';
 import notificationRoutes from './routes/notifications';
+import devRoutes from './routes/dev';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -70,6 +71,10 @@ app.use('/api/queue', queueRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+if (process.env.NODE_ENV === 'development') {
+  app.use('/api/dev', devRoutes);
+}
 
 // Sentry error handler must be before other error handlers
 Sentry.setupExpressErrorHandler(app);

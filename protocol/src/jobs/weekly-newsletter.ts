@@ -85,7 +85,7 @@ function parseNewsletterSchedule() {
     return { targetDay, targetHour, targetMinute };
 }
 
-export async function sendWeeklyNewsletter(now: Date = new Date()) {
+export async function sendWeeklyNewsletter(now: Date = new Date(), force: boolean = false, daysSince: number = 7) {
     console.time('WeeklyNewsletterJob');
     console.log('Starting weekly newsletter job...');
     try {
@@ -110,7 +110,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
         // Check if we are within the window [-14, +12]
         // -14 means current is 14 hours BEFORE target (UTC+14 is at target)
         // +12 means current is 12 hours AFTER target (UTC-12 is at target)
-        if (diff < -14 || diff > 12) {
+        if (!force && (diff < -14 || diff > 12)) {
             // console.log('Skipping weekly newsletter job - Outside of global window');
             console.log('Skipping weekly newsletter job - Outside of global window');
             console.timeEnd('WeeklyNewsletterJob');
@@ -119,7 +119,7 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
         // 1. Get stakes created in the last 7 days (fallback) or since last email
         const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - daysSince);
 
         // We fetch all recent stakes first, then filter per-user based on their last sent time
         console.time('FetchStakes');
@@ -167,8 +167,20 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             const p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
             const p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
 
-            const p1NeedsMatch = stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId);
-            const p2NeedsMatch = stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId);
+            let p1NeedsMatch = stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId);
+            let p2NeedsMatch = stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId);
+
+            if (p1NeedsMatch || p2NeedsMatch) {
+                // Check if users have opted out before doing expensive work
+                if (p1.notificationPreferences?.weeklyNewsletter === false) {
+                    // console.log(`Skipping match for ${p1.userEmail} - opted out of weekly newsletter`);
+                    p1NeedsMatch = false;
+                }
+                if (p2.notificationPreferences?.weeklyNewsletter === false) {
+                    // console.log(`Skipping match for ${p2.userEmail} - opted out of weekly newsletter`);
+                    p2NeedsMatch = false;
+                }
+            }
 
             if (p1NeedsMatch || p2NeedsMatch) {
                 // Fetch vibe checks in parallel if needed
@@ -214,12 +226,6 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
                 continue;
             }
 
-            // Check user preference
-            if (data.user.notificationPreferences?.weeklyNewsletter === false) {
-                console.log(`Skipping weekly newsletter for ${data.user.userEmail} due to user preference`);
-                continue;
-            }
-
             // Check if it's Target Day and Target Hour in the user's timezone
             const userTimezone = data.user.userTimezone || 'UTC';
             // const now = new Date(); // Use the passed 'now'
@@ -235,7 +241,8 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
             // targetDay is 0(Sun)..6(Sat)
             const targetDayISO = targetDay === 0 ? '7' : targetDay.toString();
 
-            if (dayOfWeek !== targetDayISO || parseInt(hour, 10) !== targetHour || parseInt(minute, 10) !== targetMinute) {
+            // Skip time check if force is true
+            if (!force && (dayOfWeek !== targetDayISO || parseInt(hour, 10) !== targetHour || parseInt(minute, 10) !== targetMinute)) {
                 // console.log(`Skipping ${data.user.userEmail} (Timezone: ${userTimezone}) - Local time is ${dayOfWeek} ${hour}:${minute}`);
                 continue;
             }
@@ -250,11 +257,14 @@ export async function sendWeeklyNewsletter(now: Date = new Date()) {
 
             const template = weeklyNewsletterTemplate(data.user.userName, data.matches, unsubscribeUrl);
 
+            // If we are in dev and email testing is NOT explicitly enabled, just log.
+            // But if it IS enabled, we fall through to sendEmail which handles the redirection.
             if (process.env.NODE_ENV === 'development' && process.env.ENABLE_EMAIL_TESTING !== 'true') {
                 console.log(`[DEV] Would send email to ${data.user.userEmail}:`);
                 console.log(`Subject: ${template.subject}`);
                 console.log(`Body preview: ${template.text.substring(0, 200)}...`);
                 console.log(`Unsubscribe: ${unsubscribeUrl}`);
+                console.log(`(Set ENABLE_EMAIL_TESTING=true to actually send)`);
             } else {
                 try {
                     await sendEmail({
