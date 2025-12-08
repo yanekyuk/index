@@ -36,7 +36,7 @@ Shorten original vibecheck text into a clean, email-ready paragraph. Keep the me
 
 * Only send when a real connection request is made.  
 * No follow-ups if the user ignores it.  
-* No information is shared with the requester unless X approves.
+* No information is shared with the requester unless the recipient approves.
 
 2. ### **Double opt-in Email**
 
