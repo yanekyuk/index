@@ -1,14 +1,14 @@
-import { eq, ne, sql, and, or, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import db from './db';
-import { users, intents, intentStakes, intentStakeItems, intentIndexes, userConnectionEvents, indexMembers } from './schema';
-import { getUserAccessibleIndexIds } from './index-access';
+import { users } from './schema';
+import { getConnectingStakes, stakeUserItems, stakeOtherUsers } from './stakes';
 
 export interface DiscoverFilters {
   authenticatedUserId: string;
   intentIds?: string[];
   userIds?: string[];
   indexIds?: string[];
-  sources?: Array<{ type: 'file' | 'integration' | 'link' | 'discovery_form'; id: string }>;
+  sources?: Array<{ type: 'file' | 'integration' | 'link'; id: string }>;
   excludeDiscovered?: boolean;
   page?: number;
   limit?: number;
@@ -33,301 +33,121 @@ export interface DiscoverResult {
     totalStake: number;
     reasonings: string[];
   }>;
-  bucket?: number; // Time bucket: 1 (week), 2 (month), 3 (quarter), 4 (older)
-  mostRecentIntentDate?: Date; // For debugging/display
 }
 
 export async function discoverUsers(filters: DiscoverFilters): Promise<{
   results: DiscoverResult[];
-  pagination: {
-    page: number;
-    limit: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
+  pagination: { page: number; limit: number; hasNext: boolean; hasPrev: boolean };
 }> {
   const {
     authenticatedUserId,
     intentIds,
     userIds,
     indexIds,
-    sources,
     excludeDiscovered = true,
     page = 1,
     limit = 50
   } = filters;
 
-  // Get authenticated user's intents, filtered by intentIds, index and sources
-  let authenticatedUserIntents;
-  let targetIndexIds: string[] | undefined;
-  
-  // Build base conditions
-  const baseConditions = [eq(intents.userId, authenticatedUserId)];
-  
-  // Add intentIds filtering if specified (post-filter - doesn't bypass index restrictions)
-  if (intentIds && intentIds.length > 0) {
-    baseConditions.push(
-      sql`${intents.id} = ANY(ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-    );
-  }
-  
-  // Add source filtering if specified
-  if (sources && sources.length > 0) {
-    const sourceConditions = sources.map(source => 
-      and(
-        eq(intents.sourceType, source.type),
-        eq(intents.sourceId, source.id)
-      )
-    );
-    baseConditions.push(or(...sourceConditions)!);
-  }
-  
-  // Determine which indexes to filter by
-  targetIndexIds = indexIds;
-  if (!targetIndexIds || targetIndexIds.length === 0) {
-    // If no indexIds provided, default to user's accessible indexes
-    targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
-  }
-  
-  if (targetIndexIds && targetIndexIds.length > 0) {
-    // Get intents in the specified indexes (or user's indexes if none specified)
-    authenticatedUserIntents = await db
-      .select({ intentId: intents.id })
-      .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .where(
-        and(
-          ...baseConditions,
-          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-        )
-      );
-  } else {
-    // Fallback: get all user's intents (if user has no accessible indexes)
-    authenticatedUserIntents = await db
-      .select({ intentId: intents.id })
-      .from(intents)
-      .where(and(...baseConditions));
+  // Get stakes where I'm a participant (with privacy checks built-in)
+  const stakes = await getConnectingStakes({
+    authenticatedUserId,
+    userIds: [authenticatedUserId],
+    requireAllUsers: true,
+    indexIds,
+    intentIds,
+    excludeConnected: excludeDiscovered
+  });
+
+  if (!stakes.length) {
+    return { results: [], pagination: { page, limit, hasNext: false, hasPrev: page > 1 } };
   }
 
-  // Extract the intent IDs for easier use in the main query
-  const userIntentIds = authenticatedUserIntents.map(row => row.intentId);
-
-  // If user has no intents, return empty results
-  if (userIntentIds.length === 0) {
-    return {
-      results: [],
-      pagination: {
-        page,
-        limit,
-        hasNext: false,
-        hasPrev: false
-      }
-    };
-  }
-
-  // Step 1: Get stake IDs that contain authenticated user's intents (fast indexed lookup)
-  const authStakeIds = await db
-    .selectDistinct({ stakeId: intentStakeItems.stakeId })
-    .from(intentStakeItems)
-    .where(inArray(intentStakeItems.intentId, userIntentIds));
-
-  if (!authStakeIds.length) {
-    return {
-      results: [],
-      pagination: { page, limit, hasNext: false, hasPrev: page > 1 }
-    };
-  }
-
-  // Step 2: Get multi-user stakes from those IDs
-  const baseQuery = db
-    .select({
-      stakeId: intentStakes.id,
-      stake: intentStakes.stake,
-      reasoning: intentStakes.reasoning,
-      intents: sql<any[]>`ARRAY_AGG(
-        jsonb_build_object(
-          'intentId', ${intentStakeItems.intentId},
-          'userId', ${intentStakeItems.userId},
-          'intent', jsonb_build_object(
-            'id', ${intents.id},
-            'payload', ${intents.payload},
-            'summary', ${intents.summary},
-            'createdAt', ${intents.createdAt}
-          )
-        )
-      )`,
-    })
-    .from(intentStakes)
-    .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
-    .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
-    .where(inArray(intentStakes.id, authStakeIds.map(s => s.stakeId)))
-    .groupBy(intentStakes.id, intentStakes.stake, intentStakes.reasoning)
-    .having(sql`COUNT(DISTINCT ${intentStakeItems.userId}) > 1`);
-
-  const results = await baseQuery;
-
-  // Process stakes to find discovered users
-  // Map: userId -> user data with aggregated intents and stakes
+  // Aggregate by discovered user
   const userMap = new Map<string, {
-    user: { id: string; name: string; email: string | null; avatar: string | null; intro: string | null };
     totalStake: number;
     intentMap: Map<string, {
-      intent: { id: string; payload: string; summary?: string | null; createdAt: Date };
+      intent: { id: string; payload: string; summary: string | null; createdAt: Date };
       totalStake: number;
       reasonings: string[];
     }>;
   }>();
 
-  for (const stakeRow of results) {
-    // Filter to get authenticated user's intents from this stake
-    const authUserIntents = stakeRow.intents.filter((intentData: any) => 
-      userIntentIds.includes(intentData.intentId) && intentData.userId === authenticatedUserId
-    );
+  for (const stake of stakes) {
+    const myIntents = stakeUserItems(stake, authenticatedUserId);
+    const otherUserIds = stakeOtherUsers(stake, authenticatedUserId);
 
-    // Find discovered users (users other than authenticated user who have intents in this stake)
-    const discoveredUserIds = new Set(
-      stakeRow.intents
-        .filter((intentData: any) => intentData.userId !== authenticatedUserId)
-        .map((intentData: any) => intentData.userId)
-    );
+    for (const discoveredUserId of otherUserIds) {
+      // Apply user filter if specified
+      if (userIds?.length && !userIds.includes(discoveredUserId)) continue;
 
-    // For each discovered user, add the authenticated user's matched intents
-    for (const discoveredUserId of discoveredUserIds) {
-      // Apply user ID filter if specified
-      if (userIds && userIds.length > 0 && !userIds.includes(discoveredUserId)) {
-        continue;
-      }
-
-      // Check if this discovered user should be excluded (existing connection)
-      if (excludeDiscovered) {
-        const hasConnection = await db
-          .select({ id: userConnectionEvents.id })
-          .from(userConnectionEvents)
-          .where(
-            or(
-              and(
-                eq(userConnectionEvents.initiatorUserId, authenticatedUserId),
-                eq(userConnectionEvents.receiverUserId, discoveredUserId)
-              ),
-              and(
-                eq(userConnectionEvents.initiatorUserId, discoveredUserId),
-                eq(userConnectionEvents.receiverUserId, authenticatedUserId)
-              )
-            )
-          )
-          .limit(1);
-
-        if (hasConnection.length > 0) {
-          continue;
-        }
-      }
-
-      // Check if user is member of target indexes
-      if (targetIndexIds && targetIndexIds.length > 0) {
-        const isMember = await db
-          .select({ indexId: indexMembers.indexId })
-          .from(indexMembers)
-          .where(
-            and(
-              eq(indexMembers.userId, discoveredUserId),
-              sql`${indexMembers.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-            )
-          )
-          .limit(1);
-
-        if (isMember.length === 0) {
-          continue;
-        }
-      }
-
-      // Get or create user entry in map
       if (!userMap.has(discoveredUserId)) {
-        // Fetch user details
-        const userDetails = await db
-          .select({
-            id: users.id,
-            name: users.name,
-            email: users.email,
-            avatar: users.avatar,
-            intro: users.intro
-          })
-          .from(users)
-          .where(eq(users.id, discoveredUserId))
-          .limit(1);
-
-        if (userDetails.length === 0) continue;
-
-        userMap.set(discoveredUserId, {
-          user: userDetails[0],
-          totalStake: 0,
-          intentMap: new Map()
-        });
+        userMap.set(discoveredUserId, { totalStake: 0, intentMap: new Map() });
       }
 
       const userData = userMap.get(discoveredUserId)!;
-      userData.totalStake += Number(stakeRow.stake);
+      userData.totalStake += Number(stake.stake);
 
-      // Add authenticated user's intents from this stake
-      for (const authIntent of authUserIntents) {
-        if (!userData.intentMap.has(authIntent.intent.id)) {
-          userData.intentMap.set(authIntent.intent.id, {
-            intent: authIntent.intent,
+      for (const item of myIntents) {
+        if (!userData.intentMap.has(item.intentId)) {
+          userData.intentMap.set(item.intentId, {
+            intent: {
+              id: item.intentId,
+              payload: item.payload,
+              summary: item.summary,
+              createdAt: item.createdAt
+            },
             totalStake: 0,
             reasonings: []
           });
         }
-
-        const intentData = userData.intentMap.get(authIntent.intent.id)!;
-        intentData.totalStake += Number(stakeRow.stake);
-        if (stakeRow.reasoning && !intentData.reasonings.includes(stakeRow.reasoning)) {
-          intentData.reasonings.push(stakeRow.reasoning);
+        const intentData = userData.intentMap.get(item.intentId)!;
+        intentData.totalStake += Number(stake.stake);
+        if (stake.reasoning && !intentData.reasonings.includes(stake.reasoning)) {
+          intentData.reasonings.push(stake.reasoning);
         }
       }
     }
   }
 
-  // Calculate bucket for each user based on most recent intent
-  const bucketedResults = Array.from(userMap.values()).map(userData => {
-    const mostRecentIntent = Math.max(
-      ...Array.from(userData.intentMap.values()).map(i => new Date(i.intent.createdAt).getTime())
-    );
-    const daysOld = (Date.now() - mostRecentIntent) / (1000 * 60 * 60 * 24);
+  // Fetch user profiles
+  const discoveredUserIds = [...userMap.keys()];
+  if (!discoveredUserIds.length) {
+    return { results: [], pagination: { page, limit, hasNext: false, hasPrev: page > 1 } };
+  }
+
+  const profiles = await db
+    .select({ id: users.id, name: users.name, email: users.email, avatar: users.avatar, intro: users.intro })
+    .from(users)
+    .where(inArray(users.id, discoveredUserIds));
+
+  const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+  // Build results
+  const results: DiscoverResult[] = [];
+  for (const userId of discoveredUserIds) {
+    const profile = profileMap.get(userId);
+    const data = userMap.get(userId);
+    if (!profile || !data) continue;
     
-    let bucket;
-    if (daysOld <= 7) bucket = 1;       // This week
-    else if (daysOld <= 30) bucket = 2;  // This month  
-    else if (daysOld <= 90) bucket = 3;  // This quarter
-    else bucket = 4;                     // Older
-    
-    return {
-      user: userData.user,
-      totalStake: userData.totalStake,
-      bucket,
-      mostRecentIntentDate: new Date(mostRecentIntent),
-      intents: Array.from(userData.intentMap.values()).map(intentData => ({
-        intent: intentData.intent,
-        totalStake: intentData.totalStake,
-        reasonings: intentData.reasonings
-      }))
-    };
-  });
+    results.push({
+      user: {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        avatar: profile.avatar,
+        intro: profile.intro
+      },
+      totalStake: data.totalStake,
+      intents: Array.from(data.intentMap.values())
+    });
+  }
+  results.sort((a, b) => b.totalStake - a.totalStake);
 
-  // Sort by totalStake descending
-  bucketedResults.sort((a, b) => b.totalStake - a.totalStake);
-
-  // Apply pagination as post-filter
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedResults = bucketedResults.slice(startIndex, endIndex);
-  const totalResults = bucketedResults.length;
-
+  // Paginate
+  const startIdx = (page - 1) * limit;
   return {
-    results: paginatedResults,
-    pagination: {
-      page,
-      limit,
-      hasNext: endIndex < totalResults,
-      hasPrev: page > 1
-    }
+    results: results.slice(startIdx, startIdx + limit),
+    pagination: { page, limit, hasNext: startIdx + limit < results.length, hasPrev: page > 1 }
   };
 }
