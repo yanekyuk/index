@@ -546,6 +546,47 @@ async function runTests() {
     assertLength(discovered, 0, 'Should discover no users (C not in shared index)');
   });
 
+  // -------------------------------------------------------------------------
+  // TEST 13: User Has No Index Membership
+  // -------------------------------------------------------------------------
+  await test('No Index Membership: user not in any index discovers nobody', async () => {
+    const userA = await createTestUser('User A');
+    const userB = await createTestUser('User B');
+    const index1 = await createTestIndex('Index 1');
+
+    const intentA = await createTestIntent(userA, 'A intent');
+    const intentB = await createTestIntent(userB, 'B intent');
+
+    // userA is NOT a member of any index
+    await addMember(userB, index1);
+    await assignIntentToIndex(intentA, index1); // Intent assigned but user not member
+    await assignIntentToIndex(intentB, index1);
+    await createTestStake([intentA, intentB], 100, 'Match', agentId);
+
+    const { results: discovered } = await discoverUsers({ authenticatedUserId: userA });
+
+    assertLength(discovered, 0, 'Should discover no users (A not in any index)');
+  });
+
+  // -------------------------------------------------------------------------
+  // TEST 14: Both Users Have No Index Membership
+  // -------------------------------------------------------------------------
+  await test('No Index Membership: both users not in any index', async () => {
+    const userA = await createTestUser('User A');
+    const userB = await createTestUser('User B');
+
+    const intentA = await createTestIntent(userA, 'A intent');
+    const intentB = await createTestIntent(userB, 'B intent');
+
+    // Neither user is a member of any index
+    // Intents exist but not assigned to any index
+    await createTestStake([intentA, intentB], 100, 'Match', agentId);
+
+    const { results: discovered } = await discoverUsers({ authenticatedUserId: userA });
+
+    assertLength(discovered, 0, 'Should discover no users (neither in any index)');
+  });
+
   // Final cleanup including agents
   await cleanup(true);
 
