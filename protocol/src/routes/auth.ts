@@ -2,10 +2,10 @@ import { Router, Response, Request } from 'express';
 import { privyClient } from '../lib/privy';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
-import { users } from '../lib/schema';
+import { users, userNotificationSettings } from '../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
 import { User, UpdateProfileRequest, OnboardingState } from '../types';
-import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
 import { generateSummaryWithIntents, GenerateSummaryInput, SummaryStreamEvent } from '../lib/parallels';
 
 const router = Router();
@@ -13,26 +13,31 @@ const router = Router();
 // Verify access token and get user info
 router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const user = await db.select({
-      id: users.id,
-      privyId: users.privyId,
-      name: users.name,
-      intro: users.intro,
-      avatar: users.avatar,
-      location: users.location,
-      socials: users.socials,
-      onboarding: users.onboarding,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt
-    }).from(users)
+    const userResult = await db.select({
+      user: users,
+      settings: userNotificationSettings
+    })
+      .from(users)
+      .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
       .where(eq(users.id, req.user!.id))
       .limit(1);
 
-    if (user.length === 0) {
+    if (userResult.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    return res.json({ user: user[0] });
+    const { user, settings } = userResult[0];
+
+    // Merge settings into user object for frontend compatibility
+    const userWithPreferences = {
+      ...user,
+      notificationPreferences: settings?.preferences || {
+        connectionUpdates: true,
+        weeklyNewsletter: true,
+      }
+    };
+
+    return res.json({ user: userWithPreferences });
   } catch (error) {
     console.error('Get user error:', error);
     return res.status(500).json({ error: 'Failed to get user info' });
@@ -42,40 +47,71 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
 // Update user profile
 router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, intro, avatar, location, socials } = req.body;
-    
+    const { name, intro, avatar, location, timezone, socials, notificationPreferences } = req.body;
+
     // Get old socials before update
     const currentUser = await db.select({ socials: users.socials })
       .from(users)
       .where(eq(users.id, req.user!.id))
       .limit(1);
     const oldSocials = currentUser[0]?.socials || null;
-    
-    const updatedUser = await db.update(users)
+
+    // Update user fields
+    const updatedUserResult = await db.update(users)
       .set({
         ...(name && { name }),
         ...(intro !== undefined && { intro }),
         ...(avatar && { avatar }),
         ...(location !== undefined && { location }),
+        ...(timezone !== undefined && { timezone }),
         ...(socials !== undefined && { socials }),
         updatedAt: new Date()
       })
       .where(eq(users.id, req.user!.id))
-      .returning({
-        id: users.id,
-        privyId: users.privyId,
-        name: users.name,
-        intro: users.intro,
-        avatar: users.avatar,
-        location: users.location,
-        socials: users.socials,
-        onboarding: users.onboarding,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt
-      });
+      .returning();
 
-    if (updatedUser.length === 0) {
+    if (updatedUserResult.length === 0) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update notification preferences if provided
+    let updatedPreferences = null;
+    if (notificationPreferences !== undefined) {
+      const existingSettings = await db.select()
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, req.user!.id))
+        .limit(1);
+
+      if (existingSettings.length > 0) {
+        const settings = await db.update(userNotificationSettings)
+          .set({
+            preferences: notificationPreferences,
+            updatedAt: new Date()
+          })
+          .where(eq(userNotificationSettings.userId, req.user!.id))
+          .returning();
+        updatedPreferences = settings[0].preferences;
+      } else {
+        const settings = await db.insert(userNotificationSettings)
+          .values({
+            userId: req.user!.id,
+            preferences: notificationPreferences
+          })
+          .returning();
+        updatedPreferences = settings[0].preferences;
+      }
+    } else {
+      // Fetch existing preferences if not updating
+      const settings = await db.select()
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, req.user!.id))
+        .limit(1);
+      updatedPreferences = settings[0]?.preferences || {
+        connectionRequest: true,
+        connectionAccepted: true,
+        connectionRejected: true,
+        weeklyNewsletter: true,
+      };
     }
 
     // Trigger social sync if socials changed
@@ -83,7 +119,17 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
       checkAndTriggerSocialSync(req.user!.id, oldSocials, socials);
     }
 
-    return res.json({ user: updatedUser[0] });
+    // Check enrichment eligibility if name or intro fields were updated
+    if (name !== undefined || intro !== undefined) {
+      checkAndTriggerEnrichment(req.user!.id);
+    }
+
+    const finalUser = {
+      ...updatedUserResult[0],
+      notificationPreferences: updatedPreferences
+    };
+
+    return res.json({ user: finalUser });
   } catch (error) {
     console.error('Update profile error:', error);
     return res.status(500).json({ error: 'Failed to update profile' });
@@ -94,18 +140,18 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
 router.patch('/onboarding-state', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
     const { completedAt, flow, currentStep, indexId, invitationCode } = req.body;
-    
+
     // Get current onboarding state
     const currentUser = await db.select({
       onboarding: users.onboarding
     }).from(users)
       .where(eq(users.id, req.user!.id))
       .limit(1);
-    
+
     if (currentUser.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
     // Merge with existing onboarding state
     const currentOnboarding = (currentUser[0].onboarding || {}) as any;
     const updatedOnboarding = {
@@ -116,7 +162,7 @@ router.patch('/onboarding-state', authenticatePrivy, async (req: AuthRequest, re
       ...(indexId !== undefined && { indexId }),
       ...(invitationCode !== undefined && { invitationCode }),
     };
-    
+
     const updatedUser = await db.update(users)
       .set({
         onboarding: updatedOnboarding,
@@ -211,8 +257,8 @@ router.post('/generate-summary', authenticatePrivy, async (req: AuthRequest, res
     if (socials.linkedin) {
       const linkedinValue = String(socials.linkedin).trim();
       if (linkedinValue) {
-        input.linkedin_url = linkedinValue.startsWith('http') 
-          ? linkedinValue 
+        input.linkedin_url = linkedinValue.startsWith('http')
+          ? linkedinValue
           : `https://www.linkedin.com/in/${linkedinValue}`;
       }
     }

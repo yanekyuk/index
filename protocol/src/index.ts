@@ -9,6 +9,8 @@ import helmet from 'helmet';
 console.log('process.env', process.env);
 import { initializeBrokers } from './agents/context_brokers/connector';
 import { queueProcessor } from './lib/queue/processor';
+import { initWeeklyNewsletterJob } from './jobs/weekly-newsletter';
+import { emailQueueProcessor } from './lib/email/queue/email.processor';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -25,6 +27,8 @@ import syncRoutes from './routes/sync';
 import queueRoutes from './routes/queue';
 import adminRoutes from './routes/admin';
 import feedbackRoutes from './routes/feedback';
+import notificationRoutes from './routes/notifications';
+import devRoutes from './routes/dev';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,6 +70,11 @@ app.use('/api/queue', queueRoutes);
 
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+if (process.env.NODE_ENV === 'development') {
+  app.use('/api/dev', devRoutes);
+}
 
 // Sentry error handler must be before other error handlers
 Sentry.setupExpressErrorHandler(app);
@@ -73,7 +82,7 @@ Sentry.setupExpressErrorHandler(app);
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Something went wrong!',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
   });
@@ -88,9 +97,13 @@ app.use('*', (req, res) => {
   try {
     await initializeBrokers();
     console.log('🟢 Context brokers initialized');
-    
+
     queueProcessor.start();
     console.log('🟢 Queue processor started');
+
+    emailQueueProcessor.start();
+
+    initWeeklyNewsletterJob();
   } catch (err) {
     console.error('🔴 Failed to initialize services:', err);
   }

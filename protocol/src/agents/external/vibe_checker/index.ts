@@ -5,6 +5,7 @@ import { format } from 'timeago.js';
 export interface VibeCheckResult {
   success: boolean;
   synthesis?: string;
+  subject?: string;
   error?: string;
   timing?: { startTime: Date; endTime: Date; durationMs: number };
 }
@@ -72,7 +73,7 @@ export async function vibeCheck(
         other_user_id: data.id,
         other_user_name: data.name,
         intent_pairs_count: data.intentPairs.length
-      })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' } }),
+      })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' }, response_format: { type: "json_object" } }),
       new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Vibe check timeout')), timeout)
       )
@@ -82,13 +83,28 @@ export async function vibeCheck(
       other_user_id: data.id,
       other_user_name: data.name,
       intent_pairs_count: data.intentPairs.length
-    })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' } });
+    })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' }, response_format: { type: "json_object" } } as any);
 
-    const synthesis = (response.content as string).trim();
+    let synthesis = "";
+    let subject = "";
+
+    try {
+      let contentStr = response.content as string;
+      // Strip markdown code blocks if present
+      contentStr = contentStr.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+
+      const content = JSON.parse(contentStr);
+      synthesis = content.body || "";
+      subject = content.subject || "";
+    } catch (e) {
+      // Fallback for non-JSON response (shouldn't happen with response_format)
+      synthesis = (response.content as string).trim();
+    }
 
     return {
       success: true,
       synthesis,
+      subject,
       timing: getTiming(startTime)
     };
   } catch (error) {
@@ -120,19 +136,33 @@ function buildSystemMessage(
     role: "system",
     content: `You are a collaboration synthesis generator. Create a warm, practical paragraph explaining why two people are mutual matches based on what they're explicitly looking for.
 
-Style:
+Also generate a short, punchy email subject line for this connection request.
+
+Style for Body:
 - Warm and friendly, not formal (we're introducing humans, not robots)
 - Grounded in stated needs (state what they're explicitly looking for, not speculative "could do" scenarios)
 - Direct and concise
 - Add a small human touch—a light joke, casual aside, or relatable moment. Keep it natural, like you're telling a friend about this match.
 
+Style for Subject:
+- Include the person’s name (${target})
+- Highlight strongest mutual-intent synergy
+- Stay under 12 words
+- Sound warm, professional, and action-oriented
+- Avoid robotic "Label: Topic" formats (e.g., "Shared focus: AI"). Use natural phrases instead.
+- Examples:
+  - "${target} - exploring shared work on scalable coordination"
+  - "${target} - shared intent around decentralized networking"
+  - "${target} - collaborating on privacy-preserving AI"
+
 Format:
-- Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
+- Return a JSON object with "subject" and "body" fields.
+- Body Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
 - ONLY hyperlink ${isThirdPerson ? `${initiator}'s` : 'your'} intents - NEVER link ${target}'s intents
 - Be careful with IDs: use the exact intent IDs from the provided data, never use placeholder "ID" text or make up IDs
 - Link natural phrases like "UX designers crafting interfaces" not "UX designers (link)"
 - Place links in beginning/middle of paragraph, not at the end
-- No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters` : ''}
+- No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters for body` : ''}
 
 Time Awareness:
 - Each intent includes a <created> timestamp (e.g., "2 months ago", "3 days ago")

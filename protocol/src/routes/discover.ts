@@ -13,9 +13,8 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
-import { IntentService } from '../lib/intent-service';
-import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
-import { DiscoverResponse, DiscoverFilters, DiscoveryRequestResponse } from '../types';
+import { CreatedIntent, IntentService } from '../lib/intent-service';
+import { createUploadClient } from '../lib/uploads';
 
 const router = Router();
 
@@ -61,7 +60,7 @@ router.post('/new',
   [body('payload').optional().isString()],
   async (req: AuthRequest, res: Response) => {
     const uploadedFiles = req.files as Express.Multer.File[];
-    
+
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
@@ -84,7 +83,7 @@ router.post('/new',
       const savedFileIds: string[] = [];
       const savedLinkIds: string[] = [];
       let combinedContent = '';
-      
+
       // 1. Save uploaded files to database
       if (uploadedFiles && uploadedFiles.length > 0) {
         for (const file of uploadedFiles) {
@@ -125,7 +124,7 @@ router.post('/new',
         for (const url of urls) {
           const linkReference = `[LINK_${linkCounter}]`;
           instructionText = instructionText.replace(url, linkReference);
-          
+
           try {
             // Save link to database
             const linkRecord = await db.insert(indexLinks)
@@ -139,20 +138,20 @@ router.post('/new',
             try {
               const crawlResult = await crawlLinksForIndex([url]);
               const crawledFiles = crawlResult.files || [];
-              
+
               if (crawledFiles.length > 0 && crawledFiles[0].content) {
                 // Save crawled content to file
                 const linksDir = getUploadsPath('links', userId);
                 if (!fs.existsSync(linksDir)) fs.mkdirSync(linksDir, { recursive: true });
                 const filepath = path.join(linksDir, `${linkRecord[0].id}.md`);
                 await fs.promises.writeFile(filepath, crawledFiles[0].content);
-                
+
                 combinedContent += `Content of ${linkReference}\n${crawledFiles[0].content.substring(0, 5000)}\n\n`;
-                
+
                 await db.update(indexLinks)
                   .set({ lastSyncAt: new Date(), lastStatus: 'ok', lastError: null })
                   .where(eq(indexLinks.id, linkRecord[0].id));
-                  
+
                 console.log(`✅ URL crawled successfully: ${url}`);
               } else {
                 await db.update(indexLinks)
@@ -180,16 +179,16 @@ router.post('/new',
 
       // 4. Generate intents from combined content
       let generatedIntents: any[] = [];
-      
+
       // If payload is short, no files, and no URLs, create intent directly
       const hasFiles = uploadedFiles && uploadedFiles.length > 0;
       const hasUrls = savedLinkIds.length > 0;
       const isShortPayload = payload && payload.length < 100;
-      
+
       if (isShortPayload && !hasFiles && !hasUrls) {
         console.log(`📝 Creating intent directly (short payload, no attachments/URLs)`);
         try {
-          const createdIntent = await IntentService.createIntent({
+          const createdIntent: CreatedIntent = await IntentService.createIntent({
             payload: payload.trim(),
             userId: userId,
             sourceId: undefined,
@@ -206,7 +205,7 @@ router.post('/new',
         }
       } else if (combinedContent.trim()) {
         console.log(`🤖 Generating intents from ${combinedContent.length} characters`);
-        
+
         // Create objects for intent generation
         const contentObjects = [];
         if (combinedContent) {
@@ -219,10 +218,10 @@ router.post('/new',
           [], // no existing intents
           60000 // 60 second timeout
         );
-        
+
         if (intentResult.success && intentResult.intents.length > 0) {
           console.log(`✅ Generated ${intentResult.intents.length} intents`);
-          
+
           // Save each generated intent to database using IntentService
           for (const generatedIntent of intentResult.intents) {
             // Determine source: use first file if exists, otherwise first link
@@ -325,7 +324,7 @@ Response:{
 */
 
 // 🚀 Route: Get paired users' staked intents
-router.post("/filter", 
+router.post("/filter",
   authenticatePrivy,
   [
     body('intentIds').optional().isArray(),
@@ -361,34 +360,34 @@ router.post("/filter",
 
       const authenticatedUserId = req.user!.id;
 
-    // Use the library function to discover users
-    const { results: formattedResults, pagination } = await discoverUsers({
-      authenticatedUserId,
-      intentIds,
-      userIds,
-      indexIds,
-      sources,
-      excludeDiscovered,
-      page,
-      limit
-    });
+      // Use the library function to discover users
+      const { results: formattedResults, pagination } = await discoverUsers({
+        authenticatedUserId,
+        intentIds,
+        userIds,
+        indexIds,
+        sources,
+        excludeDiscovered,
+        page,
+        limit
+      });
 
-    return res.json({
-      results: formattedResults,
-      pagination,
-      filters: {
-        intentIds: intentIds || null,
-        userIds: userIds || null,
-        indexIds: indexIds || null,
-        sources: sources || null,
-        excludeDiscovered: excludeDiscovered
-      }
-    });
-  } catch (err) {
-    console.error("Discover filter error:", err);
-    return res.status(500).json({ error: "Failed to fetch discovery data" });
-  }
-});
+      return res.json({
+        results: formattedResults,
+        pagination,
+        filters: {
+          intentIds: intentIds || null,
+          userIds: userIds || null,
+          indexIds: indexIds || null,
+          sources: sources || null,
+          excludeDiscovered: excludeDiscovered
+        }
+      });
+    } catch (err) {
+      console.error("Discover filter error:", err);
+      return res.status(500).json({ error: "Failed to fetch discovery data" });
+    }
+  });
 
 
 

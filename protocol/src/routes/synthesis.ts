@@ -43,9 +43,9 @@ router.post('/vibecheck',
       // Use generic validation function
       const { validIndexIds, error } = await validateAndGetAccessibleIndexIds(contextUserId, indexIds);
       if (error) {
-        return res.status(error.status).json({ 
+        return res.status(error.status).json({
           error: error.message,
-          invalidIds: error.invalidIds 
+          invalidIds: error.invalidIds
         });
       }
 
@@ -54,7 +54,7 @@ router.post('/vibecheck',
         return res.status(400).json({ error: 'No accessible indexes found for synthesis' });
       }
 
-      const synthesis = await synthesizeVibeCheck(
+      const { synthesis, subject } = await synthesizeVibeCheck(
         initiatorId || contextUserId,
         targetUserId,
         {
@@ -68,6 +68,7 @@ router.post('/vibecheck',
 
       return res.json({
         synthesis,
+        subject,
         targetUserId,
         contextUserId,
       });

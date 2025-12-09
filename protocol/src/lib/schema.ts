@@ -26,6 +26,11 @@ export interface UserSocials {
   websites?: string[];
 }
 
+export interface NotificationPreferences {
+  connectionUpdates: boolean;
+  weeklyNewsletter: boolean;
+}
+
 // Directory sync configuration type
 export interface DirectorySyncConfig {
   enabled: boolean;
@@ -81,6 +86,8 @@ export const users = pgTable('users', {
   location: text('location'),
   socials: json('socials').$type<UserSocials>(),
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
+  timezone: text('timezone').default('UTC'),
+  lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -88,6 +95,18 @@ export const users = pgTable('users', {
   // Enforce uniqueness on all emails (email is NOT NULL).
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
 }));
+
+export const userNotificationSettings = pgTable('user_notification_settings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  preferences: json('preferences').$type<NotificationPreferences>().default({
+    connectionUpdates: true,
+    weeklyNewsletter: true,
+  }),
+  unsubscribeToken: uuid('unsubscribe_token').defaultRandom().notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -170,7 +189,12 @@ export const userConnectionEvents = pgTable('user_connection_events', {
   eventType: connectionAction('connection_action').notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => ({
+  initiatorIdx: index('user_connection_events_initiator_idx').on(table.initiatorUserId),
+  receiverIdx: index('user_connection_events_receiver_idx').on(table.receiverUserId),
+  // Compound index for optimizing fetch-latest-event query
+  initiatorReceiverCreatedIdx: index('initiator_receiver_created_idx').on(table.initiatorUserId, table.receiverUserId, table.createdAt),
+}));
 
 export const userIntegrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -189,12 +213,23 @@ export const userIntegrations = pgTable('integrations', {
 });
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
   indexes: many(indexes),
   memberOf: many(indexMembers),
   initiatedConnections: many(userConnectionEvents, { relationName: 'initiatedConnections' }),
   receivedConnections: many(userConnectionEvents, { relationName: 'receivedConnections' }),
+  notificationSettings: one(userNotificationSettings, {
+    fields: [users.id],
+    references: [userNotificationSettings.userId],
+  }),
+}));
+
+export const userNotificationSettingsRelations = relations(userNotificationSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [userNotificationSettings.userId],
+    references: [users.id],
+  }),
 }));
 
 
@@ -276,7 +311,10 @@ export const intentStakeItems = pgTable('intent_stake_items', {
   stakeId: uuid('stake_id').notNull(),
   intentId: uuid('intent_id').notNull(),
   userId: uuid('user_id').notNull(),
-});
+}, (table) => ({
+  stakeIdx: index('intent_stake_items_stake_idx').on(table.stakeId),
+  userIdx: index('intent_stake_items_user_idx').on(table.userId),
+}));
 
 export const agentsRelations = relations(agents, ({ many }) => ({
   stakes: many(intentStakes),
@@ -351,3 +389,5 @@ export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
 export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;
 export type UserIntegration = typeof userIntegrations.$inferSelect;
 export type NewUserIntegration = typeof userIntegrations.$inferInsert;
+export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
+export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;

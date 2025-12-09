@@ -47,5 +47,5 @@ dist/
 # LangGraph API
 .langgraph_api
 
-
+email-debug.md
 snowflake.log

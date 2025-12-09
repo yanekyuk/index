@@ -4,6 +4,7 @@ import { getRedisClient } from '../redis';
 import { analyzeObjects, analyzeContent } from '../../agents/core/intent_inferrer';
 import { IntentService } from '../intent-service';
 
+
 // Job history tracking interface
 export interface JobHistoryEntry {
   id: string;
@@ -18,6 +19,7 @@ export interface JobHistoryEntry {
   // Dynamic job-specific data
   jobData: Record<string, any>;
 }
+
 
 export class QueueProcessor {
   private isRunning = false;
@@ -38,9 +40,9 @@ export class QueueProcessor {
 
   start(): void {
     if (this.isRunning) return;
-    
+
     this.isRunning = true;
-    
+
     // Start job distribution loop instead of individual worker loops
     this.startJobDistribution();
   }
@@ -51,15 +53,17 @@ export class QueueProcessor {
         try {
           await this.distributeJobsToWorkers();
         } catch (error) {
-          // Error during job distribution
+          console.error(`Error in distribution loop: ${error}`);
         }
         // Small delay to prevent busy waiting
         await new Promise(resolve => setTimeout(resolve, parseInt(process.env.QUEUE_POLL_INTERVAL_MS || '100')));
       }
     };
-    
+
     distributionLoop().catch(error => {
       // Distribution loop crashed
+      console.error(`Distribution loop crashed:`, error);
+      this.isRunning = false;
     });
   }
 
@@ -71,15 +75,16 @@ export class QueueProcessor {
 
     // Get jobs from all eligible users in parallel
     const availableJobs = await userQueueManager.getJobsFromAllEligibleUsers();
-    
+
     if (availableJobs.length === 0) {
+      // await logToFile('No jobs available');
       return;
     }
 
     // Match jobs to available workers
     const jobAssignments: Array<{ job: any; userId: string; workerId: number }> = [];
     const availableWorkerIds = Array.from(this.availableWorkers);
-    
+
     for (let i = 0; i < Math.min(availableJobs.length, availableWorkerIds.length); i++) {
       const workerId = availableWorkerIds[i];
       const { job, userId } = availableJobs[i];
@@ -100,7 +105,7 @@ export class QueueProcessor {
     }
 
     // Process all jobs in parallel
-    const processingPromises = jobAssignments.map(({ job, userId, workerId }) => 
+    const processingPromises = jobAssignments.map(({ job, userId, workerId }) =>
       this.processJobWithWorker(job, userId, workerId)
     );
 
@@ -131,7 +136,7 @@ export class QueueProcessor {
     try {
       // Store as sorted set with timestamp as score for chronological order
       await this.redis.zadd(this.historyKey, entry.startedAt, JSON.stringify(entry));
-      
+
       // Keep only last 1000 entries to prevent memory bloat
       const totalEntries = await this.redis.zcard(this.historyKey);
       if (totalEntries > 1000) {
@@ -147,12 +152,12 @@ export class QueueProcessor {
     try {
       // Get existing entries
       const entries = await this.redis.zrange(this.historyKey, -100, -1); // Get last 100 entries
-      
+
       for (const entryStr of entries) {
         const entry: JobHistoryEntry = JSON.parse(entryStr);
         if (entry.id === jobId) {
           const updatedEntry = { ...entry, ...updates };
-          
+
           // Remove old entry and add updated one
           await this.redis.zrem(this.historyKey, entryStr);
           await this.redis.zadd(this.historyKey, updatedEntry.startedAt, JSON.stringify(updatedEntry));
@@ -177,11 +182,11 @@ export class QueueProcessor {
   private async processJob(job: any, userId: string, workerId: number): Promise<void> {
     const workerPrefix = `[W${workerId}] `;
     const startTime = Date.now();
-    
+
     // Create dynamic job name and data based on job type
     let jobName: string;
     let jobData: Record<string, any> = { ...job.data };
-    
+
     switch (job.action) {
       case 'index_intent':
         jobName = `Index Intent → Index`;
@@ -189,10 +194,11 @@ export class QueueProcessor {
       case 'generate_intents':
         jobName = `Generate Intents`;
         break;
+
       default:
         jobName = job.action;
     }
-    
+
     // Create history entry
     const historyEntry: JobHistoryEntry = {
       id: job.id,
@@ -203,9 +209,9 @@ export class QueueProcessor {
       startedAt: startTime,
       jobData
     };
-    
+
     await this.addJobToHistory(historyEntry);
-    
+
     try {
       switch (job.action) {
         case 'index_intent':
@@ -214,13 +220,14 @@ export class QueueProcessor {
         case 'generate_intents':
           await this.generateIntents(job as GenerateIntentsJob);
           break;
+
         default:
           break;
       }
-      
+
       const completedAt = Date.now();
       const duration = completedAt - startTime;
-      
+
       // Update history with completion
       await this.updateJobHistory(job.id, {
         status: 'completed',
@@ -230,7 +237,7 @@ export class QueueProcessor {
     } catch (error) {
       const completedAt = Date.now();
       const duration = completedAt - startTime;
-      
+
       // Update history with failure
       await this.updateJobHistory(job.id, {
         status: 'failed',
@@ -243,18 +250,18 @@ export class QueueProcessor {
 
   private async indexIntent(job: IndexIntentJob): Promise<void> {
     const { intentId, indexId } = job.data;
-    
+
     // Process specific intent-index pair
     await intentIndexer.processIntentForIndex(intentId, indexId);
-    
+
   }
 
   private async generateIntents(job: GenerateIntentsJob): Promise<void> {
     const data = job.data;
-    
+
     // Get existing intents
     const existingIntents = await IntentService.getUserIntents(data.userId);
-    
+
     let result;
     if (data.content) {
       // File/Link: use analyzeContent
@@ -293,7 +300,8 @@ export class QueueProcessor {
       }
     }
   }
+
+
 }
 
 export const queueProcessor = new QueueProcessor();
-

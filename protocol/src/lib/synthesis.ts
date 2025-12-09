@@ -7,7 +7,7 @@ import { inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getConnectingStakes, stakeBuildPairs, stakeUserItems } from './stakes';
 
-interface SynthesisOptions extends VibeCheckOptions {}
+interface SynthesisOptions extends VibeCheckOptions { }
 
 function createCacheHash(data: any, options?: any): string {
   return crypto
@@ -29,7 +29,7 @@ export async function synthesizeVibeCheck(
     indexIds?: string[];
     vibeOptions?: SynthesisOptions;
   }
-): Promise<string> {
+): Promise<{ synthesis: string; subject: string }> {
   try {
     const { initiatorId, intentIds, indexIds, vibeOptions } = opts || {};
 
@@ -42,12 +42,16 @@ export async function synthesizeVibeCheck(
       .from(usersTable)
       .where(inArray(usersTable.id, userIds));
 
+    if (!users.length) {
+      return { synthesis: "", subject: "" };
+    }
+
     const targetUser = users.find(u => u.id === targetUserId);
     const initiatorUser = initiatorId ? users.find(u => u.id === initiatorId) : undefined;
 
     if (!targetUser) {
       console.log('[vibecheck] Target user not found:', targetUserId);
-      return "";
+      return { synthesis: "", subject: "" };
     }
 
     // Get stakes connecting both users (with privacy checks)
@@ -62,7 +66,7 @@ export async function synthesizeVibeCheck(
 
     if (!stakes.length) {
       console.log('[vibecheck] No connecting stakes found');
-      return "";
+      return { synthesis: "", subject: "" };
     }
 
     console.log('[vibecheck] Found stakes:', stakes.length);
@@ -74,7 +78,7 @@ export async function synthesizeVibeCheck(
 
     if (!intentPairs.length) {
       console.log('[vibecheck] No intent pairs built');
-      return "";
+      return { synthesis: "", subject: "" };
     }
 
     console.log('[vibecheck] Intent pairs built:', intentPairs.length);
@@ -92,9 +96,18 @@ export async function synthesizeVibeCheck(
     const cacheData = initiatorId ? { ...vibeData, initiatorId } : vibeData;
     const cacheKey = createCacheHash(cacheData, vibeOptions);
     const cached = await cache.hget('synthesis', cacheKey);
+
     if (cached) {
-      console.log('[vibecheck] Returning cached synthesis');
-      return cached;
+      try {
+        const parsed = JSON.parse(cached);
+        // Only return if it matches the expected object structure
+        if (parsed && typeof parsed.synthesis === 'string' && typeof parsed.subject === 'string') {
+          console.log('[vibecheck] Returning cached synthesis');
+          return parsed;
+        }
+      } catch {
+        // Ignore error and proceed to regenerate
+      }
     }
 
     // Generate synthesis
@@ -103,15 +116,16 @@ export async function synthesizeVibeCheck(
 
     if (result.success && result.synthesis) {
       console.log('[vibecheck] Synthesis generated successfully');
-      await cache.hset('synthesis', cacheKey, result.synthesis);
-      return result.synthesis;
+      const cacheValue = { synthesis: result.synthesis, subject: result.subject || "" };
+      await cache.hset('synthesis', cacheKey, JSON.stringify(cacheValue));
+      return cacheValue;
     }
 
     console.log('[vibecheck] vibeCheck failed or returned empty synthesis:', result);
-    return "";
+    return { synthesis: "", subject: "" };
   } catch (error) {
     console.error('[vibecheck] Synthesis error:', error);
-    return "";
+    return { synthesis: "", subject: "" };
   }
 }
 
@@ -152,7 +166,7 @@ export async function synthesizeIntro(
 
     for (const stake of stakes) {
       if (!stake.reasoning) continue;
-      
+
       const senderItems = stakeUserItems(stake, senderUserId);
       const recipientItems = stakeUserItems(stake, recipientUserId);
 

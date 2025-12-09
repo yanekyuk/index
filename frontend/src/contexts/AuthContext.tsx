@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode 
 import { usePrivy, PrivyProvider } from '@privy-io/react-auth';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthenticatedAPI } from '../lib/api';
+import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
 
 type AuthContextType = {
@@ -32,11 +33,12 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const api = useAuthenticatedAPI();
+  const authService = useAuthService();
 
   // Memoized fetch user function
   const fetchUser = useCallback(async () => {
     if (!authenticated || !ready) return;
-    
+
     setUserLoading(true);
     setUserFetchAttempted(true);
     setError(null);
@@ -44,6 +46,19 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       const response = await api.get<APIResponse<User>>('/auth/me');
       if (response.user) {
         setUser(response.user);
+
+        // Check and update timezone if needed
+        const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (browserTimezone && response.user.timezone !== browserTimezone) {
+          console.log(`Updating timezone from ${response.user.timezone} to ${browserTimezone}`);
+          authService.updateProfile({ timezone: browserTimezone })
+            .then(updatedUser => {
+              setUser(updatedUser);
+            })
+            .catch(err => {
+              console.error('Failed to update timezone:', err);
+            });
+        }
       } else {
         throw new Error('No user data received');
       }
@@ -54,7 +69,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     } finally {
       setUserLoading(false);
     }
-  }, [authenticated, ready, api]);
+  }, [authenticated, ready, api, authService]);
 
   // Fetch user data when authenticated
   useEffect(() => {
@@ -78,36 +93,36 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     if (authenticated && userLoading) {
       return; // Keep loading until user data is available
     }
-    
+
     // If authenticated but no user data and haven't attempted fetch yet
     if (authenticated && !user && !userFetchAttempted) {
       return; // Keep loading until user fetch is attempted
     }
-    
+
     console.log('ready', ready);
-    console.log('authenticated', authenticated);  
+    console.log('authenticated', authenticated);
     console.log('pathname', pathname);
-    
+
     const isHomePage = pathname === '/';
     const isOnboardingPage = pathname === '/onboarding';
     const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/i');
     const isProtectedPage = pathname.startsWith('/inbox') || isOnboardingPage;
-    
+
     // Determine if we need to redirect
     const shouldRedirectToIndexes = authenticated && isHomePage;
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));
     const shouldRedirectOnboardingToHome = !authenticated && isOnboardingPage;
-    
+
     if (shouldRedirectToIndexes) {
       router.push('/inbox');
       return; // Will re-evaluate when pathname changes
     }
-    
+
     if (shouldRedirectToHome || shouldRedirectOnboardingToHome) {
       router.push('/');
       return; // Will re-evaluate when pathname changes
     }
-    
+
     // Only stop loading if we're on the correct page for our auth state
     // and user data is loaded (if authenticated) or user is not authenticated
     setIsLoading(false);
@@ -136,8 +151,8 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
           <div className="text-center">
             <h2 className="text-xl font-bold text-red-600 mb-2">Error</h2>
             <p className="text-gray-600 mb-4">{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
+            <button
+              onClick={() => window.location.reload()}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             >
               Refresh Page

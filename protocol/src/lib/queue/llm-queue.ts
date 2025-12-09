@@ -1,6 +1,7 @@
 import { PriorityQueue, QueueJob } from './index';
 import { getRedisClient } from '../redis';
 
+
 // LLM-specific job types
 export interface IndexIntentJobData {
   intentId: string;
@@ -44,10 +45,7 @@ export class UserQueueManager {
   // Add indexing job to user's specific queue
   async addUserJob(userId: string, data: IndexIntentJobData, priority: number): Promise<void> {
     const userQueue = this.getUserQueue(userId);
-    
-    // Add user to active users set
-    await this.redis.sadd(this.activeUsersSetKey, userId);
-    
+
     await userQueue.addJob(
       {
         action: 'index_intent',
@@ -57,15 +55,15 @@ export class UserQueueManager {
       // Custom ID generator for intent jobs
       (job) => `${job.action}_${data.intentId}_${data.indexId}_${Date.now()}`
     );
+
+    // Add user to active users set after job is added
+    await this.redis.sadd(this.activeUsersSetKey, userId);
   }
 
   // Add generate intents job to user's specific queue
   async addUserGenerateIntentsJob(userId: string, data: GenerateIntentsJobData, priority: number): Promise<void> {
     const userQueue = this.getUserQueue(userId);
-    
-    // Add user to active users set
-    await this.redis.sadd(this.activeUsersSetKey, userId);
-    
+
     await userQueue.addJob(
       {
         action: 'generate_intents',
@@ -75,7 +73,11 @@ export class UserQueueManager {
       // Custom ID generator for generate intents jobs
       (job) => `${job.action}_${data.userId}_${data.sourceId}_${Date.now()}`
     );
+
+    // Add user to active users set after job is added
+    await this.redis.sadd(this.activeUsersSetKey, userId);
   }
+
 
   // Get all active user queue keys (using Redis Set instead of keys)
   async getActiveUserQueues(): Promise<string[]> {
@@ -86,11 +88,11 @@ export class UserQueueManager {
   // Get next job from any user queue with parallel processing limits
   async getNextJobFromAnyUser(workerId: number): Promise<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string } | null> {
     const activeUsers = await this.getActiveUserQueues();
-    
+
     if (activeUsers.length === 0) {
       return null;
     }
-    
+
     // Limit concurrent users and filter users with capacity
     const eligibleUsers = activeUsers
       .slice(0, this.maxUsers)
@@ -98,16 +100,16 @@ export class UserQueueManager {
         const userWorkerSet = this.userWorkers.get(userId) || new Set();
         return userWorkerSet.size < this.maxWorkersPerUser;
       });
-    
+
     if (eligibleUsers.length === 0) {
       return null; // All users are at max capacity
     }
-    
+
     // Try to get jobs from all eligible users in parallel
     const jobPromises = eligibleUsers.map(async (userId) => {
       const userQueue = this.getUserQueue(userId);
       const job = await userQueue.getNextJob();
-      
+
       if (job) {
         return { job, userId };
       } else {
@@ -119,36 +121,39 @@ export class UserQueueManager {
         return null;
       }
     });
-    
+
     // Wait for all parallel job fetches
     const results = await Promise.all(jobPromises);
-    
+
     // Find first successful job
     const successfulResult = results.find(result => result !== null);
-    
+
     if (successfulResult) {
       const { job, userId } = successfulResult;
-      
+
       // Assign worker to this user
       if (!this.userWorkers.has(userId)) {
         this.userWorkers.set(userId, new Set());
       }
       this.userWorkers.get(userId)!.add(workerId);
-      
+
       return { job, userId };
     }
-    
+
     return null;
   }
 
   // Get multiple jobs from multiple users in parallel (for batch processing)
   async getJobsFromAllEligibleUsers(): Promise<Array<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string }>> {
     const activeUsers = await this.getActiveUserQueues();
-    
+    if (activeUsers.length > 0) {
+      // console.log(`Active users: ${activeUsers.length}`);
+    }
+
     if (activeUsers.length === 0) {
       return [];
     }
-    
+
     // Get all users with available worker capacity
     const eligibleUsers = activeUsers
       .slice(0, this.maxUsers)
@@ -156,20 +161,22 @@ export class UserQueueManager {
         const userWorkerSet = this.userWorkers.get(userId) || new Set();
         return userWorkerSet.size < this.maxWorkersPerUser;
       });
-    
+
+    // await logToFile(`Eligible users: ${eligibleUsers.length}`);
+
     if (eligibleUsers.length === 0) {
       return [];
     }
-    
+
     // Get jobs from all eligible users in parallel
     const jobPromises = eligibleUsers.map(async (userId) => {
       const userWorkerSet = this.userWorkers.get(userId) || new Set();
       const availableSlots = this.maxWorkersPerUser - userWorkerSet.size;
-      
+
       // Get up to availableSlots jobs from this user
       const userQueue = this.getUserQueue(userId);
       const userJobs: Array<{ job: QueueJob<IndexIntentJobData | GenerateIntentsJobData>; userId: string }> = [];
-      
+
       for (let i = 0; i < availableSlots; i++) {
         const job = await userQueue.getNextJob();
         if (job) {
@@ -183,13 +190,13 @@ export class UserQueueManager {
           break; // No more jobs for this user
         }
       }
-      
+
       return userJobs;
     });
-    
+
     // Wait for all parallel operations
     const results = await Promise.all(jobPromises);
-    
+
     // Flatten results
     return results.flat();
   }
@@ -219,12 +226,12 @@ export class UserQueueManager {
   getParallelStats(): { activeUsers: number; totalWorkers: number; userWorkerCounts: Record<string, number> } {
     const userWorkerCounts: Record<string, number> = {};
     let totalWorkers = 0;
-    
+
     for (const [userId, workerSet] of this.userWorkers.entries()) {
       userWorkerCounts[userId] = workerSet.size;
       totalWorkers += workerSet.size;
     }
-    
+
     return {
       activeUsers: this.userWorkers.size,
       totalWorkers,
@@ -238,17 +245,17 @@ export class UserQueueManager {
     const statusPromises = activeUsers.map(async (userId) => {
       const userQueue = this.getUserQueue(userId);
       const queueSize = await userQueue.getQueueSize();
-      
+
       // Clean up empty queues from active set
       if (queueSize === 0) {
         await this.redis.srem(this.activeUsersSetKey, userId);
       }
-      
+
       return { userId, queueSize };
     });
-    
+
     const results = await Promise.all(statusPromises);
-    
+
     // Filter out empty queues for status display
     return results.filter(status => status.queueSize > 0);
   }
@@ -266,3 +273,4 @@ export async function addIndexIntentJob(data: IndexIntentJobData, priority: numb
 export async function addGenerateIntentsJob(data: GenerateIntentsJobData, priority: number): Promise<void> {
   await userQueueManager.addUserGenerateIntentsJob(data.userId, data, priority);
 }
+
