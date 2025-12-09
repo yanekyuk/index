@@ -156,13 +156,19 @@ export async function getConnectingStakes(options: GetConnectingStakesOptions): 
       return [...sharedIndexes].some(idx => accessibleIndexIds.has(idx));
     })
 
-    // All intents must be indexed in at least one shared accessible index
+    // All intents must share at least one common accessible index
     .filter(stake => {
       const stakeIntentIds = stake.items.map(i => i.intentId);
-      return stakeIntentIds.every(intentId => {
+      // Get index sets for each intent, filtered to accessible indexes
+      const intentIndexSets = stakeIntentIds.map(intentId => {
         const intentIdxs = intentIndexesMap.get(intentId) ?? new Set<string>();
-        return [...intentIdxs].some(idx => accessibleIndexIds.has(idx));
+        return new Set([...intentIdxs].filter(idx => accessibleIndexIds.has(idx)));
       });
+      // Find intersection - at least one index must contain ALL intents
+      const commonIndexes = intentIndexSets.reduce((acc, set) => 
+        new Set([...acc].filter(idx => set.has(idx)))
+      );
+      return commonIndexes.size > 0;
     })
 
     // Exclude already connected
