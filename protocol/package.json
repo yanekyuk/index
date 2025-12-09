@@ -43,7 +43,7 @@
     "express-validator": "^7.2.1",
     "helmet": "^7.1.0",
     "ioredis": "^5.6.1",
-    "isomorphic-dompurify": "^2.33.0",
+    "isomorphic-dompurify": "^2.34.0",
     "langfuse-langchain": "^3.38.4",
     "marked": "^16.4.1",
     "morgan": "^1.10.0",

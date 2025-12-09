@@ -8,7 +8,7 @@ router.use((req, res, next) => {
     if (process.env.NODE_ENV !== 'development') {
         return res.status(404).json({ error: 'Not found' });
     }
-    next();
+    return next();
 });
 
 router.post('/newsletter/trigger', async (req: Request, res: Response) => {
