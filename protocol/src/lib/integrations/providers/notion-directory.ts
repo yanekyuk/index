@@ -107,8 +107,14 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
+      log.info('Fetching Notion records', {
+        integrationId,
+        databaseId: config.source.id
+      });
+
       const integration = await getIntegrationById(integrationId);
       if (!integration || !integration.connectedAccountId) {
+        log.error('Notion integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
@@ -116,8 +122,11 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
       const composio = await getClient();
       const allRecords: DirectoryRecord[] = [];
       let nextCursor: string | undefined;
+      let pageCount = 0;
 
       do {
+        pageCount++;
+        
         const queryResp = await composio.tools.execute('NOTION_QUERY_DATABASE', {
           userId: integration.userId,
           connectedAccountId: integration.connectedAccountId,
@@ -172,7 +181,9 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
       log.info('Fetched Notion records for directory sync', {
         integrationId,
         databaseId,
-        recordCount: allRecords.length
+        recordCount: allRecords.length,
+        totalPages: pageCount,
+        sampleFields: allRecords.length > 0 ? Object.keys(allRecords[0]).slice(0, 5) : []
       });
 
       return allRecords;

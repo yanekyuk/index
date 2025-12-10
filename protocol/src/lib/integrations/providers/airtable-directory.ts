@@ -156,22 +156,35 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
+      log.info('Fetching Airtable records', {
+        integrationId,
+        baseId: config.source.id,
+        tableId: config.source.subId
+      });
+
       const integration = await getIntegrationById(integrationId);
+      
       if (!integration || !integration.connectedAccountId) {
+        log.error('Airtable integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
       const baseId = config.source.id;
       const tableId = config.source.subId;
+      
       if (!tableId) {
+        log.error('Airtable table ID missing', { integrationId, baseId });
         throw new Error('Table ID is required for Airtable directory sync');
       }
 
       const composio = await getClient();
       const allRecords: DirectoryRecord[] = [];
       let recordOffset: string | undefined;
+      let pageCount = 0;
 
       do {
+        pageCount++;
+        
         const recordsResp = await composio.tools.execute('AIRTABLE_LIST_RECORDS', {
           userId: integration.userId,
           connectedAccountId: integration.connectedAccountId,
@@ -183,24 +196,38 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
           }
         }) as AirtableApiResponse;
 
-        const recordsData = recordsResp?.data?.response_data;
-        if (!recordsData?.records) {
+        const records = recordsResp?.data?.records || [];
+        const offset = recordsResp?.data?.offset;
+
+        if (records.length === 0) {
           break;
         }
 
         // Convert Airtable records to DirectoryRecord format
-        for (const record of recordsData.records) {
-          allRecords.push(record.fields);
+        for (const record of records) {
+          // Handle different record structures
+          if (record.fields) {
+            // Standard Airtable format: { id, fields: {...} }
+            allRecords.push(record.fields);
+          } else if (typeof record === 'object' && !record.id) {
+            // Record is already fields object
+            allRecords.push(record);
+          } else {
+            // Unknown structure, add as-is
+            allRecords.push(record);
+          }
         }
 
-        recordOffset = recordsData.offset;
+        recordOffset = offset;
       } while (recordOffset);
 
       log.info('Fetched Airtable records for directory sync', {
         integrationId,
         baseId,
         tableId,
-        recordCount: allRecords.length
+        recordCount: allRecords.length,
+        totalPages: pageCount,
+        sampleFields: allRecords.length > 0 ? Object.keys(allRecords[0]).slice(0, 5) : []
       });
 
       return allRecords;

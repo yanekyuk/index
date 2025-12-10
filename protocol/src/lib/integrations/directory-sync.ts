@@ -98,14 +98,15 @@ export async function syncDirectoryMembers(
     log.info('Starting directory sync', {
       integrationId,
       indexId: integration.indexId,
-      source: config.source
+      source: config.source,
+      emailColumn: config.columnMappings.email
     });
 
     // Fetch records from provider
     const records = await provider.fetchRecords(integrationId, config);
     
     if (records.length === 0) {
-      log.info('No records found for directory sync', { integrationId });
+      log.info('No records found for directory sync', { integrationId, source: config.source });
       return {
         success: true,
         membersAdded: 0,
@@ -117,7 +118,8 @@ export async function syncDirectoryMembers(
 
     log.info('Fetched records for directory sync', {
       integrationId,
-      recordCount: records.length
+      recordCount: records.length,
+      sampleColumns: records[0] ? Object.keys(records[0]).slice(0, 5) : []
     });
 
     // Get index prompt for default member prompt
@@ -132,11 +134,20 @@ export async function syncDirectoryMembers(
     const addedMembers: string[] = [];
     const updatedMembers: string[] = [];
     const errors: Array<{ record: any; error: string }> = [];
-
-    for (const record of records) {
+    
+    log.info('Processing records', {
+      integrationId,
+      totalRecords: records.length
+    });
+    
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i];
+      
       try {
         // Extract email (required)
-        const email = record[config.columnMappings.email]?.trim();
+        const emailRaw = record[config.columnMappings.email];
+        const email = emailRaw ? String(emailRaw).trim() : '';
+        
         if (!email) {
           errors.push({ record, error: 'Missing email' });
           continue;
@@ -151,33 +162,44 @@ export async function syncDirectoryMembers(
 
         // Extract profile fields
         const name = config.columnMappings.name 
-          ? record[config.columnMappings.name]?.trim() || email.split('@')[0]
+          ? (record[config.columnMappings.name] ? String(record[config.columnMappings.name]).trim() : '') || email.split('@')[0]
           : email.split('@')[0];
         const intro = config.columnMappings.intro 
-          ? record[config.columnMappings.intro]?.trim() || undefined
+          ? (record[config.columnMappings.intro] ? String(record[config.columnMappings.intro]).trim() : '') || undefined
           : undefined;
         const location = config.columnMappings.location
-          ? record[config.columnMappings.location]?.trim() || undefined
+          ? (record[config.columnMappings.location] ? String(record[config.columnMappings.location]).trim() : '') || undefined
           : undefined;
 
         // Prepare socials object
         const socials: any = {};
-        if (config.columnMappings.twitter && record[config.columnMappings.twitter]?.trim()) {
-          // Remove @ symbol if present
-          let twitterValue = record[config.columnMappings.twitter].trim();
-          if (twitterValue.startsWith('@')) {
-            twitterValue = twitterValue.substring(1);
+        if (config.columnMappings.twitter && record[config.columnMappings.twitter]) {
+          let twitterValue = String(record[config.columnMappings.twitter]).trim();
+          if (twitterValue) {
+            // Remove @ symbol if present
+            if (twitterValue.startsWith('@')) {
+              twitterValue = twitterValue.substring(1);
+            }
+            socials.x = twitterValue;
           }
-          socials.x = twitterValue;
         }
-        if (config.columnMappings.linkedin && record[config.columnMappings.linkedin]?.trim()) {
-          socials.linkedin = record[config.columnMappings.linkedin].trim();
+        if (config.columnMappings.linkedin && record[config.columnMappings.linkedin]) {
+          const linkedinValue = String(record[config.columnMappings.linkedin]).trim();
+          if (linkedinValue) {
+            socials.linkedin = linkedinValue;
+          }
         }
-        if (config.columnMappings.github && record[config.columnMappings.github]?.trim()) {
-          socials.github = record[config.columnMappings.github].trim();
+        if (config.columnMappings.github && record[config.columnMappings.github]) {
+          const githubValue = String(record[config.columnMappings.github]).trim();
+          if (githubValue) {
+            socials.github = githubValue;
+          }
         }
-        if (config.columnMappings.website && record[config.columnMappings.website]?.trim()) {
-          socials.websites = [record[config.columnMappings.website].trim()];
+        if (config.columnMappings.website && record[config.columnMappings.website]) {
+          const websiteValue = String(record[config.columnMappings.website]).trim();
+          if (websiteValue) {
+            socials.websites = [websiteValue];
+          }
         }
 
         // Find or create user
@@ -195,7 +217,7 @@ export async function syncDirectoryMembers(
           continue;
         }
 
-        // Collect metadata from unmapped columns
+        // Collect metadata from unmapped columns (excluding mapped columns)
         const metadata: Record<string, string | string[]> = {};
         const mappedColumns = [
           config.columnMappings.email,
@@ -210,7 +232,7 @@ export async function syncDirectoryMembers(
         const excludedColumns = config.excludedColumns || [];
 
         for (const [key, value] of Object.entries(record)) {
-          if (!mappedColumns.includes(key) && !excludedColumns.includes(key) && value) {
+          if (!mappedColumns.includes(key) && !excludedColumns.includes(key) && value != null) {
             const stringValue = String(value).trim();
             if (stringValue) {
               // Check if value contains multiple values (comma-separated)
@@ -221,6 +243,18 @@ export async function syncDirectoryMembers(
               }
             }
           }
+        }
+
+        // Log progress periodically (every 100 records)
+        if ((i + 1) % 100 === 0 || i === records.length - 1) {
+          log.info('Directory sync progress', {
+            integrationId,
+            processed: i + 1,
+            total: records.length,
+            added: addedMembers.length,
+            updated: updatedMembers.length,
+            errors: errors.length
+          });
         }
 
         // Check if already a member
@@ -258,6 +292,13 @@ export async function syncDirectoryMembers(
         });
 
         if (!addResult.success) {
+          log.warn('Failed to add member to index', {
+            integrationId,
+            indexId: integration.indexId,
+            userId: user.id,
+            email,
+            error: addResult.error
+          });
           throw new Error(addResult.error || 'Failed to add member');
         }
 
@@ -301,10 +342,13 @@ export async function syncDirectoryMembers(
 
     log.info('Directory sync completed', {
       integrationId,
+      indexId: integration.indexId,
       membersAdded: addedMembers.length,
       membersUpdated: updatedMembers.length,
       errors: errors.length,
-      status
+      totalRecords: records.length,
+      status,
+      errorRate: records.length > 0 ? `${((errors.length / records.length) * 100).toFixed(1)}%` : '0%'
     });
 
     return {
