@@ -14,7 +14,7 @@ export const weeklyNewsletterTemplate = (recipientName: string, matches: Match[]
   }
 
   const formatReasoning = (text: string) => {
-    return escapeHtml(text).replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="text-decoration: underline;">$1</a>');
+    return escapeHtml(text).replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
   }
 
   const matchesHtml = matches.map((match) => `
@@ -40,15 +40,13 @@ ${match.reasoning}
         <p>Each one can shift something forward - choose your move, and I’ll take the next step with you.</p>
         
         <div style="margin: 20px 0;">
-          <span style="font-size: 1.2em; vertical-align: middle; margin-right: 5px;">👉</span>
-          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
+          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #FFFFFF; background-color: #0A0A0A; font-size: 1.1em; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
         </div>
         
         ${matchesHtml}
         
         <div style="margin: 20px 0;">
-          <span style="font-size: 1.2em; vertical-align: middle; margin-right: 5px;">👉</span>
-          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
+          <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #FFFFFF; background-color: #0A0A0A; font-size: 1.1em; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to your Inbox</a>
         </div>
         
         <p>—Index, keeping your next moves within reach</p>
@@ -58,6 +56,10 @@ ${match.reasoning}
             <p>You received this email because you have enabled <strong>Weekly Newsletter</strong> in your notification settings. <a href="${unsubscribeUrl}" style="color: #888; text-decoration: underline;">Unsubscribe</a></p>
           </div>
         ` : ''}
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <img src="https://index.network/logo.png" alt="Index" style="height: 24px; opacity: 0.5;" />
+        </div>
       </div>
     `,
     text: `Hey ${recipientName},

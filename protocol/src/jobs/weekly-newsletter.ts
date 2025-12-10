@@ -5,7 +5,7 @@ import { sendEmail } from '../lib/email/transport.helper';
 import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter.template';
 import { and, eq, gt, inArray, or, sql, desc } from 'drizzle-orm';
 import { toZonedTime, format } from 'date-fns-tz';
-import { synthesizeVibeCheck } from '../lib/synthesis';
+import { synthesizeNewsletterVibeCheck } from '../lib/synthesis';
 
 function stripNamePrefix(text: string, name: string) {
     if (!text || !name) return text;
@@ -186,8 +186,8 @@ export async function sendWeeklyNewsletter(now: Date = new Date(), force: boolea
                 // Fetch vibe checks in parallel if needed
                 console.time(`SynthesizeVibeCheck-${stake.id}`);
                 const [vibeForP1, vibeForP2] = await Promise.all([
-                    p1NeedsMatch ? synthesizeVibeCheck(p1.userId, p2.userId) : Promise.resolve(null),
-                    p2NeedsMatch ? synthesizeVibeCheck(p2.userId, p1.userId) : Promise.resolve(null)
+                    p1NeedsMatch ? synthesizeNewsletterVibeCheck(p1.userId, p2.userId) : Promise.resolve(null),
+                    p2NeedsMatch ? synthesizeNewsletterVibeCheck(p2.userId, p1.userId) : Promise.resolve(null)
                 ]);
                 console.timeEnd(`SynthesizeVibeCheck-${stake.id}`);
 
