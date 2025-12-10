@@ -58,13 +58,15 @@ export async function addNewsletterJob(data: NewsletterJobData, priority: number
 }
 
 
-export async function addWeeklyCycleJob(data: WeeklyCycleJobData): Promise<void> {
+export async function addWeeklyCycleJob(data: WeeklyCycleJobData): Promise<boolean> {
     try {
         await newsletterQueue.add('start_weekly_cycle', data, {
-            priority: 2, // Higher priority than individual emails so it generates work quickly
+            priority: 0, // Priority 0 is higher than individual emails (priority 1) so cycle generates work quickly
             removeOnComplete: true
         });
+        return true;
     } catch (e) {
         console.error('Failed to add weekly cycle job:', e);
+        return false;
     }
 }

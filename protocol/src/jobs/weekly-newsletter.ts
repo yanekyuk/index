@@ -52,13 +52,17 @@ export async function sendWeeklyNewsletter(now: Date = new Date(), force: boolea
         }
 
         // Dispatch the "start weekly cycle" job
-        await addWeeklyCycleJob({
+        const success = await addWeeklyCycleJob({
             timestamp: now.getTime(),
             force: force,
             daysSince: daysSince
         });
 
-        console.log('Weekly newsletter cycle enqueued.');
+        if (success) {
+            console.log('Weekly newsletter cycle enqueued.');
+        } else {
+            console.error('Failed to enqueue weekly newsletter cycle');
+        }
         console.timeEnd('WeeklyNewsletterTrigger');
 
     } catch (error) {
