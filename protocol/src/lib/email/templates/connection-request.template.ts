@@ -1,9 +1,10 @@
 export const connectionRequestTemplate = (fromUserName: string, toUserName: string, synthesis?: string, subject?: string, unsubscribeUrl?: string) => {
-  const stripLinks = (text: string) => {
-    return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+  // Simple helper to strip HTML tags for the text version
+  const stripHtml = (html: string) => {
+    return html.replace(/<[^>]*>?/gm, '');
   };
 
-  const processedSynthesis = synthesis ? stripLinks(synthesis) : undefined;
+  const textSynthesis = synthesis ? stripHtml(synthesis) : undefined;
 
   return {
     subject: subject || `✨ ${fromUserName} wants to connect with you`,
@@ -17,9 +18,9 @@ export const connectionRequestTemplate = (fromUserName: string, toUserName: stri
         <a href="https://index.network/inbox" style="text-decoration: none; font-weight: bold; color: #000; font-size: 1.1em; border: 1px solid #ccc; padding: 10px 20px; border-radius: 5px; display: inline-block;">Go to Index to approve</a>
       </div>
       
-      ${processedSynthesis ? `
+      ${synthesis ? `
         <p><strong>What could happen between you two:</strong></p>
-        <div>${processedSynthesis}</div>
+        <div>${synthesis}</div>
       ` : ''}
       
       <p>If you want to move it forward, I’ll make the introduction. If not, everything stays quiet.</p>
@@ -32,14 +33,15 @@ export const connectionRequestTemplate = (fromUserName: string, toUserName: stri
       ` : ''}
     </div>
   `,
+    // Clean text version
     text: `Hey ${toUserName},
 
 You’ve got a new connection request on Index, ${fromUserName} wants to connect with you.
 
 👉 Go to Index to approve: https://index.network/inbox
 
-${processedSynthesis ? `What could happen between you two:
-${processedSynthesis}
+${textSynthesis ? `What could happen between you two:
+${textSynthesis}
 
 ` : ''}If you want to move it forward, I’ll make the introduction. If not, everything stays quiet.
 
