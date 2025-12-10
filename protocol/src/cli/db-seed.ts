@@ -89,6 +89,12 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         id: INDEX_ID,
         title: 'Mock Demo Network',
         prompt: 'Share collaboration opportunities',
+        permissions: {
+          joinPolicy: 'anyone',
+          invitationLink: null,
+          allowGuestVibeCheck: false,
+          requireApproval: false
+        },
       });
     } catch { }
 
