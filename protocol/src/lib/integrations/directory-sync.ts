@@ -130,6 +130,7 @@ export async function syncDirectoryMembers(
 
 
     const addedMembers: string[] = [];
+    const updatedMembers: string[] = [];
     const errors: Array<{ record: any; error: string }> = [];
 
     for (const record of records) {
@@ -194,20 +195,6 @@ export async function syncDirectoryMembers(
           continue;
         }
 
-        // Check if already a member
-        const existingMember = await db.select({ userId: indexMembers.userId })
-          .from(indexMembers)
-          .where(and(
-            eq(indexMembers.indexId, integration.indexId),
-            eq(indexMembers.userId, user.id)
-          ))
-          .limit(1);
-
-        if (existingMember.length > 0) {
-          // Already a member, skip
-          continue;
-        }
-
         // Collect metadata from unmapped columns
         const metadata: Record<string, string | string[]> = {};
         const mappedColumns = [
@@ -234,6 +221,30 @@ export async function syncDirectoryMembers(
               }
             }
           }
+        }
+
+        // Check if already a member
+        const existingMember = await db.select()
+          .from(indexMembers)
+          .where(and(
+            eq(indexMembers.indexId, integration.indexId),
+            eq(indexMembers.userId, user.id)
+          ))
+          .limit(1);
+
+        if (existingMember.length > 0) {
+          // Already a member, update metadata
+          await db.update(indexMembers)
+            .set({
+              metadata: Object.keys(metadata).length > 0 ? metadata : null,
+              updatedAt: new Date()
+            })
+            .where(and(
+              eq(indexMembers.indexId, integration.indexId),
+              eq(indexMembers.userId, user.id)
+            ));
+          updatedMembers.push(email);
+          continue;
         }
 
         // Add member to index
@@ -266,7 +277,7 @@ export async function syncDirectoryMembers(
     // Update sync status in integration config
     const status: 'success' | 'error' | 'partial' = errors.length === 0 
       ? 'success' 
-      : addedMembers.length === 0 
+      : addedMembers.length === 0 && updatedMembers.length === 0
         ? 'error' 
         : 'partial';
 
@@ -291,6 +302,7 @@ export async function syncDirectoryMembers(
     log.info('Directory sync completed', {
       integrationId,
       membersAdded: addedMembers.length,
+      membersUpdated: updatedMembers.length,
       errors: errors.length,
       status
     });
@@ -298,7 +310,7 @@ export async function syncDirectoryMembers(
     return {
       success: status !== 'error',
       membersAdded: addedMembers.length,
-      membersUpdated: 0, // We don't update existing members, only add new ones
+      membersUpdated: updatedMembers.length,
       errors,
       status
     };
