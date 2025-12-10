@@ -1,20 +1,20 @@
 import { Worker } from 'bullmq';
 import { EMAIL_QUEUE_NAME } from './email.queue';
-import { getRedisClient } from '../../redis';
+import { getBullMQConnection } from '../../redis';
 import processor from './email.processor';
 
 export class EmailWorker {
     private worker: Worker;
-    private redis = getRedisClient();
 
     constructor() {
         console.log('[EmailWorker] Initializing worker for queue:', EMAIL_QUEUE_NAME);
-        // Use in-process worker to avoid TypeScript execution issues in child process
+        
+        // Use dedicated BullMQ connection options (no lazyConnect, maxRetriesPerRequest: null)
+        // This ensures the Worker connects immediately and can receive jobs
+        const bullmqConnection = getBullMQConnection();
+        
         this.worker = new Worker(EMAIL_QUEUE_NAME, processor, {
-            connection: {
-                ...this.redis.options,
-                maxRetriesPerRequest: null,
-            },
+            connection: bullmqConnection,
             concurrency: 1,
             limiter: {
                 max: 2,
@@ -47,6 +47,10 @@ export class EmailWorker {
         this.worker.on('error', (err) => {
             console.error(`[EmailWorker] Worker error:`, err);
         });
+
+        this.worker.on('ready', () => {
+            console.log('[EmailWorker] Worker is READY and connected to Redis');
+        });
     }
 
     start() {
@@ -62,4 +66,4 @@ export class EmailWorker {
     }
 }
 
-export const emailWorker = new EmailWorker();
+export const emailWorker = new EmailWorker()

@@ -1,7 +1,12 @@
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
+import { log } from './log';
 
 let redis: Redis | null = null;
 
+/**
+ * Get the shared Redis client for general caching/operations.
+ * Uses lazyConnect for efficiency in the main client.
+ */
 export function getRedisClient(): Redis {
   if (!redis) {
     // Use REDIS_URL if available, otherwise fall back to individual env vars
@@ -24,15 +29,56 @@ export function getRedisClient(): Redis {
     }
 
     redis.on('error', (err: Error) => {
-      console.error('Redis error:', err);
+      log.error('Redis error', { error: err.message });
     });
 
     redis.on('connect', () => {
-      console.log('✅ Redis connected');
+      log.info('Redis connected');
     });
   }
 
   return redis;
+}
+
+/**
+ * Get BullMQ-compatible Redis connection options.
+ * BullMQ requires:
+ * - maxRetriesPerRequest: null (for blocking commands)
+ * - lazyConnect: false (Workers need active connection to receive jobs)
+ *
+ * This function returns connection OPTIONS (not a client instance) for BullMQ
+ * to create its own connections.
+ */
+export function getBullMQConnection(): RedisOptions {
+  const redisUrl = process.env.REDIS_URL;
+
+  if (redisUrl) {
+    // Parse the URL to extract connection details
+    // IORedis can accept a URL directly, but we need to set specific options
+    const url = new URL(redisUrl);
+    return {
+      host: url.hostname,
+      port: parseInt(url.port) || 6379,
+      password: url.password || undefined,
+      username: url.username || undefined,
+      db: url.pathname ? parseInt(url.pathname.slice(1)) || 0 : 0,
+      // BullMQ-specific requirements:
+      maxRetriesPerRequest: null, // Required for BullMQ blocking commands
+      lazyConnect: false, // Workers MUST connect immediately to receive jobs
+      enableReadyCheck: false, // Faster connection for BullMQ
+    };
+  }
+
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB || '0'),
+    // BullMQ-specific requirements:
+    maxRetriesPerRequest: null, // Required for BullMQ blocking commands
+    lazyConnect: false, // Workers MUST connect immediately to receive jobs
+    enableReadyCheck: false, // Faster connection for BullMQ
+  };
 }
 
 export async function closeRedisConnection(): Promise<void> {
@@ -54,7 +100,7 @@ export class CacheClient {
     try {
       return await this.redis.get(key);
     } catch (error) {
-      console.error('Cache get error:', error);
+      log.error('Cache get error', { key, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -68,7 +114,7 @@ export class CacheClient {
       }
       return true;
     } catch (error) {
-      console.error('Cache set error:', error);
+      log.error('Cache set error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -78,7 +124,7 @@ export class CacheClient {
       await this.redis.del(key);
       return true;
     } catch (error) {
-      console.error('Cache delete error:', error);
+      log.error('Cache delete error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -88,7 +134,7 @@ export class CacheClient {
       const result = await this.redis.exists(key);
       return result === 1;
     } catch (error) {
-      console.error('Cache exists error:', error);
+      log.error('Cache exists error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -97,7 +143,7 @@ export class CacheClient {
     try {
       return await this.redis.hget(key, field);
     } catch (error) {
-      console.error('Cache hget error:', error);
+      log.error('Cache hget error', { key, field, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -107,7 +153,7 @@ export class CacheClient {
       await this.redis.hset(key, field, value);
       return true;
     } catch (error) {
-      console.error('Cache hset error:', error);
+      log.error('Cache hset error', { key, field, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -117,7 +163,7 @@ export class CacheClient {
       await this.redis.expire(key, ttl);
       return true;
     } catch (error) {
-      console.error('Cache expire error:', error);
+      log.error('Cache expire error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }

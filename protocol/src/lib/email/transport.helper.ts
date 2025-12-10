@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { addEmailJob, emailQueueEvents } from './queue/email.queue';
+import { log } from '../log';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -14,17 +15,9 @@ export const executeSendEmail = async (options: {
   const isTestMode = process.env.ENABLE_EMAIL_TESTING === 'true';
   const recipient = isTestMode ? process.env.TESTING_EMAIL_ADDRESS : options.to;
 
-  console.log('[EmailTransport] executeSendEmail called', {
-    to: options.to,
-    subject: options.subject,
-    isTestMode,
-    recipient,
-    resendKeyConfigured: !!process.env.RESEND_API_KEY,
-  });
-
   if (isTestMode && !recipient) {
-    console.warn('TESTING_EMAIL_ADDRESS not set. Skipping email sending.');
-    return;
+    log.warn('[EmailTransport] TESTING_EMAIL_ADDRESS not set - skipping email');
+    return { data: null, skipped: true, reason: 'testing_email_not_set' };
   }
 
   if (isTestMode) {
@@ -56,32 +49,32 @@ export const executeSendEmail = async (options: {
     `;
     try {
       await appendFile(debugPath, content);
-      console.log(`📝 Email logged to ${debugPath}`);
+      log.debug(`Email logged to ${debugPath}`);
     } catch (err) {
-      console.error('Failed to log email to file:', err);
+      log.error('Failed to log email to file', { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
-    console.warn('RESEND_API_KEY not configured or disabled, email not sent');
-    return;
+    log.warn('[EmailTransport] RESEND_API_KEY not configured or disabled - email not sent');
+    return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
   if (!isTestMode) {
-    console.log('Email is disabled for now: not from mainnet yet (ENABLE_EMAIL_TESTING is not true)');
-    return;
+    log.debug('[EmailTransport] Email sending disabled (ENABLE_EMAIL_TESTING is not true)');
+    return { data: null, skipped: true, reason: 'email_testing_disabled' };
   }
 
   if (!recipient) {
     if (isTestMode) {
-      console.warn('TESTING_EMAIL_ADDRESS not set. Skipping email sending (logged to file).');
-      return;
+      log.warn('[EmailTransport] TESTING_EMAIL_ADDRESS not set - skipping email');
+      return { data: null, skipped: true, reason: 'testing_email_not_set' };
     }
-    console.error('No recipient defined for email.');
-    return;
+    log.error('[EmailTransport] No recipient defined for email');
+    return { data: null, skipped: true, reason: 'no_recipient' };
   }
 
-  console.log(`[TEST MODE] Sending email to ${recipient} (Original: ${options.to})`);
+  log.info(`[EmailTransport] Sending email to test recipient`, { recipient: String(recipient), originalTo: String(options.to) });
 
   try {
     const result = await resend!.emails.send({
@@ -95,14 +88,26 @@ export const executeSendEmail = async (options: {
     });
 
     if (result.error) {
-      console.error('Resend returned error:', result.error);
+      log.error('[EmailTransport] Resend API returned error', {
+        errorName: result.error.name,
+        errorMessage: result.error.message,
+        recipient: String(recipient),
+        subject: options.subject,
+      });
       throw new Error(`Resend error: ${result.error.message}`);
     }
 
-    console.log('Email sent successfully:', result);
+    log.info('[EmailTransport] Email sent successfully', {
+      messageId: result.data?.id,
+      recipient: String(recipient),
+    });
     return result;
   } catch (error) {
-    console.error('Failed to send email:', error);
+    log.error('[EmailTransport] Failed to send email via Resend API', {
+      error: error instanceof Error ? error.message : String(error),
+      recipient: String(recipient),
+      subject: options.subject,
+    });
     throw error;
   }
 };
@@ -115,13 +120,40 @@ export const sendEmail = async (options: {
   text: string;
   headers?: Record<string, string>;
 }): Promise<any> => {
-  console.log('[EmailTransport] sendEmail called (queueing job)', { to: options.to, subject: options.subject });
   const job = await addEmailJob(options);
-  console.log(`[EmailTransport] Email job ${job.id} added to queue, waiting for completion...`);
   
-  // Wait for the job to actually complete
-  const result = await job.waitUntilFinished(emailQueueEvents);
+  // Wait for the job to complete with a 60 second timeout
+  const WAIT_TIMEOUT_MS = 60000;
   
-  console.log(`[EmailTransport] Email job ${job.id} completed`);
-  return result;
+  try {
+    const result = await job.waitUntilFinished(emailQueueEvents, WAIT_TIMEOUT_MS);
+    
+    // Check for null OR undefined - BullMQ stores undefined as null
+    if (result == null) {
+      // Job completed but with no result - could indicate the job wasn't processed
+      // or QueueEvents missed the completion event. Check job state.
+      const jobState = await job.getState();
+      const returnValue = job.returnvalue;
+      
+      // If job is still waiting/active, the timeout was hit or worker didn't process it
+      if (jobState === 'waiting' || jobState === 'active' || jobState === 'delayed') {
+        log.error(`[EmailTransport] Email job ${job.id} timed out or not processed`, { jobState });
+      } else if (jobState === 'completed') {
+        // Job actually completed, QueueEvents missed the event - return the stored result
+        return returnValue;
+      }
+      
+      return returnValue || result;
+    }
+    
+    return result;
+  } catch (error) {
+    // Handle timeout or other errors
+    const jobState = await job.getState().catch(() => 'unknown');
+    log.error(`[EmailTransport] Email job ${job.id} error while waiting`, {
+      error: error instanceof Error ? error.message : String(error),
+      jobState,
+    });
+    throw error;
+  }
 };

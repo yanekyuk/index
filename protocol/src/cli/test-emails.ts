@@ -1,13 +1,16 @@
-import { config } from 'dotenv';
-import { resolve } from 'path';
+import dotenv from 'dotenv';
+import path from 'path';
 import { writeFile } from 'fs/promises';
 
-config({ path: resolve(__dirname, '../../.env.development') });
+// Load environment-specific .env file
+const envFile = `.env.development`;
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { connectionRequestTemplate } from '../lib/email/templates/connection-request.template';
 import { connectionAcceptedTemplate } from '../lib/email/templates/connection-accepted.template';
 import { weeklyNewsletterTemplate } from '../lib/email/templates/weekly-newsletter.template';
 import { sendEmail } from '../lib/email/transport.helper';
+import { emailWorker } from '../lib/email/queue/email.worker';
 
 import { vibeCheck, OtherUserData } from '../agents/external/vibe_checker/index';
 
@@ -32,6 +35,15 @@ ${html}
 
 async function main() {
     console.log('Starting email test script (Mock Mode with Real AI)...');
+    
+    // Start the email worker so jobs are processed in this process
+    console.log('Starting email worker...');
+    emailWorker.start();
+    
+    // Give the worker time to connect to Redis
+    console.log('Waiting for worker to connect...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('Worker should be ready now');
 
     // Clear previous debug file
     await writeFile('email-debug.md', '# Email Test Debug Output\n');

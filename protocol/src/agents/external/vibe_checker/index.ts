@@ -298,14 +298,11 @@ export async function vibeCheckNewsletter(
     console.log('System prompt:', systemMsg);
     // User prompt with intent pairs - Reusing the standard builder as the input data format is the same
     const userMsg = buildUserMessage(data, initiator, target, isThirdPerson);
-    console.log('User prompt:', userMsg);
-    console.log('Character limit:', characterLimit);
     const response = await traceableLlm("vibe-checker", {
       other_user_id: data.id,
       other_user_name: data.name,
       intent_pairs_count: data.intentPairs.length
     })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' }, response_format: { type: "json_object" } } as any);
-    console.log('Response:', response);
     let synthesis = "";
     let subject = "";
 

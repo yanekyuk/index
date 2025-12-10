@@ -1,19 +1,20 @@
 import { Worker } from 'bullmq';
 import { NEWSLETTER_QUEUE_NAME } from '../newsletter.queue';
-import { getRedisClient } from '../../redis';
+import { getBullMQConnection } from '../../redis';
 import processor from '../newsletter.processor';
 
 export class NewsletterWorker {
     private worker: Worker;
-    private redis = getRedisClient();
 
     constructor() {
-        // Use in-process worker to avoid TypeScript execution issues in child process
+        console.log('[NewsletterWorker] Initializing worker for queue:', NEWSLETTER_QUEUE_NAME);
+        
+        // Use dedicated BullMQ connection options (no lazyConnect, maxRetriesPerRequest: null)
+        // This ensures the Worker connects immediately and can receive jobs
+        const bullmqConnection = getBullMQConnection();
+        
         this.worker = new Worker(NEWSLETTER_QUEUE_NAME, processor, {
-            connection: {
-                ...this.redis.options,
-                maxRetriesPerRequest: null,
-            },
+            connection: bullmqConnection,
             concurrency: 5, // Process 5 users concurrently (LLM calls are async)
             limiter: {
                 max: 10,
@@ -33,6 +34,10 @@ export class NewsletterWorker {
         this.worker.on('error', (err) => {
             console.error(`[NewsletterWorker] Worker error:`, err);
         });
+
+        this.worker.on('ready', () => {
+            console.log('[NewsletterWorker] Worker is READY and connected to Redis');
+        });
     }
 
     start() {
@@ -48,4 +53,4 @@ export class NewsletterWorker {
     }
 }
 
-export const newsletterWorker = new NewsletterWorker();
+export const newsletterWorker = new NewsletterWorker()

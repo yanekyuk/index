@@ -1,5 +1,5 @@
 import { Queue, Job } from 'bullmq';
-import { getRedisClient } from '../redis';
+import { getBullMQConnection } from '../redis';
 
 export const NEWSLETTER_QUEUE_NAME = 'weekly-newsletter-queue';
 
@@ -25,13 +25,11 @@ export interface WeeklyCycleJobData {
     daysSince?: number;
 }
 
-const redisClient = getRedisClient();
+// Use dedicated BullMQ connection options (no lazyConnect, maxRetriesPerRequest: null)
+const bullmqConnection = getBullMQConnection();
 
 export const newsletterQueue = new Queue<NewsletterJobData | WeeklyCycleJobData>(NEWSLETTER_QUEUE_NAME, {
-    connection: {
-        ...redisClient.options,
-        maxRetriesPerRequest: null,
-    },
+    connection: bullmqConnection,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
