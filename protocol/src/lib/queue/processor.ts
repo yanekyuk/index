@@ -1,264 +1,98 @@
-import { IndexIntentJob, GenerateIntentsJob, userQueueManager } from './llm-queue';
+import { Worker, Job } from 'bullmq';
+import { QUEUE_NAME, IndexIntentJobData, GenerateIntentsJobData } from './llm-queue';
 import { intentIndexer } from '../../agents/core/intent_indexer';
 import { getRedisClient } from '../redis';
 import { analyzeObjects, analyzeContent } from '../../agents/core/intent_inferrer';
 import { IntentService } from '../intent-service';
 
-
-// Job history tracking interface
-export interface JobHistoryEntry {
-  id: string;
-  jobName: string; // Dynamic job name based on job type
-  priority: number;
-  status: 'processing' | 'completed' | 'failed';
-  workerId: number;
-  startedAt: number;
-  completedAt?: number;
-  duration?: number;
-  error?: string;
-  // Dynamic job-specific data
-  jobData: Record<string, any>;
-}
-
+// Job types from adapter - we use these for type safety
+type JobData = IndexIntentJobData | GenerateIntentsJobData;
 
 export class QueueProcessor {
-  private isRunning = false;
-  private processingInterval: NodeJS.Timeout | null = null;
-  private concurrency: number;
+  private worker: Worker;
   private redis = getRedisClient();
-  private historyKey = 'queue:job_history';
-  private availableWorkers = new Set<number>(); // Track available workers
-  private jobDistributionInterval: NodeJS.Timeout | null = null;
 
   constructor(concurrency: number = parseInt(process.env.QUEUE_CONCURRENCY || '3')) {
-    this.concurrency = concurrency;
-    // Initialize all workers as available
-    for (let i = 0; i < concurrency; i++) {
-      this.availableWorkers.add(i);
-    }
-  }
-
-  start(): void {
-    if (this.isRunning) return;
-
-    this.isRunning = true;
-
-    // Start job distribution loop instead of individual worker loops
-    this.startJobDistribution();
-  }
-
-  private startJobDistribution(): void {
-    const distributionLoop = async () => {
-      while (this.isRunning) {
-        try {
-          await this.distributeJobsToWorkers();
-        } catch (error) {
-          console.error(`Error in distribution loop: ${error}`);
-        }
-        // Small delay to prevent busy waiting
-        await new Promise(resolve => setTimeout(resolve, parseInt(process.env.QUEUE_POLL_INTERVAL_MS || '100')));
+    this.worker = new Worker(QUEUE_NAME, this.processJob.bind(this), {
+      connection: {
+        ...this.redis.options,
+        maxRetriesPerRequest: null,
+      },
+      // Concurrency: How many jobs THIS worker can process in parallel.
+      // 
+      // Limiter: Global rate limit for the queue across ALL workers.
+      //
+      // Examples:
+      // Case A (High Throughput):
+      //   - 5 workers running in different pods/processes
+      //   - concurrency: 20 (each worker takes 20 jobs)
+      //   - limiter: max 1000 / 1 sec
+      //   -> Result: System processes ~100 jobs simultaneously, up to 1000/sec total.
+      //
+      // Case B (Rate Limited API):
+      //   - 10 workers
+      //   - concurrency: 5
+      //   - limiter: max 10 / 1 sec (some API limit)
+      //   -> Result: Even though we could process 50 jobs at once (10*5), 
+      //      BullMQ will only lease 10 jobs every second to respect the API limit.
+      //
+      // Case C (CPU Heavy Tasks):
+      //   - 2 workers (on 2 core machines)
+      //   - concurrency: 1 (processing takes 100% CPU)
+      //   - limiter: unlimited
+      //   -> Result: 2 jobs processed at once total.
+      concurrency,
+      limiter: {
+        max: 100,
+        duration: 1000
       }
-    };
+    });
 
-    distributionLoop().catch(error => {
-      // Distribution loop crashed
-      console.error(`Distribution loop crashed:`, error);
-      this.isRunning = false;
+    this.worker.on('completed', (job) => {
+      console.log(`Job ${job.id} completed!`);
+    });
+
+    this.worker.on('failed', (job, err) => {
+      console.error(`Job ${job?.id} failed with ${err.message}`);
+    });
+
+    this.worker.on('error', (err) => {
+      console.error(`Worker error: ${err.message}`);
     });
   }
 
-  private async distributeJobsToWorkers(): Promise<void> {
-    // Only distribute if we have available workers
-    if (this.availableWorkers.size === 0) {
-      return;
-    }
-
-    // Get jobs from all eligible users in parallel
-    const availableJobs = await userQueueManager.getJobsFromAllEligibleUsers();
-
-    if (availableJobs.length === 0) {
-      // await logToFile('No jobs available');
-      return;
-    }
-
-    // Match jobs to available workers
-    const jobAssignments: Array<{ job: any; userId: string; workerId: number }> = [];
-    const availableWorkerIds = Array.from(this.availableWorkers);
-
-    for (let i = 0; i < Math.min(availableJobs.length, availableWorkerIds.length); i++) {
-      const workerId = availableWorkerIds[i];
-      const { job, userId } = availableJobs[i];
-      jobAssignments.push({ job, userId, workerId });
-    }
-
-    if (jobAssignments.length === 0) {
-      return;
-    }
-
-    // Reserve workers and start processing jobs in parallel
-    const workerReservations = jobAssignments.map(({ userId, workerId }) => ({ userId, workerId }));
-    userQueueManager.reserveWorkers(workerReservations);
-
-    // Remove workers from available set
-    for (const { workerId } of jobAssignments) {
-      this.availableWorkers.delete(workerId);
-    }
-
-    // Process all jobs in parallel
-    const processingPromises = jobAssignments.map(({ job, userId, workerId }) =>
-      this.processJobWithWorker(job, userId, workerId)
-    );
-
-    // Don't await - let jobs process in background
-    Promise.allSettled(processingPromises);
-  }
-
-  private async processJobWithWorker(job: any, userId: string, workerId: number): Promise<void> {
-    try {
-      await this.processJob(job, userId, workerId);
-    } finally {
-      // Always release worker back to available pool
-      this.availableWorkers.add(workerId);
-      userQueueManager.releaseWorker(userId, workerId);
+  start(): void {
+    if (this.worker.isPaused()) {
+      this.worker.resume();
     }
   }
 
-  stop(): void {
-    this.isRunning = false;
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
-    }
+  async stop(): Promise<void> {
+    await this.worker.close();
   }
 
-  // Add job to history tracking
-  private async addJobToHistory(entry: JobHistoryEntry): Promise<void> {
-    try {
-      // Store as sorted set with timestamp as score for chronological order
-      await this.redis.zadd(this.historyKey, entry.startedAt, JSON.stringify(entry));
+  // This is the core processor function called by BullMQ
+  private async processJob(job: Job<JobData>): Promise<void> {
+    console.log(`Processing job ${job.id} (${job.name})`);
 
-      // Keep only last 1000 entries to prevent memory bloat
-      const totalEntries = await this.redis.zcard(this.historyKey);
-      if (totalEntries > 1000) {
-        await this.redis.zremrangebyrank(this.historyKey, 0, totalEntries - 1000 - 1);
-      }
-    } catch (error) {
-      // Failed to add job to history
-    }
-  }
-
-  // Update job status in history
-  private async updateJobHistory(jobId: string, updates: Partial<JobHistoryEntry>): Promise<void> {
-    try {
-      // Get existing entries
-      const entries = await this.redis.zrange(this.historyKey, -100, -1); // Get last 100 entries
-
-      for (const entryStr of entries) {
-        const entry: JobHistoryEntry = JSON.parse(entryStr);
-        if (entry.id === jobId) {
-          const updatedEntry = { ...entry, ...updates };
-
-          // Remove old entry and add updated one
-          await this.redis.zrem(this.historyKey, entryStr);
-          await this.redis.zadd(this.historyKey, updatedEntry.startedAt, JSON.stringify(updatedEntry));
-          break;
-        }
-      }
-    } catch (error) {
-      // Failed to update job history
-    }
-  }
-
-  // Get recent job history
-  async getJobHistory(limit: number = 50): Promise<JobHistoryEntry[]> {
-    try {
-      const entries = await this.redis.zrange(this.historyKey, -limit, -1);
-      return entries.map(entry => JSON.parse(entry)).reverse(); // Most recent first
-    } catch (error) {
-      return [];
-    }
-  }
-
-  private async processJob(job: any, userId: string, workerId: number): Promise<void> {
-    const workerPrefix = `[W${workerId}] `;
-    const startTime = Date.now();
-
-    // Create dynamic job name and data based on job type
-    let jobName: string;
-    let jobData: Record<string, any> = { ...job.data };
-
-    switch (job.action) {
+    switch (job.name) {
       case 'index_intent':
-        jobName = `Index Intent → Index`;
+        await this.indexIntent(job.data as IndexIntentJobData);
         break;
       case 'generate_intents':
-        jobName = `Generate Intents`;
+        await this.generateIntents(job.data as GenerateIntentsJobData);
         break;
-
       default:
-        jobName = job.action;
-    }
-
-    // Create history entry
-    const historyEntry: JobHistoryEntry = {
-      id: job.id,
-      jobName,
-      priority: job.priority,
-      status: 'processing',
-      workerId: workerId,
-      startedAt: startTime,
-      jobData
-    };
-
-    await this.addJobToHistory(historyEntry);
-
-    try {
-      switch (job.action) {
-        case 'index_intent':
-          await this.indexIntent(job as IndexIntentJob);
-          break;
-        case 'generate_intents':
-          await this.generateIntents(job as GenerateIntentsJob);
-          break;
-
-        default:
-          break;
-      }
-
-      const completedAt = Date.now();
-      const duration = completedAt - startTime;
-
-      // Update history with completion
-      await this.updateJobHistory(job.id, {
-        status: 'completed',
-        completedAt,
-        duration
-      });
-    } catch (error) {
-      const completedAt = Date.now();
-      const duration = completedAt - startTime;
-
-      // Update history with failure
-      await this.updateJobHistory(job.id, {
-        status: 'failed',
-        completedAt,
-        duration,
-        error: error instanceof Error ? error.message : String(error)
-      });
+        console.warn(`Unknown job name: ${job.name}`);
     }
   }
 
-  private async indexIntent(job: IndexIntentJob): Promise<void> {
-    const { intentId, indexId } = job.data;
-
-    // Process specific intent-index pair
+  private async indexIntent(data: IndexIntentJobData): Promise<void> {
+    const { intentId, indexId } = data;
     await intentIndexer.processIntentForIndex(intentId, indexId);
-
   }
 
-  private async generateIntents(job: GenerateIntentsJob): Promise<void> {
-    const data = job.data;
-
+  private async generateIntents(data: GenerateIntentsJobData): Promise<void> {
     // Get existing intents
     const existingIntents = await IntentService.getUserIntents(data.userId);
 
@@ -293,15 +127,13 @@ export class QueueProcessor {
             indexIds: data.indexId ? [data.indexId] : [],
             confidence: intentData.confidence,
             inferenceType: intentData.type,
-            ...(data.createdAt && { createdAt: data.createdAt, updatedAt: data.createdAt })
+            ...(data.createdAt && { createdAt: new Date(data.createdAt), updatedAt: new Date(data.createdAt) })
           });
           existingIntents.add(intentData.payload);
         }
       }
     }
   }
-
-
 }
 
 export const queueProcessor = new QueueProcessor();
