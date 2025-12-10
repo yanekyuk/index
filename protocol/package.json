@@ -25,6 +25,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
+    "@bull-board/api": "^6.15.0",
+    "@bull-board/express": "^6.15.0",
     "@composio/core": "^0.1.55",
     "@langchain/core": "^0.3.77",
     "@langchain/openai": "^0.6.13",
@@ -32,6 +34,7 @@
     "@sentry/node": "^10.29.0",
     "@types/ioredis": "^4.28.10",
     "axios": "^1.6.0",
+    "bullmq": "^5.65.1",
     "commander": "^13.1.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
