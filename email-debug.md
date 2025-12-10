@@ -16,7 +16,7 @@ Hey Bob,
 What could happen between you two:
 It looks like Bob is currently seeking [scalable coordination tools](https://index.network/intents/intent-1), and Alice is actively in the process of building exactly that! This seems like one of those 'meant to be' connections – he’s looking for it, and she's making it. Talk about perfect timing!
 
-If you want to move it forward, I’ll make the introduction.If not, everything stays quiet.
+If you want to move it forward, I’ll make the introduction. If not, everything stays quiet.
 
 —Index
 
