@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { addEmailJob } from './queue/email.queue';
+import { addEmailJob, emailQueueEvents } from './queue/email.queue';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -114,8 +114,14 @@ export const sendEmail = async (options: {
   html: string;
   text: string;
   headers?: Record<string, string>;
-}) => {
+}): Promise<any> => {
   console.log('[EmailTransport] sendEmail called (queueing job)', { to: options.to, subject: options.subject });
-  await addEmailJob(options);
-  console.log('[EmailTransport] Email job added to queue');
+  const job = await addEmailJob(options);
+  console.log(`[EmailTransport] Email job ${job.id} added to queue, waiting for completion...`);
+  
+  // Wait for the job to actually complete
+  const result = await job.waitUntilFinished(emailQueueEvents);
+  
+  console.log(`[EmailTransport] Email job ${job.id} completed`);
+  return result;
 };

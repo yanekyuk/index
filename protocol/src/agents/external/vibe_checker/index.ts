@@ -295,16 +295,17 @@ export async function vibeCheckNewsletter(
 
     // System prompt
     const systemMsg = buildNewsletterSystemMessage(initiator, target, isThirdPerson, characterLimit);
-
+    console.log('System prompt:', systemMsg);
     // User prompt with intent pairs - Reusing the standard builder as the input data format is the same
     const userMsg = buildUserMessage(data, initiator, target, isThirdPerson);
-
+    console.log('User prompt:', userMsg);
+    console.log('Character limit:', characterLimit);
     const response = await traceableLlm("vibe-checker", {
       other_user_id: data.id,
       other_user_name: data.name,
       intent_pairs_count: data.intentPairs.length
     })([systemMsg, userMsg], { reasoning: { exclude: true, effort: 'minimal' }, response_format: { type: "json_object" } } as any);
-
+    console.log('Response:', response);
     let synthesis = "";
     let subject = "";
 
@@ -350,7 +351,7 @@ Also generate a descriptive title for this match.
 
 Style for Body:
 - Warm and friendly, not formal
-- One descriptive title + 1 short, punchy sentence explanation
+- Single, short, punchy sentence explanation (maximum 2 lines)
 - Grounded in stated needs
 - Direct and concise
 - Add a small human touch
@@ -371,6 +372,8 @@ Format:
 - Return a JSON object with "subject" and "body" fields.
 - "subject" is the Title. "body" is the explanation.
 - Body Markdown: ${isThirdPerson ? 'Mention' : 'You can mention'} intents but DO NOT use hyperlinks. Just use the text.
+- IMPORTANT: The body must be a SINGLE SENTENCE (or two short ones). No multiple paragraphs.
+- IMPORTANT: Do NOT use any XML tags like <your_intent> in the response.
 - Be careful with IDs: use the exact intent IDs from the provided data, never use placeholder "ID" text or make up IDs
 - Place links in beginning/middle of paragraph, not at the end
 - No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters for body` : ''}

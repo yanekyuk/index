@@ -143,8 +143,11 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
             const p2Data = userMatches.get(p2.userId)!;
 
             // Check timing
-            const p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
-            const p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
+            let [p1LastSent, p2LastSent] = [sevenDaysAgo, sevenDaysAgo];
+            if (!force) {
+                p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
+                p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
+            }
 
             let p1NeedsMatch = stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId);
             let p2NeedsMatch = stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId);
