@@ -96,8 +96,15 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
         );
 
         // Convert markdown to HTML
-        const { marked } = await import('marked');
-        const rawHtml = await marked.parse(synthesisMarkdown);
+        // Convert markdown to HTML
+        const markedMod = await import('marked');
+        // Handle both default export and named export variations
+        const parse = markedMod.parse || (markedMod as any).default?.parse || (markedMod as any).marked?.parse;
+        if (!parse) {
+            console.error('Failed to load marked parser', markedMod);
+            return;
+        }
+        const rawHtml = await parse(synthesisMarkdown);
         const synthesis = DOMPurify.sanitize(rawHtml);
 
         await sendConnectionRequestEmail(
@@ -146,8 +153,13 @@ export async function sendConnectionAcceptedNotification(accepterUserId: string,
         );
 
         // Convert markdown to HTML
-        const { marked } = await import('marked');
-        const rawHtml = await marked.parse(synthesisMarkdown);
+        const markedMod = await import('marked');
+        const parse = markedMod.parse || (markedMod as any).default?.parse || (markedMod as any).marked?.parse;
+        if (!parse) {
+            console.error('Failed to load marked parser', markedMod);
+            return;
+        }
+        const rawHtml = await parse(synthesisMarkdown);
         const synthesis = DOMPurify.sanitize(rawHtml);
 
         // Send to initiator if enabled
