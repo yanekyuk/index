@@ -371,8 +371,7 @@ Format:
 - Body Markdown: ${isThirdPerson ? 'Mention' : 'You can mention'} intents but DO NOT use hyperlinks. Just use the text.
 - IMPORTANT: The body must be a SINGLE SENTENCE (or two short ones). No multiple paragraphs.
 - IMPORTANT: Do NOT use any XML tags like <your_intent> in the response.
-- Be careful with IDs: use the exact intent IDs from the provided data, never use placeholder "ID" text or make up IDs
-- Place links in beginning/middle of paragraph, not at the end
+- Do not place links anywhere - hyperlinks are prohibited in this format
 - No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters for body` : ''}
 
 Time Awareness:

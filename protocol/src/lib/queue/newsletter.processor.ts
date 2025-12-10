@@ -11,10 +11,21 @@ import { toZonedTime, format } from 'date-fns-tz';
 // Helper to strip name prefix
 function stripNamePrefix(text: string, name: string) {
     if (!text || !name) return text;
-    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Matches "Name - ", "Name – ", "Name — ", "Name: " with optional spaces
-    const regex = new RegExp(`^${escapedName}\\s*[-–—:]\\s*`, 'i');
-    return text.replace(regex, '');
+    
+    const lowerText = text.toLowerCase();
+    const lowerName = name.toLowerCase();
+    
+    // Try different separator variants (with various spacing patterns)
+    const separators = [' - ', ' – ', ' — ', ' : ', '- ', '– ', '— ', ': ', '-', '–', '—', ':'];
+    
+    for (const sep of separators) {
+        const prefix = lowerName + sep;
+        if (lowerText.startsWith(prefix)) {
+            return text.slice(prefix.length).trimStart();
+        }
+    }
+    
+    return text;
 }
 
 // Helper to get users involved in a stake
@@ -262,7 +273,7 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
         // Lazy creation of notification settings if missing (legacy fix)
         if (!recipient.unsubscribeToken) {
             console.log(`[NewsletterWorker] User ${recipientId} missing unsubscribe token. Creating settings row.`);
-            await db.insert(userNotificationSettings)
+            const [upsertedSettings] = await db.insert(userNotificationSettings)
                 .values({
                     userId: recipientId,
                     preferences: {
@@ -270,18 +281,18 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
                         weeklyNewsletter: true,
                     }
                 })
-                .onConflictDoNothing();
+                .onConflictDoUpdate({
+                    target: userNotificationSettings.userId,
+                    set: {
+                        updatedAt: new Date()
+                    }
+                })
+                .returning({
+                    unsubscribeToken: userNotificationSettings.unsubscribeToken
+                });
 
-            // Re-fetch to get the token
-            const updatedSettings = await db.select({
-                unsubscribeToken: userNotificationSettings.unsubscribeToken
-            })
-                .from(userNotificationSettings)
-                .where(eq(userNotificationSettings.userId, recipientId))
-                .limit(1);
-
-            if (updatedSettings.length > 0) {
-                recipient.unsubscribeToken = updatedSettings[0].unsubscribeToken;
+            if (upsertedSettings) {
+                recipient.unsubscribeToken = upsertedSettings.unsubscribeToken;
             }
         }
 

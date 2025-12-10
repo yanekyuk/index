@@ -48,9 +48,12 @@ export const newsletterQueue = new Queue<NewsletterJobData | WeeklyCycleJobData>
 });
 
 export async function addNewsletterJob(data: NewsletterJobData, priority: number = 1): Promise<void> {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD format
+    
     await newsletterQueue.add('process_newsletter', data, {
         priority: priority > 0 ? priority : undefined,
-        jobId: `newsletter-${data.recipientId}-${Date.now()}` // Deduplication / Idempotency
+        jobId: `newsletter-${data.recipientId}-${dateStr}` // Deduplication per recipient per day
     });
 }
 

@@ -47,7 +47,7 @@ ${textSynthesis ? `What could happen between you two:
 ${textSynthesis}
 
 ` : ''
-      }If you want to move it forward, I’ll make the introduction.If not, everything stays quiet.
+      }If you want to move it forward, I'll make the introduction. If not, everything stays quiet.
 
 —Index
 
