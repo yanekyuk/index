@@ -11,6 +11,7 @@ import { initializeBrokers } from './agents/context_brokers/connector';
 import { queueProcessor } from './lib/queue/processor';
 import { initWeeklyNewsletterJob } from './jobs/weekly-newsletter';
 import { emailQueueProcessor } from './lib/email/queue/email.processor';
+import { serverAdapter } from './lib/queue/board';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -35,7 +36,15 @@ const PORT = process.env.PORT || 3001;
 
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "img-src": ["'self'", "data:", "https:"],
+      "script-src": ["'self'", "https:", "'unsafe-inline'"], // Required for Bull Board
+    },
+  },
+}));
 app.use(cors());
 // app.use(morgan('combined')); // Temporarily disabled
 app.use(express.json({ limit: '50mb' }));
@@ -67,6 +76,9 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/synthesis', synthesisRoutes);
 app.use('/api/discover', discoverRoutes);
 app.use('/api/queue', queueRoutes);
+
+// Bull Board - Mount before other routes if desired, or under /admin
+app.use('/admin/queues', serverAdapter.getRouter());
 
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
@@ -111,5 +123,6 @@ app.use('*', (req, res) => {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log(`📋 Queue Dashboard: http://localhost:${PORT}/admin/queues`);
   });
 })(); 

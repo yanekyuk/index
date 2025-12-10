@@ -1,82 +1,45 @@
 import { Router } from 'express';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { queueProcessor } from '../lib/queue/processor';
-import { getRedisClient } from '../lib/redis';
-import { userQueueManager } from '../lib/queue/llm-queue';
+import { queue } from '../lib/queue/llm-queue';
 import { QueueStatusResponse, JobTypeCounts } from '../types';
 
 const router = Router();
 
-async function getPendingJobsByType(userId: string): Promise<Map<string, number>> {
-  const redis = getRedisClient();
-  const pendingByType = new Map<string, number>();
-  const queueKey = `user_queue:${userId}`;
-  
-  // Get all jobs in the user's sorted set
-  const jobs = await redis.zrange(queueKey, 0, -1);
-  
-  for (const jobStr of jobs) {
-    try {
-      const job = JSON.parse(jobStr);
-      const jobType = job.action || 'unknown';
-      pendingByType.set(jobType, (pendingByType.get(jobType) || 0) + 1);
-    } catch (error) {
-      // Skip malformed jobs
-    }
-  }
-  
-  return pendingByType;
-}
-
 async function getJobCountsForUser(userId: string): Promise<QueueStatusResponse> {
-  // Get pending jobs by type for this user
-  const pendingByType = await getPendingJobsByType(userId);
-  
-  // Get recent job history
-  const recentHistory = await queueProcessor.getJobHistory(100);
-  
-  // Filter history for this user's jobs
-  const userHistory = recentHistory.filter(job => {
-    const jobData = job.jobData as any;
-    return jobData.userId === userId;
-  });
-  
-  // Initialize job type counts
+  // Fetch active, waiting, and recent completed/failed jobs to filter for this user
+  // We scan a reasonable number of jobs.
+  const [active, waiting, completed, failed] = await Promise.all([
+    queue.getJobs(['active'], 0, -1, true),
+    queue.getJobs(['waiting'], 0, -1, true),
+    queue.getJobs(['completed'], 0, 50, true),
+    queue.getJobs(['failed'], 0, 50, true)
+  ]);
+
+  const allUserJobs = [...active, ...waiting, ...completed, ...failed].filter(job =>
+    job.data && (job.data as any).userId === userId
+  );
+
   const jobTypeCounts: { [jobType: string]: JobTypeCounts } = {};
-  
-  // Count pending jobs
-  for (const [jobType, count] of pendingByType.entries()) {
-    if (!jobTypeCounts[jobType]) {
-      jobTypeCounts[jobType] = { pending: 0, active: 0, completed: 0 };
+
+  for (const job of allUserJobs) {
+    const type = job.name;
+    const status = await job.getState();
+
+    if (!jobTypeCounts[type]) {
+      jobTypeCounts[type] = { pending: 0, active: 0, completed: 0 };
     }
-    jobTypeCounts[jobType].pending = count;
-  }
-  
-  // Count active and completed jobs from history
-  for (const job of userHistory) {
-    // Map job names back to job types
-    let jobType: string;
-    if (job.jobName.includes('Index Intent')) {
-      jobType = 'index_intent';
-    } else if (job.jobName.includes('Generate Intents')) {
-      jobType = 'generate_intents';
-    } else {
-      jobType = job.jobName.toLowerCase().replace(/\s+/g, '_');
-    }
-    
-    if (!jobTypeCounts[jobType]) {
-      jobTypeCounts[jobType] = { pending: 0, active: 0, completed: 0 };
-    }
-    
-    if (job.status === 'processing') {
-      jobTypeCounts[jobType].active++;
-    } else if (job.status === 'completed') {
-      jobTypeCounts[jobType].completed++;
+
+    if (status === 'waiting' || status === 'delayed') {
+      jobTypeCounts[type].pending++;
+    } else if (status === 'active') {
+      jobTypeCounts[type].active++;
+    } else if (status === 'completed') {
+      jobTypeCounts[type].completed++;
     }
   }
-  
-  const totalPending = Array.from(pendingByType.values()).reduce((sum, count) => sum + count, 0);
-  
+
+  const totalPending = Object.values(jobTypeCounts).reduce((acc, curr) => acc + curr.pending, 0);
+
   return {
     jobCounts: jobTypeCounts,
     totalPending
@@ -88,7 +51,7 @@ router.get('/status', authenticatePrivy, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
     const status = await getJobCountsForUser(userId);
-    
+
     res.json(status);
   } catch (error) {
     console.error('Error getting queue status:', error);
@@ -97,4 +60,3 @@ router.get('/status', authenticatePrivy, async (req: AuthRequest, res) => {
 });
 
 export default router;
-
