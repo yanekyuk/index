@@ -223,8 +223,12 @@ router.post('/actions',
             currentState === 'CANCEL';
           break;
         case 'SKIP':
-          // Can skip if receiving a request
-          isValidAction = currentState === 'REQUEST' && isReceiver;
+          // Can skip if no prior connection (skipping a suggestion) or if receiving a request
+          isValidAction = !currentState ||
+            currentState === 'DECLINE' ||
+            currentState === 'SKIP' ||
+            currentState === 'CANCEL' ||
+            (currentState === 'REQUEST' && isReceiver);
           break;
         case 'ACCEPT':
           // Can accept if receiving a request
