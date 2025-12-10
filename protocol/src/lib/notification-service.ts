@@ -95,7 +95,9 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
             { vibeOptions: { characterLimit: 500 } }
         );
 
-        // Convert markdown to HTML
+        // Strip links from markdown (replace [text](url) with text)
+        const cleanMarkdown = synthesisMarkdown.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+
         // Convert markdown to HTML
         const markedMod = await import('marked');
         // Handle both default export and named export variations
@@ -104,7 +106,7 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
             console.error('Failed to load marked parser', markedMod);
             return;
         }
-        const rawHtml = await parse(synthesisMarkdown);
+        const rawHtml = await parse(cleanMarkdown);
         const synthesis = DOMPurify.sanitize(rawHtml);
 
         await sendConnectionRequestEmail(
