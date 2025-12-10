@@ -186,6 +186,27 @@ router.patch('/onboarding-state', authenticatePrivy, async (req: AuthRequest, re
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Check if onboarding was just completed
+    if (completedAt) {
+      // Ensure user has notification settings
+      const existingSettings = await db.select()
+        .from(userNotificationSettings)
+        .where(eq(userNotificationSettings.userId, req.user!.id))
+        .limit(1);
+
+      if (existingSettings.length === 0) {
+        await db.insert(userNotificationSettings)
+          .values({
+            userId: req.user!.id,
+            preferences: {
+              connectionUpdates: true,
+              weeklyNewsletter: true,
+            }
+          })
+          .onConflictDoNothing(); // Safety measure
+      }
+    }
+
     return res.json({ user: updatedUser[0] });
   } catch (error) {
     console.error('Update onboarding state error:', error);

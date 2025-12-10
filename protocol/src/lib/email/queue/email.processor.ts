@@ -21,11 +21,11 @@ export class EmailQueueProcessor {
         });
 
         this.worker.on('failed', (job, err) => {
-            console.error(`Email job ${job?.id} failed:`, err);
+            console.error(`[EmailWorker] Email job ${job?.id} failed:`, err);
         });
 
         this.worker.on('completed', (job) => {
-            console.log(`Email job ${job.id} sent to ${job.data.to}`);
+            console.log(`[EmailWorker] Email job ${job.id} sent to ${job.data.to}`);
         });
     }
 
@@ -42,8 +42,13 @@ export class EmailQueueProcessor {
     }
 
     private async processJob(job: Job<EmailJobData>) {
-        console.log(`Processing email job ${job.id} for ${job.data.to}`);
-        await executeSendEmail(job.data);
+        // console.log(`Processing email job ${job.id} for ${job.data.to}`);
+        try {
+            await executeSendEmail(job.data);
+        } catch (error) {
+            console.error(`[EmailWorker] Failed to process job ${job.id}:`, error);
+            throw error; // Re-throw to trigger BullMQ retry
+        }
     }
 
     // Helper for testing - deprecated/noop for BullMQ in this simple adapter

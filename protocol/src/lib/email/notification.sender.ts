@@ -34,13 +34,41 @@ export async function sendConnectionRequestEmail(
   synthesisHtml: string,
   subject: string
 ): Promise<void> {
-  // We need to look up the user ID by email to get the token.
-  // This is slightly inefficient as we only have 'to' email here, but acceptable.
-  const user = await db.select({ id: users.id }).from(users).where(eq(users.email, to)).limit(1);
+  const userResult = await db.select({
+    id: users.id,
+    onboarding: users.onboarding,
+    settings: userNotificationSettings
+  })
+    .from(users)
+    .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
+    .where(eq(users.email, to))
+    .limit(1);
+
+  if (userResult.length === 0) return;
+
+  const recipient = userResult[0];
+
+  // 1. Check Onboarding
+  if (!recipient.onboarding?.completedAt) {
+    console.log(`[Email] Skipping connection email to ${to} - Onboarding not completed`);
+    return;
+  }
+
+  // 2. Check Preferences
+  // If settings exist and explicit false, skip. If no settings, default is true.
+  if (recipient.settings?.preferences?.connectionUpdates === false) {
+    console.log(`[Email] Skipping connection email to ${to} - User opted out`);
+    return;
+  }
 
   let unsubscribeUrl: string | undefined;
-  if (user.length > 0) {
-    unsubscribeUrl = await getUnsubscribeUrl(user[0].id, 'connectionUpdates');
+  // If settings exist, use token. If not (but onboarded), lazy create via getUnsubscribeUrl logic
+  if (recipient.settings?.unsubscribeToken) {
+    const API_URL = process.env.API_URL || 'https://api.index.network';
+    unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
+  } else {
+    // Legacy support: Onboarded but no settings row yet. content.
+    unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
   }
 
   const template = connectionRequestTemplate(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
@@ -65,17 +93,44 @@ export async function sendConnectionAcceptedEmail(
 ): Promise<void> {
   const recipients = Array.isArray(to) ? to : [to];
 
-  for (const recipient of recipients) {
-    const user = await db.select({ id: users.id }).from(users).where(eq(users.email, recipient)).limit(1);
+  for (const recipientEmail of recipients) {
+    const userResult = await db.select({
+      id: users.id,
+      onboarding: users.onboarding,
+      settings: userNotificationSettings
+    })
+      .from(users)
+      .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
+      .where(eq(users.email, recipientEmail))
+      .limit(1);
+
+    if (userResult.length === 0) continue;
+
+    const recipient = userResult[0];
+
+    // 1. Check Onboarding
+    if (!recipient.onboarding?.completedAt) {
+      console.log(`[Email] Skipping connection accepted email to ${recipientEmail} - Onboarding not completed`);
+      continue;
+    }
+
+    // 2. Check Preferences
+    if (recipient.settings?.preferences?.connectionUpdates === false) {
+      console.log(`[Email] Skipping connection accepted email to ${recipientEmail} - User opted out`);
+      continue;
+    }
 
     let unsubscribeUrl: string | undefined;
-    if (user.length > 0) {
-      unsubscribeUrl = await getUnsubscribeUrl(user[0].id, 'connectionUpdates');
+    if (recipient.settings?.unsubscribeToken) {
+      const API_URL = process.env.API_URL || 'https://api.index.network';
+      unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
+    } else {
+      unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
     }
 
     const template = connectionAcceptedTemplate(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
     await sendEmail({
-      to: recipient,
+      to: recipientEmail,
       subject: template.subject,
       html: template.html,
       text: template.text,

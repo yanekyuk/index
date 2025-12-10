@@ -6,7 +6,7 @@ export function getRedisClient(): Redis {
   if (!redis) {
     // Use REDIS_URL if available, otherwise fall back to individual env vars
     const redisUrl = process.env.REDIS_URL;
-    
+
     if (redisUrl) {
       redis = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,

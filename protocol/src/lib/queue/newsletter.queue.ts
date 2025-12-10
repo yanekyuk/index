@@ -19,9 +19,15 @@ export interface NewsletterJobData {
 
 export type NewsletterJob = Job<NewsletterJobData>;
 
+export interface WeeklyCycleJobData {
+    timestamp: number; // Date.now()
+    force?: boolean;
+    daysSince?: number;
+}
+
 const redisClient = getRedisClient();
 
-export const newsletterQueue = new Queue<NewsletterJobData>(NEWSLETTER_QUEUE_NAME, {
+export const newsletterQueue = new Queue<NewsletterJobData | WeeklyCycleJobData>(NEWSLETTER_QUEUE_NAME, {
     connection: {
         ...redisClient.options,
         maxRetriesPerRequest: null,
@@ -50,15 +56,14 @@ export async function addNewsletterJob(data: NewsletterJobData, priority: number
     });
 }
 
-export interface WeeklyCycleJobData {
-    timestamp: number; // Date.now()
-    force?: boolean;
-    daysSince?: number;
-}
 
 export async function addWeeklyCycleJob(data: WeeklyCycleJobData): Promise<void> {
-    await newsletterQueue.add('start_weekly_cycle', data, {
-        priority: 2, // Higher priority than individual emails so it generates work quickly
-        removeOnComplete: true
-    });
+    try {
+        await newsletterQueue.add('start_weekly_cycle', data, {
+            priority: 2, // Higher priority than individual emails so it generates work quickly
+            removeOnComplete: true
+        });
+    } catch (e) {
+        console.error('Failed to add weekly cycle job:', e);
+    }
 }

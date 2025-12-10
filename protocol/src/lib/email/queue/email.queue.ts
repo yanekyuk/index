@@ -37,7 +37,11 @@ export const emailQueue = new Queue<EmailJobData>(EMAIL_QUEUE_NAME, {
 });
 
 export async function addEmailJob(data: EmailJobData, priority: number = 1): Promise<void> {
-    await emailQueue.add('send_email', data, {
-        priority: priority > 0 ? priority : undefined,
-    });
+    try {
+        await emailQueue.add('send_email', data, {
+            priority: priority > 0 ? priority : undefined,
+        });
+    } catch (e) {
+        console.error('Failed to add email job:', e);
+    }
 }

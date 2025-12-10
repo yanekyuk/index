@@ -350,22 +350,22 @@ Also generate a descriptive title for this match.
 
 Style for Body:
 - Warm and friendly, not formal
-- One descriptive title + 1-2 sentence concise explanation
+- One descriptive title + 1 short, punchy sentence explanation
 - Grounded in stated needs
 - Direct and concise
 - Add a small human touch
 - Titles should clearly signal why the match works
 
 Style for Subject (Title):
-- Include the person’s name (${target})
+- DO NOT include the person's name in the title
 - Highlight strongest mutual-intent synergy
 - Stay under 12 words
 - Sound warm, professional, and action-oriented
 - Avoid robotic "Label: Topic" formats
 - Examples:
-  - "${target} — Perfect match for your DeFi-focused dev needs"
-  - "${target} — Strong alignment on AI research + team building"
-  - "${target} — Deep synergy on protocol scaling"
+  - "Perfect match for your DeFi-focused dev needs"
+  - "Strong alignment on AI research + team building"
+  - "Deep synergy on protocol scaling"
 
 Format:
 - Return a JSON object with "subject" and "body" fields.

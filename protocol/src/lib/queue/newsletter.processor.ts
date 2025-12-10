@@ -12,7 +12,8 @@ import { toZonedTime, format } from 'date-fns-tz';
 function stripNamePrefix(text: string, name: string) {
     if (!text || !name) return text;
     const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`^${escapedName}\\s*-\\s*`, 'i');
+    // Matches "Name - ", "Name – ", "Name — ", "Name: " with optional spaces
+    const regex = new RegExp(`^${escapedName}\\s*[-–—:]\\s*`, 'i');
     return text.replace(regex, '');
 }
 
@@ -181,8 +182,8 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
         for (const [userId, data] of userMatches.entries()) {
             if (data.candidates.length < 1) continue;
 
-            // Onboarding check - bypassed if force is true
-            if (!force && !data.user.userOnboarding?.completedAt) {
+            // Onboarding check - enforced even if force is true
+            if (!data.user.userOnboarding?.completedAt) {
                 // console.log(`Skipping ${data.user.userEmail} - Onboarding not completed`);
                 continue;
             }
@@ -247,6 +248,38 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
         if (recipient.preferences?.weeklyNewsletter === false) {
             console.log(`[NewsletterWorker] User ${recipient.email} opted out`);
             return;
+        }
+
+        // Strict Onboarding Check
+        if (!recipient.onboarding?.completedAt) {
+            console.log(`[NewsletterWorker] User ${recipient.email} has not completed onboarding. Skipping.`);
+            return;
+        }
+
+        // Lazy creation of notification settings if missing (legacy fix)
+        if (!recipient.unsubscribeToken) {
+            console.log(`[NewsletterWorker] User ${recipientId} missing unsubscribe token. Creating settings row.`);
+            await db.insert(userNotificationSettings)
+                .values({
+                    userId: recipientId,
+                    preferences: {
+                        connectionUpdates: true,
+                        weeklyNewsletter: true,
+                    }
+                })
+                .onConflictDoNothing();
+
+            // Re-fetch to get the token
+            const updatedSettings = await db.select({
+                unsubscribeToken: userNotificationSettings.unsubscribeToken
+            })
+                .from(userNotificationSettings)
+                .where(eq(userNotificationSettings.userId, recipientId))
+                .limit(1);
+
+            if (updatedSettings.length > 0) {
+                recipient.unsubscribeToken = updatedSettings[0].unsubscribeToken;
+            }
         }
 
         // 2. Process Candidates (Vibe Check)
