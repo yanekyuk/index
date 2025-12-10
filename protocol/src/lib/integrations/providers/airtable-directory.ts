@@ -49,20 +49,73 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       let offset: string | undefined;
 
       do {
-        const basesResp = await composio.tools.execute('AIRTABLE_LIST_BASES', {
-          userId: integration.userId,
-          connectedAccountId: integration.connectedAccountId,
-          arguments: offset ? { offset } : {}
-        }) as AirtableApiResponse;
+        let basesResp: AirtableApiResponse;
+        try {
+          basesResp = await composio.tools.execute('AIRTABLE_LIST_BASES', {
+            userId: integration.userId,
+            connectedAccountId: integration.connectedAccountId,
+            arguments: offset ? { offset } : {}
+          }) as AirtableApiResponse;
+        } catch (error) {
+          log.error('Airtable LIST_BASES API call failed', {
+            integrationId,
+            userId: integration.userId,
+            connectedAccountId: integration.connectedAccountId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          throw error;
+        }
+
+        // Check for API errors
+        if (basesResp?.error) {
+          log.error('Airtable LIST_BASES returned error', {
+            integrationId,
+            error: basesResp.error,
+            successful: basesResp.successful
+          });
+          throw new Error(`Airtable API error: ${basesResp.error}`);
+        }
+
+        // Log response structure for debugging
+        if (!basesResp?.data) {
+          log.warn('Airtable LIST_BASES response missing data', {
+            integrationId,
+            hasData: !!basesResp?.data,
+            hasError: !!basesResp?.error,
+            successful: basesResp?.successful,
+            responseKeys: basesResp ? Object.keys(basesResp) : []
+          });
+        }
 
         const responseData = basesResp?.data?.response_data;
-        if (responseData?.bases) {
+        if (!responseData) {
+          log.warn('Airtable LIST_BASES response missing response_data', {
+            integrationId,
+            dataKeys: basesResp?.data ? Object.keys(basesResp.data) : [],
+            hasBases: !!basesResp?.data?.bases,
+            error: basesResp?.error
+          });
+          // Try alternative structure: data.bases directly
+          if (basesResp?.data?.bases) {
+            bases.push(...basesResp.data.bases);
+            offset = basesResp.data.offset;
+          } else {
+            break;
+          }
+        } else if (responseData?.bases) {
           bases.push(...responseData.bases);
           offset = responseData.offset;
         } else {
+          log.warn('Airtable LIST_BASES response_data missing bases', {
+            integrationId,
+            responseDataKeys: Object.keys(responseData || {}),
+            hasOffset: !!responseData?.offset
+          });
           break;
         }
       } while (offset);
+
+      log.info('Airtable bases fetched', { integrationId, baseCount: bases.length });
 
       // For each base, fetch tables to include in subSources
       const sources: Source[] = [];
@@ -74,20 +127,58 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
             arguments: { baseId: base.id }
           }) as AirtableApiResponse;
 
-          const schemaData = schemaResp?.data?.response_data;
-          const tables = schemaData?.tables || [];
+          // Log response structure for debugging
+          if (!schemaResp?.data) {
+            log.warn('Airtable GET_BASE_SCHEMA response missing data', {
+              integrationId,
+              baseId: base.id,
+              hasData: !!schemaResp?.data,
+              hasError: !!schemaResp?.error,
+              successful: schemaResp?.successful
+            });
+          }
 
-          sources.push({
-            id: base.id,
-            name: base.name || base.id,
-            subSources: tables.map((table: AirtableTable) => ({
-              id: table.id,
-              name: table.name || table.id
-            }))
-          });
+          const schemaData = schemaResp?.data?.response_data;
+          if (!schemaData) {
+            log.warn('Airtable GET_BASE_SCHEMA response missing response_data', {
+              integrationId,
+              baseId: base.id,
+              dataKeys: schemaResp?.data ? Object.keys(schemaResp.data) : [],
+              hasTables: !!schemaResp?.data?.tables,
+              error: schemaResp?.error
+            });
+            // Try alternative structure: data.tables directly
+            const tables = schemaResp?.data?.tables || [];
+            sources.push({
+              id: base.id,
+              name: base.name || base.id,
+              subSources: tables.map((table: AirtableTable) => ({
+                id: table.id,
+                name: table.name || table.id
+              }))
+            });
+          } else {
+            const tables = schemaData?.tables || [];
+            log.info('Fetched tables for base', {
+              integrationId,
+              baseId: base.id,
+              baseName: base.name,
+              tableCount: tables.length
+            });
+            sources.push({
+              id: base.id,
+              name: base.name || base.id,
+              subSources: tables.map((table: AirtableTable) => ({
+                id: table.id,
+                name: table.name || table.id
+              }))
+            });
+          }
         } catch (error) {
           log.warn('Failed to fetch tables for base', {
+            integrationId,
             baseId: base.id,
+            baseName: base.name,
             error: error instanceof Error ? error.message : String(error)
           });
           // Still add base without subSources
@@ -97,6 +188,12 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
           });
         }
       }
+
+      log.info('Airtable sources list complete', {
+        integrationId,
+        sourceCount: sources.length,
+        baseCount: bases.length
+      });
 
       return sources;
     } catch (error) {
@@ -120,19 +217,66 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       }
 
       const composio = await getClient();
-      const schemaResp = await composio.tools.execute('AIRTABLE_GET_BASE_SCHEMA', {
-        userId: integration.userId,
-        connectedAccountId: integration.connectedAccountId,
-        arguments: { baseId: sourceId }
-      }) as AirtableApiResponse;
+      let schemaResp: AirtableApiResponse;
+      try {
+        schemaResp = await composio.tools.execute('AIRTABLE_GET_BASE_SCHEMA', {
+          userId: integration.userId,
+          connectedAccountId: integration.connectedAccountId,
+          arguments: { baseId: sourceId }
+        }) as AirtableApiResponse;
+      } catch (error) {
+        log.error('Airtable GET_BASE_SCHEMA API call failed', {
+          integrationId,
+          sourceId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
 
+      // Check for API errors
+      if (schemaResp?.error) {
+        log.error('Airtable GET_BASE_SCHEMA returned error', {
+          integrationId,
+          sourceId,
+          error: schemaResp.error
+        });
+        throw new Error(`Airtable API error: ${schemaResp.error}`);
+      }
+
+      // Try response_data first, then fallback to data.tables directly
       const schemaData = schemaResp?.data?.response_data;
-      if (!schemaData?.tables) {
+      let tables: AirtableTable[] | undefined;
+      
+      if (schemaData?.tables) {
+        tables = schemaData.tables;
+      } else if (schemaResp?.data?.tables) {
+        tables = schemaResp.data.tables;
+        log.info('Using alternative response structure for GET_BASE_SCHEMA', {
+          integrationId,
+          sourceId,
+          tableCount: tables.length
+        });
+      }
+
+      if (!tables || tables.length === 0) {
+        log.error('No tables found in base', {
+          integrationId,
+          sourceId,
+          hasData: !!schemaResp?.data,
+          hasResponseData: !!schemaData,
+          dataKeys: schemaResp?.data ? Object.keys(schemaResp.data) : []
+        });
         throw new Error('No tables found in base');
       }
 
-      const table = schemaData.tables.find((t: AirtableTable) => t.id === subSourceId);
+      const table = tables.find((t: AirtableTable) => t.id === subSourceId);
       if (!table) {
+        log.error('Table not found in base', {
+          integrationId,
+          sourceId,
+          subSourceId,
+          availableTableIds: tables.map(t => t.id)
+        });
         throw new Error('Table not found');
       }
 
@@ -185,21 +329,61 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       do {
         pageCount++;
         
-        const recordsResp = await composio.tools.execute('AIRTABLE_LIST_RECORDS', {
-          userId: integration.userId,
-          connectedAccountId: integration.connectedAccountId,
-          arguments: {
+        let recordsResp: AirtableApiResponse;
+        try {
+          recordsResp = await composio.tools.execute('AIRTABLE_LIST_RECORDS', {
+            userId: integration.userId,
+            connectedAccountId: integration.connectedAccountId,
+            arguments: {
+              baseId,
+              tableIdOrName: tableId,
+              pageSize: RECORD_LIMIT,
+              ...(recordOffset && { offset: recordOffset })
+            }
+          }) as AirtableApiResponse;
+        } catch (error) {
+          log.error('Airtable LIST_RECORDS API call failed', {
+            integrationId,
             baseId,
-            tableIdOrName: tableId,
-            pageSize: RECORD_LIMIT,
-            ...(recordOffset && { offset: recordOffset })
-          }
-        }) as AirtableApiResponse;
+            tableId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          throw error;
+        }
 
-        const records = recordsResp?.data?.records || [];
-        const offset = recordsResp?.data?.offset;
+        // Check for API errors
+        if (recordsResp?.error) {
+          log.error('Airtable LIST_RECORDS returned error', {
+            integrationId,
+            baseId,
+            tableId,
+            error: recordsResp.error
+          });
+          throw new Error(`Airtable API error: ${recordsResp.error}`);
+        }
 
-        if (records.length === 0) {
+        // Try response_data first, then fallback to data.records directly
+        const recordsData = recordsResp?.data?.response_data;
+        let records: any[] | undefined;
+        let offset: string | undefined;
+
+        if (recordsData?.records) {
+          records = recordsData.records;
+          offset = recordsData.offset;
+        } else if (recordsResp?.data?.records) {
+          records = recordsResp.data.records;
+          offset = recordsResp.data.offset;
+          log.debug('Using alternative response structure for LIST_RECORDS', {
+            integrationId,
+            baseId,
+            tableId,
+            recordCount: records.length
+          });
+        } else {
+          records = [];
+        }
+
+        if (!records || records.length === 0) {
           break;
         }
 
