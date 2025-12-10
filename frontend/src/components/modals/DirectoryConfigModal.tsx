@@ -53,7 +53,7 @@ export default function DirectoryConfigModal({
     github?: string;
     website?: string;
   }>({ email: '' });
-  const [excludedColumns, setExcludedColumns] = useState<string[]>([]);
+  const [metadataColumns, setMetadataColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { success, error } = useNotifications();
@@ -74,7 +74,6 @@ export default function DirectoryConfigModal({
       const response = await integrationsService.getDirectorySources(integration.id);
       setSources(response.sources);
     } catch (err) {
-      console.error('Failed to load sources:', err);
       error('Failed to load sources');
     } finally {
       setLoading(false);
@@ -122,7 +121,6 @@ export default function DirectoryConfigModal({
       
       setStep('mapping');
     } catch (err) {
-      console.error('Failed to load schema:', err);
       error('Failed to load schema');
     } finally {
       setLoading(false);
@@ -147,7 +145,7 @@ export default function DirectoryConfigModal({
           })
         },
         columnMappings,
-        excludedColumns: excludedColumns.length > 0 ? excludedColumns : undefined
+        metadataColumns: metadataColumns.length > 0 ? metadataColumns : undefined
       };
 
       await integrationsService.saveDirectoryConfig(integration.id, config);
@@ -158,14 +156,12 @@ export default function DirectoryConfigModal({
         await integrationsService.syncDirectory(integration.id);
         success('Directory sync started');
       } catch (syncErr) {
-        console.error('Failed to start sync:', syncErr);
         // Don't show error - config was saved successfully, sync can be triggered manually later
       }
       
       onSuccess?.();
       onOpenChange(false);
     } catch (err) {
-      console.error('Failed to save config:', err);
       error('Failed to save configuration');
     } finally {
       setSaving(false);
@@ -179,7 +175,7 @@ export default function DirectoryConfigModal({
       setSelectedSubSource(null);
       setColumns([]);
       setColumnMappings({ email: '' });
-      setExcludedColumns([]);
+      setMetadataColumns([]);
       onOpenChange(false);
     }
   };
@@ -308,7 +304,7 @@ export default function DirectoryConfigModal({
                 ))}
               </div>
 
-              {/* Show unmapped columns that will become metadata */}
+              {/* Show unmapped columns that can be selected for metadata */}
               {(() => {
                 const mappedColumns = [
                   columnMappings.email,
@@ -322,63 +318,45 @@ export default function DirectoryConfigModal({
                 ].filter(Boolean) as string[];
                 
                 const unmappedColumns = columns.filter(
-                  col => !mappedColumns.includes(col.name) && !excludedColumns.includes(col.name)
+                  col => !mappedColumns.includes(col.name)
                 );
                 
-                if (unmappedColumns.length > 0 || excludedColumns.length > 0) {
+                if (unmappedColumns.length > 0) {
                   return (
                     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                       <p className="text-xs font-medium text-black font-ibm-plex-mono mb-2">
-                        Additional fields (will become metadata):
+                        Select fields to include as metadata:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        {unmappedColumns.map((col) => (
-                          <span
-                            key={col.id}
-                            className="text-xs px-2 py-1 bg-white border border-blue-200 rounded font-ibm-plex-mono text-black flex items-center gap-1"
-                          >
-                            {col.name}
+                        {unmappedColumns.map((col) => {
+                          const isSelected = metadataColumns.includes(col.name);
+                          return (
                             <button
+                              key={col.id}
                               type="button"
-                              onClick={() => setExcludedColumns([...excludedColumns, col.name])}
-                              className="ml-1 hover:text-red-500 transition-colors"
-                              title="Exclude this field"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setMetadataColumns(metadataColumns.filter(c => c !== col.name));
+                                } else {
+                                  setMetadataColumns([...metadataColumns, col.name]);
+                                }
+                              }}
+                              className={`text-xs px-2 py-1 border rounded font-ibm-plex-mono transition-colors ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white border-blue-600'
+                                  : 'bg-white text-black border-blue-200 hover:border-blue-400'
+                              }`}
                             >
-                              <X className="h-3 w-3" />
+                              {col.name}
                             </button>
-                          </span>
-                        ))}
+                          );
+                        })}
                       </div>
-                      {excludedColumns.length > 0 && (
-                        <div className="mt-2 pt-2 border-t border-blue-200">
-                          <p className="text-xs font-medium text-black font-ibm-plex-mono mb-2">
-                            Excluded fields:
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {excludedColumns.map((colName) => (
-                              <span
-                                key={colName}
-                                className="text-xs px-2 py-1 bg-gray-100 border border-gray-300 rounded font-ibm-plex-mono text-gray-600 flex items-center gap-1"
-                              >
-                                {colName}
-                                <button
-                                  type="button"
-                                  onClick={() => setExcludedColumns(excludedColumns.filter(c => c !== colName))}
-                                  className="ml-1 hover:text-blue-500 transition-colors"
-                                  title="Include this field"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                      {metadataColumns.length > 0 && (
+                        <p className="text-xs text-black font-ibm-plex-mono mt-2 italic">
+                          {metadataColumns.length} field{metadataColumns.length !== 1 ? 's' : ''} selected for metadata
+                        </p>
                       )}
-                      <p className="text-xs text-black font-ibm-plex-mono mt-2 italic">
-                        {unmappedColumns.length > 0 
-                          ? 'These fields will be stored as member-specific metadata in this index'
-                          : 'No additional fields will be included as metadata'}
-                      </p>
                     </div>
                   );
                 }

@@ -103,14 +103,22 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
+      log.info('Fetching Google Sheets records', {
+        integrationId,
+        spreadsheetId: config.source.id,
+        sheetId: config.source.subId
+      });
+
       const integration = await getIntegrationById(integrationId);
       if (!integration || !integration.connectedAccountId) {
+        log.error('Google Sheets integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
       const spreadsheetId = config.source.id;
       const sheetId = config.source.subId;
       if (!sheetId) {
+        log.error('Google Sheets sheet ID missing', { integrationId, spreadsheetId });
         throw new Error('Sheet ID is required for Google Sheets directory sync');
       }
 
@@ -153,7 +161,8 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
         integrationId,
         spreadsheetId,
         sheetId,
-        recordCount: allRecords.length
+        recordCount: allRecords.length,
+        headers: headers.slice(0, 5)
       });
 
       return allRecords;

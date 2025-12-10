@@ -88,13 +88,14 @@ export async function syncIntegration(
         .set({ lastSyncAt: new Date() })
         .where(eq(userIntegrations.id, integration[0].id));
 
-      return {
+      const finalResult = {
         success: result.success,
         filesImported: 0,
         intentsGenerated: 0,
         usersProcessed: result.membersAdded,
         error: result.error
       };
+      return finalResult;
     }
 
     // Call integration-specific init functions
@@ -136,13 +137,14 @@ export async function syncIntegration(
       .set({ lastSyncAt: new Date() })
       .where(eq(userIntegrations.id, integration[0].id));
 
-    return {
+    const finalResult = {
       success: true,
       filesImported,
       intentsGenerated,
       usersProcessed,
       newUsersCreated,
     };
+    return finalResult;
 
   } catch (error) {
     log.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });

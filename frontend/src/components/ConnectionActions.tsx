@@ -35,7 +35,7 @@ export default function ConnectionActions({
 
       switch (action) {
         case 'REQUEST':
-          success("Request Sent", "Your request for connection is being processed.");
+          success("Request Sent", "Your invitation is sent");
           break;
         case 'CANCEL':
           success("Request Withdrawn", "Connection request withdrawn.");

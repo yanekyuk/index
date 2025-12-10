@@ -608,6 +608,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               range.setEndAfter(textNode);
               selection.removeAllRanges();
               selection.addRange(range);
+              // Update hasContent immediately to hide placeholder
+              setHasContent(true);
             }
             setInputFocused(true);
           }
@@ -754,6 +756,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                     };
                     setAttachments(prev => [...prev, newAttachment]);
                     insertAttachment(newAttachment);
+                    setHasContent(true);
                   } else {
                     const selection = window.getSelection();
                     if (selection && selection.rangeCount > 0) {
@@ -765,6 +768,10 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
                       range.setEndAfter(textNode);
                       selection.removeAllRanges();
                       selection.addRange(range);
+                    }
+                    // Update hasContent based on pasted text
+                    if (text.trim() || attachments.length > 0) {
+                      setHasContent(true);
                     }
                   }
                   setTimeout(() => {
