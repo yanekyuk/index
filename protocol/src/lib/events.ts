@@ -6,7 +6,7 @@ import {
   triggerBrokersOnIntentUpdated,
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
-import { addIndexIntentJob } from './queue/llm-queue';
+import { addIndexIntentJob, queueEvents } from './queue/llm-queue';
 
 
 export interface IntentEvent {
@@ -57,23 +57,48 @@ export class IntentEvents {
           isNull(indexes.deletedAt)
         ));
       
+      // If no eligible indexes, trigger brokers immediately
+      if (eligibleIndexes.length === 0) {
+        await triggerBrokersOnIntentCreated(event.intentId);
+        return;
+      }
+      
       // Queue individual intent-index pairs
       // Priority 8: New intents - HIGHEST priority (user just created intent)
       // These are time-sensitive user actions that should be processed immediately
-      const indexingPromises = eligibleIndexes.map(({ id: indexId }) =>
-        addIndexIntentJob({
-          intentId: event.intentId,
-          indexId,
-          userId: event.userId, // Include userId for per-user queuing
-        }, 8)
+      const indexingJobs = await Promise.all(
+        eligibleIndexes.map(({ id: indexId }) =>
+          addIndexIntentJob({
+            intentId: event.intentId,
+            indexId,
+            userId: event.userId, // Include userId for per-user queuing
+          }, 8)
+        )
       );
       
-      await Promise.all(indexingPromises);
+      // Wait for all indexing jobs to complete before triggering brokers
+      // Timeout: 60 seconds to avoid blocking indefinitely
+      const WAIT_TIMEOUT_MS = 60000;
+      try {
+        await Promise.all(
+          indexingJobs.map(job => 
+            job.waitUntilFinished(queueEvents, WAIT_TIMEOUT_MS).catch(error => {
+              // Log but don't fail - brokers should handle missing data gracefully
+              console.error(`Indexing job ${job.id} failed or timed out:`, error);
+              return null;
+            })
+          )
+        );
+      } catch (error) {
+        // Log but continue - trigger brokers even if some jobs failed
+        console.error('Error waiting for indexing jobs to complete:', error);
+      }
       
-      // Trigger context brokers - they decide if they want to use queue or not
+      // Trigger context brokers after indexing is complete
       await triggerBrokersOnIntentCreated(event.intentId);
     } catch (error) {
       // Failed to queue intent indexing
+      console.error('Failed to queue intent indexing:', error);
     }
   }
   
@@ -94,23 +119,48 @@ export class IntentEvents {
           isNull(indexes.deletedAt)
         ));
       
+      // If no eligible indexes, trigger brokers immediately
+      if (eligibleIndexes.length === 0) {
+        await triggerBrokersOnIntentUpdated(event.intentId, event.previousStatus);
+        return;
+      }
+      
       // Queue individual intent-index pairs
       // Priority 8: Updated intents - HIGHEST priority (user just modified intent)
       // These are time-sensitive user actions that should be processed immediately
-      const indexingPromises = eligibleIndexes.map(({ id: indexId }) =>
-        addIndexIntentJob({
-          intentId: event.intentId,
-          indexId,
-          userId: event.userId, // Include userId for per-user queuing
-        }, 8)
+      const indexingJobs = await Promise.all(
+        eligibleIndexes.map(({ id: indexId }) =>
+          addIndexIntentJob({
+            intentId: event.intentId,
+            indexId,
+            userId: event.userId, // Include userId for per-user queuing
+          }, 8)
+        )
       );
       
-      await Promise.all(indexingPromises);
+      // Wait for all indexing jobs to complete before triggering brokers
+      // Timeout: 60 seconds to avoid blocking indefinitely
+      const WAIT_TIMEOUT_MS = 60000;
+      try {
+        await Promise.all(
+          indexingJobs.map(job => 
+            job.waitUntilFinished(queueEvents, WAIT_TIMEOUT_MS).catch(error => {
+              // Log but don't fail - brokers should handle missing data gracefully
+              console.error(`Indexing job ${job.id} failed or timed out:`, error);
+              return null;
+            })
+          )
+        );
+      } catch (error) {
+        // Log but continue - trigger brokers even if some jobs failed
+        console.error('Error waiting for indexing jobs to complete:', error);
+      }
       
-      // Trigger context brokers - they decide if they want to use queue or not
+      // Trigger context brokers after indexing is complete
       await triggerBrokersOnIntentUpdated(event.intentId, event.previousStatus);
     } catch (error) {
       // Failed to queue intent indexing
+      console.error('Failed to queue intent indexing:', error);
     }
   }
   
