@@ -97,8 +97,8 @@ export async function addJob(
 }
 
 // Helper function to add index intent jobs with userId
-export async function addIndexIntentJob(data: IndexIntentJobData, priority: number = 0): Promise<void> {
-    await addJob('index_intent', data, priority);
+export async function addIndexIntentJob(data: IndexIntentJobData, priority: number = 0): Promise<Job> {
+    return await addJob('index_intent', data, priority);
 }
 
 // Helper function to add intent generation jobs
