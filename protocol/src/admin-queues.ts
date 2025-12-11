@@ -1,22 +1,12 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+
 import { serverAdapter } from './lib/queue/board';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      "img-src": ["'self'", "data:"],
-      "script-src": ["'self'", "'unsafe-inline'"], // Required for Bull Board
-      "font-src": ["'self'", "data:"],
-      "style-src": ["'self'", "'unsafe-inline'"],
-    },
-  },
-}));
+
 app.use(cors());
 app.use(express.json());
 
