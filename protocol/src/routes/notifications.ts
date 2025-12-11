@@ -11,27 +11,6 @@ async function handleUnsubscribe(token: string, type?: string) {
         throw new Error('Invalid token');
     }
 
-    // specific type unsubscription
-    if (type && typeof type === 'string' && (type === 'weeklyNewsletter' || type === 'connectionUpdates')) {
-        await db.update(userNotificationSettings)
-            .set({
-                preferences: db.select({
-                    preferences: userNotificationSettings.preferences
-                })
-                    .from(userNotificationSettings)
-                    .where(eq(userNotificationSettings.unsubscribeToken, token))
-                    .then(res => {
-                        if (res.length === 0) return {};
-                        const currentPrefs = res[0].preferences;
-                        return {
-                            ...currentPrefs,
-                            [type]: false
-                        }
-                    }) as any // casting to any because of complex query inside update. simplified approach below
-            })
-            .where(eq(userNotificationSettings.unsubscribeToken, token));
-    }
-
     // Fetch settings first
     const settings = await db.select()
         .from(userNotificationSettings)
@@ -42,10 +21,19 @@ async function handleUnsubscribe(token: string, type?: string) {
         throw new Error('Subscription not found');
     }
 
-    const currentPreferences = settings[0].preferences || {
-        connectionUpdates: true,
-        weeklyNewsletter: true,
-    };
+    let currentPreferences = settings[0].preferences;
+
+    // Robust fallback: if null, undefined, or empty object, use defaults
+    if (!currentPreferences || Object.keys(currentPreferences).length === 0) {
+        currentPreferences = {
+            connectionUpdates: true,
+            weeklyNewsletter: true,
+        };
+    } else {
+        // Ensure keys exist (migration/backfill logic on read)
+        if (currentPreferences.connectionUpdates === undefined) currentPreferences.connectionUpdates = true;
+        if (currentPreferences.weeklyNewsletter === undefined) currentPreferences.weeklyNewsletter = true;
+    }
 
     let newPreferences = { ...currentPreferences };
     let message = '';
