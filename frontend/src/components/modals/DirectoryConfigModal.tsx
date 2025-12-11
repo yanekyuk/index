@@ -73,7 +73,7 @@ export default function DirectoryConfigModal({
     try {
       const response = await integrationsService.getDirectorySources(integration.id);
       setSources(response.sources);
-    } catch (err) {
+    } catch {
       error('Failed to load sources');
     } finally {
       setLoading(false);
@@ -120,7 +120,7 @@ export default function DirectoryConfigModal({
       });
       
       setStep('mapping');
-    } catch (err) {
+    } catch {
       error('Failed to load schema');
     } finally {
       setLoading(false);
@@ -155,13 +155,13 @@ export default function DirectoryConfigModal({
       try {
         await integrationsService.syncDirectory(integration.id);
         success('Directory sync started');
-      } catch (syncErr) {
+      } catch {
         // Don't show error - config was saved successfully, sync can be triggered manually later
       }
       
       onSuccess?.();
       onOpenChange(false);
-    } catch (err) {
+    } catch {
       error('Failed to save configuration');
     } finally {
       setSaving(false);

@@ -10,9 +10,10 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
       "img-src": ["'self'", "data:"],
       "script-src": ["'self'", "'unsafe-inline'"], // Required for Bull Board
+      "font-src": ["'self'", "data:"],
+      "style-src": ["'self'", "'unsafe-inline'"],
     },
   },
 }));

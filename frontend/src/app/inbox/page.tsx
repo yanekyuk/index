@@ -522,7 +522,7 @@ export default function InboxPage() {
         </div>
       </div>
     );
-  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, handleUserClick, fetchData]);
+  }, [synthesisLoading, syntheses, requestsView, handleConnectionAction, handleUserClick, fetchData, getConnectionStatus]);
 
 
   return (
