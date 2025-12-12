@@ -1,30 +1,31 @@
 import { Job } from 'bullmq';
 import { NewsletterJobData, WeeklyCycleJobData, addNewsletterJob } from './newsletter.queue';
 import db from '../db';
-import { users, userNotificationSettings, intentStakes, intents, userConnectionEvents } from '../schema'; // Assuming schema path
+import { users, userNotificationSettings, intentStakes, intents, userConnectionEvents, intentStakeItems } from '../schema'; // Assuming schema path
 import { eq, gt, inArray, or, and } from 'drizzle-orm';
 import { synthesizeNewsletterVibeCheck } from '../synthesis';
 import { weeklyNewsletterTemplate, Match } from '../email/templates/weekly-newsletter.template';
 import { sendEmail } from '../email/transport.helper';
 import { toZonedTime, format } from 'date-fns-tz';
+import { getConnectingStakes, stakeOtherUsers } from '../stakes';
 
 // Helper to strip name prefix
 function stripNamePrefix(text: string, name: string) {
     if (!text || !name) return text;
-    
+
     const lowerText = text.toLowerCase();
     const lowerName = name.toLowerCase();
-    
+
     // Try different separator variants (with various spacing patterns)
     const separators = [' - ', ' – ', ' — ', ' : ', '- ', '– ', '— ', ': ', '-', '–', '—', ':'];
-    
+
     for (const sep of separators) {
         const prefix = lowerName + sep;
         if (lowerText.startsWith(prefix)) {
             return text.slice(prefix.length).trimStart();
         }
     }
-    
+
     return text;
 }
 
@@ -118,92 +119,68 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
     try {
         const { targetDay, targetHour, targetMinute } = parseNewsletterSchedule();
 
-        // 1. Get stakes
+        // 1. Get stakes to identify ACTIVE users (optimization)
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - daysSince);
 
         console.time('FetchStakes');
-        const recentStakes = await db.select()
+        const recentStakes = await db.select({
+            id: intentStakes.id,
+            createdAt: intentStakes.createdAt
+        })
             .from(intentStakes)
             .where(gt(intentStakes.createdAt, sevenDaysAgo));
+
+        // We need all participants of these stakes to be our "target audience"
+        // But simply getting stake IDs isn't enough, we need the users.
+        // Let's just get ALL users who have intents in these stakes.
+        // Or simpler: Iterate over all users who have active intents.
+        // Let's stick to the "users involved in recent stakes" heuristic.
+
+        // Improve optimization: Direct query for affected users
+        const affectedUserRows = await db.selectDistinct({ userId: intents.userId })
+            .from(intentStakeItems)
+            .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
+            .where(inArray(intentStakeItems.stakeId, recentStakes.map(s => s.id)));
+
+        const affectedUserIds = affectedUserRows.map(r => r.userId);
         console.timeEnd('FetchStakes');
 
-        console.log(`[NewsletterWorker] Found ${recentStakes.length} stakes`);
+        console.log(`[NewsletterWorker] Found ${recentStakes.length} recent stakes involving ${affectedUserIds.length} users`);
 
-        console.time('ProcessStakes');
-        const userMatches = new Map<string, { user: any, candidates: any[], matchedUserIds: Set<string> }>();
-
-        for (const stake of recentStakes) {
-            const participants = await getUsersForStake(stake.id, stake.intents);
-            if (!participants) continue;
-
-            const [p1, p2] = participants;
-
-            const connected = await hasConnectionEvent(p1.userId, p2.userId);
-            if (connected) continue;
-
-            // Init map entries
-            if (!userMatches.has(p1.userId)) {
-                userMatches.set(p1.userId, { user: p1, candidates: [], matchedUserIds: new Set() });
-            }
-            const p1Data = userMatches.get(p1.userId)!;
-
-            if (!userMatches.has(p2.userId)) {
-                userMatches.set(p2.userId, { user: p2, candidates: [], matchedUserIds: new Set() });
-            }
-            const p2Data = userMatches.get(p2.userId)!;
-
-            // Check timing
-            let [p1LastSent, p2LastSent] = [sevenDaysAgo, sevenDaysAgo];
-            if (!force) {
-                p1LastSent = p1.userLastWeeklyEmailSentAt ? new Date(p1.userLastWeeklyEmailSentAt) : sevenDaysAgo;
-                p2LastSent = p2.userLastWeeklyEmailSentAt ? new Date(p2.userLastWeeklyEmailSentAt) : sevenDaysAgo;
-            }
-
-            let p1NeedsMatch = stake.createdAt > p1LastSent && !p1Data.matchedUserIds.has(p2.userId);
-            let p2NeedsMatch = stake.createdAt > p2LastSent && !p2Data.matchedUserIds.has(p1.userId);
-
-            if (p1NeedsMatch && p1.notificationPreferences?.weeklyNewsletter === false) p1NeedsMatch = false;
-            if (p2NeedsMatch && p2.notificationPreferences?.weeklyNewsletter === false) p2NeedsMatch = false;
-
-            if (p1NeedsMatch) {
-                p1Data.candidates.push({
-                    userId: p2.userId,
-                    userName: p2.userName,
-                    userRole: p2.userRole,
-                    stakeId: stake.id,
-                    reasoning: stake.reasoning
-                });
-                p1Data.matchedUserIds.add(p2.userId);
-            }
-
-            if (p2NeedsMatch) {
-                p2Data.candidates.push({
-                    userId: p1.userId,
-                    userName: p1.userName,
-                    userRole: p1.userRole,
-                    stakeId: stake.id,
-                    reasoning: stake.reasoning
-                });
-                p2Data.matchedUserIds.add(p1.userId);
-            }
-        }
-        console.timeEnd('ProcessStakes');
-
-        console.time('DispatchQueue');
+        console.time('ProcessMatches');
         let dispatchedCount = 0;
 
-        for (const [userId, data] of userMatches.entries()) {
-            if (data.candidates.length < 1) continue;
+        // Fetch user preferences/details in bulk or per user? 
+        // Per user is safer for memory if we have many users.
 
-            // Onboarding check - enforced even if force is true
-            if (!data.user.userOnboarding?.completedAt) {
-                // console.log(`Skipping ${data.user.userEmail} - Onboarding not completed`);
-                continue;
-            }
+        for (const userId of affectedUserIds) {
+            // Get user details
+            const userRes = await db.select({
+                id: users.id,
+                email: users.email,
+                name: users.name,
+                timezone: users.timezone,
+                lastSent: users.lastWeeklyEmailSentAt,
+                prefs: userNotificationSettings.preferences,
+                onboarding: users.onboarding
+            })
+                .from(users)
+                .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
+                .where(eq(users.id, userId))
+                .limit(1);
 
-            // Timezone check
-            const userTimezone = data.user.userTimezone || 'UTC';
+            if (!userRes.length) continue;
+            const user = userRes[0];
+
+            // Filter 1: Opt-in
+            if (user.prefs?.weeklyNewsletter === false) continue;
+
+            // Filter 2: Onboarding
+            if (!user.onboarding?.completedAt) continue;
+
+            // Filter 3: Schedule (Timezone check)
+            const userTimezone = user.timezone || 'UTC';
             const zonedDate = toZonedTime(now, userTimezone);
             const dayOfWeek = format(zonedDate, 'i', { timeZone: userTimezone });
             const hour = format(zonedDate, 'H', { timeZone: userTimezone });
@@ -214,14 +191,78 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
                 continue;
             }
 
+            // Filter 4: Frequency (Don't send if sent recently, unless force)
+            // But getConnectingStakes(createdAfter) handles "new matches only".
+            // However, we still probably don't want to email twice in a week if they just got one?
+            // "Weekly" implies once a week. 
+            // If they got one yesterday, skip?
+            // Let's rely on the schedule check mostly. But if manual force, maybe check lastSent?
+            // The original logic checked `stake.createdAt > p1LastSent`.
+
+            const lastSent = user.lastSent ? new Date(user.lastSent) : sevenDaysAgo;
+            const searchSince = force ? sevenDaysAgo : lastSent;
+
+            // 2. Get Secure Matches via Protocol
+            // strict: Checks index access, excludes self, excludes single-user stakes, excludes already connected
+            const stakes = await getConnectingStakes({
+                authenticatedUserId: userId,
+                userIds: [userId],
+                createdAfter: searchSince,
+                excludeConnected: true,
+                requireAllUsers: true // Just to be safe, though with 1 user it's implied
+            });
+
+            if (!stakes.length) continue;
+
+            // 3. Prepare Candidates
+            // We need to fetch partner details
+            const partnerIds = new Set<string>();
+            stakes.forEach(s => stakeOtherUsers(s, userId).forEach(uid => partnerIds.add(uid)));
+
+            if (partnerIds.size === 0) continue;
+
+            const partners = await db.select({
+                id: users.id,
+                name: users.name,
+                intro: users.intro
+            })
+                .from(users)
+                .where(inArray(users.id, [...partnerIds]));
+
+            const partnerMap = new Map(partners.map(p => [p.id, p]));
+            const candidates: NewsletterJobData['candidates'] = [];
+            const seenPartners = new Set<string>();
+
+            // Convert high-value stakes to candidates
+            for (const stake of stakes) {
+                const partnerId = stakeOtherUsers(stake, userId)[0]; // Assume pair for now, or first other
+                if (!partnerId || seenPartners.has(partnerId)) continue;
+
+                const partner = partnerMap.get(partnerId);
+                if (!partner) continue;
+
+                seenPartners.add(partnerId);
+                candidates.push({
+                    userId: partner.id,
+                    userName: partner.name,
+                    userRole: partner.intro || undefined,
+                    stakeId: stake.id,
+                    reasoning: stake.reasoning ?? undefined,
+                });
+            }
+
+            if (candidates.length === 0) continue;
+
+            // 4. Dispatch
             await addNewsletterJob({
                 recipientId: userId,
-                candidates: data.candidates,
+                candidates,
                 force
             });
             dispatchedCount++;
         }
-        console.timeEnd('DispatchQueue');
+
+        console.timeEnd('ProcessMatches');
         console.log(`[NewsletterWorker] Weekly cycle completed. Dispatched ${dispatchedCount} jobs.`);
         console.timeEnd('WeeklyCycle');
 
