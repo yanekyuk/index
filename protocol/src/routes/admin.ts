@@ -3,9 +3,12 @@ import { body, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { users, userConnectionEvents, indexes, indexMembers } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, or, desc, inArray } from 'drizzle-orm';
+import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { checkIndexOwnership } from '../lib/index-access';
 import { ConnectionEvent } from '../types';
+import { sendConnectionRequestEmail } from '../lib/email/notification.sender'; // Use lower-level sender to bypass checks
+import { synthesizeVibeCheck } from '../lib/synthesis';
+import DOMPurify from 'isomorphic-dompurify';
 
 const router = Router();
 
@@ -62,17 +65,17 @@ router.get('/:indexId/pending-connections',
         eventType: userConnectionEvents.eventType,
         createdAt: userConnectionEvents.createdAt,
       })
-      .from(userConnectionEvents)
-      .where(and(
-        eq(userConnectionEvents.eventType, 'REQUEST'),
-        inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
-        inArray(userConnectionEvents.receiverUserId, indexMemberIds)
-      ))
-      .orderBy(desc(userConnectionEvents.createdAt));
+        .from(userConnectionEvents)
+        .where(and(
+          eq(userConnectionEvents.eventType, 'REQUEST'),
+          inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
+          inArray(userConnectionEvents.receiverUserId, indexMemberIds)
+        ))
+        .orderBy(desc(userConnectionEvents.createdAt));
 
       // For each REQUEST, check if there's a subsequent action
       const pendingConnections = [];
-      
+
       for (const event of requestEvents) {
         // Get any subsequent events for this pair
         const subsequentEvents = await db.select()
@@ -192,18 +195,45 @@ router.post('/:indexId/approve-connection',
         return res.status(400).json({ error: 'No pending connection request found' });
       }
 
-      // Create OWNER_APPROVE event
-      const approvalEvent = await db.insert(userConnectionEvents)
-        .values({
-          initiatorUserId: latestEvent[0].initiatorUserId,
-          receiverUserId: latestEvent[0].receiverUserId,
-          eventType: 'OWNER_APPROVE' as any,
-        })
-        .returning();
+      // HYBRID LOGIC:
+      // We do NOT insert an OWNER_APPROVE event because it would hide the request from the user's inbox (which looks for 'REQUEST').
+      // Instead, we just trigger the email notification to User B so they know about the pending request in their inbox.
+
+      const [initiator, receiver] = await Promise.all([
+        db.select({ name: users.name }).from(users).where(eq(users.id, initiatorUserId)).limit(1),
+        db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, receiverUserId)).limit(1)
+      ]);
+
+      if (initiator[0]?.name && receiver[0]?.name && receiver[0]?.email) {
+        // Generate synthesis for the email
+        const { synthesis: synthesisMarkdown, subject } = await synthesizeVibeCheck(
+          receiverUserId,
+          initiatorUserId,
+          { vibeOptions: { characterLimit: 500 } }
+        );
+
+        // Strip links and sanitize
+        const cleanMarkdown = synthesisMarkdown.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+        const markedMod = await import('marked');
+        const parse = markedMod.parse || (markedMod as any).default?.parse || (markedMod as any).marked?.parse;
+
+        if (parse) {
+          const rawHtml = await parse(cleanMarkdown);
+          const synthesis = DOMPurify.sanitize(rawHtml);
+
+          await sendConnectionRequestEmail(
+            receiver[0].email,
+            initiator[0].name,
+            receiver[0].name,
+            synthesis,
+            subject || 'New Connection Request'
+          );
+        }
+      }
 
       return res.json({
-        message: 'Connection approved successfully',
-        event: approvalEvent[0]
+        message: 'Connection approved successfully. Notification sent to user.',
+        // event: approvalEvent[0] // No event created
       });
     } catch (error) {
       console.error('Approve connection error:', error);
@@ -275,7 +305,37 @@ router.post('/:indexId/deny-connection',
         return res.status(400).json({ error: 'No pending connection request found' });
       }
 
-      // Create OWNER_DENY event
+      // HYBRID LOGIC:
+      // Check if there are other shared indexes that are "Auto Approved".
+      // If so, we can't kill the connection globally with OWNER_DENY.
+      // If not, we insert OWNER_DENY to cancel the request.
+
+      const sharedIndexes = await db.select({
+        id: indexes.id,
+        permissions: indexes.permissions
+      })
+        .from(indexes)
+        .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
+        .where(and(
+          eq(indexMembers.userId, initiatorUserId),
+          sql`${indexes.id} IN (
+              SELECT index_id FROM index_members WHERE user_id = ${receiverUserId}
+          )`
+        ));
+
+      // Check if there are any indexes that DO NOT require approval (Auto Indices)
+      const hasAutoIndices = sharedIndexes.some(i => !(i.permissions as any)?.requireApproval);
+
+      if (hasAutoIndices) {
+        // If they share an auto-index, the connection request is valid elsewhere.
+        // We do NOT insert OWNER_DENY. We just effectively "ignore" it for this index context.
+        return res.json({
+          message: 'Connection denied for this index. Request remains active due to other shared indexes.',
+          action: 'IGNORED'
+        });
+      }
+
+      // If no auto indices, safe to block globally.
       const denyEvent = await db.insert(userConnectionEvents)
         .values({
           initiatorUserId: latestEvent[0].initiatorUserId,
@@ -341,15 +401,15 @@ router.get('/:indexId/pending-count',
         initiatorUserId: userConnectionEvents.initiatorUserId,
         receiverUserId: userConnectionEvents.receiverUserId,
       })
-      .from(userConnectionEvents)
-      .where(and(
-        eq(userConnectionEvents.eventType, 'REQUEST'),
-        inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
-        inArray(userConnectionEvents.receiverUserId, indexMemberIds)
-      ));
+        .from(userConnectionEvents)
+        .where(and(
+          eq(userConnectionEvents.eventType, 'REQUEST'),
+          inArray(userConnectionEvents.initiatorUserId, indexMemberIds),
+          inArray(userConnectionEvents.receiverUserId, indexMemberIds)
+        ));
 
       let pendingCount = 0;
-      
+
       for (const event of requestEvents) {
         const subsequentEvents = await db.select()
           .from(userConnectionEvents)

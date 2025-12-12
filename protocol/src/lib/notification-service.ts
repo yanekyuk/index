@@ -65,8 +65,8 @@ async function checkConnectionUpdatesEnabled(userId: string): Promise<boolean> {
 export async function sendConnectionRequestNotification(initiatorUserId: string, receiverUserId: string): Promise<void> {
     try {
         // --- APPROVAL LOGIC START ---
-        // Check if users share any index that requires approval
-        const sharedApprovalIndexes = await db.select({
+        // Get all shared indexes between users
+        const sharedIndexes = await db.select({
             id: indexes.id,
             title: indexes.title,
             permissions: indexes.permissions
@@ -77,53 +77,61 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
                 eq(indexMembers.userId, initiatorUserId),
                 sql`${indexes.id} IN (
                 SELECT index_id FROM index_members WHERE user_id = ${receiverUserId}
-            )`,
-                sql`${indexes.permissions}->>'requireApproval' = 'true'`
+            )`
             ));
 
-        if (sharedApprovalIndexes.length > 0) {
-            console.log(`Connection request between ${initiatorUserId} and ${receiverUserId} requires approval from ${sharedApprovalIndexes.length} indexes`);
+        // Separating indexes
+        const approvalIndices = sharedIndexes.filter(i => (i.permissions as any)?.requireApproval);
+        const autoIndices = sharedIndexes.filter(i => !(i.permissions as any)?.requireApproval);
 
-            // Get initiator and receiver names for the email
+        // 1. Handle Approval Indices (Send Owner Emails)
+        if (approvalIndices.length > 0) {
+            console.log(`Connection request includes ${approvalIndices.length} indexes requiring approval`);
+
+            // Get initiator and receiver names if not already fetched
+            // We need them for the owner email
             const [initiator, receiver] = await Promise.all([
                 db.select({ name: users.name }).from(users).where(eq(users.id, initiatorUserId)).limit(1),
                 db.select({ name: users.name }).from(users).where(eq(users.id, receiverUserId)).limit(1)
             ]);
 
-            if (!initiator[0]?.name || !receiver[0]?.name) {
-                console.log('Missing user names for approval email');
-                return;
-            }
+            if (initiator[0]?.name && receiver[0]?.name) {
+                for (const index of approvalIndices) {
+                    const owners = await db.select({
+                        email: users.email,
+                        name: users.name
+                    })
+                        .from(indexMembers)
+                        .innerJoin(users, eq(users.id, indexMembers.userId))
+                        .where(and(
+                            eq(indexMembers.indexId, index.id),
+                            sql`'owner' = ANY(${indexMembers.permissions})`
+                        ));
 
-            // For each required index, notify the owners
-            for (const index of sharedApprovalIndexes) {
-                const owners = await db.select({
-                    email: users.email,
-                    name: users.name
-                })
-                    .from(indexMembers)
-                    .innerJoin(users, eq(users.id, indexMembers.userId))
-                    .where(and(
-                        eq(indexMembers.indexId, index.id),
-                        sql`'owner' = ANY(${indexMembers.permissions})`
-                    ));
-
-                for (const owner of owners) {
-                    await sendOwnerApprovalEmail(
-                        owner.email,
-                        owner.name,
-                        initiator[0].name,
-                        receiver[0].name,
-                        index.title,
-                        index.id
-                    );
+                    for (const owner of owners) {
+                        await sendOwnerApprovalEmail(
+                            owner.email,
+                            owner.name,
+                            initiator[0].name,
+                            receiver[0].name,
+                            index.title,
+                            index.id
+                        );
+                    }
                 }
+            } else {
+                console.log('Skipping owner emails due to missing user names');
             }
+        }
 
-            // If approval is required, we DO NOT send the request email to the receiver yet.
-            // The flow stops here until an owner approves.
+        // 2. Logic to determine if we block the user email
+        // If there are NO auto-indices (only approval required ones), we stop here.
+        // If there ARE auto-indices, we proceed to send the standard request email below.
+        if (autoIndices.length === 0 && approvalIndices.length > 0) {
+            console.log('Blocking connection request email to receiver: Only approval-required indexes shared.');
             return;
         }
+
         // --- APPROVAL LOGIC END ---
 
         // Check if receiver has connection updates enabled
