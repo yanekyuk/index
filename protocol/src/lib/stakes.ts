@@ -28,13 +28,23 @@ export interface GetConnectingStakesOptions {
   intentIds?: string[];
   excludeConnected?: boolean;
   limit?: number;
+  createdAfter?: Date;
 }
 
 // ============================================================================
 // DATA LOADERS
 // ============================================================================
 
-async function loadStakesForUsers(userIds: string[]): Promise<Stake[]> {
+async function loadStakesForUsers(userIds: string[], createdAfter?: Date): Promise<Stake[]> {
+  let whereClause = sql`${intentStakes.id} IN (
+      SELECT stake_id FROM intent_stake_items 
+      WHERE user_id = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::uuid[])
+    )`;
+
+  if (createdAfter) {
+    whereClause = sql`${whereClause} AND ${intentStakes.createdAt} > ${createdAfter.toISOString()}`;
+  }
+
   const rows = await db
     .select({
       stakeId: intentStakes.id,
@@ -49,10 +59,7 @@ async function loadStakesForUsers(userIds: string[]): Promise<Stake[]> {
     .from(intentStakes)
     .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
     .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
-    .where(sql`${intentStakes.id} IN (
-      SELECT stake_id FROM intent_stake_items 
-      WHERE user_id = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::uuid[])
-    )`);
+    .where(whereClause);
 
   const stakeMap = new Map<string, Stake>();
   for (const row of rows) {
@@ -121,7 +128,7 @@ export async function getConnectingStakes(options: GetConnectingStakesOptions): 
   const { authenticatedUserId, userIds, requireAllUsers = false, indexIds, intentIds, excludeConnected = false, limit } = options;
 
   // Load data
-  const stakes = await loadStakesForUsers(userIds);
+  const stakes = await loadStakesForUsers(userIds, options.createdAfter);
   const allUserIds = [...new Set(stakes.flatMap(s => s.items.map(i => i.userId)))];
   const allIntentIds = [...new Set(stakes.flatMap(s => s.items.map(i => i.intentId)))];
   const userIndexes = await loadUserIndexes(allUserIds);
@@ -165,7 +172,7 @@ export async function getConnectingStakes(options: GetConnectingStakesOptions): 
         return new Set([...intentIdxs].filter(idx => accessibleIndexIds.has(idx)));
       });
       // Find intersection - at least one index must contain ALL intents
-      const commonIndexes = intentIndexSets.reduce((acc, set) => 
+      const commonIndexes = intentIndexSets.reduce((acc, set) =>
         new Set([...acc].filter(idx => set.has(idx)))
       );
       return commonIndexes.size > 0;
