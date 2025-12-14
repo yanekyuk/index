@@ -53,7 +53,13 @@ Style:
 - Focus on shared themes or complementary work
 - No "What could happen here" phrasing
 - Assume greetings already said
-- No intent IDs or links`
+- No intent IDs or links
+
+CRITICAL INSTRUCTIONS:
+- You must ONLY output the synthesis text.
+- NEVER ask for more information or clarification.
+- If information is sparse, do your best to write a generic but warm connection statement based on available user names or vague reasons.
+- Do NOT output "I need more detail" or similar refusals. Just write the synthesis.`
     };
 
     const userMessage = {
@@ -101,9 +107,9 @@ Generate synthesis:`
 
   } catch (error) {
     console.error(`❌ Error generating intro for ${data.sender.userName} → ${data.recipient.userName}:`, error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 } 
