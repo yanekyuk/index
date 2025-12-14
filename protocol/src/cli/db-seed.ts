@@ -19,6 +19,7 @@ import { generateEmbedding } from '../lib/embeddings';
 type GlobalOpts = {
   silent?: boolean;
   confirm?: boolean;
+  type?: 'open' | 'restricted' | 'both';
 };
 
 const OPEN_INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
@@ -55,7 +56,7 @@ async function createUser(account: typeof PRIVY_TEST_ACCOUNTS[0]): Promise<any> 
   }
 }
 
-async function createIntent(user: any, payload: string): Promise<string> {
+async function createIntent(user: any, payload: string, type: 'open' | 'restricted' | 'both'): Promise<string> {
   // Generate embedding for the intent
   let embedding: number[] | undefined;
   try {
@@ -73,50 +74,58 @@ async function createIntent(user: any, payload: string): Promise<string> {
   }).returning();
 
   // Add intent to both indexes
-  await db.insert(intentIndexes).values({
-    intentId: intent.id,
-    indexId: OPEN_INDEX_ID,
-  });
+  if (type === 'open' || type === 'both') {
+    await db.insert(intentIndexes).values({
+      intentId: intent.id,
+      indexId: OPEN_INDEX_ID,
+    });
+  }
 
-  await db.insert(intentIndexes).values({
-    intentId: intent.id,
-    indexId: RESTRICTED_INDEX_ID,
-  });
+  if (type === 'restricted' || type === 'both') {
+    await db.insert(intentIndexes).values({
+      intentId: intent.id,
+      indexId: RESTRICTED_INDEX_ID,
+    });
+  }
 
   return intent.id;
 }
 
-async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
+async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok: boolean; error?: string }> {
   try {
-    console.log('Generating minimal mock data...');
+    console.log(`Generating minimal mock data (type: ${type})...`);
 
     // Create indexes
     try {
       // 1. Open Index (No Approval)
-      await db.insert(indexes).values({
-        id: OPEN_INDEX_ID,
-        title: 'Open Mock Network',
-        prompt: 'Share collaboration opportunities',
-        permissions: {
-          joinPolicy: 'anyone',
-          invitationLink: null,
-          allowGuestVibeCheck: false,
-          requireApproval: false // Open
-        },
-      });
+      if (type === 'open' || type === 'both') {
+        await db.insert(indexes).values({
+          id: OPEN_INDEX_ID,
+          title: 'Open Mock Network',
+          prompt: 'Share collaboration opportunities',
+          permissions: {
+            joinPolicy: 'anyone',
+            invitationLink: null,
+            allowGuestVibeCheck: false,
+            requireApproval: false // Open
+          },
+        });
+      }
 
       // 2. Restricted Index (Requires Approval)
-      await db.insert(indexes).values({
-        id: RESTRICTED_INDEX_ID,
-        title: 'Restricted Mock Network',
-        prompt: 'Exclusive members only',
-        permissions: {
-          joinPolicy: 'invite_only',
-          invitationLink: null,
-          allowGuestVibeCheck: false,
-          requireApproval: true // Restricted
-        },
-      });
+      if (type === 'restricted' || type === 'both') {
+        await db.insert(indexes).values({
+          id: RESTRICTED_INDEX_ID,
+          title: 'Restricted Mock Network',
+          prompt: 'Exclusive members only',
+          permissions: {
+            joinPolicy: 'invite_only',
+            invitationLink: null,
+            allowGuestVibeCheck: false,
+            requireApproval: true // Restricted
+          },
+        });
+      }
     } catch { }
 
     // Create users and intents
@@ -128,30 +137,34 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       createdUsers.push(user);
 
       // Add to Open Index
-      try {
-        await db.insert(indexMembers).values({
-          indexId: OPEN_INDEX_ID,
-          userId: user.id,
-          permissions: i === 0 ? ['owner'] : ['member'],
-          prompt: 'everything',
-          autoAssign: true,
-        });
-      } catch { }
+      if (type === 'open' || type === 'both') {
+        try {
+          await db.insert(indexMembers).values({
+            indexId: OPEN_INDEX_ID,
+            userId: user.id,
+            permissions: i === 0 ? ['owner'] : ['member'],
+            prompt: 'everything',
+            autoAssign: true,
+          });
+        } catch { }
+      }
 
       // Add to Restricted Index
-      try {
-        await db.insert(indexMembers).values({
-          indexId: RESTRICTED_INDEX_ID,
-          userId: user.id,
-          permissions: i === 0 ? ['owner'] : ['member'],
-          prompt: 'exclusive stuff',
-          autoAssign: true,
-        });
-      } catch { }
+      if (type === 'restricted' || type === 'both') {
+        try {
+          await db.insert(indexMembers).values({
+            indexId: RESTRICTED_INDEX_ID,
+            userId: user.id,
+            permissions: i === 0 ? ['owner'] : ['member'],
+            prompt: 'exclusive stuff',
+            autoAssign: true,
+          });
+        } catch { }
+      }
 
       // Create intent
       const payload = INTENTS[i % INTENTS.length];
-      const intentId = await createIntent(user, payload);
+      const intentId = await createIntent(user, payload, type);
       intentIds.push(intentId);
     }
 
@@ -200,6 +213,7 @@ async function main(): Promise<void> {
     .description('Seed database with mock data')
     .option('--silent', 'Suppress non-error output')
     .option('--confirm', 'Skip confirmation prompt')
+    .option('-t, --type <type>', 'Type of index to seed: open, restricted, or both', 'both')
     .action(async (opts: GlobalOpts) => {
       if (opts.silent) setLevel('error');
 
@@ -215,7 +229,14 @@ async function main(): Promise<void> {
         process.exit(1);
       }
 
-      const result = await seedDatabase();
+      // Validate type
+      if (opts.type && !['open', 'restricted', 'both'].includes(opts.type)) {
+        console.error('❌ Invalid type. Must be one of: open, restricted, both');
+        process.exit(1);
+      }
+
+      const seedType = opts.type || 'both';
+      const result = await seedDatabase(seedType);
 
       if (!result.ok) {
         console.error('❌ Seed failed:', result.error);

@@ -101,7 +101,7 @@ export const getConnectionsByUser = async (req: AuthRequest, res: Response) => {
       const memberships = await db.select({
         userId: indexMembers.userId,
         indexId: indexMembers.indexId,
-        requireApproval: sql<boolean>`${indexes.permissions}->>'requireApproval'`
+        requireApproval: sql<boolean>`(${indexes.permissions}->>'requireApproval')::boolean`
       })
         .from(indexMembers)
         .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
