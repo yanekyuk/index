@@ -21,9 +21,9 @@ type GlobalOpts = {
   confirm?: boolean;
 };
 
-const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
+const OPEN_INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
+const RESTRICTED_INDEX_ID = '99999999-d64e-4ef9-8bcf-6c89815f771c'; // New mocked ID
 const SEMANTIC_RELEVANCY_AGENT_ID = '028ef80e-9b1c-434b-9296-bb6130509482';
-const INITIAL_USER_EMAIL = process.env.INITIAL_USER_EMAIL; // Set this env var to your email to become owner
 
 import { PRIVY_TEST_ACCOUNTS, INTENTS } from './test-data';
 
@@ -72,9 +72,15 @@ async function createIntent(user: any, payload: string): Promise<string> {
     embedding,
   }).returning();
 
+  // Add intent to both indexes
   await db.insert(intentIndexes).values({
     intentId: intent.id,
-    indexId: INDEX_ID,
+    indexId: OPEN_INDEX_ID,
+  });
+
+  await db.insert(intentIndexes).values({
+    intentId: intent.id,
+    indexId: RESTRICTED_INDEX_ID,
   });
 
   return intent.id;
@@ -84,17 +90,31 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     console.log('Generating minimal mock data...');
 
-    // Create index
+    // Create indexes
     try {
+      // 1. Open Index (No Approval)
       await db.insert(indexes).values({
-        id: INDEX_ID,
-        title: 'Mock Demo Network',
+        id: OPEN_INDEX_ID,
+        title: 'Open Mock Network',
         prompt: 'Share collaboration opportunities',
         permissions: {
           joinPolicy: 'anyone',
           invitationLink: null,
           allowGuestVibeCheck: false,
-          requireApproval: true
+          requireApproval: false // Open
+        },
+      });
+
+      // 2. Restricted Index (Requires Approval)
+      await db.insert(indexes).values({
+        id: RESTRICTED_INDEX_ID,
+        title: 'Restricted Mock Network',
+        prompt: 'Exclusive members only',
+        permissions: {
+          joinPolicy: 'invite_only',
+          invitationLink: null,
+          allowGuestVibeCheck: false,
+          requireApproval: true // Restricted
         },
       });
     } catch { }
@@ -107,13 +127,24 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       const user = await createUser(account);
       createdUsers.push(user);
 
-      // Add to index
+      // Add to Open Index
       try {
         await db.insert(indexMembers).values({
-          indexId: INDEX_ID,
+          indexId: OPEN_INDEX_ID,
           userId: user.id,
           permissions: i === 0 ? ['owner'] : ['member'],
           prompt: 'everything',
+          autoAssign: true,
+        });
+      } catch { }
+
+      // Add to Restricted Index
+      try {
+        await db.insert(indexMembers).values({
+          indexId: RESTRICTED_INDEX_ID,
+          userId: user.id,
+          permissions: i === 0 ? ['owner'] : ['member'],
+          prompt: 'exclusive stuff',
           autoAssign: true,
         });
       } catch { }
@@ -149,40 +180,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
 
     console.log(`✅ Created ${createdUsers.length} users with connected intents`);
 
-    // Handle Initial User (if provided from ENV)
-    if (INITIAL_USER_EMAIL) {
-      console.log(`\nSetting up initial user (${INITIAL_USER_EMAIL}) as owner...`);
-      try {
-        const privyId = await ensurePrivyIdentity(INITIAL_USER_EMAIL);
-        // Ensure user exists in our DB
-        let [user] = await db.select().from(users).where(eq(users.email, INITIAL_USER_EMAIL)).limit(1);
-        if (!user) {
-          [user] = await db.insert(users).values({
-            privyId,
-            email: INITIAL_USER_EMAIL,
-            name: 'Initial User',
-            intro: 'The Initial User',
-            onboarding: {}
-          }).returning();
-        }
 
-        // Add as Owner
-        await db.insert(indexMembers).values({
-          indexId: INDEX_ID,
-          userId: user.id,
-          permissions: ['owner'],
-          prompt: 'everything',
-          autoAssign: true,
-        }).onConflictDoUpdate({
-          target: [indexMembers.indexId, indexMembers.userId],
-          set: { permissions: ['owner'] }
-        });
-        console.log(`✅ Initial user ${INITIAL_USER_EMAIL} is now an owner of the mock index`);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Failed to set up initial user:`, msg);
-      }
-    }
     console.log('\nLogin credentials:');
     PRIVY_TEST_ACCOUNTS.forEach(acc =>
       console.log(`${acc.name}: ${acc.email} | ${acc.phoneNumber} | OTP: ${acc.otpCode}`)
