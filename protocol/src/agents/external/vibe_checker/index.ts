@@ -134,34 +134,35 @@ function buildSystemMessage(
 ) {
   return {
     role: "system",
-    content: `You are a collaboration synthesis generator. Create a warm, practical paragraph explaining why two people are mutual matches based on what they're explicitly looking for.
+    content: `You are a collaboration synthesis generator. Create a concise 1-2 sentence explanation of why two people are mutual matches based on what they're explicitly looking for.
 
-Also generate a short, punchy email subject line for this connection request.
+Also generate a short, punchy title for this match.
 
 Style for Body:
 - Warm and friendly, not formal (we're introducing humans, not robots)
 - Grounded in stated needs (state what they're explicitly looking for, not speculative "could do" scenarios)
-- Direct and concise
+- Direct and concise - exactly 1-2 sentences
 - Add a small human touch—a light joke, casual aside, or relatable moment. Keep it natural, like you're telling a friend about this match.
+- Clearly signal why the match works
 
-Style for Subject:
-- Include the person’s name (${target})
-- Highlight strongest mutual-intent synergy
-- Stay under 12 words
+Style for Subject (Title):
+- Format: "${target} — [descriptive title]"
+- Include the person's name (${target}) followed by em dash
+- Stay under 12 words total
 - Sound warm, professional, and action-oriented
 - Avoid robotic "Label: Topic" formats (e.g., "Shared focus: AI"). Use natural phrases instead.
 - Examples:
-  - "${target} - exploring shared work on scalable coordination"
-  - "${target} - shared intent around decentralized networking"
-  - "${target} - collaborating on privacy-preserving AI"
+  - "${target} — Perfect match for your DeFi-focused dev needs"
+  - "${target} — Strong alignment on AI research + team building"
+  - "${target} — Great fit for product teams needing UI/UX depth"
 
 Format:
 - Return a JSON object with "subject" and "body" fields.
 - Body Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
 - ONLY hyperlink ${isThirdPerson ? `${initiator}'s` : 'your'} intents - NEVER link ${target}'s intents
 - Be careful with IDs: use the exact intent IDs from the provided data, never use placeholder "ID" text or make up IDs
-- Link natural phrases like "UX designers crafting interfaces" not "UX designers (link)"
-- Place links in beginning/middle of paragraph, not at the end
+- Hyperlinks must be max 3 words (e.g., "[DeFi partnerships](link)" not "[looking for blockchain developers for new DeFi partnerships](link)")
+- Link natural phrases, place links in beginning/middle of sentences, not at the end
 - No bold, italic, or title${characterLimit ? `\n- Maximum ${characterLimit} characters for body` : ''}
 
 Time Awareness:
@@ -179,7 +180,7 @@ Structure:
 - Explain the mutual fit using present tense and direct language
 - Weave in timing references naturally where relevant
 - Address ${isThirdPerson ? `${initiator} and ${target} in third person` : `reader as "${initiator}" vs the other person by first name only`}
-- Single paragraph, can use line breaks`
+- Keep it to 1-2 sentences total`
   };
 }
 
@@ -227,45 +228,120 @@ ${pairsXml}
 Note: Use the actual <created> timestamps from the intent pairs above. The examples show timing references - yours should reflect the real data.
 
 <examples>
-  <good>"${initiator} ${needs} [help scaling APIs](https://index.network/intents/ID) and ${target} has scaled infrastructure at three startups. They have the exact backend expertise ${isThirdPerson ? initiator + ' is' : "you're"} looking for."</good>
+  <good>
+    <subject>"${target} — Perfect match for your DeFi-focused dev needs"</subject>
+    <body>"You're building cross-functional product teams, and ${target} is actively looking for [blockchain developers](https://index.network/intents/ID) for new DeFi partnerships. Strong timing and a very direct talent match."</body>
+  </good>
   
-  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [build better dashboards](https://index.network/intents/ID) and ${target} is obsessed with data viz. They've got the visual design expertise ${isThirdPerson ? initiator + ' is' : "you're"} looking for (shocking how rare this combo is)."</good>
+  <good>
+    <subject>"${target} — Strong alignment on AI research + team building"</subject>
+    <body>"You're assembling product teams, and ${target} is searching for [AI researchers](https://index.network/intents/ID) for ML projects. Both of you signaled these intents recently, so the alignment is fresh and relevant."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} building [DAO governance tools](https://index.network/intents/ID) and ${target} researches token-based coordination. ${isThirdPerson ? `${initiator}'s` : 'Your'} implementation focus matches their research—exactly the kind of theory-practice bridge both sides need."</good>
+  <good>
+    <subject>"${target} — Great fit for product teams needing UI/UX depth"</subject>
+    <body>"You're focused on product development teams, and ${target} is looking to connect with [UI/UX designers](https://index.network/intents/ID). Great complement—the design talent ${target} wants is exactly what rounds out the teams you're building."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} working on [AI safety alignment](https://index.network/intents/ID) and ${target} writes about formal verification methods (been at this for years). ${isThirdPerson ? 'They complement' : 'You complement'} each other—practical implementation meets theoretical rigor, pretty rare combo."</good>
+  <good>
+    <subject>"${target} — Mentorship option to strengthen your dev teams"</subject>
+    <body>"As you grow dev teams, ${target} is offering mentorship for [junior Web3 developers](https://index.network/intents/ID). A valuable add-on for building a strong foundation early."</body>
+  </good>
   
-  <good>"${target} runs community events for developers and ${initiator} ${needs} [beta testers](https://index.network/intents/ID). They have exactly the developer audience ${isThirdPerson ? initiator + ' is' : "you're"} trying to reach."</good>
+  <good>
+    <subject>"${target} — Exact backend expertise you're looking for"</subject>
+    <body>"You need [help scaling APIs](https://index.network/intents/ID) and ${target} has scaled infrastructure at three startups. They have the exact backend expertise you're looking for."</body>
+  </good>
   
-  <good>"Alice wants [fundraising advice](https://index.network/intents/ID) and Maya has backed 40+ startups (been investing for 5 years). Alice needs exactly what Maya's spent years learning—the timing contrast actually helps here."</good>
+  <good>
+    <subject>"${target} — Visual design expertise (shockingly rare combo)"</subject>
+    <body>"You want to [build better dashboards](https://index.network/intents/ID) and ${target} is obsessed with data viz. They've got the visual design expertise you're looking for (shocking how rare this combo is)."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} looking for [someone to jam on music](https://index.network/intents/ID) and ${target} built a collaborative music app. They're actively looking for musicians to test it with."</good>
+  <good>
+    <subject>"${target} — Theory-practice bridge for DAO governance"</subject>
+    <body>"You're building [DAO governance tools](https://index.network/intents/ID) and ${target} researches token-based coordination. Your implementation focus matches their research—exactly the kind of theory-practice bridge both sides need."</body>
+  </good>
   
-  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [understand Web3 gaming economics](https://index.network/intents/ID) and ${target} designed token systems for three games. They're looking to advise people getting into the space—perfect fit."</good>
+  <good>
+    <subject>"${target} — Perfect developer audience match"</subject>
+    <body>"${target} runs community events for developers and you need [beta testers](https://index.network/intents/ID). They have exactly the developer audience you're trying to reach."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} researching [carbon credit verification](https://index.network/intents/ID) and ${target} is building climate impact dashboards. They both need data infrastructure—should probably just collaborate (finally, someone in the same niche)."</good>
+  <good>
+    <subject>"${target} — Years of experience meets fresh need"</subject>
+    <body>"You want [fundraising advice](https://index.network/intents/ID) and ${target} has backed 40+ startups (been investing for 5 years). You need exactly what they've spent years learning—the timing contrast actually helps here."</body>
+  </good>
   
-  <good>"${initiator} ${needs} [visual branding](https://index.network/intents/ID) and ${target} specializes in minimal brand systems. ${isThirdPerson ? 'They offer' : 'They offer'} exactly the clean aesthetic ${isThirdPerson ? initiator + ' described' : 'you described'}—hard to find designers who get that less-is-more thing."</good>
+  <good>
+    <subject>"${target} — Active collaboration opportunity"</subject>
+    <body>"You're looking for [music collaborators](https://index.network/intents/ID) and ${target} built a collaborative music app. They're actively looking for musicians to test it with."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} [automating deployment pipelines](https://index.network/intents/ID) (been stuck on this for months) and ${target} lives in CI/CD tooling. They know the exact pain points ${isThirdPerson ? initiator + ' is' : "you're"} hitting."</good>
+  <good>
+    <subject>"${target} — Web3 gaming expertise ready to share"</subject>
+    <body>"You want to [understand Web3 gaming economics](https://index.network/intents/ID) and ${target} designed token systems for three games. They're looking to advise people getting into the space—perfect fit."</body>
+  </good>
   
-  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [study emergent behavior in markets](https://index.network/intents/ID) and ${target} has simulation frameworks ready to go. Perfect timing—research question meets tooling (rare to find both at once)."</good>
+  <good>
+    <subject>"${target} — Same niche, should collaborate"</subject>
+    <body>"You're researching [carbon credit verification](https://index.network/intents/ID) and ${target} is building climate impact dashboards. You both need data infrastructure—should probably just collaborate (finally, someone in the same niche)."</body>
+  </good>
   
-  <good>"Dev needs a [technical co-founder](https://index.network/intents/ID) for a fintech startup and Priya is looking for early-stage projects. Dev's vision matches Priya's 5 years of backend experience—the co-founder search is brutal, this is the kind of match that actually works."</good>
+  <good>
+    <subject>"${target} — Clean aesthetic you described"</subject>
+    <body>"You need [visual branding](https://index.network/intents/ID) and ${target} specializes in minimal brand systems. They offer exactly the clean aesthetic you described—hard to find designers who get that less-is-more thing."</body>
+  </good>
   
-  <good>"${initiator} ${needs} [help with content strategy](https://index.network/intents/ID) and ${target} is a content strategist with 50+ clients. They specialize in technical content—exactly ${isThirdPerson ? initiator + "'s" : 'your'} domain."</good>
+  <good>
+    <subject>"${target} — CI/CD expertise for your pain points"</subject>
+    <body>"You're [automating deployment pipelines](https://index.network/intents/ID) (been stuck on this for months) and ${target} lives in CI/CD tooling. They know the exact pain points you're hitting."</body>
+  </good>
   
-  <good>"Jordan is building [treasury management tools](https://index.network/intents/ID) (been iterating for 4 months) and Sam researches on-chain governance patterns. Jordan's building what Sam's been studying—that theory-implementation loop is gold."</good>
+  <good>
+    <subject>"${target} — Research question meets ready tooling"</subject>
+    <body>"You want to [study market behavior](https://index.network/intents/ID) and ${target} has simulation frameworks ready to go. Perfect timing—research question meets tooling (rare to find both at once)."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} [organizing a developer conference](https://index.network/intents/ID) (happening in 2 months) and ${target} is looking for speaking gigs. Perfect match—${isThirdPerson ? 'they need' : 'you need'} speakers, they want stages (it's almost too obvious)."</good>
+  <good>
+    <subject>"${target} — Co-founder match that actually works"</subject>
+    <body>"You need a [technical co-founder](https://index.network/intents/ID) for a fintech startup and ${target} is looking for early-stage projects. Your vision matches their 5 years of backend experience—the co-founder search is brutal, this is the kind of match that actually works."</body>
+  </good>
   
-  <good>"${initiator} ${needs} [growth marketing tactics](https://index.network/intents/ID) and ${target} has grown 6 products from 0 to 100k users. They know the playbook ${isThirdPerson ? initiator + ' needs' : 'you need'}."</good>
+  <good>
+    <subject>"${target} — Technical content strategy expertise"</subject>
+    <body>"You need [content strategy help](https://index.network/intents/ID) and ${target} is a content strategist with 50+ clients. They specialize in technical content—exactly your domain."</body>
+  </good>
   
-  <good>"${initiator} ${pronoun} [building observability infrastructure](https://index.network/intents/ID) (started 6 months ago, gaining traction) and ${target} wants to contribute to monitoring tools. ${isThirdPerson ? 'They want' : 'You want'} contributors, they want to contribute—timing's right for this to work."</good>
+  <good>
+    <subject>"${target} — Theory-implementation loop is gold"</subject>
+    <body>"You're building [treasury management tools](https://index.network/intents/ID) (been iterating for 4 months) and ${target} researches on-chain governance patterns. You're building what they've been studying—that theory-implementation loop is gold."</body>
+  </good>
   
-  <good>"Emma hosts a [podcast about indie makers](https://index.network/intents/ID) and is looking for guests, while Leo just launched his third side project (now profitable). Emma needs exactly Leo's story—scrappy builder who actually ships."</good>
+  <good>
+    <subject>"${target} — Perfect speaker match (almost too obvious)"</subject>
+    <body>"You're [organizing a developer conference](https://index.network/intents/ID) (happening in 2 months) and ${target} is looking for speaking gigs. Perfect match—you need speakers, they want stages (it's almost too obvious)."</body>
+  </good>
   
-  <good>"${initiator} ${isThirdPerson ? 'wants' : 'want'} to [measure social impact](https://index.network/intents/ID) and ${target} has frameworks for impact metrics. They've done the hard work of figuring out what actually matters—saves ${isThirdPerson ? initiator : 'you'} months of wandering."</good>
+  <good>
+    <subject>"${target} — Growth playbook you need"</subject>
+    <body>"You need [growth marketing tactics](https://index.network/intents/ID) and ${target} has grown 6 products from 0 to 100k users. They know the playbook you need."</body>
+  </good>
+  
+  <good>
+    <subject>"${target} — Right timing for contribution match"</subject>
+    <body>"You're [building observability infrastructure](https://index.network/intents/ID) (started 6 months ago, gaining traction) and ${target} wants to contribute to monitoring tools. You want contributors, they want to contribute—timing's right for this to work."</body>
+  </good>
+  
+  <good>
+    <subject>"${target} — Scrappy builder story you need"</subject>
+    <body>"You host a [podcast about makers](https://index.network/intents/ID) and are looking for guests, while ${target} just launched their third side project (now profitable). You need exactly their story—scrappy builder who actually ships."</body>
+  </good>
+  
+  <good>
+    <subject>"${target} — Impact metrics framework saves months"</subject>
+    <body>"You want to [measure social impact](https://index.network/intents/ID) and ${target} has frameworks for impact metrics. They've done the hard work of figuring out what actually matters—saves you months of wandering."</body>
+  </good>
 </examples>`
   };
 }
