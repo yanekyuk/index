@@ -84,6 +84,7 @@ export const getPendingConnections = async (req: AuthRequest, res: Response) => 
       processedPairs.add(pairKey);
 
       // Get full history for this pair
+      // TODO: This is +1 query pattern. Fix it later.
       const history = await db.select()
         .from(userConnectionEvents)
         .where(
@@ -130,7 +131,7 @@ export const getPendingConnections = async (req: AuthRequest, res: Response) => 
         // It's a connection. Check if it lacks approval (Hybrid Not-Verified case).
         if (!isApproved) shouldShow = true;
       }
-
+      // TODO: Uses +1 query pattern. Fix it later.
       if (shouldShow) {
         // Get user details
         const [initiator, receiver] = await Promise.all([
