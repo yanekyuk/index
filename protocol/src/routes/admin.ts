@@ -239,7 +239,7 @@ export const approveConnection = async (req: AuthRequest, res: Response) => {
     await db.insert(userConnectionEvents).values({
       initiatorUserId: latestEvent[0].initiatorUserId,
       receiverUserId: latestEvent[0].receiverUserId,
-      eventType: 'OWNER_APPROVE' as any,
+      eventType: 'OWNER_APPROVE',
     });
 
     // Prepare email data
@@ -430,7 +430,7 @@ router.post('/:indexId/deny-connection',
         .values({
           initiatorUserId: latestEvent[0].initiatorUserId,
           receiverUserId: latestEvent[0].receiverUserId,
-          eventType: 'OWNER_DENY' as any,
+          eventType: 'OWNER_DENY',
         })
         .returning();
 
