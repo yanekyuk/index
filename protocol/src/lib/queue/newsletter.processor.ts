@@ -11,20 +11,20 @@ import { toZonedTime, format } from 'date-fns-tz';
 // Helper to strip name prefix
 function stripNamePrefix(text: string, name: string) {
     if (!text || !name) return text;
-    
+
     const lowerText = text.toLowerCase();
     const lowerName = name.toLowerCase();
-    
+
     // Try different separator variants (with various spacing patterns)
     const separators = [' - ', ' – ', ' — ', ' : ', '- ', '– ', '— ', ': ', '-', '–', '—', ':'];
-    
+
     for (const sep of separators) {
         const prefix = lowerName + sep;
         if (lowerText.startsWith(prefix)) {
             return text.slice(prefix.length).trimStart();
         }
     }
-    
+
     return text;
 }
 
@@ -361,7 +361,7 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
         // 3. Prepare Email
         console.log(`[NewsletterWorker] Preparing email for ${recipient.email} with ${matches.length} matches`);
 
-        const API_URL = process.env.API_URL || 'https://api.index.network';
+        const API_URL = process.env.API_URL || 'https://index.network.api';
         let unsubscribeUrl: string | undefined;
         if (recipient.unsubscribeToken) {
             unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=weeklyNewsletter`;
