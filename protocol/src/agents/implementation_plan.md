@@ -67,7 +67,7 @@ interface UserMemoryProfile {
 
 ### Phase 1: Foundation & Explicit
 **Branch**: `feat/intent-explicit-separation`
-- [ ] Refactor `intent_inferrer` to Orchestrator pattern.
+- [ ] Refactor `intent_manager` to Orchestrator pattern.
 - [ ] Implement `ExplicitDetector` with **Intent Lifecycle Prompt** (Create/Update/Expire).
 - [ ] Update input handlers (`analyzeContent`, `analyzeFolder`).
 
@@ -87,12 +87,12 @@ interface UserMemoryProfile {
 
 ## Proposed Changes
 
-### `protocol/src/agents/core/intent_inferrer`
-#### [MODIFY] [index.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_inferrer/index.ts)
+### `protocol/src/agents/core/intent_manager`
+#### [MODIFY] [index.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_manager/index.ts)
 - Orchestrator fetching profile AND active intents.
 - Handling `Create`, `Update`, `Expire` actions.
 
-#### [NEW] [detectors/explicit.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_inferrer/detectors/explicit.ts)
+#### [NEW] [detectors/explicit.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_manager/detectors/explicit.ts)
 - Prompt accepts `activeIntents`.
 - Output Schema:
   ```typescript
@@ -105,7 +105,7 @@ interface UserMemoryProfile {
   }
   ```
 
-#### [NEW] [detectors/implicit.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_inferrer/detectors/implicit.ts)
+#### [NEW] [detectors/implicit.ts](file:///Users/aposto/Projects/index/protocol/src/agents/core/intent_manager/detectors/implicit.ts)
 - Contextual weighting.
 
 ## Verification Plan

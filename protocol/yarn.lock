@@ -1635,6 +1635,13 @@
     winston-console-format "^1.0.8"
     zod "^3.23.8"
 
+"@langchain/langgraph-checkpoint@^1.0.0":
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/@langchain/langgraph-checkpoint/-/langgraph-checkpoint-1.0.0.tgz#ece2ede439d0d0b0b532c4be7817fd5029afe4f8"
+  integrity sha512-xrclBGvNCXDmi0Nz28t3vjpxSH6UYx6w5XAXSiiB1WEdc2xD2iY/a913I3x3a31XpInUW/GGfXXfePfaghV54A==
+  dependencies:
+    uuid "^10.0.0"
+
 "@langchain/langgraph-cli@^0.0.38":
   version "0.0.38"
   resolved "https://registry.yarnpkg.com/@langchain/langgraph-cli/-/langgraph-cli-0.0.38.tgz#e710b469648b1f5afb128f6ff28eb97bc491151f"
@@ -1659,6 +1666,15 @@
     yaml "^2.7.0"
     zod "^3.23.8"
 
+"@langchain/langgraph-sdk@~1.3.0":
+  version "1.3.1"
+  resolved "https://registry.yarnpkg.com/@langchain/langgraph-sdk/-/langgraph-sdk-1.3.1.tgz#3ad5bd8553b499844745c3c1488573f6c14ad16e"
+  integrity sha512-zTi7DZHwqtMEzapvm3I1FL4Q7OZsxtq9tTXy6s2gcCxyIU3sphqRboqytqVN7dNHLdTCLb8nXy49QKurs2MIBg==
+  dependencies:
+    p-queue "^6.6.2"
+    p-retry "4"
+    uuid "^9.0.0"
+
 "@langchain/langgraph-ui@0.0.38":
   version "0.0.38"
   resolved "https://registry.yarnpkg.com/@langchain/langgraph-ui/-/langgraph-ui-0.0.38.tgz#52ba614af4093614855af84e6b847f32325e852b"
@@ -1669,6 +1685,15 @@
     esbuild "^0.25.0"
     esbuild-plugin-tailwindcss "^2.0.1"
     zod "^3.23.8"
+
+"@langchain/langgraph@^1.0.0":
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/@langchain/langgraph/-/langgraph-1.0.5.tgz#ba311f1e7ac54b9a30c918dfe0dd0ddb0808450c"
+  integrity sha512-r0strjMmEa4IIcbhXKMubQmhh+WhpKyaRPc00Tj9R6O+Ubf9qsKVSd9F1vZBZ2nC6FYSHxBRGA4fO3KGz2m+DA==
+  dependencies:
+    "@langchain/langgraph-checkpoint" "^1.0.0"
+    "@langchain/langgraph-sdk" "~1.3.0"
+    uuid "^10.0.0"
 
 "@langchain/openai@^0.6.13":
   version "0.6.16"
@@ -6019,6 +6044,17 @@ kuler@^2.0.0:
   resolved "https://registry.yarnpkg.com/kuler/-/kuler-2.0.0.tgz#e2c570a3800388fb44407e851531c1d670b061b3"
   integrity sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==
 
+langchain@^1.2.1:
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/langchain/-/langchain-1.2.1.tgz#a4299dbada7633bbe3a159afd11cd4dd1e215f81"
+  integrity sha512-4sU3tQ6cFM8omUp2FFQParLbPC36GA7Rruq56vZ82XnHfDL3I+r1PH1eKdufCacSkAeM4NWbw3Bm2Ish6QOG5A==
+  dependencies:
+    "@langchain/langgraph" "^1.0.0"
+    "@langchain/langgraph-checkpoint" "^1.0.0"
+    langsmith "~0.3.74"
+    uuid "^10.0.0"
+    zod "^3.25.76 || ^4"
+
 langfuse-core@^3.38.6:
   version "3.38.6"
   resolved "https://registry.yarnpkg.com/langfuse-core/-/langfuse-core-3.38.6.tgz#6ad5aefda9372dc52ac3f2b093e71940efafcd9d"
@@ -6057,6 +6093,18 @@ langsmith@^0.3.67:
   version "0.3.82"
   resolved "https://registry.yarnpkg.com/langsmith/-/langsmith-0.3.82.tgz#62ed8c3ebaae4138d0aa0773024b38d6c00c055f"
   integrity sha512-RTcxtRm0zp2lV+pMesMW7EZSsIlqN7OmR2F6sZ/sOFQwmcLVl+VErMPV4VkX4Sycs4/EIAFT5hpr36EqiHoikQ==
+  dependencies:
+    "@types/uuid" "^10.0.0"
+    chalk "^4.1.2"
+    console-table-printer "^2.12.1"
+    p-queue "^6.6.2"
+    semver "^7.6.3"
+    uuid "^10.0.0"
+
+langsmith@~0.3.74:
+  version "0.3.87"
+  resolved "https://registry.yarnpkg.com/langsmith/-/langsmith-0.3.87.tgz#f1c991c93a5d4d226a31671be7e4443b4b8673b1"
+  integrity sha512-XXR1+9INH8YX96FKWc5tie0QixWz6tOqAsAKfcJyPkE0xPep+NDz0IQLR32q4bn10QK3LqD2HN6T3n6z1YLW7Q==
   dependencies:
     "@types/uuid" "^10.0.0"
     chalk "^4.1.2"
@@ -7656,16 +7704,7 @@ string-hash@^1.1.3:
   resolved "https://registry.yarnpkg.com/string-hash/-/string-hash-1.1.3.tgz#e8aafc0ac1855b4666929ed7dd1275df5d6c811b"
   integrity sha512-kJUvRUFK49aub+a7T1nNE66EJbZBMnBgoC1UbCZ5n6bsZKBRga4KgBRTMn/pFkeCZSYtNeSyMxPDM0AXWELk2A==
 
-"string-width-cjs@npm:string-width@^4.2.0":
-  version "4.2.3"
-  resolved "https://registry.yarnpkg.com/string-width/-/string-width-4.2.3.tgz#269c7117d27b05ad2e536830a8ec895ef9c6d010"
-  integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
-  dependencies:
-    emoji-regex "^8.0.0"
-    is-fullwidth-code-point "^3.0.0"
-    strip-ansi "^6.0.1"
-
-string-width@^4.1.0:
+"string-width-cjs@npm:string-width@^4.2.0", string-width@^4.1.0:
   version "4.2.3"
   resolved "https://registry.yarnpkg.com/string-width/-/string-width-4.2.3.tgz#269c7117d27b05ad2e536830a8ec895ef9c6d010"
   integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
@@ -7697,14 +7736,7 @@ string_decoder@~1.1.1:
   dependencies:
     safe-buffer "~5.1.0"
 
-"strip-ansi-cjs@npm:strip-ansi@^6.0.1":
-  version "6.0.1"
-  resolved "https://registry.yarnpkg.com/strip-ansi/-/strip-ansi-6.0.1.tgz#9e26c63d30f53443e9489495b2105d37b67a85d9"
-  integrity sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==
-  dependencies:
-    ansi-regex "^5.0.1"
-
-strip-ansi@^6.0.0, strip-ansi@^6.0.1:
+"strip-ansi-cjs@npm:strip-ansi@^6.0.1", strip-ansi@^6.0.0, strip-ansi@^6.0.1:
   version "6.0.1"
   resolved "https://registry.yarnpkg.com/strip-ansi/-/strip-ansi-6.0.1.tgz#9e26c63d30f53443e9489495b2105d37b67a85d9"
   integrity sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==
@@ -8404,3 +8436,8 @@ zod@^3.20.0, zod@^3.22.4, zod@^3.23.8, zod@^3.24.3, zod@^3.25.32:
   version "3.25.76"
   resolved "https://registry.yarnpkg.com/zod/-/zod-3.25.76.tgz#26841c3f6fd22a6a2760e7ccb719179768471e34"
   integrity sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==
+
+"zod@^3.25.76 || ^4":
+  version "4.2.1"
+  resolved "https://registry.yarnpkg.com/zod/-/zod-4.2.1.tgz#07f0388c7edbfd5f5a2466181cb4adf5b5dbd57b"
+  integrity sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==
