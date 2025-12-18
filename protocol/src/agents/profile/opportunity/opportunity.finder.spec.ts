@@ -62,19 +62,11 @@ async function runTests() {
     const finder = new OpportunityFinder();
 
     try {
-        // Test HyDE Query Generation (just for manual verification)
-        console.log("1️⃣  Test: Generate HyDE Query");
-        const hydeQuery = await finder.generateHydeQuery(mockSourceProfile);
-        console.log("HyDE Query:", hydeQuery);
-        if (hydeQuery && hydeQuery.length > 10) {
-            console.log("✅ Passed (Generated HyDE query)\n");
-        } else {
-            console.error("❌ Failed (HyDE query empty or too short)\n");
-        }
-
         // Test Find Opportunities (Analyze Stage)
         console.log("2️⃣  Test: Analyze Opportunities");
-        const opportunities = await finder.findOpportunities(mockSourceProfile, mockCandidates);
+        const opportunities = await finder.findOpportunities(mockSourceProfile, mockCandidates, {
+            hydeDescription: "Third-person description of an ideal match who is a Rust expert."
+        });
 
         console.log(`Found ${opportunities.length} opportunities:\n`, JSON.stringify(opportunities, null, 2));
 
@@ -92,6 +84,33 @@ async function runTests() {
         } else {
             console.error("⚠️ Warning (Weak match scored unexpectedly high)");
         }
+
+        // --- STABILITY CHECK ---
+        console.log("\n3️⃣  Test: Score Stability (3 Iterations)");
+        const iterations = 3;
+        const scores: number[] = [];
+
+        for (let i = 0; i < iterations; i++) {
+            const runOps = await finder.findOpportunities(mockSourceProfile, mockCandidates, {
+                hydeDescription: "Third-person description of an ideal match who is a Rust expert."
+            });
+            const match = runOps.find(op => op.candidateId === 'candidate-1');
+            scores.push(match ? match.score : 0);
+            process.stdout.write(`Run ${i + 1}: ${match?.score} | `);
+        }
+        console.log("\nScores:", scores);
+
+        const maxScore = Math.max(...scores);
+        const minScore = Math.min(...scores);
+        const variance = maxScore - minScore;
+
+        if (variance <= 5) {
+            console.log(`✅ Passed (Score variance ${variance} is within limit <= 5)`);
+        } else {
+            console.error(`❌ Failed (Score variance ${variance} is too high)`);
+            process.exit(1);
+        }
+        // -----------------------
 
     } catch (err) {
         console.error("❌ Error running OpportunityFinder:", err);

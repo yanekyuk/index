@@ -7,6 +7,8 @@ import { json2md } from '../lib/json2md/json2md';
 import { UserMemoryProfile, ActiveIntent } from '../agents/intent/manager/intent.manager.types';
 import { IntentManager } from '../agents/intent/manager/intent.manager';
 import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { HydeGeneratorAgent } from '../agents/profile/generator/hyde/hyde.generator';
+import { generateEmbedding } from '../lib/embeddings';
 
 export interface UpdateProfileDto {
     name?: string;
@@ -211,6 +213,28 @@ export class ProfileService {
                         }
                     }
                 }
+
+                // --- HyDE Generation ---
+                console.log('Generating HyDE description and embedding...');
+                const hydeGenerator = new HydeGeneratorAgent();
+                const hydeDescription = await hydeGenerator.generate(memoryProfile);
+
+                if (hydeDescription) {
+                    console.log(`HyDE Description Length: ${hydeDescription.length} chars. Preview: "${hydeDescription.substring(0, 100)}..."`);
+                    const hydeEmbedding = await generateEmbedding(hydeDescription);
+
+                    await db.update(userProfiles)
+                        .set({
+                            hydeDescription,
+                            hydeEmbedding,
+                            updatedAt: new Date()
+                        })
+                        .where(eq(userProfiles.userId, userId));
+
+                    console.log('✅ HyDE profile updated.');
+                }
+                // -----------------------
+
             } catch (err) {
                 console.error('Background intent generation failed:', err);
             }
@@ -293,6 +317,19 @@ export class ProfileService {
     async updateProfileEmbedding(profileId: string, embedding: number[]) {
         await db.update(userProfiles)
             .set({ embedding })
+            .where(eq(userProfiles.id, profileId));
+    }
+
+    /**
+     * Update HyDE data for a profile.
+     */
+    async updateProfileHyde(profileId: string, hydeDescription: string, hydeEmbedding: number[]) {
+        await db.update(userProfiles)
+            .set({
+                hydeDescription,
+                hydeEmbedding,
+                updatedAt: new Date()
+            })
             .where(eq(userProfiles.id, profileId));
     }
 

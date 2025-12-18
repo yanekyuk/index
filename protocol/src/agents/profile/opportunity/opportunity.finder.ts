@@ -8,7 +8,6 @@ import {
 } from './opportunity.finder.types';
 import { z } from 'zod';
 import { json2md } from '../../../lib/json2md/json2md';
-import { HydeGeneratorAgent } from '../generator/hyde/hyde.generator';
 
 // --- SCHEMAS ---
 const OpportunitySchema = z.object({
@@ -28,36 +27,33 @@ const OpportunityFinderOutputSchema = z.object({
 // System prompt for the Opportunity Finder Agent (Analysis Stage)
 const ANALYSIS_SYSTEM_PROMPT = `
     You are an expert "Opportunity Matcher" and super-connector.
-    Your Goal: Analyze a Source User's profile against a Candidate User's profile to identify HIGH-VALUE opportunities for collaboration, mentorship, or networking.
+    Your Goal: Analyze a Source User's "Ideal Match Description" (or their Profile) against a Candidate User's profile to identify HIGH-VALUE opportunities.
 
     Input:
-    - Source Profile (JSON)
+    - Source Context: Either an "Ideal Partner Description" (HyDE) OR the User's own Profile.
     - Candidate Profile (JSON)
 
     Output:
     - A list of distinct "Opportunities" (if any).
     - Score (0-100): How strong is this match?
-    - 90-100: "Must Meet" (Perfect skill complementarity, exact shared goal).
-    - 70-89: "Should Meet" (Strong shared interests, clear potential).
+    - 90-100: "Must Meet" (Perfect alignment with the Ideal Description).
+    - 70-89: "Should Meet" (Strong overlaps, clear potential).
     - <70: No opportunity (Return empty list).
 
     Rules:
-    1. Be specific. Don't say "Collaborate". Say "Collaborate on Rust-based DeFi tools" if both mention Rust and DeFi.
-    2. Value Complementarity: Identify where one user's strength fills another's gap (Mentorship).
-    3. Value Shared Goals: Identify where users are building similar things (Collaboration).
+    1. Be specific.
+    2. Focus on how well the Candidate fulfills the Source's "Ideal Match" criteria.
 `;
 
 export class OpportunityFinder extends BaseLangChainAgent {
-    private hydeAgent: HydeGeneratorAgent;
 
     constructor() {
         // Main model is for Analysis (structured output of Opportunities)
         super({
             model: 'openai/gpt-4o',
+            temperature: 0.1, // Low temp for stability
             responseFormat: OpportunityFinderOutputSchema
         });
-
-        this.hydeAgent = new HydeGeneratorAgent();
     }
 
     /**
@@ -70,6 +66,7 @@ export class OpportunityFinder extends BaseLangChainAgent {
         options: OpportunityFinderOptions = {}
     ): Promise<Opportunity[]> {
         const minScore = options.minScore || 70;
+        const hydeDescription = options.hydeDescription; // NEW: Accept HyDE description
 
         console.log(`Analyzing ${candidates.length} candidates for opportunities...`);
 
@@ -82,7 +79,7 @@ export class OpportunityFinder extends BaseLangChainAgent {
 
         // Analyze each candidate in parallel (bounded)
         const promises = candidates.map(async (candidate) => {
-            return this.analyzeMatch(sourceProfile, candidate, candidate.userId);
+            return this.analyzeMatch(sourceProfile, candidate, candidate.userId, hydeDescription);
         });
 
         const results = await Promise.all(promises);
@@ -94,19 +91,6 @@ export class OpportunityFinder extends BaseLangChainAgent {
 
         // Sort by score
         return opportunities.sort((a, b) => b.score - a.score);
-    }
-
-    /**
-     * Helper to generate a HyDE description.
-     * Use this to create a search query for your vector database.
-     */
-    async generateHydeQuery(profile: UserMemoryProfile): Promise<string> {
-        try {
-            return await this.hydeAgent.generate(profile);
-        } catch (e) {
-            console.error("HyDE generation failed", e);
-            return "";
-        }
     }
 
     /**
@@ -127,12 +111,21 @@ export class OpportunityFinder extends BaseLangChainAgent {
     private async analyzeMatch(
         sourceProfile: UserMemoryProfile,
         candidateProfile: CandidateProfile,
-        candidateUserId: string
+        candidateUserId: string,
+        hydeDescription?: string
     ): Promise<Opportunity[]> {
         try {
+            // Construct the source context part of the prompt
+            let sourceContext = "";
+            if (hydeDescription) {
+                sourceContext = `SOURCE'S IDEAL MATCH DESCRIPTION:\n${hydeDescription}`;
+            } else {
+                sourceContext = `SOURCE PROFILE:\n${json2md.fromObject(sourceProfile as any)}`;
+            }
+
             const messages = [
                 new SystemMessage(ANALYSIS_SYSTEM_PROMPT),
-                new HumanMessage(`SOURCE PROFILE:\n${json2md.fromObject(sourceProfile as any)}\n\nCANDIDATE PROFILE:\n${json2md.fromObject(candidateProfile as any)}`)
+                new HumanMessage(`${sourceContext}\n\nCANDIDATE PROFILE:\n${json2md.fromObject(candidateProfile as any)}`)
             ];
 
             // Primary model is already configured with OutputSchema

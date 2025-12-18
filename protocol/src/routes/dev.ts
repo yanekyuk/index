@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { sendWeeklyNewsletter } from '../jobs/weekly-newsletter';
+import { runOpportunityFinderCycle } from '../jobs/opportunity-finder';
 
 const router = Router();
 
@@ -27,6 +28,17 @@ router.post('/newsletter/trigger', async (req: Request, res: Response) => {
         console.error('Error triggering newsletter:', error);
         console.timeEnd('ManualNewsletterTrigger');
         res.status(500).json({ error: 'Failed to trigger newsletter' });
+    }
+});
+
+router.post('/opportunity-finder/trigger', async (req: Request, res: Response) => {
+    try {
+        console.log('Manually triggering Opportunity Finder Cycle');
+        await runOpportunityFinderCycle();
+        res.json({ message: 'Opportunity Finder Cycle completed successfully.' });
+    } catch (error) {
+        console.error('Error triggering Opportunity Finder:', error);
+        res.status(500).json({ error: 'Failed to trigger Opportunity Finder cycle' });
     }
 });
 

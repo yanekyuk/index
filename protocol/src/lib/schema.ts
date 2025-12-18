@@ -106,6 +106,8 @@ export const userProfiles = pgTable('user_profiles', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
   embedding: vector('embedding', { dimensions: 2000 }),
+  hydeDescription: text('hyde_description'),
+  hydeEmbedding: vector('hyde_embedding', { dimensions: 2000 }),
 }, (table) => ({
   // Enforce uniqueness on userId is already done by the column definition
   embeddingIndex: index('user_profiles_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),

@@ -1,5 +1,8 @@
 import cron from 'node-cron';
+import fs from 'fs/promises';
+import path from 'path';
 import { generateEmbedding } from '../lib/embeddings';
+import { HydeGeneratorAgent } from '../agents/profile/generator/hyde/hyde.generator';
 import { OpportunityFinder } from '../agents/profile/opportunity/opportunity.finder';
 import { CandidateProfile } from '../agents/profile/opportunity/opportunity.finder.types';
 import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
@@ -10,7 +13,9 @@ import { userProfiles } from '../lib/schema';
 function constructProfileText(profile: typeof userProfiles.$inferSelect): string {
   const parts = [
     profile.identity?.bio,
+    profile.identity?.location,
     profile.narrative?.aspirations,
+    profile.narrative?.context,
     ...(profile.attributes?.interests || []),
     ...(profile.attributes?.skills || [])
   ];
@@ -42,6 +47,7 @@ export async function runOpportunityFinderCycle(
         }
 
         console.log(`Generating embedding for user ${profile.userId}...`);
+        console.log(`Payload length: ${textToEmbed.length} chars. Preview: "${textToEmbed.substring(0, 100)}..."`);
         const embedding = await generateEmbedding(textToEmbed);
 
         await profileService.updateProfileEmbedding(profile.id, embedding);
@@ -55,6 +61,7 @@ export async function runOpportunityFinderCycle(
     // 2. Run Opportunity Finder for All Users
     console.log('🚀 Running Opportunity Matchmaking...');
     const finder = injectedFinder || new OpportunityFinder();
+    const allCycleResults: any[] = [];
 
     // Fetch all valid profiles to act as sources
     const allProfiles = await profileService.getAllProfilesWithEmbeddings();
@@ -75,8 +82,37 @@ export async function runOpportunityFinderCycle(
         continue;
       }
 
+      // --- BACKFILL HyDE IF MISSING ---
+      if (!sourceProfile.hydeEmbedding) {
+        console.log(`   Generating missing HyDE for ${sourceProfile.userId}...`);
+        try {
+          const hydeGenerator = new HydeGeneratorAgent();
+          const description = await hydeGenerator.generate(memoryProfile);
+          if (description) {
+            const embedding = await generateEmbedding(description);
+
+            // Update DB
+            await profileService.updateProfileHyde(sourceProfile.id, description, embedding);
+
+            // Update local object so we can use it immediately
+            sourceProfile.hydeDescription = description;
+            sourceProfile.hydeEmbedding = embedding;
+            console.log(`   ✅ HyDE Generated & Backfilled.`);
+          }
+        } catch (e) {
+          console.error(`   ❌ Failed to generate HyDE for ${sourceProfile.userId}`, e);
+        }
+      }
+      // --------------------------------
+
+      // Determine Query Vector: Use HyDE (Desire) if available, otherwise User Profile (Similarity)
+      const queryVector = sourceProfile.hydeEmbedding || sourceProfile.embedding;
+      if (sourceProfile.hydeEmbedding) {
+        console.log(`   Using HyDE embedding for search.`);
+      }
+
       // VECTOR SEARCH: Find top 20 nearest neighbors (excluding self)
-      const candidatesRaw = await profileService.findSimilarProfiles(sourceProfile.userId, sourceProfile.embedding, 20);
+      const candidatesRaw = await profileService.findSimilarProfiles(sourceProfile.userId, queryVector, 20);
 
       // Map to CandidateProfile type
       const candidates: CandidateProfile[] = candidatesRaw.map(c => ({
@@ -87,17 +123,34 @@ export async function runOpportunityFinderCycle(
       }));
 
       // Run Agent
-      const opportunities = await finder.findOpportunities(memoryProfile, candidates);
+      const opportunities = await finder.findOpportunities(memoryProfile, candidates, {
+        hydeDescription: sourceProfile.hydeDescription || undefined
+      });
 
       if (opportunities.length > 0) {
         console.log(`✨ Found ${opportunities.length} opportunities for ${sourceProfile.userId}:`);
         opportunities.forEach(op => {
           console.log(`   - [${op.score}] ${op.title} (with ${op.candidateId})`);
         });
-        // TODO: Store opportunities or notify users
+
+        allCycleResults.push({
+          sourceUserId: sourceProfile.userId,
+          sourceName: sourceProfile.identity?.name,
+          opportunityCount: opportunities.length,
+          opportunities: opportunities
+        });
+
       } else {
         console.log(`   No high-value opportunities found.`);
       }
+    }
+
+    // Write full debug results
+    if (allCycleResults.length > 0) {
+      // Use a persistent path in root or tmp
+      const debugPath = path.resolve(process.cwd(), 'opportunity-finder-results.json');
+      await fs.writeFile(debugPath, JSON.stringify(allCycleResults, null, 2));
+      console.log(`\n📝 Debug results written to: ${debugPath}`);
     }
 
     console.log('✅ Opportunity Finder Cycle Complete.');

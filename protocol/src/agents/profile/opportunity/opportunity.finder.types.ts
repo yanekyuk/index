@@ -11,6 +11,7 @@ export interface OpportunityFinderOptions {
     strategy?: RetrievalStrategy;
     minScore?: number;
     limit?: number;
+    hydeDescription?: string;
 }
 
 export interface CandidateProfile {

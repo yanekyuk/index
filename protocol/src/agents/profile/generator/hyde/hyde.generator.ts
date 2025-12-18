@@ -7,10 +7,20 @@ import { BaseLangChainAgent } from '../../../../lib/langchain/langchain';
 // System prompt for HyDE Generation
 const HYDE_GENERATION_PROMPT = `
     You are a Profile Profiler.
-    Given a user's profile, describe the **perfect** person they should meet to accelerate their goals.
-    Describe this ideal candidate's Bio, Skills, and top Intents.
-    Your output will be used to search a database of user profiles.
-    Return a concise paragraph written in the first person (as if the candidate wrote it).
+    Given a user's profile, generate a **Hypothetical Profile** of the perfect person they should meet.
+    
+    Imagine this ideal candidate actually exists. Write a profile for THEM.
+    Your output will be used to vector-search a database of real user profiles.
+
+    Structure your response as a natural language Bio/Narrative written in the **Third Person**.
+    
+    The description should include:
+    1. **Context**: Who they are (role, background).
+    2. **Skills/lnterests**: What they are good at that complements the user.
+    3. **Goals**: What they are trying to achieve that aligns with the user.
+    
+    Do NOT describe the Source User. Describe the TARGET Match.
+    Do NOT invent a name for the candidate. Refer to them as "The candidate", "They", or "This individual".
 `;
 
 const HydeDescriptionSchema = z.object({
@@ -34,8 +44,10 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
       new SystemMessage(HYDE_GENERATION_PROMPT),
       new HumanMessage(json2md.fromObject({
         bio: profile.identity.bio,
+        location: profile.identity.location,
         interests: profile.attributes?.interests || [],
-        aspirations: profile.narrative?.aspirations || ''
+        aspirations: profile.narrative?.aspirations || '',
+        context: profile.narrative?.context || ''
       }))
     ];
 
