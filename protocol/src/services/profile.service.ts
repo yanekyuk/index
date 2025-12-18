@@ -5,7 +5,7 @@ import { ProfileGenerator } from '../agents/profile/profile.generator';
 import { searchUser } from '../lib/parallel/parallel';
 import { json2md } from '../lib/json2md/json2md';
 import { UserMemoryProfile, ActiveIntent } from '../agents/intent/manager/intent.manager.types';
-import { ExplicitIntentDetector } from '../agents/intent/inferrer/explicit.inferrer';
+import { IntentManager } from '../agents/intent/manager/intent.manager';
 import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
 
 export interface UpdateProfileDto {
@@ -193,10 +193,10 @@ export class ProfileService {
                     created_at: i.createdAt.getTime()
                 }));
 
-                const detector = new ExplicitIntentDetector();
+                const manager = new IntentManager();
                 const content = null;
 
-                const result = await detector.run(content, memoryProfile, activeIntents);
+                const result = await manager.processIntent(content, memoryProfile, activeIntents);
                 console.log('Intent detection result:', JSON.stringify(result));
 
                 if (result.actions && result.actions.length > 0) {
@@ -205,6 +205,7 @@ export class ProfileService {
                             await db.insert(intents).values({
                                 userId: userId,
                                 payload: action.payload,
+                                summary: action.payload, // Ensure summary is populated
                             });
                             console.log(`Created intent: ${action.payload}`);
                         }

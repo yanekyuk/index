@@ -1,28 +1,17 @@
-import { UserMemoryProfile, ActiveIntent } from '../manager/intent.manager.types';
+import { UserMemoryProfile } from '../manager/intent.manager.types';
 
-export interface CreateIntentAction {
-  type: 'create';
-  payload: string;
+export interface InferredIntent {
+  type: 'goal' | 'tombstone';
+  description: string; // "Learn Rust" or "Stop learning Rust"
+  reasoning: string;
+  confidence: 'high' | 'medium' | 'low';
 }
-
-export interface UpdateIntentAction {
-  type: 'update';
-  id: string;
-  payload: string;
-}
-
-export interface ExpireIntentAction {
-  type: 'expire';
-  id: string;
-  reason: string;
-}
-
-export type IntentAction = CreateIntentAction | UpdateIntentAction | ExpireIntentAction;
 
 export interface IntentDetectorResponse {
-  actions: IntentAction[];
+  intents: InferredIntent[];
 }
 
 export interface IntentDetector {
-    run(content: string, profile: UserMemoryProfile, activeIntents: ActiveIntent[]): Promise<IntentDetectorResponse>;
+  // Note: removed activeIntents from signature as Inferrer shouldn't know about state
+  run(content: string, profile: UserMemoryProfile): Promise<IntentDetectorResponse>;
 }

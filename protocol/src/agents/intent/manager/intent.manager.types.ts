@@ -22,3 +22,26 @@ export interface ActiveIntent {
   status: 'active' | 'completed' | 'expired';
   created_at: number;
 }
+
+export interface CreateIntentAction {
+  type: 'create';
+  payload: string;
+}
+
+export interface UpdateIntentAction {
+  type: 'update';
+  id: string;
+  payload: string;
+}
+
+export interface ExpireIntentAction {
+  type: 'expire';
+  id: string;
+  reason: string;
+}
+
+export type IntentAction = CreateIntentAction | UpdateIntentAction | ExpireIntentAction;
+
+export interface IntentManagerResponse {
+  actions: IntentAction[];
+}

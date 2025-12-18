@@ -68,7 +68,7 @@ Expected:
 */
 
 if (
-    md.includes("**userId**: 123") && 
+    md.includes("**userId**: 123") &&
     md.includes("## Identity") &&
     md.includes("**name**: Alice") &&
     md.includes("## Attributes") &&
@@ -77,4 +77,42 @@ if (
     console.log("✅ Nested Objects passed");
 } else {
     console.error("❌ Nested Objects failed");
+}
+
+// Test 4: Full User Profile (Complex)
+console.log("\n4️⃣  Test: Full User Profile");
+const fullProfile = {
+    userId: "user-xyz",
+    identity: {
+        name: "Full User",
+        bio: "Complex Bio",
+        location: "Metaverse",
+        links: ["https://example.com"]
+    },
+    attributes: {
+        interests: ["AI", "Crypto"],
+        skills: ["TypeScript", "Python"],
+        goals: [] // Empty array
+    },
+    narrative: {
+        context: "Long context string...",
+        aspirations: "Big dreams"
+    }
+};
+
+const profileMd = json2md.keyValue(fullProfile);
+console.log(profileMd);
+
+if (
+    profileMd.includes("**userId**: user-xyz") &&
+    profileMd.includes("## Identity") &&
+    profileMd.includes("- https://example.com") &&
+    profileMd.includes("## Attributes") &&
+    profileMd.includes("- AI") &&
+    profileMd.includes("- (None)") && // Check empty array handling
+    profileMd.includes("## Narrative")
+) {
+    console.log("✅ Full User Profile passed");
+} else {
+    console.error("❌ Full User Profile failed");
 }
