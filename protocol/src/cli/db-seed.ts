@@ -148,15 +148,21 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
         // Save profile to user
         await db.insert(userProfiles).values({
           userId: user.id,
-          bio: profile.identity.bio,
-          location: profile.identity.location,
+          identity: {
+            name: account.name,
+            bio: profile.identity.bio,
+            location: profile.identity.location || 'Remote',
+          },
           narrative: profile.narrative,
           attributes: profile.attributes,
         }).onConflictDoUpdate({
           target: userProfiles.userId,
           set: {
-            bio: profile.identity.bio,
-            location: profile.identity.location,
+            identity: {
+              name: account.name,
+              bio: profile.identity.bio,
+              location: profile.identity.location || 'Remote',
+            },
             narrative: profile.narrative,
             attributes: profile.attributes,
           }
