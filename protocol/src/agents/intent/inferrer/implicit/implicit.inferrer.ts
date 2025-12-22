@@ -19,8 +19,10 @@ Output:
 - Example: "Connect with Rust developers to learn systems programming" or "Find a co-founder for a fintech startup".
 
 Constraint:
-- The intent must be actionable and specific.
+- The intent must be actionable and specific to the goal.
+- IT MUST NOT CONTAIN PERSONAL NAMES (e.g., "Collaborate with John Doe" -> "Collaborate with a digital media expert").
 - It must logically bridge the User's profile to the Opportunity.
+- Focus on the content/topic/goal of the opportunity, not the specific person being matched.
 `;
 
 export class ImplicitInferrer extends BaseLangChainAgent {

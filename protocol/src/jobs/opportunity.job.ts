@@ -171,7 +171,7 @@ export async function runOpportunityFinderCycle(
             };
 
             log.info(`   [OpportunityJob] Inferring implicit candidate intent for ${candidateProfile.userId}...`);
-            const candidateIntent = await inferrer.run(candidateMemoryProfile, `Matched with ${memoryProfile.identity.name}. Opportunity: ${op.title}. Reason: ${op.description}`);
+            const candidateIntent = await inferrer.run(candidateMemoryProfile, `Opportunity: ${op.title}. Reason: ${op.description}`);
 
             if (sourceIntent && candidateIntent) {
               log.info(`   [OpportunityJob] Creating implicit stake between ${sourceProfile.userId} and ${candidateProfile.userId}`);

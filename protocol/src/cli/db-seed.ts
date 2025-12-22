@@ -14,9 +14,7 @@ import db, { closeDb } from '../lib/db';
 import { indexMembers, indexes, users, userProfiles, agents } from '../lib/schema';
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
-import { ProfileGenerator } from '../agents/profile/profile.generator';
-import { searchUser } from '../lib/parallel/parallel';
-import { json2md } from '../lib/json2md/json2md';
+
 
 type GlobalOpts = {
   silent?: boolean;
@@ -150,59 +148,7 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
         } catch { }
       }
 
-      // Generate Profile
-      try {
-        console.log(`Generating profile for ${account.name}...`);
 
-        // Use mock data if available, otherwise search
-        console.log(`> Searching for ${account.name}...`);
-        const query = `Find information about ${account.name}
-        ${(account as any).email ? `Email: ${(account as any).email}` : ''}
-        ${(account as any).linkedin ? `LinkedIn: ${(account as any).linkedin}` : ''}
-        ${(account as any).github ? `GitHub: ${(account as any).github}` : ''}
-        ${(account as any).x ? `Twitter: ${(account as any).x}` : ''}
-        ${(account as any).website ? `Website: ${(account as any).website}` : ''}`;
-        const searchResult = await searchUser(query);
-        const markdownData = json2md.fromObject(
-          searchResult.results.map((r: any) => ({
-            title: r.title,
-            content: r.excerpts.join('\n')
-          })) as any
-        );
-
-        const profileGen = new ProfileGenerator();
-        const { profile } = await profileGen.run(markdownData);
-
-        // Save profile to user
-        await db.insert(userProfiles).values({
-          userId: user.id,
-          identity: {
-            name: account.name,
-            bio: profile.identity.bio,
-            location: profile.identity.location || 'Remote',
-          },
-          narrative: profile.narrative,
-          attributes: profile.attributes,
-        }).onConflictDoUpdate({
-          target: userProfiles.userId,
-          set: {
-            identity: {
-              name: account.name,
-              bio: profile.identity.bio,
-              location: profile.identity.location || 'Remote',
-            },
-            narrative: profile.narrative,
-            attributes: profile.attributes,
-          }
-        });
-
-        console.log(`> Created profile for ${account.name}`);
-        console.log(`  Bio: ${profile.identity.bio.slice(0, 50)}...`);
-        console.log(`  Location: ${profile.identity.location}`);
-
-      } catch (err) {
-        console.error(`Failed to generate profile for ${account.name}:`, err);
-      }
     }
 
     console.log(`✅ Created ${createdUsers.length} users with profiles`);
