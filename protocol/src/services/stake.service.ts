@@ -1,5 +1,5 @@
 import db from '../lib/db';
-import { intents, intentStakes, intentStakeItems, intentIndexes, userConnectionEvents } from '../lib/schema';
+import { intents, intentStakes, intentStakeItems, intentIndexes, userConnectionEvents, indexMembers } from '../lib/schema';
 import { eq, and, sql, isNull, inArray, gt, or } from 'drizzle-orm';
 import { generateEmbedding } from '../lib/embeddings';
 import { StakeEvaluator } from '../agents/intent/stake/evaluator/stake.evaluator';
@@ -20,7 +20,6 @@ import { log } from '../lib/log';
  *   (e.g., "Intent A stakes Intent B with 85% confidence")
  */
 export class StakeService {
-
   /**
    * Main Pipeline: Matches a single Intent against the world.
    * 
@@ -87,11 +86,11 @@ export class StakeService {
    * @param limit - Max results.
    */
   async findSimilarIntents(currentIntent: typeof intents.$inferSelect, limit: number = 50) {
-    // 1. Get the specific indexes that THIS intent is assigned to
+    // 1. Get the specific indexes that the USER belongs to (Dynamic Scoping)
     const currentIntentIndexes = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
-      .where(eq(intentIndexes.intentId, currentIntent.id));
+      .select({ indexId: indexMembers.indexId })
+      .from(indexMembers)
+      .where(eq(indexMembers.userId, currentIntent.userId));
 
     const indexIds = currentIntentIndexes.map(row => row.indexId);
 
@@ -107,30 +106,49 @@ export class StakeService {
       queryEmbedding = await generateEmbedding(currentIntent.payload);
     }
 
-    // 3. Vector search ONLY in the same indexes
-    return db
+    // 3. Get Eligible User IDs (Scope)
+    // Find all users who are members of the same indexes
+    const eligibleUsers = await db
+      .selectDistinct({ userId: indexMembers.userId })
+      .from(indexMembers)
+      .where(inArray(indexMembers.indexId, indexIds));
+
+    const eligibleUserIds = eligibleUsers.map(u => u.userId);
+
+    // Filter out self
+    const validUserIds = eligibleUserIds.filter(id => id !== currentIntent.userId);
+
+    if (validUserIds.length === 0) {
+      return [];
+    }
+
+    // 4. Vector search (No JOINs needed, just WHERE IN)
+    const results = await db
       .select({
         id: intents.id,
         payload: intents.payload,
         summary: intents.summary,
         userId: intents.userId,
         createdAt: intents.createdAt,
-        // Calculate cosine similarity (1 - cosine distance)
-        similarity: sql<number>`1 - (${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`
+        distance: sql<number>`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`
       })
       .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .where(
         and(
           sql`${intents.id} != ${currentIntent.id}`,
-          sql`${intents.userId} != ${currentIntent.userId}`,
+          inArray(intents.userId, validUserIds),
           sql`${intents.embedding} IS NOT NULL`,
-          isNull(intents.archivedAt),
-          inArray(intentIndexes.indexId, indexIds)
+          isNull(intents.archivedAt)
         )
       )
       .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
       .limit(limit);
+
+    // Map to include similarity
+    return results.map(r => ({
+      ...r,
+      similarity: 1 - r.distance
+    }));
   }
 
   /**
