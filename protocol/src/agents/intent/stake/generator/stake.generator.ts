@@ -8,15 +8,14 @@ import { StakeGeneratorInput, StakeGeneratorResult } from "./stake.generator.typ
  * Model Configuration
  */
 export const SYSTEM_PROMPT = `
-You are a collaboration synthesis generator. Create a concise 1-2 sentence explanation of why two people are mutual matches based on what they're explicitly looking for.
+You are a collaboration synthesis generator. Create a concise 1-3 sentence explanation of why two people are mutual matches based on what they're explicitly looking for.
 
 Also generate a short, punchy title for this match.
 
 Style for Body:
 - Warm and friendly, not formal (we're introducing humans, not robots)
-- Grounded in stated needs (state what they're explicitly looking for, not speculative "could do" scenarios)
-- Direct and concise - exactly 1-2 sentences
-- Add a small human touch—a light joke, casual aside, or relatable moment. Keep it natural, like you're telling a friend about this match.
+- Direct and concise - exactly 1-3 sentences
+- Add a small human touch—a light joke, casual aside, or relatable moment. Keep it natural.
 - Clearly signal why the match works
 
 Style for Subject (Title):
@@ -24,26 +23,21 @@ Style for Subject (Title):
 - Include the person's name ({{target}}) followed by em dash
 - Stay under 12 words total
 - Sound warm, professional, and action-oriented
-- Avoid robotic "Label: Topic" formats (e.g., "Shared focus: AI"). Use natural phrases instead.
 
 Format:
-- Body Markdown with 2-3 inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
-- ONLY hyperlink {{initiator}}'s intents - NEVER link {{target}}'s intents
-- Be careful with IDs: use the exact intent IDs from the provided data.
+- Body Markdown with inline hyperlinks: [descriptive phrase](https://index.network/intents/ID)
+- **CRITICAL LINKING RULE**: ONLY hyperlink the INITIATOR'S intents. NEVER hyperlink {{target}}'s intents.
+- Check the XML inputs: Only use IDs from <your_intent> or <{{initiator}}_intent>. DO NOT use IDs from <{{target}}_intent>.
 - Hyperlinks must be max 3 words.
 - Link natural phrases.
 - No bold, italic, or title
-
-Time Awareness:
-- Only mention timing when it adds meaningful value.
-- Skip mentioning {{initiator}}'s fresh timestamps.
 
 Structure:
 - Start with what {{initiator}} is explicitly looking for
 - State what {{target}} provides or is looking for
 - Explain the mutual fit using present tense and direct language
-- Address {{initiator}} and {{target}} appropriately based on perspective
-- Keep it to 1-2 sentences total
+- Keep it to 1-3 sentences total.
+- COMPREHENSIVENESS: If multiple distinct match topics exist (e.g. Funding AND Networking), you MUST mention ALL of them (and link the Initiator's intent for each). Combine them into the narrative.
 `;
 
 /**
@@ -95,9 +89,17 @@ export class StakeGenerator extends BaseLangChainAgent {
     const { initiator, target, targetIntro, isThirdPerson, intentPairs, characterLimit } = input;
 
     // Dynamic System Prompt adjustment
+    // We handle perspective via specific rules, not just blind replace which breaks grammar.
+    // {{target}} is safe to replace.
+    const perspectiveRule = isThirdPerson
+      ? `perspective: Third Person. Refer to the initiator as "${initiator}" and the match as "${target}".`
+      : `perspective: Second Person. Refer to the initiator as "You" and the match as "${target}".`;
+
     let systemMsgContent = SYSTEM_PROMPT
       .replace(/{{target}}/g, target)
-      .replace(/{{initiator}}/g, isThirdPerson ? `${initiator}'s` : 'your'); // simplistic replacement for prompts
+      .replace(/{{initiator}}/g, isThirdPerson ? initiator : 'You');
+
+    systemMsgContent += `\n\n${perspectiveRule}`;
 
     if (characterLimit) {
       systemMsgContent += `\n- Maximum ${characterLimit} characters for body`;

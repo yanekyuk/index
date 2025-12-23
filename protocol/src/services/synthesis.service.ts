@@ -103,7 +103,7 @@ export class SynthesisService {
         requireAllUsers: true,
         indexIds,
         intentIds,
-        limit: 3
+        limit: 10
       });
 
       if (!stakes.length) {
@@ -124,13 +124,28 @@ export class SynthesisService {
         return { synthesis: "", subject: "" };
       }
 
+      // Deduplicate pairs to ensure diversity (avoid same intent matching multiple times or duplicates crowding top 3)
+      // unique key: contextIntentId + targetIntentId is strict.
+      // But here we have different contextIntentIds with SAME payload.
+      // So we should deduplicate by PAYLOAD to ensure topic diversity.
+      const seenPayloads = new Set<string>();
+      const uniqueIntentPairs: typeof intentPairs = [];
+
+      for (const pair of intentPairs) {
+        const key = `${pair.contextUserIntent.payload.trim()}::${pair.targetUserIntent.payload.trim()}`;
+        if (!seenPayloads.has(key)) {
+          seenPayloads.add(key);
+          uniqueIntentPairs.push(pair);
+        }
+      }
+
       // 4. Prepare Agent Input
       const vibeData = {
         initiator: contextUser.name,
         target: targetUser.name,
         targetIntro: targetUser.intro || "",
         isThirdPerson,
-        intentPairs: intentPairs.map(p => ({
+        intentPairs: uniqueIntentPairs.map(p => ({
           contextUserIntent: {
             id: p.contextUserIntent.id,
             payload: p.contextUserIntent.payload,
@@ -158,8 +173,15 @@ export class SynthesisService {
       }
 
       // 6. Generate
-      log.info('[SynthesisService] Calling StakeGenerator agent');
+      // 6. Generate
+      log.debug('[SynthesisService] Calling StakeGenerator agent - VIBE DATA INPUT', {
+        intentPairsCount: vibeData.intentPairs.length,
+        vibeData
+      });
+
       const result = await this.stakeGenerator.run(vibeData);
+
+      log.debug('[SynthesisService] STAKE GENERATOR OUTPUT', { result });
 
       if (result && result.body) {
         const output = { synthesis: result.body, subject: result.subject };

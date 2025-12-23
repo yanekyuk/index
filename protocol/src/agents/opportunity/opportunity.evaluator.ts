@@ -29,8 +29,10 @@ const ANALYSIS_SYSTEM_PROMPT = `
     - <70: No opportunity (Return empty list).
 
     Rules:
-    1. Be specific.
-    2. Focus on how well the Candidate fulfills the Source's "Ideal Match" criteria.
+    1. IMPERATIVE: Address the SOURCE User as "You". NEVER use their name. Refer to the CANDIDATE by their name.
+    2. COMPREHENSIVE: If multiple distinct matches exist, you MUST mention ALL of them. Do not focus on just one.
+    3. SYNTHESIS: Combine these points into a single cohesive narrative paragraph.
+    4. Be specific about the "Why".
 `;
 
 // --- SCHEMAS ---
