@@ -1,24 +1,24 @@
 import * as dotenv from 'dotenv';
 import path from 'path';
-import { StakeGenerator } from './stake.generator';
-import { StakeGeneratorInput } from './stake.generator.types';
+import { SynthesisGenerator } from './synthesis.generator';
+import { SynthesisGeneratorInput } from './synthesis.generator.types';
 // Load env
 const envPath = path.resolve(__dirname, '../../../../../.env.development');
 console.log(`Loading env from: ${envPath}`);
 dotenv.config({ path: envPath });
 
 async function runTests() {
-  console.log("🧪 Starting StakeGenerator Tests...");
+  console.log("🧪 Starting SynthesisGenerator Tests...");
 
   // Check for API keys
   if (!process.env.OPENROUTER_API_KEY) {
     console.warn("⚠️  No OPENROUTER_API_KEY found. Live LLM tests might fail if not mocked.");
   }
 
-  const generator = new StakeGenerator();
+  const generator = new SynthesisGenerator();
 
   // Mock Data
-  const mockInput: StakeGeneratorInput = {
+  const mockInput: SynthesisGeneratorInput = {
     initiator: "Alice",
     target: "Bob",
     targetIntro: "Bob is a senior software engineer who loves Rust and distributed systems. He is currently building a new p2p protocol. He enjoys hiking and coffee.",

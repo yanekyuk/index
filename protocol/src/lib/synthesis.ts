@@ -2,7 +2,7 @@
  * @deprecated This module is deprecated. Please use SynthesisService in src/services/synthesis.service.ts instead.
  */
 import { vibeCheck, vibeCheckNewsletter, type VibeCheckOptions } from '../agents/external/vibe_checker';
-import { introMaker, type IntroMakerData } from '../agents/external/intro_maker';
+import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';
 import { cache } from './redis';
 import db from './db';
 import { users as usersTable } from './schema';
@@ -287,13 +287,12 @@ export async function synthesizeIntro(
 
     if (!senderReasonings.length || !recipientReasonings.length) return "";
 
-    const introData: IntroMakerData = {
-      sender: { id: sender.id, userName: sender.name, reasonings: senderReasonings },
-      recipient: { id: recipient.id, userName: recipient.name, reasonings: recipientReasonings }
-    };
-
-    const result = await introMaker(introData);
-    return result.success && result.synthesis ? result.synthesis : "";
+    const introGenerator = new IntroGenerator();
+    const result = await introGenerator.run({
+      sender: { name: sender.name, reasonings: senderReasonings },
+      recipient: { name: recipient.name, reasonings: recipientReasonings }
+    });
+    return result.synthesis || "";
 
   } catch (error) {
     console.error('Intro synthesis error:', error);

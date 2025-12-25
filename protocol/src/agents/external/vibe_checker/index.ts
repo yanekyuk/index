@@ -38,6 +38,7 @@ export interface OtherUserData {
 /**
  * Generate collaboration synthesis showing why two people are mutual matches
  * TODO: We sometimes get timeout errors here. Find out what happens.
+ * @deprecated = Use SynthesisGenerator instead
  */
 export async function vibeCheck(
   data: OtherUserData,

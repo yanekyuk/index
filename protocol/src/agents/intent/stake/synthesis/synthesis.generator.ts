@@ -2,7 +2,8 @@ import { BaseLangChainAgent, createAgent } from "../../../../lib/langchain/langc
 import { format } from 'timeago.js';
 import { z } from "zod";
 import { log } from "../../../../lib/log";
-import { StakeGeneratorInput, StakeGeneratorResult } from "./stake.generator.types";
+import { SynthesisGeneratorInput, SynthesisGeneratorResult } from "./synthesis.generator.types";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 /**
  * Model Configuration
@@ -43,15 +44,15 @@ Structure:
 /**
  * Output Schemas
  */
-export const StakeGeneratorOutputSchema = z.object({
+export const SynthesisGeneratorOutputSchema = z.object({
   subject: z.string().describe("A short, punchy title for this match (under 12 words)"),
   body: z.string().describe("A concise 1-2 sentence explanation of why they match, with inline markdown links to context user intents")
 });
 
-export type StakeGeneratorOutput = z.infer<typeof StakeGeneratorOutputSchema>;
+export type SynthesisGeneratorOutput = z.infer<typeof SynthesisGeneratorOutputSchema>;
 
 /**
- * StakeGenerator Agent
+ * SynthesisGenerator Agent
  * 
  * Generates the user-facing "Vibe Check" or "Synthesis" text that explains why a match exists.
  * 
@@ -64,11 +65,11 @@ export type StakeGeneratorOutput = z.infer<typeof StakeGeneratorOutputSchema>;
  * - Hyperlinking: Can insert markdown links to specific Intent IDs for context.
  * - Tone: Enforced as "Warm, Friendly, Professional" (not robotic).
  */
-export class StakeGenerator extends BaseLangChainAgent {
+export class SynthesisGenerator extends BaseLangChainAgent {
   constructor(options: Partial<Parameters<typeof createAgent>[0]> = {}) {
     super({
       model: 'openai/gpt-4o',
-      responseFormat: StakeGeneratorOutputSchema,
+      responseFormat: SynthesisGeneratorOutputSchema,
       temperature: 0.2,
       ...options
     });
@@ -83,9 +84,9 @@ export class StakeGenerator extends BaseLangChainAgent {
    * 3. Feeds in the Target's Intro/Bio for personalization.
    * 
    * @param input - Structured input containing users, context, and intent pairs.
-   * @returns Promise resolving to `StakeGeneratorResult` (subject + body).
+   * @returns Promise resolving to `SynthesisGeneratorResult` (subject + body).
    */
-  async run(input: StakeGeneratorInput): Promise<StakeGeneratorResult> {
+  async run(input: SynthesisGeneratorInput): Promise<SynthesisGeneratorResult> {
     const { initiator, target, targetIntro, isThirdPerson, intentPairs, characterLimit } = input;
 
     // Dynamic System Prompt adjustment
@@ -109,30 +110,30 @@ export class StakeGenerator extends BaseLangChainAgent {
     const userMsg = this.buildUserMessage(input, initiator, target, isThirdPerson || false);
 
     const messages = [
-      { role: "system", content: systemMsgContent },
-      userMsg
+      new SystemMessage(systemMsgContent),
+      new HumanMessage(userMsg),
     ];
 
     try {
       const result = await this.model.invoke(messages);
 
       // Typed response from structure output
-      const response = result.structuredResponse as StakeGeneratorResult;
+      const response = result.structuredResponse as SynthesisGeneratorResult;
 
       // Fallback or validation if needed, but Zod handles it
       if (!response) {
-        throw new Error("Empty response from StakeGenerator");
+        throw new Error("Empty response from SynthesisGenerator");
       }
 
       return response;
     } catch (error) {
-      log.error("[StakeGenerator] Error generating vibe check", { error });
+      log.error("[SynthesisGenerator] Error generating vibe check", { error });
       throw error;
     }
   }
 
   private buildUserMessage(
-    data: StakeGeneratorInput,
+    data: SynthesisGeneratorInput,
     initiator: string,
     target: string,
     isThirdPerson: boolean

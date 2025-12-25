@@ -1,8 +1,12 @@
 import db from '../lib/db';
-import { intents, intentStakes, intentStakeItems, intentIndexes, userConnectionEvents, indexMembers } from '../lib/schema';
+import { intents, intentStakes, intentStakeItems, indexMembers } from '../lib/schema';
 import { eq, and, sql, isNull, inArray, gt, or } from 'drizzle-orm';
 import { generateEmbedding } from '../lib/embeddings';
 import { StakeEvaluator } from '../agents/intent/stake/evaluator/stake.evaluator';
+import { SynthesisGenerator } from '../agents/intent/stake/synthesis/synthesis.generator';
+import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';
+import { getConnectingStakes, stakeBuildPairs, stakeUserItems } from '../lib/stakes';
+import { cache } from '../lib/redis';
 import { log } from '../lib/log';
 
 /**
@@ -187,7 +191,16 @@ export class StakeService {
 
   /**
    * Find candidate intents for a given intent.
-   * Limits to best match per user, up to `limit` candidates.
+   * 
+   * LOGIC:
+   * 1. Performs a broader vector search (fetch 50) to gather a diverse pool.
+   * 2. Filters to keep only the *single best match* per unique User.
+   *    (This ensures we don't return 10 stakes all from the same user).
+   * 3. Sorts by similarity and returns the top `limit`.
+   * 
+   * @param intentId - The source ID looking for matches.
+   * @param limit - Maximum number of diverse candidates to return.
+   * @returns List of candidate intents with similarity scores.
    */
   async findCandidates(intentId: string, limit: number = 10) {
     const currentIntent = await this.getIntent(intentId);
@@ -281,27 +294,178 @@ export class StakeService {
     return affectedUserRows.map(r => r.userId);
   }
 
-  /**
-   * Check if there is an existing connection event between two users
-   */
-  async checkConnectionEvent(user1Id: string, user2Id: string) {
-    const events = await db.select({ id: userConnectionEvents.id })
-      .from(userConnectionEvents)
-      .where(
-        or(
-          and(
-            eq(userConnectionEvents.initiatorUserId, user1Id),
-            eq(userConnectionEvents.receiverUserId, user2Id)
-          ),
-          and(
-            eq(userConnectionEvents.initiatorUserId, user2Id),
-            eq(userConnectionEvents.receiverUserId, user1Id)
-          )
-        )
-      )
-      .limit(1);
+  async createCacheHash(data: any, options?: any): Promise<string> {
+    const { default: crypto } = await import('crypto');
+    return crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ data, options: options || {} }))
+      .digest('hex');
+  }
 
-    return events.length > 0;
+  /**
+   * Generates a "Vibe Check" (Synthesis) for a pair of users.
+   * 
+   * LOGIC:
+   * 1. Check Cache (Redis).
+   * 2. If Miss: 
+   *    - Find Connecting Stakes (Why are they related?).
+   *    - Flatten Stakes into "Intent Pairs".
+   *    - Call `SynthesisGenerator` agent.
+   * 3. Cache Result & Return.
+   * 
+   * @param contextUser - The person initiating the request (or "You").
+   * @param targetUser - The person being looked at.
+   * @param opts - Config options.
+   */
+  async generateSynthesis(
+    contextUser: { id: string; name: string },
+    targetUser: { id: string; name: string; intro?: string | null },
+    opts: {
+      intentIds?: string[];
+      indexIds?: string[];
+      vibeOptions?: any;
+    } = {}
+  ): Promise<{ synthesis: string; subject: string }> {
+    try {
+      const { intentIds, indexIds, vibeOptions } = opts;
+      const isThirdPerson = vibeOptions?.style === 'newsletter';
+
+      log.info(`[StakeService] Starting synthesis`, { contextUser: contextUser.id, targetUser: targetUser.id, isThirdPerson });
+
+      // 1. Get connecting stakes
+      const stakes = await getConnectingStakes({
+        authenticatedUserId: contextUser.id,
+        userIds: [contextUser.id, targetUser.id],
+        requireAllUsers: true,
+        indexIds,
+        intentIds,
+        limit: 10
+      });
+
+      if (!stakes.length) {
+        log.info('[StakeService] No connecting stakes found');
+        return { synthesis: "", subject: "" };
+      }
+
+      // 2. Build intent pairs
+      const intentPairs = stakes
+        .flatMap(stake => stakeBuildPairs(stake, contextUser.id, targetUser.id))
+        .filter(p => p !== null);
+
+      if (!intentPairs.length) {
+        log.info('[StakeService] No intent pairs built');
+        return { synthesis: "", subject: "" };
+      }
+
+      // 3. Deduplicate pairs
+      const seenPayloads = new Set<string>();
+      const uniqueIntentPairs: typeof intentPairs = [];
+
+      for (const pair of intentPairs) {
+        const key = `${pair.contextUserIntent.payload.trim()}::${pair.targetUserIntent.payload.trim()}`;
+        if (!seenPayloads.has(key)) {
+          seenPayloads.add(key);
+          uniqueIntentPairs.push(pair);
+        }
+      }
+
+      // 4. Prepare Agent Input
+      const vibeData = {
+        initiator: contextUser.name,
+        target: targetUser.name,
+        targetIntro: targetUser.intro || "",
+        isThirdPerson,
+        intentPairs: uniqueIntentPairs.map(p => ({
+          contextUserIntent: {
+            id: p.contextUserIntent.id,
+            payload: p.contextUserIntent.payload,
+            createdAt: p.contextUserIntent.createdAt || new Date()
+          },
+          targetUserIntent: {
+            id: p.targetUserIntent.id,
+            payload: p.targetUserIntent.payload,
+            createdAt: p.targetUserIntent.createdAt || new Date()
+          }
+        }))
+      };
+
+      // 5. Check Cache
+      const cacheKey = await this.createCacheHash(vibeData, vibeOptions);
+      const cached = await cache.hget('synthesis', cacheKey);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed.synthesis === 'string') {
+            log.info('[StakeService] Returning cached synthesis');
+            return parsed;
+          }
+        } catch { }
+      }
+
+      // 6. Generate
+      log.debug('[StakeService] Calling SynthesisGenerator agent', {
+        intentPairsCount: vibeData.intentPairs.length
+      });
+
+      const synthesisGenerator = new SynthesisGenerator();
+      const result = await synthesisGenerator.run(vibeData);
+
+      if (result && result.body) {
+        const output = { synthesis: result.body, subject: result.subject };
+        await cache.hset('synthesis', cacheKey, JSON.stringify(output));
+        return output;
+      }
+
+      return { synthesis: "", subject: "" };
+
+    } catch (error) {
+      log.error('[StakeService] Error generating synthesis:', { error });
+      return { synthesis: "", subject: "" };
+    }
+  }
+
+  /**
+   * Generates an intro message.
+   */
+  async generateIntro(
+    sender: { id: string; name: string },
+    recipient: { id: string; name: string },
+    indexIds?: string[]
+  ): Promise<string> {
+    try {
+      const stakes = await getConnectingStakes({
+        authenticatedUserId: sender.id,
+        userIds: [sender.id, recipient.id],
+        requireAllUsers: true,
+        indexIds
+      });
+
+      if (!stakes.length) return "";
+
+      const senderReasonings: string[] = [];
+      const recipientReasonings: string[] = [];
+
+      for (const stake of stakes) {
+        if (!stake.reasoning) continue;
+        const senderItems = stakeUserItems(stake, sender.id);
+        const recipientItems = stakeUserItems(stake, recipient.id);
+        if (senderItems.length) senderReasonings.push(stake.reasoning);
+        if (recipientItems.length) recipientReasonings.push(stake.reasoning);
+      }
+
+      if (!senderReasonings.length || !recipientReasonings.length) return "";
+
+      const introGenerator = new IntroGenerator();
+      const result = await introGenerator.run({
+        sender: { name: sender.name, reasonings: senderReasonings },
+        recipient: { name: recipient.name, reasonings: recipientReasonings }
+      });
+
+      return result.synthesis || "";
+    } catch (error) {
+      log.error('[StakeService] Error generating intro:', { error });
+      return "";
+    }
   }
 }
 

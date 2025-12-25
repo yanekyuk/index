@@ -1,6 +1,6 @@
 import db from '../lib/db';
-import { users, userNotificationSettings, userProfiles, User } from '../lib/schema';
-import { eq, inArray } from 'drizzle-orm';
+import { users, userNotificationSettings, userProfiles, User, userConnectionEvents } from '../lib/schema';
+import { eq, inArray, or, and } from 'drizzle-orm';
 import { log } from '../lib/log';
 
 /**
@@ -147,6 +147,28 @@ export class UserService {
             });
 
         return upsertedSettings;
+    }
+    /**
+     * Check if there is an existing connection event between two users
+     */
+    async checkConnectionEvent(user1Id: string, user2Id: string) {
+        const events = await db.select({ id: userConnectionEvents.id })
+            .from(userConnectionEvents)
+            .where(
+                or(
+                    and(
+                        eq(userConnectionEvents.initiatorUserId, user1Id),
+                        eq(userConnectionEvents.receiverUserId, user2Id)
+                    ),
+                    and(
+                        eq(userConnectionEvents.initiatorUserId, user2Id),
+                        eq(userConnectionEvents.receiverUserId, user1Id)
+                    )
+                )
+            )
+            .limit(1);
+
+        return events.length > 0;
     }
 }
 
