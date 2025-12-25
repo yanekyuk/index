@@ -1,7 +1,9 @@
 import db from '../lib/db';
 import { intents, intentStakes, intentStakeItems, indexMembers } from '../lib/schema';
 import { eq, and, sql, isNull, inArray, gt, or } from 'drizzle-orm';
-import { generateEmbedding } from '../lib/embeddings';
+import { IndexEmbedder } from '../lib/embedder';
+
+const embedder = new IndexEmbedder(db as any);
 import { StakeEvaluator } from '../agents/intent/stake/evaluator/stake.evaluator';
 import { SynthesisGenerator } from '../agents/intent/stake/synthesis/synthesis.generator';
 import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';
@@ -107,7 +109,7 @@ export class StakeService {
     if (currentIntent.embedding) {
       queryEmbedding = currentIntent.embedding;
     } else {
-      queryEmbedding = await generateEmbedding(currentIntent.payload);
+      queryEmbedding = (await embedder.generate(currentIntent.payload)) as number[];
     }
 
     // 3. Get Eligible User IDs (Scope)
@@ -127,31 +129,24 @@ export class StakeService {
     }
 
     // 4. Vector search (No JOINs needed, just WHERE IN)
-    const results = await db
-      .select({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        userId: intents.userId,
-        createdAt: intents.createdAt,
-        distance: sql<number>`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`
-      })
-      .from(intents)
-      .where(
-        and(
-          sql`${intents.id} != ${currentIntent.id}`,
-          inArray(intents.userId, validUserIds),
-          sql`${intents.embedding} IS NOT NULL`,
-          isNull(intents.archivedAt)
-        )
-      )
-      .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
-      .limit(limit);
+    // 4. Vector search via Embedder
+    const searchResults = await embedder.search<typeof intents.$inferSelect>(
+      queryEmbedding,
+      'intents',
+      {
+        limit,
+        filter: {
+          id: { ne: currentIntent.id },
+          userId: { in: validUserIds },
+          archivedAt: null
+        }
+      }
+    );
 
-    // Map to include similarity
-    return results.map(r => ({
-      ...r,
-      similarity: 1 - r.distance
+    return searchResults.map((r) => ({
+      ...r.item,
+      distance: 1 - r.score, // Legacy mapping compatibility
+      similarity: r.score
     }));
   }
 

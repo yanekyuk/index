@@ -1,6 +1,9 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { generateEmbedding } from '../lib/embeddings';
+import { IndexEmbedder } from '../lib/embedder';
+import db from '../lib/db';
+
+const embedder = new IndexEmbedder(db);
 import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
 import { CandidateProfile } from '../agents/opportunity/opportunity.evaluator.types';
@@ -98,7 +101,7 @@ export async function runOpportunityFinderCycle(
 
         log.info(`[OpportunityJob] Generating embedding for user ${profile.userId}...`);
         log.debug(`[OpportunityJob] Payload length: ${textToEmbed.length} chars. Preview: "${textToEmbed.substring(0, 100)}..."`);
-        const embedding = await generateEmbedding(textToEmbed);
+        const embedding = await embedder.generate(textToEmbed) as number[];
 
         await profileService.updateProfileEmbedding(profile.id, embedding);
 
@@ -138,7 +141,7 @@ export async function runOpportunityFinderCycle(
           const hydeGenerator = new HydeGeneratorAgent();
           const description = await hydeGenerator.generate(memoryProfile);
           if (description) {
-            const embedding = await generateEmbedding(description);
+            const embedding = await embedder.generate(description) as number[];
 
             // Update DB
             await profileService.updateProfileHyde(sourceProfile.id, description, embedding);

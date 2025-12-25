@@ -1,7 +1,9 @@
 import db from '../lib/db';
 import { intents, intentIndexes, intentStakes, intentStakeItems, indexes, indexMembers } from '../lib/schema';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { generateEmbedding } from '../lib/embeddings';
+import { IndexEmbedder } from '../lib/embedder';
+
+const embedder = new IndexEmbedder(db);
 import { Events } from '../events';
 import { eq, and, isNull } from 'drizzle-orm';
 import { INTENT_INFERRER_AGENT_ID } from '../lib/agent-ids';
@@ -133,7 +135,7 @@ export class IntentService {
       console.log(`[IntentService.createIntent] Generating embedding...`);
       let embedding: number[] | null = null;
       try {
-        embedding = await generateEmbedding(payload);
+        embedding = await embedder.generate(payload) as number[];
         console.log(`[IntentService.createIntent] Embedding generated: ${embedding ? `${embedding.length} dimensions` : 'null'}`);
       } catch (error) {
         console.error('[IntentService.createIntent] Failed to generate embedding:', error);

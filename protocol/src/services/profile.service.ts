@@ -8,7 +8,9 @@ import { UserMemoryProfile, ActiveIntent } from '../agents/intent/manager/intent
 import { IntentManager } from '../agents/intent/manager/intent.manager';
 import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
 import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
-import { generateEmbedding } from '../lib/embeddings';
+import { IndexEmbedder } from '../lib/embedder';
+
+const embedder = new IndexEmbedder(db);
 import type { CreateIntentOptions } from './intent.service';
 import { log } from '../lib/log';
 
@@ -304,7 +306,7 @@ export class ProfileService {
 
         if (hydeDescription) {
           log.info(`[ProfileService] HyDE Description Length: ${hydeDescription.length} chars. Preview: "${hydeDescription.substring(0, 100)}..."`);
-          const hydeEmbedding = await generateEmbedding(hydeDescription);
+          const hydeEmbedding = (await embedder.generate(hydeDescription)) as number[];
 
           await db.update(userProfiles)
             .set({
@@ -427,18 +429,21 @@ export class ProfileService {
    * Excludes the source user.
    */
   async findSimilarProfiles(sourceUserId: string, embedding: number[], limit: number = 20) {
-    return await db
-      .select({
-        profile: userProfiles,
-        distance: sql<number>`${userProfiles.embedding} <=> ${JSON.stringify(embedding)}`
-      })
-      .from(userProfiles)
-      .where(and(
-        sql`${userProfiles.embedding} IS NOT NULL`,
-        ne(userProfiles.userId, sourceUserId)
-      ))
-      .orderBy(sql`${userProfiles.embedding} <=> ${JSON.stringify(embedding)}`)
-      .limit(limit);
+    const results = await embedder.search<typeof userProfiles.$inferSelect>(
+      embedding,
+      'profiles',
+      {
+        limit,
+        filter: {
+          userId: { ne: sourceUserId }
+        }
+      }
+    );
+
+    return results.map(r => ({
+      profile: r.item,
+      distance: 1 - r.score
+    }));
   }
 }
 
