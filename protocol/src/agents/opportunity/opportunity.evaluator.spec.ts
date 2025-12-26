@@ -1,136 +1,85 @@
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { OpportunityEvaluator } from './opportunity.evaluator';
-import { UserMemoryProfile } from '../intent/manager/intent.manager.types';
-import { CandidateProfile } from './opportunity.evaluator.types';
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
+import { OpportunityEvaluator } from './opportunity.evaluator';
+import { memorySearcher } from '../../lib/embedder/searchers/memory.searcher';
+import { Embedder, VectorSearchResult, VectorStoreOption } from '../common/types';
+import { CandidateProfile } from './opportunity.evaluator.types';
+import { UserMemoryProfile } from '../intent/manager/intent.manager.types';
+import { log } from '../../lib/log';
+
+// Mock Embedder that uses MemorySearcher
+class MockMemoryEmbedder implements Embedder {
+  async generate(text: string | string[], dimensions?: number): Promise<number[] | number[][]> {
+    // Return a fixed dummy vector for testing
+    // In real memory search, we'd need meaningful vectors, but for unit testing the flow:
+    // We will manually assign vectors to candidates to ensure "match" logic works in the searcher.
+    // If we want "A" to match "A", we give them same vector.
+    return [1, 0, 0];
+  }
+
+  async search<T>(queryVector: number[], collection: string, options?: VectorStoreOption<T>): Promise<VectorSearchResult<T>[]> {
+    return memorySearcher(queryVector, collection, options);
+  }
+}
 
 // Mock Data
-const mockSourceProfile: UserMemoryProfile = {
-  userId: "testtesttest",
-  "identity": {
-    "name": "Seref Yarar",
-    "bio": "Seref Yarar is currently the Co-Founder at Index Network, leveraging his extensive background in engineering to drive forward technological innovations, particularly focused on user privacy and decentralized networks.",
-    "location": "Brooklyn, New York, United States"
-  },
-  "narrative": {
-    "context": "Seref Yarar, based in Brooklyn, New York, operates in a dynamic and evolving tech landscape. He holds a strong academic background in Computer Engineering from Bahcesehir University. Initially making his mark as a Software Engineer and subsequently a Head of Engineering, Seref moved on to co-found GoWit Technology, where he held the role of CTO, developing advanced retail media advertisement platforms. Now, as the Co-Founder of Index Network, he leverages his engineering expertise to innovate within decentralized networks, focusing on custom search engines and data privacy protocols. His work involves collaboration with decentralized protocols and platforms such as Lit Protocol and Ceramic Network, aiming to empower users by giving them control over their data and interactions with digital content.",
-    "aspirations": "Seref aspires to revolutionize how digital content is accessed and utilized. He is keenly interested in the integration of autonomous agents in everyday digital tasks to transform search engines and matchmaking services. Seeking to connect with like-minded professionals and developers, Seref aims to expand Index Network's influence to become a leader in decentralized and user-oriented data management solutions, ultimately creating technology that aligns with user privacy and personalization."
-  },
-  "attributes": {
-    "goals": [
-      "innovate within decentralized networks",
-      "empower users by giving them control over their data and interactions with digital content"
-    ],
-    "interests": [
-      "autonomous agents",
-      "decentralized networks",
-      "user privacy",
-      "data interoperability"
-    ],
-    "skills": [
-      "computer engineering",
-      "software development",
-      "technology innovation",
-      "leadership",
-      "data privacy"
-    ]
+const sourceProfile: UserMemoryProfile = {
+  identity: { name: "Alice", bio: "AI Researcher", location: "NYC" },
+  narrative: { context: "Building AGI", aspirations: "Find a co-founder" },
+  attributes: { interests: ["AI", "Crypto"], skills: ["Python", "TS"] }
+} as any;
+
+const candidateA: CandidateProfile & { embedding: number[] } = {
+  userId: "user-a",
+  identity: { name: "Bob", bio: "Crypto Dev" },
+  narrative: {},
+  attributes: {},
+  embedding: [0, 1, 0] // Orthogonal to query [1,0,0] -> Similarity 0
+};
+
+const candidateB: CandidateProfile & { embedding: number[] } = {
+  userId: "user-b",
+  identity: { name: "Charlie", bio: "AI Engineer" },
+  narrative: {},
+  attributes: {},
+  embedding: [1, 0, 0] // Identical to query [1,0,0] -> Similarity 1
+};
+
+
+async function runTest() {
+  log.info("--- Starting Opportunity Evaluator + Memory Search Test ---");
+
+  const embedder = new MockMemoryEmbedder();
+  const evaluator = new OpportunityEvaluator(embedder);
+
+  // Mock the LLM evaluateOpportunities call to avoid hitting real OpenAI
+  // We strictly want to test the *Retrieval* flow here (runDiscovery)
+  evaluator.evaluateOpportunities = async (source, candidates) => {
+    log.info(`[MockLLM] Evaluating ${candidates.length} candidates.`);
+    return candidates.map(c => ({
+      type: 'collaboration',
+      title: `Match with ${c.identity.name}`,
+      description: 'Good match',
+      score: 90,
+      candidateId: c.userId
+    }));
+  };
+
+  const opportunities = await evaluator.runDiscovery(sourceProfile, {
+    candidates: [candidateA, candidateB], // Memory Store
+    limit: 5,
+    minScore: 0.5 // Should filter out candidateA (score 0)
+  });
+
+  log.info("Opportunities Found: " + JSON.stringify(opportunities, null, 2));
+
+  if (opportunities.length !== 1) {
+    throw new Error(`Expected 1 opportunity, found ${opportunities.length}`);
   }
+  if (opportunities[0].candidateId !== 'user-b') {
+    throw new Error(`Expected Charlie (user-b), found ${opportunities[0].candidateId}`);
+  }
+
+  log.info("--- Test Passed ---");
 }
 
-const mockCandidates: CandidateProfile[] = [
-  {
-    userId: 'candidate-1',
-    identity: {
-      bio: 'Building a DID protocol in Rust. Need contributors.',
-      location: 'Remote'
-    },
-    attributes: {
-      interests: ['Rust', 'SSI'],
-      skills: ['Rust', 'Libp2p']
-    },
-    narrative: {
-      aspirations: 'Launch mainnet'
-    }
-  },
-  {
-    userId: 'candidate-2',
-    identity: {
-      bio: 'Frontend dev looking for assignments.',
-      location: 'New York'
-    },
-    attributes: {
-      interests: ['React', 'UI/UX'],
-      skills: ['Typescript', 'React']
-    },
-    narrative: {
-      aspirations: 'Find a job'
-    }
-  }
-];
-
-async function runTests() {
-  console.log("🧪 Starting OpportunityFinder Tests...\n");
-
-  const evaluator = new OpportunityEvaluator();
-
-  try {
-    // Test Find Opportunities (Analyze Stage)
-    console.log("2️⃣  Test: Analyze Opportunities");
-    const opportunities = await evaluator.evaluateOpportunities(mockSourceProfile, mockCandidates, {
-      hydeDescription: "Third-person description of an ideal match who is a Rust expert."
-    });
-
-    console.log(`Found ${opportunities.length} opportunities:\n`, JSON.stringify(opportunities, null, 2));
-
-    const strongMatch = opportunities.find(op => op.candidateId === 'candidate-1');
-    const weakMatch = opportunities.find(op => op.candidateId === 'candidate-2');
-
-    if (strongMatch && strongMatch.score > 70) {
-      console.log("✅ Passed (Found strong match for Rust dev)");
-    } else {
-      console.error("❌ Failed (Did not find expected strong match)");
-    }
-
-    if (!weakMatch || weakMatch.score < 50) {
-      console.log("✅ Passed (Correctly filtered/low-scored weak match)");
-    } else {
-      console.error("⚠️ Warning (Weak match scored unexpectedly high)");
-    }
-
-    // --- STABILITY CHECK ---
-    console.log("\n3️⃣  Test: Score Stability (3 Iterations)");
-    const iterations = 3;
-    const scores: number[] = [];
-
-    for (let i = 0; i < iterations; i++) {
-      const runOps = await evaluator.evaluateOpportunities(mockSourceProfile, mockCandidates, {
-        hydeDescription: "Third-person description of an ideal match who is a Rust expert."
-      });
-      const match = runOps.find(op => op.candidateId === 'candidate-1');
-      scores.push(match ? match.score : 0);
-      process.stdout.write(`Run ${i + 1}: ${match?.score} | `);
-    }
-    console.log("\nScores:", scores);
-
-    const maxScore = Math.max(...scores);
-    const minScore = Math.min(...scores);
-    const variance = maxScore - minScore;
-
-    if (variance <= 5) {
-      console.log(`✅ Passed (Score variance ${variance} is within limit <= 5)`);
-    } else {
-      console.error(`❌ Failed (Score variance ${variance} is too high)`);
-      process.exit(1);
-    }
-    // -----------------------
-
-  } catch (err) {
-    console.error("❌ Error running OpportunityFinder:", err);
-  }
-}
-
-runTests().catch(console.error);
+runTest().catch(console.error);

@@ -1,22 +1,19 @@
-import { Job } from 'bullmq';
-import { QueueFactory } from '../lib/bullmq/bullmq';
-import { IndexEmbedder } from '../lib/embedder';
-import db from '../lib/db';
-
-const embedder = new IndexEmbedder(db);
 import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
-import { CandidateProfile } from '../agents/opportunity/opportunity.evaluator.types';
+import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity.evaluator.types';
 import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
-import { ProfileService } from '../services/profile.service';
+import { ProfileService, profileService } from '../services/profile.service';
 import { userProfiles } from '../lib/schema';
 import { log } from '../lib/log';
 import { ImplicitInferrer } from '../agents/intent/inferrer/implicit/implicit.inferrer';
-import { IntentService } from '../services/intent.service';
+import { intentService } from '../services/intent.service';
 import { getUserAccessibleIndexIds } from '../lib/index-access';
 import { stakeService } from '../services/stake.service';
 import fs from 'fs/promises';
 import path from 'path';
+import { Job } from 'bullmq';
+import { QueueFactory } from '../lib/bullmq/bullmq';
+import { IndexEmbedder } from '../lib/embedder';
 
 export const QUEUE_NAME = 'opportunity-processing-queue';
 
@@ -68,8 +65,10 @@ async function opportunityProcessor(job: Job) {
  * 1. Backfill Embeddings: Ensures all active profiles have vector embeddings (for source & candidate matching).
  * 2. Iterate Sources: For every profile (as Source):
  *    - Backfill HyDE: If missing, generate "Ideal Candidate Description" (HyDE) vector.
- *    - Vector Search: Find 20 nearest neighbors using HyDE vector (or raw profile vector as fallback).
- *    - Agent Eval: Run `OpportunityEvaluator` agent on these 20 candidates.
+ *    - Agent Discovery: Run `OpportunityEvaluator.runDiscovery()`:
+ *      - Generates/Uses search query (HyDE or Profile).
+ *      - Searches DB via injected `ProfileService.searchProfiles`.
+ *      - Evaluates candidates.
  * 3. Implicit Intent Creation:
  *    - If Agent finds a Match Score > 85:
  *    - We assume the Source user *implicitly* has an intent to meet this person.
@@ -78,16 +77,24 @@ async function opportunityProcessor(job: Job) {
  *    - We create a Stake connecting them.
  */
 export async function runOpportunityFinderCycle(
-  profileService: ProfileService = new ProfileService(),
-  evaluator: OpportunityEvaluator = new OpportunityEvaluator()
+  _profileService: ProfileService = profileService,
+  evaluator?: OpportunityEvaluator
 ) {
+  // Setup Embedder injecting ProfileService search
+  const embedder = new IndexEmbedder({
+    searcher: _profileService.searchProfiles.bind(_profileService)
+  });
+
+  if (!evaluator) {
+    evaluator = new OpportunityEvaluator(embedder);
+  }
   console.time('OpportunityFinderCycle');
   log.info('🔄 [OpportunityJob] Starting Opportunity Finder Cycle...');
 
   try {
     // 1. Backfill Missing Embeddings
     log.info('🔍 [OpportunityJob] Checking for missing embeddings...');
-    const profilesWithoutEmbeddings = await profileService.getProfilesMissingEmbeddings();
+    const profilesWithoutEmbeddings = await _profileService.getProfilesMissingEmbeddings();
 
     log.info(`[OpportunityJob] Found ${profilesWithoutEmbeddings.length} profiles needing embeddings.`);
 
@@ -103,7 +110,7 @@ export async function runOpportunityFinderCycle(
         log.debug(`[OpportunityJob] Payload length: ${textToEmbed.length} chars. Preview: "${textToEmbed.substring(0, 100)}..."`);
         const embedding = await embedder.generate(textToEmbed) as number[];
 
-        await profileService.updateProfileEmbedding(profile.id, embedding);
+        await _profileService.updateProfileEmbedding(profile.id, embedding);
 
         log.info(`[OpportunityJob] ✅ Embedding updated for ${profile.userId}`);
       } catch (err) {
@@ -116,7 +123,7 @@ export async function runOpportunityFinderCycle(
     const allCycleResults: any[] = [];
 
     // Fetch all valid profiles to act as sources
-    const allProfiles = await profileService.getAllProfilesWithEmbeddings();
+    const allProfiles = await _profileService.getAllProfilesWithEmbeddings();
 
     for (const sourceProfile of allProfiles) {
       log.info(`\n🔎 [OpportunityJob] Finding opportunities for ${sourceProfile.userId}...`);
@@ -138,13 +145,17 @@ export async function runOpportunityFinderCycle(
       if (!sourceProfile.hydeEmbedding) {
         log.info(`   [OpportunityJob] Generating missing HyDE for ${sourceProfile.userId}...`);
         try {
-          const hydeGenerator = new HydeGeneratorAgent();
-          const description = await hydeGenerator.generate(memoryProfile);
-          if (description) {
-            const embedding = await embedder.generate(description) as number[];
+          // Pass embedder to agent
+          const hydeGenerator = new HydeGeneratorAgent(embedder);
+          const result = await hydeGenerator.generate(memoryProfile);
+
+          if (result && result.description) {
+            const description = result.description;
+            // Use returned embedding if available, otherwise generate it
+            const embedding = (result.embedding || await embedder.generate(description)) as number[];
 
             // Update DB
-            await profileService.updateProfileHyde(sourceProfile.id, description, embedding);
+            await _profileService.updateProfileHyde(sourceProfile.id, description, embedding);
 
             // Update local object so we can use it immediately
             sourceProfile.hydeDescription = description;
@@ -157,26 +168,14 @@ export async function runOpportunityFinderCycle(
       }
       // --------------------------------
 
-      // Determine Query Vector: Use HyDE (Desire) if available, otherwise User Profile (Similarity)
-      const queryVector = sourceProfile.hydeEmbedding || sourceProfile.embedding;
-      if (sourceProfile.hydeEmbedding) {
-        log.info(`   [OpportunityJob] Using HyDE embedding for search.`);
-      }
-
-      // VECTOR SEARCH: Find top 20 nearest neighbors (excluding self)
-      const candidatesRaw = await profileService.findSimilarProfiles(sourceProfile.userId, queryVector, 20);
-
-      // Map to CandidateProfile type
-      const candidates: CandidateProfile[] = candidatesRaw.map(c => ({
-        userId: c.profile.userId,
-        identity: c.profile.identity || {},
-        narrative: c.profile.narrative || {},
-        attributes: c.profile.attributes || {}
-      }));
-
-      // Run Agent
-      const opportunities = await evaluator.evaluateOpportunities(memoryProfile, candidates, {
-        hydeDescription: sourceProfile.hydeDescription || undefined
+      // RUN AGENT DISCOVERY
+      const opportunities = await evaluator.runDiscovery(memoryProfile, {
+        hydeDescription: sourceProfile.hydeDescription || undefined,
+        limit: 20, // Check top 20 nearest neighbors
+        minScore: 0.5, // Filter low quality matches early (if searcher supports it)
+        filter: {
+          userId: { ne: sourceProfile.userId } // Exclude self
+        } as any // Use as any to bypass Option type limitation for filter specifics
       });
 
       if (opportunities.length > 0) {
@@ -197,8 +196,8 @@ export async function runOpportunityFinderCycle(
         for (const op of opportunities) {
           if (op.score < 85) continue; // Only for very strong matches
 
-          // We need the candidate's memory profile to infer THEIR intent
-          const candidateProfile = candidatesRaw.find(c => c.profile.userId === op.candidateId)?.profile;
+          // We need to fetch the candidate profile again 
+          const candidateProfile = await _profileService.getProfile(op.candidateId);
           if (!candidateProfile) continue;
 
           try {
@@ -226,7 +225,7 @@ export async function runOpportunityFinderCycle(
               const sourceIndexIds = await getUserAccessibleIndexIds(sourceProfile.userId);
 
               // 3b. Create Source Intent
-              const sourceIntentObj = await IntentService.createIntent({
+              const sourceIntentObj = await intentService.createIntent({
                 userId: sourceProfile.userId,
                 payload: sourceIntent.payload,
                 indexIds: sourceIndexIds, // Assign to user's indexes
@@ -241,7 +240,7 @@ export async function runOpportunityFinderCycle(
               const candidateIndexIds = await getUserAccessibleIndexIds(candidateProfile.userId);
 
               // 3d. Create Candidate Intent
-              const candidateIntentObj = await IntentService.createIntent({
+              const candidateIntentObj = await intentService.createIntent({
                 userId: candidateProfile.userId,
                 payload: candidateIntent.payload,
                 indexIds: candidateIndexIds, // Assign to user's indexes

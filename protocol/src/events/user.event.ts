@@ -1,5 +1,5 @@
 import { addIndexIntentJob } from '../queues/intent.queue';
-import { IntentService } from '../services/intent.service';
+import { intentService } from '../services/intent.service';
 
 export interface MemberEvent {
   userId: string;
@@ -19,7 +19,7 @@ export class MemberEvents {
     try {
       if (event.promptChanged || event.autoAssignChanged) {
         // Get all user's intents (full objects) and queue them individually
-        const userIntents = await IntentService.getUserIntentObjects(event.userId);
+        const userIntents = await intentService.getUserIntentObjects(event.userId);
 
         // Priority 6: Member settings updates - MEDIUM priority
         const queuePromises = userIntents.map((intent) =>

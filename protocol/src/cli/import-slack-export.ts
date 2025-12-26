@@ -11,7 +11,7 @@ import type { SlackMessage } from '../lib/integrations/providers/slack';
 import { log, setLevel } from '../lib/log';
 import { getIntegrationById } from '../lib/integrations/integration-utils';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
-import { IntentService } from '../services/intent.service';
+import { intentService } from '../services/intent.service';
 import { resolveIntegrationUser } from '../lib/user-utils';
 import { ensureIndexMembership } from '../lib/integrations/membership-utils';
 
@@ -109,14 +109,14 @@ async function processMessage(message: SlackMessage, integrationId: string, inde
   const user = await userCache.resolve(userIdentifier, indexId);
   if (!user) return 0;
 
-  const existingIntents = await IntentService.getUserIntents(user.id);
+  const existingIntents = await intentService.getUserIntents(user.id);
   const result = await analyzeObjects([message], 'Generate intents based on integration data', Array.from(existingIntents), 60000);
 
   let count = 0;
   if (result?.success && result.intents) {
     for (const intent of result.intents) {
       if (!existingIntents.has(intent.payload)) {
-        await IntentService.createIntent({
+        await intentService.createIntent({
           payload: intent.payload,
           userId: user.id,
           sourceId: integrationId,

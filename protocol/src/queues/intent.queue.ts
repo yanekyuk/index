@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { analyzeObjects, analyzeContent } from '../agents/core/intent_inferrer';
-import { IntentService } from '../services/intent.service';
+import { IntentService, intentService } from '../services/intent.service';
 import { log } from '../lib/log';
 
 export const QUEUE_NAME = 'intent-processing-queue';
@@ -73,7 +73,7 @@ async function indexIntent(data: IndexIntentJobData): Promise<void> {
  */
 async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
   // Get existing intents
-  const existingIntents = await IntentService.getUserIntents(data.userId);
+  const existingIntents = await intentService.getUserIntents(data.userId);
 
   let result;
   if (data.content) {
@@ -98,7 +98,7 @@ async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
   if (result?.success && result.intents) {
     for (const intentData of result.intents) {
       if (!existingIntents.has(intentData.payload)) {
-        await IntentService.createIntent({
+        await intentService.createIntent({
           payload: intentData.payload,
           userId: data.userId,
           sourceId: data.sourceId,

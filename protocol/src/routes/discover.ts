@@ -11,7 +11,7 @@ import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
-import { CreatedIntent, IntentService } from '../services/intent.service';
+import { CreatedIntent, intentService } from '../services/intent.service';
 import { createUploadClient } from '../lib/uploads';
 
 const router = Router();
@@ -186,7 +186,7 @@ router.post('/new',
       if (isShortPayload && !hasFiles && !hasUrls) {
         console.log(`📝 Creating intent directly (short payload, no attachments/URLs)`);
         try {
-          const createdIntent: CreatedIntent = await IntentService.createIntent({
+          const createdIntent: CreatedIntent = await intentService.createIntent({
             payload: payload.trim(),
             userId: userId,
             sourceId: undefined,
@@ -226,7 +226,7 @@ router.post('/new',
             const sourceId = savedFileIds[0] || savedLinkIds[0] || undefined;
 
             try {
-              const createdIntent = await IntentService.createIntent({
+              const createdIntent = await intentService.createIntent({
                 payload: generatedIntent.payload,
                 userId: userId,
                 sourceId: sourceId,

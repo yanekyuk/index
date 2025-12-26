@@ -36,7 +36,7 @@ async function main() {
     type DbModule = typeof import('../lib/db');
     const { default: db, closeDb } = await import('../lib/db.js') as unknown as DbModule;
     const { users, files, indexLinks, intents, intentStakes } = await import('../lib/schema.js');
-    const { IntentService } = await import('../services/intent.service.js');
+    const { intentService } = await import('../services/intent.service.js');
     const { discoverUsers } = await import('../lib/discover.js');
     const { sendConnectionRequestNotification } = await import('../lib/notification-service.js');
 
@@ -97,7 +97,7 @@ async function main() {
 
         // 3. Create Intent from Discovery Form
         const alicePayload = "I am looking for a co-founder to build a decentralized social graph.";
-        const aliceIntent = await IntentService.createIntent({
+        const aliceIntent = await intentService.createIntent({
             payload: alicePayload,
             userId: alice.id,
             confidence: 1.0,
@@ -127,7 +127,7 @@ async function main() {
 
         // 2. Create Intent from File
         const bobPayload = "I am an experienced backend engineer interested in social graphs and decentralized identity.";
-        const bobIntent = await IntentService.createIntent({
+        const bobIntent = await intentService.createIntent({
             payload: bobPayload,
             userId: bob.id,
             confidence: 0.9,

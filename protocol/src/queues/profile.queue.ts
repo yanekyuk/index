@@ -2,7 +2,7 @@ import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { log } from '../lib/log';
 import { profileService } from '../services/profile.service';
-import { IntentService } from '../services/intent.service';
+import { intentService } from '../services/intent.service';
 
 export const PROFILE_QUEUE_NAME = 'profile-update';
 
@@ -47,7 +47,7 @@ export async function profileProcessor(job: Job<ProfileUpdateJobData>) {
 
       for (const intentOptions of newIntents) {
         try {
-          await IntentService.createIntent(intentOptions);
+          await intentService.createIntent(intentOptions);
           log.info(`[ProfileWorker] Created inferred intent: "${intentOptions.payload}"`);
         } catch (err) {
           log.error(`[ProfileWorker] Failed to create inferred intent`, { error: err });

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { json2md } from '../../../lib/json2md/json2md';
 import { BaseLangChainAgent } from '../../../lib/langchain/langchain';
 import { log } from '../../../lib/log';
+import { Embedder } from '../../common/types';
 
 // System prompt for HyDE Generation
 const HYDE_GENERATION_PROMPT = `
@@ -35,6 +36,11 @@ const HydeDescriptionSchema = z.object({
   description: z.string().describe("The hypothetical ideal candidate description"),
 });
 
+export interface HydeResponse {
+  description: string;
+  embedding?: number[];
+}
+
 /**
  * HydeGenerator Agent (Hypothetical Document Embeddings)
  * 
@@ -49,12 +55,15 @@ const HydeDescriptionSchema = z.object({
  * (Supply vs Demand) rather than just "Similarity" matches.
  */
 export class HydeGeneratorAgent extends BaseLangChainAgent {
-  constructor() {
+  private embedder?: Embedder;
+
+  constructor(embedder?: Embedder) {
     super({
       model: 'openai/gpt-4o',
       temperature: 0.5,
       responseFormat: HydeDescriptionSchema
     });
+    this.embedder = embedder;
   }
 
   /**
@@ -63,7 +72,7 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
    * @param profile - The source user's memory profile (who is looking).
    * @returns Promise resolving to a string description of the *Target* user.
    */
-  async generate(profile: UserMemoryProfile): Promise<string> {
+  async generate(profile: UserMemoryProfile): Promise<HydeResponse> {
 
     const profileDescription = json2md.fromObject({
       bio: profile.identity?.bio || '',
@@ -99,7 +108,16 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
       }
 
       log.info(`[HydeGenerator] Successfully generated HyDE profile.`);
-      return description;
+
+      let embedding: number[] | undefined;
+      if (this.embedder) {
+        log.info(`[HydeGenerator] Generating embedding for HyDE profile...`);
+        const embedResult = await this.embedder.generate(description);
+        // Helper to handle number[] | number[][]
+        embedding = Array.isArray(embedResult[0]) ? (embedResult as number[][])[0] : (embedResult as number[]);
+      }
+
+      return { description, embedding };
 
     } catch (error) {
       log.error("[HydeGenerator] Error generating HyDE profile", { error });

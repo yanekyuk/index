@@ -3,6 +3,7 @@ import { BaseLangChainAgent } from '../../lib/langchain/langchain';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { ProfileGeneratorOutput } from './profile.generator.types';
 import { log } from '../../lib/log';
+import { Embedder } from '../common/types';
 
 export const SYSTEM_PROMPT = `
     You are an expert profiler. Your task is to synthesize a structured User Profile from raw data scraped from the web (via Parallel.ai).
@@ -53,11 +54,14 @@ export const ProfileGeneratorOutputSchema = z.object({
  * This is the entry point for creating a "Digital Twin" of a user in the system.
  */
 export class ProfileGenerator extends BaseLangChainAgent {
-    constructor() {
+    private embedder?: Embedder;
+
+    constructor(embedder?: Embedder) {
         super({
             model: 'openai/gpt-4o-mini', // Use a strong model for synthesis
             responseFormat: ProfileGeneratorOutputSchema
         });
+        this.embedder = embedder;
     }
 
     /**
@@ -66,7 +70,7 @@ export class ProfileGenerator extends BaseLangChainAgent {
      * @param input - The raw text or stringified JSON from the data source (e.g., Parallel.ai).
      * @returns Promise resolving to a fully structured `ProfileGeneratorOutput` object (Identity, Narrative, Attributes).
      */
-    async run(input: string): Promise<ProfileGeneratorOutput> {
+    async run(input: string): Promise<ProfileGeneratorOutput & { embedding?: number[] }> {
         log.debug('[ProfileGenerator] Processing input', { inputLength: input.length });
 
         const messages = [
@@ -75,8 +79,30 @@ export class ProfileGenerator extends BaseLangChainAgent {
         ];
 
         const result = await this.model.invoke(messages);
-        const profile = result.structuredResponse as ProfileGeneratorOutput;
-        log.info(`[ProfileGenerator] Successfully generated profile for "${profile.profile.identity.name}".`);
-        return profile;
+        const output = result.structuredResponse as ProfileGeneratorOutput;
+        log.info(`[ProfileGenerator] Successfully generated profile for "${output.profile.identity.name}".`);
+
+        let embedding: number[] | undefined;
+        if (this.embedder) {
+            log.info(`[ProfileGenerator] Generating embedding for profile...`);
+            // Construct text to embed: Bio + Context + Aspirations + Skills + Interests
+            const p = output.profile;
+            const parts = [
+                p.identity.bio,
+                p.identity.location,
+                p.narrative.context,
+                p.narrative.aspirations,
+                ...p.attributes.interests,
+                ...p.attributes.skills
+            ];
+            const textToEmbed = parts.filter(Boolean).join(' ');
+
+            if (textToEmbed.length > 0) {
+                const embedResult = await this.embedder.generate(textToEmbed);
+                embedding = Array.isArray(embedResult[0]) ? (embedResult as number[][])[0] : (embedResult as number[]);
+            }
+        }
+
+        return { ...output, embedding };
     }
 }

@@ -3,7 +3,7 @@ import { intents, intentStakes, intentStakeItems, indexMembers } from '../lib/sc
 import { eq, and, sql, isNull, inArray, gt, or } from 'drizzle-orm';
 import { IndexEmbedder } from '../lib/embedder';
 
-const embedder = new IndexEmbedder(db as any);
+const embedder = new IndexEmbedder();
 import { StakeEvaluator } from '../agents/intent/stake/evaluator/stake.evaluator';
 import { SynthesisGenerator } from '../agents/intent/stake/synthesis/synthesis.generator';
 import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';

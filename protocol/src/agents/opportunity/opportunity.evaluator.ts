@@ -9,6 +9,7 @@ import {
 } from './opportunity.evaluator.types';
 import { z } from 'zod';
 import { json2md } from '../../lib/json2md/json2md';
+import { Embedder } from '../common/types';
 
 // ----------------
 
@@ -64,14 +65,16 @@ const OpportunityEvaluatorOutputSchema = z.object({
  * WHOLE PROFILE vs WHOLE PROFILE to find broader, implicit opportunities.
  */
 export class OpportunityEvaluator extends BaseLangChainAgent {
+    private embedder?: Embedder;
 
-    constructor() {
+    constructor(embedder?: Embedder) {
         // Main model is for Analysis (structured output of Opportunities)
         super({
             model: 'openai/gpt-4o',
             temperature: 0.1, // Low temp for stability
             responseFormat: OpportunityEvaluatorOutputSchema
         });
+        this.embedder = embedder;
     }
 
     /**
@@ -119,6 +122,52 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
 
         // Sort by score
         return opportunities.sort((a, b) => b.score - a.score);
+    }
+
+    /**
+     * Discovery Mode: Autonomous Retrieval + Analysis
+     * 
+     * 1. Generates search query (embedding source profile or HyDE).
+     * 2. Retrieves candidates using injected Embedder.
+     * 3. Evaluates found candidates.
+     */
+    async runDiscovery(
+        sourceProfile: UserMemoryProfile,
+        options: OpportunityEvaluatorOptions & { limit?: number, candidates?: CandidateProfile[], filter?: Record<string, any> } = {} // candidates optional for MemorySearcher
+    ): Promise<Opportunity[]> {
+        if (!this.embedder) {
+            throw new Error("Embedder must be injected to use runDiscovery");
+        }
+
+        log.info('[OpportunityEvaluator] Starting Discovery run...');
+
+        // 1. Generate Query Vector
+        // If HyDE is provided, use it. Otherwise generate a direct representation of the user.
+        const queryText = options.hydeDescription || this.generateDirectQuery(sourceProfile);
+
+        const embeddingResult = await this.embedder.generate(queryText);
+        // Handle return type (array of vector or single vector)
+        const queryVector = Array.isArray(embeddingResult[0])
+            ? (embeddingResult as number[][])[0]
+            : (embeddingResult as number[]);
+
+        // 2. Search for Candidates
+        const searchResults = await this.embedder.search<CandidateProfile>(
+            queryVector,
+            'profiles',
+            {
+                ...options, // Propagate minScore, filters, etc.
+                limit: options.limit || 5,
+                // For MemorySearcher, we might pass candidates directly in options to search against
+                candidates: options.candidates as any
+            }
+        );
+
+        const foundCandidates = searchResults.map(r => r.item);
+        log.info(`[OpportunityEvaluator] Found ${foundCandidates.length} potential candidates from search.`);
+
+        // 3. Evaluate Matches
+        return this.evaluateOpportunities(sourceProfile, foundCandidates, options);
     }
 
     /**

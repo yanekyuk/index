@@ -1,18 +1,19 @@
-import db from '../lib/db';
-import { userProfiles, intents, userNotificationSettings, UserSocials, NotificationPreferences, User } from '../lib/schema';
-import { eq, and, isNull, sql, ne } from 'drizzle-orm';
-import { ProfileGenerator } from '../agents/profile/profile.generator';
-import { searchUser } from '../lib/parallel/parallel';
-import { json2md } from '../lib/json2md/json2md';
-import { UserMemoryProfile, ActiveIntent } from '../agents/intent/manager/intent.manager.types';
+import { eq, and, isNull, sql, ne, isNotNull } from 'drizzle-orm';
 import { IntentManager } from '../agents/intent/manager/intent.manager';
-import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { ActiveIntent, UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
 import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
-import { IndexEmbedder } from '../lib/embedder';
-
-const embedder = new IndexEmbedder(db);
+import { ProfileGenerator } from '../agents/profile/profile.generator';
 import type { CreateIntentOptions } from './intent.service';
+import db from '../lib/db';
+import { IndexEmbedder } from '../lib/embedder';
+import { VectorStoreOption, VectorSearchResult, Embedder } from '../agents/common/types';
+import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
+import { json2md } from '../lib/json2md/json2md';
 import { log } from '../lib/log';
+import { searchUser } from '../lib/parallel/parallel';
+import { NotificationPreferences, User, UserSocials, intents, userNotificationSettings, userProfiles } from '../lib/schema';
+
+const embedder = new IndexEmbedder();
 
 export interface UpdateProfileDto {
   name?: string;
@@ -48,6 +49,13 @@ export interface GenerateProfileCallbacks {
  * - HyDE Maintenance: Regenerates HyDE embeddings when profile changes.
  */
 export class ProfileService {
+  private profileEmbedder: Embedder;
+
+  constructor() {
+    this.profileEmbedder = new IndexEmbedder({
+      searcher: this.searchProfiles.bind(this)
+    });
+  }
 
   /**
    * Updates user profile data and triggers necessary side effects.
@@ -187,7 +195,8 @@ export class ProfileService {
 
       if (bioToUse) {
         try {
-          const generator = new ProfileGenerator();
+          const embedder = new IndexEmbedder();
+          const generator = new ProfileGenerator(embedder);
           const generated = await generator.run(bioToUse);
 
           const fixedIdentity = {
@@ -201,6 +210,7 @@ export class ProfileService {
               identity: fixedIdentity,
               narrative: generated.profile.narrative,
               attributes: generated.profile.attributes,
+              embedding: generated.embedding, // Use generated embedding
               updatedAt: new Date()
             })
             .where(eq(userProfiles.id, userProfile.id));
@@ -301,16 +311,20 @@ export class ProfileService {
     (async () => {
       try {
         log.info('[ProfileService] Generating HyDE description and embedding...');
-        const hydeGenerator = new HydeGeneratorAgent();
-        const hydeDescription = await hydeGenerator.generate(profile);
+        const embedder = new IndexEmbedder();
+        const hydeGenerator = new HydeGeneratorAgent(embedder);
+        const hydeResult = await hydeGenerator.generate(profile);
 
-        if (hydeDescription) {
-          log.info(`[ProfileService] HyDE Description Length: ${hydeDescription.length} chars. Preview: "${hydeDescription.substring(0, 100)}..."`);
-          const hydeEmbedding = (await embedder.generate(hydeDescription)) as number[];
+        if (hydeResult && hydeResult.description) {
+          const description = hydeResult.description;
+          log.info(`[ProfileService] HyDE Description Length: ${description.length} chars. Preview: "${description.substring(0, 100)}..."`);
+
+          // Use returned embedding or generate new one
+          const hydeEmbedding = (hydeResult.embedding || await embedder.generate(description)) as number[];
 
           await db.update(userProfiles)
             .set({
-              hydeDescription,
+              hydeDescription: description,
               hydeEmbedding,
               updatedAt: new Date()
             })
@@ -349,8 +363,8 @@ export class ProfileService {
           content: r.excerpts.join('\n')
         }))
       );
-
-      const generator = new ProfileGenerator();
+      const embedder = new IndexEmbedder();
+      const generator = new ProfileGenerator(embedder);
       const result = await generator.run(markdownData);
 
       const fixedIdentity = {
@@ -364,6 +378,7 @@ export class ProfileService {
           identity: fixedIdentity,
           narrative: result.profile.narrative,
           attributes: result.profile.attributes,
+          embedding: result.embedding
         })
         .onConflictDoUpdate({
           target: userProfiles.userId,
@@ -371,6 +386,7 @@ export class ProfileService {
             identity: fixedIdentity,
             narrative: result.profile.narrative,
             attributes: result.profile.attributes,
+            embedding: result.embedding,
             updatedAt: new Date(),
           }
         });
@@ -418,10 +434,21 @@ export class ProfileService {
   }
 
   /**
-   * Get all profiles that have an embedding.
+   * Get a complete User Profile by User ID.
    */
+  async getProfile(userId: string) {
+    const [profile] = await db.select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    return profile;
+  }
+
+  // Get all profiles that have an embedding.
   async getAllProfilesWithEmbeddings() {
-    return await db.select().from(userProfiles).where(sql`${userProfiles.embedding} IS NOT NULL`);
+    return db.select()
+      .from(userProfiles)
+      .where(isNotNull(userProfiles.embedding));
   }
 
   /**
@@ -429,7 +456,7 @@ export class ProfileService {
    * Excludes the source user.
    */
   async findSimilarProfiles(sourceUserId: string, embedding: number[], limit: number = 20) {
-    const results = await embedder.search<typeof userProfiles.$inferSelect>(
+    const results = await this.profileEmbedder.search<typeof userProfiles.$inferSelect>(
       embedding,
       'profiles',
       {
@@ -441,8 +468,47 @@ export class ProfileService {
     );
 
     return results.map(r => ({
-      profile: r.item,
-      distance: 1 - r.score
+      ...r.item,
+      score: r.score
+    }));
+  }
+
+
+  /**
+   * Public implementation of profile search.
+   * Can be injected into Embedders.
+   */
+  async searchProfiles<T>(vector: number[], collection: string, options?: VectorStoreOption<T>): Promise<VectorSearchResult<T>[]> {
+    if (collection !== 'profiles') {
+      throw new Error(`ProfileService only supports 'profiles' collection, got '${collection}'`);
+    }
+    const limit = options?.limit || 10;
+    const filter = options?.filter;
+    const vectorString = JSON.stringify(vector);
+
+    // Build conditions
+    const conditions = [isNotNull(userProfiles.embedding)];
+
+    if (filter) {
+      if (filter.userId && typeof filter.userId === 'object' && filter.userId.ne) {
+        conditions.push(ne(userProfiles.userId, filter.userId.ne));
+      }
+    }
+
+    const whereClause = and(...conditions);
+
+    const resultsWithDistance = await db.select({
+      item: userProfiles,
+      distance: sql<number>`${userProfiles.embedding} <=> ${vectorString}`
+    })
+      .from(userProfiles)
+      .where(whereClause)
+      .orderBy(sql`${userProfiles.embedding} <=> ${vectorString}`)
+      .limit(limit);
+
+    return resultsWithDistance.map((r: any) => ({
+      item: r.item as unknown as T,
+      score: 1 - r.distance
     }));
   }
 }

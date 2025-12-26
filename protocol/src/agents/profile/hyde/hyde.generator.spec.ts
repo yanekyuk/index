@@ -2,6 +2,7 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 import { HydeGeneratorAgent } from './hyde.generator';
 import { UserMemoryProfile } from '../../intent/manager/intent.manager.types';
+import { IndexEmbedder } from '../../../lib/embedder';
 // Load env
 const envPath = path.resolve(__dirname, '../../../../.env.development');
 dotenv.config({ path: envPath });
@@ -42,11 +43,12 @@ const mockProfile: UserMemoryProfile = {
 async function runTests() {
   console.log("🧪 Starting Hyde Generator Tests...\n");
 
-  const agent = new HydeGeneratorAgent();
+  const agent = new HydeGeneratorAgent(new IndexEmbedder());
 
   console.log("1️⃣  Test: Generate HyDE Description");
   try {
-    const description = await agent.generate(mockProfile);
+    const result = await agent.generate(mockProfile);
+    const description = result.description;
     console.log("Generated Description:\n", description);
 
     if (description && description.length > 50) {
