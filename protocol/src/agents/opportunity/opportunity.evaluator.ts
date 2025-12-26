@@ -94,10 +94,10 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
     async evaluateOpportunities(
         sourceProfile: UserMemoryProfile,
         candidates: CandidateProfile[],
-        options: OpportunityEvaluatorOptions = {}
+        options: OpportunityEvaluatorOptions
     ): Promise<Opportunity[]> {
         const minScore = options.minScore || 70;
-        const hydeDescription = options.hydeDescription; // NEW: Accept HyDE description
+        // hydeDescription is NOT used here anymore.
 
         log.info(`[OpportunityEvaluator] Analyzing ${candidates.length} candidates for opportunities...`);
 
@@ -110,7 +110,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
 
         // Analyze each candidate in parallel (bounded)
         const promises = candidates.map(async (candidate) => {
-            return this.analyzeMatch(sourceProfile, candidate, candidate.userId, hydeDescription);
+            return this.analyzeMatch(sourceProfile, candidate, candidate.userId);
         });
 
         const results = await Promise.all(promises);
@@ -133,7 +133,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
      */
     async runDiscovery(
         sourceProfile: UserMemoryProfile,
-        options: OpportunityEvaluatorOptions & { limit?: number, candidates?: CandidateProfile[], filter?: Record<string, any> } = {} // candidates optional for MemorySearcher
+        options: OpportunityEvaluatorOptions & { limit?: number, candidates?: CandidateProfile[], filter?: Record<string, any> } // candidates optional for MemorySearcher
     ): Promise<Opportunity[]> {
         if (!this.embedder) {
             throw new Error("Embedder must be injected to use runDiscovery");
@@ -142,8 +142,12 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
         log.info('[OpportunityEvaluator] Starting Discovery run...');
 
         // 1. Generate Query Vector
-        // If HyDE is provided, use it. Otherwise generate a direct representation of the user.
-        const queryText = options.hydeDescription || this.generateDirectQuery(sourceProfile);
+        // STRICT: Use HyDE Description for Search
+        const queryText = options.hydeDescription;
+
+        if (!queryText) {
+            throw new Error("HyDE Description is required for Discovery Mode.");
+        }
 
         const embeddingResult = await this.embedder.generate(queryText);
         // Handle return type (array of vector or single vector)
@@ -185,31 +189,23 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
     /**
      * Analyze a single match pair using the primary Agent model.
      * 
-     * IMPORTANT: This method prioritizes the `hydeDescription` if provided. 
-     * It treats the HyDE description as the "Gold Standard" or "Ideal Match" criteria
-     * and evaluates how well the Candidate fits that specific description, rather than 
-     * just comparing two raw profiles.
+     * IMPORTANT: This method now strictly uses the Source Profile for evaluation.
+     * The HyDE description is used ONLY for the search/discovery phase (upstream).
      * 
-     * @param sourceProfile - The profile of the source user. Used as fallback if no HyDE description.
+     * @param sourceProfile - The profile of the source user.
      * @param candidateProfile - The profile of the candidate being evaluated.
      * @param candidateUserId - The ID of the candidate user.
-     * @param hydeDescription - (Optional) The hypothetical ideal match description.
      * @returns A promise resolving to a list of identified opportunities.
      */
     private async analyzeMatch(
         sourceProfile: UserMemoryProfile,
         candidateProfile: CandidateProfile,
-        candidateUserId: string,
-        hydeDescription?: string
+        candidateUserId: string
     ): Promise<Opportunity[]> {
         try {
             // Construct the source context part of the prompt
-            let sourceContext = "";
-            if (hydeDescription) {
-                sourceContext = `SOURCE'S IDEAL MATCH DESCRIPTION:\n${hydeDescription}`;
-            } else {
-                sourceContext = `SOURCE PROFILE:\n${json2md.fromObject(sourceProfile as any)}`;
-            }
+            //STRICT: Use Source Profile
+            const sourceContext = `SOURCE PROFILE:\n${json2md.fromObject(sourceProfile as any)}`;
 
             const messages = [
                 new SystemMessage(ANALYSIS_SYSTEM_PROMPT),

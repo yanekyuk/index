@@ -223,7 +223,12 @@ const REGISTRY: AgentRegistryItem[] = [
       // treating the Agent class mostly for the 'evaluateOpportunities' logic (LLM part).
 
       // A. Generate Query
-      const queryText = input.options?.hydeDescription || agent.generateDirectQuery(input.sourceProfile);
+      // A. Generate Query
+      const hydeQuery = input.options?.hydeDescription;
+      if (!hydeQuery) {
+        throw new Error("HyDE Description is required for Opportunity Evaluation.");
+      }
+      const queryText = hydeQuery;
 
       // B. Search using Memory Embedder
       // Use the generated query to search against the passed candidates
@@ -258,7 +263,6 @@ const REGISTRY: AgentRegistryItem[] = [
           opportunitiesFound: opportunities.length
         },
         opportunities: opportunities,
-        debug_found_candidates: foundCandidates
       };
     }
   },
