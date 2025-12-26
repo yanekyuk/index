@@ -14,6 +14,7 @@ import { ProfileGeneratorInput } from './components/ProfileGeneratorInput';
 import { HydeGeneratorInput } from './components/HydeGeneratorInput';
 import { OpportunityEvaluatorInput } from './components/OpportunityEvaluatorInput';
 import { IntentManagerInput } from './components/IntentManagerInput';
+import { ExplicitIntentInferrerInput } from './components/ExplicitIntentInferrerInput';
 
 function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -456,6 +457,44 @@ function App() {
         return;
       }
       return;
+    }
+
+    // Special handling for Explicit Intent Inferrer
+    // Requirement: Selecting profile should only populate profile field, preserving content.
+    if (selectedAgent?.id === 'explicit-intent-detector') {
+      // We only care about Profile injection
+      if (item.type === 'profile' || (item.type === 'generated' && dataToInject?.profile)) {
+        try {
+          const currentObj = JSON.parse(inputVal || '{}');
+          // If it's a generated object that contains 'profile', use that inner profile
+          // The 'dataToInject' has already been smart-unpacked at top of function?
+          // Line 352: if ((item.type === 'profile' || item.type === 'generated') && dataToInject?.profile) ...
+          // Yes, dataToInject is already the profile object with embedding fused.
+
+          const newObj = {
+            ...currentObj,
+            profile: dataToInject
+          };
+          setInputVal(JSON.stringify(newObj, null, 2));
+          addLog(`Set profile for extraction: ${item.name}`);
+          return;
+        } catch (e) {
+          // If parsing fails (bad raw input), just reset to profile-only or ignore
+          // Let's reset to preserving content if possible, but if inputVal is invalid JSON, we can't safely merge.
+          // Fallback: Just set the profile as the input? No, user wants structure.
+          // Best effort:
+          console.error("Failed to parse current input, overwriting with profile structure.");
+          const newObj = {
+            content: "",
+            profile: dataToInject
+          };
+          setInputVal(JSON.stringify(newObj, null, 2));
+          return;
+        }
+      }
+      // If injecting other types (like raw text for content?), fall through to default logic
+      // But usually context items are objects. If user drags "Text" item?
+      // For now, only profile behavior was requested.
     }
 
     if (selectedAgent?.inputType === 'raw_text') {
@@ -1121,6 +1160,11 @@ function App() {
     // 4. Intent Manager - use component for structured mode
     if (selectedAgent.id === 'intent-manager' && inputMode === 'structured') {
       return <IntentManagerInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} />;
+    }
+
+    // 5. Explicit Intent Inferrer - use component for structured mode
+    if (selectedAgent.id === 'explicit-intent-detector' && inputMode === 'structured') {
+      return <ExplicitIntentInferrerInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} />;
     }
 
     // 3. Parallel Fetcher - use component

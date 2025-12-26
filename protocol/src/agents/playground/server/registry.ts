@@ -112,12 +112,16 @@ const REGISTRY: AgentRegistryItem[] = [
     description: 'Extracts structured intents from raw text.',
     category: 'intent',
     inputType: 'any',
-    disabled: true,
+    disabled: false,
     defaultInput: {
       content: "I want to meet people building in the decentralized AI space, specifically looking for co-founders.",
       profile: { identity: { name: "Alice" } }
     },
     agentClass: ExplicitIntentDetector,
+    fields: [
+      { key: 'content', label: 'Content', type: 'string', description: 'Raw text content' },
+      { key: 'profile', label: 'Profile', type: 'profile', description: 'User profile context' }
+    ],
     runner: (agent, input) => agent.run(input.content, input.profile)
   },
   {
