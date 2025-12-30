@@ -76,11 +76,24 @@ export async function fetchContextData(): Promise<ContextItem[]> {
   return res.json() as Promise<ContextItem[]>;
 }
 
-export async function runAgent(agentId: string, input: any): Promise<any> {
+export interface RunAgentOptions {
+  preProcessors?: {
+    embed?: boolean;
+    json2md?: boolean;
+  };
+}
+
+export async function runAgent(agentId: string, input: any, options?: RunAgentOptions): Promise<any> {
+  // Always wrap to match new backend logic
+  const payload = {
+    input,
+    options
+  };
+
   const res = await fetch(`/api/run/${agentId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input)
+    body: JSON.stringify(payload)
   });
   return res.json();
 }

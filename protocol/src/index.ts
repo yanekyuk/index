@@ -106,9 +106,21 @@ app.get('/api/data/users', (req, res) => {
 
 app.post('/api/run/:agentId', async (req, res) => {
   const { agentId } = req.params;
-  const input = req.body;
+  const body = req.body;
+
+  // Check for wrapper format { input: ..., options: ... }
+  // We assume if 'options' exists and 'input' exists, it's a wrapper. 
+  // Otherwise treat body as input (Legacy support).
+  let input = body;
+  let options = undefined;
+
+  if (body && typeof body === 'object' && 'input' in body && 'options' in body) {
+    input = body.input;
+    options = body.options;
+  }
+
   try {
-    const result = await runAgent(agentId, input);
+    const result = await runAgent(agentId, input, options);
     res.json(result);
   } catch (error: any) {
     console.error(`Error running agent ${agentId}:`, error);
