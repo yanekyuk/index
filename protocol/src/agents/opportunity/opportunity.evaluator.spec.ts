@@ -66,6 +66,7 @@ async function runTest() {
 
   const opportunities = await evaluator.runDiscovery(sourceProfile, {
     candidates: [candidateA, candidateB], // Memory Store
+    hydeDescription: "Looking for a co-founder", // Dummy HyDE
     limit: 5,
     minScore: 0.5 // Should filter out candidateA (score 0)
   });

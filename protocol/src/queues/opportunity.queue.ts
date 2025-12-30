@@ -168,9 +168,15 @@ export async function runOpportunityFinderCycle(
       }
       // --------------------------------
 
+      const hydeDesc = sourceProfile.hydeDescription;
+      if (!hydeDesc) {
+        log.warn(`[OpportunityJob] Skipping ${sourceProfile.userId} - Missing HyDE description (Backfill failed).`);
+        continue;
+      }
+
       // RUN AGENT DISCOVERY
       const opportunities = await evaluator.runDiscovery(memoryProfile, {
-        hydeDescription: sourceProfile.hydeDescription || undefined,
+        hydeDescription: hydeDesc,
         limit: 20, // Check top 20 nearest neighbors
         minScore: 0.5, // Filter low quality matches early (if searcher supports it)
         filter: {
