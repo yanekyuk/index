@@ -95,7 +95,34 @@ export const json2md = {
         lines.push(`**${key}**:`);
         if (value.length > 0) {
           value.forEach(item => {
-            lines.push(` - ${item}`);
+            if (typeof item === 'object' && item !== null) {
+              // Recursive handling for objects in arrays
+              // We'll treat them as a sub-list item with indentation or a nested block
+              // For simplicity, let's treat it as a bullet point with nested content
+              const subObjMd = this.fromObject(item, headerLevel);
+              // We need to indent the result
+              const indented = subObjMd.split('\n').map(l => `   ${l}`).join('\n');
+              lines.push(` - ` + (indented.trimStart())); // First line inline? or block?
+              // Actually, simple arrays of objects usually mean a list of records.
+              // a simple " - [object]" is bad.
+              // Let's try:
+              // - **Prop**: Val
+              //   **Prop2**: Val
+              // Logic:
+              const subLines = this.fromObject(item, headerLevel).split('\n');
+              if (subLines.length > 0) {
+                lines.push(` - ${subLines[0]}`); // First line on bullet
+                // Subsequent lines indented
+                for (let i = 1; i < subLines.length; i++) {
+                  lines.push(`   ${subLines[i]}`);
+                }
+              } else {
+                lines.push(` - (Empty Object)`);
+              }
+
+            } else {
+              lines.push(` - ${item}`);
+            }
           });
         } else {
           lines.push(` - (None)`);
@@ -110,7 +137,7 @@ export const json2md = {
       }
     });
 
-    return lines.join('\n').trim();
+    return lines.join('\n\n').trim();
   },
 
   /**
