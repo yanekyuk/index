@@ -1,7 +1,6 @@
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
-import { UserMemoryProfile } from '../../intent/manager/intent.manager.types';
 import { z } from 'zod';
-import { json2md } from '../../../lib/json2md/json2md';
+
 import { BaseLangChainAgent } from '../../../lib/langchain/langchain';
 import { log } from '../../../lib/log';
 import { Embedder } from '../../common/types';
@@ -69,24 +68,16 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
   /**
    * Generates a hypothetical "Ideal Match" description.
    * 
-   * @param profile - The source user's memory profile (who is looking).
+   * @param profileContext - The formatted source user's memory profile (who is looking).
    * @returns Promise resolving to a string description of the *Target* user.
    */
-  async generate(profile: UserMemoryProfile): Promise<HydeResponse> {
-
-    const profileDescription = json2md.fromObject({
-      bio: profile.identity?.bio || '',
-      location: profile.identity?.location || '',
-      interests: profile.attributes?.interests || [],
-      // aspirations: profile.narrative?.aspirations || '',
-      context: profile.narrative?.context || ''
-    });
+  async generate(profileContext: string): Promise<HydeResponse> {
 
     const messages = [
       new SystemMessage(HYDE_GENERATION_PROMPT),
       new HumanMessage(`
         Person who is looking for a match:
-        ${profileDescription}
+        ${profileContext}
         
         Who is the single most valuable connection for this person right now? 
         Describe that Person.

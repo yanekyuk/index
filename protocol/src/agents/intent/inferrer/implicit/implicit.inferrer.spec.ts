@@ -34,7 +34,15 @@ async function runTest() {
   const context = "Opportunity: Collaborate with Alice Wonderland to build a Rust-based DeFi platform. Reason: Strong skill match.";
 
   try {
-    const result = await inferrer.run(mockProfile, context);
+    const profileContext = `
+      Bio: ${mockProfile.identity.bio}
+      Location: ${mockProfile.identity.location}
+      Interests: ${mockProfile.attributes.interests.join(', ')}
+      Skills: ${mockProfile.attributes.skills.join(', ')}
+      Aspirations: ${mockProfile.narrative?.aspirations || ''}
+    `;
+
+    const result = await inferrer.run(profileContext, context);
 
     if (!result) {
       console.error("❌ Test Failed: No result returned.");

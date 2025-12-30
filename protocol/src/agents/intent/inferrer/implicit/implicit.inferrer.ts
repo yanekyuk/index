@@ -1,8 +1,7 @@
 import { BaseLangChainAgent } from "../../../../lib/langchain/langchain";
 import { z } from "zod";
 import { ImplicitInferrerOutputSchema, ImplicitIntent } from "./implicit.inferrer.types";
-import { UserMemoryProfile } from "../../manager/intent.manager.types";
-import { json2md } from "../../../../lib/json2md/json2md";
+
 import { log } from "../../../../lib/log";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
@@ -57,23 +56,20 @@ export class ImplicitInferrer extends BaseLangChainAgent {
    * 2. Reads the "Reasoning" for why an Opportunity was matched.
    * 3. Halls hallucinate a specific, first-person goal that would constrain this match.
    * 
-   * @param profile - The user's memory profile.
+   * @param profileContext - The formatted user's memory profile string.
    * @param opportunityContext - The string explanation of the opportunity match.
    * @returns A Promise resolving to an `ImplicitIntent` or null if confidence is low.
    */
   async run(
-    profile: UserMemoryProfile,
+    profileContext: string,
     opportunityContext: string
   ): Promise<ImplicitIntent | null> {
     log.info(`[ImplicitInferrer] Inferring intent from opportunity context...`);
 
     const prompt = `
       # User Profile
-      ${json2md.fromObject({
-      bio: profile.identity.bio,
-      aspirations: profile.narrative?.aspirations,
-      context: profile.narrative?.context
-    })}
+      # User Profile
+      ${profileContext}
 
       # Opportunity Context
       "${opportunityContext}"

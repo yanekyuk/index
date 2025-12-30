@@ -8,7 +8,6 @@ import {
     CandidateProfile
 } from './opportunity.evaluator.types';
 import { z } from 'zod';
-import { json2md } from '../../lib/json2md/json2md';
 import { Embedder } from '../common/types';
 
 // ----------------
@@ -86,13 +85,13 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
      * 3. Aggregates results, filters by `minScore` (default 70).
      * 4. Returns a sorted list of the best Opportunities.
      * 
-     * @param sourceProfile - The profile of the user we are finding opportunities FOR.
+     * @param sourceProfileContext - The profile context string of the user we are finding opportunities FOR.
      * @param candidates - List of potential matches to evaluate.
      * @param options - Config (minScore, valid types, etc).
      * @returns A sorted list of high-value `Opportunity` objects.
      */
     async evaluateOpportunities(
-        sourceProfile: UserMemoryProfile,
+        sourceProfileContext: string,
         candidates: CandidateProfile[],
         options: OpportunityEvaluatorOptions
     ): Promise<Opportunity[]> {
@@ -110,7 +109,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
 
         // Analyze each candidate in parallel (bounded)
         const promises = candidates.map(async (candidate) => {
-            return this.analyzeMatch(sourceProfile, candidate, candidate.userId);
+            return this.analyzeMatch(sourceProfileContext, candidate, candidate.userId);
         });
 
         const results = await Promise.all(promises);
@@ -132,7 +131,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
      * 3. Evaluates found candidates.
      */
     async runDiscovery(
-        sourceProfile: UserMemoryProfile,
+        sourceProfileContext: string,
         options: OpportunityEvaluatorOptions & { limit?: number, candidates?: CandidateProfile[], filter?: Record<string, any> } // candidates optional for MemorySearcher
     ): Promise<Opportunity[]> {
         if (!this.embedder) {
@@ -171,19 +170,19 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
         log.info(`[OpportunityEvaluator] Found ${foundCandidates.length} potential candidates from search.`);
 
         // 3. Evaluate Matches
-        return this.evaluateOpportunities(sourceProfile, foundCandidates, options);
+        return this.evaluateOpportunities(sourceProfileContext, foundCandidates, options);
     }
 
     /**
      * Helper to generate a direct search query text.
      */
     generateDirectQuery(sourceProfile: UserMemoryProfile): string {
-        return json2md.fromObject({
-            Bio: sourceProfile.identity.bio,
-            Interests: sourceProfile.attributes?.interests,
-            Skills: sourceProfile.attributes?.skills,
-            Aspirations: sourceProfile.narrative?.aspirations
-        });
+        return `
+        Bio: ${sourceProfile.identity.bio}
+        Interests: ${sourceProfile.attributes?.interests?.join(', ')}
+        Skills: ${sourceProfile.attributes?.skills?.join(', ')}
+        Aspirations: ${sourceProfile.narrative?.aspirations}
+        `;
     }
 
     /**
@@ -192,24 +191,35 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
      * IMPORTANT: This method now strictly uses the Source Profile for evaluation.
      * The HyDE description is used ONLY for the search/discovery phase (upstream).
      * 
-     * @param sourceProfile - The profile of the source user.
+     * @param sourceProfileContext - The profile context of the source user.
      * @param candidateProfile - The profile of the candidate being evaluated.
      * @param candidateUserId - The ID of the candidate user.
      * @returns A promise resolving to a list of identified opportunities.
      */
     private async analyzeMatch(
-        sourceProfile: UserMemoryProfile,
+        sourceProfileContext: string,
         candidateProfile: CandidateProfile,
         candidateUserId: string
     ): Promise<Opportunity[]> {
         try {
             // Construct the source context part of the prompt
             //STRICT: Use Source Profile
-            const sourceContext = `SOURCE PROFILE:\n${json2md.fromObject(sourceProfile as any)}`;
+            const sourceContext = `SOURCE PROFILE:\n${sourceProfileContext}`;
+
+            // Create candidate context using template string
+            const candidateContext = `
+            Name: ${candidateProfile.identity?.name || 'Unknown'}
+            Bio: ${candidateProfile.identity?.bio || ''}
+            Location: ${candidateProfile.identity?.location || ''}
+            Interests: ${candidateProfile.attributes?.interests?.join(', ') || ''}
+            Skills: ${candidateProfile.attributes?.skills?.join(', ') || ''}
+            Aspirations: ${candidateProfile.narrative?.aspirations || ''}
+            Context: ${candidateProfile.narrative?.context || ''}
+            `;
 
             const messages = [
                 new SystemMessage(ANALYSIS_SYSTEM_PROMPT),
-                new HumanMessage(`${sourceContext}\n\nCANDIDATE PROFILE:\n${json2md.fromObject(candidateProfile as any)}`)
+                new HumanMessage(`${sourceContext}\n\nCANDIDATE PROFILE:\n${candidateContext}`)
             ];
 
             // Primary model is already configured with OutputSchema

@@ -47,7 +47,15 @@ async function runTests() {
 
   console.log("1️⃣  Test: Generate HyDE Description");
   try {
-    const result = await agent.generate(mockProfile);
+    const profileContext = `
+    Bio: ${mockProfile.identity.bio}
+    Location: ${mockProfile.identity.location}
+    Interests: ${mockProfile.attributes.interests.join(', ')}
+    Skills: ${mockProfile.attributes.skills.join(', ')}
+    Aspirations: ${mockProfile.narrative?.aspirations || ''}
+    `;
+
+    const result = await agent.generate(profileContext);
     const description = result.description;
     console.log("Generated Description:\n", description);
 

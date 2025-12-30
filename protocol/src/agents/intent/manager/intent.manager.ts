@@ -3,7 +3,7 @@ import { UserMemoryProfile, ActiveIntent, IntentManagerResponse, IntentAction } 
 import { InferredIntent } from "../inferrer/explicit/explicit.inferrer.types";
 import { ExplicitIntentDetector } from "../inferrer/explicit/explicit.inferrer";
 import { z } from "zod";
-import { json2md } from "../../../lib/json2md/json2md";
+
 import { log } from "../../../lib/log";
 
 const SYSTEM_PROMPT = `
@@ -95,18 +95,20 @@ export class IntentManager extends BaseLangChainAgent {
    * 3. Reconciliation: Calls `reconcileIntentsWithLLM` to compare candidates against the user's `activeIntents`.
    * 
    * @param content - The new text input from the user (e.g., a message, note, or command).
-   * @param profile - The user's long-term memory profile (used by ExplicitDetector for context).
+   * @param profileContext - The formatted profile context string.
    * @param activeIntents - The list of intents currently Active for this user.
+   * @param activeIntentsContext - The formatted active intents context string.
    * @returns A Promise resolving to a list of `IntentAction` (Create, Update, Expire) to be applied to the DB.
    */
   async processIntent(
     content: string | null,
-    profile: UserMemoryProfile,
-    activeIntents: ActiveIntent[]
+    profileContext: string,
+    activeIntents: ActiveIntent[],
+    activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     // 1. Run Explicit Detector (Pure Extraction)
     log.info(`[IntentManagerAgent] Processing content: "${content ? content.substring(0, 50) + '...' : 'None'}"`);
-    const { intents: inferredIntents } = await this.explicitDetector.run(content, profile);
+    const { intents: inferredIntents } = await this.explicitDetector.run(content, profileContext);
     log.info(`[IntentManagerAgent] Inferred ${inferredIntents.length} intents.`);
 
     if (inferredIntents.length === 0) {
@@ -115,7 +117,7 @@ export class IntentManager extends BaseLangChainAgent {
 
     // 2. Reconcile with Active Intents (LLM Decision)
     log.info(`[IntentManagerAgent] Reconciling ${inferredIntents.length} inferred vs ${activeIntents.length} active intents...`);
-    return this.reconcileIntentsWithLLM(inferredIntents, activeIntents);
+    return this.reconcileIntentsWithLLM(inferredIntents, activeIntents, activeIntentsContext);
   }
 
   /**
@@ -132,11 +134,16 @@ export class IntentManager extends BaseLangChainAgent {
    * 
    * @param inferred - List of intents extracted from recent content.
    * @param active - List of currently active intents.
+   * @param activeIntentsContext - Formatted string of active intents.
    */
-  private async reconcileIntentsWithLLM(inferred: InferredIntent[], active: ActiveIntent[]): Promise<IntentManagerResponse> {
+  private async reconcileIntentsWithLLM(
+    inferred: InferredIntent[],
+    active: ActiveIntent[],
+    activeIntentsContext: string
+  ): Promise<IntentManagerResponse> {
     const prompt = `
       # Active Intents
-      ${this.formatActiveIntents(active)}
+      ${activeIntentsContext}
 
       # Inferred Intents (Candidates)
       ${this.formatInferredIntents(inferred)}
@@ -175,31 +182,11 @@ export class IntentManager extends BaseLangChainAgent {
   private formatInferredIntents(intents: InferredIntent[]): string {
     if (intents.length === 0) return "No inferred intents.";
 
-    const tableData = intents.map(i => ({
-      Type: i.type,
-      Description: i.description,
-      Reasoning: i.reasoning,
-      Confidence: i.confidence
-    }));
-    return json2md.table(tableData, {
-      columns: [
-        { header: "Type", key: "Type" },
-        { header: "Description", key: "Description" },
-        { header: "Reasoning", key: "Reasoning" },
-        { header: "Confidence", key: "Confidence" }
-      ]
-    });
-  }
+    // Simple markdown table formatter
+    const header = "| Type | Description | Reasoning | Confidence |";
+    const separator = "|---|---|---|---|";
+    const rows = intents.map(i => `| ${i.type} | ${i.description} | ${i.reasoning} | ${i.confidence} |`).join('\n');
 
-  private formatActiveIntents(intents: ActiveIntent[]): string {
-    if (intents.length === 0) return "No active intents.";
-
-    // Minimal table for context
-    const tableData = intents.map(i => ({
-      ID: i.id,
-      Description: i.description,
-      Status: i.status
-    }));
-    return json2md.table(tableData, { columns: [{ header: "ID", key: "ID" }, { header: "Description", key: "Description" }, { header: "Status", key: "Status" }] });
+    return `${header}\n${separator}\n${rows}`;
   }
 }

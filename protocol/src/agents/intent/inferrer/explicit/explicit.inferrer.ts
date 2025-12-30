@@ -1,7 +1,7 @@
 import { createAgent, BaseLangChainAgent } from "../../../../lib/langchain/langchain";
-import { UserMemoryProfile } from "../../manager/intent.manager.types";
+
 import { IntentDetector, IntentDetectorResponse } from "./explicit.inferrer.types";
-import { json2md } from "../../../../lib/json2md/json2md";
+
 import { z } from "zod";
 import { log } from "../../../../lib/log";
 
@@ -76,14 +76,14 @@ export class ExplicitIntentDetector extends BaseLangChainAgent {
    * Run the extraction process.
    * 
    * @param content - The raw string content to analyze.
-   * @param profile - Use context (not currently deeply used, but available for reference grounding).
+   * @param profileContext - The formatted profile context string.
    * @returns A Promise resolving to a list of `InferredIntent` objects.
    */
-  async run(content: string | null, profile: UserMemoryProfile): Promise<IntentDetectorResponse> {
+  async run(content: string | null, profileContext: string): Promise<IntentDetectorResponse> {
     const prompt = `
       Context:
       # User Memory Profile
-      ${this.formatProfile(profile)}
+      ${profileContext}
 
       ## New Content
       ${content ? content : '(None. Please infer intents from Profile Narrative and Aspirations)'}
@@ -107,9 +107,4 @@ export class ExplicitIntentDetector extends BaseLangChainAgent {
       return { intents: [] };
     }
   }
-  // TODO: json2md should handle profile. Add tests to json2md with a profile object
-  private formatProfile(profile: UserMemoryProfile): string {
-    return json2md.keyValue(profile);
-  }
-
 }
