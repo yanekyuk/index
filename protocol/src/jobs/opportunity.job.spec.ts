@@ -48,11 +48,11 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
   }
 
   async evaluateOpportunities(
-    sourceProfile: UserMemoryProfile,
+    sourceProfileContext: string,
     candidates: CandidateProfile[],
     options: any = {}
   ): Promise<Opportunity[]> {
-    log.info(`[MockEvaluator] evaluateOpportunities called for ${sourceProfile.userId} vs ${candidates.length} candidates`);
+    log.info(`[MockEvaluator] evaluateOpportunities called with context len ${sourceProfileContext.length} vs ${candidates.length} candidates`);
     if (candidates.length > 0) {
       return [
         {

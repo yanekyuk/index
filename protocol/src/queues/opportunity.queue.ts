@@ -14,6 +14,7 @@ import path from 'path';
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { IndexEmbedder } from '../lib/embedder';
+import { json2md } from '../lib/json2md/json2md';
 
 export const QUEUE_NAME = 'opportunity-processing-queue';
 
@@ -147,7 +148,17 @@ export async function runOpportunityFinderCycle(
         try {
           // Pass embedder to agent
           const hydeGenerator = new HydeGeneratorAgent(embedder);
-          const result = await hydeGenerator.generate(memoryProfile);
+
+          const profileContext = json2md.keyValue({
+            bio: memoryProfile.identity.bio,
+            location: memoryProfile.identity.location,
+            interests: memoryProfile.attributes.interests,
+            skills: memoryProfile.attributes.skills,
+            aspirations: memoryProfile.narrative?.aspirations || '',
+            context: memoryProfile.narrative?.context || ''
+          });
+
+          const result = await hydeGenerator.generate(profileContext);
 
           if (result && result.description) {
             const description = result.description;
@@ -175,7 +186,16 @@ export async function runOpportunityFinderCycle(
       }
 
       // RUN AGENT DISCOVERY
-      const opportunities = await evaluator.runDiscovery(memoryProfile, {
+      const profileContext = json2md.keyValue({
+        bio: memoryProfile.identity.bio,
+        location: memoryProfile.identity.location,
+        interests: memoryProfile.attributes.interests,
+        skills: memoryProfile.attributes.skills,
+        aspirations: memoryProfile.narrative?.aspirations || '',
+        context: memoryProfile.narrative?.context || ''
+      });
+
+      const opportunities = await evaluator.runDiscovery(profileContext, {
         hydeDescription: hydeDesc,
         limit: 20, // Check top 20 nearest neighbors
         minScore: 0.5, // Filter low quality matches early (if searcher supports it)
@@ -211,7 +231,17 @@ export async function runOpportunityFinderCycle(
 
             // 1. Infer Source Intent
             log.info(`   [OpportunityJob] Inferring implicit source intent for ${memoryProfile.userId}...`);
-            const sourceIntent = await inferrer.run(memoryProfile, `Opportunity: ${op.title}. Reason: ${op.description}`);
+
+            const sourceProfileContext = json2md.keyValue({
+              bio: memoryProfile.identity.bio,
+              location: memoryProfile.identity.location,
+              interests: memoryProfile.attributes.interests,
+              skills: memoryProfile.attributes.skills,
+              aspirations: memoryProfile.narrative?.aspirations || '',
+              context: memoryProfile.narrative?.context || ''
+            });
+
+            const sourceIntent = await inferrer.run(sourceProfileContext, `Opportunity: ${op.title}. Reason: ${op.description}`);
 
             // 2. Infer Candidate Intent
             const candidateMemoryProfile: UserMemoryProfile = {
@@ -221,8 +251,17 @@ export async function runOpportunityFinderCycle(
               attributes: candidateProfile.attributes || {}
             } as any;
 
+            const candidateProfileContext = json2md.keyValue({
+              bio: candidateMemoryProfile.identity.bio,
+              location: candidateMemoryProfile.identity.location,
+              interests: candidateMemoryProfile.attributes.interests,
+              skills: candidateMemoryProfile.attributes.skills,
+              aspirations: candidateMemoryProfile.narrative?.aspirations || '',
+              context: candidateMemoryProfile.narrative?.context || ''
+            });
+
             log.info(`   [OpportunityJob] Inferring implicit candidate intent for ${candidateProfile.userId}...`);
-            const candidateIntent = await inferrer.run(candidateMemoryProfile, `Opportunity: ${op.title}. Reason: ${op.description}`);
+            const candidateIntent = await inferrer.run(candidateProfileContext, `Opportunity: ${op.title}. Reason: ${op.description}`);
 
             if (sourceIntent && candidateIntent) {
               log.info(`   [OpportunityJob] Creating implicit stake between ${sourceProfile.userId} and ${candidateProfile.userId}`);

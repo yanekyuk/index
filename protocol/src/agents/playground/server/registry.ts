@@ -257,7 +257,15 @@ const REGISTRY: AgentRegistryItem[] = [
       const foundCandidates = searchResults.map(r => r.item);
 
       // C. Evaluate
-      const opportunities = await agent.evaluateOpportunities(input.sourceProfile, foundCandidates, input.options);
+      const sourceProfileContext = json2md.keyValue({
+        bio: input.sourceProfile.identity.bio,
+        location: input.sourceProfile.identity.location,
+        interests: input.sourceProfile.attributes.interests,
+        skills: input.sourceProfile.attributes.skills,
+        aspirations: input.sourceProfile.narrative?.aspirations || ''
+      });
+
+      const opportunities = await agent.evaluateOpportunities(sourceProfileContext, foundCandidates, input.options);
 
       // Return composite debug object
       return {

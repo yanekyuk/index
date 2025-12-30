@@ -269,7 +269,24 @@ export class ProfileService {
       };
 
       const manager = new IntentManager();
-      const result = await manager.processIntent(null, memoryProfile, activeIntents);
+
+      const profileContext = json2md.keyValue({
+        bio: memoryProfile.identity.bio,
+        location: memoryProfile.identity.location,
+        interests: memoryProfile.attributes.interests,
+        skills: memoryProfile.attributes.skills,
+        aspirations: memoryProfile.narrative?.aspirations || ''
+      });
+
+      const activeIntentsContext = activeIntents.length > 0 ?
+        json2md.table(activeIntents.map(i => ({
+          ID: i.id,
+          Description: i.description,
+          Status: i.status
+        })), { columns: [{ header: "ID", key: "ID" }, { header: "Description", key: "Description" }, { header: "Status", key: "Status" }] }) :
+        "No active intents.";
+
+      const result = await manager.processIntent(null, profileContext, activeIntents, activeIntentsContext);
 
       log.info('[ProfileService] Intent detection result:', { actions: result.actions?.length || 0 });
 
@@ -313,7 +330,15 @@ export class ProfileService {
         log.info('[ProfileService] Generating HyDE description and embedding...');
         const embedder = new IndexEmbedder();
         const hydeGenerator = new HydeGeneratorAgent(embedder);
-        const hydeResult = await hydeGenerator.generate(profile);
+
+        const profileContext = json2md.keyValue({
+          bio: profile.identity.bio || '',
+          location: profile.identity.location || '',
+          interests: profile.attributes.interests || [],
+          context: profile.narrative?.context || ''
+        });
+
+        const hydeResult = await hydeGenerator.generate(profileContext);
 
         if (hydeResult && hydeResult.description) {
           const description = hydeResult.description;
