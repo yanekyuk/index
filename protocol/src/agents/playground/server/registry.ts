@@ -102,15 +102,10 @@ const REGISTRY: AgentRegistryItem[] = [
       { key: 'activeIntents', label: 'Active Intents', type: 'json', description: 'Current intents to reconcile against' }
     ],
     runner: (agent, input) => {
-      // Profile is already a markdown string from the UI
+      // Profile and activeIntents are passed through as-is
+      // User converts to markdown manually via JSON→MD button in UI
       const profileContext = input.profile || '';
-
-      // Convert activeIntents to markdown list (or use directly if already string)
-      const activeIntentsContext = typeof input.activeIntents === 'string'
-        ? input.activeIntents
-        : (Array.isArray(input.activeIntents) && input.activeIntents.length > 0
-          ? input.activeIntents.map((i: any) => `- [${i.id}]: ${i.description}`).join('\n')
-          : 'No active intents.');
+      const activeIntentsContext = input.activeIntents || 'No active intents.';
 
       return agent.processIntent(input.content, profileContext, activeIntentsContext);
     }

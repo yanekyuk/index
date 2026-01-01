@@ -203,45 +203,34 @@ function App() {
       if (selectedAgent?.id === 'intent-manager') {
         const actions = data?.actions || [];
 
-        // Get the profile and activeIntents from current input
-        // Note: Intent Manager input has { content, profile, activeIntents } at top level
-        const inputObj = JSON.parse(inputVal || '{}');
-        const inputProfile = inputObj?.profile;
-        const inputActiveIntents = inputObj?.activeIntents || [];
-
-        addLog(`Debug: inputProfile name = ${inputProfile?.identity?.name}, inputActiveIntents count = ${inputActiveIntents.length}, actions count = ${actions.length}`);
-
-        if (!inputProfile?.identity?.name) {
-          addLog('Error: No profile in input to update.');
-          return;
-        }
-
-        // Find matching profile in context by tracked ID first, then by name
-        const profileName = inputProfile.identity.name;
+        // Get the profile from tracked context ID (since input.profile is now markdown string)
+        // We need the original profile object from context to update it
         let existingProfileIndex = -1;
+        let profileData: any = null;
+        let profileName = 'Unknown';
 
         // First try to find by tracked context ID (most reliable)
         if (sourceProfileCtxId) {
           existingProfileIndex = context.findIndex((c: ContextItem) => c.id === sourceProfileCtxId);
+          if (existingProfileIndex >= 0) {
+            const rawData = context[existingProfileIndex].data;
+            // Handle both direct profile structure and nested {profile: {...}} wrapper
+            profileData = rawData?.profile || rawData;
+            profileName = profileData?.identity?.name || 'Unknown';
+            addLog(`Found profile in context: ${profileName}, has identity: ${!!profileData?.identity}`);
+          }
         }
 
-        // Fallback: find by name if ID not tracked or not found
+        // If no tracked source, we can't update a profile
         if (existingProfileIndex < 0) {
-          existingProfileIndex = context.findIndex(
-            (c: ContextItem) => c.type === 'profile' && c.data?.identity?.name === profileName
-          );
+          addLog('Error: No source profile tracked. Please inject a profile from context first.');
+          return;
         }
 
-        addLog(`Debug: sourceProfileCtxId = ${sourceProfileCtxId}, existingProfileIndex = ${existingProfileIndex}`);
+        addLog(`Updating profile: ${profileName}, actions: ${actions.length}`);
 
-        // Get existing activeIntents:
-        // - If profile exists in context, use its activeIntents
-        // - Otherwise, use the activeIntents from the input form
-        let activeIntents = [...(existingProfileIndex >= 0
-          ? context[existingProfileIndex].data?.activeIntents || []
-          : inputActiveIntents)];
-
-        addLog(`Debug: starting activeIntents count = ${activeIntents.length}`);
+        // Get existing activeIntents from the tracked profile
+        let activeIntents = [...(profileData?.activeIntents || [])];
 
         // Apply actions
         let created = 0, updated = 0, expired = 0;
@@ -266,33 +255,23 @@ function App() {
           }
         }
 
-        addLog(`Debug: final activeIntents count = ${activeIntents.length}`);
-
         // Build updated profile with activeIntents merged in
         const updatedProfile = {
-          ...inputProfile,
+          ...profileData,
           activeIntents
         };
 
-        // Update or create in context
-        if (existingProfileIndex >= 0) {
-          setContext(prev => prev.map((c, i) =>
-            i === existingProfileIndex
-              ? { ...c, data: updatedProfile, timestamp: Date.now() }
-              : c
-          ));
-          addLog(`Updated "${profileName}" profile: +${created} created, ~${updated} updated, -${expired} expired.`);
-        } else {
-          const newItem: ContextItem = {
-            id: 'profile_' + Date.now(),
-            type: 'profile',
-            name: profileName,
-            timestamp: Date.now(),
-            data: updatedProfile
-          };
-          setContext(prev => [newItem, ...prev]);
-          addLog(`Created profile "${profileName}" with ${activeIntents.length} intents.`);
-        }
+        // Update the profile in context (preserve original wrapper structure if present)
+        setContext(prev => prev.map((c, i) => {
+          if (i !== existingProfileIndex) return c;
+          const rawData = c.data;
+          // If original had {profile: {...}} wrapper, preserve it
+          const newData = rawData?.profile
+            ? { ...rawData, profile: updatedProfile }
+            : updatedProfile;
+          return { ...c, data: newData, timestamp: Date.now() };
+        }));
+        addLog(`Updated "${profileName}" profile: +${created} created, ~${updated} updated, -${expired} expired.`);
         return;
       }
 

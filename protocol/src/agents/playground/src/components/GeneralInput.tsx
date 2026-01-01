@@ -62,17 +62,20 @@ export const GeneralInput: React.FC<GeneralInputProps> = ({
       const obj = JSON.parse(value);
       let md = "";
       if (obj.identity || !Array.isArray(obj)) {
+        // Object with identity (profile) or single object -> use fromObject
         md = json2md.fromObject(obj);
+      } else if (obj.length > 0 && typeof obj[0] === 'object') {
+        // Array of objects -> use table format
+        const keys = Object.keys(obj[0]);
+        const columns = keys.map(k => ({ header: k, key: k }));
+        md = json2md.table(obj, { columns });
       } else {
-        md = obj.map((item: any) => {
-          if (typeof item === 'object') return json2md.fromObject(item);
-          return JSON.stringify(item);
-        }).join('\n\n---\n\n');
+        // Array of primitives -> use list
+        md = json2md.list(obj.map(String));
       }
       onChange(md.trim());
     } catch (e) {
       console.error("Failed to convert JSON to MD", e);
-      // Optional: Propagate error or show toast if we had a toast system
     }
   };
 

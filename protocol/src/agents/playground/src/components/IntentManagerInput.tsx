@@ -165,8 +165,25 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
           onChange={(val) => {
             setIntentsStr(val);
             try {
-              const i = JSON.parse(val);
-              updateInput({ activeIntents: i });
+              const intents = JSON.parse(val);
+              // Convert activeIntents JSON array to markdown table (same as production)
+              const intentsMd = Array.isArray(intents) && intents.length > 0
+                ? json2md.table(
+                  intents.map((i: any) => ({
+                    ID: i.id,
+                    Description: i.description,
+                    Status: i.status
+                  })),
+                  {
+                    columns: [
+                      { header: "ID", key: "ID" },
+                      { header: "Description", key: "Description" },
+                      { header: "Status", key: "Status" }
+                    ]
+                  }
+                )
+                : 'No active intents.';
+              updateInput({ activeIntents: intentsMd });
             } catch (e) {
               // Not JSON - likely already markdown, pass it through directly
               updateInput({ activeIntents: val });
