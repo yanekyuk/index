@@ -9,7 +9,7 @@ import {
   runAgent
 } from './lib/api';
 import './App.css';
-import { Terminal, Cpu, Database, Play, Save, Loader, Code, LayoutTemplate } from 'lucide-react';
+import { Terminal, Cpu, Database, Play, Save, Loader } from 'lucide-react';
 
 
 import { OpportunityEvaluatorInput } from './components/OpportunityEvaluatorInput';
@@ -37,12 +37,6 @@ function App() {
 
   // Track source context ID for intent-manager profile updates
   const [sourceProfileCtxId, setSourceProfileCtxId] = useState<string | null>(null); // Track which ctx item populated the profile
-
-  // Pre-processors State
-  const [preProcessors, setPreProcessors] = useState<{ embed: boolean; json2md: boolean }>({
-    embed: false,
-    json2md: false
-  });
 
   // Init & Persistence
   useEffect(() => {
@@ -189,7 +183,7 @@ function App() {
         addLog(`Injected ${potentialCandidates.length} candidates from local context.`);
       }
 
-      const res = await runAgent(selectedAgentId, payload, { preProcessors });
+      const res = await runAgent(selectedAgentId, payload);
       setOutputVal(JSON.stringify(res, null, 2));
       addLog(`Execution successful.`);
     } catch (e: any) {
@@ -1183,54 +1177,7 @@ function App() {
 
 
 
-  const renderHeaderControls = () => {
-    if (!selectedAgent) return null;
-    return (
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        {/* Pre-Processor Toggles */}
-        {selectedAgent.id !== 'profile-generator' && (selectedAgent.category === 'profile' || selectedAgent.category === 'opportunity' || selectedAgent.category === 'intent') && (
-          <div className="pre-processors" style={{ display: 'flex', gap: '12px', marginRight: '16px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer', color: preProcessors.embed ? '#00ffff' : '#666' }}>
-              <input
-                type="checkbox"
-                checked={preProcessors.embed}
-                onChange={(e) => setPreProcessors(prev => ({ ...prev, embed: e.target.checked }))}
-                style={{ accentColor: '#00ffff' }}
-              />
-              <span>+Embed</span>
-            </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', cursor: 'pointer', color: preProcessors.json2md ? '#00ffff' : '#666' }}>
-              <input
-                type="checkbox"
-                checked={preProcessors.json2md}
-                onChange={(e) => setPreProcessors(prev => ({ ...prev, json2md: e.target.checked }))}
-                style={{ accentColor: '#00ffff' }}
-              />
-              <span>JSON→MD</span>
-            </label>
-          </div>
-        )}
-
-        {/* MODE TOGGLE */}
-        <div className="mode-toggle">
-          {selectedAgent.id === 'profile-generator' || selectedAgent.id === 'hyde-generator' || selectedAgent.id === 'parallel-fetcher' ? (
-            /* Handled by GeneralInput viewMode */
-            null
-          ) : (
-            <>
-              <button className={`mode-btn ${inputMode === 'structured' ? 'active' : ''}`} onClick={() => setInputMode('structured')} disabled={!selectedAgent.fields && selectedAgent.inputType !== 'parallel_params'}>
-                <LayoutTemplate size={14} /> STRUCT
-              </button>
-              <button className={`mode-btn ${inputMode === 'raw' ? 'active' : ''}`} onClick={() => setInputMode('raw')}>
-                <Code size={14} /> RAW
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="terminal-layout">
@@ -1301,7 +1248,6 @@ function App() {
               allowPreview={selectedAgent?.id === 'profile-generator' || selectedAgent?.id === 'hyde-generator'}
               allowJson2Md={selectedAgent?.id === 'profile-generator' || selectedAgent?.id === 'hyde-generator'}
               allowMarkdown={selectedAgent?.id !== 'parallel-fetcher'}
-              headerControls={renderHeaderControls()}
               footerActions={
                 <button
                   className={`term-btn ${isRunning ? 'loading' : ''}`}
