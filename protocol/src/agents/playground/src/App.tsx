@@ -275,6 +275,51 @@ function App() {
         return;
       }
 
+      // Special behavior for HyDE Generator: save HyDE description to profile
+      if (selectedAgent?.id === 'hyde-generator') {
+        const description = data?.description;
+
+        if (!description) {
+          addLog('Error: No description in output.');
+          return;
+        }
+
+        // Find source profile
+        let existingProfileIndex = -1;
+        if (sourceProfileCtxId) {
+          existingProfileIndex = context.findIndex((c: ContextItem) => c.id === sourceProfileCtxId);
+        }
+
+        if (existingProfileIndex < 0) {
+          addLog('Error: No source profile tracked. Please inject a profile from context first.');
+          return;
+        }
+
+        const rawData = context[existingProfileIndex].data;
+        const profileData = rawData?.profile || rawData;
+        const profileName = profileData?.identity?.name || 'Unknown';
+
+        // Update profile with hydeDescription
+        const updatedProfile = {
+          ...profileData,
+          hydeDescription: description
+        };
+
+        // Update in context (preserving wrapper)
+        setContext(prev => prev.map((c, i) => {
+          if (i !== existingProfileIndex) return c;
+
+          const newData = rawData?.profile
+            ? { ...rawData, profile: updatedProfile }
+            : updatedProfile;
+
+          return { ...c, data: newData, timestamp: Date.now() };
+        }));
+
+        addLog(`Updated "${profileName}" profile with HyDE description.`);
+        return;
+      }
+
       // Infer Type
       let type: ContextItem['type'] = 'generated';
       if (selectedAgent?.category === 'profile') type = 'profile';
@@ -340,6 +385,11 @@ function App() {
     if (dataToInject && typeof dataToInject === 'object' && 'embedding' in dataToInject) {
       const { embedding, ...rest } = dataToInject;
       dataToInject = rest;
+    }
+
+    // Always track source profile ID when injecting a profile
+    if (item.type === 'profile') {
+      setSourceProfileCtxId(item.id);
     }
 
     // Special handling for Opportunity Evaluator

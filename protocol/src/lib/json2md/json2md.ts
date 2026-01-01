@@ -24,6 +24,27 @@ interface TableOptions {
  */
 export const json2md = {
   /**
+   * Smartly converts any JSON data to Markdown.
+   * Auto-detects arrays of objects to render as tables.
+   */
+  toMarkdown(data: any): string {
+    if (Array.isArray(data)) {
+      if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null) {
+        // Array of Objects -> Table
+        const keys = Array.from(new Set(data.flatMap((item: any) => Object.keys(item))));
+        const columns = keys.map(k => ({ header: k, key: k }));
+        return this.table(data, { columns });
+      } else {
+        // Array of Primitives -> List
+        return this.list(data.map(String));
+      }
+    }
+    if (typeof data === 'object' && data !== null) {
+      return this.fromObject(data);
+    }
+    return String(data);
+  },
+  /**
    * Creates a markdown list from an array of strings.
    * 
    * @param items - The array of strings to list.
@@ -91,41 +112,15 @@ export const json2md = {
       }
 
       if (Array.isArray(value)) {
-        // Handle Array: Label + List
         lines.push(`**${key}**:`);
-        if (value.length > 0) {
-          value.forEach(item => {
-            if (typeof item === 'object' && item !== null) {
-              // Recursive handling for objects in arrays
-              // We'll treat them as a sub-list item with indentation or a nested block
-              // For simplicity, let's treat it as a bullet point with nested content
-              const subObjMd = this.fromObject(item, headerLevel);
-              // We need to indent the result
-              const indented = subObjMd.split('\n').map(l => `   ${l}`).join('\n');
-              lines.push(` - ` + (indented.trimStart())); // First line inline? or block?
-              // Actually, simple arrays of objects usually mean a list of records.
-              // a simple " - [object]" is bad.
-              // Let's try:
-              // - **Prop**: Val
-              //   **Prop2**: Val
-              // Logic:
-              const subLines = this.fromObject(item, headerLevel).split('\n');
-              if (subLines.length > 0) {
-                lines.push(` - ${subLines[0]}`); // First line on bullet
-                // Subsequent lines indented
-                for (let i = 1; i < subLines.length; i++) {
-                  lines.push(`   ${subLines[i]}`);
-                }
-              } else {
-                lines.push(` - (Empty Object)`);
-              }
-
-            } else {
-              lines.push(` - ${item}`);
-            }
-          });
+        if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
+          // Array of objects -> Table
+          const keys = Array.from(new Set(value.flatMap((item: any) => Object.keys(item))));
+          const columns = keys.map(k => ({ header: k, key: k }));
+          lines.push(this.table(value, { columns }));
         } else {
-          lines.push(` - (None)`);
+          // Array of primitives -> List
+          lines.push(this.list(value.map(String)));
         }
       } else if (typeof value === 'object') {
         // Handle Nested Object: Header + Recursion
