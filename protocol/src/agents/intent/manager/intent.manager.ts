@@ -1,5 +1,5 @@
 import { BaseLangChainAgent } from "../../../lib/langchain/langchain";
-import { UserMemoryProfile, ActiveIntent, IntentManagerResponse, IntentAction } from "./intent.manager.types";
+import { UserMemoryProfile, IntentManagerResponse } from "./intent.manager.types";
 import { InferredIntent } from "../inferrer/explicit/explicit.inferrer.types";
 import { ExplicitIntentDetector } from "../inferrer/explicit/explicit.inferrer";
 import { z } from "zod";
@@ -92,18 +92,16 @@ export class IntentManager extends BaseLangChainAgent {
    * LOGIC FLOW:
    * 1. Extraction: Calls `ExplicitIntentDetector` to extract candidate intents from the raw content.
    * 2. Filtering: If no candidates are found, returns early.
-   * 3. Reconciliation: Calls `reconcileIntentsWithLLM` to compare candidates against the user's `activeIntents`.
+   * 3. Reconciliation: Calls `reconcileIntentsWithLLM` to compare candidates against the active intents context.
    * 
    * @param content - The new text input from the user (e.g., a message, note, or command).
    * @param profileContext - The formatted profile context string.
-   * @param activeIntents - The list of intents currently Active for this user.
    * @param activeIntentsContext - The formatted active intents context string.
    * @returns A Promise resolving to a list of `IntentAction` (Create, Update, Expire) to be applied to the DB.
    */
   async processIntent(
     content: string | null,
     profileContext: string,
-    activeIntents: ActiveIntent[],
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     // 1. Run Explicit Detector (Pure Extraction)
@@ -116,8 +114,8 @@ export class IntentManager extends BaseLangChainAgent {
     }
 
     // 2. Reconcile with Active Intents (LLM Decision)
-    log.info(`[IntentManagerAgent] Reconciling ${inferredIntents.length} inferred vs ${activeIntents.length} active intents...`);
-    return this.reconcileIntentsWithLLM(inferredIntents, activeIntents, activeIntentsContext);
+    log.info(`[IntentManagerAgent] Reconciling ${inferredIntents.length} inferred intents...`);
+    return this.reconcileIntentsWithLLM(inferredIntents, activeIntentsContext);
   }
 
   /**
@@ -133,12 +131,10 @@ export class IntentManager extends BaseLangChainAgent {
    * - IGNORE: Candidate is a semantic duplicate of an Active Intent with no new info.
    * 
    * @param inferred - List of intents extracted from recent content.
-   * @param active - List of currently active intents.
    * @param activeIntentsContext - Formatted string of active intents.
    */
   private async reconcileIntentsWithLLM(
     inferred: InferredIntent[],
-    active: ActiveIntent[],
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     const prompt = `
@@ -159,20 +155,8 @@ export class IntentManager extends BaseLangChainAgent {
     try {
       const result = await this.model.invoke({ messages });
       const structuredResponse = result.structuredResponse as IntentManagerResponse;
-
-      // Filter out "no-op" updates (where payload equals current description)
-      const filteredActions = structuredResponse.actions.filter(action => {
-        if (action.type === 'update') {
-          const original = active.find(a => a.id === action.id);
-          if (original && original.description === action.payload) {
-            return false; // Ignore no-op updates
-          }
-        }
-        return true;
-      });
-
-      log.info(`[IntentManagerAgent] Decision: ${filteredActions.length} actions generated.`);
-      return { actions: filteredActions };
+      log.info(`[IntentManagerAgent] Decision: ${structuredResponse.actions.length} actions generated.`);
+      return structuredResponse;
     } catch (error) {
       log.error("[IntentManagerAgent] Error in IntentManager reconciliation", { error });
       return { actions: [] };

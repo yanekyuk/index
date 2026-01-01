@@ -286,12 +286,23 @@ export class ProfileService {
         })), { columns: [{ header: "ID", key: "ID" }, { header: "Description", key: "Description" }, { header: "Status", key: "Status" }] }) :
         "No active intents.";
 
-      const result = await manager.processIntent(null, profileContext, activeIntents, activeIntentsContext);
+      const result = await manager.processIntent(null, profileContext, activeIntentsContext);
 
-      log.info('[ProfileService] Intent detection result:', { actions: result.actions?.length || 0 });
+      // Filter out no-op updates (where payload equals current description)
+      const filteredActions = result.actions.filter(action => {
+        if (action.type === 'update') {
+          const original = activeIntents.find(a => a.id === action.id);
+          if (original && original.description === action.payload) {
+            return false;
+          }
+        }
+        return true;
+      });
 
-      if (result.actions && result.actions.length > 0) {
-        for (const action of result.actions) {
+      log.info('[ProfileService] Intent detection result:', { actions: filteredActions.length });
+
+      if (filteredActions.length > 0) {
+        for (const action of filteredActions) {
           if (action.type === 'create') {
             log.info(`[ProfileService] Creating inferred intent: "${action.payload}"`);
 
