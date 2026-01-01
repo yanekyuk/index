@@ -39,7 +39,11 @@ export const ExplicitIntentInferrerInput: React.FC<ExplicitIntentInferrerInputPr
     try {
       const localParsed = JSON.parse(profileStr || 'null');
       if (!areStructurallyEqual(localParsed, upstreamProfile)) {
-        setProfileStr(upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+        // If profile is a string (markdown), use it directly; if object, stringify
+        const newProfileStr = typeof upstreamProfile === 'string'
+          ? upstreamProfile
+          : (upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+        setProfileStr(newProfileStr);
       }
     } catch (e) {
       // Local invalid, ignore unless forced by Ref change (below)
@@ -50,7 +54,11 @@ export const ExplicitIntentInferrerInput: React.FC<ExplicitIntentInferrerInputPr
   const prevProfileRef = React.useRef(upstreamProfile);
   React.useEffect(() => {
     if (!areStructurallyEqual(prevProfileRef.current, upstreamProfile)) {
-      setProfileStr(upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+      // If profile is a string (markdown), use it directly; if object, stringify
+      const newProfileStr = typeof upstreamProfile === 'string'
+        ? upstreamProfile
+        : (upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+      setProfileStr(newProfileStr);
     }
     prevProfileRef.current = upstreamProfile;
   }, [upstreamProfile]);
@@ -90,7 +98,8 @@ export const ExplicitIntentInferrerInput: React.FC<ExplicitIntentInferrerInputPr
               const p = JSON.parse(val);
               updateInput({ profile: p });
             } catch (e) {
-              // Invalid JSON
+              // Not JSON - likely markdown string (from button or manual edit), pass it through
+              updateInput({ profile: val });
             }
           }}
           label="PROFILE"

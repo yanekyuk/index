@@ -1,6 +1,5 @@
 import React from 'react';
 import { GeneralInput } from './GeneralInput';
-import { json2md } from '../../../../lib/json2md/json2md';
 
 interface IntentManagerInputProps {
   inputVal: string;
@@ -133,17 +132,7 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
             setProfileStr(val);
             try {
               const p = JSON.parse(val);
-              // Convert profile JSON to markdown string for the agent
-              const profileMd = json2md.keyValue({
-                name: p?.identity?.name || '',
-                bio: p?.identity?.bio || '',
-                location: p?.identity?.location || '',
-                context: p?.narrative?.context || '',
-                aspirations: p?.narrative?.aspirations || '',
-                interests: p?.attributes?.interests || [],
-                skills: p?.attributes?.skills || []
-              });
-              updateInput({ profile: profileMd });
+              updateInput({ profile: p });
             } catch (e) {
               // Not JSON - likely already markdown, pass it through directly
               updateInput({ profile: val });
@@ -166,24 +155,7 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
             setIntentsStr(val);
             try {
               const intents = JSON.parse(val);
-              // Convert activeIntents JSON array to markdown table (same as production)
-              const intentsMd = Array.isArray(intents) && intents.length > 0
-                ? json2md.table(
-                  intents.map((i: any) => ({
-                    ID: i.id,
-                    Description: i.description,
-                    Status: i.status
-                  })),
-                  {
-                    columns: [
-                      { header: "ID", key: "ID" },
-                      { header: "Description", key: "Description" },
-                      { header: "Status", key: "Status" }
-                    ]
-                  }
-                )
-                : 'No active intents.';
-              updateInput({ activeIntents: intentsMd });
+              updateInput({ activeIntents: intents });
             } catch (e) {
               // Not JSON - likely already markdown, pass it through directly
               updateInput({ activeIntents: val });

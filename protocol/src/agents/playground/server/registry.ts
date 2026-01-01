@@ -127,18 +127,9 @@ const REGISTRY: AgentRegistryItem[] = [
       { key: 'profile', label: 'Profile', type: 'profile', description: 'User profile context' }
     ],
     runner: (agent, input) => {
-      // Convert profile JSON to markdown string (as expected by run method)
-      const profileContext = typeof input.profile === 'string'
-        ? input.profile
-        : json2md.keyValue({
-          name: input.profile?.identity?.name || '',
-          bio: input.profile?.identity?.bio || '',
-          location: input.profile?.identity?.location || '',
-          context: input.profile?.narrative?.context || '',
-          aspirations: input.profile?.narrative?.aspirations || '',
-          interests: input.profile?.attributes?.interests || [],
-          skills: input.profile?.attributes?.skills || []
-        });
+      // Profile is passed through as-is
+      // User converts to markdown manually via JSON→MD button in UI
+      const profileContext = input.profile || '';
 
       return agent.run(input.content, profileContext);
     }
