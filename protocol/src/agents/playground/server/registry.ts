@@ -256,6 +256,7 @@ const REGISTRY: AgentRegistryItem[] = [
         'profiles', // Collection name irrelevant for memory searcher
         {
           limit: input.options?.limit || 5,
+          minScore: 0.5, // Force 0.5 minimum similarity for vector search (matches Queue logic)
           filter: {
             userId: { ne: input.sourceProfile.userId }
           },

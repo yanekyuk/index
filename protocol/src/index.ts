@@ -15,7 +15,7 @@ import './queues/opportunity.queue';
  * PLAYGROUND
  */
 import { getAvailableAgents, runAgent } from './agents/playground/server/registry';
-import { PARALLEL_INPUTS } from './agents/playground/server/data/users';
+import { TEST_USERS } from './agents/playground/server/data/users';
 import { IndexEmbedder } from './lib/embedder';
 // Initialize shared embedder
 const sharedEmbedder = new IndexEmbedder();
@@ -102,7 +102,7 @@ app.get('/api/agents', (req, res) => {
 });
 
 app.get('/api/data/users', (req, res) => {
-  res.json(PARALLEL_INPUTS);
+  res.json(TEST_USERS);
 });
 
 app.post('/api/run/:agentId', async (req, res) => {

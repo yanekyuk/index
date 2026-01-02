@@ -11,15 +11,30 @@ export type ParallelParams = {
   github?: string;
 };
 
-export type ProfileData = {
+export interface Profile {
   identity: {
     name: string;
     bio?: string;
+    location?: string;
+    companies?: string[];
     [key: string]: any;
   };
-  attributes?: Record<string, any>;
+  narrative?: {
+    biography?: string;
+    context?: string;
+    goals?: string[];
+    aspirations?: string;
+  };
+  attributes?: {
+    skills?: string[];
+    interests?: string[];
+    values?: string[];
+  };
+  embedding?: number[];
   [key: string]: any;
-};
+}
+
+export type ProfileData = Profile; // Alias for backward compat
 
 export type IntentPair = {
   source: ProfileData;
@@ -53,27 +68,50 @@ export interface Agent {
   disabled?: boolean;
 };
 
-// Context Types
-export type ContextType = 'profile' | 'intent' | 'opportunity' | 'generated' | 'hyde' | 'json' | 'parallel-search-response' | 'ParallelSearchRequest' | 'intent_manager_response';
+// User Context Definition
+export interface UserContext {
+  id: string; // Unique ID
+  name: string; // Display Name
 
-export type ContextItem = {
-  id: string;
-  type: ContextType;
-  name: string;
+  // 1. Parallel Search Params
+  parallelSearchParams?: {
+    name?: string;
+    email?: string;
+    linkedin?: string;
+  };
+
+  // 1.5 Parallel Search Result (Output from Fetcher)
+  parallelSearchResult?: any;
+
+  // 2. User Profile (Structured Memory Profile)
+  userProfile?: any;
+
+  // 3. User Profile Embedding
+  userProfileEmbedding?: number[];
+
+  // 4. HyDE Description
+  hydeDescription?: string;
+
+  // 5. HyDE Description Embedding
+  hydeDescriptionEmbedding?: number[];
+
+  // 6. Active Intents
+  activeIntents?: any[];
+
+  // Timestamp for sorting
   timestamp?: number;
-  value?: any;
-  data?: any;
-};
+}
 
+export type ContextItem = UserContext; // Legacy alias if needed, but we should use UserContext
 
 export async function fetchAgents(): Promise<Agent[]> {
   const res = await fetch('/api/agents');
   return res.json() as Promise<Agent[]>;
 }
 
-export async function fetchContextData(): Promise<ContextItem[]> {
+export async function fetchContextData(): Promise<UserContext[]> {
   const res = await fetch('/api/data/users');
-  return res.json() as Promise<ContextItem[]>;
+  return res.json() as Promise<UserContext[]>;
 }
 
 export interface RunAgentOptions {

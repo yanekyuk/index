@@ -35,6 +35,16 @@ export async function memorySearcher<T>(
   for (const item of candidates) {
     if (!item.embedding) continue;
 
+    // Apply Filter (Simple 'ne' support for userId)
+    const anyItem = item as any;
+
+    if (options?.filter && anyItem.userId) {
+      const f = options.filter as any;
+      if (f.userId && f.userId.ne) {
+        if (anyItem.userId === f.userId.ne) continue;
+      }
+    }
+
     const score = cosineSimilarity(queryVector, item.embedding);
 
     if (score >= minScore) {

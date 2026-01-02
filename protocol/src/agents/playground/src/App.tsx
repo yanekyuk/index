@@ -158,18 +158,11 @@ function App() {
       // Special Case: Opportunity Evaluator - Inject Candidates from Context
       if (selectedAgentId === 'opportunity-evaluator') {
         const potentialCandidates = context
-          .filter(c => c.type === 'profile' || (c.type === 'generated' && c.data?.identity))
+          .filter(c => c.userProfile)
           .map(c => {
-            // Ensure it has the structure expected by the backend
-            // For generated items, c.data might be { profile: {...}, embedding: [...] }
-            // We want to flatten it to { ...profile, embedding: [...] }
-            if (c.data?.profile) {
-              return {
-                ...c.data.profile,
-                embedding: c.data.embedding || c.data.profile.embedding
-              };
-            }
-            return c.data || c.value; // Fallback for pure profile items
+            const profile = { ...c.userProfile };
+            if (c.userProfileEmbedding) profile.embedding = c.userProfileEmbedding;
+            return profile;
           });
 
         // Merge into payload
@@ -198,151 +191,114 @@ function App() {
     try {
       const data = JSON.parse(outputVal);
 
-      // Special behavior for Intent Manager: apply actions to profile's activeIntents
-      if (selectedAgent?.id === 'intent-manager') {
-        const actions = data?.actions || [];
+      let targetUserId = sourceProfileCtxId;
 
-        // Get the profile from tracked context ID (since input.profile is now markdown string)
-        // We need the original profile object from context to update it
-        let existingProfileIndex = -1;
-        let profileData: any = null;
-        let profileName = 'Unknown';
+      // Logic to determine if we should create a new user or update existing
+      // If we don't have a source (e.g. from Parallel Fetcher results?), we might prompt.
+      // But usually we start from a user.
 
-        // First try to find by tracked context ID (most reliable)
-        if (sourceProfileCtxId) {
-          existingProfileIndex = context.findIndex((c: ContextItem) => c.id === sourceProfileCtxId);
-          if (existingProfileIndex >= 0) {
-            const rawData = context[existingProfileIndex].data;
-            // Handle both direct profile structure and nested {profile: {...}} wrapper
-            profileData = rawData?.profile || rawData;
-            profileName = profileData?.identity?.name || 'Unknown';
-            addLog(`Found profile in context: ${profileName}, has identity: ${!!profileData?.identity}`);
-          }
-        }
-
-        // If no tracked source, we can't update a profile
-        if (existingProfileIndex < 0) {
-          addLog('Error: No source profile tracked. Please inject a profile from context first.');
-          return;
-        }
-
-        addLog(`Updating profile: ${profileName}, actions: ${actions.length}`);
-
-        // Get existing activeIntents from the tracked profile
-        let activeIntents = [...(profileData?.activeIntents || [])];
-
-        // Apply actions
-        let created = 0, updated = 0, expired = 0;
-        for (const action of actions) {
-          if (action.type === 'create') {
-            activeIntents.push({
-              id: `intent-${Date.now()}-${created}`,
-              description: action.payload,
-              status: 'active',
-              created_at: Date.now()
-            });
-            created++;
-          } else if (action.type === 'update') {
-            const idx = activeIntents.findIndex((i: any) => i.id === action.id);
-            if (idx !== -1) {
-              activeIntents[idx] = { ...activeIntents[idx], description: action.payload };
-              updated++;
-            }
-          } else if (action.type === 'expire') {
-            activeIntents = activeIntents.filter((i: any) => i.id !== action.id);
-            expired++;
-          }
-        }
-
-        // Build updated profile with activeIntents merged in
-        const updatedProfile = {
-          ...profileData,
-          activeIntents
-        };
-
-        // Update the profile in context (preserve original wrapper structure if present)
-        setContext(prev => prev.map((c, i) => {
-          if (i !== existingProfileIndex) return c;
-          const rawData = c.data;
-          // If original had {profile: {...}} wrapper, preserve it
-          const newData = rawData?.profile
-            ? { ...rawData, profile: updatedProfile }
-            : updatedProfile;
-          return { ...c, data: newData, timestamp: Date.now() };
+      const updateUser = (userId: string, updates: any) => {
+        setContext(prev => prev.map(user => {
+          if (user.id !== userId) return user;
+          return { ...user, ...updates, timestamp: Date.now() };
         }));
-        addLog(`Updated "${profileName}" profile: +${created} created, ~${updated} updated, -${expired} expired.`);
-        return;
-      }
-
-      // Special behavior for HyDE Generator: save HyDE description to profile
-      if (selectedAgent?.id === 'hyde-generator') {
-        const description = data?.description;
-
-        if (!description) {
-          addLog('Error: No description in output.');
-          return;
-        }
-
-        // Find source profile
-        let existingProfileIndex = -1;
-        if (sourceProfileCtxId) {
-          existingProfileIndex = context.findIndex((c: ContextItem) => c.id === sourceProfileCtxId);
-        }
-
-        if (existingProfileIndex < 0) {
-          addLog('Error: No source profile tracked. Please inject a profile from context first.');
-          return;
-        }
-
-        const rawData = context[existingProfileIndex].data;
-        const profileData = rawData?.profile || rawData;
-        const profileName = profileData?.identity?.name || 'Unknown';
-
-        // Update profile with hydeDescription
-        const updatedProfile = {
-          ...profileData,
-          hydeDescription: description
-        };
-
-        // Update in context (preserving wrapper)
-        setContext(prev => prev.map((c, i) => {
-          if (i !== existingProfileIndex) return c;
-
-          const newData = rawData?.profile
-            ? { ...rawData, profile: updatedProfile }
-            : updatedProfile;
-
-          return { ...c, data: newData, timestamp: Date.now() };
-        }));
-
-        addLog(`Updated "${profileName}" profile with HyDE description.`);
-        return;
-      }
-
-      // Infer Type
-      let type: ContextItem['type'] = 'generated';
-      if (selectedAgent?.category === 'profile') type = 'profile';
-      if (selectedAgent?.id === 'hyde-generator') type = 'hyde';
-      if (selectedAgent?.id === 'parallel-fetcher') type = 'parallel-search-response';
-
-      // Default name based on agent
-      const defaultName = selectedAgent?.id === 'parallel-fetcher'
-        ? 'parallel-search-response'
-        : `${selectedAgent?.name} Output`;
-
-      // Prompt for custom name
-      const customName = prompt('Enter a name for this save:', defaultName);
-      if (customName === null) return; // User cancelled
-
-      const newItem: ContextItem = {
-        id: 'gen_' + Date.now(),
-        type: type,
-        name: customName || defaultName,
-        timestamp: Date.now(),
-        data: data
       };
-      setContext(prev => [newItem, ...prev]);
-      addLog(`Output saved as "${customName || defaultName}" [${type}].`);
+
+      if (!targetUserId) {
+        // No source tracked. Prompt to create user (e.g. from Profile Generator output)
+        if (selectedAgent?.id === 'profile-generator' || selectedAgent?.id === 'parallel-fetcher') {
+          const defaultName = data.identity?.name || 'New User';
+          const newName = prompt("Create new User Context with name:", defaultName);
+          if (!newName) return;
+
+          const newUser: ContextItem = {
+            id: 'user_' + Date.now(),
+            name: newName,
+            activeIntents: [],
+            timestamp: Date.now()
+          };
+
+          // If Profile Generator, populate profile
+          if (selectedAgent.id === 'profile-generator') {
+            newUser.userProfile = data.profile || data;
+            if (data.embedding) newUser.userProfileEmbedding = data.embedding;
+          }
+
+          setContext(prev => [...prev, newUser]);
+          setSourceProfileCtxId(newUser.id);
+          addLog(`Created User Context: ${newName}`);
+          return;
+        }
+
+        addLog('Error: No User Context tracked. To save, start by injecting a User or use Profile Generator.');
+        return;
+      }
+
+      // Update Existing User
+      if (selectedAgent?.id === 'parallel-fetcher') {
+        updateUser(targetUserId, {
+          parallelSearchResult: data
+        });
+        addLog(`Updated User Parallel Result`);
+        return;
+      }
+
+      if (selectedAgent?.id === 'profile-generator') {
+        updateUser(targetUserId, {
+          userProfile: data.profile || data,
+          userProfileEmbedding: data.embedding
+        });
+        addLog(`Updated User Profile`);
+        return;
+      }
+
+      if (selectedAgent?.id === 'hyde-generator') {
+        const description = data.description || (typeof data === 'string' ? data : JSON.stringify(data));
+        updateUser(targetUserId, {
+          hydeDescription: description,
+          hydeDescriptionEmbedding: data.embedding
+        });
+        addLog(`Updated HyDE Description`);
+        return;
+      }
+
+      if (selectedAgent?.id === 'intent-manager') {
+        // Reconcile intents
+        const actions = data?.actions || [];
+        const user = context.find(c => c.id === targetUserId);
+        if (user) {
+          let activeIntents = [...(user.activeIntents || [])];
+
+          let created = 0, updated = 0, expired = 0;
+          for (const action of actions) {
+            if (action.type === 'create') {
+              activeIntents.push({
+                id: `intent-${Date.now()}-${created}`,
+                description: action.payload,
+                status: 'active',
+                created_at: Date.now()
+              });
+              created++;
+            } else if (action.type === 'update') {
+              const idx = activeIntents.findIndex((i: any) => i.id === action.id);
+              if (idx !== -1) {
+                activeIntents[idx] = { ...activeIntents[idx], description: action.payload };
+                updated++;
+              }
+            } else if (action.type === 'expire') {
+              activeIntents = activeIntents.filter((i: any) => i.id !== action.id);
+              expired++;
+            }
+          }
+
+          updateUser(targetUserId, { activeIntents });
+          addLog(`Updated Intents: +${created} ~${updated} -${expired}`);
+        }
+        return;
+      }
+
+      addLog('Output saved (No persistent update strategy for this agent).');
+
     } catch (e) {
       addLog('Error: Cannot save non-JSON output.');
     }
@@ -369,287 +325,212 @@ function App() {
 
   // --- Smart Input Helpers ---
 
+  /* Handlers */
+
   const injectContext = (ctxId: string, targetKey?: string) => {
-    const item = context.find(c => c.id === ctxId);
-    if (!item) return;
+    const user = context.find(c => c.id === ctxId);
+    if (!user) return;
 
-    let dataToInject = item.value ?? item.data;
+    // Track Source
+    setSourceProfileCtxId(user.id);
 
-    // Smart unpacking for profiles
-    if ((item.type === 'profile' || item.type === 'generated') && dataToInject?.profile) {
-      dataToInject = { ...dataToInject.profile };
-    }
-
-    // Strip embedding if present (user request)
-    if (dataToInject && typeof dataToInject === 'object' && 'embedding' in dataToInject) {
-      const { embedding, ...rest } = dataToInject;
-      dataToInject = rest;
-    }
-
-    // Always track source profile ID when injecting a profile
-    if (item.type === 'profile') {
-      setSourceProfileCtxId(item.id);
-    }
-
-    // Special handling for Opportunity Evaluator
-    if (selectedAgent?.id === 'opportunity-evaluator' && inputMode === 'structured') {
-      const currentObj = JSON.parse(inputVal || '{}');
-
-      // If it's a hyde type, inject directly into options.hydeDescription
-      if (item.type === 'hyde') {
-        const hydeText = typeof dataToInject === 'string' ? dataToInject : (dataToInject?.description || JSON.stringify(dataToInject));
-        const newObj = {
-          ...currentObj,
-          options: { ...currentObj.options, hydeDescription: hydeText }
-        };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        addLog(`Injected HyDE description.`);
-        return;
-      }
-
-      // For profiles, use the targetKey to determine where to inject
-      if (targetKey === 'sourceProfile') {
-        const newObj = { ...currentObj, sourceProfile: dataToInject };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        addLog(`Set source profile: ${item.name}`);
-        return;
-      }
-      if (targetKey === 'candidates') {
-        const newCandidates = [...(currentObj.candidates || []), dataToInject];
-        const newObj = { ...currentObj, candidates: newCandidates };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        addLog(`Added candidate: ${item.name}`);
-        return;
-      }
-      // If no targetKey and it's a profile, default to Setting Source + HyDE
-      if (!targetKey && (item.type === 'profile' || item.type === 'generated')) {
-        const hydeDesc = dataToInject.hydeDescription || dataToInject.options?.hydeDescription || '';
-        const newObj = {
-          ...currentObj,
-          sourceProfile: dataToInject,
-          options: { ...currentObj.options, hydeDescription: hydeDesc }
-        };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        addLog(`Set Source Profile & HyDE from ${item.name}. HyDE len: ${hydeDesc.length}`);
-        return;
+    // 1. Parallel Fetcher: Injects Parallel Params
+    if (selectedAgent?.id === 'parallel-fetcher') {
+      if (user.parallelSearchParams) {
+        setInputVal(JSON.stringify(user.parallelSearchParams, null, 2));
+        addLog(`Injected Parallel Params for ${user.name}`);
+      } else {
+        addLog(`Error: No Parallel Params found for ${user.name}`);
       }
       return;
     }
 
-    // Special handling for Intent Manager
-    if (selectedAgent?.id === 'intent-manager' && inputMode === 'structured') {
-      const currentObj = JSON.parse(inputVal || '{}');
-
-      // If it's a profile type, set as profile and track the context ID
-      if (item.type === 'profile') {
-        const activeIntents = dataToInject.activeIntents || [];
-        const newObj = {
-          ...currentObj,
-          profile: dataToInject,
-          activeIntents: activeIntents
-        };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        setSourceProfileCtxId(item.id);  // Track source for save
-        addLog(`Set profile: ${item.name} (${activeIntents.length} active intents)`);
+    // 2. Profile Generator: Injects Parallel Result (Preferred) or Params (Synthetic)
+    if (selectedAgent?.id === 'profile-generator') {
+      if (user.parallelSearchResult) {
+        setInputVal(JSON.stringify(user.parallelSearchResult, null, 2));
+        addLog(`Injected Parallel Result for ${user.name}`);
         return;
       }
 
-      // If it's an intent_manager_response, process actions and add created intents
-      if (item.type === 'intent_manager_response') {
-        const responseData = dataToInject;
-        let intents = [...(currentObj.activeIntents || [])];
-
-        // IntentManagerResponse has actions: [{type: 'create'|'update'|'expire', ...}]
-        const actions = responseData?.actions || [];
-
-        let createdCount = 0;
-        let updatedCount = 0;
-        let expiredCount = 0;
-
-        for (const action of actions) {
-          if (action.type === 'create') {
-            // Add new intent
-            intents.push({
-              id: `intent-${Date.now()}-${createdCount}`,
-              description: action.payload || '',
-              status: 'active',
-              created_at: Date.now()
-            });
-            createdCount++;
-          } else if (action.type === 'update') {
-            // Update existing intent by id
-            const idx = intents.findIndex((i: any) => i.id === action.id);
-            if (idx !== -1) {
-              intents[idx] = { ...intents[idx], description: action.payload || intents[idx].description };
-              updatedCount++;
+      if (user.parallelSearchParams) {
+        // Mimic Parallel Fetcher Response structure to leverage json2md logic in runner
+        const syntheticResponse = {
+          search_id: 'context_synth_' + user.id,
+          results: [
+            {
+              title: "Context Memory Data",
+              url: "memory://user-context",
+              content: JSON.stringify(user.parallelSearchParams, null, 2)
             }
-          } else if (action.type === 'expire') {
-            // Remove intent by id (or mark as expired)
-            intents = intents.filter((i: any) => i.id !== action.id);
-            expiredCount++;
-          }
-        }
-
-        const newObj = {
-          ...currentObj,
-          activeIntents: intents
+          ]
         };
-        setInputVal(JSON.stringify(newObj, null, 2));
-        addLog(`Applied actions: +${createdCount} created, ~${updatedCount} updated, -${expiredCount} expired.`);
+        setInputVal(JSON.stringify(syntheticResponse, null, 2));
+        addLog(`Injected Parallel Params as Synthetic Response for ${user.name}`);
+      } else {
+        setInputVal(user.name); // Fallback to name
+        addLog(`Injected Name for ${user.name}`);
+      }
+      return;
+    }
+
+    // 3. HyDE Generator: Injects Profile
+    if (selectedAgent?.id === 'hyde-generator') {
+      if (user.userProfile) {
+        setInputVal(JSON.stringify(user.userProfile, null, 2));
+        addLog(`Injected Profile for ${user.name}`);
+      } else {
+        addLog(`Error: No User Profile found for ${user.name}`);
+      }
+      return;
+    }
+
+    // 4. Opportunity Evaluator: Injects Source Profile + HyDE
+    if (selectedAgent?.id === 'opportunity-evaluator') {
+      const currentObj = JSON.parse(inputVal || '{}');
+
+      // Injecting as Candidate (via Drag or TargetKey)
+      if (targetKey === 'candidates') {
+        if (user.userProfile) {
+          // Inject userId for backend filtering
+          const profileWithEmbed = { ...user.userProfile, userId: user.id };
+          if (user.userProfileEmbedding) {
+            profileWithEmbed.embedding = user.userProfileEmbedding;
+          }
+          const newCandidates = [...(currentObj.candidates || []), profileWithEmbed];
+          const newObj = { ...currentObj, candidates: newCandidates };
+          setInputVal(JSON.stringify(newObj, null, 2));
+          addLog(`Added candidate: ${user.name}`);
+        } else {
+          addLog(`Error: User ${user.name} has no profile.`);
+        }
         return;
       }
+
+      // Injecting as Source (Default click behavior)
+      const updates: any = {};
+
+      if (user.userProfile) {
+        // Do NOT inject embedding for Source Profile (clutters UI, not used for search)
+        // Inject userId to ensure filtering works backend side
+        updates.sourceProfile = { ...user.userProfile, userId: user.id };
+      }
+
+      if (user.hydeDescription) {
+        updates.options = { ...currentObj.options || {}, hydeDescription: user.hydeDescription };
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const newObj = { ...currentObj, ...updates };
+        setInputVal(JSON.stringify(newObj, null, 2));
+        addLog(`Injected Source Profile & HyDE for ${user.name}`);
+      } else {
+        addLog(`User ${user.name} has no Profile or HyDE description.`);
+      }
       return;
     }
 
-    // Special handling for Explicit Intent Inferrer
-    // Requirement: Selecting profile should only populate profile field, preserving content.
+    // 5. Intent Manager: Injects Profile + Active Intents
+    if (selectedAgent?.id === 'intent-manager') {
+      const currentObj = JSON.parse(inputVal || '{}');
+      const updates: any = {};
+
+      if (user.userProfile) updates.profile = user.userProfile;
+      if (user.activeIntents) updates.activeIntents = user.activeIntents;
+
+      if (Object.keys(updates).length > 0) {
+        const newObj = { ...currentObj, ...updates };
+        setInputVal(JSON.stringify(newObj, null, 2));
+        addLog(`Injected Profile & Intents for ${user.name}`);
+      }
+      return;
+    }
+
+    // 6. Explicit Intent Inferrer: Injects Profile
     if (selectedAgent?.id === 'explicit-intent-detector') {
-      // We only care about Profile injection
-      if (item.type === 'profile' || (item.type === 'generated' && dataToInject?.profile)) {
-        try {
-          const currentObj = JSON.parse(inputVal || '{}');
-          // If it's a generated object that contains 'profile', use that inner profile
-          // The 'dataToInject' has already been smart-unpacked at top of function?
-          // Line 352: if ((item.type === 'profile' || item.type === 'generated') && dataToInject?.profile) ...
-          // Yes, dataToInject is already the profile object with embedding fused.
-
-          const newObj = {
-            ...currentObj,
-            profile: dataToInject
-          };
-          setInputVal(JSON.stringify(newObj, null, 2));
-          addLog(`Set profile for extraction: ${item.name}`);
-          return;
-        } catch (e) {
-          // If parsing fails (bad raw input), just reset to profile-only or ignore
-          // Let's reset to preserving content if possible, but if inputVal is invalid JSON, we can't safely merge.
-          // Fallback: Just set the profile as the input? No, user wants structure.
-          // Best effort:
-          console.error("Failed to parse current input, overwriting with profile structure.");
-          const newObj = {
-            content: "",
-            profile: dataToInject
-          };
-          setInputVal(JSON.stringify(newObj, null, 2));
-          return;
-        }
-      }
-      // If injecting other types (like raw text for content?), fall through to default logic
-      // But usually context items are objects. If user drags "Text" item?
-      // For now, only profile behavior was requested.
-    }
-
-    if (selectedAgent?.inputType === 'raw_text') {
-      if (typeof dataToInject === 'object') {
-        setInputVal(JSON.stringify(dataToInject, null, 2));
-      } else {
-        setInputVal(String(dataToInject));
+      const currentObj = JSON.parse(inputVal || '{}');
+      if (user.userProfile) {
+        const newObj = { ...currentObj, profile: user.userProfile };
+        setInputVal(JSON.stringify(newObj, null, 2));
+        addLog(`Injected Profile for ${user.name}`);
       }
       return;
     }
 
-    // JSON Modes
-    try {
-      let currentObj = JSON.parse(inputVal || '{}');
-      if (targetKey) {
-        // If using structured form, targetKey handles logic
-        currentObj = updateNestedValue(currentObj, targetKey, dataToInject);
+    // Fallback for generic inputs
+    if (selectedAgent?.inputType === 'any' || selectedAgent?.inputType === 'raw_text') {
+      if (user.userProfile) {
+        setInputVal(JSON.stringify(user.userProfile, null, 2));
       } else {
-        currentObj = dataToInject;
+        setInputVal(JSON.stringify(user, null, 2));
       }
-      setInputVal(JSON.stringify(currentObj, null, 2));
-      addLog(`Injected ${item.name}.`);
-    } catch (e) {
-      if (!targetKey) setInputVal(JSON.stringify(dataToInject, null, 2));
+      return;
     }
+
+    addLog(`No compatible injection strategy for ${selectedAgent?.id}`);
   };
 
   // --- Renderers ---
 
-  // --- Context Filtering ---
-  const getRelevantContextTypes = (agent?: Agent): string[] => {
-    if (!agent) return [];
-    if (agent.id === 'parallel-fetcher') return ['ParallelSearchRequest'];
-    if (agent.id === 'profile-generator') return ['json', 'text', 'parallel-search-response']; // Parallel Output or Raw Text
-    if (agent.category === 'profile' || agent.id === 'hyde-generator') return ['profile'];
-    if (agent.category === 'opportunity' || agent.id === 'opportunity-evaluator') return ['profile', 'hyde'];
-    if (agent.id === 'intent-manager') return ['profile', 'intent_manager_response'];
-    if (agent.category === 'intent') return ['profile', 'intent'];
-    if (agent.category === 'intent_stakes') return ['profile', 'intent'];
-    return []; // Show all if empty? Or default logic
-  };
-
   const renderContextList = () => {
-    const relevantTypes = getRelevantContextTypes(selectedAgent);
+    // Show all users.
+    // Maybe optionally filter if agent requires specific fields?
+    // "filteredContext.length === 0" logic was nice.
+    // For now, let's keep it simple: Show all.
 
-    // If no agent selected, show all. If agent selected, filter.
-    const filteredContext = !selectedAgent ? context : context.filter(c => {
-      if (relevantTypes.length === 0) return true; // No filter defined
-      // Special case: generated items might be profiles.
-      // But my previous save logic tries to type them correctly.
-      // Fallback: always show 'generated' if we are unsure? No, user wants strictness.
-      return relevantTypes.includes(c.type) || (c.type === 'generated' && relevantTypes.includes('json'));
-    });
-
-    if (filteredContext.length === 0) {
-      return <div className="empty-list">No relevant context found.</div>
+    if (context.length === 0) {
+      return <div className="empty-list">No users in memory.</div>
     }
 
     return (
       <>
-        {/* Dropdown Menu for profile selection */}
-
-        {filteredContext.map(c => (
+        {context.map(c => (
           <div
             key={c.id}
             className="terminal-item context-item"
             draggable
             onClick={() => injectContext(c.id)}
-            style={{ cursor: 'pointer' }}
+            style={{ cursor: 'pointer', height: 'auto', flexDirection: 'column', alignItems: 'flex-start', padding: '8px' }}
             onDragStart={(e) => e.dataTransfer.setData('text/plain', c.id)}
           >
-            <Database size={14} className="icon" />
-            <div className="info">
-              <span className="name">{c.name}</span>
-              <span className="type" style={{ color: '#00ffff' }}>{c.type}</span>
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '8px' }}>
+              <Database size={14} className="icon" />
+              <span className="name" style={{ flex: 1, fontWeight: 'bold' }}>{c.name}</span>
+              <button
+                className="icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setContext(prev => prev.filter(item => item.id !== c.id));
+                }}
+                title="Remove User"
+                style={{ color: '#00ffff', border: 'none', background: 'transparent', cursor: 'pointer' }}
+              >
+                ×
+              </button>
             </div>
-            <button
-              className="icon-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setContext(prev => prev.filter(item => item.id !== c.id));
-              }}
-              title="Remove from Context"
-              style={{
-                color: '#00ffff',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '4px',
-                fontSize: '1rem',
-                lineHeight: '1'
-              }}
-            >
-              ×
-            </button>
+
+            {/* Field Indicators */}
+            <div className="badges" style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+              {c.parallelSearchParams && <span style={{ fontSize: '0.7rem', background: '#333', padding: '2px 4px', borderRadius: '3px', color: '#888' }}>PARAMS</span>}
+              {c.parallelSearchResult && <span style={{ fontSize: '0.7rem', background: '#444', padding: '2px 4px', borderRadius: '3px', border: '1px solid #666', color: '#ccc' }}>RESULT</span>}
+              {c.userProfile && <span style={{ fontSize: '0.7rem', background: 'rgba(0, 255, 255, 0.2)', padding: '2px 4px', borderRadius: '3px', color: '#00ffff' }}>PROFILE</span>}
+              {c.hydeDescription && <span style={{ fontSize: '0.7rem', background: 'rgba(255, 100, 255, 0.2)', padding: '2px 4px', borderRadius: '3px', color: '#ff66ff' }}>HyDE</span>}
+              {c.activeIntents && c.activeIntents.length > 0 && <span style={{ fontSize: '0.7rem', background: 'rgba(255, 255, 0, 0.2)', padding: '2px 4px', borderRadius: '3px', color: '#ffff00' }}>INTENTS ({c.activeIntents.length})</span>}
+            </div>
           </div>
         ))}
-        {filteredContext.length > 0 && (
+
+        {context.length > 0 && (
           <button
             className="text-btn"
             onClick={() => {
               setContext([]);
               localStorage.removeItem('playground_context');
-              addLog('Context memory cleared.');
+              addLog('Memory cleared.');
             }}
-            style={{
-              marginTop: '8px',
-              width: '100%',
-              textAlign: 'center',
-              color: '#fa7a61'
-            }}
+            style={{ marginTop: '8px', width: '100%', textAlign: 'center', color: '#fa7a61' }}
           >
-            Clear All Context
+            Clear All Users
           </button>
         )}
       </>

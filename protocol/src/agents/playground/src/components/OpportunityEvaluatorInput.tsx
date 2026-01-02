@@ -4,23 +4,12 @@ import { Search } from 'lucide-react';
 
 // --- Types ---
 
-interface Profile {
-  identity?: { name?: string; bio?: string; location?: string };
-  narrative?: { aspirations?: string; context?: string };
-  attributes?: { interests?: string[]; skills?: string[] };
-  embedding?: number[];
-  [key: string]: unknown;
-}
-
-interface ContextItem {
-  id: string;
-  type: string;
-  name: string;
-  data?: unknown; // Keep any or unknown? Usually strict implies unknown but data is complex.
-  value?: unknown;
-}
+// --- Types ---
 
 
+
+import type { ContextItem } from '../lib/api';
+import type { Profile } from '../lib/api'; // Ensure Profile is imported if used, it was used in map/filter
 
 interface EvaluatorOptions {
   hydeDescription?: string;
@@ -38,7 +27,7 @@ interface OpportunityEvaluatorInputProps {
   inputVal: string;
   setInputVal: (val: string) => void;
   inputMode: 'raw' | 'structured';
-  context: ContextItem[]; // Passed from App
+  context: ContextItem[]; // Now uses shared UserContext type
   onLog?: (msg: string) => void;
 }
 
@@ -136,20 +125,17 @@ export const OpportunityEvaluatorInput: React.FC<OpportunityEvaluatorInputProps>
 
       // 3. Filter candidates from context
       const potentialCandidates = context
-        .filter(c => c.type === 'profile' || (c.type === 'generated' && (
-          (c.data as Profile)?.identity || (c.value as Profile)?.identity
-        )))
+        .filter(c => c.userProfile) // Check if user has profile
         .map(c => {
-          const rawData = (c.data || c.value) as { profile?: Profile; embedding?: number[];[key: string]: unknown };
-          // unwrapping
-          const profile = rawData?.profile || (rawData as Profile);
-          // embedding might be on wrapper or profile
-          const embedding = rawData?.embedding || profile?.embedding;
-
-          return { ...profile, embedding };
+          const profile = { ...c.userProfile, userId: c.id }; // Inject userId for Agent referencing
+          // Attach embedding if available in context
+          if (c.userProfileEmbedding) {
+            profile.embedding = c.userProfileEmbedding;
+          }
+          return profile;
         })
         .filter(p => !sourceProfile || p.identity?.name !== sourceProfile.identity?.name) // Exclude self
-        .filter(p => p.embedding && Array.isArray(p.embedding)) as (Profile & { embedding: number[] })[];
+        .filter(p => p.embedding && Array.isArray(p.embedding)) as (Profile & { embedding: number[], userId: string })[];
 
       onLog?.(`[EmbedSearch] Comparing query against ${potentialCandidates.length} Candidate Profiles (using existing embeddings).`);
 
@@ -164,15 +150,19 @@ export const OpportunityEvaluatorInput: React.FC<OpportunityEvaluatorInputProps>
         score: cosineSimilarity(queryVector, p.embedding)
       }));
 
-      // 5. Sort
-      scored.sort((a, b) => b.score - a.score);
+      // 5. Sort & Filter (Min Similarity 0.4 to align with broad search)
+      // Queue uses 0.5, but let's be slightly more permissive for playground exploration
+      const MIN_SIMILARITY = 0.4;
+      const filtered = scored
+        .filter(s => s.score >= MIN_SIMILARITY)
+        .sort((a, b) => b.score - a.score);
 
       // 6. Update Input with top 10
-      const topCandidatesWithScore = scored.slice(0, 10);
+      const topCandidatesWithScore = filtered.slice(0, 10);
       const topCandidates = topCandidatesWithScore.map(s => s.profile);
 
       updateInput({ candidates: topCandidates });
-      onLog?.(`[EmbedSearch] Found ${topCandidates.length} candidates:`);
+      onLog?.(`[EmbedSearch] Found ${topCandidates.length} candidates (Sim >= ${MIN_SIMILARITY}):`);
       topCandidatesWithScore.forEach((c, i) => {
         const name = c.profile.identity?.name || 'Unknown';
         onLog?.(`  ${i + 1}. ${name} (${(c.score * 100).toFixed(1)}%)`);
