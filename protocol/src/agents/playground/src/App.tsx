@@ -15,6 +15,7 @@ import { Terminal, Cpu, Database, Play, Save, Loader } from 'lucide-react';
 import { OpportunityEvaluatorInput } from './components/OpportunityEvaluatorInput';
 import { IntentManagerInput } from './components/IntentManagerInput';
 import { ExplicitIntentInferrerInput } from './components/ExplicitIntentInferrerInput';
+import { ImplicitIntentInferrerInput } from './components/ImplicitIntentInferrerInput';
 import { GeneralInput } from './components/GeneralInput';
 
 function App() {
@@ -478,6 +479,36 @@ function App() {
         const newObj = { ...currentObj, profile: user.userProfile };
         setInputVal(JSON.stringify(newObj, null, 2));
         addLog(`Injected Profile for ${user.name}`);
+      }
+      return;
+    }
+
+    // 7. Implicit Intent Inferrer: Injects Profile + Opportunity Context
+    if (selectedAgent?.id === 'implicit-inferrer') {
+      const currentObj = JSON.parse(inputVal || '{}');
+      const updates: any = {};
+
+      if (user.userProfile) {
+        updates.profile = user.userProfile;
+      }
+
+      // If the user has opportunities, let's try to inject the first one or prompt
+      // The user likely wants to infer intent for ONE opportunity.
+      // If we blindly inject all, it might be messy.
+      // Let's inject the *last* opportunity found, as it's likely the most relevant "new" thing.
+      if (user.opportunities && user.opportunities.length > 0) {
+        const op = user.opportunities[user.opportunities.length - 1];
+        // Format as string context
+        const opContext = `Title: ${op.title}\nDescription: ${op.description}\nWhy Matched: ${op.reason || op.score}`;
+        updates.opportunityContext = opContext;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const newObj = { ...currentObj, ...updates };
+        setInputVal(JSON.stringify(newObj, null, 2));
+        addLog(`Injected Profile${updates.opportunityContext ? ' & Opportunity' : ''} for ${user.name}`);
+      } else {
+        addLog(`User ${user.name} has no Profile or Opportunities.`);
       }
       return;
     }
@@ -1016,38 +1047,34 @@ function App() {
     );
   };
 
+  const safeParse = (str: string) => {
+    try { return JSON.parse(str); } catch { return {}; }
+  };
+
   const renderStructuredContent = () => {
     if (!selectedAgent) return null;
 
-    // 1. Opportunity Evaluator - use component for structured mode
     if (selectedAgent.id === 'opportunity-evaluator' && inputMode === 'structured') {
       return <OpportunityEvaluatorInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} context={context} onLog={addLog} />;
     }
 
-    // 2. HyDE Generator - uses component for structured mode
-
-
-    // 3. Intent Manager - use component for structured mode
     if (selectedAgent.id === 'intent-manager' && inputMode === 'structured') {
       return <IntentManagerInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} />;
     }
 
-    // 4. Explicit Intent Inferrer - use component for structured mode
     if (selectedAgent.id === 'explicit-intent-detector' && inputMode === 'structured') {
       return <ExplicitIntentInferrerInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} />;
     }
 
-    // 5. Parallel Fetcher - usage removed (standard raw input only)
+    if (selectedAgent.id === 'implicit-inferrer' && inputMode === 'structured') {
+      return <ImplicitIntentInferrerInput inputVal={inputVal} setInputVal={setInputVal} inputMode={inputMode} context={context} />;
+    }
 
     if (inputMode === 'structured' && selectedAgent.fields) {
       return renderStructuredForm(selectedAgent.fields);
     }
 
     return null;
-  };
-
-  const safeParse = (str: string) => {
-    try { return JSON.parse(str); } catch { return {}; }
   };
 
 

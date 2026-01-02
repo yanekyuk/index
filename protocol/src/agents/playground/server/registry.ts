@@ -141,11 +141,15 @@ const REGISTRY: AgentRegistryItem[] = [
     description: 'Infers underlying goals from profile + opportunity context.',
     category: 'intent',
     inputType: 'any',
-    disabled: true,
+    disabled: false,
     defaultInput: {
       profile: { identity: { name: "Alice", bio: "Building autonomous agents." }, attributes: { interests: ["AI", "Crypto"] } },
       opportunityContext: "Just attended ETHDenver and met several protocol developers."
     },
+    fields: [
+      { key: 'profile', label: 'User Profile', type: 'profile', description: 'User Profile Context' },
+      { key: 'opportunityContext', label: 'Opportunity Context', type: 'string', description: 'Context of the specific opportunity match' }
+    ],
     agentClass: ImplicitInferrer,
     runner: (agent, input) => agent.run(input.profile, input.opportunityContext)
   },
