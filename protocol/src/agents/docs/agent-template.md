@@ -130,6 +130,50 @@ export class MyAgent extends BaseLangChainAgent {
 }
 ```
 
+### 3. Agent Tests (`[agent-name].spec.ts`)
+
+Create an integration test script to verify the agent's behavior with real LLM calls.
+
+```typescript
+import * as dotenv from 'dotenv';
+import path from 'path';
+import { MyAgent } from './[agent-name]';
+
+// Load env
+const envPath = path.resolve(__dirname, '../../../../.env.development');
+dotenv.config({ path: envPath });
+
+async function runTests() {
+  console.log("🧪 Starting MyAgent Tests...");
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn("⚠️  No OPENAI_API_KEY found. Live LLM tests might fail.");
+  }
+
+  const agent = new MyAgent();
+
+  // Test 1: Happy Path
+  console.log("\n1️⃣  Test: Happy Path");
+  try {
+    const content = "Test content that should pass validation.";
+    const context = "User context data.";
+    
+    const res = await agent.run(content, context);
+    console.log("Result:", JSON.stringify(res, null, 2));
+
+    if (res && res.score > 5) {
+      console.log("✅ Passed (Expected high score)");
+    } else {
+      console.log("❌ Failed (Expected high score)");
+    }
+  } catch (err) {
+    console.error("❌ Error:", err);
+  }
+}
+
+runTests().catch(console.error);
+```
+
 ## Best Practices
 
 *   **Prompt Engineering**: Iterate on your `SYSTEM_PROMPT`. Be specific about edge cases.
