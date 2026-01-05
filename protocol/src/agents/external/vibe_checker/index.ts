@@ -350,6 +350,11 @@ Note: Use the actual <created> timestamps from the intent pairs above. The examp
 // NEWSLETTER SPECIFIC v1
 // ============================================================================
 
+// ============================================================================
+// NEWSLETTER SPECIFIC v1
+// ============================================================================
+
+/** @deprecated */
 export async function vibeCheckNewsletter(
   data: OtherUserData,
   opts: VibeCheckOptions = {}
