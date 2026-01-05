@@ -20,6 +20,7 @@ export interface SummarizeOptions {
 
 /**
  * Generate a summary from input text
+ * @deprecated
  */
 export async function summarizeText(
   text: string,
@@ -35,7 +36,7 @@ export async function summarizeText(
       timeout = 30000
     } = options;
 
-    if (text.length < 200){
+    if (text.length < 200) {
       return {
         success: true,
         summary: text
@@ -93,15 +94,16 @@ ${text.substring(0, 8000)}${text.length > 8000 ? '\n...[truncated]' : ''}`
 
   } catch (error) {
     console.error('❌ Error summarizing text:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
 
 /**
  * Utility function for intent-specific summarization
+ * @deprecated
  */
 export async function summarizeIntent(
   intentPayload: string,

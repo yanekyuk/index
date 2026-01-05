@@ -88,6 +88,7 @@ Be thoughtful about intent types but err on the side of caution.`;
 
 /**
  * Analyze a single intent for freshness
+ * @deprecated
  */
 export async function auditIntentFreshness(intentId: string): Promise<FreshnessResult> {
   try {
@@ -198,6 +199,7 @@ async function processIntentWithTimeout(intent: { id: string; userId: string }, 
 /**
  * Audit all non-archived intents and archive expired ones
  * Maintains 100 concurrent operations at any time
+ * @deprecated
  */
 export async function auditAllIntents(): Promise<{
   audited: number;
