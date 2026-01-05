@@ -523,6 +523,7 @@ function App() {
       } else {
         addLog(`User ${user.name} has no Profile or Opportunities.`);
       }
+      return;
     }
 
     // 8. Intro Generator: Injects Sender -> Recipient
