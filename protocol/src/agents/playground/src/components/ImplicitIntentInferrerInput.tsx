@@ -24,14 +24,11 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
   }
 
   const parsed = safeParse(inputVal);
-  // Default values
-  const upstreamProfile = parsed.profile || {};
-  const upstreamOppContext = parsed.opportunityContext || '';
+  const upstreamProfile = parsed?.profile || null;
+  const upstreamOppContext = parsed?.opportunityContext || '';
 
   // Local state for smooth editing
-  const [profileStr, setProfileStr] = React.useState(
-    typeof upstreamProfile === 'string' ? upstreamProfile : JSON.stringify(upstreamProfile, null, 2)
-  );
+  const [profileStr, setProfileStr] = React.useState(upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
   const [oppContextStr, setOppContextStr] = React.useState(upstreamOppContext);
 
   // Helper to deep compare JSON via stringify for sync
@@ -39,25 +36,40 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
     return JSON.stringify(obj1) === JSON.stringify(obj2);
   };
 
-  // Sync Profile: Upstream -> Local
+  // Sync Profile: Upstream -> Local (structural check)
   React.useEffect(() => {
     try {
-      // Check if upstream changed significantly
-      const currentLocal = safeParse(profileStr);
-      if (!areStructurallyEqual(currentLocal, upstreamProfile)) {
-        const newStr = typeof upstreamProfile === 'string'
+      const localParsed = JSON.parse(profileStr || 'null');
+      if (!areStructurallyEqual(localParsed, upstreamProfile)) {
+        const newProfileStr = typeof upstreamProfile === 'string'
           ? upstreamProfile
-          : JSON.stringify(upstreamProfile, null, 2);
-        setProfileStr(newStr);
+          : (upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+        setProfileStr(newProfileStr);
       }
-    } catch { }
+    } catch (e) {
+      // Local invalid, ignore unless forced by Ref change (below)
+    }
   }, [upstreamProfile]);
 
-  // Sync Opportunity Context: Upstream -> Local
+  // Ref Pattern for specific overwrite logic (Injection from Context_Memory click)
+  const prevProfileRef = React.useRef(upstreamProfile);
   React.useEffect(() => {
-    if (upstreamOppContext !== oppContextStr) {
+    if (!areStructurallyEqual(prevProfileRef.current, upstreamProfile)) {
+      const newProfileStr = typeof upstreamProfile === 'string'
+        ? upstreamProfile
+        : (upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
+      setProfileStr(newProfileStr);
+    }
+    prevProfileRef.current = upstreamProfile;
+  }, [upstreamProfile]);
+
+  // Sync Opportunity Context: Upstream -> Local (Ref Pattern)
+  const prevOppContextRef = React.useRef(upstreamOppContext);
+  React.useEffect(() => {
+    if (prevOppContextRef.current !== upstreamOppContext) {
       setOppContextStr(upstreamOppContext);
     }
+    prevOppContextRef.current = upstreamOppContext;
   }, [upstreamOppContext]);
 
 
@@ -83,9 +95,7 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
               const p = JSON.parse(val);
               updateInput({ profile: p });
             } catch (e) {
-              // If not JSON, maybe user wants it as string or it's partial
-              // But ImplicitInferrer expects a string or object that becomes string.
-              // Let's assume object if possible, else string.
+              // Not JSON - likely markdown string (from button or manual edit), pass it through
               updateInput({ profile: val });
             }
           }}
@@ -96,6 +106,7 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
           allowPreview={true}
           viewMode={profileViewMode}
           onViewModeChange={setProfileViewMode}
+
         />
       </div>
 
@@ -114,7 +125,6 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
           viewMode={oppViewMode}
           onViewModeChange={setOppViewMode}
           headerControls={
-            /* Optional: Opportunity Picker from Context? */
             context.length > 0 ? (
               <select
                 style={{ background: '#333', color: '#fff', border: 'none', padding: '2px 8px', fontSize: '0.8rem', maxWidth: '200px' }}
@@ -137,12 +147,18 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
                 }}
               >
                 <option value="">Select Opportunity...</option>
-                {/* We need to flatten opportunities from all context users */}
-                {context.flatMap(u => (u.opportunities || []).map((op: any, idx: number) => (
-                  <option key={`${u.id}-${idx}`} value={`${u.id}-${idx}`}>
-                    {op.title || op.role || `Opportunity ${idx + 1}`} ({u.name})
-                  </option>
-                )))}
+                {(() => {
+                  // Find active user if any
+                  const currentProfile = safeParse(profileStr);
+                  const activeUser = context.find(u => areStructurallyEqual(u.userProfile, currentProfile));
+                  const targetUsers = activeUser ? [activeUser] : context;
+
+                  return targetUsers.flatMap(u => (u.opportunities || []).map((op: any, idx: number) => (
+                    <option key={`${u.id}-${idx}`} value={`${u.id}-${idx}`}>
+                      {op.title || op.role || `Opportunity ${idx + 1}`} ({u.name})
+                    </option>
+                  )));
+                })()}
               </select>
             ) : undefined
           }
