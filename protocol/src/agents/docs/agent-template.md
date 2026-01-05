@@ -17,7 +17,7 @@ src/agents/[domain]/
 ## Implementation Guidelines
 
 1.  **Inheritance**: All agents must extend `BaseLangChainAgent`.
-2.  **Structured Output**: Use Zod schemas to define the expected output format. This ensures type safety and predictable model responses.
+2.  **Structured Output**: Use Zod schemas to define the expected output format. **Important**: Define the Zod schema in the agent implementation file (`.ts`), NOT in the types file (`.types.ts`). The types file should only contain TypeScript interfaces.
 3.  **System Prompt**: Define a clear `SYSTEM_PROMPT` constant at the top of the file. This should include:
     *   **Persona**: Who the agent is.
     *   **Task**: What the agent does.
@@ -36,7 +36,7 @@ Copy and adapt this template for your new agent.
 ### 1. Types Definition (`[agent-name].types.ts`)
 
 ```typescript
-// Define the interface for the agent's output (Do NOT import Zod here)
+// Define the interface for the agent's output. Do NOT use Zod here; Zod schemas belong in the agent implementation file.
 export interface MyAgentOutput {
   /** High-level analysis of the input */
   analysis: string;
