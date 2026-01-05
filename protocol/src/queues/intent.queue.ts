@@ -3,26 +3,7 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { analyzeObjects, analyzeContent } from '../agents/core/intent_inferrer';
 import { IntentService, intentService } from '../services/intent.service';
 import { log } from '../lib/log';
-
-export const QUEUE_NAME = 'intent-processing-queue';
-
-export interface IndexIntentJobData {
-  intentId: string;
-  indexId: string;
-  userId: string;
-}
-
-export interface GenerateIntentsJobData {
-  userId: string;
-  sourceId: string;
-  sourceType: 'file' | 'link' | 'integration' | 'discovery_form';
-  content?: string;
-  objects?: any[];
-  indexId?: string;
-  intentCount?: number;
-  instruction?: string;
-  createdAt?: number | Date;
-}
+import { QUEUE_NAME, IndexIntentJobData, GenerateIntentsJobData } from './intent.queue.types';
 
 /**
  * Intent Processing Queue.
