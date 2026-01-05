@@ -44,7 +44,7 @@ const TagSuggestionSchema = z.object({
 /**
  * Generate tag suggestions based on user intents and a prompt
  * Returns tags ordered by relevance to the prompt
- * @deprecated
+ * @deprecated Use IntentTagGenerator agent in agents/intent/tag/tag.generator.ts instead.
  */
 export async function suggestTags(
   intents: Intent[],
