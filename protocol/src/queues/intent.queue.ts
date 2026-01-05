@@ -1,6 +1,7 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { analyzeObjects, analyzeContent } from '../agents/core/intent_inferrer';
+import { ExplicitIntentInferrer } from '../agents/intent/inferrer/explicit/explicit.inferrer';
+import { profileService } from '../services/profile.service';
 import { IntentService, intentService } from '../services/intent.service';
 import { log } from '../lib/log';
 import { QUEUE_NAME, IndexIntentJobData, GenerateIntentsJobData } from './intent.queue.types';
@@ -48,49 +49,68 @@ async function indexIntent(data: IndexIntentJobData): Promise<void> {
  * 
  * FLOW:
  * 1. Takes Source (File, Link, or Raw Objects).
- * 2. Calls `analyzeContent` (LLM Agent).
- * 3. Deduplicates against existing user intents.
- * 4. Persists new intents to DB.
+ * 2. Fetches User Profile Context.
+ * 3. Calls `ExplicitIntentInferrer` (LLM Agent).
+ * 4. Deduplicates against existing user intents.
+ * 5. Persists new intents to DB.
  */
 async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
-  // Get existing intents
-  const existingIntents = await intentService.getUserIntents(data.userId);
+  const { userId, content, objects, instruction } = data;
 
-  let result;
-  if (data.content) {
-    // File/Link: use analyzeContent
-    result = await analyzeContent(
-      data.content,
-      1, // itemCount
-      data.instruction,
-      Array.from(existingIntents),
-      60000
-    );
-  } else if (data.objects) {
-    // Integration: use analyzeObjects
-    result = await analyzeObjects(
-      data.objects,
-      data.instruction,
-      Array.from(existingIntents),
-      60000
-    );
+  // 1. Get User Profile for Context
+  const userProfile = await profileService.getProfile(userId);
+  if (!userProfile) {
+    log.warn(`[IntentQueue] Missing profile for user ${userId}, skipping generation.`);
+    return;
   }
 
-  if (result?.success && result.intents) {
-    for (const intentData of result.intents) {
-      if (!existingIntents.has(intentData.payload)) {
-        await intentService.createIntent({
-          payload: intentData.payload,
-          userId: data.userId,
-          sourceId: data.sourceId,
-          sourceType: data.sourceType,
-          indexIds: data.indexId ? [data.indexId] : [],
-          confidence: intentData.confidence,
-          inferenceType: intentData.type,
-          ...(data.createdAt && { createdAt: new Date(data.createdAt), updatedAt: new Date(data.createdAt) })
-        });
-        existingIntents.add(intentData.payload);
-      }
+  // Build Profile Context for Agent
+  const profileContext = `
+    Bio: ${userProfile.identity?.bio || 'None'}
+    Narrative: ${userProfile.narrative?.aspirations || 'None'}
+    Interests: ${(userProfile.attributes?.interests || []).join(', ')}
+    Skills: ${(userProfile.attributes?.skills || []).join(', ')}
+  `;
+
+  // 2. Prepare Content
+  let analysisContent = content || '';
+  if (objects && objects.length > 0) {
+    analysisContent = objects.map(obj => JSON.stringify(obj)).join('\n\n');
+  }
+
+  if (instruction) {
+    analysisContent = `[User Instruction: ${instruction}]\n\n${analysisContent}`;
+  }
+
+  if (!analysisContent.trim()) {
+    return;
+  }
+
+  // 3. Call Agent
+  const agent = new ExplicitIntentInferrer();
+  const result = await agent.run(analysisContent, profileContext);
+
+  if (!result || !result.intents) return;
+
+  // 4. Get existing intents for dedup
+  const existingIntents = await intentService.getUserIntents(userId);
+
+  // 5. Persist
+  for (const intent of result.intents) {
+    // Basic dedup check
+    if (!existingIntents.has(intent.description)) {
+      await intentService.createIntent({
+        payload: intent.description,
+        userId: userId,
+        sourceId: data.sourceId,
+        sourceType: data.sourceType,
+        indexIds: data.indexId ? [data.indexId] : [],
+        // Map confidence enum to number (high=0.9, medium=0.7, low=0.4)
+        confidence: intent.confidence === 'high' ? 0.9 : intent.confidence === 'medium' ? 0.7 : 0.4,
+        inferenceType: 'explicit', // Agent is ExplicitIntentInferrer
+        ...(data.createdAt && { createdAt: new Date(data.createdAt), updatedAt: new Date(data.createdAt) })
+      });
+      existingIntents.add(intent.description);
     }
   }
 }
