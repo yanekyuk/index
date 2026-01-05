@@ -1,9 +1,77 @@
 import db from '../lib/db';
 import { intents, intentStakes, intentStakeItems, indexMembers, userProfiles } from '../lib/schema';
-import { eq, and, sql, isNull, inArray, gt, or } from 'drizzle-orm';
+import { eq, and, sql, isNull, inArray, gt, or, cosineDistance, desc, ne, SQL } from 'drizzle-orm';
 import { IndexEmbedder } from '../lib/embedder';
+import { VectorSearchResult, VectorStoreOption } from '../agents/common/types';
 
-const embedder = new IndexEmbedder();
+// Helper to map collection names to tables
+const COLLECTIONS = {
+  intents: intents,
+  profiles: userProfiles
+};
+
+async function postgresSearcher<T>(
+  queryVector: number[],
+  collection: string,
+  options: VectorStoreOption<T> = {}
+): Promise<VectorSearchResult<T>[]> {
+  const table = COLLECTIONS[collection as keyof typeof COLLECTIONS];
+  if (!table) {
+    throw new Error(`PostgresSearcher: Unknown collection '${collection}'`);
+  }
+
+  const limit = options.limit || 10;
+  const vectorColumn = table.embedding;
+
+  // Calculate similarity (1 - cosine_distance)
+  const similarity = sql<number>`1 - (${cosineDistance(vectorColumn, queryVector)})`;
+
+  const filters: SQL[] = [];
+
+  // Apply filters
+  if (options.filter) {
+    for (const [key, value] of Object.entries(options.filter)) {
+      const column = table[key as keyof typeof table] as any;
+      if (!column) continue; // Skip unknown columns
+
+      if (value === null) {
+        filters.push(isNull(column));
+      } else if (typeof value === 'object' && value !== null) {
+        // Handle operators like { ne: ... }, { in: ... }
+        if ('ne' in value) {
+          filters.push(ne(column, value.ne));
+        }
+        if ('in' in value && Array.isArray(value.in)) {
+          filters.push(inArray(column, value.in));
+        }
+      } else {
+        // Direct equality
+        filters.push(eq(column, value));
+      }
+    }
+  }
+
+  const query = db
+    .select({
+      item: table,
+      score: similarity
+    })
+    .from(table)
+    .where(and(...filters))
+    .orderBy(desc(similarity))
+    .limit(limit);
+
+  const results = await query;
+
+  return results.map(row => ({
+    item: row.item as T,
+    score: row.score
+  }));
+}
+
+const embedder = new IndexEmbedder({
+  searcher: postgresSearcher
+});
 import { StakeEvaluator } from '../agents/intent/stake/evaluator/stake.evaluator';
 import { SynthesisGenerator } from '../agents/intent/stake/synthesis/synthesis.generator';
 import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';
