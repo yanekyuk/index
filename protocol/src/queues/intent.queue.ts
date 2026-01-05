@@ -4,7 +4,51 @@ import { ExplicitIntentInferrer } from '../agents/intent/inferrer/explicit/expli
 import { profileService } from '../services/profile.service';
 import { IntentService, intentService } from '../services/intent.service';
 import { log } from '../lib/log';
-import { QUEUE_NAME, IndexIntentJobData, GenerateIntentsJobData } from './intent.queue.types';
+
+/**
+ * Queue Name Constant
+ */
+export const QUEUE_NAME = 'intent-processing-queue';
+
+/**
+ * Job Data Interface: Index Intent
+ * 
+ * Payload for the `index_intent` job.
+ */
+export interface IndexIntentJobData {
+  /** The ID of the intent to evaluate */
+  intentId: string;
+  /** The ID of the index (community) to evaluate against */
+  indexId: string;
+  /** The user ID owning the intent */
+  userId: string;
+}
+
+/**
+ * Job Data Interface: Generate Intents
+ * 
+ * Payload for the `generate_intents` job.
+ */
+export interface GenerateIntentsJobData {
+  /** The user ID for whom intents are being generated */
+  userId: string;
+  /** Unique ID of the source content */
+  sourceId: string;
+  /** The type of source providing the content */
+  sourceType: 'file' | 'link' | 'integration' | 'discovery_form';
+  /** Raw text content to analyze */
+  content?: string;
+  /** Array of raw objects (if content is structured) */
+  objects?: any[];
+  /** Optional Index ID to associate generated intents with */
+  indexId?: string;
+  /** Expected number of intents to generate (hint) */
+  intentCount?: number;
+  /** Specific user instruction for generation */
+  instruction?: string;
+  /** Timestamp override for creation date */
+  createdAt?: number | Date;
+}
 
 /**
  * Intent Processing Queue.
@@ -36,6 +80,8 @@ async function intentProcessor(job: Job) {
  * 
  * Evaluates appropriateness of an intent for a specific index.
  * Relies on `IntentService.processIntentForIndex` which uses LLM evaluation.
+ * 
+ * @param data - Job payload containing intent and index IDs.
  */
 async function indexIntent(data: IndexIntentJobData): Promise<void> {
   const { intentId, indexId } = data;
@@ -53,6 +99,8 @@ async function indexIntent(data: IndexIntentJobData): Promise<void> {
  * 3. Calls `ExplicitIntentInferrer` (LLM Agent).
  * 4. Deduplicates against existing user intents.
  * 5. Persists new intents to DB.
+ * 
+ * @param data - Job payload containing content and source metadata.
  */
 async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
   const { userId, content, objects, instruction } = data;
@@ -118,6 +166,14 @@ async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
 export const intentWorker = QueueFactory.createWorker(QUEUE_NAME, intentProcessor);
 export const queueEvents = QueueFactory.createQueueEvents(QUEUE_NAME);
 
+/**
+ * Add a job to the Intent Queue.
+ * 
+ * @param name - The name of the job ('index_intent' or 'generate_intents').
+ * @param data - The payload for the job.
+ * @param priority - Optional priority level (higher number = higher priority).
+ * @returns The created Job instance.
+ */
 export async function addJob(
   name: string,
   data: IndexIntentJobData | GenerateIntentsJobData,
@@ -127,5 +183,6 @@ export async function addJob(
     priority: priority > 0 ? priority : undefined,
   });
 }
+
 
 
