@@ -84,9 +84,7 @@ export const IntroGeneratorInput: React.FC<IntroGeneratorInputProps> = ({
           }}
           label="SENDER (SOURCE)"
           badge="Source"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={senderViewMode}
           onViewModeChange={setSenderViewMode}
         />
@@ -107,9 +105,7 @@ export const IntroGeneratorInput: React.FC<IntroGeneratorInputProps> = ({
           }}
           label="RECIPIENT (TARGET)"
           badge="Target"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={recipientViewMode}
           onViewModeChange={setRecipientViewMode}
         />

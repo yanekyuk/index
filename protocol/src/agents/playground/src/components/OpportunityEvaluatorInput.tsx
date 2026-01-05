@@ -257,8 +257,7 @@ export const OpportunityEvaluatorInput: React.FC<OpportunityEvaluatorInputProps>
               <Search size={14} /> Embed Search
             </button>
           }
-          allowJson2Md={false} // Disable JSON to MD for candidates to reduce clutter
-          allowMarkdown={false} // Also disable preview for list of candidates? Or keep it? User said "remove json to md". I will disable both to be safe and clean.
+          enableJson2Md={false}
         />
       </div>
     </div>
@@ -272,25 +271,17 @@ const JsonParamsInput: React.FC<{
   onChange: (val: unknown) => void;
   height?: string;
   headerControls?: React.ReactNode;
-  allowJson2Md?: boolean;
-  allowMarkdown?: boolean;
-}> = ({ label, value, onChange, height, headerControls, allowJson2Md = true, allowMarkdown = true }) => {
+  enableJson2Md?: boolean;
+}> = ({ label, value, onChange, height, headerControls, enableJson2Md = true }) => {
   const [str, setStr] = React.useState(value ? JSON.stringify(value, null, 2) : '');
 
-  // Sync upstream -> local
   React.useEffect(() => {
-    // If value changes externally (injection), update str
-    // But avoid clobbering local edits.
-    // Simple structural check
     try {
       const local = JSON.parse(str || 'null');
       if (JSON.stringify(local) !== JSON.stringify(value)) {
         setStr(value ? JSON.stringify(value, null, 2) : '');
       }
     } catch {
-      // local invalid, if value changed significantly, overwrite? 
-      // For injection, yes.
-      // checking ref is better but let's trust stringify equality for now.
       if (value && JSON.stringify(value, null, 2) !== str) {
         setStr(JSON.stringify(value, null, 2));
       }
@@ -304,17 +295,10 @@ const JsonParamsInput: React.FC<{
         value={str}
         onChange={(val) => {
           setStr(val);
-          try {
-            const obj = JSON.parse(val);
-            onChange(obj);
-          } catch {
-            // invalid json, don't update upstream yet
-          }
+          try { onChange(JSON.parse(val)); } catch { /* invalid json */ }
         }}
         headerControls={headerControls}
-        allowJson2Md={allowJson2Md}
-        allowMarkdown={allowMarkdown}
-        allowPreview={allowMarkdown} // Enable preview if markdown is allowed
+        operations={enableJson2Md ? ['json2md'] : []}
       />
     </div>
   );

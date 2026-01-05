@@ -81,8 +81,7 @@ export const ExplicitIntentInferrerInput: React.FC<ExplicitIntentInferrerInputPr
           value={upstreamContent}
           onChange={(val) => updateInput({ content: val })}
           label="CONTENT"
-          allowMarkdown={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={contentViewMode}
           onViewModeChange={setContentViewMode}
         />
@@ -95,17 +94,13 @@ export const ExplicitIntentInferrerInput: React.FC<ExplicitIntentInferrerInputPr
           onChange={(val) => {
             setProfileStr(val);
             try {
-              const p = JSON.parse(val);
-              updateInput({ profile: p });
-            } catch (e) {
-              // Not JSON - likely markdown string (from button or manual edit), pass it through
+              updateInput({ profile: JSON.parse(val) });
+            } catch {
               updateInput({ profile: val });
             }
           }}
           label="PROFILE"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={profileViewMode}
           onViewModeChange={setProfileViewMode}
         />

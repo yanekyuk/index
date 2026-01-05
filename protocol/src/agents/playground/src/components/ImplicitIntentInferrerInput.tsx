@@ -1,5 +1,5 @@
 import React from 'react';
-import { GeneralInput } from './GeneralInput';
+import { GeneralInput, type SelectOption } from './GeneralInput';
 import type { ContextItem } from '../lib/api';
 
 interface ImplicitIntentInferrerInputProps {
@@ -31,27 +31,9 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
   const [profileStr, setProfileStr] = React.useState(upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
   const [oppContextStr, setOppContextStr] = React.useState(upstreamOppContext);
 
-  // Helper to deep compare JSON via stringify for sync
-  const areStructurallyEqual = (obj1: any, obj2: any) => {
-    return JSON.stringify(obj1) === JSON.stringify(obj2);
-  };
+  const areStructurallyEqual = (obj1: any, obj2: any) => JSON.stringify(obj1) === JSON.stringify(obj2);
 
-  // Sync Profile: Upstream -> Local (structural check)
-  React.useEffect(() => {
-    try {
-      const localParsed = JSON.parse(profileStr || 'null');
-      if (!areStructurallyEqual(localParsed, upstreamProfile)) {
-        const newProfileStr = typeof upstreamProfile === 'string'
-          ? upstreamProfile
-          : (upstreamProfile ? JSON.stringify(upstreamProfile, null, 2) : '');
-        setProfileStr(newProfileStr);
-      }
-    } catch (e) {
-      // Local invalid, ignore unless forced by Ref change (below)
-    }
-  }, [upstreamProfile]);
-
-  // Ref Pattern for specific overwrite logic (Injection from Context_Memory click)
+  // Sync Profile: Upstream -> Local
   const prevProfileRef = React.useRef(upstreamProfile);
   React.useEffect(() => {
     if (!areStructurallyEqual(prevProfileRef.current, upstreamProfile)) {
@@ -63,7 +45,7 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
     prevProfileRef.current = upstreamProfile;
   }, [upstreamProfile]);
 
-  // Sync Opportunity Context: Upstream -> Local (Ref Pattern)
+  // Sync Opportunity Context: Upstream -> Local
   const prevOppContextRef = React.useRef(upstreamOppContext);
   React.useEffect(() => {
     if (prevOppContextRef.current !== upstreamOppContext) {
@@ -71,7 +53,6 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
     }
     prevOppContextRef.current = upstreamOppContext;
   }, [upstreamOppContext]);
-
 
   const updateInput = (updates: any) => {
     const newVal = { ...parsed, ...updates };
@@ -82,9 +63,35 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
   const [profileViewMode, setProfileViewMode] = React.useState<'edit' | 'preview'>('edit');
   const [oppViewMode, setOppViewMode] = React.useState<'edit' | 'preview'>('edit');
 
+  // Build opportunity select options based on current profile
+  const opportunityOptions: SelectOption[] = React.useMemo(() => {
+    const currentProfile = safeParse(profileStr);
+    const activeUser = context.find(u => areStructurallyEqual(u.userProfile, currentProfile));
+    const targetUsers = activeUser ? [activeUser] : context;
+
+    return targetUsers.flatMap(u =>
+      (u.opportunities || []).map((op: any, idx: number) => ({
+        label: `${op.title || op.role || `Opportunity ${idx + 1}`} (${u.name})`,
+        value: `${u.id}-${idx}`
+      }))
+    );
+  }, [context, profileStr]);
+
+  const handleOpportunitySelect = (selectedId: string) => {
+    if (!selectedId) return;
+    const [uId, idxStr] = selectedId.split('-');
+    const idx = parseInt(idxStr, 10);
+    const user = context.find(u => u.id === uId);
+    if (user?.opportunities?.[idx]) {
+      const op = user.opportunities[idx];
+      const opContext = `Title: ${op.title || op.role}\nDescription: ${op.description}\nWhy Matched: ${op.reason || op.score}`;
+      setOppContextStr(opContext);
+      updateInput({ opportunityContext: opContext });
+    }
+  };
+
   return (
     <div className="complex-form structured-mode" style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-
       {/* Profile Section */}
       <div style={{ minHeight: '300px', width: '100%', border: '1px solid #333', borderRadius: '4px', overflow: 'hidden', marginBottom: '8px' }}>
         <GeneralInput
@@ -92,21 +99,16 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
           onChange={(val) => {
             setProfileStr(val);
             try {
-              const p = JSON.parse(val);
-              updateInput({ profile: p });
-            } catch (e) {
-              // Not JSON - likely markdown string (from button or manual edit), pass it through
+              updateInput({ profile: JSON.parse(val) });
+            } catch {
               updateInput({ profile: val });
             }
           }}
           label="USER PROFILE"
           badge="Context"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={profileViewMode}
           onViewModeChange={setProfileViewMode}
-
         />
       </div>
 
@@ -120,51 +122,13 @@ export const ImplicitIntentInferrerInput: React.FC<ImplicitIntentInferrerInputPr
           }}
           label="OPPORTUNITY CONTEXT"
           badge="Reasoning"
-          allowMarkdown={true}
-          allowPreview={true}
+          operations={context.length > 0 ? ['json2md', 'select'] : ['json2md']}
+          selectOptions={opportunityOptions}
+          onSelectChange={handleOpportunitySelect}
           viewMode={oppViewMode}
           onViewModeChange={setOppViewMode}
-          headerControls={
-            context.length > 0 ? (
-              <select
-                style={{ background: '#333', color: '#fff', border: 'none', padding: '2px 8px', fontSize: '0.8rem', maxWidth: '200px' }}
-                onChange={(e) => {
-                  const selectedId = e.target.value;
-                  if (!selectedId) return;
-
-                  // Parse "userId-index"
-                  const [uId, idxStr] = selectedId.split('-');
-                  const idx = parseInt(idxStr, 10);
-
-                  const user = context.find(u => u.id === uId);
-                  if (user && user.opportunities && user.opportunities[idx]) {
-                    const op = user.opportunities[idx];
-                    const opContext = `Title: ${op.title || op.role}\nDescription: ${op.description}\nWhy Matched: ${op.reason || op.score}`;
-
-                    setOppContextStr(opContext);
-                    updateInput({ opportunityContext: opContext });
-                  }
-                }}
-              >
-                <option value="">Select Opportunity...</option>
-                {(() => {
-                  // Find active user if any
-                  const currentProfile = safeParse(profileStr);
-                  const activeUser = context.find(u => areStructurallyEqual(u.userProfile, currentProfile));
-                  const targetUsers = activeUser ? [activeUser] : context;
-
-                  return targetUsers.flatMap(u => (u.opportunities || []).map((op: any, idx: number) => (
-                    <option key={`${u.id}-${idx}`} value={`${u.id}-${idx}`}>
-                      {op.title || op.role || `Opportunity ${idx + 1}`} ({u.name})
-                    </option>
-                  )));
-                })()}
-              </select>
-            ) : undefined
-          }
         />
       </div>
-
     </div>
   );
 };

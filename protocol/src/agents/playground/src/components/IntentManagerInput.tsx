@@ -117,8 +117,7 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
           value={upstreamContent}
           onChange={(val) => updateInput({ content: val })}
           label="CONTENT"
-          allowMarkdown={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={contentViewMode}
           onViewModeChange={setContentViewMode}
         />
@@ -139,9 +138,7 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
             }
           }}
           label="PROFILE"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={profileViewMode}
           onViewModeChange={setProfileViewMode}
         />
@@ -162,9 +159,7 @@ export const IntentManagerInput: React.FC<IntentManagerInputProps> = ({
             }
           }}
           label="ACTIVE INTENTS"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={intentsViewMode}
           onViewModeChange={setIntentsViewMode}
         />

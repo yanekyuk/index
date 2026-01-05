@@ -78,9 +78,7 @@ export const StakeEvaluatorInput: React.FC<StakeEvaluatorInputProps> = ({
           }}
           label="PRIMARY INTENT"
           badge="Evaluator"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={primaryViewMode}
           onViewModeChange={setPrimaryViewMode}
         />

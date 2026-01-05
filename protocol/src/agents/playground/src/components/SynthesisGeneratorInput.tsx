@@ -94,9 +94,7 @@ export const SynthesisGeneratorInput: React.FC<SynthesisGeneratorInputProps> = (
           }}
           label="SOURCE PROFILE"
           badge="Source"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={sourceViewMode}
           onViewModeChange={setSourceViewMode}
         />
@@ -115,9 +113,7 @@ export const SynthesisGeneratorInput: React.FC<SynthesisGeneratorInputProps> = (
           }}
           label="TARGET PROFILE"
           badge="Target"
-          allowMarkdown={true}
-          allowJson2Md={true}
-          allowPreview={true}
+          operations={['json2md']}
           viewMode={targetViewMode}
           onViewModeChange={setTargetViewMode}
         />
@@ -136,11 +132,7 @@ export const SynthesisGeneratorInput: React.FC<SynthesisGeneratorInputProps> = (
           }}
           label="SHARED INTENTS"
           badge="Reasoning"
-          allowMarkdown={true}
-          allowJson2Md={true} // Although it's array of strings, json2md might help if user pastes raw text? 
-          // Actually, json2md expects object. For array of strings, probably not useful.
-          // But GeneralInput handles it.
-          allowPreview={false} // List of strings preview not super critical
+          operations={['json2md']}
           viewMode={intentsViewMode}
           onViewModeChange={setIntentsViewMode}
         />
