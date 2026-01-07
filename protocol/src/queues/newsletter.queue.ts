@@ -311,7 +311,7 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
       if (candidates.length === 0) continue;
 
       // 4. Dispatch
-      await addNewsletterJob({
+      await addJob('process_newsletter', {
         recipientId: userId,
         candidates,
         force
@@ -329,6 +329,7 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
   }
 }
 
+
 export const newsletterWorker = QueueFactory.createWorker<NewsletterJobData | WeeklyCycleJobData>(NEWSLETTER_QUEUE_NAME, newsletterProcessor, {
   concurrency: 5,
   limiter: {
@@ -337,26 +338,33 @@ export const newsletterWorker = QueueFactory.createWorker<NewsletterJobData | We
   },
   lockDuration: 60000,
 });
+export const queueEvents = QueueFactory.createQueueEvents(NEWSLETTER_QUEUE_NAME);
 
-export async function addNewsletterJob(data: NewsletterJobData, priority: number = 1): Promise<void> {
-  const now = new Date();
-  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-
-  await newsletterQueue.add('process_newsletter', data, {
+/**
+ * Add a job to the Newsletter Queue.
+ *
+ * @param name - The name of the job ('process_newsletter' or 'start_weekly_cycle').
+ * @param data - The payload for the job.
+ * @param priority - Optional priority level (higher number = higher priority).
+ * @returns The created Job instance.
+ */
+export async function addJob(
+  name: string,
+  data: NewsletterJobData | WeeklyCycleJobData,
+  priority: number = 0
+): Promise<Job> {
+  const options: any = {
     priority: priority > 0 ? priority : undefined,
-    jobId: `newsletter-${data.recipientId}-${dateStr}`
-  });
-}
+  };
 
-export async function addWeeklyCycleJob(data: WeeklyCycleJobData): Promise<boolean> {
-  try {
-    await newsletterQueue.add('start_weekly_cycle', data, {
-      priority: 0,
-      removeOnComplete: true
-    });
-    return true;
-  } catch (e) {
-    console.error('Failed to add weekly cycle job:', e);
-    return false;
+  if (name === 'process_newsletter') {
+    const d = data as NewsletterJobData;
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+    options.jobId = `newsletter-${d.recipientId}-${dateStr}`;
+  } else if (name === 'start_weekly_cycle') {
+    options.removeOnComplete = true;
   }
+
+  return newsletterQueue.add(name, data, options);
 }

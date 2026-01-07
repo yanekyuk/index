@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { addWeeklyCycleJob } from '../queues/newsletter.queue';
+import { addJob } from '../queues/newsletter.queue';
 import { log } from '../lib/log';
 
 // Helper to parse cron string "m h dom mon dow"
@@ -53,17 +53,13 @@ export async function sendWeeklyNewsletter(now: Date = new Date(), force: boolea
     }
 
     // Dispatch the "start weekly cycle" job
-    const success = await addWeeklyCycleJob({
+    await addJob('start_weekly_cycle', {
       timestamp: now.getTime(),
       force: force,
       daysSince: daysSince
     });
 
-    if (success) {
-      log.info('[NewsletterJob] Weekly newsletter cycle enqueued.');
-    } else {
-      log.error('[NewsletterJob] Failed to enqueue weekly newsletter cycle');
-    }
+    log.info('[NewsletterJob] Weekly newsletter cycle enqueued.');
     console.timeEnd('WeeklyNewsletterTrigger');
 
   } catch (error) {
