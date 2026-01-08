@@ -32,7 +32,9 @@ LOGIC (Austin's Subsequent Conduct):
 
 OUTPUT RULES:
 - Return a strict JSON object.
-- 'confidence_score' must reflect the strength of the linguistic evidence.
+- 'confidence_score' must be a number between 0 and 100.
+- If the verdict is based on CLEAR evidence (e.g., "I finished X"), score should be high (>80).
+- If defaulting to PENDING because the discourse is unrelated, score should be low (<50).
 - Quote the exact user text that triggers the verdict in 'evidence_quote'.
 `;
 
