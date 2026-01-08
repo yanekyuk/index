@@ -1,17 +1,16 @@
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { IntentAuditor } from './intent.auditor';
-import { log } from '../../../lib/log';
 
 // Load env
-const envPath = path.resolve(__dirname, '../../../../../.env.development');
+const envPath = path.resolve(__dirname, '../../../../.env.development');
 dotenv.config({ path: envPath });
 
 async function runTests() {
   console.log("🧪 Starting IntentAuditor Tests...");
 
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn("⚠️  No OPENAI_API_KEY found. Live LLM tests might fail.");
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn("⚠️  No OPENROUTER_API_KEY found. Live LLM tests might fail.");
   }
 
   const auditor = new IntentAuditor();

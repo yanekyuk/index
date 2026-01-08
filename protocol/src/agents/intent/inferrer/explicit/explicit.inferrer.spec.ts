@@ -5,7 +5,7 @@ import { InferredIntent } from './explicit.inferrer.types';
 import { UserMemoryProfile } from '../../manager/intent.manager.types';
 
 // Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
+const envPath = path.resolve(__dirname, '../../../../../.env.development');
 console.log(`Loading env from: ${envPath}`);
 dotenv.config({ path: envPath });
 

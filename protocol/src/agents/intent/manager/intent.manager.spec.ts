@@ -34,7 +34,7 @@ async function runTests() {
     console.log("🧪 Starting IntentManager Tests...");
 
     // Check for API keys
-    if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY && !process.env.GEMINI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY && !process.env.ANTHROPIC_API_KEY && !process.env.GEMINI_API_KEY) {
         console.warn("⚠️  No API Key found. Live LLM tests might fail.");
     }
 
