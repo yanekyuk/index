@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, jest, mock } from 'bun:test';
 import { QueueFactory } from './bullmq';
 import { Queue, Worker, QueueEvents } from 'bullmq';
 
 // Mock bullmq
-vi.mock('bullmq', () => ({
-  Queue: vi.fn(),
-  Worker: vi.fn(),
-  QueueEvents: vi.fn(),
+mock.module('bullmq', () => ({
+  Queue: jest.fn(),
+  Worker: jest.fn(),
+  QueueEvents: jest.fn(),
 }));
 
 describe('QueueFactory', () => {
@@ -19,7 +19,7 @@ describe('QueueFactory', () => {
   });
 
   it('should create a worker', () => {
-    const processor = vi.fn();
+    const processor = jest.fn();
     QueueFactory.createWorker('test-queue', processor);
     expect(Worker).toHaveBeenCalledWith('test-queue', processor, expect.objectContaining({
       connection: expect.any(Object),
