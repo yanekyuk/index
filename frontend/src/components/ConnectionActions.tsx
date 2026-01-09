@@ -142,9 +142,9 @@ export default function ConnectionActions({
       case 'pending_sent':
         return 'Pending';
       case 'connected':
-        return 'Message';
+        return 'Start a conversation';
       default:
-        return 'Message';
+        return 'Start a conversation';
     }
   };
 

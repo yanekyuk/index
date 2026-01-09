@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { Upload } from "lucide-react";
+import { Upload, Sparkles } from "lucide-react";
 import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
 import { useDiscoveryFilter } from "@/contexts/DiscoveryFilterContext";
@@ -16,6 +16,7 @@ import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
 import UserProfileModal from "@/components/modals/UserProfileModal";
 import { InboxProvider, setGlobalInboxState } from "@/contexts/InboxContext";
+import ConnectorMatches from "@/components/ConnectorMatches";
 
 const validTabs = ['discover', 'requests', 'history'];
 
@@ -596,7 +597,7 @@ export default function InboxContent() {
 
       <div className="bg-white w-full border border-gray-800 rounded-sm px-4 py-2">
         {!discoveryIntents && (
-          <div className="font-ibm-plex-mono text-black text-md font-bold mb-4" style={{ marginTop: '8px' }}>
+          <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4" style={{ marginTop: '8px' }}>
             Discoveries waiting for action
           </div>
         )}
