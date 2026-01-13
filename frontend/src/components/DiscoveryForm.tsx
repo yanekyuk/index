@@ -9,7 +9,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions } from "../lib/file-validation";
 
 interface DiscoveryFormProps {
-  onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
+  onSubmit?: (intents: Array<{ id: string; payload: string; summary?: string; createdAt: string }>) => void;
 }
 
 interface AttachmentItem {
@@ -31,14 +31,14 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [recentIntents, setRecentIntents] = useState<Array<{id: string; payload: string; summary: string | null; createdAt: Date}>>([]);
+  const [recentIntents, setRecentIntents] = useState<Array<{ id: string; payload: string; summary: string | null; createdAt: Date }>>([]);
   const [hasContent, setHasContent] = useState(false);
   const [showTypedAnimation, setShowTypedAnimation] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const processingTimer = useRef<NodeJS.Timeout | null>(null);
-  const undoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
-  const redoStack = useRef<Array<{html: string; attachments: AttachmentItem[]; cursorPos: {start: number; end: number} | null}>>([]);
+  const undoStack = useRef<Array<{ html: string; attachments: AttachmentItem[]; cursorPos: { start: number; end: number } | null }>>([]);
+  const redoStack = useRef<Array<{ html: string; attachments: AttachmentItem[]; cursorPos: { start: number; end: number } | null }>>([]);
   const isUndoRedoing = useRef(false);
   const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
@@ -49,7 +49,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     handleFileDrop: (files: FileList) => {
       if (files.length > 0) {
         const file = files[0];
-        
+
         // Validate combined file set
         const nextFiles = [...attachments.filter(a => a.type === 'file').map(a => a.file!), file];
         const validation = validateFiles(nextFiles, 'general');
@@ -57,7 +57,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
           error(validation.message || 'Invalid file');
           return;
         }
-        
+
         const newAttachment: AttachmentItem = {
           id: Date.now().toString(),
           type: 'file',
@@ -66,7 +66,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         };
         setAttachments(prev => [...prev, newAttachment]);
         setInputFocused(true);
-        
+
         // Insert attachment at cursor position
         setTimeout(() => {
           contentRef.current?.focus();
@@ -78,7 +78,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       if (contentRef.current) {
         contentRef.current.focus();
         setInputFocused(true);
-        
+
         // Move cursor to the end of content
         const selection = window.getSelection();
         if (selection) {
@@ -107,22 +107,22 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   // Save current state to undo stack
   const saveToUndoStack = () => {
     if (isUndoRedoing.current || !contentRef.current) return;
-    
+
     const currentHtml = contentRef.current.innerHTML;
     const currentCursorPos = saveSelection();
     const currentAttachments = JSON.parse(JSON.stringify(attachments)); // Deep copy
-    
+
     undoStack.current.push({
       html: currentHtml,
       attachments: currentAttachments,
       cursorPos: currentCursorPos
     });
-    
+
     // Limit undo stack size to 50
     if (undoStack.current.length > 50) {
       undoStack.current.shift();
     }
-    
+
     // Clear redo stack when new action is performed
     redoStack.current = [];
   };
@@ -130,26 +130,26 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   // Undo operation
   const performUndo = () => {
     if (undoStack.current.length === 0 || !contentRef.current) return;
-    
+
     isUndoRedoing.current = true;
-    
+
     // Save current state to redo stack
     const currentHtml = contentRef.current.innerHTML;
     const currentCursorPos = saveSelection();
     const currentAttachments = JSON.parse(JSON.stringify(attachments));
-    
+
     redoStack.current.push({
       html: currentHtml,
       attachments: currentAttachments,
       cursorPos: currentCursorPos
     });
-    
+
     // Pop from undo stack and restore
     const previousState = undoStack.current.pop();
     if (previousState) {
       contentRef.current.innerHTML = previousState.html;
       setAttachments(previousState.attachments);
-      
+
       // Focus and restore cursor position
       contentRef.current.focus();
       if (previousState.cursorPos) {
@@ -171,33 +171,33 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         });
       }
     }
-    
+
     isUndoRedoing.current = false;
   };
 
   // Redo operation
   const performRedo = () => {
     if (redoStack.current.length === 0 || !contentRef.current) return;
-    
+
     isUndoRedoing.current = true;
-    
+
     // Save current state to undo stack
     const currentHtml = contentRef.current.innerHTML;
     const currentCursorPos = saveSelection();
     const currentAttachments = JSON.parse(JSON.stringify(attachments));
-    
+
     undoStack.current.push({
       html: currentHtml,
       attachments: currentAttachments,
       cursorPos: currentCursorPos
     });
-    
+
     // Pop from redo stack and restore
     const nextState = redoStack.current.pop();
     if (nextState) {
       contentRef.current.innerHTML = nextState.html;
       setAttachments(nextState.attachments);
-      
+
       // Focus and restore cursor position
       contentRef.current.focus();
       if (nextState.cursorPos) {
@@ -219,7 +219,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         });
       }
     }
-    
+
     isUndoRedoing.current = false;
   };
 
@@ -236,7 +236,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         setIsFileDialogOpen(false);
         return;
       }
-      
+
       const newAttachment: AttachmentItem = {
         id: Date.now().toString(),
         type: 'file',
@@ -244,10 +244,10 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         file: file,
       };
       setAttachments(prev => [...prev, newAttachment]);
-      
+
       // Insert attachment at cursor position
       insertAttachment(newAttachment);
-      
+
       event.target.value = '';
     }
     setIsFileDialogOpen(false);
@@ -268,7 +268,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     if (!selection || selection.rangeCount === 0) return;
 
     const range = selection.getRangeAt(0);
-    
+
     // Create attachment element with data attributes for reconstruction
     const attachmentElement = document.createElement('span');
     attachmentElement.className = 'attachment-tag inline-flex items-center gap-1 mx-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-sm cursor-pointer hover:bg-gray-200';
@@ -276,7 +276,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     attachmentElement.dataset.attachmentId = attachment.id;
     attachmentElement.dataset.attachmentName = attachment.name;
     attachmentElement.dataset.attachmentType = attachment.type;
-    
+
     // Create attachment content
     attachmentElement.innerHTML = `
       ${attachment.type === 'link' ? '🔗' : '📄'} ${getDisplayName(attachment.name)}
@@ -288,11 +288,11 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     // Insert at cursor position
     range.deleteContents();
     range.insertNode(attachmentElement);
-    
+
     // Insert a zero-width space after attachment for cursor visibility
     const zwsp = document.createTextNode('\u200B');
     attachmentElement.parentNode?.insertBefore(zwsp, attachmentElement.nextSibling);
-    
+
     // Move cursor after the zero-width space
     range.setStart(zwsp, 1);
     range.setEnd(zwsp, 1);
@@ -304,7 +304,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   const removeAttachment = (attachmentId: string) => {
     // Remove from state
     setAttachments(prev => prev.filter(att => att.id !== attachmentId));
-    
+
     // Remove from DOM
     if (contentRef.current) {
       const attachmentElement = contentRef.current.querySelector(`[data-attachment-id="${attachmentId}"]`);
@@ -341,41 +341,41 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     let charIndex = 0;
     let foundStart = false;
     let foundEnd = false;
-    
+
     // Helper function to traverse all text nodes
     const traverseNodes = (node: Node): boolean => {
       if (foundEnd) return true;
-      
+
       if (node.nodeType === Node.TEXT_NODE) {
         const textNode = node as Text;
         const textLength = textNode.textContent?.length || 0;
         const nextCharIndex = charIndex + textLength;
-        
+
         if (!foundStart && position.start >= charIndex && position.start <= nextCharIndex) {
           range.setStart(textNode, Math.min(position.start - charIndex, textLength));
           foundStart = true;
         }
-        
+
         if (foundStart && position.end >= charIndex && position.end <= nextCharIndex) {
           range.setEnd(textNode, Math.min(position.end - charIndex, textLength));
           foundEnd = true;
           return true;
         }
-        
+
         charIndex = nextCharIndex;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         // Skip attachment tags when counting characters
         if ((node as Element).classList?.contains('attachment-tag')) {
           return false;
         }
-        
+
         for (let i = 0; i < node.childNodes.length; i++) {
           if (traverseNodes(node.childNodes[i])) {
             return true;
           }
         }
       }
-      
+
       return false;
     };
 
@@ -407,7 +407,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     if (processingTimer.current) {
       clearTimeout(processingTimer.current);
     }
-    
+
     processingTimer.current = setTimeout(() => {
       processContent();
       processingTimer.current = null;
@@ -420,8 +420,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
     // Save cursor position
     const position = saveSelection();
-    
-    
+
+
     // Walk through text nodes only, skipping attachments
     const walker = document.createTreeWalker(
       contentRef.current,
@@ -471,7 +471,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
             url: url,
           };
           setAttachments(prev => [...prev, newAttachment]);
-          
+
           const attachmentElement = document.createElement('span');
           attachmentElement.className = 'attachment-tag inline-flex items-center gap-1 mx-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-sm cursor-pointer hover:bg-gray-200';
           attachmentElement.contentEditable = 'false';
@@ -513,9 +513,9 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   // Handle discovery submission
   const handleDiscoverySubmit = async () => {
     if (isProcessing) return;
-    
+
     setIsProcessing(true);
-    
+
     try {
       // Get text content from contentEditable div, excluding attachment tags
       let textContent = '';
@@ -527,41 +527,46 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
           }
         });
       }
-      
+
       // Get files from attachments
       const files = attachments.filter(att => att.type === 'file').map(att => att.file!);
       const links = attachments.filter(att => att.type === 'link').map(att => att.url!);
 
       // The backend's /discover/new endpoint now handles link creation and crawling within the same request.
       // Calling linksService from the client here would be redundant and use the wrong workflow.
-      
+
       // Validate that we have either files or text or links
       if (files.length === 0 && !textContent.trim() && links.length === 0) {
         error('Please add files, links, or enter text to start discovery');
         setIsProcessing(false);
         return;
       }
-      
+
       // Combine text and links for the payload
       const payload = [textContent, ...links].join('\n').trim();
 
       // Submit discovery request
       const result = await discoverService.submitDiscoveryRequest(files, payload)(getAccessToken);
-      
-      // After processing, clear attachments and reset form state
-      setAttachments([]);
-      setRecentIntents([]);
-      setInputFocused(false);
-      contentRef.current?.blur();
 
-      if (onSubmit) {
-        // Pass both file-based intents and any newly created link-based intents
-        const allIntents = result.success ? result.intents : [];
-        onSubmit(allIntents);
-      }
-      
-      if (!result.success && links.length === 0) {
-        error('Failed to generate intents. Please try again.');
+      if (result.success && result.intents.length > 0) {
+        // After processing, clear attachments and reset form state
+        setAttachments([]);
+        setRecentIntents([]);
+        setInputFocused(false);
+        contentRef.current?.blur();
+
+        if (onSubmit) {
+          onSubmit(result.intents);
+        }
+      } else if (result.success && result.intents.length === 0) {
+        // Success but no intents (Filtered out)
+        error('No clear topics found. Try being more specific.');
+        // Do NOT clear input so user can edit
+      } else {
+        // API Error
+        if (links.length === 0) {
+          error('Failed to generate intents. Please try again.');
+        }
       }
     } catch (err) {
       console.error('Discovery request failed:', err);
@@ -576,21 +581,21 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     const handleKeyPress = (e: KeyboardEvent) => {
       // Check if any modal is open by looking for modal elements
       const hasModalOpen = document.querySelector('[data-radix-dialog-content], [role="dialog"]') !== null;
-      
+
       // Check if user is already typing in an input/textarea
       const activeElement = document.activeElement;
       const isTypingInInput = activeElement && (
-        activeElement.tagName === 'INPUT' || 
-        activeElement.tagName === 'TEXTAREA' || 
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
         (activeElement as HTMLElement).isContentEditable
       );
-      
+
       if (contentRef.current && !inputFocused && !hasModalOpen && !isTypingInInput) {
         // Focus on Enter or when typing regular characters
         if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
           e.preventDefault();
           contentRef.current.focus();
-          
+
           // Move cursor to the end of content
           const selection = window.getSelection();
           if (selection) {
@@ -599,7 +604,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
             range.collapse(false); // Collapse to end
             selection.removeAllRanges();
             selection.addRange(range);
-            
+
             if (e.key.length === 1) {
               // Insert the character at the end
               const textNode = document.createTextNode(e.key);
@@ -631,7 +636,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   useEffect(() => {
     const checkForModals = () => {
       const hasModalOpen = document.querySelector('[data-radix-dialog-content], [role="dialog"]') !== null;
-      
+
       if (hasModalOpen && inputFocused) {
         // Modal is open and input is focused, close it
         setInputFocused(false);
@@ -710,7 +715,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
             contentRef.current?.blur();
           }}
         >
-          <div 
+          <div
             className="absolute inset-0 pointer-events-none"
             style={{
               backgroundImage: 'url(/noise.jpg)',
@@ -720,313 +725,313 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
           />
         </div>
       )}
-      
-      <div className={`bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative ${inputFocused ? 'z-[9999]' : 'z-0'}`}>
-            <div className="flex-1 relative">
-              {/* ContentEditable div */}
-              <div
-                ref={contentRef}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={(e) => {
-                  scheduleContentProcessing();
-                  
-                  // Clean up empty content to ensure placeholder shows
-                  const target = e.currentTarget;
-                  const text = target.innerText.trim();
-                  if (!text && attachments.length === 0) {
-                    target.innerHTML = '';
-                    setHasContent(false);
-                  } else {
-                    setHasContent(true);
-                  }
-                }}
-                onPaste={(e) => {
-                  e.preventDefault();
-                  saveToUndoStack();
-                  const text = e.clipboardData?.getData('text/plain') || '';
-                  const urlMatch = text.match(URLInTextRegex);
 
-                  if (urlMatch && urlMatch[0] === text.trim()) { // Only treat as link if it's the only thing pasted
-                    const newAttachment: AttachmentItem = {
-                      id: Date.now().toString(),
-                      type: 'link',
-                      name: urlMatch[0],
-                      url: urlMatch[0],
-                    };
-                    setAttachments(prev => [...prev, newAttachment]);
-                    insertAttachment(newAttachment);
-                    setHasContent(true);
-                  } else {
-                    const selection = window.getSelection();
-                    if (selection && selection.rangeCount > 0) {
-                      const range = selection.getRangeAt(0);
-                      range.deleteContents();
-                      const textNode = document.createTextNode(text);
-                      range.insertNode(textNode);
-                      range.setStartAfter(textNode);
-                      range.setEndAfter(textNode);
-                      selection.removeAllRanges();
-                      selection.addRange(range);
-                    }
-                    // Update hasContent based on pasted text
-                    if (text.trim() || attachments.length > 0) {
-                      setHasContent(true);
-                    }
-                  }
-                  setTimeout(() => {
-                    processContent();
-                  }, 0);
-                }}
-                onClick={(e) => {
-                  const target = e.target as HTMLElement;
-                  if (target.closest('.attachment-tag')) {
-                    const attachmentElement = target.closest('.attachment-tag') as HTMLElement;
-                    const attachmentId = attachmentElement.dataset.attachmentId;
-                    if (attachmentId) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      removeAttachment(attachmentId);
-                    }
-                  }
-                }}
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => {
-                  if (!isFileDialogOpen) {
-                    setTimeout(() => setInputFocused(false), 100);
-                  }
-                }}
-                onKeyDown={async (e) => {
-                  // Handle undo (Cmd+Z or Ctrl+Z)
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
-                    e.preventDefault();
-                    performUndo();
-                    return;
-                  }
-                  
-                  // Handle redo (Cmd+Shift+Z or Ctrl+Shift+Z)
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
-                    e.preventDefault();
-                    performRedo();
-                    return;
-                  }
-                  
-                  // Save state before any modification
-                  if (!e.metaKey && !e.ctrlKey && e.key.length === 1) {
-                    saveToUndoStack();
-                  }
-                  
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    await handleDiscoverySubmit();
-                  } else if (e.key === 'Enter' && e.shiftKey) {
-                    e.preventDefault();
-                    setInputFocused(true);
-                  } else if (e.key === 'Escape') {
-                    setInputFocused(false);
-                    contentRef.current?.blur();
-                  } else if (e.key === 'Backspace' || e.key === 'Delete') {
-                    // Save state before deletion
-                    saveToUndoStack();
-                    
-                    // Handle attachment deletion
-                    const selection = window.getSelection();
-                    if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
-                      const range = selection.getRangeAt(0);
-                      const container = range.startContainer;
-                      const offset = range.startOffset;
-                      
-                      if (e.key === 'Backspace') {
-                        // Check if we're at the start of a text node right after an attachment
-                        if (offset === 0 && container.nodeType === 3) {
-                          const prevNode = container.previousSibling;
-                          if (prevNode && (prevNode as Element).classList?.contains('attachment-tag')) {
-                            e.preventDefault();
-                            const attachmentId = (prevNode as Element).getAttribute('data-attachment-id');
-                            if (attachmentId) {
-                              removeAttachment(attachmentId);
-                            }
-                            return;
-                          }
+      <div className={`bg-white border border-b-2 border-gray-800 flex items-center px-4 py-2 min-h-[54px] relative ${inputFocused ? 'z-[9999]' : 'z-0'}`}>
+        <div className="flex-1 relative">
+          {/* ContentEditable div */}
+          <div
+            ref={contentRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={(e) => {
+              scheduleContentProcessing();
+
+              // Clean up empty content to ensure placeholder shows
+              const target = e.currentTarget;
+              const text = target.innerText.trim();
+              if (!text && attachments.length === 0) {
+                target.innerHTML = '';
+                setHasContent(false);
+              } else {
+                setHasContent(true);
+              }
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              saveToUndoStack();
+              const text = e.clipboardData?.getData('text/plain') || '';
+              const urlMatch = text.match(URLInTextRegex);
+
+              if (urlMatch && urlMatch[0] === text.trim()) { // Only treat as link if it's the only thing pasted
+                const newAttachment: AttachmentItem = {
+                  id: Date.now().toString(),
+                  type: 'link',
+                  name: urlMatch[0],
+                  url: urlMatch[0],
+                };
+                setAttachments(prev => [...prev, newAttachment]);
+                insertAttachment(newAttachment);
+                setHasContent(true);
+              } else {
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                  const range = selection.getRangeAt(0);
+                  range.deleteContents();
+                  const textNode = document.createTextNode(text);
+                  range.insertNode(textNode);
+                  range.setStartAfter(textNode);
+                  range.setEndAfter(textNode);
+                  selection.removeAllRanges();
+                  selection.addRange(range);
+                }
+                // Update hasContent based on pasted text
+                if (text.trim() || attachments.length > 0) {
+                  setHasContent(true);
+                }
+              }
+              setTimeout(() => {
+                processContent();
+              }, 0);
+            }}
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.closest('.attachment-tag')) {
+                const attachmentElement = target.closest('.attachment-tag') as HTMLElement;
+                const attachmentId = attachmentElement.dataset.attachmentId;
+                if (attachmentId) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  removeAttachment(attachmentId);
+                }
+              }
+            }}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => {
+              if (!isFileDialogOpen) {
+                setTimeout(() => setInputFocused(false), 100);
+              }
+            }}
+            onKeyDown={async (e) => {
+              // Handle undo (Cmd+Z or Ctrl+Z)
+              if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                performUndo();
+                return;
+              }
+
+              // Handle redo (Cmd+Shift+Z or Ctrl+Shift+Z)
+              if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+                e.preventDefault();
+                performRedo();
+                return;
+              }
+
+              // Save state before any modification
+              if (!e.metaKey && !e.ctrlKey && e.key.length === 1) {
+                saveToUndoStack();
+              }
+
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                await handleDiscoverySubmit();
+              } else if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                setInputFocused(true);
+              } else if (e.key === 'Escape') {
+                setInputFocused(false);
+                contentRef.current?.blur();
+              } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                // Save state before deletion
+                saveToUndoStack();
+
+                // Handle attachment deletion
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+                  const range = selection.getRangeAt(0);
+                  const container = range.startContainer;
+                  const offset = range.startOffset;
+
+                  if (e.key === 'Backspace') {
+                    // Check if we're at the start of a text node right after an attachment
+                    if (offset === 0 && container.nodeType === 3) {
+                      const prevNode = container.previousSibling;
+                      if (prevNode && (prevNode as Element).classList?.contains('attachment-tag')) {
+                        e.preventDefault();
+                        const attachmentId = (prevNode as Element).getAttribute('data-attachment-id');
+                        if (attachmentId) {
+                          removeAttachment(attachmentId);
                         }
-                        
-                        // Check if we're deleting a zero-width space before an attachment
-                        if (container.nodeType === 3 && offset > 0) {
-                          const charBefore = (container as Text).textContent?.[offset - 1];
-                          if (charBefore === '\u200B') {
-                            // Check if there's an attachment before this zero-width space
-                            const prevNode = container.previousSibling;
-                            if (prevNode && (prevNode as Element).classList?.contains('attachment-tag')) {
-                              e.preventDefault();
-                              const attachmentId = (prevNode as Element).getAttribute('data-attachment-id');
-                              if (attachmentId) {
-                                removeAttachment(attachmentId);
-                              }
-                              return;
-                            }
+                        return;
+                      }
+                    }
+
+                    // Check if we're deleting a zero-width space before an attachment
+                    if (container.nodeType === 3 && offset > 0) {
+                      const charBefore = (container as Text).textContent?.[offset - 1];
+                      if (charBefore === '\u200B') {
+                        // Check if there's an attachment before this zero-width space
+                        const prevNode = container.previousSibling;
+                        if (prevNode && (prevNode as Element).classList?.contains('attachment-tag')) {
+                          e.preventDefault();
+                          const attachmentId = (prevNode as Element).getAttribute('data-attachment-id');
+                          if (attachmentId) {
+                            removeAttachment(attachmentId);
                           }
+                          return;
                         }
-                      } else if (e.key === 'Delete') {
-                        // Check if we're at the end of a text node right before an attachment
-                        if (container.nodeType === 3) {
-                          const textLength = (container as Text).textContent?.length || 0;
-                          if (offset === textLength) {
-                            const nextNode = container.nextSibling;
-                            if (nextNode && (nextNode as Element).classList?.contains('attachment-tag')) {
-                              e.preventDefault();
-                              const attachmentId = (nextNode as Element).getAttribute('data-attachment-id');
-                              if (attachmentId) {
-                                removeAttachment(attachmentId);
-                              }
-                              return;
-                            }
+                      }
+                    }
+                  } else if (e.key === 'Delete') {
+                    // Check if we're at the end of a text node right before an attachment
+                    if (container.nodeType === 3) {
+                      const textLength = (container as Text).textContent?.length || 0;
+                      if (offset === textLength) {
+                        const nextNode = container.nextSibling;
+                        if (nextNode && (nextNode as Element).classList?.contains('attachment-tag')) {
+                          e.preventDefault();
+                          const attachmentId = (nextNode as Element).getAttribute('data-attachment-id');
+                          if (attachmentId) {
+                            removeAttachment(attachmentId);
                           }
+                          return;
                         }
                       }
                     }
                   }
-                }}
-                className="text-lg font-ibm-plex-mono text-black min-h-[24px] py-1 focus:outline-none"
-                style={{ 
-                  lineHeight: '1.5',
-                  wordBreak: 'break-word'
-                }}
-                data-placeholder="What do you want to discover?"
-              />
-              
-              {/* Placeholder */}
-              {!hasContent && attachments.length === 0 && (
-                <div
-                  className="absolute top-0 left-0 text-lg font-ibm-plex-mono text-gray-500 py-1 pointer-events-none"
-                  style={{ lineHeight: '1.5' }}
+                }
+              }
+            }}
+            className="text-lg font-ibm-plex-mono text-black min-h-[24px] py-1 focus:outline-none"
+            style={{
+              lineHeight: '1.5',
+              wordBreak: 'break-word'
+            }}
+            data-placeholder="What do you want to discover?"
+          />
+
+          {/* Placeholder */}
+          {!hasContent && attachments.length === 0 && (
+            <div
+              className="absolute top-0 left-0 text-lg font-ibm-plex-mono text-gray-500 py-1 pointer-events-none"
+              style={{ lineHeight: '1.5' }}
+            >
+              {inputFocused ? (
+                // Static placeholder when focused
+                <span>What do you want to discover?</span>
+              ) : !showTypedAnimation ? (
+                // Static text for first 3 seconds
+                <span>What do you want to discover?</span>
+              ) : (
+                // Then start animation
+                <ReactTyped
+                  strings={[
+                    "Meet founders building next-gen robotics platforms",
+                    "Connect with researchers working on materials science",
+                    "Collaborate with engineers building autonomous agents",
+                  ]}
+                  typeSpeed={20}
+                  backSpeed={0}
+                  backDelay={4000}
+                  startDelay={0}
+                  loopCount={3}
+                  showCursor={true}
+                />
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-2">
+          {attachmentCounts.files > 0 && (
+            <div className="flex items-center gap-1 text-gray-600">
+              <Paperclip className="w-4 h-4" />
+              <span className="text-sm font-ibm-plex-mono">{attachmentCounts.files}</span>
+            </div>
+          )}
+          {attachmentCounts.urls > 0 && (
+            <div className="flex items-center gap-1 text-gray-600">
+              <Link className="w-4 h-4" />
+              <span className="text-sm font-ibm-plex-mono">{attachmentCounts.urls}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Dropdown when focused */}
+        {inputFocused && (
+          <div className="absolute top-full left-0 right-0 bg-white border-l border-r border-b border-gray-800 z-[9999] shadow-lg" style={{
+            marginLeft: '-1px',
+            marginRight: '-1px',
+          }}>
+            <div className="px-4 pb-4 pt-2 space-y-4">
+              {/* Upload section */}
+              <div className="flex items-center gap-3">
+                <button
+                  className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
+                  onClick={handleFileButtonClick}
+                  onMouseDown={(e) => e.preventDefault()}
                 >
-                  {inputFocused ? (
-                    // Static placeholder when focused
-                    <span>What do you want to discover?</span>
-                  ) : !showTypedAnimation ? (
-                    // Static text for first 3 seconds
-                    <span>What do you want to discover?</span>
-                  ) : (
-                    // Then start animation
-                    <ReactTyped
-                      strings={[
-                        "Meet founders building next-gen robotics platforms",
-                        "Connect with researchers working on materials science",
-                        "Collaborate with engineers building autonomous agents",
-                      ]}
-                      typeSpeed={20}
-                      backSpeed={0}
-                      backDelay={4000}
-                      startDelay={0}
-                      loopCount={3}
-                      showCursor={true}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2 ml-2">
-              {attachmentCounts.files > 0 && (
-                <div className="flex items-center gap-1 text-gray-600">
                   <Paperclip className="w-4 h-4" />
-                  <span className="text-sm font-ibm-plex-mono">{attachmentCounts.files}</span>
-                </div>
+                  <span className="hidden sm:inline">Add from a file</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  accept={getSupportedFileExtensions('general')}
+                />
+                <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                  upload your pitch deck, one-pager, or paste a link.
+                </p>
+              </div>
+
+              {/* Recent discovery intents */}
+              {recentIntents.length > 0 && (
+                <>
+                  {/* Horizontal border */}
+                  <div className="border-t border-gray-200"></div>
+
+                  <ul className="space-y-1">
+                    {recentIntents.map((intent) => (
+                      <li key={intent.id}>
+                        <button
+                          onClick={() => {
+                            // Set the intent as a filter
+                            if (onSubmit) {
+                              onSubmit([{
+                                id: intent.id,
+                                payload: intent.payload,
+                                summary: intent.summary || undefined,
+                                createdAt: intent.createdAt.toISOString()
+                              }]);
+                            }
+                            setInputFocused(false);
+                            contentRef.current?.blur();
+                          }}
+                          onMouseDown={(e) => e.preventDefault()}
+                          className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
+                        >
+                          {intent.summary || intent.payload}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
-              {attachmentCounts.urls > 0 && (
-                <div className="flex items-center gap-1 text-gray-600">
-                  <Link className="w-4 h-4" />
-                  <span className="text-sm font-ibm-plex-mono">{attachmentCounts.urls}</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Dropdown when focused */}
-            {inputFocused && (
-               <div className="absolute top-full left-0 right-0 bg-white border-l border-r border-b border-gray-800 z-[9999] shadow-lg" style={{
-                 marginLeft: '-1px',
-                 marginRight: '-1px',
-               }}>
-                <div className="px-4 pb-4 pt-2 space-y-4">
-                  {/* Upload section */}
-                  <div className="flex items-center gap-3">
-                    <button 
-                      className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black"
-                      onClick={handleFileButtonClick}
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <Paperclip className="w-4 h-4" />
-                      <span className="hidden sm:inline">Add from a file</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      accept={getSupportedFileExtensions('general')}
-                    />
-                    <p className="text-xs text-gray-500 font-ibm-plex-mono">
-                      upload your pitch deck, one-pager, or paste a link.
-                    </p>
-                  </div>
-                  
-                  {/* Recent discovery intents */}
-                  {recentIntents.length > 0 && (
+
+              {/* Turn on Discovery - right aligned */}
+              <div className="flex justify-end">
+                <button
+                  className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleDiscoverySubmit}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? (
                     <>
-                      {/* Horizontal border */}
-                      <div className="border-t border-gray-200"></div>
-                      
-                      <ul className="space-y-1">
-                        {recentIntents.map((intent) => (
-                          <li key={intent.id}>
-                            <button 
-                              onClick={() => {
-                                // Set the intent as a filter
-                                if (onSubmit) {
-                                  onSubmit([{
-                                    id: intent.id,
-                                    payload: intent.payload,
-                                    summary: intent.summary || undefined,
-                                    createdAt: intent.createdAt.toISOString()
-                                  }]);
-                                }
-                                setInputFocused(false);
-                                contentRef.current?.blur();
-                              }}
-                              onMouseDown={(e) => e.preventDefault()}
-                              className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
-                            >
-                              {intent.summary || intent.payload}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                      Signal processing
+                    </>
+                  ) : (
+                    <>
+                      <Radio className="w-4 h-4" /> Turn on Discovery
                     </>
                   )}
-                  
-                  {/* Turn on Discovery - right aligned */}
-                  <div className="flex justify-end">
-                    <button 
-                      className="flex items-center gap-2 px-3 py-2 bg-black border border-black hover:bg-gray-800 text-sm font-ibm-plex-mono text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={handleDiscoverySubmit}
-                      disabled={isProcessing}
-                    >
-                      {isProcessing ? (
-                        <>
-                          <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-                          Signal processing
-                        </>
-                      ) : (
-                        <>
-                          <Radio className="w-4 h-4" /> Turn on Discovery
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+                </button>
               </div>
-            )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
