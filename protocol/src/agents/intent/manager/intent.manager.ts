@@ -125,21 +125,31 @@ export class IntentManager extends BaseLangChainAgent {
       // For now, let's verify everything to ensure "I am done with X" is also a valid statement.
 
       const verdict = await this.semanticVerifier.run(intent.description, profileContext);
-
+      log.info(`[IntentManagerAgent] Verdict for "${intent.description}":`, (verdict as unknown) as Record<string, unknown> || {});
       if (!verdict) {
         log.warn(`[IntentManagerAgent] Skipping intent verification due to error: "${intent.description}"`);
         continue;
       }
 
-      // Check Felicity Conditions
-      // We enforce a baseline of AUTHORITY and SINCERITY.
-      // CLARITY is less critical for inference (we can refine later), but low authority/sincerity means it's garbage.
-      const MIN_SCORE = 50;
+      // CLARITY is useful debug info, but hard to threshold (valid intents can be vague).
+      // We enforce Authority and Sincerity.
+      const MIN_SCORE = 40;
 
-      if (verdict.felicity_scores.authority >= MIN_SCORE && verdict.felicity_scores.sincerity >= MIN_SCORE) {
+      // Filter by Speech Act Type: Goals must be Commissive (Commitment) or Directive (Action).
+      // Expressive (Greetings) and Assertive (Facts) are not goals.
+      const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
+      // Be lenient with classification if Auth/Sinc are high (e.g. 80+)
+      const isStrongIntent = verdict.felicity_scores.authority >= 70 && verdict.felicity_scores.sincerity >= 70;
+      const isValidType = VALID_TYPES.includes(verdict.classification) || isStrongIntent;
+
+      if (
+        verdict.felicity_scores.authority >= MIN_SCORE &&
+        verdict.felicity_scores.sincerity >= MIN_SCORE &&
+        isValidType
+      ) {
         verifiedIntents.push(intent);
       } else {
-        log.warn(`[IntentManagerAgent] Rejected intent: "${intent.description}"`, {
+        log.warn(`[IntentManagerAgent] Rejected intent: "${intent.description}" Type: ${verdict.classification}`, {
           reason: verdict.reasoning,
           scores: verdict.felicity_scores
         });

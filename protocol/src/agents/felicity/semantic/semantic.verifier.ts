@@ -39,7 +39,12 @@ EVALUATION FRAMEWORK (0-100 Score):
 OUTPUT RULES:
 - Return a strict JSON object.
 - If 'Authority' or 'Sincerity' is < 50, add a specific FLAG (e.g., "SKILL_MISMATCH", "WEAK_COMMITMENT").
-- 'Classification' must be one of Searle's 5 categories.
+- 'Classification' must be one of Searle's 5 categories:
+  1. COMMUNISSIVE: Speaker commits to a future action (e.g., "I will learn Rust", "I promise to fix this"). -> VALID GOAL
+  2. DIRECTIVE: Speaker gets listener to do something (e.g., "Find me a co-founder", "Help me build this"). -> VALID GOAL
+  3. DECLARATION: Speaker changes reality via words (e.g., "I quit", "Project is cancelled"). -> TOMBSTONE
+  4. ASSERTIVE: Speaker states a fact/belief (e.g., "Rust is fast", "The sky is blue"). -> INVALID (Noise)
+  5. EXPRESSIVE: Speaker expresses psychological state (e.g., "I am happy", "Hello"). -> INVALID (Noise)
 `;
 
 // Define Zod schema locally for the agent
@@ -100,7 +105,7 @@ export class SemanticVerifierAgent extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as SemanticVerifierOutput;
 
-      log.info(`[SemanticVerifier] Verdict: ${output.classification} | Auth: ${output.felicity_scores.authority}`);
+      log.info(`[SemanticVerifier] Verdict: ${output.classification} with scores of auth ${output.felicity_scores.authority}, sincerity ${output.felicity_scores.sincerity}, and clarity ${output.felicity_scores.clarity}. Flags: ${output.flags.join(', ')}. Reasoning: ${output.reasoning}`);
       return output;
     } catch (error) {
       log.error("[SemanticVerifier] Error during execution", { error });

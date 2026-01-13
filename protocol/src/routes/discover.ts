@@ -14,6 +14,10 @@ import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { CreatedIntent, intentService } from '../services/intent.service';
 import { createUploadClient } from '../lib/uploads';
 import { SyntacticValidatorAgent } from '../agents/felicity/syntactic/syntactic.validator';
+import { SemanticVerifierAgent } from '../agents/felicity/semantic/semantic.verifier';
+import { ExplicitIntentInferrer } from '../agents/intent/inferrer/explicit/explicit.inferrer';
+import { profileService } from '../services/profile.service';
+import { json2md } from '../lib/json2md/json2md';
 
 const router = Router();
 
@@ -206,22 +210,75 @@ router.post('/new',
       const isShortPayload = payload && payload.length < 100;
 
       if (isShortPayload && !hasFiles && !hasUrls) {
-        console.log(`📝 Creating intent directly (short payload, no attachments/URLs)`);
-        try {
-          const createdIntent: CreatedIntent = await intentService.createIntent({
-            payload: payload.trim(),
-            userId: userId,
-            sourceId: undefined,
-            sourceType: 'discovery_form',
-            isIncognito: false,
-            confidence: 1.0,
-            inferenceType: 'explicit',
-          });
+        console.log(`📝 Process short payload with Agents (Inferrer -> Verifier)`);
 
-          generatedIntents.push(createdIntent);
-          console.log(`✅ Intent created directly: ${createdIntent.id}`);
-        } catch (error) {
-          console.error(`❌ Failed to create intent directly:`, error);
+        try {
+          // 1. Prepare Profile Context
+          let profileContext = '';
+          const userProfile = await profileService.getProfile(userId);
+          if (userProfile) {
+            profileContext = json2md.keyValue({
+              bio: userProfile.identity?.bio || '',
+              skills: userProfile.attributes?.skills || [],
+              interests: userProfile.attributes?.interests || []
+            });
+          }
+
+          // 2. Explicit Inference (Filters phatic comms like "Hello World")
+          const inferrer = new ExplicitIntentInferrer();
+          const { intents: inferredIntents } = await inferrer.run(payload, profileContext);
+
+          if (inferredIntents.length === 0) {
+            console.warn(`[Discover] ⚠️ No intents inferred from payload (likely phatic or empty).`);
+          } else {
+            const semanticVerifier = new SemanticVerifierAgent();
+
+            for (const intent of inferredIntents) {
+              // 3. Semantic Verification
+              const verdict = await semanticVerifier.run(intent.description, profileContext);
+              let passesFelicity = false;
+              let rejectReason = '';
+
+              if (verdict) {
+                const MIN_SCORE = 40;
+                const { authority, sincerity } = verdict.felicity_scores;
+
+                const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
+                const isStrongIntent = authority >= 70 && sincerity >= 70;
+                const isValidType = VALID_TYPES.includes(verdict.classification) || isStrongIntent;
+
+                if (authority >= MIN_SCORE && sincerity >= MIN_SCORE && isValidType) {
+                  passesFelicity = true;
+                } else {
+                  rejectReason = `Auth(${authority}), Sinc(${sincerity}), Type(${verdict.classification})`;
+                }
+              }
+
+              if (passesFelicity) {
+                // 4. Create Intent
+                try {
+                  const createdIntent: CreatedIntent = await intentService.createIntent({
+                    payload: intent.description, // Use the extracted description
+                    userId: userId,
+                    sourceId: undefined,
+                    sourceType: 'discovery_form',
+                    isIncognito: false,
+                    confidence: 1.0,
+                    inferenceType: 'explicit',
+                  });
+                  generatedIntents.push(createdIntent);
+                  console.log(`✅ Intent created: ${createdIntent.id}`);
+                } catch (error) {
+                  console.error(`❌ Failed to create intent:`, error);
+                }
+              } else {
+                console.warn(`[Discover] 🚫 Intent rejected by Verifier: "${intent.description}" Reason: ${rejectReason}`);
+              }
+            }
+          }
+
+        } catch (err) {
+          console.error(`[Discover] Error processing short payload:`, err);
         }
       } else if (combinedContent.trim()) {
         console.log(`🤖 Generating intents from ${combinedContent.length} characters`);

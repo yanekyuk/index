@@ -27,7 +27,8 @@ export const SYSTEM_PROMPT = `
   - Be precise.
   - Descriptions should be self-contained (e.g., "Learn Rust programming" instead of "Learn it").
   - Do NOT try to manage existing IDs or check for duplicates. Just extract what is valid NOW.
-  - If "New Content" is empty, look at the Profile (Narrative/Goals) and extract implied ongoing goals.
+  - If "New Content" is empty or invalid, look at the Profile (Narrative/Goals) and extract implied ongoing goals.
+  - IGNORE purely phatic communication (e.g., "Hello", "Hi", "Good morning") or empty statements. Do NOT fallback to Profile for these; return empty intents.
 `;
 
 

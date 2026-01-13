@@ -110,6 +110,16 @@ describe('IntentManager Tests', () => {
     const res = await manager.processIntent(vagueInput, profileContext, activeIntentsContext);
 
     // Should be filtered out by Semantic Verifier
+    // Should be filtered out by Semantic Verifier
+    expect(res.actions.length).toBe(0);
+  });
+
+  test('Manager Process (Hello World Rejection)', async () => {
+    // "Hello, World!" is a greeting, not a goal or tombstone.
+    // It should be filtered out by Semantic Verifier due to low Clarity/Felicity.
+    const res = await manager.processIntent("Hello, World!", profileContext, activeIntentsContext);
+
+    // Expect NO actions
     expect(res.actions.length).toBe(0);
   });
 });
