@@ -15,6 +15,7 @@ import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { IndexEmbedder } from '../lib/embedder';
 import { json2md } from '../lib/json2md/json2md';
+import { IntentManager } from '../agents/intent/manager/intent.manager';
 
 export const QUEUE_NAME = 'opportunity-processing-queue';
 
@@ -89,6 +90,9 @@ export async function runOpportunityFinderCycle(
   if (!evaluator) {
     evaluator = new OpportunityEvaluator(embedder);
   }
+
+  const intentManager = new IntentManager(); // Instantiate Manager
+
   console.time('OpportunityFinderCycle');
   log.info('🔄 [OpportunityJob] Starting Opportunity Finder Cycle...');
 
@@ -239,10 +243,14 @@ export async function runOpportunityFinderCycle(
           if (!candidateProfile) continue;
 
           try {
-            const inferrer = new ImplicitInferrer();
+            // 1. Process Source Intent
+            log.info(`   [OpportunityJob] Processing implicit source intent for ${sourceProfile.userId}...`);
 
-            // 1. Infer Source Intent
-            log.info(`   [OpportunityJob] Inferring implicit source intent for ${memoryProfile.userId}...`);
+            // Fetch Active Intents for Source
+            const sourceActiveIntents = await intentService.getUserIntentObjects(sourceProfile.userId);
+            const sourceActiveContext = sourceActiveIntents
+              .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+              .join('\n');
 
             const sourceProfileContext = json2md.keyValue({
               bio: memoryProfile.identity.bio,
@@ -253,15 +261,34 @@ export async function runOpportunityFinderCycle(
               context: memoryProfile.narrative?.context || ''
             });
 
-            const sourceIntent = await inferrer.run(sourceProfileContext, `Opportunity: ${op.title}. Reason: ${op.description}`);
+            const sourceResponse = await intentManager.processImplicitIntent(
+              sourceProfileContext,
+              `Opportunity: ${op.title}. Reason: ${op.description}`,
+              sourceActiveContext
+            );
 
-            // 2. Infer Candidate Intent
+            const sourceIntentId = await resolveIntentFromActions(sourceProfile.userId, sourceResponse.actions);
+
+            if (!sourceIntentId) {
+              log.info(`   [OpportunityJob] Source intent not created/resolved. Skipping stake.`);
+              continue;
+            }
+
+            // 2. Process Candidate Intent
+            log.info(`   [OpportunityJob] Processing implicit candidate intent for ${candidateProfile.userId}...`);
+
             const candidateMemoryProfile: UserMemoryProfile = {
               userId: candidateProfile.userId,
               identity: candidateProfile.identity || {},
               narrative: candidateProfile.narrative || {},
               attributes: candidateProfile.attributes || {}
             } as any;
+
+            // Fetch Active Intents for Candidate
+            const candidateActiveIntents = await intentService.getUserIntentObjects(candidateProfile.userId);
+            const candidateActiveContext = candidateActiveIntents
+              .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+              .join('\n');
 
             const candidateProfileContext = json2md.keyValue({
               bio: candidateMemoryProfile.identity.bio,
@@ -272,41 +299,16 @@ export async function runOpportunityFinderCycle(
               context: candidateMemoryProfile.narrative?.context || ''
             });
 
-            log.info(`   [OpportunityJob] Inferring implicit candidate intent for ${candidateProfile.userId}...`);
-            const candidateIntent = await inferrer.run(candidateProfileContext, `Opportunity: ${op.title}. Reason: ${op.description}`);
+            const candidateResponse = await intentManager.processImplicitIntent(
+              candidateProfileContext,
+              `Opportunity: ${op.title}. Reason: ${op.description}`,
+              candidateActiveContext
+            );
 
-            if (sourceIntent && candidateIntent) {
+            const candidateIntentId = await resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+
+            if (sourceIntentId && candidateIntentId) {
               log.info(`   [OpportunityJob] Creating implicit stake between ${sourceProfile.userId} and ${candidateProfile.userId}`);
-
-              // 3a. Get Index IDs for Source User (to make intent discoverable)
-              const sourceIndexIds = await getUserAccessibleIndexIds(sourceProfile.userId);
-
-              // 3b. Create Source Intent
-              const sourceIntentObj = await intentService.createIntent({
-                userId: sourceProfile.userId,
-                payload: sourceIntent.payload,
-                indexIds: sourceIndexIds, // Assign to user's indexes
-                sourceType: 'enrichment', // Implicit intent
-                confidence: 1.0,
-                inferenceType: 'implicit'
-              });
-              const sourceIntentId = sourceIntentObj.id;
-              log.info(`   [OpportunityJob] Created implicit source intent: ${sourceIntentId}`);
-
-              // 3c. Get Index IDs for Candidate User
-              const candidateIndexIds = await getUserAccessibleIndexIds(candidateProfile.userId);
-
-              // 3d. Create Candidate Intent
-              const candidateIntentObj = await intentService.createIntent({
-                userId: candidateProfile.userId,
-                payload: candidateIntent.payload,
-                indexIds: candidateIndexIds, // Assign to user's indexes
-                sourceType: 'enrichment',
-                confidence: 1.0,
-                inferenceType: 'implicit'
-              });
-              const candidateIntentId = candidateIntentObj.id;
-              log.info(`   [OpportunityJob] Created implicit candidate intent: ${candidateIntentId}`);
 
               // 4. Create Stake
               await stakeService.saveMatch(
@@ -367,4 +369,36 @@ export async function addJob(
   return opportunityQueue.add(name, data, {
     priority: priority > 0 ? priority : undefined,
   });
+}
+
+/**
+ * Helper to execute IntentManager actions and return the effective Intent ID.
+ */
+async function resolveIntentFromActions(userId: string, actions: any[]): Promise<string | null> {
+  // Priority: Create > Update > Ignore
+  const createAction = actions.find(a => a.type === 'create');
+  if (createAction) {
+    const indexIds = await getUserAccessibleIndexIds(userId);
+    const created = await intentService.createIntent({
+      userId,
+      payload: createAction.payload,
+      indexIds,
+      sourceType: 'enrichment', // Implicit
+      confidence: 1.0, // Manager already verified
+      inferenceType: 'implicit'
+    });
+    return created.id;
+  }
+
+  const updateAction = actions.find(a => a.type === 'update');
+  if (updateAction) {
+    // but if the manager says update, we update.
+    await intentService.updateIntent(updateAction.id, userId, {
+      payload: updateAction.payload
+    });
+    return updateAction.id;
+  }
+
+  // If only Expire or Ignore, we don't have a valid active intent for the stake
+  return null;
 }
