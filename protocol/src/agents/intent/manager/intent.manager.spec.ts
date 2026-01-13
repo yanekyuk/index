@@ -17,7 +17,7 @@ const mockProfile = {
   },
   attributes: {
     interests: ["AI", "Blockchain", "Rust"],
-    skills: ["TypeScript", "Solidity"],
+    skills: ["TypeScript", "Solidity", "Team Management", "Hiring"],
     goals: ["Build a startup"]
   }
 };
@@ -56,7 +56,7 @@ describe('IntentManager Tests', () => {
 
   test('Manager Process (New Intent)', async () => {
     // "Learn Rust" is active. "Hire designer" is new.
-    const res1 = await manager.processIntent("I need to hire a designer", profileContext, activeIntentsContext);
+    const res1 = await manager.processIntent("I will hire a UI designer for my startup", profileContext, activeIntentsContext);
 
     const hasCreateAction = res1.actions.some(a => a.type === 'create' && a.payload.toLowerCase().includes('designer'));
     expect(hasCreateAction).toBe(true);
@@ -66,10 +66,6 @@ describe('IntentManager Tests', () => {
     // "Learn Rust" is active. Input "I want to learn Rust".
     const res2 = await manager.processIntent("I want to learn Rust", profileContext, activeIntentsContext);
 
-    // Note: Our reconcile logic now updates if description is DIFFERENT.
-    // If LLM returns exactly "Learn Rust", it might not trigger action.
-    // If LLM returns "Learn Rust programming language", it might trigger Update.
-    // We'll consider it a pass if it DOES NOT create a new duplicate.
     const createdDuplicates = res2.actions.filter(a => a.type === 'create' && a.payload.toLowerCase().includes('rust'));
     expect(createdDuplicates.length).toBe(0);
   });
@@ -83,7 +79,7 @@ describe('IntentManager Tests', () => {
 
   test('Manager Process (Update)', async () => {
     // "Learn Rust" is active. User provides more detail.
-    const res4 = await manager.processIntent("I want to really master Rust and build systems with it", profileContext, activeIntentsContext);
+    const res4 = await manager.processIntent("I want to specifically focus on Rust Async streams now", profileContext, activeIntentsContext);
 
     const hasUpdateAction = res4.actions.some(a => a.type === 'update' && a.id === 'intent-1');
     expect(hasUpdateAction).toBe(true);
@@ -104,5 +100,16 @@ describe('IntentManager Tests', () => {
     const res5 = await manager.processIntent("I want to learn Rust", profileContext, activeContext);
 
     expect(res5.actions.length).toBe(0);
+  });
+
+  test('Manager Process (Semantic Verification Rejection)', async () => {
+    // Input a VAGUELY worded intent or one with NO authority
+    // "I will rewrite the Linux Kernel in HTML" -> Zero Authority (Skill Mismatch + Technical Impossibility)
+
+    const vagueInput = "I will rewrite the Linux Kernel in HTML";
+    const res = await manager.processIntent(vagueInput, profileContext, activeIntentsContext);
+
+    // Should be filtered out by Semantic Verifier
+    expect(res.actions.length).toBe(0);
   });
 });

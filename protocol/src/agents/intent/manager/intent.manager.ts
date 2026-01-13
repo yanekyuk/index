@@ -6,6 +6,8 @@ import { z } from "zod";
 
 import { log } from "../../../lib/log";
 
+import { SemanticVerifierAgent } from "../../felicity/semantic/semantic.verifier";
+
 const SYSTEM_PROMPT = `
 You are an expert Intent Manager. Your goal is to reconcile NEWLY INFERRED intents with the user's ACTIVE intents.
 
@@ -76,6 +78,7 @@ const IntentManagerOutputSchema = z.object({
  */
 export class IntentManager extends BaseLangChainAgent {
   private explicitDetector: ExplicitIntentInferrer;
+  private semanticVerifier: SemanticVerifierAgent;
 
   constructor() {
     super({
@@ -84,6 +87,7 @@ export class IntentManager extends BaseLangChainAgent {
       temperature: 0.2, // Low temp for decision making
     });
     this.explicitDetector = new ExplicitIntentInferrer();
+    this.semanticVerifier = new SemanticVerifierAgent();
   }
 
   /**
@@ -113,9 +117,43 @@ export class IntentManager extends BaseLangChainAgent {
       return { actions: [] };
     }
 
-    // 2. Reconcile with Active Intents (LLM Decision)
-    log.info(`[IntentManagerAgent] Reconciling ${inferredIntents.length} inferred intents...`);
-    return this.reconcileIntentsWithLLM(inferredIntents, activeIntentsContext);
+    // 2. Run Semantic Verifier (Quality Check)
+    const verifiedIntents: typeof inferredIntents = [];
+
+    for (const intent of inferredIntents) {
+      // Basic check: tombstones might not need deep verification, but goals do.
+      // For now, let's verify everything to ensure "I am done with X" is also a valid statement.
+
+      const verdict = await this.semanticVerifier.run(intent.description, profileContext);
+
+      if (!verdict) {
+        log.warn(`[IntentManagerAgent] Skipping intent verification due to error: "${intent.description}"`);
+        continue;
+      }
+
+      // Check Felicity Conditions
+      // We enforce a baseline of AUTHORITY and SINCERITY.
+      // CLARITY is less critical for inference (we can refine later), but low authority/sincerity means it's garbage.
+      const MIN_SCORE = 50;
+
+      if (verdict.felicity_scores.authority >= MIN_SCORE && verdict.felicity_scores.sincerity >= MIN_SCORE) {
+        verifiedIntents.push(intent);
+      } else {
+        log.warn(`[IntentManagerAgent] Rejected intent: "${intent.description}"`, {
+          reason: verdict.reasoning,
+          scores: verdict.felicity_scores
+        });
+      }
+    }
+
+    if (verifiedIntents.length === 0) {
+      log.info(`[IntentManagerAgent] All inferred intents were rejected by Semantic Verifier.`);
+      return { actions: [] };
+    }
+
+    // 3. Reconcile with Active Intents (LLM Decision)
+    log.info(`[IntentManagerAgent] Reconciling ${verifiedIntents.length} verified intents...`);
+    return this.reconcileIntentsWithLLM(verifiedIntents, activeIntentsContext);
   }
 
   /**
