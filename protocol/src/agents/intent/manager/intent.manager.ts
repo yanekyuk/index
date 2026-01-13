@@ -1,7 +1,9 @@
 import { BaseLangChainAgent } from "../../../lib/langchain/langchain";
 import { IntentManagerResponse } from "./intent.manager.types";
 import { InferredIntent } from "../inferrer/explicit/explicit.inferrer.types";
-import { ExplicitIntentInferrer } from "../inferrer/explicit/explicit.inferrer";
+import { ExplicitIntentInferrer } from '../inferrer/explicit/explicit.inferrer';
+import { ImplicitInferrer } from '../inferrer/implicit/implicit.inferrer';
+import { ImplicitIntent } from '../inferrer/implicit/implicit.inferrer.types';
 import { z } from "zod";
 
 import { log } from "../../../lib/log";
@@ -79,6 +81,7 @@ const IntentManagerOutputSchema = z.object({
 export class IntentManager extends BaseLangChainAgent {
   private explicitDetector: ExplicitIntentInferrer;
   private semanticVerifier: SemanticVerifierAgent;
+  private implicitInferrer: ImplicitInferrer;
 
   constructor() {
     super({
@@ -88,31 +91,72 @@ export class IntentManager extends BaseLangChainAgent {
     });
     this.explicitDetector = new ExplicitIntentInferrer();
     this.semanticVerifier = new SemanticVerifierAgent();
+    this.implicitInferrer = new ImplicitInferrer();
   }
 
   /**
-   * Main Entry Point: Orchestrates the intent detection and reconciliation process.
+   * Process Explicit User Input (Messages, Notes)
    * 
-   * LOGIC FLOW:
-   * 1. Extraction: Calls `ExplicitIntentInferrer` to extract candidate intents from the raw content.
-   * 2. Filtering: If no candidates are found, returns early.
-   * 3. Reconciliation: Calls `reconcileIntentsWithLLM` to compare candidates against the active intents context.
-   * 
-   * @param content - The new text input from the user (e.g., a message, note, or command).
-   * @param profileContext - The formatted profile context string.
-   * @param activeIntentsContext - The formatted active intents context string.
-   * @returns A Promise resolving to a list of `IntentAction` (Create, Update, Expire) to be applied to the DB.
+   * 1. Extract intents using ExplicitInferrer
+   * 2. Verify validity
+   * 3. Reconcile with active intents
    */
-  async processIntent(
+  async processExplicitIntent(
     content: string | null,
     profileContext: string,
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     // 1. Run Explicit Detector (Pure Extraction)
-    log.info(`[IntentManagerAgent] Processing content: "${content ? content.substring(0, 50) + '...' : 'None'}"`);
+    log.info(`[IntentManagerAgent] Processing explicit content: "${content ? content.substring(0, 50) + '...' : 'None'}"`);
     const { intents: inferredIntents } = await this.explicitDetector.run(content, profileContext);
-    log.info(`[IntentManagerAgent] Inferred ${inferredIntents.length} intents.`);
+    log.info(`[IntentManagerAgent] Inferred ${inferredIntents.length} explicit intents.`);
 
+    return this.verifyAndReconcile(inferredIntents, activeIntentsContext, profileContext);
+  }
+
+  /**
+   * Process Implicit Opportunity Context
+   * 
+   * 1. Infer intent using ImplicitInferrer from Opportunity Context
+   * 2. Verify validity
+   * 3. Reconcile with active intents
+   */
+  async processImplicitIntent(
+    profileContext: string,
+    opportunityContext: string,
+    activeIntentsContext: string
+  ): Promise<IntentManagerResponse> {
+    log.info(`[IntentManagerAgent] Processing implicit context...`);
+
+    // 1. Run Implicit Inferrer
+    const implicitIntent = await this.implicitInferrer.run(profileContext, opportunityContext);
+
+    if (!implicitIntent) {
+      log.info(`[IntentManagerAgent] No implicit intent inferred.`);
+      return { actions: [] };
+    }
+
+    log.info(`[IntentManagerAgent] Inferred implicit intent: "${implicitIntent.payload}" (${implicitIntent.confidence}%)`);
+
+    // Map to InferredIntent format for shared processing
+    const inferredIntents: InferredIntent[] = [{
+      type: 'goal', // Implicit is always a goal
+      description: implicitIntent.payload,
+      reasoning: 'Implicitly inferred from opportunity context', // Hardcode or derive
+      confidence: implicitIntent.confidence > 80 ? 'high' : 'medium'
+    }];
+
+    return this.verifyAndReconcile(inferredIntents, activeIntentsContext, profileContext);
+  }
+
+  /**
+   * Shared Logic: Semantic Verification & LLM Reconciliation
+   */
+  private async verifyAndReconcile(
+    inferredIntents: InferredIntent[],
+    activeIntentsContext: string,
+    profileContext: string
+  ): Promise<IntentManagerResponse> {
     if (inferredIntents.length === 0) {
       return { actions: [] };
     }
@@ -121,11 +165,9 @@ export class IntentManager extends BaseLangChainAgent {
     const verifiedIntents: typeof inferredIntents = [];
 
     for (const intent of inferredIntents) {
-      // Basic check: tombstones might not need deep verification, but goals do.
-      // For now, let's verify everything to ensure "I am done with X" is also a valid statement.
-
       const verdict = await this.semanticVerifier.run(intent.description, profileContext);
       log.info(`[IntentManagerAgent] Verdict for "${intent.description}":`, (verdict as unknown) as Record<string, unknown> || {});
+
       if (!verdict) {
         log.warn(`[IntentManagerAgent] Skipping intent verification due to error: "${intent.description}"`);
         continue;
