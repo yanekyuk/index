@@ -141,7 +141,7 @@ export default function Sidebar() {
         /* Latest Intents Section */
         <div className="bg-white rounded-sm border-black border p-3 pb-6 pt-6">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest Discoveries</h3>
+            <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>
             <button
               onClick={() => setLibraryModalOpen(true)}
               className="text-xs text-gray-600 hover:text-black font-ibm-plex-mono transition-colors"

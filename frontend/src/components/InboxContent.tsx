@@ -598,7 +598,7 @@ export default function InboxContent() {
       <div className="bg-white w-full border border-gray-800 rounded-sm px-4 py-2">
         {!discoveryIntents && (
           <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4" style={{ marginTop: '8px' }}>
-            Discoveries waiting for action
+            Waiting for action
           </div>
         )}
 

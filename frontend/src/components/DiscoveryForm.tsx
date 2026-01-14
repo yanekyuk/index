@@ -205,7 +205,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               handleSubmit();
             }
           }}
-          placeholder={floating ? "Ask a follow-up question...." : "What do you want to discover?"}
+          placeholder={floating ? "Ask a follow-up question...." : "What's your most important work?"}
           className="flex-1 font-ibm-plex-mono text-black text-lg focus:outline-none bg-transparent"
           disabled={isProcessing}
         />
