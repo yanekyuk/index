@@ -284,7 +284,8 @@ export class ProfileService {
         })), { columns: [{ header: "ID", key: "ID" }, { header: "Description", key: "Description" }, { header: "Status", key: "Status" }] }) :
         "No active intents.";
 
-      const result = await manager.processIntent(null, profileContext, activeIntentsContext);
+      // TODO: (@yanekyuk) Experiment with running opportunity evaluator here instead of explicit intent inferrer
+      const result = await manager.processExplicitIntent(null, profileContext, activeIntentsContext);
 
       // Filter out no-op updates (where payload equals current description)
       const filteredActions = result.actions.filter(action => {
@@ -317,6 +318,7 @@ export class ProfileService {
       }
     } catch (error) {
       log.error('[ProfileService] Failed to generate intents from profile:', { error });
+      console.error(error)
     }
     return newIntentOptions;
   }

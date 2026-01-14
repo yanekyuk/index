@@ -7,6 +7,7 @@ import { log } from "../../../../lib/log";
 
 /**
  * Model Configuration
+ * TODO: (@yanekyuk) Explicit inferrer returns vague results. They are not specific enough. Check out opportunity evaluator, it is better.
  */
 export const SYSTEM_PROMPT = `
   You are an expert Intent Analyst. Your goal is to infer the user's current intentions based on their profile and new content.
@@ -66,7 +67,7 @@ export type ExplicitInferrerOutput = z.infer<typeof ExplicitInferrerOutputSchema
 export class ExplicitIntentInferrer extends BaseLangChainAgent {
   constructor() {
     super({
-      preset: 'intent-inferrer',
+      model: 'openai/gpt-4o',
       responseFormat: ExplicitInferrerOutputSchema,
       temperature: 0.5,
     });
@@ -86,8 +87,7 @@ export class ExplicitIntentInferrer extends BaseLangChainAgent {
       # User Memory Profile
       ${profileContext}
 
-      ## New Content
-      ${content ? content : '(None. Please infer intents from Profile Narrative and Aspirations)'}
+      ${content ? `## New Content\n\n${content}` : '(No content provided. Please infer intents from Profile Narrative and Aspirations)'}
     `;
 
     const messages = [

@@ -5,6 +5,8 @@ import { ImplicitInferrerOutputSchema, ImplicitIntent } from "./implicit.inferre
 import { log } from "../../../../lib/log";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
+// TODO: (@yanekyuk) Re-evaluate if this is this necessary
+
 const SYSTEM_PROMPT = `
 You are an expert Implicit Intent Inferrer.
 Your task is to deduce the UNDERLYING user goal (Implicit Intent) that makes a specific Opportunity relevant to them.

@@ -3,7 +3,6 @@ import { IntentManagerResponse } from "./intent.manager.types";
 import { InferredIntent } from "../inferrer/explicit/explicit.inferrer.types";
 import { ExplicitIntentInferrer } from '../inferrer/explicit/explicit.inferrer';
 import { ImplicitInferrer } from '../inferrer/implicit/implicit.inferrer';
-import { ImplicitIntent } from '../inferrer/implicit/implicit.inferrer.types';
 import { z } from "zod";
 
 import { log } from "../../../lib/log";
@@ -123,6 +122,7 @@ export class IntentManager extends BaseLangChainAgent {
    */
   async processImplicitIntent(
     profileContext: string,
+    // TODO: (@yanekyuk) Rename opportunityContext to additionalContext because we might use this for other purposes.
     opportunityContext: string,
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
@@ -151,6 +151,7 @@ export class IntentManager extends BaseLangChainAgent {
 
   /**
    * Shared Logic: Semantic Verification & LLM Reconciliation
+   * By reconcile we mean that we will use the LLM to verify the inferred intent and reconcile it with the active intents.
    */
   private async verifyAndReconcile(
     inferredIntents: InferredIntent[],
