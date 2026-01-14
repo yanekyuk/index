@@ -25,26 +25,127 @@ class MockMemoryEmbedder implements Embedder {
 
 // Mock Data
 const sourceProfile: UserMemoryProfile = {
-  identity: { name: "Alice", bio: "AI Researcher", location: "NYC" },
-  narrative: { context: "Building AGI", aspirations: "Find a co-founder" },
-  attributes: { interests: ["AI", "Crypto"], skills: ["Python", "TS"] }
+  "identity": {
+    "name": "Seref Yarar",
+    "bio": "Seref Yarar is a Co-Founder at Index Network, utilizing his extensive background in software engineering to develop innovative, privacy-focused solutions for digital discovery. He aims to empower users by creating custom search engine technologies that prioritize data ownership and user intent.",
+    "location": "New York, United States"
+  },
+  "narrative": {
+    "context": "Seref Yarar is presently embedded in the thriving tech landscape of New York as the Co-Founder of Index Network. His career spans several influential roles, including his previous work as Co-Founder and CTO at GoWit Technology and as the Head of Engineering at Aleph Group, where he honed his skills in engineering and technology. With a Bachelor's degree in Computer Engineering from Bahcesehir University, Seref possesses a strong technical background that supports his ventures. Currently, he is focusing on creating decentralized data technologies. Seref's ongoing contributions to various repositories on GitHub reflect his commitment to advancing technology for enhanced user experiences."
+  },
+  "attributes": {
+    "interests": [
+      "Decentralized technologies",
+      "Privacy in digital spaces",
+      "Autonomous agents",
+      "Software engineering",
+      "Tech innovation",
+      "User data ownership"
+    ],
+    "skills": [
+      "Software development",
+      "Project management",
+      "Team leadership",
+      "Product development",
+      "Data privacy technologies",
+      "Blockchain implementation"
+    ]
+  }
 } as any;
 
-const candidateA: CandidateProfile & { embedding: number[] } = {
-  userId: "user-a",
-  identity: { name: "Bob", bio: "Crypto Dev" },
-  narrative: {},
-  attributes: {},
-  embedding: [0, 1, 0] // Orthogonal to query [1,0,0] -> Similarity 0
-};
-
-const candidateB: CandidateProfile & { embedding: number[] } = {
-  userId: "user-b",
-  identity: { name: "Charlie", bio: "AI Engineer" },
-  narrative: {},
-  attributes: {},
-  embedding: [1, 0, 0] // Identical to query [1,0,0] -> Similarity 1
-};
+const candidates: (CandidateProfile & { embedding: number[] })[] = [
+  {
+    identity: {
+      name: "Seren Sandikci",
+      bio: "Seren Sandikci is a co-founder and chief product officer at Index Network, where they leverage their extensive background in UX and product design to drive innovation and user-centric solutions. With a solid foundation in industrial design, Seren translates complexity into scalable solutions that align with market needs.",
+      location: "New York, United States"
+    },
+    narrative: {
+      context: "Seren Sandikci is currently based in New York, where they co-founded Index Network. Having previously held a senior UX designer role at QNB Finansbank and gaining experience in various design and development capacities, Seren is well-equipped to navigate the intersection of technology and user experience. At Index Network, they focus on developing custom search engines that prioritize user privacy and provide more tailored content discovery. This role allows them to apply their technological insight into a burgeoning venture that responds to the challenges posed by traditional web discovery tools.",
+      aspirations: "Seren's ambition lies in transforming how individuals connect with information online. They aspire to innovate user interaction within digital platforms, using AI to create solutions that respect user privacy while providing meaningful, personalized experiences. Seren seeks to establish partnerships with other creative minds and stakeholders in the tech industry to expand their reach, develop new features, and enhance user engagement in their projects. Additionally, they aim to mentor upcoming designers, fostering a culture of learning and innovation within the tech space."
+    },
+    attributes: {
+      interests: [
+        "User Experience Design",
+        "Product Development",
+        "Information Technology",
+        "AI and Decentralization",
+        "Digital Privacy"
+      ],
+      "skills": [
+        "UX Design",
+        "Product Strategy",
+        "Business Development",
+        "Stakeholder Communication",
+        "Data-driven Design",
+        "Strategic Planning",
+        "Innovation Skills"
+      ]
+    },
+    userId: "user_1",
+    embedding: [1, 0, 0]
+  },
+  {
+    identity: {
+      name: "Brad Burnham",
+      bio: "Brad Burnham is a seasoned venture capitalist with a deep passion for information discovery, merging insights from technology and human curiosity. With a robust background in computer science and economics, he focuses on startups that innovate how knowledge is discovered and utilized.",
+      location: "Unknown City, Unknown Country"
+    },
+    narrative: {
+      context: "Brad's journey began with a solid foundation in computer science and economics, where he developed a keen interest in how technology shapes the understanding of information. His career trajectory as a venture capitalist has been guided by a commitment to supporting startups that further the cause of meaningful knowledge discovery. He has become known for his thought-provoking questions during pitches, always seeking to understand the deeper implications of new technologies. Currently, he is actively involved in identifying and investing in projects that prioritize relevance and transparency in information dissemination, a mission that reflects his broader vision of empowering individuals in their quest for knowledge.",
+      aspirations: "Looking ahead, Brad aims to build a diverse portfolio of innovative companies that not only disrupt industry norms but also fundamentally change the way we interact with information. He seeks to connect with like-minded visionaries and thought leaders who share his belief in the transformative power of technology. His ultimate goal is to foster advancements that enhance learning and make knowledge more accessible and trustworthy, enabling individuals to discover insights that were previously out of reach."
+    },
+    attributes: {
+      interests: [
+        "information discovery",
+        "technology",
+        "AI-driven insight tools",
+        "data infrastructure",
+        "research"
+      ],
+      "skills": [
+        "venture capital",
+        "startup evaluation",
+        "investment strategies",
+        "technology analysis",
+        "questioning and critical thinking"
+      ]
+    },
+    userId: "user_1768388518124",
+    embedding: [0, 1, 0]
+  },
+  {
+    identity: {
+      name: "Yankı Ekin Yüksel",
+      bio: "A driven computer science student and technology enthusiast based in Istanbul. Currently focusing on software development and participating in entrepreneurial ventures, leveraging his interest in digital media and tech innovations.",
+      location: "Istanbul, Turkey"
+    },
+    narrative: {
+      context: "Yankı Ekin Yüksel is a bright and ambitious individual navigating his academic journey at Boğaziçi University, where he is immersed in the fields of technology and digital media. He has a passion for exploring the intersection of software development and media consumption, which is evident in his work as a CTO at Aposto!, a dynamic new media company based in Istanbul. Balancing his studies along with the responsibilities of leading tech initiatives, Yankı often finds himself under pressure to excel both academically and professionally. His commitments to projects on GitHub and contributions to open-source initiatives have cultivated a robust online presence, reflecting his dedication to learning and collaboration. Although he's currently grounded in the vibrant city life of Istanbul, he is motivated by the latest technological advancements and how they can shape the future of media and communication.",
+      "aspirations": "Yankı aims to establish himself as a prominent figure in the tech and media landscape. He dreams of developing innovative software solutions that educate and inspire others, particularly in the realm of digital storytelling and content creation. In the longer term, he envisions leading initiatives that bridge technology and society, creating a more informed public space where content can flourish responsibly. He seeks to connect with industry leaders and visionaries, hoping to collaborate on projects that push the boundaries of current digital media practices."
+    },
+    attributes: {
+      interests: [
+        "Software Development",
+        "Digital Media",
+        "Technology Innovations",
+        "Open Source Contributions",
+        "Entrepreneurship"
+      ],
+      "skills": [
+        "JavaScript",
+        "Node.js",
+        "Vue.js",
+        "GitHub",
+        "Software Development",
+        "Project Management",
+        "Team Collaboration"
+      ]
+    },
+    userId: "user_3",
+    embedding: [0, 0, 1]
+  }
+];
 
 async function setupEvaluator() {
   const embedder = new MockMemoryEmbedder();
@@ -80,14 +181,14 @@ describe('Opportunity Evaluator Tests', () => {
     const evaluator = await setupEvaluator();
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
-      candidates: [candidateA, candidateB],
+      candidates: candidates,
       hydeDescription: "Looking for a co-founder",
       limit: 5,
       minScore: 0.5
     });
 
     expect(opportunities.length).toBe(1);
-    expect(opportunities[0].candidateId).toBe('user-b');
+    expect(opportunities[0].candidateId).toBe('user_1');
   });
 
   test('Empty Candidates List', async () => {
@@ -110,7 +211,7 @@ describe('Opportunity Evaluator Tests', () => {
     // candidateB has score 1.0 (vector match). If we ask for 1.1, should find nothing.
     // Note: memorySearcher handles minScore filtering.
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
-      candidates: [candidateB],
+      candidates: [candidates[0]],
       hydeDescription: "Looking for perfection",
       limit: 5,
       minScore: 1.1
@@ -123,7 +224,7 @@ describe('Opportunity Evaluator Tests', () => {
     log.info("--- Test: Candidate Missing UserId (Graceful Fail) ---");
     const evaluator = await setupEvaluator();
 
-    const candidateNoId = { ...candidateB, userId: undefined } as any;
+    const candidateNoId = { ...candidates[0], userId: undefined } as any;
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
       candidates: [candidateNoId],
@@ -166,7 +267,7 @@ describe('Opportunity Evaluator Tests', () => {
     const existing = "Already matched with Bob (Score: 95): Great match";
 
     // This should trigger the spy assertion
-    await evaluator.evaluateOpportunities(sourceProfileContext, [candidateA], {
+    await evaluator.evaluateOpportunities(sourceProfileContext, [candidates[1]], {
       minScore: 0.5,
       hydeDescription: "test",
       existingOpportunities: existing

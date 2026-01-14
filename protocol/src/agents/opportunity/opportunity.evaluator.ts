@@ -115,7 +115,6 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
 
     const opportunities: Opportunity[] = [];
 
-
     // Analyze each candidate in parallel (bounded)
     const promises = candidates.map(async (candidate) => {
       // Pass existing opportunities context if provided
@@ -129,6 +128,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
         opportunities.push(op as Opportunity);
       }
     });
+
 
     // Sort by score
     return opportunities.sort((a, b) => b.score - a.score);
