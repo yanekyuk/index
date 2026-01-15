@@ -324,7 +324,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
             }
           }}
           placeholder={intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?")}
-          className="flex-1 font-ibm-plex-mono text-black text-lg focus:outline-none bg-transparent"
+          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent`}
           disabled={isProcessing}
         />
         {isProcessing ? (
@@ -365,7 +365,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   if (floating) {
     return (
-      <div className="sticky bottom-0 w-full z-[9999] pt-2 pb-4 bg-white">
+      <div className="sticky bottom-0 w-full pt-2 pb-4 bg-white">
         {formElement}
       </div>
     );
