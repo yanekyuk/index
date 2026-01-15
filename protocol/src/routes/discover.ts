@@ -13,8 +13,6 @@ import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { CreatedIntent, intentService } from '../services/intent.service';
 import { createUploadClient } from '../lib/uploads';
-import { SyntacticValidatorAgent } from '../agents/felicity/syntactic/syntactic.validator';
-import { SemanticVerifierAgent } from '../agents/felicity/semantic/semantic.verifier';
 import { ExplicitIntentInferrer } from '../agents/intent/inferrer/explicit/explicit.inferrer';
 import { profileService } from '../services/profile.service';
 import { json2md } from '../lib/json2md/json2md';
@@ -83,26 +81,7 @@ router.post('/new',
 
       // Files are already validated by multer fileFilter and limits
 
-      // 0. Syntactic Validation (Gatekeeper) on Payload
-      if (payload) {
-        try {
-          const validator = new SyntacticValidatorAgent();
-          const validationResult = await validator.run(payload);
-
-          if (validationResult && validationResult.status === 'FAIL') {
-            console.warn(`[Discover] 🚫 Payload rejected by SyntacticValidator:`, {
-              reason: validationResult.rejection_reason,
-              payload: payload.substring(0, 50) + '...'
-            });
-            return res.status(400).json({
-              error: 'Input rejected by safety validation',
-              reason: validationResult.rejection_reason
-            });
-          }
-        } catch (validationError) {
-          console.error(`[Discover] SyntacticValidator crashed, failing open:`, validationError);
-        }
-      }
+      // Note: Syntactic validation now happens in IntentEvaluator (unified flow)
 
       const savedFileIds: string[] = [];
       const savedLinkIds: string[] = [];
@@ -231,48 +210,22 @@ router.post('/new',
           if (inferredIntents.length === 0) {
             console.warn(`[Discover] ⚠️ No intents inferred from payload (likely phatic or empty).`);
           } else {
-            const semanticVerifier = new SemanticVerifierAgent();
-
+            // Create intents directly - felicity checks happen during background index processing
             for (const intent of inferredIntents) {
-              // 3. Semantic Verification
-              const verdict = await semanticVerifier.run(intent.description, profileContext);
-              let passesFelicity = false;
-              let rejectReason = '';
-
-              if (verdict) {
-                const MIN_SCORE = 40;
-                const { authority, sincerity } = verdict.felicity_scores;
-
-                const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
-                const isStrongIntent = authority >= 70 && sincerity >= 70;
-                const isValidType = VALID_TYPES.includes(verdict.classification) || isStrongIntent;
-
-                if (authority >= MIN_SCORE && sincerity >= MIN_SCORE && isValidType) {
-                  passesFelicity = true;
-                } else {
-                  rejectReason = `Auth(${authority}), Sinc(${sincerity}), Type(${verdict.classification})`;
-                }
-              }
-
-              if (passesFelicity) {
-                // 4. Create Intent
-                try {
-                  const createdIntent: CreatedIntent = await intentService.createIntent({
-                    payload: intent.description, // Use the extracted description
-                    userId: userId,
-                    sourceId: undefined,
-                    sourceType: 'discovery_form',
-                    isIncognito: false,
-                    confidence: 1.0,
-                    inferenceType: 'explicit',
-                  });
-                  generatedIntents.push(createdIntent);
-                  console.log(`✅ Intent created: ${createdIntent.id}`);
-                } catch (error) {
-                  console.error(`❌ Failed to create intent:`, error);
-                }
-              } else {
-                console.warn(`[Discover] 🚫 Intent rejected by Verifier: "${intent.description}" Reason: ${rejectReason}`);
+              try {
+                const createdIntent: CreatedIntent = await intentService.createIntent({
+                  payload: intent.description,
+                  userId: userId,
+                  sourceId: undefined,
+                  sourceType: 'discovery_form',
+                  isIncognito: false,
+                  confidence: 1.0,
+                  inferenceType: 'explicit',
+                });
+                generatedIntents.push(createdIntent);
+                console.log(`✅ Intent created: ${createdIntent.id}`);
+              } catch (error) {
+                console.error(`❌ Failed to create intent:`, error);
               }
             }
           }
