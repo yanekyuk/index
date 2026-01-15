@@ -9,3 +9,4 @@ postgres/
 !.vscode/index.code-workspace.default
 docker-compose.yml
 env.docker
+*.report.md
