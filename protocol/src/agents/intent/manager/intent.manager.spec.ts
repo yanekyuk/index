@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import path from 'path';
 import { IntentManager } from './intent.manager';
 import { ImplicitInferrer } from '../inferrer/implicit/implicit.inferrer';
+import { SemanticVerifierAgent } from '../evaluator/semantic/semantic.evaluator';
 
 // Load env
 const envPath = path.resolve(__dirname, '../../../../.env.development');
@@ -145,5 +146,35 @@ describe('IntentManager Tests', () => {
 
     // Expect NO actions
     expect(res.actions.length).toBe(0);
+  }, 20000);
+  test('Manager Process (Score & Reasoning Pass-through)', async () => {
+    // 1. Mock Implicit Inferrer to return a strong signal
+    const mockImplicit = spyOn(ImplicitInferrer.prototype, 'run').mockResolvedValue({
+      payload: "Go to the gym",
+      confidence: 95
+    });
+
+    // 2. Mock Semantic Verifier to return specific scores (Auth=80, Sinc=60) -> Expect Score = 60
+    const mockSemantic = spyOn(SemanticVerifierAgent.prototype, 'run').mockResolvedValue({
+      classification: "COMMISSIVE",
+      felicity_scores: { clarity: 90, authority: 80, sincerity: 60 }, // Min is 60
+      flags: [],
+      reasoning: "User is capable and sincere."
+    });
+
+    // 3. Run Manager
+    const res = await manager.processImplicitIntent(profileContext, "Health update", activeIntentsContext);
+
+    // 4. Verify Creation Action
+    const createAction = res.actions.find(a => a.type === 'create' && a.payload === 'Go to the gym') as any;
+
+    expect(createAction).toBeDefined();
+    // Avg(Auth: 80, Sinc: 60, Clarity: 90) = (80+60+90)/3 = 76.66 -> 76
+    expect(createAction.score).toBe(76);
+    expect(createAction.reasoning).toContain("Score: 76");
+    expect(createAction.reasoning).toContain("User is capable and sincere");
+
+    mockImplicit.mockRestore();
+    mockSemantic.mockRestore();
   }, 20000);
 });

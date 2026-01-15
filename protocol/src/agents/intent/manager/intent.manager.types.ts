@@ -25,12 +25,16 @@ export interface ActiveIntent {
 export interface CreateIntentAction {
   type: 'create';
   payload: string;
+  score?: number | null;
+  reasoning?: string | null;
 }
 
 export interface UpdateIntentAction {
   type: 'update';
   id: string;
   payload: string;
+  score?: number | null;
+  reasoning?: string | null;
 }
 
 export interface ExpireIntentAction {

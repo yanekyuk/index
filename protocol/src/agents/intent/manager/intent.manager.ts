@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { log } from "../../../lib/log";
 
-import { SemanticVerifierAgent } from "../../felicity/semantic/semantic.verifier";
+import { SemanticVerifierAgent } from "../evaluator/semantic/semantic.evaluator";
 
 const SYSTEM_PROMPT = `
 You are an expert Intent Manager. Your goal is to reconcile NEWLY INFERRED intents with the user's ACTIVE intents.
@@ -36,13 +36,17 @@ Output a list of specific actions to apply.
 
 const CreateIntentActionSchema = z.object({
   type: z.literal("create"),
-  payload: z.string().describe("The new intent description")
+  payload: z.string().describe("The new intent description"),
+  score: z.number().nullable().describe("The felicity score (0-100)"),
+  reasoning: z.string().nullable().describe("Reasoning for the creation (including felicity)")
 });
 
 const UpdateIntentActionSchema = z.object({
   type: z.literal("update"),
   id: z.string().describe("The ID of the intent to update"),
-  payload: z.string().describe("The updated intent description")
+  payload: z.string().describe("The updated intent description"),
+  score: z.number().nullable().describe("The felicity score (0-100)"),
+  reasoning: z.string().nullable().describe("Reasoning for the update")
 });
 
 const ExpireIntentActionSchema = z.object({
@@ -141,7 +145,7 @@ export class IntentManager extends BaseLangChainAgent {
     const inferredIntents: InferredIntent[] = [{
       type: 'goal', // Implicit is always a goal
       description: implicitIntent.payload,
-      reasoning: 'Implicitly inferred from additional context', // Hardcode or derive
+      reasoning: 'Implicitly inferred from additional context',
       confidence: implicitIntent.confidence > 80 ? 'high' : 'medium'
     }];
 
@@ -189,7 +193,23 @@ export class IntentManager extends BaseLangChainAgent {
         verdict.felicity_scores.sincerity >= MIN_SCORE &&
         isValidType
       ) {
-        verifiedIntents.push(intent);
+        // Calculate Average Score for Stake
+        // Score = avg(Authority, Sincerity, Clarity)
+        const score = Math.floor(
+          (verdict.felicity_scores.authority + verdict.felicity_scores.sincerity + verdict.felicity_scores.clarity) / 3
+        );
+
+        // Append score and reasoning to the intent so it can be passed to the LLM
+        // We use a temporary property or append to reasoning string to carry it through
+        intent.reasoning = `${intent.reasoning}. Verification: ${verdict.classification} (Score: ${score}, Auth: ${verdict.felicity_scores.authority}, Sinc: ${verdict.felicity_scores.sincerity}, Clarity: ${verdict.felicity_scores.clarity}). ${verdict.reasoning}`;
+
+        // We can also attach the raw score if we extending InferredIntent type,
+        // but since we are limited to the existing type, let's inject it into the reasoning 
+        // so the LLM sees it and we can ask it to extract/pass it.
+        // BETTER: Extend the InferredIntent type in memory here or trust the LLM to pick it up.
+        // Let's rely on the LLM to see the score in the reasoning and put it into the Action's score field.
+
+        verifiedIntents.push({ ...intent, score } as any); // We need to cast or extend the type momentarily
       } else {
         log.warn(`[IntentManagerAgent] Rejected intent: "${intent.description}" Type: ${verdict.classification}`, {
           reason: verdict.reasoning,
@@ -235,6 +255,11 @@ export class IntentManager extends BaseLangChainAgent {
       ${this.formatInferredIntents(inferred)}
 
       Based on the Inferred Intents, determine the actions to modify the Active Intents state.
+      IMPORTANT:
+      - If you CREATE or UPDATE an intent, you MUST popuate the 'score' and 'reasoning' fields.
+      - Extract the 'score' from the Inferred Intent's data (it is the felicity score).
+      - Include the verification details in the 'reasoning'.
+      - For EXPIRE actions, 'score' and 'reasoning' are not required (leave null).
     `;
 
     const messages = [
@@ -248,7 +273,11 @@ export class IntentManager extends BaseLangChainAgent {
       log.info(`[IntentManagerAgent] Decision: ${structuredResponse.actions.length} actions generated.`);
       return structuredResponse;
     } catch (error) {
-      log.error("[IntentManagerAgent] Error in IntentManager reconciliation", { error });
+      log.error("[IntentManagerAgent] Error in IntentManager reconciliation", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        raw: error
+      });
       return { actions: [] };
     }
   }
@@ -257,9 +286,9 @@ export class IntentManager extends BaseLangChainAgent {
     if (intents.length === 0) return "No inferred intents.";
 
     // Simple markdown table formatter
-    const header = "| Type | Description | Reasoning | Confidence |";
-    const separator = "|---|---|---|---|";
-    const rows = intents.map(i => `| ${i.type} | ${i.description} | ${i.reasoning} | ${i.confidence} |`).join('\n');
+    const header = "| Type | Description | Reasoning | Confidence | Score |";
+    const separator = "|---|---|---|---|---|";
+    const rows = intents.map(i => `| ${i.type} | ${i.description} | ${i.reasoning} | ${i.confidence} | ${(i as any).score || 'N/A'} |`).join('\n');
 
     return `${header}\n${separator}\n${rows}`;
   }

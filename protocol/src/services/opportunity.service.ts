@@ -26,6 +26,7 @@ export interface CreateOpportunityIntentOptions {
   sourceId?: string;
   sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
   confidence: number;
+  reasoning?: string;
   inferenceType: 'explicit' | 'implicit';
   createdAt?: Date;
   updatedAt?: Date;
@@ -238,6 +239,7 @@ export class OpportunityService {
       sourceId,
       sourceType,
       confidence,
+      reasoning,
       inferenceType,
       createdAt,
       updatedAt
@@ -298,7 +300,7 @@ export class OpportunityService {
     await db.insert(intentStakes).values({
       intents: [newIntent.id],
       stake: BigInt(Math.floor(confidence * 100)),
-      reasoning: `${inferenceType} inference from opportunity discovery`,
+      reasoning: reasoning || `${inferenceType} inference from opportunity discovery`,
       agentId: '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
     });
 
@@ -545,9 +547,9 @@ export class OpportunityService {
    * 
    * @param userId - The user ID.
    * @param actions - Array of intent actions from IntentManager.
-   * @returns The intent ID or null if no actionable intent.
+   * @returns The intent ID and score, or null if no actionable intent.
    */
-  async resolveIntentFromActions(userId: string, actions: any[]): Promise<string | null> {
+  async resolveIntentFromActions(userId: string, actions: any[]): Promise<{ id: string; score: number } | null> {
     // Priority: Create > Update > Ignore
     const createAction = actions.find(a => a.type === 'create');
     if (createAction) {
@@ -557,10 +559,13 @@ export class OpportunityService {
         payload: createAction.payload,
         indexIds,
         sourceType: 'enrichment', // Implicit
-        confidence: 1.0, // Manager already verified
+        // If score is provided, use it (score is 0-100, confidence is 0-1).
+        // If score is 80, confidence should be 0.8
+        confidence: createAction.score ? createAction.score / 100 : 1.0,
+        reasoning: createAction.reasoning || undefined,
         inferenceType: 'implicit'
       });
-      return created.id;
+      return { id: created.id, score: createAction.score || 100 };
     }
 
     const updateAction = actions.find(a => a.type === 'update');
@@ -568,7 +573,7 @@ export class OpportunityService {
       await this.updateIntent(updateAction.id, userId, {
         payload: updateAction.payload
       });
-      return updateAction.id;
+      return { id: updateAction.id, score: updateAction.score || 100 };
     }
 
     // If only Expire or Ignore, we don't have a valid active intent for the stake
@@ -762,12 +767,13 @@ export class OpportunityService {
                 sourceActiveContext
               );
 
-              const sourceIntentId = await this.resolveIntentFromActions(sourceProfile.userId, sourceResponse.actions);
+              const sourceIntentResult = await this.resolveIntentFromActions(sourceProfile.userId, sourceResponse.actions);
 
-              if (!sourceIntentId) {
+              if (!sourceIntentResult) {
                 log.info(`   [OpportunityJob] Source intent not created/resolved. Skipping stake.`);
                 continue;
               }
+              const sourceIntentId = sourceIntentResult.id;
 
               // 2. Process Candidate Intent
               log.info(`   [OpportunityJob] Processing implicit candidate intent for ${candidateProfile.userId}...`);
@@ -798,17 +804,31 @@ export class OpportunityService {
                 candidateActiveContext
               );
 
-              const candidateIntentId = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+              const candidateIntentResult = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+
+              if (!candidateIntentResult) {
+                log.info(`   [OpportunityJob] Candidate intent not created/resolved. Skipping stake.`);
+                continue;
+              }
+              const candidateIntentId = candidateIntentResult.id;
 
               if (sourceIntentId && candidateIntentId) {
-                log.info(`   [OpportunityJob] Creating implicit stake between ${sourceProfile.userId} and ${candidateProfile.userId}`);
+                // 3. Create Pair Match Stake
+                // PairStake = avg(OpportunityScore, SourceIntentScore, CandidateIntentScore)
+                const opportunityScore = Math.floor(op.score);
+                const sourceScore = sourceIntentResult.score;
+                const candidateScore = candidateIntentResult.score;
+
+                const finalStakeScore = Math.floor((opportunityScore + sourceScore + candidateScore) / 3);
+
+                log.info(`   [OpportunityJob] Creating pair stake. Op: ${opportunityScore}, Source: ${sourceScore}, Candidate: ${candidateScore} -> Final: ${finalStakeScore}`);
 
                 await this.saveMatch(
                   sourceIntentId,
                   candidateIntentId,
-                  op.score,
-                  op.description,
-                  '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
+                  finalStakeScore,
+                  op.description, // Use opportunity reason
+                  '028ef80e-9b1c-434b-9296-bb6130509482'
                 );
               }
 
@@ -999,16 +1019,27 @@ export class OpportunityService {
             candidateActiveContext
           );
 
-          const candidateIntentId = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+          const candidateIntentResult = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
 
           // 7c. Create Stake linking both intents
-          if (sourceIntentId && candidateIntentId) {
-            log.info(`[OpportunityService] ✅ Creating stake between ${userId} and ${candidateProfile.userId} (score: ${op.score})`);
+          if (sourceIntentId && candidateIntentResult) {
+            const candidateIntentId = candidateIntentResult.id;
+
+            // PairStake = avg(OpportunityScore, SourceIntentScore, CandidateIntentScore)
+            const opportunityScore = Math.floor(op.score);
+            const sourceScore = typeof sourceIntentId === 'string' ? opportunityScore : sourceIntentId.score; // Handle legacy string or object
+            const candidateScore = candidateIntentResult.score;
+
+            const rawSourceId = typeof sourceIntentId === 'string' ? sourceIntentId : sourceIntentId.id;
+
+            const finalStakeScore = Math.floor((opportunityScore + sourceScore + candidateScore) / 3);
+
+            log.info(`[OpportunityService] ✅ Creating stake between ${userId} and ${candidateProfile.userId} (Op: ${opportunityScore}, S: ${sourceScore}, C: ${candidateScore} -> Final: ${finalStakeScore})`);
 
             await this.saveMatch(
-              sourceIntentId,
+              rawSourceId,
               candidateIntentId,
-              op.score,
+              finalStakeScore,
               op.description,
               '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
             );
