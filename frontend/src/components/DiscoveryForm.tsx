@@ -5,10 +5,20 @@ import { useAPI } from "@/contexts/APIContext";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
-import { ArrowUp, X } from "lucide-react";
+import { ArrowUp, X, Loader2, Zap, Type } from "lucide-react";
+import { Intent } from "@/types";
+
+interface RefinementSuggestion {
+  label: string;
+  type: 'direct' | 'prompt';
+  followupText?: string;  // For direct type
+  prefill?: string;       // For prompt type
+}
 
 interface DiscoveryFormProps {
   onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
+  onRefine?: (intent: Intent) => void;
+  intentId?: string; // When provided, form operates in refine mode
   floating?: boolean; // If true, renders as fixed floating at bottom; if false, renders inline
 }
 
@@ -23,16 +33,42 @@ interface Attachment {
   preview?: string;
 }
 
-const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubmit, floating = false }, ref) => {
+const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubmit, onRefine, intentId, floating = false }, ref) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const { discoverService } = useAPI();
+  const [suggestions, setSuggestions] = useState<RefinementSuggestion[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
+  const { discoverService, intentsService } = useAPI();
   const { getAccessToken } = usePrivy();
   const { error } = useNotifications();
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef<string[]>([]);
+
+  // In refine mode (intentId provided), fetch suggestions
+  useEffect(() => {
+    if (!intentId) {
+      setSuggestions([]);
+      return;
+    }
+
+    const fetchSuggestions = async () => {
+      setIsLoadingSuggestions(true);
+      try {
+        const result = await intentsService.getIntentSuggestions(intentId);
+        setSuggestions(result);
+      } catch (err) {
+        console.error('Failed to fetch suggestions:', err);
+        setSuggestions([]);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    };
+
+    fetchSuggestions();
+  }, [intentId, intentsService]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -95,10 +131,62 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     };
   }, []);
 
+  // Handle refining intent with followup text
+  const handleRefine = async (followupText: string) => {
+    if (!intentId || isProcessing) return;
+    
+    setIsProcessing(true);
+    setInputValue("");
+    
+    try {
+      const refinedIntent = await intentsService.refineIntent(intentId, followupText);
+      
+      if (onRefine) {
+        onRefine(refinedIntent);
+      }
+      
+      // Refresh suggestions after refining
+      try {
+        const newSuggestions = await intentsService.getIntentSuggestions(intentId);
+        setSuggestions(newSuggestions);
+      } catch {
+        // Ignore suggestion refresh errors
+      }
+    } catch (err) {
+      console.error('Refine intent failed:', err);
+      error(err instanceof Error ? err.message : 'Failed to refine intent');
+    } finally {
+      setIsProcessing(false);
+      setApplyingSuggestionIndex(null);
+    }
+  };
+
+  // Handle suggestion chip click
+  const handleSuggestionClick = async (suggestion: RefinementSuggestion, index: number) => {
+    if (isProcessing) return;
+    
+    if (suggestion.type === 'prompt' && suggestion.prefill) {
+      // Prefill input and focus for user to complete
+      setInputValue(suggestion.prefill);
+      inputRef.current?.focus();
+    } else if (suggestion.type === 'direct' && suggestion.followupText) {
+      // Apply directly
+      setApplyingSuggestionIndex(index);
+      await handleRefine(suggestion.followupText);
+    }
+  };
+
   const handleSubmit = async () => {
     if (isProcessing || (!inputValue.trim() && attachments.length === 0)) return;
     
     const text = inputValue.trim();
+    
+    // If in refine mode (intentId provided), use refine flow
+    if (intentId && text) {
+      await handleRefine(text);
+      return;
+    }
+    
     const files = attachments.map(a => a.file);
     
     // Clean up preview URLs
@@ -148,6 +236,36 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   const formContent = (
     <>
+      {/* Refinement suggestion chips (only in refine mode) */}
+      {intentId && (suggestions.length > 0 || isLoadingSuggestions) && (
+        <div className="px-3 pt-2 pb-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
+          {isLoadingSuggestions ? (
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span className="font-ibm-plex-mono text-xs">Loading...</span>
+            </div>
+          ) : (
+            suggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                onClick={() => handleSuggestionClick(suggestion, index)}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 border border-gray-200 rounded text-xs font-ibm-plex-mono text-gray-600 hover:bg-gray-200 hover:border-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap flex-shrink-0"
+              >
+                {applyingSuggestionIndex === index ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : suggestion.type === 'direct' ? (
+                  <Zap className="w-3 h-3" />
+                ) : (
+                  <Type className="w-3 h-3" />
+                )}
+                {suggestion.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
       {/* Attachment chips */}
       {attachments.length > 0 && (
         <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2">
@@ -185,7 +303,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       )}
 
       {/* Input row */}
-      <div className="flex items-center px-4 py-2 min-h-[54px]">
+      <div className="flex items-center px-3 py-2 min-h-[48px]">
         <input
           ref={fileInputRef}
           type="file"
@@ -205,7 +323,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               handleSubmit();
             }
           }}
-          placeholder={floating ? "Ask a follow-up question...." : "What's your most important work?"}
+          placeholder={intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?")}
           className="flex-1 font-ibm-plex-mono text-black text-lg focus:outline-none bg-transparent"
           disabled={isProcessing}
         />
@@ -219,7 +337,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
         ) : (
           <button
             onClick={handleSubmit}
-            disabled={!inputValue.trim() && attachments.length === 0}
+            disabled={intentId ? !inputValue.trim() : (!inputValue.trim() && attachments.length === 0)}
             className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ml-2"
           >
             <ArrowUp className="w-4 h-4" />
@@ -234,7 +352,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
     : "w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col";
 
   const formElement = (
-    <div className="space-y-4 mb-4 rounded-lg">
+    <div className={`space-y-4 rounded-lg ${floating ? 'mb-0' : 'mb-4'}`}>
       <div 
         className={formClasses}
         onDragOver={handleDragOver}
@@ -247,7 +365,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   if (floating) {
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-3xl z-[9999] px-4">
+      <div className="sticky bottom-0 w-full z-[9999] pt-2 pb-4 bg-white">
         {formElement}
       </div>
     );

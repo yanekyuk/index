@@ -395,14 +395,22 @@ router.get('/requests',
       // Query channels where:
       // - User is a member
       // - Channel is pending
-      // - User is NOT the requester (they should see incoming requests)
-      const channels = await serverClient.queryChannels({
+      // Note: $ne is not supported for custom fields, so we filter client-side
+      const allPendingChannels = await serverClient.queryChannels({
         type: 'messaging',
         members: { $in: [userId] },
-        pending: true,
-        requestedBy: { $ne: userId },
-        awaitingAdminApproval: { $ne: true } // Don't show if waiting for admin
+        pending: true
       }, { created_at: -1 });
+
+      // Filter out channels where user is the requester or awaiting admin approval
+      const channels = allPendingChannels.filter(ch => {
+        const data = ch.data as any;
+        // User should NOT be the requester (they should see incoming requests)
+        if (data.requestedBy === userId) return false;
+        // Don't show if waiting for admin approval
+        if (data.awaitingAdminApproval === true) return false;
+        return true;
+      });
 
       const requests = channels.map(ch => {
         const data = ch.data as any;

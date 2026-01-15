@@ -34,6 +34,21 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     await api.patch(`/intents/${id}/archive`);
   },
 
+  // Refine intent with followup text
+  refineIntent: async (id: string, followupText: string): Promise<Intent> => {
+    const response = await api.post<{ intent: Intent }>(`/intents/${id}/refine`, { followupText });
+    if (!response.intent) {
+      throw new Error('Failed to refine intent');
+    }
+    return response.intent;
+  },
+
+  // Get refinement suggestions for an intent
+  getIntentSuggestions: async (id: string): Promise<Array<{ label: string; type: 'direct' | 'prompt'; followupText?: string; prefill?: string }>> => {
+    const response = await api.get<{ suggestions: Array<{ label: string; type: 'direct' | 'prompt'; followupText?: string; prefill?: string }> }>(`/intents/${id}/suggestions`);
+    return response.suggestions || [];
+  },
+
   // Suggest tags based on user intents and prompt
   suggestTags: async (prompt: string, indexId?: string, maxSuggestions?: number): Promise<{
     suggestions: Array<{

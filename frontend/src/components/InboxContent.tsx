@@ -597,7 +597,8 @@ export default function InboxContent() {
 
       <div className="bg-white w-full border border-gray-800 rounded-sm px-4 py-2">
         {!discoveryIntents && (
-          <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4" style={{ marginTop: '8px' }}>
+          <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4 flex items-center gap-2" style={{ marginTop: '8px' }}>
+            <Sparkles className="w-4 h-4" />
             Waiting for action
           </div>
         )}
@@ -627,7 +628,7 @@ export default function InboxContent() {
 
           {/* Discover Content */}
           {activeTab === 'discover' && (
-            <div className="bg-white">
+            <div className={`bg-white ${discoveryIntents ? 'flex-1 overflow-y-auto' : ''}`}>
               {discoveryLoading ? (
                 <div className="flex flex-col items-center justify-center px-6 pb-8">
                   <Image
@@ -741,20 +742,24 @@ export default function InboxContent() {
             </div>
           )}
         </div>
-      </div>
 
-      {/* Discovery input - floating at bottom when intent is selected (for refinement) */}
-      {activeTab === 'discover' && discoveryIntents && (
-        <DiscoveryForm
-          ref={discoveryFormRef}
-          floating={true}
-          onSubmit={(intents) => {
-            if (intents && intents.length > 0) {
-              router.push(`/i/${intents[0].id}`);
-            }
-          }}
-        />
-      )}
+        {/* Discovery input - inline at bottom when intent is selected (for refinement) */}
+        {activeTab === 'discover' && discoveryIntents && (
+          <DiscoveryForm
+            ref={discoveryFormRef}
+            floating={true}
+            intentId={discoveryIntents[0]?.id}
+            onRefine={(updatedIntent) => {
+              setDiscoveryIntents([{
+                id: updatedIntent.id,
+                payload: updatedIntent.payload,
+                summary: updatedIntent.summary || undefined,
+                createdAt: updatedIntent.createdAt
+              }]);
+            }}
+          />
+        )}
+      </div>
 
       {/* User Profile Modal */}
       <UserProfileModal
