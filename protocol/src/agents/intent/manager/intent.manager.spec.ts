@@ -78,13 +78,13 @@ describe('IntentManager Tests', () => {
       confidence: 90
     });
 
-    const opportunityContext = "Opportunity: Alice is a Rust expert. Reason: You want to learn Rust.";
+    const additionalContext = "Opportunity: Alice is a Rust expert. Reason: You want to learn Rust.";
 
     // We expect the manager to take "Meet Alice", verify it, and likely CREATE it 
     // since it doesn't match the active intent "Learn Rust" exactly (it's a new goal).
     // Or maybe it matches? "Learn Rust" != "Meet Alice". So it should be CREATE.
 
-    const res = await manager.processImplicitIntent(profileContext, opportunityContext, activeIntentsContext);
+    const res = await manager.processImplicitIntent(profileContext, additionalContext, activeIntentsContext);
 
     // Verify actions
     const hasCreate = res.actions.some(a => a.type === 'create' && a.payload === 'Connect with Alice to discuss Rust');

@@ -122,14 +122,13 @@ export class IntentManager extends BaseLangChainAgent {
    */
   async processImplicitIntent(
     profileContext: string,
-    // TODO: (@yanekyuk) Rename opportunityContext to additionalContext because we might use this for other purposes.
-    opportunityContext: string,
+    additionalContext: string,
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     log.info(`[IntentManagerAgent] Processing implicit context...`);
 
     // 1. Run Implicit Inferrer
-    const implicitIntent = await this.implicitInferrer.run(profileContext, opportunityContext);
+    const implicitIntent = await this.implicitInferrer.run(profileContext, additionalContext);
 
     if (!implicitIntent) {
       log.info(`[IntentManagerAgent] No implicit intent inferred.`);
@@ -142,7 +141,7 @@ export class IntentManager extends BaseLangChainAgent {
     const inferredIntents: InferredIntent[] = [{
       type: 'goal', // Implicit is always a goal
       description: implicitIntent.payload,
-      reasoning: 'Implicitly inferred from opportunity context', // Hardcode or derive
+      reasoning: 'Implicitly inferred from additional context', // Hardcode or derive
       confidence: implicitIntent.confidence > 80 ? 'high' : 'medium'
     }];
 

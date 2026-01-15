@@ -64,7 +64,7 @@ export class ImplicitInferrer extends BaseLangChainAgent {
    */
   async run(
     profileContext: string,
-    opportunityContext: string
+    additionalContext: string
   ): Promise<ImplicitIntent | null> {
     log.info(`[ImplicitInferrer] Inferring intent from opportunity context...`);
 
@@ -72,8 +72,8 @@ export class ImplicitInferrer extends BaseLangChainAgent {
       # User Profile
       ${profileContext}
 
-      # Opportunity Context
-      "${opportunityContext}"
+      # Additional Context
+      "${additionalContext}"
 
       Based on this, what is the implicit intent/goal for this user?
     `;
