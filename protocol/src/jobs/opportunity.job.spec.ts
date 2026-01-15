@@ -1,10 +1,8 @@
 import * as dotenv from 'dotenv';
 import path from 'path';
 import { log } from '../lib/log';
-import { runOpportunityFinderCycle } from '../queues/opportunity.queue';
-import { ProfileService } from '../services/profile.service';
+import { OpportunityService } from '../services/opportunity.service';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
-import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
 import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity.evaluator.types';
 
 // Load env
@@ -13,7 +11,11 @@ dotenv.config({ path: envPath });
 
 // --- MOCKS ---
 
-class MockProfileService extends ProfileService {
+/**
+ * Mock OpportunityService - overrides DB methods to return test data.
+ * This approach tests the service without hitting the database.
+ */
+class MockOpportunityService extends OpportunityService {
   profilesWithMissingEmbeddings: any[] = [];
   allProfiles: any[] = [];
   candidatesMap: Record<string, any[]> = {};
@@ -36,9 +38,40 @@ class MockProfileService extends ProfileService {
     return this.allProfiles;
   }
 
-  async findSimilarProfiles(sourceUserId: string, embedding: number[], limit: number = 20) {
-    log.info(`[MockService] findSimilarProfiles called for ${sourceUserId}`);
-    return this.candidatesMap[sourceUserId] || [];
+  async updateProfileHyde(profileId: string, hydeDescription: string, hydeEmbedding: number[]) {
+    log.info(`[MockService] updateProfileHyde called for ${profileId}`);
+  }
+
+  async getProfile(userId: string) {
+    log.info(`[MockService] getProfile called for ${userId}`);
+    return this.allProfiles.find(p => p.userId === userId);
+  }
+
+  async getUserStakes(userId: string, limit: number = 20) {
+    log.info(`[MockService] getUserStakes called for ${userId}`);
+    return [];
+  }
+
+  async getUserIntentObjects(userId: string) {
+    log.info(`[MockService] getUserIntentObjects called for ${userId}`);
+    return [];
+  }
+
+  async createIntent(options: any) {
+    log.info(`[MockService] createIntent called for ${options.userId}`);
+    return {
+      id: 'mock-intent-id',
+      payload: options.payload,
+      summary: null,
+      isIncognito: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userId: options.userId
+    };
+  }
+
+  async saveMatch(newIntentId: string, targetIntentId: string, score: number, reasoning: string, agentId: string) {
+    log.info(`[MockService] saveMatch called: ${newIntentId} <-> ${targetIntentId} (score: ${score})`);
   }
 }
 
@@ -73,7 +106,7 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
 async function runTests() {
   log.info("🧪 Starting Opportunity Finder Job Tests (Standalone)...\n");
 
-  const mockService = new MockProfileService();
+  const mockService = new MockOpportunityService();
   const mockEvaluator = new MockOpportunityEvaluator();
 
   // Setup Data
@@ -82,7 +115,7 @@ async function runTests() {
   ];
 
   mockService.allProfiles = [
-    { id: 'uuid-2', userId: 'source-user', embedding: [0.1], identity: { bio: 'Source' }, attributes: {}, narrative: {} }
+    { id: 'uuid-2', userId: 'source-user', embedding: [0.1], hydeEmbedding: [0.2], hydeDescription: 'Looking for collaborators', identity: { bio: 'Source' }, attributes: {}, narrative: {} }
   ];
 
   mockService.candidatesMap = {
@@ -93,7 +126,7 @@ async function runTests() {
 
   console.log("1️⃣  Test: Standard Cycle (Backfill + Match)");
   try {
-    await runOpportunityFinderCycle(mockService, mockEvaluator);
+    await mockService.runOpportunityFinderCycle(mockEvaluator);
     log.info("✅ Cycle completed successfully.");
   } catch (e) {
     log.error("❌ Cycle failed:", { error: e });

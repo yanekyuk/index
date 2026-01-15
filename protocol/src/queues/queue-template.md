@@ -110,7 +110,7 @@ export async function addJob(
 - Handle specific errors inside your handler if you want to abort retries (e.g., throw `UnrecoverableError`).
 
 ### 4. Dependencies & Data Access
-- **No Direct DB Access**: Do not import `db` or `schema` directly in the queue file.
+- **No Direct DB Access**: It is not allowed to import `db` from here. Instead, there should be a service file or method that is responsible for that specific action.
 - **Use Services**: Delegate all database operations to a Service (e.g., `userService`, `stakeService`). The queue's job is orchestration, not data manipulation.
 - **Use Agents**: Import Agents directly if the job involves running an AI task.
 
