@@ -14,7 +14,6 @@ import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import DiscoveryForm, { DiscoveryFormRef } from "@/components/DiscoveryForm";
 import SynthesisMarkdown from "@/components/SynthesisMarkdown";
-import UserProfileModal from "@/components/modals/UserProfileModal";
 import { InboxProvider, setGlobalInboxState } from "@/contexts/InboxContext";
 import ConnectorMatches from "@/components/ConnectorMatches";
 
@@ -43,8 +42,6 @@ export default function InboxContent() {
   const [requestsView, setRequestsView] = useState<'received' | 'sent' | 'history'>('received');
   const [isDragging, setIsDragging] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; avatar: string | null } | null>(null);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<Record<string, ConnectionAction | null>>({});
 
   // Refs
@@ -295,11 +292,10 @@ export default function InboxContent() {
     }
   }, [connectionsService, fetchData, inboxConnections, pendingConnections, historyConnections]);
 
-  // Handler for opening user profile modal
+  // Handler for navigating to user profile page
   const handleUserClick = useCallback((user: { id: string; name: string; avatar: string | null }) => {
-    setSelectedUser(user);
-    setProfileModalOpen(true);
-  }, []);
+    router.push(`/u/${user.id}`);
+  }, [router]);
 
   // Helper: Get connection status for rendering
   const getConnectionStatus = (tabType: 'discover' | 'requests', viewType: 'received' | 'sent' | 'history' | undefined, userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -760,13 +756,6 @@ export default function InboxContent() {
           />
         )}
       </div>
-
-      {/* User Profile Modal */}
-      <UserProfileModal
-        open={profileModalOpen}
-        onOpenChange={setProfileModalOpen}
-        user={selectedUser}
-      />
     </ClientLayout>
     </InboxProvider>
   );
