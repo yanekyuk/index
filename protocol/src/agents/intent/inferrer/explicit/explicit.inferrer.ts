@@ -7,7 +7,6 @@ import { log } from "../../../../lib/log";
 
 /**
  * Model Configuration
- * TODO: (@yanekyuk) Explicit inferrer returns vague results. They are not specific enough. Check out opportunity evaluator, it is better.
  */
 export const SYSTEM_PROMPT = `
   You are an expert Intent Analyst. Your goal is to infer the user's current intentions based on their profile and new content.
