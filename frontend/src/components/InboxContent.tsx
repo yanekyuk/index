@@ -591,7 +591,7 @@ export default function InboxContent() {
         />
       )}
 
-      <div className="bg-white w-full border border-gray-800 rounded-sm px-4 py-2">
+      <div className="bg-white w-full h-full border border-gray-800 rounded-sm px-4 py-2 flex flex-col">
         {!discoveryIntents && (
           <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4 flex items-center gap-2" style={{ marginTop: '8px' }}>
             <Sparkles className="w-4 h-4" />
@@ -599,26 +599,21 @@ export default function InboxContent() {
           </div>
         )}
 
-        <div className="flex flex-col justify-between mb-4">
-          {/* Header section */}
-          {activeTab === 'discover' && (
-            <div className="space-y-4">
-              {/* Intent title display - show when intent is selected */}
-              {discoveryIntents && (
-                <div className="bg-white pb-2 border-b border-gray-200 mb-4">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleBackToInbox}
-                      className="cursor-pointer transition-opacity hover:opacity-80 text-black text-xl font-bold mr-2"
-                    >
-                      ←
-                    </button>
-                    <div className="font-ibm-plex-mono text-black text-lg" style={{ fontWeight: 'bold', marginTop: '8px' }}>
-                      {discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}
-                    </div>
-                  </div>
+        <div className="flex flex-col justify-between mb-4 flex-1">
+          {/* Header section - Intent title display when intent is selected */}
+          {activeTab === 'discover' && discoveryIntents && (
+            <div className="bg-white pb-2 border-b border-gray-200 mb-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleBackToInbox}
+                  className="cursor-pointer transition-opacity hover:opacity-80 text-black text-xl font-bold mr-2"
+                >
+                  ←
+                </button>
+                <div className="font-ibm-plex-mono text-black text-lg" style={{ fontWeight: 'bold', marginTop: '8px' }}>
+                  {discoveryIntents[0]?.summary || discoveryIntents[0]?.payload || 'Discovery filter'}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
