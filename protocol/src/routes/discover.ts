@@ -179,6 +179,7 @@ router.post('/new',
 
       // 4. Generate intents from combined content
       let generatedIntents: any[] = [];
+      let actions: any[] = [];
 
       // If payload is short, no files, and no URLs, create intent directly
       const hasFiles = uploadedFiles && uploadedFiles.length > 0;
@@ -203,11 +204,15 @@ router.post('/new',
 
           // 2. Process via IntentService (replaces direct Inferrer + Creator)
           // This uses IntentManager internally for Deduplication/Actions
-          const { generatedIntents: createdIntents, actions } = await intentService.processExplicitInteraction(
+          // 2. Process via IntentService (replaces direct Inferrer + Creator)
+          // This uses IntentManager internally for Deduplication/Actions
+          const result = await intentService.processExplicitInteraction(
             userId,
             payload,
             profileContext
           );
+          const createdIntents = result.generatedIntents;
+          actions = result.actions;
 
           generatedIntents.push(...createdIntents);
 
@@ -271,6 +276,7 @@ router.post('/new',
       return res.json({
         success: true,
         intents: generatedIntents,
+        actions: actions || [],
         filesProcessed: savedFileIds.length,
         linksProcessed: savedLinkIds.length,
         intentsGenerated: generatedIntents.length,

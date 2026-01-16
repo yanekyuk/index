@@ -55,9 +55,21 @@ export interface DiscoverResponse {
   };
 }
 
+export type IntentActionType = 'create' | 'update' | 'expire';
+
+export interface IntentAction {
+  type: IntentActionType;
+  id?: string;
+  payload?: string;
+  score?: number | null;
+  reasoning?: string | null;
+  reason?: string;
+}
+
 export interface DiscoveryRequestResponse {
   success: boolean;
   intents: DiscoverIntent[];
+  actions?: IntentAction[]; // Actions performed (create, update, expire)
   filesProcessed: number;
   linksProcessed: number;
   intentsGenerated: number;
@@ -75,12 +87,12 @@ export const createDiscoverService = (api: ReturnType<typeof import('../lib/api'
   // This returns a function that accepts the getAccessToken callback
   submitDiscoveryRequest: (files: File[], payload?: string) => async (getAccessToken: () => Promise<string | null>): Promise<DiscoveryRequestResponse> => {
     const formData = new FormData();
-    
+
     // Add files
     files.forEach((file) => {
       formData.append('files', file);
     });
-    
+
     // Add payload if provided
     if (payload) {
       formData.append('payload', payload);
@@ -90,7 +102,7 @@ export const createDiscoverService = (api: ReturnType<typeof import('../lib/api'
     if (!accessToken) {
       throw new Error('No access token available');
     }
-    
+
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
     const response = await fetch(`${API_BASE_URL}/discover/new`, {
       method: 'POST',

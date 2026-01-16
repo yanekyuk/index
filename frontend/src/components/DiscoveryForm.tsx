@@ -2,6 +2,7 @@
 
 import { forwardRef, useImperativeHandle, useRef, useState, useCallback, useEffect } from "react";
 import { useAPI } from "@/contexts/APIContext";
+import { IntentAction } from "@/services/discover";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions, getFileCategoryBadge } from "@/lib/file-validation";
@@ -16,7 +17,7 @@ interface RefinementSuggestion {
 }
 
 interface DiscoveryFormProps {
-  onSubmit?: (intents: Array<{id: string; payload: string; summary?: string; createdAt: string}>) => void;
+  onSubmit?: (intents: Array<{ id: string; payload: string; summary?: string; createdAt: string }>, actions?: IntentAction[]) => void;
   onRefine?: (intent: Intent) => void;
   intentId?: string; // When provided, form operates in refine mode
   floating?: boolean; // If true, renders as fixed floating at bottom; if false, renders inline
@@ -134,17 +135,17 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   // Handle refining intent with followup text
   const handleRefine = async (followupText: string) => {
     if (!intentId || isProcessing) return;
-    
+
     setIsProcessing(true);
     setInputValue("");
-    
+
     try {
       const refinedIntent = await intentsService.refineIntent(intentId, followupText);
-      
+
       if (onRefine) {
         onRefine(refinedIntent);
       }
-      
+
       // Refresh suggestions after refining
       try {
         const newSuggestions = await intentsService.getIntentSuggestions(intentId);
@@ -164,7 +165,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
   // Handle suggestion chip click
   const handleSuggestionClick = async (suggestion: RefinementSuggestion, index: number) => {
     if (isProcessing) return;
-    
+
     if (suggestion.type === 'prompt' && suggestion.prefill) {
       // Prefill input and focus for user to complete
       setInputValue(suggestion.prefill);
@@ -178,17 +179,17 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   const handleSubmit = async () => {
     if (isProcessing || (!inputValue.trim() && attachments.length === 0)) return;
-    
+
     const text = inputValue.trim();
-    
+
     // If in refine mode (intentId provided), use refine flow
     if (intentId && text) {
       await handleRefine(text);
       return;
     }
-    
+
     const files = attachments.map(a => a.file);
-    
+
     // Clean up preview URLs
     attachments.forEach(attachment => {
       if (attachment.preview) {
@@ -196,19 +197,21 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
       }
     });
     previewUrlsRef.current = [];
-    
+
     setInputValue("");
     setAttachments([]);
     setIsProcessing(true);
-    
+
     try {
       // Submit discovery request with text and files
       const result = await discoverService.submitDiscoveryRequest(files, text || undefined)(getAccessToken);
-      
-      if (onSubmit && result.success) {
-        onSubmit(result.intents);
+
+      if (onSubmit) {
+        // If we have explicit actions (from IntentManager), pass them
+        // Even if success is true, we might have 0 intents if the action was 'expire'
+        onSubmit(result.intents, result.actions);
       }
-      
+
       if (!result.success) {
         error('Failed to generate intents. Please try again.');
       }
@@ -324,8 +327,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
               handleSubmit();
             }
           }}
-          placeholder={intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?")}
-          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent`}
+          placeholder={isProcessing ? "Thinking..." : (intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?"))}
+          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent disabled:opacity-50 disabled:cursor-not-allowed`}
           disabled={isProcessing}
         />
         {isProcessing ? (
@@ -354,7 +357,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ onSubm
 
   const formElement = (
     <div className={`space-y-4 rounded-lg ${floating ? 'mb-0' : 'mb-4'}`}>
-      <div 
+      <div
         className={formClasses}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
