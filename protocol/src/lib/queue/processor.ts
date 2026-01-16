@@ -8,6 +8,9 @@ import { IntentService } from '../intent-service';
 // Job types from adapter - we use these for type safety
 type JobData = IndexIntentJobData | GenerateIntentsJobData;
 
+/**
+ * @deprecated Use `intent.worker.ts` and `QueueFactory` instead.
+ */
 export class QueueProcessor {
   private worker: Worker;
   private redis = getRedisClient();

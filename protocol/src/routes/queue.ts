@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { queue } from '../lib/queue/llm-queue';
+import { intentQueue as queue } from '../queues/intent.queue';
 import { QueueStatusResponse, JobTypeCounts } from '../types';
 
 const router = Router();

@@ -50,12 +50,13 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^5"
   },
-  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72",
+  "packageManager": "bun@1.2.0",
   "resolutions": {
     "sha.js": "^2.4.12",
     "brace-expansion": "^2.0.2",
     "js-yaml": "^4.1.1",
     "mdast-util-to-hast": "^13.2.1",
-    "mermaid": "^11.10.0"
+    "mermaid": "^11.10.0",
+    "@noble/curves": "1.9.1"
   }
 }

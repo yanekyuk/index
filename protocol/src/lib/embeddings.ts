@@ -1,23 +1,22 @@
 import OpenAI from 'openai';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
-  defaultHeaders: {
-    'HTTP-Referer': 'https://index.network',
-    'X-Title': 'Index Network',
-  },
-});
-
 export async function generateEmbedding(
-  text: string, 
+  text: string,
   dimensions: number = 2000
 ): Promise<number[]> {
   try {
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+      defaultHeaders: {
+        'HTTP-Referer': 'https://index.network',
+        'X-Title': 'Index Network',
+      },
+    });
     // Clean the text by removing newlines and extra whitespace
     const cleanText = text.replace(/\n/g, ' ').trim();
-    
+
     if (!cleanText) {
       throw new Error('Text cannot be empty');
     }

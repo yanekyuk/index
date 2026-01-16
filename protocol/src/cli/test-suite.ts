@@ -14,7 +14,7 @@ if (!process.env.TESTING_EMAIL_ADDRESS) {
     console.log(`📧 Email testing enabled. All emails will be sent to: ${process.env.TESTING_EMAIL_ADDRESS}`);
 }
 
-import { PRIVY_TEST_ACCOUNTS } from './test-data';
+import { TESTABLE_TEST_ACCOUNTS } from './test-data';
 
 // Types for our test context
 interface TestContext {
@@ -36,7 +36,7 @@ async function main() {
     type DbModule = typeof import('../lib/db');
     const { default: db, closeDb } = await import('../lib/db.js') as unknown as DbModule;
     const { users, files, indexLinks, intents, intentStakes } = await import('../lib/schema.js');
-    const { IntentService } = await import('../lib/intent-service.js');
+    const { intentService } = await import('../services/intent.service.js');
     const { discoverUsers } = await import('../lib/discover.js');
     const { sendConnectionRequestNotification } = await import('../lib/notification-service.js');
 
@@ -50,7 +50,7 @@ async function main() {
     try {
         // --- PREPARATION ---
         console.log('--- 1. Preparation: Fetching Test Users ---');
-        for (const account of PRIVY_TEST_ACCOUNTS) {
+        for (const account of TESTABLE_TEST_ACCOUNTS) {
             const [user] = await db.select().from(users).where(eq(users.email, account.email)).limit(1);
             if (user) {
                 ctx.users.set(account.email, user);
@@ -97,7 +97,7 @@ async function main() {
 
         // 3. Create Intent from Discovery Form
         const alicePayload = "I am looking for a co-founder to build a decentralized social graph.";
-        const aliceIntent = await IntentService.createIntent({
+        const aliceIntent = await intentService.createIntent({
             payload: alicePayload,
             userId: alice.id,
             confidence: 1.0,
@@ -127,7 +127,7 @@ async function main() {
 
         // 2. Create Intent from File
         const bobPayload = "I am an experienced backend engineer interested in social graphs and decentralized identity.";
-        const bobIntent = await IntentService.createIntent({
+        const bobIntent = await intentService.createIntent({
             payload: bobPayload,
             userId: bob.id,
             confidence: 0.9,

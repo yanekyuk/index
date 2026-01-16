@@ -1,6 +1,4 @@
-// Import this first! Must be before any other imports
 import './instrument';
-
 import * as Sentry from '@sentry/node';
 import express from 'express';
 import cors from 'cors';
@@ -8,10 +6,26 @@ import helmet from 'helmet';
 
 console.log('process.env', process.env);
 import { initializeBrokers } from './agents/context_brokers/connector';
-import { queueProcessor } from './lib/queue/processor';
-import { initWeeklyNewsletterJob } from './jobs/weekly-newsletter';
 import { emailWorker } from './lib/email/queue/email.worker';
-import { newsletterWorker } from './lib/queue/workers/newsletter.worker';
+import { initWeeklyNewsletterJob } from './jobs/newsletter.job';
+import { initOpportunityFinderJob } from './jobs/opportunity.job'
+import './queues/intent.queue';
+import './queues/newsletter.queue';
+import './queues/opportunity.queue';
+import './queues/profile.queue';
+/**
+ * PLAYGROUND
+ */
+import { getAvailableAgents, runAgent } from './agents/playground/server/registry';
+import { TEST_USERS } from './agents/playground/server/data/users';
+import { users } from './lib/schema';
+import db from './lib/db';
+import { desc } from 'drizzle-orm';
+import { IndexEmbedder } from './lib/embedder';
+// Initialize shared embedder
+const sharedEmbedder = new IndexEmbedder();
+
+import path from 'path';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -51,7 +65,13 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Serve static files from uploads directory
+// Serve static files from uploads directory
 app.use('/uploads', express.static('uploads'));
+
+// Helper to determine playground path
+const PLAYGROUND_DIST = path.resolve(__dirname, './agents/playground/dist');
+app.use('/playground', express.static(PLAYGROUND_DIST));
+
 
 // Health check
 app.get('/health', (req, res) => {
@@ -81,6 +101,94 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/notifications', notificationRoutes);
 
+// --- Playground API Routes ---
+app.get('/api/agents', (req, res) => {
+  res.json(getAvailableAgents());
+});
+
+app.get('/api/data/users', async (req, res) => {
+  try {
+    const dbUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+
+    const mappedUsers = dbUsers.map(u => {
+      const socials = u.socials as any || {};
+      return {
+        id: u.id,
+        name: u.name,
+        // Map DB fields to context fields
+        userProfile: {
+          identity: {
+            name: u.name,
+            bio: u.intro,
+            location: u.location,
+            // avatar: u.avatar // profile usually expects identity fields
+          }
+        },
+        parallelSearchParams: {
+          name: u.name,
+          email: u.email,
+          linkedin: socials.linkedin,
+          twitter: socials.x || socials.twitter,
+          github: socials.github,
+          website: Array.isArray(socials.websites) ? socials.websites[0] : socials.website
+        },
+        activeIntents: [] // TODO: Fetch intents if needed
+      };
+    });
+
+    // Combine test users with real users
+    // Filter out duplicates if needed, but for now just concat
+    const allUsers = [...TEST_USERS, ...mappedUsers];
+
+    res.json(allUsers);
+  } catch (error) {
+    console.error('Error fetching users for playground:', error);
+    // Fallback to test users in case of DB error
+    res.json(TEST_USERS);
+  }
+});
+
+app.post('/api/run/:agentId', async (req, res) => {
+  const { agentId } = req.params;
+  const body = req.body;
+
+  // Check for wrapper format { input: ..., options?: ... }
+  // Only require 'input' key to exist - options is optional
+  let input = body;
+  let options = undefined;
+
+  if (body && typeof body === 'object' && 'input' in body) {
+    input = body.input;
+    options = body.options;
+  }
+
+  try {
+    const result = await runAgent(agentId, input, options);
+    res.json(result);
+  } catch (error: any) {
+    console.error(`Error running agent ${agentId}:`, error);
+    res.status(500).json({ error: error.message || 'Internal Server Error' });
+  }
+});
+
+app.post('/api/embeddings', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+    const result = await sharedEmbedder.generate(text);
+    // Standardize output to number[]
+    const vector = Array.isArray(result[0]) ? result[0] : result;
+    res.json({ vector });
+    return;
+  } catch (error: any) {
+    console.error('Error generating embedding:', error);
+    res.status(500).json({ error: error.message });
+    return;
+  }
+
+});
 if (process.env.NODE_ENV === 'development') {
   app.use('/api/dev', devRoutes);
 }
@@ -107,13 +215,15 @@ app.use('*', (req, res) => {
     await initializeBrokers();
     console.log('🟢 Context brokers initialized');
 
-    queueProcessor.start();
-    console.log('🟢 Queue processor started');
-
     emailWorker.start();
-    newsletterWorker.start();
+
+    // Workers are auto-started upon import
+    console.log('🟢 Queue workers initialized');
+
+
 
     initWeeklyNewsletterJob();
+    initOpportunityFinderJob();
   } catch (err) {
     console.error('🔴 Failed to initialize services:', err);
   }

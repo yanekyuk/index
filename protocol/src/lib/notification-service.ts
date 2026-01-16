@@ -1,3 +1,6 @@
+/**
+ * @deprecated This module is deprecated.
+ */
 import db from './db';
 import { users, intents, intentStakes, intentStakeItems, userNotificationSettings, indexMembers, indexes } from './schema';
 import { eq, sql, and, inArray } from 'drizzle-orm';
@@ -62,6 +65,9 @@ async function checkConnectionUpdatesEnabled(userId: string): Promise<boolean> {
     return settings[0]?.preferences?.connectionUpdates ?? true;
 }
 
+/**
+ * @deprecated
+ */
 export async function sendConnectionRequestNotification(initiatorUserId: string, receiverUserId: string): Promise<void> {
     try {
         // --- APPROVAL LOGIC START ---
@@ -193,6 +199,9 @@ export async function sendConnectionRequestNotification(initiatorUserId: string,
     }
 }
 
+/**
+ * @deprecated
+ */
 export async function sendConnectionAcceptedNotification(accepterUserId: string, initiatorUserId: string): Promise<void> {
     try {
         // Check notification settings for both users

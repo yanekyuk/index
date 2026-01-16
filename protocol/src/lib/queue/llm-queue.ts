@@ -29,6 +29,9 @@ export interface GenerateIntentsJobData {
 const redisClient = getRedisClient();
 
 // Create the Queue instance
+/**
+ * @deprecated Use `QueueFactory.createQueue` instead.
+ */
 export const queue = new Queue(QUEUE_NAME, {
     connection: {
         ...redisClient.options,

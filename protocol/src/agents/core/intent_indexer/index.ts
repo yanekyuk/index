@@ -14,10 +14,14 @@ interface EligibleIndex {
   memberPrompt: string | null;
 }
 
+/**
+ * @deprecated Use IntentService.processIntentForIndex and IntentIndexer instead.
+ */
 export class IntentIndexer {
 
   /**
    * Process a specific intent for a specific index (used by queue processor)
+   * @deprecated
    */
   async processIntentForIndex(intentId: string, indexId: string): Promise<void> {
     try {
@@ -31,17 +35,17 @@ export class IntentIndexer {
       }).from(intents)
         .where(eq(intents.id, intentId))
         .limit(1);
-        
+
       if (intentData.length === 0) {
         return;
       }
 
       const intent = intentData[0];
-      
+
       // Get the specific index details
       const indexData = await this.getEligibleIndexes(intent.userId);
       const targetIndex = indexData.find(idx => idx.id === indexId);
-      
+
       if (!targetIndex) {
         return;
       }
@@ -49,7 +53,7 @@ export class IntentIndexer {
       // Check if already assigned
       const currentIndexes = await this.getCurrentIndexes(intentId);
       const isCurrentlyAssigned = currentIndexes.includes(indexId);
-      
+
       // Evaluate appropriateness
       const appropriatenessScore = await evaluateIntentAppropriateness(
         intent.payload,
@@ -58,15 +62,15 @@ export class IntentIndexer {
         intent.sourceType,
         intent.sourceId
       );
-      
+
       const isAppropriate = appropriatenessScore > 0.7;
-      
+
       if (isAppropriate && !isCurrentlyAssigned) {
         await this.indexIntent(intentId, indexId);
       } else if (!isAppropriate && isCurrentlyAssigned) {
         await this.deIndexIntent(intentId, indexId);
       }
-      
+
     } catch (error) {
       throw error;
     }
@@ -85,7 +89,7 @@ export class IntentIndexer {
         eq(intentIndexes.indexId, indexId)
       ))
       .limit(1);
-    
+
     if (existing.length === 0) {
       await db.insert(intentIndexes).values({
         intentId,
@@ -93,7 +97,7 @@ export class IntentIndexer {
       });
     }
   }
-  
+
   /**
    * Remove intent from index
    */
@@ -104,7 +108,7 @@ export class IntentIndexer {
         eq(intentIndexes.indexId, indexId)
       ));
   }
-  
+
   /**
    * Get indexes where user is a member with auto_assign enabled
    */
@@ -121,10 +125,10 @@ export class IntentIndexer {
         eq(indexMembers.autoAssign, true),
         isNull(indexes.deletedAt) // Only active indexes
       ));
-    
+
     return eligibleIndexes;
   }
-  
+
   /**
    * Get current index assignments for an intent
    */
@@ -132,10 +136,13 @@ export class IntentIndexer {
     const assignments = await db.select({ indexId: intentIndexes.indexId })
       .from(intentIndexes)
       .where(eq(intentIndexes.intentId, intentId));
-    
+
     return assignments.map((a: { indexId: string }) => a.indexId);
   }
 }
 
 // Export singleton instance
+/**
+ * @deprecated Use IntentService instead.
+ */
 export const intentIndexer = new IntentIndexer();

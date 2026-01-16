@@ -1,0 +1,1 @@
+ALTER TABLE "user_profiles" ADD COLUMN "hyde_embedding" vector(2000);

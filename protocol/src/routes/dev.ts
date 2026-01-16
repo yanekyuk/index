@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { sendWeeklyNewsletter } from '../jobs/weekly-newsletter';
+import { sendWeeklyNewsletter } from '../jobs/newsletter.job';
+import { addJob } from '../queues/opportunity.queue';
+import { cache } from '../lib/redis';
 
 const router = Router();
 
@@ -30,4 +32,32 @@ router.post('/newsletter/trigger', async (req: Request, res: Response) => {
     }
 });
 
+router.post('/opportunity-finder/trigger', async (req: Request, res: Response) => {
+    try {
+        console.log('Manually triggering Opportunity Finder Cycle via Queue');
+        await addJob('process_opportunities', {
+            timestamp: Date.now(),
+            force: true
+        });
+        res.json({ message: 'Opportunity Finder Cycle job added to queue.' });
+    } catch (error) {
+        console.error('Error triggering Opportunity Finder:', error);
+        res.status(500).json({ error: 'Failed to trigger Opportunity Finder cycle' });
+    }
+});
+
+router.post('/reset-matches', async (req: Request, res: Response) => {
+    try {
+        console.log('Manually checking and clearing Redis cache for matches (synthesis)...');
+
+        // Clear the 'synthesis' hash in Redis where descriptions are cached
+        await cache.del('synthesis');
+
+        console.log('✅ Redis cache for matches cleared.');
+        res.json({ message: 'Redis cache for matches (synthesis) cleared successfully.' });
+    } catch (error) {
+        console.error('Error resetting matches cache:', error);
+        res.status(500).json({ error: 'Failed to reset matches cache' });
+    }
+});
 export default router;

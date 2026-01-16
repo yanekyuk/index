@@ -2,7 +2,7 @@ import { log } from '../log';
 import { syncTwitterUser, syncTwitterUsersBulk } from './providers/twitter';
 import { enrichUserProfile } from './providers/profile-enrich';
 import db from '../db';
-import { users, userIntegrations } from '../schema';
+import { users, userIntegrations, userProfiles } from '../schema';
 import { isNotNull, isNull, and, eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import { extractTwitterUsername } from '../snowflake';
@@ -72,10 +72,10 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
         stats.errors += batchResult.errors;
       } catch (error) {
         stats.errors += batch.length;
-        log.error('Twitter sync batch error', { 
-          batchStart: i + 1, 
+        log.error('Twitter sync batch error', {
+          batchStart: i + 1,
           batchSize: batch.length,
-          error: (error as Error).message 
+          error: (error as Error).message
         });
       }
     }
@@ -117,7 +117,7 @@ export async function enrichAllUsers(): Promise<SocialSyncResult['enrichment']> 
       try {
         const result = await enrichUserProfile(user.id);
         stats.usersProcessed++;
-        
+
         if (result.success) {
           if (result.intentsGenerated > 0) stats.intentsGenerated++;
           if (result.locationUpdated) stats.locationUpdated++;
@@ -276,10 +276,15 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
       }
 
       const user = userRecords[0];
-      
-      // Don't enrich if user has customized their intro
-      if (user.intro) {
-        log.info('User has customized intro, skipping enrichment', { userId });
+      // Don't enrich if user has a profile (onboarded)
+      // Check user_profiles table
+      const existingProfile = await db.select({ id: userProfiles.id })
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, userId))
+        .limit(1);
+
+      if (existingProfile.length > 0) {
+        log.info('User has a profile (onboarded), skipping enrichment', { userId });
         return;
       }
 
@@ -291,11 +296,9 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
 
       // Generate hash for current name+email combination
       const currentHash = generateEnrichmentHash(user.name, user.email);
-      
       // Get existing enrichment hash from onboarding
       const onboarding = (user.onboarding || {}) as any;
       const existingHash = onboarding.enrichmentHash;
-      
       // Only enrich if we haven't enriched for this name+email combination before
       if (existingHash === currentHash) {
         log.info('Enrichment already done for this name+email combination', { userId, hash: currentHash });
@@ -312,7 +315,6 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
           },
         })
         .where(and(eq(users.id, userId), isNull(users.deletedAt)));
-      
       // Re-fetch immediately to check if hash was successfully set
       // This helps detect race conditions where another process might have set it first
       const verifyRecords = await db.select({
@@ -324,33 +326,36 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
         .from(users)
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
         .limit(1);
-      
       if (verifyRecords.length === 0) {
         log.warn('User not found after hash update', { userId });
         return;
       }
-      
       const verifyUser = verifyRecords[0];
       const verifyOnboarding = (verifyUser.onboarding || {}) as any;
       const verifyHash = verifyOnboarding.enrichmentHash;
-      
+
+      // Re-check profile existence to avoid race conditions
+      const verifyProfile = await db.select({ id: userProfiles.id })
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, userId))
+        .limit(1);
+
       // Final checks before triggering enrichment:
       // 1. Hash must match what we tried to set
-      // 2. Hash must have changed from what we saw initially (proves we were the one who set it)
-      // 3. User still doesn't have intro (hasn't customized)
+      // 2. Hash must have changed from what we saw initially
+      // 3. User still doesn't have a profile (onboarded)
       // 4. Name and email still exist
-      // This prevents duplicate enrichment if another process already enriched
       const hashWasUpdated = verifyHash === currentHash && existingHash !== currentHash;
-      
-      if (hashWasUpdated && !verifyUser.intro && verifyUser.name && verifyUser.email) {
+
+      if (hashWasUpdated && verifyProfile.length === 0 && verifyUser.name && verifyUser.email) {
         log.info('Enrichment condition met, triggering enrichment', { userId, hash: currentHash });
         await triggerSocialSync(userId, 'enrichment');
       } else {
         if (verifyHash !== currentHash) {
-          log.info('Enrichment hash was updated by another process, skipping enrichment', { 
-            userId, 
+          log.info('Enrichment hash was updated by another process, skipping enrichment', {
+            userId,
             expectedHash: currentHash,
-            actualHash: verifyHash 
+            actualHash: verifyHash
           });
         } else if (!hashWasUpdated && existingHash === currentHash) {
           log.info('Enrichment hash was already set before update, skipping enrichment', { userId, hash: currentHash });

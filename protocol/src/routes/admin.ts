@@ -5,9 +5,8 @@ import { users, userConnectionEvents, indexes, indexMembers } from '../lib/schem
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { checkIndexOwnership } from '../lib/index-access';
-import { ConnectionEvent } from '../types';
 import { sendConnectionRequestEmail } from '../lib/email/notification.sender'; // Use lower-level sender to bypass checks
-import { synthesizeVibeCheck } from '../lib/synthesis';
+import { stakeService } from '../services/stake.service';
 import DOMPurify from 'isomorphic-dompurify';
 
 const router = Router();
@@ -256,9 +255,9 @@ export const approveConnection = async (req: AuthRequest, res: Response) => {
     // Generate Synthesis (Vibe Check)
     let synthesis = '';
     try {
-      const { synthesis: synthesisMarkdown } = await synthesizeVibeCheck(
-        receiverUserId,
-        initiatorUserId,
+      const { synthesis: synthesisMarkdown } = await stakeService.generateSynthesis(
+        { id: receiverUserId, name: receiver[0].name }, // Context user (receiver gets the email explaining why initiator is cool)
+        { id: initiatorUserId, name: initiator[0].name }, // Target user (initiator)
         { vibeOptions: { characterLimit: 500 } }
       );
       // Strip links and sanitize

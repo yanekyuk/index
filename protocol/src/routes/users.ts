@@ -6,6 +6,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 import { User, UpdateProfileRequest } from '../types';
 import { checkAndTriggerSocialSync, checkAndTriggerEnrichment } from '../lib/integrations/social-sync';
+import { addJob } from '../queues/profile.queue';
 
 const router = Router();
 
@@ -140,6 +141,13 @@ router.put('/:id',
       // Check enrichment eligibility if name or intro fields were updated
       if (name !== undefined || intro !== undefined) {
         checkAndTriggerEnrichment(id);
+
+        // Queue profile update for background processing (Intents, HyDE, Repair)
+        await addJob('profile-update', {
+          userId: id,
+          intro: intro || updatedUser[0].intro || '',
+          userName: updatedUser[0].name
+        });
       }
 
       const finalUser = {

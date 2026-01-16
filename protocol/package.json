@@ -4,26 +4,27 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "nodemon --inspect",
-    "dev:prod": "NODE_ENV=production nodemon --inspect",
+    "dev": "bun --watch src/index.ts",
+    "dev:prod": "NODE_ENV=production bun --watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "bun dist/index.js",
     "lint": "eslint src/**/*.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/db-seed.ts",
-    "db:flush": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/db-flush.ts",
-    "maintenance:trigger-integration": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/trigger-integration.ts",
-    "maintenance:export-slack": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/export-slack.ts",
-    "maintenance:import-slack-export": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/import-slack-export.ts",
-    "maintenance:reset-brokers": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/reset-brokers.ts",
-    "maintenance:update:embeddings": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/update-embeddings.ts",
-    "integration-worker": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/integration-worker.ts",
-    "social-worker": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/social-worker.ts",
-    "audit-freshness": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/audit-intent-freshness.ts",
-    "admin-queues": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/admin-queues.ts",
-    "admin-queues:prod": "node dist/admin-queues.js"
+    "db:seed": "bun ./src/cli/db-seed.ts",
+    "db:flush": "bun ./src/cli/db-flush.ts",
+    "maintenance:trigger-integration": "bun ./src/cli/trigger-integration.ts",
+    "maintenance:export-slack": "bun ./src/cli/export-slack.ts",
+    "maintenance:import-slack-export": "bun ./src/cli/import-slack-export.ts",
+    "maintenance:reset-brokers": "bun ./src/cli/reset-brokers.ts",
+    "maintenance:update:embeddings": "bun ./src/cli/update-embeddings.ts",
+    "integration-worker": "bun ./src/cli/integration-worker.ts",
+    "social-worker": "bun ./src/cli/social-worker.ts",
+    "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
+    "admin-queues": "bun ./src/admin-queues.ts",
+    "admin-queues:prod": "bun dist/admin-queues.js",
+    "test": "bun test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",
@@ -49,6 +50,7 @@
     "helmet": "^7.1.0",
     "ioredis": "^5.6.1",
     "isomorphic-dompurify": "^2.34.0",
+    "langchain": "^1.2.1",
     "langfuse-langchain": "^3.38.4",
     "marked": "^16.4.1",
     "morgan": "^1.10.0",
@@ -67,6 +69,7 @@
   },
   "devDependencies": {
     "@langchain/langgraph-cli": "^0.0.38",
+    "@types/bun": "^1.3.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/morgan": "^1.9.9",
@@ -83,9 +86,10 @@
     "typescript": "^5.3.3",
     "vitest": "^4.0.15"
   },
-  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72",
+  "packageManager": "bun@1.2.20",
   "resolutions": {
     "jws": "^4.0.1",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "ioredis": "5.9.1"
   }
 }

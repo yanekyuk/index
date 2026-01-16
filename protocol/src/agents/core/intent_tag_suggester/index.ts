@@ -44,6 +44,7 @@ const TagSuggestionSchema = z.object({
 /**
  * Generate tag suggestions based on user intents and a prompt
  * Returns tags ordered by relevance to the prompt
+ * @deprecated Use IntentTagGenerator agent in agents/intent/tag/tag.generator.ts instead.
  */
 export async function suggestTags(
   intents: Intent[],
@@ -52,9 +53,9 @@ export async function suggestTags(
 ): Promise<SuggestTagsResult> {
   try {
     if (!intents || intents.length === 0) {
-      return { 
-        success: true, 
-        suggestions: [] 
+      return {
+        success: true,
+        suggestions: []
       };
     }
 
@@ -79,7 +80,7 @@ Tag rules:
     };
 
     // User message: Provide intents and task
-    const intentList = intents.map(intent => 
+    const intentList = intents.map(intent =>
       `- ${intent.payload}`
     ).join('\n');
 
@@ -112,7 +113,7 @@ Generate tag suggestions:`
       suggestCall([systemMessage, userMessage], TagSuggestionSchema),
       timeoutPromise
     ]);
-    
+
     // Filter by minimum relevance score and limit suggestions
     const filteredSuggestions = (response.suggestions || [])
       .filter((s: TagSuggestion) => s.score >= minRelevanceScore)
@@ -128,9 +129,9 @@ Generate tag suggestions:`
 
   } catch (error) {
     console.error('❌ Error generating tag suggestions:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }

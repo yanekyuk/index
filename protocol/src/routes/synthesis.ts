@@ -4,7 +4,8 @@ import db from '../lib/db';
 import { intents, intentStakes, agents, users, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
-import { synthesizeVibeCheck } from '../lib/synthesis';
+import { stakeService } from '../services/stake.service';
+import { userService } from '../services/user.service';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { getAccessibleIntents } from '../lib/intent-access';
 import { SynthesisRequest, SynthesisResponse } from '../types';
@@ -54,11 +55,19 @@ router.post('/vibecheck',
         return res.status(400).json({ error: 'No accessible indexes found for synthesis' });
       }
 
-      const { synthesis, subject } = await synthesizeVibeCheck(
-        initiatorId || contextUserId,
-        targetUserId,
+      // Fetch users
+      const users = await userService.getUsersBasicInfo([initiatorId || contextUserId, targetUserId]);
+      const contextUser = users.find(u => u.id === (initiatorId || contextUserId));
+      const targetUser = users.find(u => u.id === targetUserId);
+
+      if (!contextUser || !targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const { synthesis, subject } = await stakeService.generateSynthesis(
+        contextUser,
+        targetUser,
         {
-          initiatorId,
           intentIds,
           indexIds: validIndexIds,
           vibeOptions: options

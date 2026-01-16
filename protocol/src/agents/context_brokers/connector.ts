@@ -24,6 +24,7 @@ let CONTEXT_BROKERS: ContextBroker[] = [];
 
 /**
  * Initialize brokers from database
+ * @deprecated
  */
 export async function initializeBrokers(): Promise<void> {
   console.log('📥 Initializing context brokers from database...');
@@ -47,10 +48,11 @@ export async function initializeBrokers(): Promise<void> {
 
 /**
  * Trigger all registered context brokers when a new intent is created
+ * @deprecated
  */
 export async function triggerBrokersOnIntentCreated(intentId: string): Promise<void> {
   console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for new intent: ${intentId}`);
-  
+
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
       console.log(`🚀 Starting broker: ${broker.agentId} for intent: ${intentId}`);
@@ -67,10 +69,11 @@ export async function triggerBrokersOnIntentCreated(intentId: string): Promise<v
 
 /**
  * Trigger all registered context brokers when an intent is updated
+ * @deprecated
  */
 export async function triggerBrokersOnIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {
   console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for updated intent: ${intentId}`);
-  
+
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
       console.log(`🔄 Starting broker: ${broker.agentId} for updated intent: ${intentId}`);
@@ -87,10 +90,11 @@ export async function triggerBrokersOnIntentUpdated(intentId: string, previousSt
 
 /**
  * Trigger all registered context brokers when an intent is archived
+ * @deprecated
  */
 export async function triggerBrokersOnIntentArchived(intentId: string): Promise<void> {
   console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for archived intent: ${intentId}`);
-  
+
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
       console.log(`📦 Starting broker: ${broker.agentId} for archived intent: ${intentId}`);
@@ -107,6 +111,7 @@ export async function triggerBrokersOnIntentArchived(intentId: string): Promise<
 
 /**
  * Register a new context broker
+ * @deprecated
  */
 export async function registerContextBroker(broker: ContextBroker): Promise<void> {
   // Ensure agent exists in database
@@ -114,17 +119,18 @@ export async function registerContextBroker(broker: ContextBroker): Promise<void
     .from(agents)
     .where(eq(agents.id, broker.agentId))
     .limit(1);
-  
+
   if (existingAgent.length === 0) {
     throw new Error(`Agent ${broker.agentId} not found in database`);
   }
-  
+
   CONTEXT_BROKERS.push(broker);
   console.log(`📝 Registered new context broker: ${broker.agentId}`);
 }
 
 /**
  * Get list of registered context brokers
+ * @deprecated
  */
 export function getRegisteredBrokers(): string[] {
   return CONTEXT_BROKERS.map(broker => broker.agentId);
@@ -132,6 +138,7 @@ export function getRegisteredBrokers(): string[] {
 
 /**
  * Get broker count for monitoring/debugging
+ * @deprecated
  */
 export function getBrokerCount(): number {
   return CONTEXT_BROKERS.length;

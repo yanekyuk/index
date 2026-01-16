@@ -34,7 +34,9 @@ export interface GetConnectingStakesOptions {
 // ============================================================================
 // DATA LOADERS
 // ============================================================================
-
+/**
+ * @deprecated
+ */
 async function loadStakesForUsers(userIds: string[], createdAfter?: Date): Promise<Stake[]> {
   let whereClause = sql`${intentStakes.id} IN (
       SELECT stake_id FROM intent_stake_items 
@@ -77,6 +79,9 @@ async function loadStakesForUsers(userIds: string[], createdAfter?: Date): Promi
   return [...stakeMap.values()];
 }
 
+/**
+ * @deprecated
+ */
 async function loadUserIndexes(userIds: string[]): Promise<Map<string, Set<string>>> {
   const rows = await db
     .select({ userId: indexMembers.userId, indexId: indexMembers.indexId })
@@ -91,6 +96,9 @@ async function loadUserIndexes(userIds: string[]): Promise<Map<string, Set<strin
   return map;
 }
 
+/**
+ * @deprecated
+ */
 async function loadConnectedUsers(userId: string): Promise<Set<string>> {
   const rows = await db
     .select({ initiator: userConnectionEvents.initiatorUserId, receiver: userConnectionEvents.receiverUserId })
@@ -105,6 +113,9 @@ async function loadConnectedUsers(userId: string): Promise<Set<string>> {
   return connected;
 }
 
+/**
+ * @deprecated
+ */
 async function loadIntentIndexes(intentIds: string[]): Promise<Map<string, Set<string>>> {
   if (!intentIds.length) return new Map();
   const rows = await db
@@ -124,6 +135,9 @@ async function loadIntentIndexes(intentIds: string[]): Promise<Map<string, Set<s
 // MAIN QUERY
 // ============================================================================
 
+/**
+ * @deprecated
+ */
 export async function getConnectingStakes(options: GetConnectingStakesOptions): Promise<Stake[]> {
   const { authenticatedUserId, userIds, requireAllUsers = false, indexIds, intentIds, excludeConnected = false, limit } = options;
 
@@ -195,18 +209,30 @@ export async function getConnectingStakes(options: GetConnectingStakesOptions): 
 // HELPERS (for consumers)
 // ============================================================================
 
+/**
+ * @deprecated
+ */
 export function stakeUsers(stake: Stake): string[] {
   return [...new Set(stake.items.map(i => i.userId))];
 }
 
+/**
+ * @deprecated
+ */
 export function stakeOtherUsers(stake: Stake, excludeUserId: string): string[] {
   return stakeUsers(stake).filter(id => id !== excludeUserId);
 }
 
+/**
+ * @deprecated
+ */
 export function stakeUserItems(stake: Stake, userId: string) {
   return stake.items.filter(i => i.userId === userId);
 }
 
+/**
+ * @deprecated
+ */
 export function stakeBuildPairs(stake: Stake, userA: string, userB: string) {
   const itemsA = stakeUserItems(stake, userA);
   const itemsB = stakeUserItems(stake, userB);

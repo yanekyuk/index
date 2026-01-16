@@ -88,6 +88,7 @@ Be thoughtful about intent types but err on the side of caution.`;
 
 /**
  * Analyze a single intent for freshness
+ * @deprecated
  */
 export async function auditIntentFreshness(intentId: string): Promise<FreshnessResult> {
   try {
@@ -132,7 +133,7 @@ Created: ${timeAgo}${userIntro ? `\n\nUser Intro (Bio): "${userIntro}"` : ''}
 
 Is this intent expired? ${userIntro ? 'Consider if the intent is incompatible with the user\'s current intro.' : ''} Provide confidence score.`
     };
-    
+
 
     const freshnessCall = traceableStructuredLlm(
       "intent-freshness-auditor",
@@ -162,9 +163,9 @@ Is this intent expired? ${userIntro ? 'Consider if the intent is incompatible wi
  */
 async function archiveIntent(intentId: string, userId: string): Promise<void> {
 
-  
+
   await db.update(intents)
-    .set({ 
+    .set({
       archivedAt: new Date(),
       updatedAt: new Date()
     })
@@ -183,12 +184,14 @@ async function processIntentWithTimeout(intent: { id: string; userId: string }, 
 
   const processPromise = (async () => {
     const result = await auditIntentFreshness(intent.id);
-    
+
+
     if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
       await archiveIntent(intent.id, intent.userId);
       return { archived: true };
     }
-    
+
+
     return { archived: false };
   })();
 
@@ -198,6 +201,7 @@ async function processIntentWithTimeout(intent: { id: string; userId: string }, 
 /**
  * Audit all non-archived intents and archive expired ones
  * Maintains 100 concurrent operations at any time
+ * @deprecated
  */
 export async function auditAllIntents(): Promise<{
   audited: number;
@@ -229,7 +233,8 @@ export async function auditAllIntents(): Promise<{
     // Start new operations up to the limit
     while (activePromises.size < CONCURRENT_LIMIT && intentIndex < allIntents.length) {
       const intent = allIntents[intentIndex++];
-      
+
+
       const promise = processIntentWithTimeout(intent, TIMEOUT_MS)
         .then((result) => {
           totalAudited++;
@@ -252,10 +257,10 @@ export async function auditAllIntents(): Promise<{
     if (activePromises.size > 0) {
       await Promise.race(Array.from(activePromises));
     }
-    
+
     // Log progress occasionally (every 100 processed)
     if (totalAudited % 100 === 0 && totalAudited > 0) {
-       console.log(`Progress: audited=${totalAudited}, archived=${totalArchived}, errors=${totalErrors}`);
+      console.log(`Progress: audited=${totalAudited}, archived=${totalArchived}, errors=${totalErrors}`);
     }
   }
 

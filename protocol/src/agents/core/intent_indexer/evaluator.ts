@@ -7,6 +7,9 @@ import { getDisplayName } from '../../../lib/integrations/config';
 // Toggle to enable/disable logs
 const ENABLE_LOGS = false;
 
+/**
+ * @deprecated
+ */
 async function getIntentSourceName(sourceType: string | null, sourceId: string | null): Promise<string> {
   if (!sourceType || !sourceId) {
     return '';
@@ -95,16 +98,16 @@ Score:`
       index_prompt_length: indexPrompt.length
     }
   );
-  
+
   const response = await evaluateCall([systemMessage, userMessage]);
   const scoreText = (response.content as string).trim();
   const score = parseFloat(scoreText);
-  
+
   if (isNaN(score) || score < 0 || score > 1) {
     console.warn(`Invalid index appropriateness score returned: ${scoreText}, defaulting to 0.0`);
     return 0.0;
   }
-  
+
   return score;
 }
 
@@ -151,23 +154,23 @@ Score:`
       member_prompt_length: memberPrompt.length
     }
   );
-  
+
   const response = await evaluateCall([systemMessage, userMessage]);
   const scoreText = (response.content as string).trim();
   const score = parseFloat(scoreText);
-  
+
   if (isNaN(score) || score < 0 || score > 1) {
     console.warn(`Invalid member appropriateness score returned: ${scoreText}, defaulting to 0.0`);
     return 0.0;
   }
-  
+
   return score;
 }
 
 /**
- * Evaluate how appropriate an intent is to a specific index based on prompts
  * Uses context isolation - evaluates index prompt first, then member prompt only if index qualifies
  * Both scores must be separately > 0.7 to proceed
+ * @deprecated Use IntentIndexer agent instead
  */
 export async function evaluateIntentAppropriateness(
   intentPayload: string,
@@ -178,47 +181,47 @@ export async function evaluateIntentAppropriateness(
 ): Promise<number> {
   try {
     const QUALIFICATION_THRESHOLD = 0.7;
-    
+
     // Get source name for context
     const sourceName = await getIntentSourceName(sourceType || null, sourceId || null);
-    
+
     // If no prompts available, return 1 appropriateness
     if (!indexPrompt && !memberPrompt) {
       return 1;
     }
-    
+
     // If only member prompt available (no index prompt), evaluate it directly
     if (!indexPrompt && memberPrompt) {
       const memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
       if (ENABLE_LOGS) console.log(`📊 Member appropriateness score (index prompt not available): ${memberScore.toFixed(3)}`);
       return memberScore;
     }
-    
+
     // Evaluate index prompt first (if available)
     let indexScore = 0.0;
     if (indexPrompt) {
       indexScore = await evaluateIndexAppropriateness(intentPayload, indexPrompt, sourceName);
       if (ENABLE_LOGS) console.log(`📊 Index appropriateness score: ${indexScore.toFixed(3)}`);
-      
+
       // If index prompt doesn't qualify, return early without evaluating member prompt
       if (indexScore <= QUALIFICATION_THRESHOLD) {
         if (ENABLE_LOGS) console.log(`❌ Index score ${indexScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}, skipping member prompt evaluation`);
         return indexScore;
       }
     }
-    
+
     // Index prompt qualified, now evaluate member prompt (if available)
     let memberScore = 0.0;
     if (memberPrompt) {
       memberScore = await evaluateMemberAppropriateness(intentPayload, memberPrompt, sourceName);
       if (ENABLE_LOGS) console.log(`📊 Member appropriateness score: ${memberScore.toFixed(3)}`);
-      
+
       // Both scores must be separately > 0.7
       if (memberScore <= QUALIFICATION_THRESHOLD) {
         if (ENABLE_LOGS) console.log(`❌ Member score ${memberScore.toFixed(3)} not above threshold ${QUALIFICATION_THRESHOLD}`);
         return 0.0; // Return 0 if member score doesn't qualify
       }
-      
+
       // Both scores qualified, combine with weighted average
       // Index prompt gets higher weight (0.6) as it defines the index purpose
       // Member prompt gets lower weight (0.4) as it's more specific to user
@@ -230,7 +233,7 @@ export async function evaluateIntentAppropriateness(
       if (ENABLE_LOGS) console.log(`📊 Final appropriateness score (member prompt not available): ${indexScore.toFixed(3)}`);
       return indexScore;
     }
-    
+
   } catch (error) {
     console.error('Error evaluating intent appropriateness:', error);
     return 0.0; // Default to no appropriateness on error

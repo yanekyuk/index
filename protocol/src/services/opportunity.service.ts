@@ -1,0 +1,1178 @@
+import { eq, and, isNull, sql, ne, isNotNull } from 'drizzle-orm';
+import db from '../lib/db';
+import { intents, intentIndexes, intentStakes, intentStakeItems, userProfiles } from '../lib/schema';
+import { log } from '../lib/log';
+import { getUserAccessibleIndexIds } from '../lib/index-access';
+import { summarizeIntent } from '../agents/core/intent_summarizer';
+import { IndexEmbedder } from '../lib/embedder';
+import { VectorSearchResult, VectorStoreOption } from '../agents/common/types';
+import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
+import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
+import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
+import { IntentManager } from '../agents/intent/manager/intent.manager';
+import { json2md } from '../lib/json2md/json2md';
+import fs from 'fs/promises';
+import path from 'path';
+
+/**
+ * Options for creating an intent within the opportunity service.
+ * Mirrors the structure from IntentService but is self-contained.
+ */
+export interface CreateOpportunityIntentOptions {
+  payload: string;
+  userId: string;
+  isIncognito?: boolean;
+  indexIds?: string[];
+  sourceId?: string;
+  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
+  confidence: number;
+  reasoning?: string;
+  inferenceType: 'explicit' | 'implicit';
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+/**
+ * Result of intent creation.
+ */
+export interface CreatedOpportunityIntent {
+  id: string;
+  payload: string;
+  summary: string | null;
+  isIncognito: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+}
+
+/**
+ * OpportunityService
+ * 
+ * CORE SERVICE: The "Super Connector" - Finds mutually beneficial connections between users.
+ * 
+ * This service encapsulates all database operations and business logic for the 
+ * Opportunity Finder system. It deliberately reimplements methods found in other 
+ * services (ProfileService, IntentService, StakeService) to maintain the rule that 
+ * services cannot import other services.
+ * 
+ * KEY RESPONSIBILITIES:
+ * 1. Profile Management: Embeddings, HyDE vectors for opportunity matching.
+ * 2. Intent Resolution: Creating implicit intents when opportunities are found.
+ * 3. Stake Creation: Recording matches between users as stakes.
+ * 4. Opportunity Cycle: Orchestrating the full matching algorithm.
+ * 
+ * DESIGN RATIONALE:
+ * - This service is designed to be self-contained and not dependent on other services.
+ * - All database queries are reimplemented here rather than importing from other services.
+ * - This follows the project rule: "services cannot import other services."
+ */
+export class OpportunityService {
+  private embedder: IndexEmbedder;
+
+  constructor() {
+    this.embedder = new IndexEmbedder({
+      searcher: this.searchProfiles.bind(this)
+    });
+  }
+
+  // ============================================================================
+  // PROFILE-RELATED METHODS (Reimplemented from ProfileService)
+  // ============================================================================
+
+  /**
+   * Get profiles that do not have an embedding yet.
+   * Used during the backfill phase to ensure all profiles are embeddable.
+   */
+  async getProfilesMissingEmbeddings() {
+    return await db
+      .select()
+      .from(userProfiles)
+      .where(isNull(userProfiles.embedding));
+  }
+
+  /**
+   * Update the embedding for a specific user profile.
+   * 
+   * @param profileId - The profile's primary key (not userId).
+   * @param embedding - The vector embedding to store.
+   */
+  async updateProfileEmbedding(profileId: string, embedding: number[]) {
+    await db.update(userProfiles)
+      .set({ embedding })
+      .where(eq(userProfiles.id, profileId));
+  }
+
+  /**
+   * Update HyDE (Hypothetical Document Embedding) data for a profile.
+   * HyDE describes the "ideal candidate" this user would want to meet.
+   * 
+   * @param profileId - The profile's primary key.
+   * @param hydeDescription - Natural language description of ideal candidate.
+   * @param hydeEmbedding - Vector embedding of the description.
+   */
+  async updateProfileHyde(profileId: string, hydeDescription: string, hydeEmbedding: number[]) {
+    await db.update(userProfiles)
+      .set({
+        hydeDescription,
+        hydeEmbedding,
+        updatedAt: new Date()
+      })
+      .where(eq(userProfiles.id, profileId));
+  }
+
+  /**
+   * Get a complete User Profile by User ID.
+   * 
+   * @param userId - The user's ID.
+   * @returns The profile or undefined if not found.
+   */
+  async getProfile(userId: string) {
+    const [profile] = await db.select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    return profile;
+  }
+
+  /**
+   * Get all profiles that have an embedding.
+   * These are the profiles eligible for opportunity matching.
+   */
+  async getAllProfilesWithEmbeddings() {
+    return db.select()
+      .from(userProfiles)
+      .where(isNotNull(userProfiles.embedding));
+  }
+
+  /**
+   * Vector search for profiles.
+   * Injected into IndexEmbedder for semantic search during opportunity discovery.
+   * 
+   * @param vector - Query vector for similarity search.
+   * @param collection - Must be 'profiles'.
+   * @param options - Search options (limit, filter).
+   * @returns Array of profiles with similarity scores.
+   */
+  async searchProfiles<T>(
+    vector: number[],
+    collection: string,
+    options?: VectorStoreOption<T>
+  ): Promise<VectorSearchResult<T>[]> {
+    if (collection !== 'profiles') {
+      throw new Error(`OpportunityService only supports 'profiles' collection, got '${collection}'`);
+    }
+
+    const limit = options?.limit || 10;
+    const filter = options?.filter;
+    const vectorString = JSON.stringify(vector);
+
+    // Build conditions
+    const conditions = [isNotNull(userProfiles.embedding)];
+
+    if (filter) {
+      if (filter.userId && typeof filter.userId === 'object' && filter.userId.ne) {
+        conditions.push(ne(userProfiles.userId, filter.userId.ne));
+      }
+    }
+
+    const whereClause = and(...conditions);
+
+    const resultsWithDistance = await db.select({
+      item: userProfiles,
+      distance: sql<number>`${userProfiles.embedding} <=> ${vectorString}`
+    })
+      .from(userProfiles)
+      .where(whereClause)
+      .orderBy(sql`${userProfiles.embedding} <=> ${vectorString}`)
+      .limit(limit);
+
+    return resultsWithDistance.map((r: any) => ({
+      item: r.item as unknown as T,
+      score: 1 - r.distance
+    }));
+  }
+
+  // ============================================================================
+  // INTENT-RELATED METHODS (Reimplemented from IntentService)
+  // ============================================================================
+
+  /**
+   * Get all active intents for a user (full objects).
+   * Used to provide context when inferring implicit intents.
+   * 
+   * @param userId - The user's ID.
+   * @returns Array of active intent objects.
+   */
+  async getUserIntentObjects(userId: string) {
+    return await db.select({
+      id: intents.id,
+      payload: intents.payload,
+      summary: intents.summary,
+      createdAt: intents.createdAt
+    })
+      .from(intents)
+      .where(and(
+        eq(intents.userId, userId),
+        isNull(intents.archivedAt)
+      ));
+  }
+
+  /**
+   * Create a new intent with full orchestration pipeline.
+   * 
+   * PIPELINE:
+   * 1. Summarize: Generate short summary using IntentSummarizer.
+   * 2. Embed: Generate vector embedding for semantic search.
+   * 3. Persist: Save to intents table.
+   * 4. Index: Associate with specified index IDs.
+   * 5. Stake: Create inference stake to track provenance.
+   * 
+   * @param options - Intent creation options.
+   * @returns The created intent.
+   */
+  async createIntent(options: CreateOpportunityIntentOptions): Promise<CreatedOpportunityIntent> {
+    const {
+      payload,
+      userId,
+      isIncognito = false,
+      indexIds = [],
+      sourceId,
+      sourceType,
+      confidence,
+      reasoning,
+      inferenceType,
+      createdAt,
+      updatedAt
+    } = options;
+
+    // Ensure dates are Date objects
+    const createdAtDate = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : undefined;
+    const updatedAtDate = updatedAt ? (updatedAt instanceof Date ? updatedAt : new Date(updatedAt)) : undefined;
+
+    // Generate summary
+    const summary = await summarizeIntent(payload);
+
+    // Generate embedding for semantic search
+    let embedding: number[] | null = null;
+    try {
+      embedding = await this.embedder.generate(payload) as number[];
+    } catch (error) {
+      log.error('[OpportunityService.createIntent] Failed to generate embedding:', { error });
+      // Continue without embedding - it's optional
+    }
+
+    // Create the intent
+    const [newIntent] = await db.insert(intents).values({
+      payload,
+      summary,
+      isIncognito,
+      userId,
+      sourceId: sourceId || undefined,
+      sourceType: sourceType || undefined,
+      embedding: embedding || undefined,
+      ...(createdAtDate && { createdAt: createdAtDate }),
+      ...(updatedAtDate && { updatedAt: updatedAtDate })
+    }).returning({
+      id: intents.id,
+      payload: intents.payload,
+      summary: intents.summary,
+      isIncognito: intents.isIncognito,
+      createdAt: intents.createdAt,
+      updatedAt: intents.updatedAt,
+      userId: intents.userId
+    });
+
+    if (!newIntent) {
+      throw new Error('Failed to create intent - no intent returned from insert');
+    }
+
+    // Associate with indexes if provided
+    if (indexIds.length > 0) {
+      await db.insert(intentIndexes).values(
+        indexIds.map((indexId: string) => ({
+          intentId: newIntent.id,
+          indexId: indexId
+        }))
+      );
+    }
+
+    // Create inference stake (tracks confidence/provenance)
+    await db.insert(intentStakes).values({
+      intents: [newIntent.id],
+      stake: BigInt(Math.floor(confidence * 100)),
+      reasoning: reasoning || `${inferenceType} inference from opportunity discovery`,
+      agentId: '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
+    });
+
+    return newIntent;
+  }
+
+  /**
+   * Update an existing intent's payload.
+   * Regenerates summary when payload changes.
+   * 
+   * @param id - Intent ID.
+   * @param userId - User ID (for access control).
+   * @param data - Update data.
+   * @returns Updated intent or null if not found.
+   */
+  async updateIntent(
+    id: string,
+    userId: string,
+    data: { payload?: string; isIncognito?: boolean; indexIds?: string[] }
+  ) {
+    const { payload, isIncognito, indexIds } = data;
+
+    // Check availability
+    const intent = await db.select({ id: intents.id, userId: intents.userId })
+      .from(intents)
+      .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
+      .limit(1);
+
+    if (intent.length === 0) return null;
+    if (intent[0].userId !== userId) throw new Error('Access denied');
+
+    const updateData: any = { updatedAt: new Date() };
+
+    if (payload !== undefined) {
+      updateData.payload = payload;
+      const newSummary = await summarizeIntent(payload);
+      if (newSummary) {
+        updateData.summary = newSummary;
+      }
+    }
+
+    if (isIncognito !== undefined) {
+      updateData.isIncognito = isIncognito;
+    }
+
+    const [updatedIntent] = await db.update(intents)
+      .set(updateData)
+      .where(eq(intents.id, id))
+      .returning();
+
+    // Update indexes if provided
+    if (indexIds !== undefined) {
+      await db.delete(intentIndexes).where(eq(intentIndexes.intentId, id));
+      if (indexIds.length > 0) {
+        await db.insert(intentIndexes).values(
+          indexIds.map(idxId => ({
+            intentId: id,
+            indexId: idxId
+          }))
+        );
+      }
+    }
+
+    return updatedIntent;
+  }
+
+  // ============================================================================
+  // STAKE-RELATED METHODS (Reimplemented from StakeService)
+  // ============================================================================
+
+  /**
+   * Get recent stakes for a user to provide context for deduplication.
+   * JOINs to get the Candidate's Name and the Stake Reason.
+   * 
+   * @param userId - The user's ID.
+   * @param limit - Maximum number of stakes to return.
+   * @returns Array of stake summaries with candidate info.
+   */
+  async getUserStakes(
+    userId: string,
+    limit: number = 20
+  ): Promise<{ candidateName: string; candidateId: string; reason: string; score: number }[]> {
+    // Find all stakes this user is part of
+    const userStakes = await db
+      .select({
+        stakeId: intentStakes.id,
+        reason: intentStakes.reasoning,
+        score: intentStakes.stake,
+        createdAt: intentStakes.createdAt
+      })
+      .from(intentStakes)
+      .innerJoin(intentStakeItems, eq(intentStakeItems.stakeId, intentStakes.id))
+      .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
+      .where(eq(intents.userId, userId))
+      .orderBy(sql`${intentStakes.createdAt} DESC`)
+      .limit(limit);
+
+    if (userStakes.length === 0) return [];
+
+    const results: { candidateName: string; candidateId: string; reason: string; score: number }[] = [];
+
+    for (const stake of userStakes) {
+      // Find items in this stake NOT belonging to the source user
+      const otherItems = await db
+        .select({
+          userName: userProfiles.identity,
+          odaUserId: intents.userId
+        })
+        .from(intentStakeItems)
+        .innerJoin(intents, eq(intents.id, intentStakeItems.intentId))
+        .innerJoin(userProfiles, eq(userProfiles.userId, intents.userId))
+        .where(and(
+          eq(intentStakeItems.stakeId, stake.stakeId),
+          sql`${intents.userId} != ${userId}`
+        ))
+        .limit(1);
+
+      if (otherItems.length > 0) {
+        const candidateName = (otherItems[0].userName as any)?.name || 'Unknown';
+        results.push({
+          candidateName,
+          candidateId: otherItems[0].odaUserId,
+          reason: stake.reason || 'No reason provided',
+          score: Number(stake.score)
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Helper to get user ID for an intent.
+   * 
+   * @param intentId - The intent ID.
+   * @returns User ID or null.
+   */
+  async getIntentUser(intentId: string): Promise<string | null> {
+    const res = await db.select({ odaUserId: intents.userId })
+      .from(intents)
+      .where(eq(intents.id, intentId));
+    return res[0]?.odaUserId || null;
+  }
+
+  /**
+   * Save a new stake between two intents into the database.
+   * Creates the stake entry and join table entries in a transaction.
+   * 
+   * @param params - Stake creation parameters.
+   * @returns The created stake ID.
+   */
+  async createStake(params: {
+    intents: string[];
+    stake: bigint;
+    reasoning: string;
+    agentId: string;
+    userIds: string[];
+  }): Promise<string> {
+    const sortedIntents = [...params.intents].sort();
+
+    return await db.transaction(async (tx) => {
+      // Create the stake entry
+      const [newStake] = await tx.insert(intentStakes).values({
+        intents: sortedIntents,
+        stake: params.stake,
+        reasoning: params.reasoning,
+        agentId: params.agentId
+      }).returning({ id: intentStakes.id });
+
+      // Insert into join table
+      await tx.insert(intentStakeItems).values(
+        sortedIntents.map((intentId, i) => ({
+          stakeId: newStake.id,
+          intentId,
+          userId: params.userIds[i]
+        }))
+      );
+
+      return newStake.id;
+    });
+  }
+
+  /**
+   * Save a confirmed match as a stake between two intents.
+   * 
+   * @param newIntentId - The source intent ID.
+   * @param targetIntentId - The target intent ID.
+   * @param score - Match score (0-100).
+   * @param reasoning - Explanation for the match.
+   * @param agentId - ID of the agent that made the match.
+   */
+  async saveMatch(
+    newIntentId: string,
+    targetIntentId: string,
+    score: number,
+    reasoning: string,
+    agentId: string
+  ) {
+    const newIntentUser = await this.getIntentUser(newIntentId);
+    const targetIntentUser = await this.getIntentUser(targetIntentId);
+
+    if (!newIntentUser || !targetIntentUser) {
+      log.error(`[OpportunityService] Missing user for intents ${newIntentId} or ${targetIntentId}`);
+      return;
+    }
+
+    const intentIds = [newIntentId, targetIntentId].sort();
+    const userIds = intentIds.map(id => id === newIntentId ? newIntentUser : targetIntentUser);
+
+    await this.createStake({
+      intents: intentIds,
+      userIds,
+      stake: BigInt(Math.floor(score)),
+      reasoning,
+      agentId
+    });
+  }
+
+  // ============================================================================
+  // OPPORTUNITY CYCLE METHODS
+  // ============================================================================
+
+  /**
+   * Construct searchable text from a profile.
+   * Combines bio, location, context, interests, and skills.
+   * 
+   * @param profile - The user profile.
+   * @returns Concatenated profile text for embedding.
+   */
+  constructProfileText(profile: typeof userProfiles.$inferSelect): string {
+    const parts = [
+      profile.identity?.bio,
+      profile.identity?.location,
+      profile.narrative?.context,
+      ...(profile.attributes?.interests || []),
+      ...(profile.attributes?.skills || [])
+    ];
+    return parts.filter(Boolean).join(' ');
+  }
+
+  /**
+   * Helper to execute IntentManager actions and return the effective Intent ID.
+   * Resolves intent actions (create/update) and returns the intent ID.
+   * 
+   * @param userId - The user ID.
+   * @param actions - Array of intent actions from IntentManager.
+   * @returns The intent ID and score, or null if no actionable intent.
+   */
+  async resolveIntentFromActions(userId: string, actions: any[]): Promise<{ id: string; score: number } | null> {
+    // Priority: Create > Update > Ignore
+    const createAction = actions.find(a => a.type === 'create');
+    if (createAction) {
+      const indexIds = await getUserAccessibleIndexIds(userId);
+      const created = await this.createIntent({
+        userId,
+        payload: createAction.payload,
+        indexIds,
+        sourceType: 'enrichment', // Implicit
+        // If score is provided, use it (score is 0-100, confidence is 0-1).
+        // If score is 80, confidence should be 0.8
+        confidence: createAction.score ? createAction.score / 100 : 1.0,
+        reasoning: createAction.reasoning || undefined,
+        inferenceType: 'implicit'
+      });
+      return { id: created.id, score: createAction.score || 100 };
+    }
+
+    const updateAction = actions.find(a => a.type === 'update');
+    if (updateAction) {
+      await this.updateIntent(updateAction.id, userId, {
+        payload: updateAction.payload
+      });
+      return { id: updateAction.id, score: updateAction.score || 100 };
+    }
+
+    // If only Expire or Ignore, we don't have a valid active intent for the stake
+    return null;
+  }
+
+  /**
+   * Main Orchestration: The "Opportunity Finder" Cycle.
+   * 
+   * ALGORITHM:
+   * 1. Backfill Embeddings: Ensures all active profiles have vector embeddings.
+   * 2. Iterate Sources: For every profile (as Source):
+   *    - Backfill HyDE: If missing, generate "Ideal Candidate Description" vector.
+   *    - Agent Discovery: Run OpportunityEvaluator.runDiscovery().
+   * 3. Implicit Intent Creation:
+   *    - If Match Score > 85, create implicit intents for both users.
+   *    - Create a Stake connecting them.
+   * 
+   * @param evaluator - Optional OpportunityEvaluator (for testing).
+   */
+  async runOpportunityFinderCycle(evaluator?: OpportunityEvaluator) {
+    // Setup evaluator with profile search injection
+    if (!evaluator) {
+      evaluator = new OpportunityEvaluator(this.embedder);
+    }
+
+    const intentManager = new IntentManager();
+
+    console.time('OpportunityFinderCycle');
+    log.info('🔄 [OpportunityJob] Starting Opportunity Finder Cycle...');
+
+    try {
+      // 1. Backfill Missing Embeddings
+      log.info('🔍 [OpportunityJob] Checking for missing embeddings...');
+      const profilesWithoutEmbeddings = await this.getProfilesMissingEmbeddings();
+
+      log.info(`[OpportunityJob] Found ${profilesWithoutEmbeddings.length} profiles needing embeddings.`);
+
+      for (const profile of profilesWithoutEmbeddings) {
+        try {
+          const textToEmbed = this.constructProfileText(profile);
+          if (!textToEmbed || textToEmbed.length < 10) {
+            log.warn(`[OpportunityJob] Skipping profile ${profile.userId} - Insufficient content.`);
+            continue;
+          }
+
+          log.info(`[OpportunityJob] Generating embedding for user ${profile.userId}...`);
+          log.debug(`[OpportunityJob] Payload length: ${textToEmbed.length} chars. Preview: "${textToEmbed.substring(0, 100)}..."`);
+          const embedding = await this.embedder.generate(textToEmbed) as number[];
+
+          await this.updateProfileEmbedding(profile.id, embedding);
+
+          log.info(`[OpportunityJob] ✅ Embedding updated for ${profile.userId}`);
+        } catch (err) {
+          log.error(`[OpportunityJob] ❌ Failed to generate embedding for ${profile.userId}:`, { error: err });
+        }
+      }
+
+      // 2. Run Opportunity Finder for All Users
+      log.info('🚀 [OpportunityJob] Running Opportunity Matchmaking...');
+      const allCycleResults: any[] = [];
+
+      // Fetch all valid profiles to act as sources
+      const allProfiles = await this.getAllProfilesWithEmbeddings();
+
+      for (const sourceProfile of allProfiles) {
+        log.info(`\n🔎 [OpportunityJob] Finding opportunities for ${sourceProfile.userId}...`);
+
+        // Construct UserMemoryProfile object expected by Agent
+        const memoryProfile: UserMemoryProfile = {
+          userId: sourceProfile.userId,
+          identity: sourceProfile.identity || {},
+          narrative: sourceProfile.narrative || {},
+          attributes: sourceProfile.attributes || {}
+        } as any;
+
+        if (!sourceProfile.embedding) {
+          log.warn(`[OpportunityJob] Skipping ${sourceProfile.userId} - Missing embedding.`);
+          continue;
+        }
+
+        // --- BACKFILL HyDE IF MISSING ---
+        if (!sourceProfile.hydeEmbedding) {
+          log.info(`   [OpportunityJob] Generating missing HyDE for ${sourceProfile.userId}...`);
+          try {
+            const hydeGenerator = new HydeGeneratorAgent(this.embedder);
+
+            const profileContext = json2md.keyValue({
+              bio: memoryProfile.identity.bio,
+              location: memoryProfile.identity.location,
+              interests: memoryProfile.attributes.interests,
+              skills: memoryProfile.attributes.skills,
+              context: memoryProfile.narrative?.context || ''
+            });
+
+            const result = await hydeGenerator.generate(profileContext);
+
+            if (result && result.description) {
+              const description = result.description;
+              const embedding = (result.embedding || await this.embedder.generate(description)) as number[];
+
+              // Update DB
+              await this.updateProfileHyde(sourceProfile.id, description, embedding);
+
+              // Update local object so we can use it immediately
+              sourceProfile.hydeDescription = description;
+              sourceProfile.hydeEmbedding = embedding;
+              log.info(`   [OpportunityJob] ✅ HyDE Generated & Backfilled.`);
+            }
+          } catch (e) {
+            log.error(`   [OpportunityJob] ❌ Failed to generate HyDE for ${sourceProfile.userId}`, { error: e });
+          }
+        }
+        // --------------------------------
+
+        const hydeDesc = sourceProfile.hydeDescription;
+        if (!hydeDesc) {
+          log.warn(`[OpportunityJob] Skipping ${sourceProfile.userId} - Missing HyDE description (Backfill failed).`);
+          continue;
+        }
+
+        // RUN AGENT DISCOVERY
+        const profileContext = json2md.keyValue({
+          bio: memoryProfile.identity.bio,
+          location: memoryProfile.identity.location,
+          interests: memoryProfile.attributes.interests,
+          skills: memoryProfile.attributes.skills,
+          context: memoryProfile.narrative?.context || ''
+        });
+
+        // --- DEDUPLICATION: Fetch Existing Stakes ---
+        const existingStakes = await this.getUserStakes(sourceProfile.userId, 20);
+        let existingOpportunitiesContext = "";
+
+        if (existingStakes.length > 0) {
+          existingOpportunitiesContext = existingStakes
+            .map(s => `- Match with ${s.candidateName} (ID: ${s.candidateId}) (Score: ${s.score}): ${s.reason}`)
+            .join('\n');
+        }
+
+        const opportunities = await evaluator.runDiscovery(profileContext, {
+          hydeDescription: hydeDesc,
+          limit: 20,
+          minScore: 0.5,
+          filter: {
+            userId: { ne: sourceProfile.userId }
+          } as any,
+          existingOpportunities: existingOpportunitiesContext
+        });
+
+        if (opportunities.length > 0) {
+          log.info(`✨ [OpportunityJob] Found ${opportunities.length} opportunities for ${sourceProfile.userId}:`);
+          opportunities.forEach(op => {
+            log.info(`   - [${op.score}] ${op.title} (with ${op.candidateId})`);
+          });
+
+          allCycleResults.push({
+            sourceUserId: sourceProfile.userId,
+            sourceName: sourceProfile.identity?.name,
+            opportunityCount: opportunities.length,
+            opportunities: opportunities
+          });
+
+          // --- Implicit Intent & Stake Creation ---
+          for (const op of opportunities) {
+            if (op.score < 85) continue; // Only for very strong matches
+
+            const candidateProfile = await this.getProfile(op.candidateId);
+            if (!candidateProfile) continue;
+
+            try {
+              // 1. Process Source Intent
+              log.info(`   [OpportunityJob] Processing implicit source intent for ${sourceProfile.userId}...`);
+
+              const sourceActiveIntents = await this.getUserIntentObjects(sourceProfile.userId);
+              const sourceActiveContext = sourceActiveIntents
+                .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+                .join('\n');
+
+              const sourceProfileContext = json2md.keyValue({
+                bio: memoryProfile.identity.bio,
+                location: memoryProfile.identity.location,
+                interests: memoryProfile.attributes.interests,
+                skills: memoryProfile.attributes.skills,
+                context: memoryProfile.narrative?.context || ''
+              });
+
+              const sourceResponse = await intentManager.processImplicitIntent(
+                sourceProfileContext,
+                `Opportunity: ${op.title}. Reason: ${op.description}`,
+                sourceActiveContext
+              );
+
+              const sourceIntentResult = await this.resolveIntentFromActions(sourceProfile.userId, sourceResponse.actions);
+
+              if (!sourceIntentResult) {
+                log.info(`   [OpportunityJob] Source intent not created/resolved. Skipping stake.`);
+                continue;
+              }
+              const sourceIntentId = sourceIntentResult.id;
+
+              // 2. Process Candidate Intent
+              log.info(`   [OpportunityJob] Processing implicit candidate intent for ${candidateProfile.userId}...`);
+
+              const candidateMemoryProfile: UserMemoryProfile = {
+                userId: candidateProfile.userId,
+                identity: candidateProfile.identity || {},
+                narrative: candidateProfile.narrative || {},
+                attributes: candidateProfile.attributes || {}
+              } as any;
+
+              const candidateActiveIntents = await this.getUserIntentObjects(candidateProfile.userId);
+              const candidateActiveContext = candidateActiveIntents
+                .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+                .join('\n');
+
+              const candidateProfileContext = json2md.keyValue({
+                bio: candidateMemoryProfile.identity.bio,
+                location: candidateMemoryProfile.identity.location,
+                interests: candidateMemoryProfile.attributes.interests,
+                skills: candidateMemoryProfile.attributes.skills,
+                context: candidateMemoryProfile.narrative?.context || ''
+              });
+
+              const candidateResponse = await intentManager.processImplicitIntent(
+                candidateProfileContext,
+                `Opportunity: ${op.title}. Reason: ${op.description}`,
+                candidateActiveContext
+              );
+
+              const candidateIntentResult = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+
+              if (!candidateIntentResult) {
+                log.info(`   [OpportunityJob] Candidate intent not created/resolved. Skipping stake.`);
+                continue;
+              }
+              const candidateIntentId = candidateIntentResult.id;
+
+              if (sourceIntentId && candidateIntentId) {
+                // 3. Create Pair Match Stake
+                // PairStake = avg(OpportunityScore, SourceIntentScore, CandidateIntentScore)
+                const opportunityScore = Math.floor(op.score);
+                const sourceScore = sourceIntentResult.score;
+                const candidateScore = candidateIntentResult.score;
+
+                const finalStakeScore = Math.floor((opportunityScore + sourceScore + candidateScore) / 3);
+
+                log.info(`   [OpportunityJob] Creating pair stake. Op: ${opportunityScore}, Source: ${sourceScore}, Candidate: ${candidateScore} -> Final: ${finalStakeScore}`);
+
+                await this.saveMatch(
+                  sourceIntentId,
+                  candidateIntentId,
+                  finalStakeScore,
+                  op.description, // Use opportunity reason
+                  '028ef80e-9b1c-434b-9296-bb6130509482'
+                );
+              }
+
+            } catch (err) {
+              log.error(`   [OpportunityJob] Failed to process implicit stake for ${sourceProfile.userId}`, { error: err });
+            }
+          }
+          // ---------------------------------------------
+
+        } else {
+          log.info(`   [OpportunityJob] No high-value opportunities found.`);
+        }
+      }
+
+      // Write full debug results
+      if (allCycleResults.length > 0) {
+        const debugPath = path.resolve(process.cwd(), 'opportunity-finder-results.json');
+        await fs.writeFile(debugPath, JSON.stringify(allCycleResults, null, 2));
+        log.info(`\n📝 [OpportunityJob] Debug results written to: ${debugPath}`);
+      }
+
+      log.info('✅ [OpportunityJob] Opportunity Finder Cycle Complete.');
+      console.timeEnd('OpportunityFinderCycle');
+
+    } catch (error) {
+      log.error('❌ [OpportunityJob] Error in Opportunity Finder Cycle:', { error });
+      console.timeEnd('OpportunityFinderCycle');
+    }
+  }
+
+  /**
+   * Run the Opportunity Finder for a SINGLE user.
+   * 
+   * This is the method to call after onboarding. It:
+   * 1. Ensures the user's profile has embedding and HyDE
+   * 2. Runs OpportunityEvaluator.runDiscovery() to find matching candidates
+   * 3. Creates implicit intents for BOTH the source user AND the candidate
+   * 4. Creates a STAKE linking the two intents together
+   * 
+   * This provides immediate matching after a user completes onboarding.
+   * 
+   * @param userId - The user ID to run the cycle for.
+   */
+  async runOpportunityFinderForUser(userId: string) {
+    log.info(`🔄 [OpportunityService] Running Opportunity Finder for user ${userId}...`);
+
+    const evaluator = new OpportunityEvaluator(this.embedder);
+    const intentManager = new IntentManager();
+
+    try {
+      // 1. Get the user's profile
+      const sourceProfile = await this.getProfile(userId);
+      if (!sourceProfile) {
+        log.warn(`[OpportunityService] Profile not found for user ${userId}, aborting.`);
+        return;
+      }
+
+      // 2. Ensure profile has embedding
+      if (!sourceProfile.embedding) {
+        log.info(`[OpportunityService] Generating embedding for user ${userId}...`);
+        const textToEmbed = this.constructProfileText(sourceProfile);
+        if (!textToEmbed || textToEmbed.length < 10) {
+          log.warn(`[OpportunityService] Insufficient content for embedding, skipping.`);
+          return;
+        }
+        const embedding = await this.embedder.generate(textToEmbed) as number[];
+        await this.updateProfileEmbedding(sourceProfile.id, embedding);
+        sourceProfile.embedding = embedding;
+      }
+
+      // 3. Construct memory profile
+      const memoryProfile: UserMemoryProfile = {
+        userId: sourceProfile.userId,
+        identity: sourceProfile.identity || {},
+        narrative: sourceProfile.narrative || {},
+        attributes: sourceProfile.attributes || {}
+      } as any;
+
+      const profileContext = json2md.keyValue({
+        bio: memoryProfile.identity.bio || '',
+        location: memoryProfile.identity.location || '',
+        interests: memoryProfile.attributes.interests || [],
+        skills: memoryProfile.attributes.skills || [],
+        context: memoryProfile.narrative?.context || ''
+      });
+
+      // 4. Ensure HyDE exists
+      if (!sourceProfile.hydeEmbedding || !sourceProfile.hydeDescription) {
+        log.info(`[OpportunityService] Generating HyDE for user ${userId}...`);
+        try {
+          const hydeGenerator = new HydeGeneratorAgent(this.embedder);
+          const result = await hydeGenerator.generate(profileContext);
+
+          if (result && result.description) {
+            const embedding = (result.embedding || await this.embedder.generate(result.description)) as number[];
+            await this.updateProfileHyde(sourceProfile.id, result.description, embedding);
+            sourceProfile.hydeDescription = result.description;
+            sourceProfile.hydeEmbedding = embedding;
+            log.info(`[OpportunityService] ✅ HyDE generated for ${userId}`);
+          } else {
+            log.warn(`[OpportunityService] Failed to generate HyDE for ${userId}, skipping.`);
+            return;
+          }
+        } catch (e) {
+          log.error(`[OpportunityService] Failed to generate HyDE for ${userId}`, { error: e });
+          return;
+        }
+      }
+
+      // 5. Fetch existing stakes to avoid duplicates
+      const existingStakes = await this.getUserStakes(userId, 20);
+      const existingOpportunitiesContext = existingStakes.length > 0
+        ? existingStakes.map(s => `- Match with ${s.candidateName} (ID: ${s.candidateId}) (Score: ${s.score}): ${s.reason}`).join('\n')
+        : '';
+
+      // 6. Run opportunity discovery
+      log.info(`[OpportunityService] Running discovery for user ${userId}...`);
+      const opportunities = await evaluator.runDiscovery(profileContext, {
+        hydeDescription: sourceProfile.hydeDescription!,
+        limit: 20,
+        minScore: 70,
+        filter: { userId: { ne: userId } } as any,
+        existingOpportunities: existingOpportunitiesContext
+      });
+
+      log.info(`[OpportunityService] Found ${opportunities.length} opportunities for ${userId}`);
+
+      if (opportunities.length === 0) {
+        log.info(`[OpportunityService] No opportunities found for ${userId}.`);
+        return;
+      }
+
+      // 7. Process opportunities - Create intents for BOTH users and stakes
+      for (const op of opportunities) {
+        if (op.score < 70) continue;
+
+        const candidateProfile = await this.getProfile(op.candidateId);
+        if (!candidateProfile) continue;
+
+        try {
+          // 7a. Process Source Intent
+          log.info(`[OpportunityService] Processing source intent for ${userId}...`);
+
+          const sourceActiveIntents = await this.getUserIntentObjects(userId);
+          const sourceActiveContext = sourceActiveIntents
+            .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+            .join('\n');
+
+          const sourceResponse = await intentManager.processImplicitIntent(
+            profileContext,
+            `Opportunity: ${op.title}. Reason: ${op.description}`,
+            sourceActiveContext
+          );
+
+          const sourceIntentId = await this.resolveIntentFromActions(userId, sourceResponse.actions);
+
+          if (!sourceIntentId) {
+            log.info(`[OpportunityService] Source intent not created/resolved. Skipping.`);
+            continue;
+          }
+
+          // 7b. Process Candidate Intent
+          log.info(`[OpportunityService] Processing candidate intent for ${candidateProfile.userId}...`);
+
+          const candidateMemoryProfile: UserMemoryProfile = {
+            userId: candidateProfile.userId,
+            identity: candidateProfile.identity || {},
+            narrative: candidateProfile.narrative || {},
+            attributes: candidateProfile.attributes || {}
+          } as any;
+
+          const candidateProfileContext = json2md.keyValue({
+            bio: candidateMemoryProfile.identity.bio || '',
+            location: candidateMemoryProfile.identity.location || '',
+            interests: candidateMemoryProfile.attributes.interests || [],
+            skills: candidateMemoryProfile.attributes.skills || [],
+            context: candidateMemoryProfile.narrative?.context || ''
+          });
+
+          const candidateActiveIntents = await this.getUserIntentObjects(candidateProfile.userId);
+          const candidateActiveContext = candidateActiveIntents
+            .map(i => `ID: ${i.id}, Description: ${i.payload}, Status: active`)
+            .join('\n');
+
+          const candidateResponse = await intentManager.processImplicitIntent(
+            candidateProfileContext,
+            `Opportunity: ${op.title}. Reason: ${op.description}`,
+            candidateActiveContext
+          );
+
+          const candidateIntentResult = await this.resolveIntentFromActions(candidateProfile.userId, candidateResponse.actions);
+
+          // 7c. Create Stake linking both intents
+          if (sourceIntentId && candidateIntentResult) {
+            const candidateIntentId = candidateIntentResult.id;
+
+            // PairStake = avg(OpportunityScore, SourceIntentScore, CandidateIntentScore)
+            const opportunityScore = Math.floor(op.score);
+            const sourceScore = typeof sourceIntentId === 'string' ? opportunityScore : sourceIntentId.score; // Handle legacy string or object
+            const candidateScore = candidateIntentResult.score;
+
+            const rawSourceId = typeof sourceIntentId === 'string' ? sourceIntentId : sourceIntentId.id;
+
+            const finalStakeScore = Math.floor((opportunityScore + sourceScore + candidateScore) / 3);
+
+            log.info(`[OpportunityService] ✅ Creating stake between ${userId} and ${candidateProfile.userId} (Op: ${opportunityScore}, S: ${sourceScore}, C: ${candidateScore} -> Final: ${finalStakeScore})`);
+
+            await this.saveMatch(
+              rawSourceId,
+              candidateIntentId,
+              finalStakeScore,
+              op.description,
+              '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
+            );
+          }
+
+        } catch (err) {
+          log.error(`[OpportunityService] Failed to process opportunity for ${userId}`, { error: err });
+        }
+      }
+
+      log.info(`✅ [OpportunityService] Opportunity Finder completed for user ${userId}.`);
+
+    } catch (error) {
+      log.error(`❌ [OpportunityService] Error in Opportunity Finder for ${userId}:`, { error });
+    }
+  }
+
+  // ============================================================================
+  // PROFILE INTENT GENERATION (Used by ProfileQueue)
+  // ============================================================================
+
+  /**
+   * Generate intent data from a user's profile using OpportunityEvaluator.
+   * 
+   * This method replaces the old IntentManager.processExplicitIntent approach.
+   * Instead of inferring explicit intents from text, it:
+   * 1. Runs OpportunityEvaluator.runDiscovery() to find matching candidates
+   * 2. Converts high-scoring opportunities into implicit intent options
+   * 
+   * @param userId - The user's ID.
+   * @param userProfile - The user's profile data.
+   * @returns Array of CreateOpportunityIntentOptions ready for creation.
+   */
+  async generateIntentsFromProfile(
+    userId: string,
+    userProfile: typeof userProfiles.$inferSelect
+  ): Promise<CreateOpportunityIntentOptions[]> {
+    const newIntentOptions: CreateOpportunityIntentOptions[] = [];
+    log.info(`[OpportunityService] generateIntentsFromProfile called for ${userId}`);
+
+    try {
+      // Construct memory profile for the evaluator
+      const memoryProfile: UserMemoryProfile = {
+        userId: userId,
+        identity: {
+          name: userProfile.identity?.name || 'User',
+          bio: userProfile.identity?.bio || '',
+          location: userProfile.identity?.location || ''
+        },
+        narrative: userProfile.narrative || undefined,
+        attributes: {
+          interests: userProfile.attributes?.interests || [],
+          skills: userProfile.attributes?.skills || [],
+          goals: []
+        }
+      };
+
+      const profileContext = json2md.keyValue({
+        bio: memoryProfile.identity.bio,
+        location: memoryProfile.identity.location,
+        interests: memoryProfile.attributes.interests,
+        skills: memoryProfile.attributes.skills,
+        context: memoryProfile.narrative?.context || ''
+      });
+
+      // Check if profile has HyDE - required for discovery
+      if (!userProfile.hydeDescription) {
+        log.warn(`[OpportunityService] Profile ${userId} missing HyDE description, generating...`);
+
+        try {
+          const hydeGenerator = new HydeGeneratorAgent(this.embedder);
+          const result = await hydeGenerator.generate(profileContext);
+
+          if (result && result.description) {
+            const embedding = (result.embedding || await this.embedder.generate(result.description)) as number[];
+            await this.updateProfileHyde(userProfile.id, result.description, embedding);
+            userProfile.hydeDescription = result.description;
+            userProfile.hydeEmbedding = embedding;
+            log.info(`[OpportunityService] ✅ HyDE generated for ${userId}`);
+          } else {
+            log.warn(`[OpportunityService] Failed to generate HyDE for ${userId}, skipping opportunity discovery`);
+            return [];
+          }
+        } catch (e) {
+          log.error(`[OpportunityService] Failed to generate HyDE for ${userId}`, { error: e });
+          return [];
+        }
+      }
+
+      // Fetch existing stakes to avoid duplicates
+      const existingStakes = await this.getUserStakes(userId, 20);
+      const existingOpportunitiesContext = existingStakes.length > 0
+        ? existingStakes
+          .map(s => `- Match with ${s.candidateName} (ID: ${s.candidateId}) (Score: ${s.score}): ${s.reason}`)
+          .join('\n')
+        : '';
+
+      // Run opportunity discovery
+      const evaluator = new OpportunityEvaluator(this.embedder);
+      const opportunities = await evaluator.runDiscovery(profileContext, {
+        hydeDescription: userProfile.hydeDescription!,
+        limit: 10,
+        minScore: 70, // Only consider good matches
+        filter: {
+          userId: { ne: userId }
+        } as any,
+        existingOpportunities: existingOpportunitiesContext
+      });
+
+      log.info(`[OpportunityService] Found ${opportunities.length} opportunities for ${userId}`);
+
+      // Convert opportunities to intent options
+      for (const op of opportunities) {
+        if (op.score >= 70) {
+          log.info(`[OpportunityService] Creating intent option from opportunity: "${op.title}" (score: ${op.score})`);
+
+          newIntentOptions.push({
+            userId,
+            payload: `${op.title}: ${op.description}`,
+            confidence: op.score / 100,
+            inferenceType: 'implicit',
+            sourceType: 'enrichment',
+            sourceId: userProfile.id
+          });
+        }
+      }
+
+    } catch (error) {
+      log.error('[OpportunityService] Failed to generate intents from profile:', { error });
+    }
+
+    return newIntentOptions;
+  }
+}
+
+export const opportunityService = new OpportunityService();

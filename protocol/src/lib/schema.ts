@@ -96,6 +96,22 @@ export const users = pgTable('users', {
   usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
 }));
 
+export const userProfiles = pgTable('user_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  identity: json('identity').$type<{ name: string; bio: string; location: string }>(),
+  narrative: json('narrative').$type<{ context: string }>(),
+  attributes: json('attributes').$type<{ interests: string[]; skills: string[] }>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  // Vector embedding for semantic search (2000 dimensions for text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 2000 }),
+  hydeDescription: text('hyde_description'),
+  hydeEmbedding: vector('hyde_embedding', { dimensions: 2000 }),
+}, (table) => ({
+  // Enforce uniqueness on userId is already done by the column definition
+  embeddingIndex: index('user_profiles_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
+}));
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -222,6 +238,17 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
     references: [userNotificationSettings.userId],
+  }),
+  profile: one(userProfiles, {
+    fields: [users.id],
+    references: [userProfiles.userId],
+  }),
+}));
+
+export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [userProfiles.userId],
+    references: [users.id],
   }),
 }));
 
@@ -373,6 +400,8 @@ export const userIntegrationsRelations = relations(userIntegrations, ({ one }) =
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type NewUserProfile = typeof userProfiles.$inferInsert;
 export type Agent = typeof agents.$inferSelect;
 export type NewAgent = typeof agents.$inferInsert;
 export type Intent = typeof intents.$inferSelect;

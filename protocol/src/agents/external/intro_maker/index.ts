@@ -31,6 +31,7 @@ export interface IntroMakerData {
 
 /**
  * Generate introduction synthesis for two users
+ * @deprecated - Use IntroGenerator instead
  */
 export async function introMaker(
   data: IntroMakerData,

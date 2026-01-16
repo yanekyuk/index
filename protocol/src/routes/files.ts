@@ -9,7 +9,7 @@ import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
 import { processUploadedFiles } from '../lib/uploads';
 import { createUploadClient } from '../lib/uploads';
-import { addGenerateIntentsJob } from '../lib/queue/llm-queue';
+import { intentQueue } from '../queues/intent.queue';
 import { FileRecord, FileUploadResponse } from '../types';
 
 // Extend the Request interface to include generatedFileId
@@ -104,7 +104,7 @@ router.get('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
 );
 
 // Upload file to user library
-router.post('/', authenticatePrivy, 
+router.post('/', authenticatePrivy,
   (req: AuthRequest, res: Response, next: any) => {
     try {
       const upload = createUploadClient('library', req.user!.id);
@@ -193,7 +193,7 @@ router.delete('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
 
       // Soft delete in database first
       await db.update(files)
-        .set({ 
+        .set({
           deletedAt: new Date(),
           updatedAt: new Date()
         })
@@ -214,7 +214,7 @@ router.delete('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
       } catch (fsError) {
         console.error(`⚠️ Failed to delete physical file for ${fileId}:`, fsError);
       }
-      
+
 
       return res.json({ message: 'File deleted successfully' });
     } catch (error) {
@@ -224,7 +224,7 @@ router.delete('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
   }
 );
 
-export default router; 
+export default router;
 
 function getExt(name: string) {
   const i = name.lastIndexOf('.');
@@ -252,12 +252,12 @@ async function generateIntentsForUpload(options: {
     return;
   }
 
-  await addGenerateIntentsJob({
+  await intentQueue.add('generate_intents', {
     userId,
     sourceId: fileRecord.id,
     sourceType: 'file',
     content
-  }, 8);
+  }, { priority: 8 });
 
   console.log(`🤖 Intent generation queued for ${fileRecord.id}`);
 }

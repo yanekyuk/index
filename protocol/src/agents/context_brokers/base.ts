@@ -4,10 +4,11 @@ import { eq, or, desc, like, sql, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getAccessibleIntents } from '../../lib/intent-access';
 import { generateEmbedding } from '../../lib/embeddings';
 
+/** @deprecated */
 export abstract class BaseContextBroker {
   protected db = db;
 
-  constructor(public readonly agentId: string) {}
+  constructor(public readonly agentId: string) { }
 
   /**
    * Get all other intent IDs from an array of stakes
@@ -29,10 +30,10 @@ export abstract class BaseContextBroker {
    */
   protected async getStakesForIntents(intentIds: string[]): Promise<IntentStake[]> {
     if (intentIds.length === 0) return [];
-    
+
     // For PostgreSQL array operations, we need to check if the array contains all the intent IDs
     const conditions = intentIds.map(id => sql`${intentStakes.intents} @> ARRAY[${id}::uuid]`);
-    
+
     return this.db.select()
       .from(intentStakes)
       .where(and(...conditions));
@@ -90,10 +91,10 @@ export abstract class BaseContextBroker {
       id: intents.id,
       payload: intents.payload
     })
-    .from(intents)
-    .where(
-      or(...relatedIntentIds.map(id => eq(intents.id, id)))
-    );
+      .from(intents)
+      .where(
+        or(...relatedIntentIds.map(id => eq(intents.id, id)))
+      );
   }
 
   /**
@@ -102,16 +103,17 @@ export abstract class BaseContextBroker {
    */
   protected async findRelatedIntents(currentIntent: any): Promise<any[]> {
     console.log('Finding semantically related intents for:', currentIntent.id);
-    
+
     try {
       // 1. Get the specific indexes that THIS intent is assigned to
       const currentIntentIndexes = await this.db
         .select({ indexId: intentIndexes.indexId })
         .from(intentIndexes)
         .where(eq(intentIndexes.intentId, currentIntent.id));
-      
+
       const indexIds = currentIntentIndexes.map(row => row.indexId);
-      
+
+
       if (indexIds.length === 0) {
         console.log('Intent not in any index, cannot discover matches');
         return []; // Intent not in any index, can't discover matches
@@ -173,7 +175,7 @@ export abstract class BaseContextBroker {
 
     } catch (error) {
       console.error('Error in vector similarity search:', error);
-      
+
       // Fallback to original LLM-based approach if vector search fails
       console.log('Falling back to LLM-based semantic search');
       return []; // Return empty array as fallback
@@ -196,12 +198,12 @@ export abstract class BaseContextBroker {
         eq(intentStakes.agentId, inferrerAgentId)
       ))
       .limit(1);
-    
+
     if (stakes.length === 0) return null;
-    
+
     const isExplicit = stakes[0].reasoning.includes('explicit');
     const confidence = Number(stakes[0].stake) / 100;
-    
+
     return { confidence, isExplicit };
   }
 
@@ -215,19 +217,19 @@ export abstract class BaseContextBroker {
     inferrerAgentId: string
   ): Promise<bigint> {
     const confidenceData = await this.getIntentConfidence(intentId, inferrerAgentId);
-    
+
     // If no confidence data, return base stake (manually created intents)
     if (!confidenceData) return baseStake;
 
     console.log(`confidenceData`, confidenceData, baseStake);
-    
+
     // Apply confidence multiplier
     const weighted = Number(baseStake) * confidenceData.confidence;
     return BigInt(Math.floor(weighted));
   }
 
   protected readonly stakeManager = new (class {
-    constructor(private broker: BaseContextBroker) {}
+    constructor(private broker: BaseContextBroker) { }
 
     /**
      * Create an inference confidence stake for a single intent
@@ -243,19 +245,21 @@ export abstract class BaseContextBroker {
       if (params.intents.length !== 1) {
         throw new Error('Inference stakes must have exactly one intent');
       }
-      
+
       const intentId = params.intents[0];
-      
+
+
       // Validate intent exists and get user_id
       const intentData = await this.broker.db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
         .where(eq(intents.id, intentId))
         .limit(1);
-      
+
+
       if (intentData.length === 0) {
         throw new Error('Intent does not exist');
       }
-      
+
       // Check if inference stake already exists (don't duplicate)
       const existingStake = await this.broker.db.select()
         .from(intentStakes)
@@ -264,7 +268,7 @@ export abstract class BaseContextBroker {
           eq(intentStakes.agentId, params.agentId)
         ))
         .limit(1);
-      
+
       if (existingStake.length === 0) {
         // Create stake and insert into join table
         const [newStake] = await this.broker.db.insert(intentStakes).values({
@@ -273,7 +277,8 @@ export abstract class BaseContextBroker {
           reasoning: params.reasoning,
           agentId: params.agentId
         }).returning({ id: intentStakes.id });
-        
+
+
         await this.broker.db.insert(intentStakeItems).values({
           stakeId: newStake.id,
           intentId: intentId,
@@ -288,19 +293,19 @@ export abstract class BaseContextBroker {
       reasoning: string;
       agentId: string;
     }): Promise<void> {
-      
+
       // Sort intents to ensure consistent ordering
       const sortedIntents = [...params.intents].sort();
-      
+
       // Validate that intents have different owners (at least 2 different users)
       const intentOwners = await this.broker.db.select({
         id: intents.id,
         userId: intents.userId
       })
-      .from(intents)
-      .where(
-        or(...sortedIntents.map(id => eq(intents.id, id)))
-      );
+        .from(intents)
+        .where(
+          or(...sortedIntents.map(id => eq(intents.id, id)))
+        );
 
       // Check if all intents exist
       if (intentOwners.length !== sortedIntents.length) {
@@ -309,12 +314,12 @@ export abstract class BaseContextBroker {
 
       // Get unique user IDs
       const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
-      
+
       // Validate that there are at least 2 different users
       if (uniqueUserIds.size < 2) {
         throw new Error('Stakes must involve intents from at least 2 different users');
       }
-      
+
       // Check if stake already exists for this exact set of intents
       const existingStake = await this.broker.db.select()
         .from(intentStakes)
@@ -334,7 +339,8 @@ export abstract class BaseContextBroker {
             intents: sortedIntents
           })
           .returning({ id: intentStakes.id });
-        
+
+
         // Insert into join table with denormalized user_id
         await this.broker.db.insert(intentStakeItems).values(
           intentOwners.map(intent => ({

@@ -11,10 +11,10 @@ console.log(process.env.DATABASE_URL);
 import { Command } from 'commander';
 import { eq } from 'drizzle-orm';
 import db, { closeDb } from '../lib/db';
-import { intents, intentIndexes, intentStakes, intentStakeItems, indexMembers, indexes, users } from '../lib/schema';
+import { indexMembers, indexes, users, userProfiles, agents } from '../lib/schema';
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
-import { generateEmbedding } from '../lib/embeddings';
+
 
 type GlobalOpts = {
   silent?: boolean;
@@ -24,9 +24,10 @@ type GlobalOpts = {
 
 const OPEN_INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
 const RESTRICTED_INDEX_ID = '99999999-d64e-4ef9-8bcf-6c89815f771c'; // New mocked ID
-const SEMANTIC_RELEVANCY_AGENT_ID = '028ef80e-9b1c-434b-9296-bb6130509482';
+const OPPORTUNITY_AGENT_ID = '028ef80e-9b1c-434b-9296-bb6130509482'; // System Agent for Opportunities
 
-import { PRIVY_TEST_ACCOUNTS, INTENTS } from './test-data';
+
+import { TESTABLE_TEST_ACCOUNTS } from './test-data';
 
 async function ensurePrivyIdentity(email: string): Promise<string> {
   let privyUser = await privyClient.getUserByEmail(email);
@@ -38,15 +39,24 @@ async function ensurePrivyIdentity(email: string): Promise<string> {
   return privyUser.id;
 }
 
-async function createUser(account: typeof PRIVY_TEST_ACCOUNTS[0]): Promise<any> {
+async function createUser(account: typeof TESTABLE_TEST_ACCOUNTS[0]): Promise<any> {
   const privyId = await ensurePrivyIdentity(account.email);
 
   try {
+    // Extract socials
+    const socials = {
+      linkedin: (account as any).linkedin,
+      github: (account as any).github,
+      x: (account as any).x,
+      websites: (account as any).website ? [(account as any).website] : []
+    };
+
     const [user] = await db.insert(users).values({
       privyId,
       email: account.email,
       name: account.name,
       intro: `Test account for ${account.name}`,
+      socials,
       onboarding: {}
     }).returning();
     return user;
@@ -54,41 +64,6 @@ async function createUser(account: typeof PRIVY_TEST_ACCOUNTS[0]): Promise<any> 
     const [existing] = await db.select().from(users).where(eq(users.email, account.email)).limit(1);
     return existing;
   }
-}
-
-async function createIntent(user: any, payload: string, type: 'open' | 'restricted' | 'both'): Promise<string> {
-  // Generate embedding for the intent
-  let embedding: number[] | undefined;
-  try {
-    embedding = await generateEmbedding(payload);
-    console.log(`Generated embedding for intent: "${payload.slice(0, 50)}..."`);
-  } catch (error) {
-    console.error(`Failed to generate embedding for intent:`, error);
-  }
-
-  const [intent] = await db.insert(intents).values({
-    payload,
-    summary: payload.slice(0, 100),
-    userId: user.id,
-    embedding,
-  }).returning();
-
-  // Add intent to both indexes
-  if (type === 'open' || type === 'both') {
-    await db.insert(intentIndexes).values({
-      intentId: intent.id,
-      indexId: OPEN_INDEX_ID,
-    });
-  }
-
-  if (type === 'restricted' || type === 'both') {
-    await db.insert(intentIndexes).values({
-      intentId: intent.id,
-      indexId: RESTRICTED_INDEX_ID,
-    });
-  }
-
-  return intent.id;
 }
 
 async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok: boolean; error?: string }> {
@@ -128,11 +103,20 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
       }
     } catch { }
 
-    // Create users and intents
-    const createdUsers = [];
-    const intentIds = [];
+    // Create System Agents
+    try {
+      await db.insert(agents).values({
+        id: OPPORTUNITY_AGENT_ID,
+        name: 'Opportunity Finder',
+        description: 'Matches users based on semantic profile analysis (HyDE)',
+        avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=opportunity',
+      }).onConflictDoNothing();
+    } catch (e) { console.error('Failed to seed agents', e); }
 
-    for (const [i, account] of PRIVY_TEST_ACCOUNTS.entries()) {
+    // Create users
+    const createdUsers = [];
+
+    for (const [i, account] of TESTABLE_TEST_ACCOUNTS.entries()) {
       const user = await createUser(account);
       createdUsers.push(user);
 
@@ -161,41 +145,12 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
           });
         } catch { }
       }
-
-      // Create intent
-      const payload = INTENTS[i % INTENTS.length];
-      const intentId = await createIntent(user, payload, type);
-      intentIds.push(intentId);
     }
 
-    // Connect all users to everyone (create stakes between all pairs of intents)
-    for (let i = 0; i < createdUsers.length; i++) {
-      for (let j = i + 1; j < createdUsers.length; j++) {
-        const intentPair = [intentIds[i], intentIds[j]].sort();
-
-        try {
-          // Create stake
-          const [newStake] = await db.insert(intentStakes).values({
-            intents: intentPair,
-            stake: BigInt(100),
-            reasoning: `${createdUsers[i].name} and ${createdUsers[j].name} should connect`,
-            agentId: SEMANTIC_RELEVANCY_AGENT_ID,
-          }).returning({ id: intentStakes.id });
-
-          // Insert into join table with denormalized user_id
-          await db.insert(intentStakeItems).values([
-            { stakeId: newStake.id, intentId: intentIds[i], userId: createdUsers[i].id },
-            { stakeId: newStake.id, intentId: intentIds[j], userId: createdUsers[j].id }
-          ]);
-        } catch { }
-      }
-    }
-
-    console.log(`✅ Created ${createdUsers.length} users with connected intents`);
-
+    console.log(`✅ Created ${createdUsers.length} users with profiles`);
 
     console.log('\nLogin credentials:');
-    PRIVY_TEST_ACCOUNTS.forEach(acc =>
+    TESTABLE_TEST_ACCOUNTS.forEach(acc =>
       console.log(`${acc.name}: ${acc.email} | ${acc.phoneNumber} | OTP: ${acc.otpCode}`)
     );
 

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { INTENT_INFERRER_AGENT_ID } from '../../../lib/agent-ids';
 import { format } from 'timeago.js';
 
+/** @deprecated */
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
     super(agentId);
@@ -471,6 +472,7 @@ Return the top 10 pairs with new scores based on semantic quality and contextual
 /**
  * Standalone function to evaluate mutuality between two intents
  * Can be used for testing or by other agents
+ * @deprecated
  */
 export async function evaluateIntentPairMutuality(
   newIntent: any,

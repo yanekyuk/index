@@ -169,9 +169,10 @@ ${content}
 
 /**
  * Core intent inference function with dynamic generation
+ * @deprecated
  */
 async function inferIntents(
-  content: string, 
+  content: string,
   context?: string,
   timeoutMs: number = 60000
 ): Promise<Intent[]> {
@@ -226,6 +227,7 @@ async function inferIntents(
 
 /**
  * Core intent analysis function that works with any content
+ * @deprecated
  */
 export async function analyzeContent(
   content: string,
@@ -244,11 +246,11 @@ export async function analyzeContent(
 
     // Build context from instructions and existing intents
     const contextParts: string[] = [];
-    
+
     if (textInstruction) {
       contextParts.push(`User Guidance: ${textInstruction}`);
     }
-    
+
     if (existingIntents.length > 0) {
       const intentsToShow = existingIntents.slice(0, 50);
       contextParts.push(
@@ -257,9 +259,9 @@ export async function analyzeContent(
         `Skip any intent that duplicates or closely resembles what already exists.`
       );
     }
-    
+
     const context = contextParts.length > 0 ? contextParts.join('\n') : undefined;
-    
+
     // Use dynamic inference
     const intents = await inferIntents(content, context, timeoutMs);
 
@@ -284,6 +286,7 @@ export async function analyzeContent(
 
 /**
  * Analyze objects directly and generate intents (efficient for integrations)
+ * @deprecated
  */
 export async function analyzeObjects(
   objects: any[],
@@ -300,14 +303,14 @@ export async function analyzeObjects(
   // Build concatenated content from objects
   let concatenatedContent = '';
   let processedObjects = 0;
-  
+
   for (const obj of objects) {
     if (obj && typeof obj === 'object') {
       // Convert object to readable format
-      const objContent = typeof obj.content === 'string' 
-        ? obj.content 
+      const objContent = typeof obj.content === 'string'
+        ? obj.content
         : JSON.stringify(obj, null, 2);
-      
+
       if (objContent.trim().length > 0) {
         const objName = obj.name || obj.id || `object-${processedObjects + 1}`;
         concatenatedContent += `=== ${objName} ===\n${objContent.substring(0, 5000)}\n\n`;
@@ -327,6 +330,7 @@ export async function analyzeObjects(
 
 /**
  * Analyze files in a folder and generate intents
+ * @deprecated
  */
 export async function analyzeFolder(
   folderPath: string,
@@ -374,7 +378,7 @@ export async function analyzeFolder(
     // Build concatenated content from successful results
     let concatenatedContent = '';
     let processedFiles = 0;
-    
+
     for (const result of fileResults) {
       if (result.content && result.content.trim().length > 0) {
         const fileName = path.basename(result.filePath);

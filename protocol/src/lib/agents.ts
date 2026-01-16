@@ -15,8 +15,9 @@ function createLangfuseHandler(sessionId: string, metadata: Record<string, any>)
 
 // Factory function to create LLM instance for a specific preset
 function createAgentLlm(preset: string): ChatOpenAI {
+  const modelName = preset.includes('/') ? preset : `@preset/${preset}`;
   return new ChatOpenAI({
-    model: `@preset/${preset}`,
+    model: modelName,
     streaming: false,
     apiKey: process.env.OPENROUTER_API_KEY!,
     configuration: {
@@ -27,15 +28,15 @@ function createAgentLlm(preset: string): ChatOpenAI {
 
 // Traceable LLM wrapper with Langfuse integration
 export function traceableLlm(preset: string, metadata: Record<string, any>) {
-  return async (messages: Array<{role: string, content: string}>, options?: { reasoning?: { exclude?: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high'; max_tokens?: number } }) => {
+  return async (messages: Array<{ role: string, content: string }>, options?: { reasoning?: { exclude?: boolean; effort?: 'minimal' | 'low' | 'medium' | 'high'; max_tokens?: number } }) => {
     // const handler = createLangfuseHandler(preset, metadata); // DISABLED
-    
+
     // Build modelKwargs with reasoning config if provided
     const modelKwargs: any = {};
     if (options?.reasoning) {
       modelKwargs.reasoning = options.reasoning;
     }
-    
+
     const llm = new ChatOpenAI({
       model: `@preset/${preset}`,
       streaming: false,
@@ -45,7 +46,7 @@ export function traceableLlm(preset: string, metadata: Record<string, any>) {
       },
       modelKwargs
     });
-    
+
     const response = await llm.invoke(messages, { runName: preset }); // callbacks removed
     return response;
   };
@@ -54,13 +55,13 @@ export function traceableLlm(preset: string, metadata: Record<string, any>) {
 // Traceable structured output LLM wrapper with Langfuse integration
 export function traceableStructuredLlm(preset: string, metadata: Record<string, any>) {
   const llm = createAgentLlm(preset);
-  
-  return async (messages: Array<{role: string, content: string}>, schema: any) => {
+
+  return async (messages: Array<{ role: string, content: string }>, schema: any) => {
     // const handler = createLangfuseHandler(preset, metadata); // DISABLED
     const structuredLlm = llm.withStructuredOutput(schema, {
       name: schema.name || 'structured_output'
     });
-    const response = await structuredLlm.invoke(messages, { 
+    const response = await structuredLlm.invoke(messages, {
       runName: preset
       // callbacks removed
     });
@@ -90,7 +91,7 @@ export function withTimeoutAndRetry<T extends (...args: any[]) => Promise<any>>(
 
   return (async (...args: Parameters<T>): Promise<ReturnType<T>> => {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {

@@ -6,7 +6,7 @@ function envLevel(): LogLevel {
   const v = (process.env.LOG_LEVEL || '').toLowerCase();
   if (v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v;
   if (process.env.DEBUG === '1' || process.env.DEBUG === 'true') return 'debug';
-  return 'info';
+  return process.env.NODE_ENV === 'development' ? 'debug' : 'info';
 }
 
 let currentLevel: LogLevel = envLevel();

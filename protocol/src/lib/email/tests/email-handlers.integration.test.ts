@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'bun:test';
 import { config } from 'dotenv';
 import { resolve } from 'path';
 import {

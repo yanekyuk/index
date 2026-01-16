@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 
-import { serverAdapter } from './lib/queue/board';
+import { serverAdapter } from './queues/board.queue';
 
 const app = express();
 const PORT = process.env.PORT || 3001;

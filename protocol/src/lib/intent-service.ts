@@ -39,7 +39,7 @@ export class IntentService {
       summary: intents.summary
     }).from(intents)
       .where(eq(intents.userId, userId));
-    
+
     return new Set(existingIntents.map(intent => intent.summary || intent.payload));
   }
 
@@ -83,7 +83,7 @@ export class IntentService {
       console.log(`[IntentService.createIntent] About to generate summary...`);
       const summary = await summarizeIntent(payload);
       console.log(`[IntentService.createIntent] Summary generated:`, summary);
-      
+
       // Generate embedding for semantic search
       console.log(`[IntentService.createIntent] Generating embedding...`);
       let embedding: number[] | null = null;
@@ -96,7 +96,7 @@ export class IntentService {
       }
 
       console.log(`[IntentService.createIntent] Inserting intent into database...`);
-      
+
       // Create the intent
       let newIntent;
       try {
@@ -160,7 +160,6 @@ export class IntentService {
           reasoning: `Inferred as ${inferenceType} intent`,
           agentId: INTENT_INFERRER_AGENT_ID
         }).returning({ id: intentStakes.id });
-        
         // Insert into join table with denormalized user_id
         await db.insert(intentStakeItems).values({
           stakeId: newStake.id,
