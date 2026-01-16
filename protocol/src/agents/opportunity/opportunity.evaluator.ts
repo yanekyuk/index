@@ -15,7 +15,7 @@ import { Embedder } from '../common/types';
 // System prompt for the Opportunity Evaluator Agent (Analysis Stage)
 const ANALYSIS_SYSTEM_PROMPT = `
     You are an expert "Opportunity Matcher" and super-connector.
-    Your Goal: Analyze a Source User's "Ideal Match Description" (or their Profile) against a Candidate User's profile to identify HIGH-VALUE opportunities.
+    Your Goal: Analyze a Source User's "Ideal Match Description" (or their Profile) against a Candidate User's profile to identify A SINGLE HIGH-VALUE opportunity.
 
     Input:
     - Source Context: Either an "Ideal Partner Description" (HyDE) OR the User's own Profile.
@@ -23,16 +23,19 @@ const ANALYSIS_SYSTEM_PROMPT = `
     - Existing Opportunities (Context of matches already made)
 
     Output:
-    - A list of distinct "Opportunities" (if any).
+    - A list containing EXACTLY ONE "Opportunity" if a match exists.
+    - If NO match exists, return an empty list.
     - Score (0-100): How strong is this match?
     - 90-100: "Must Meet" (Perfect alignment with the Ideal Description).
     - 70-89: "Should Meet" (Strong overlaps, clear potential).
     - <70: No opportunity (Return empty list).
 
     Rules:
-    1. IMPERATIVE: Address the SOURCE User as "You". NEVER use their name. Refer to the CANDIDATE by their name.
-    2. COMPREHENSIVE: If multiple distinct matches exist, you MUST mention ALL of them. Do not focus on just one.
-    3. SYNTHESIS: Combine these points into a single cohesive narrative paragraph.
+    1. SYNTHESIS (CRITICAL): If multiple distinct match angles exist (e.g., they share interests in AI AND both like Hiking), do NOT list them separately. SYNTHESIZE them into a SINGLE, robust opportunity description.
+       - The title should be comprehensive (e.g., "Collaboration on AI & Hiking exploration").
+       - The description should weave these points into a cohesive narrative.
+    2. IMPERATIVE: Address the SOURCE User as "You". NEVER use their name. Refer to the CANDIDATE by their name.
+    3. COMPREHENSIVE: The single opportunity must capture ALL the value of the connection.
     4. Be specific about the "Why".
     5. DEDUPLICATION: You must NOT suggest opportunities that are effectively duplicates of "Existing Opportunities".
        - If the Source has already matched with this Candidate for same reason -> IGNORE.
@@ -45,7 +48,7 @@ const ANALYSIS_SYSTEM_PROMPT = `
 const OpportunitySchema = z.object({
   type: z.enum(['collaboration', 'mentorship', 'networking', 'other']),
   title: z.string().describe('Short title of the opportunity'),
-  description: z.string().describe('Reasoning why this is a good match'),
+  description: z.string().describe('Comprehensive reasoning why this is a good match, synthesizing all overlapping areas.'),
   score: z.number().min(0).max(100).describe('Relevance score 0-100'),
   candidateId: z.string().describe('The user ID of the match'),
 });
@@ -65,7 +68,7 @@ type EvaluatorOutput = z.infer<typeof OpportunityEvaluatorOutputSchema>;
  * 1. Takes a Source User (the person looking for something).
  * 2. Takes a list of Candidate Users (retrieved via vector search, usually using HyDE).
  * 3. Analyzes the FIT between Source and Candidate.
- * 4. Generates specific "Opportunities" (Collaboration, Mentorship, etc.) with a Score (0-100).
+ * 4. Generates a SINGLE "Opportunity" (Synthesized) with a Score (0-100).
  * 
  * DIFFERENTIATION:
  * Unlike `StakeEvaluator` (which checks if two specific intents match), this agent looks at the
@@ -130,8 +133,8 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
     });
 
 
-    // Sort by score
-    return opportunities.sort((a, b) => b.score - a.score);
+    // Sort by score and take top 1
+    return opportunities.sort((a, b) => b.score - a.score).slice(0, 1);
   }
 
   /**
