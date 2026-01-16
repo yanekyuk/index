@@ -294,6 +294,7 @@ export async function synthesizeIntro(
     });
     return result.synthesis || "";
 
+
   } catch (error) {
     console.error('Intro synthesis error:', error);
     return "";

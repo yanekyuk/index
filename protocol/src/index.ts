@@ -189,10 +189,6 @@ app.post('/api/embeddings', async (req, res) => {
   }
 
 });
-
-
-
-
 if (process.env.NODE_ENV === 'development') {
   app.use('/api/dev', devRoutes);
 }
@@ -223,6 +219,8 @@ app.use('*', (req, res) => {
 
     // Workers are auto-started upon import
     console.log('🟢 Queue workers initialized');
+
+
 
     initWeeklyNewsletterJob();
     initOpportunityFinderJob();

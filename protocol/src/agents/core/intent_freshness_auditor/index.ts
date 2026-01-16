@@ -185,10 +185,12 @@ async function processIntentWithTimeout(intent: { id: string; userId: string }, 
   const processPromise = (async () => {
     const result = await auditIntentFreshness(intent.id);
 
+
     if (result.isExpired && result.confidenceScore >= CONFIDENCE_THRESHOLD) {
       await archiveIntent(intent.id, intent.userId);
       return { archived: true };
     }
+
 
     return { archived: false };
   })();
@@ -231,6 +233,7 @@ export async function auditAllIntents(): Promise<{
     // Start new operations up to the limit
     while (activePromises.size < CONCURRENT_LIMIT && intentIndex < allIntents.length) {
       const intent = allIntents[intentIndex++];
+
 
       const promise = processIntentWithTimeout(intent, TIMEOUT_MS)
         .then((result) => {

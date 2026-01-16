@@ -55,6 +55,7 @@ export class IntentEvents {
           eq(indexMembers.autoAssign, true),
           isNull(indexes.deletedAt)
         ));
+
       // Queue individual intent-index pairs
       // Priority 8: New intents - HIGHEST priority (user just created intent)
       // These are time-sensitive user actions that should be processed immediately
@@ -110,12 +111,6 @@ export class IntentEvents {
           eq(indexMembers.autoAssign, true),
           isNull(indexes.deletedAt)
         ));
-
-      // If no eligible indexes, trigger brokers immediately
-      if (eligibleIndexes.length === 0) {
-        await triggerBrokersOnIntentUpdated(event.intentId, event.previousStatus);
-        return;
-      }
 
       // Queue individual intent-index pairs
       // Priority 8: Updated intents - HIGHEST priority (user just modified intent)

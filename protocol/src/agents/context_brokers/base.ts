@@ -113,6 +113,7 @@ export abstract class BaseContextBroker {
 
       const indexIds = currentIntentIndexes.map(row => row.indexId);
 
+
       if (indexIds.length === 0) {
         console.log('Intent not in any index, cannot discover matches');
         return []; // Intent not in any index, can't discover matches
@@ -247,11 +248,13 @@ export abstract class BaseContextBroker {
 
       const intentId = params.intents[0];
 
+
       // Validate intent exists and get user_id
       const intentData = await this.broker.db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
         .where(eq(intents.id, intentId))
         .limit(1);
+
 
       if (intentData.length === 0) {
         throw new Error('Intent does not exist');
@@ -274,6 +277,7 @@ export abstract class BaseContextBroker {
           reasoning: params.reasoning,
           agentId: params.agentId
         }).returning({ id: intentStakes.id });
+
 
         await this.broker.db.insert(intentStakeItems).values({
           stakeId: newStake.id,
@@ -335,6 +339,7 @@ export abstract class BaseContextBroker {
             intents: sortedIntents
           })
           .returning({ id: intentStakes.id });
+
 
         // Insert into join table with denormalized user_id
         await this.broker.db.insert(intentStakeItems).values(

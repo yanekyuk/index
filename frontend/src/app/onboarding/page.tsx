@@ -79,6 +79,27 @@ const FLOW_CONFIGS: Record<OnboardingFlow, FlowConfig> = {
   },
 };
 
+const mockIndexes = [
+  {
+    id: "idx_founders",
+    name: "Founders & Builders",
+    description: "Connect with others building the future.",
+    members: 420
+  },
+  {
+    id: "idx_ai",
+    name: "AI & Agents",
+    description: "Researchers and engineers working on AGI.",
+    members: 850
+  },
+  {
+    id: "idx_creative",
+    name: "Creative Coding",
+    description: "Art, code, and design.",
+    members: 128
+  }
+];
+
 export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
   const [isLoading, setIsLoading] = useState(false);
@@ -311,7 +332,6 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (user) {
       setName(user.name || '');
-
       // Pre-fill socials if they exist
       if (user.socials) {
         setSocialX(user.socials.x || '');
@@ -340,7 +360,6 @@ export default function OnboardingPage() {
         setCurrentStep(user.onboarding.currentStep);
         return;
       }
-
       // If no step info saved, always start with profile (step one)
       if (!user.onboarding?.currentStep) {
         setCurrentStep('profile');
@@ -534,7 +553,6 @@ export default function OnboardingPage() {
               if (line.startsWith('data: ')) {
                 try {
                   const event = JSON.parse(line.slice(6));
-
                   if (event.type === 'status' || event.type === 'progress') {
                     setSummaryStatusMessage(event.message || '');
                   } else if (event.type === 'result' && event.data) {
@@ -1062,7 +1080,6 @@ export default function OnboardingPage() {
             const updates: { intro?: string; location?: string } = {};
             if (generatedIntro) updates.intro = generatedIntro;
             if (generatedLocation) updates.location = generatedLocation;
-
             if (Object.keys(updates).length > 0) {
               await authService.updateProfile(updates);
             }
@@ -1104,137 +1121,147 @@ export default function OnboardingPage() {
                 {summaryGenerating ? "Getting to know you" : "Here's what we found"}
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                {summaryGenerating
-                  ? "We're reading about you and discovering your intents. This will just take a moment..."
-                  : "We've generated your intro and discovered your intents. Review and adjust as needed."}
-              </p>
-            </div>
+                {
+                  summaryGenerating
+                    ? "We're reading about you and discovering your intents. This will just take a moment..."
+                    : "We've generated your intro and discovered your intents. Review and adjust as needed."
+                }
+              </p >
+            </div >
 
             {/* Status message while generating */}
-            {summaryGenerating && (
-              <div className="mb-6 p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
-                <div className="flex items-center gap-3">
-                  <div className="h-4 w-4 border-2 border-[#006D4B] border-t-transparent rounded-full animate-spin" />
-                  <span className="text-[14px] font-ibm-plex-mono text-[#333]">
-                    {summaryStatusMessage || 'Generating...'}
-                  </span>
+            {
+              summaryGenerating && (
+                <div className="mb-6 p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="h-4 w-4 border-2 border-[#006D4B] border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[14px] font-ibm-plex-mono text-[#333]">
+                      {summaryStatusMessage || 'Generating...'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            }
 
             {/* Error state */}
-            {summaryError && (
-              <div className="mb-6 p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-sm">
-                <p className="text-[14px] font-ibm-plex-mono text-[#DC2626]">
-                  {summaryError}
-                </p>
-                <Button
-                  onClick={() => {
-                    setSummaryError(null);
-                    setSummaryComplete(false);
-                  }}
-                  variant="outline"
-                  className="mt-3 text-sm"
-                >
-                  Try again
-                </Button>
-              </div>
-            )}
+            {
+              summaryError && (
+                <div className="mb-6 p-4 bg-[#FEF2F2] border border-[#FECACA] rounded-sm">
+                  <p className="text-[14px] font-ibm-plex-mono text-[#DC2626]">
+                    {summaryError}
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setSummaryError(null);
+                      setSummaryComplete(false);
+                    }}
+                    variant="outline"
+                    className="mt-3 text-sm"
+                  >
+                    Try again
+                  </Button>
+                </div>
+              )
+            }
 
             {/* Generated content */}
-            {summaryComplete && (
-              <div className="space-y-3">
-                {/* Generated Intro */}
-                {generatedIntro && (
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Intro</label>
-                    <Textarea
-                      value={generatedIntro}
-                      onChange={(e) => setGeneratedIntro(e.target.value)}
-                      className="w-full min-h-[120px]"
-                    />
-                  </div>
-                )}
+            {
+              summaryComplete && (
+                <div className="space-y-3">
+                  {/* Generated Intro */}
+                  {generatedIntro && (
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Intro</label>
+                      <Textarea
+                        value={generatedIntro}
+                        onChange={(e) => setGeneratedIntro(e.target.value)}
+                        className="w-full min-h-[120px]"
+                      />
+                    </div>
+                  )}
 
-                {/* Generated Location */}
-                {generatedLocation && (
-                  <div>
-                    <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Location</label>
-                    <Input
-                      value={generatedLocation}
-                      onChange={(e) => setGeneratedLocation(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                )}
+                  {/* Generated Location */}
+                  {generatedLocation && (
+                    <div>
+                      <label className="block text-sm font-medium text-black mb-2 font-ibm-plex-mono">Location</label>
+                      <Input
+                        value={generatedLocation}
+                        onChange={(e) => setGeneratedLocation(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
 
-                {/* Generated Intents */}
-                {generatedIntents.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-black font-ibm-plex-mono">
-                      Your Intents ({generatedIntents.length})
-                    </label>
-                    <p className="text-[13px] text-[#666] font-ibm-plex-mono mb-3">
-                      These represent what you're looking for and working on. Remove any that don't fit.
-                    </p>
-                    <div className="space-y-1">
-                      {generatedIntents.map((intent, index) => (
-                        <div
-                          key={index}
-                          className="group flex items-start gap-1 px-3 py-1.5 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
-                        >
-                          <span className="flex-1 text-[#1976D2] text-[13px] font-ibm-plex-mono">
-                            {intent.intent}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveIntent(index)}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#90CAF9] rounded transition-all"
-                            aria-label="Remove intent"
+                  {/* Generated Intents */}
+                  {generatedIntents.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-black font-ibm-plex-mono">
+                        Your Intents ({generatedIntents.length})
+                      </label>
+                      <p className="text-[13px] text-[#666] font-ibm-plex-mono mb-3">
+                        These represent what you're looking for and working on. Remove any that don't fit.
+                      </p>
+                      <div className="space-y-1">
+                        {generatedIntents.map((intent, index) => (
+                          <div
+                            key={index}
+                            className="group flex items-start gap-1 px-3 py-1.5 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm"
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#1976D2]">
-                              <line x1="18" y1="6" x2="6" y2="18"></line>
-                              <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                          </button>
-                        </div>
+                            <span className="flex-1 text-[#1976D2] text-[13px] font-ibm-plex-mono">
+                              {intent.intent}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveIntent(index)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-[#90CAF9] rounded transition-all"
+                              aria-label="Remove intent"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#1976D2]">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No intents generated */}
+                  {generatedIntents.length === 0 && !generatedIntro && !generatedLocation && (
+                    <div className="p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
+                      <p className="text-[14px] font-ibm-plex-mono text-[#666]">
+                        We couldn't find enough information to generate a summary. You can add more details in the next steps.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )
+            }
+
+            {/* Loading placeholders */}
+            {
+              summaryGenerating && !summaryComplete && (
+                <div className="space-y-6">
+                  <div>
+                    <div className="h-4 w-16 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                    <div className="h-20 bg-[#F5F5F5] rounded animate-pulse"></div>
+                  </div>
+                  <div>
+                    <div className="h-4 w-20 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                    <div className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
+                  </div>
+                  <div>
+                    <div className="h-4 w-24 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
+                    <div className="space-y-2">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
                       ))}
                     </div>
                   </div>
-                )}
-
-                {/* No intents generated */}
-                {generatedIntents.length === 0 && !generatedIntro && !generatedLocation && (
-                  <div className="p-4 bg-[#F8F9FA] border border-[#E0E0E0] rounded-sm">
-                    <p className="text-[14px] font-ibm-plex-mono text-[#666]">
-                      We couldn't find enough information to generate a summary. You can add more details in the next steps.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Loading placeholders */}
-            {summaryGenerating && !summaryComplete && (
-              <div className="space-y-6">
-                <div>
-                  <div className="h-4 w-16 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
-                  <div className="h-20 bg-[#F5F5F5] rounded animate-pulse"></div>
                 </div>
-                <div>
-                  <div className="h-4 w-20 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
-                  <div className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
-                </div>
-                <div>
-                  <div className="h-4 w-24 bg-[#E0E0E0] rounded animate-pulse mb-2"></div>
-                  <div className="space-y-2">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="h-10 bg-[#F5F5F5] rounded animate-pulse"></div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+              )
+            }
 
             <div className="flex gap-3 mt-8">
               <Button
@@ -1252,7 +1279,7 @@ export default function OnboardingPage() {
                 {isLoading ? 'Saving...' : 'Next'}
               </Button>
             </div>
-          </div>
+          </div >
         );
 
       case 'connections':
@@ -1769,12 +1796,10 @@ export default function OnboardingPage() {
         // Combine public indexes and user's already-joined private indexes
         // Deduplicate by ID, prioritizing membership status from joinedIndexes
         const allIndexesMap = new Map<string, Index>();
-
         // Add public indexes first
         publicIndexes.forEach(index => {
           allIndexesMap.set(index.id, { ...index, isMember: index.isMember || false });
         });
-
         // Add user's joined private indexes (mark as member)
         // If an index already exists, update it to ensure isMember is true
         joinedIndexes.forEach(index => {
@@ -1788,10 +1813,35 @@ export default function OnboardingPage() {
           }
         });
 
-        const indexesToShow = Array.from(allIndexesMap.values());
+        const indexesToShow = allIndexesMap.size > 0
+          ? Array.from(allIndexesMap.values())
+          : mockIndexes.map(m => ({
+            id: m.id,
+            title: m.name,
+            prompt: m.description,
+            permissions: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            user: { id: '', name: '', email: null, avatar: null },
+            _count: { members: m.members, files: 0 },
+            isMember: false
+          }));
 
         const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
-
+          // Skip if this is mock data
+          if (allIndexesMap.size === 0 && mockIndexes.find(m => m.id === index.id)) {
+            // Just toggle for mock data
+            setSelectedIndexes(prev => {
+              const next = new Set(prev);
+              if (next.has(index.id)) {
+                next.delete(index.id);
+              } else {
+                next.add(index.id);
+              }
+              return next;
+            });
+            return;
+          }
 
           if (index.isMember || selectedIndexes.has(index.id)) {
             // Already joined, don't do anything

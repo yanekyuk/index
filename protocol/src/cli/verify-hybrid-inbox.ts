@@ -1,5 +1,4 @@
 import db from '../lib/db';
-
 import { users, indexes, indexMembers, userConnectionEvents, intents, intentIndexes } from '../lib/schema';
 import { getConnectionsByUser } from '../routes/connections';
 import { approveConnection } from '../routes/admin';

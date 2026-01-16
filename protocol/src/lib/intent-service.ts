@@ -160,7 +160,6 @@ export class IntentService {
           reasoning: `Inferred as ${inferenceType} intent`,
           agentId: INTENT_INFERRER_AGENT_ID
         }).returning({ id: intentStakes.id });
-
         // Insert into join table with denormalized user_id
         await db.insert(intentStakeItems).values({
           stakeId: newStake.id,

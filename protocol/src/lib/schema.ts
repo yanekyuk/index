@@ -112,7 +112,6 @@ export const userProfiles = pgTable('user_profiles', {
   // Enforce uniqueness on userId is already done by the column definition
   embeddingIndex: index('user_profiles_embedding_idx').using('hnsw', table.embedding.op('vector_cosine_ops')),
 }));
-
 export const userNotificationSettings = pgTable('user_notification_settings', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

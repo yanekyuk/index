@@ -103,8 +103,6 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
       }
     } catch { }
 
-
-
     // Create System Agents
     try {
       await db.insert(agents).values({
@@ -147,12 +145,9 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
           });
         } catch { }
       }
-
-
     }
 
     console.log(`✅ Created ${createdUsers.length} users with profiles`);
-
 
     console.log('\nLogin credentials:');
     TESTABLE_TEST_ACCOUNTS.forEach(acc =>

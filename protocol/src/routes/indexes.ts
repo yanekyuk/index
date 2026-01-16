@@ -1104,9 +1104,9 @@ router.get('/:id/members',
         }
       }
 
+
       // Build the where clause with optional search and metadata filters
       const whereConditions = [eq(indexMembers.indexId, id)];
-
       // Search filter - search in name, email, and metadata values
       if (searchQuery && searchQuery.trim()) {
         const searchTerm = `%${searchQuery.trim()}%`;
@@ -1139,7 +1139,6 @@ router.get('/:id/members',
         .from(indexMembers)
         .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(...whereConditions));
-
       const total = Number(totalResult[0]?.count || 0);
       const totalPages = Math.ceil(total / limit);
 
@@ -1168,7 +1167,6 @@ router.get('/:id/members',
         metadata: indexMembers.metadata
       }).from(indexMembers)
         .where(eq(indexMembers.indexId, id));
-
       const metadataKeysSet = new Set<string>();
       for (const row of metadataKeysResult) {
         if (row.metadata && typeof row.metadata === 'object') {

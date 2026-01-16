@@ -185,6 +185,7 @@ router.post('/new',
       const hasUrls = savedLinkIds.length > 0;
       const isShortPayload = payload && payload.length < 100;
 
+
       if (isShortPayload && !hasFiles && !hasUrls) {
         console.log(`📝 Process short payload with Agents (Inferrer -> Verifier)`);
 

@@ -263,6 +263,7 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
       const userRecords = await db.select({
         name: users.name,
         email: users.email,
+        intro: users.intro,
         onboarding: users.onboarding,
       })
         .from(users)
@@ -275,7 +276,6 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
       }
 
       const user = userRecords[0];
-
       // Don't enrich if user has a profile (onboarded)
       // Check user_profiles table
       const existingProfile = await db.select({ id: userProfiles.id })
@@ -296,11 +296,9 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
 
       // Generate hash for current name+email combination
       const currentHash = generateEnrichmentHash(user.name, user.email);
-
       // Get existing enrichment hash from onboarding
       const onboarding = (user.onboarding || {}) as any;
       const existingHash = onboarding.enrichmentHash;
-
       // Only enrich if we haven't enriched for this name+email combination before
       if (existingHash === currentHash) {
         log.info('Enrichment already done for this name+email combination', { userId, hash: currentHash });
@@ -317,7 +315,6 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
           },
         })
         .where(and(eq(users.id, userId), isNull(users.deletedAt)));
-
       // Re-fetch immediately to check if hash was successfully set
       // This helps detect race conditions where another process might have set it first
       const verifyRecords = await db.select({
@@ -329,12 +326,10 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
         .from(users)
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
         .limit(1);
-
       if (verifyRecords.length === 0) {
         log.warn('User not found after hash update', { userId });
         return;
       }
-
       const verifyUser = verifyRecords[0];
       const verifyOnboarding = (verifyUser.onboarding || {}) as any;
       const verifyHash = verifyOnboarding.enrichmentHash;

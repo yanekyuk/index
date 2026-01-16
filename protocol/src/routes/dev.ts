@@ -60,5 +60,4 @@ router.post('/reset-matches', async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to reset matches cache' });
     }
 });
-
 export default router;

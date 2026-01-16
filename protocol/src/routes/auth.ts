@@ -196,7 +196,6 @@ router.post('/profile/generate', authenticatePrivy, async (req: AuthRequest, res
         res.end();
       }
     });
-
   } catch (error) {
     console.error('Generate summary error:', error);
     try {
