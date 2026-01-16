@@ -19,7 +19,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_STATIC_URL=$NEXT_PUBLIC_STATIC_URL
 ENV NEXT_PUBLIC_GLOBAL_INDEX_ID=$NEXT_PUBLIC_GLOBAL_INDEX_ID
 
-COPY frontend/package.json frontend/bun.lockb ./
+COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY frontend/ ./
 COPY protocol/src/types ./src/types
