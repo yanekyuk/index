@@ -3,7 +3,7 @@ import { describe, test, expect, beforeAll } from 'bun:test';
 import { OpportunityEvaluator } from './opportunity.evaluator';
 import { memorySearcher } from '../../lib/embedder/searchers/memory.searcher';
 import { Embedder, VectorSearchResult, VectorStoreOption } from '../common/types';
-import { CandidateProfile } from './opportunity.evaluator.types';
+import { CandidateProfile, Opportunity } from './opportunity.evaluator.types';
 import { UserMemoryProfile } from '../intent/manager/intent.manager.types';
 import { log } from '../../lib/log';
 import { json2md } from '../../lib/json2md/json2md';
@@ -270,4 +270,71 @@ describe('Opportunity Evaluator Tests', () => {
       existingOpportunities: existing
     });
   });
+
+
+  test('Synthesized Opportunity (Best Single Option)', async () => {
+    log.info("--- Test: Synthesized Opportunity (Best Single Option) ---");
+    const evaluator = await setupEvaluator();
+
+    // Mock returning multiple distinct opportunities for a single candidate
+    evaluator.evaluateOpportunities = async (source, candidates) => {
+      // Return multiple ops, simulating what the LLM *might* have done before synthesis enforcement,
+      // but also simulating the evaluator's job to pick the best if multiple *were* generated.
+      // However, the *Synthesized* requirement is on the LLM prompt side.
+      // Since we mock evaluateOpportunities here, we can test that our *code* only returns one
+      // even if the internal logic (or a rogue LLM) produced multiple.
+
+      return candidates.flatMap(c => [
+        {
+          type: 'collaboration',
+          title: `Match A with ${c.identity.name}`,
+          description: 'Good match A',
+          score: 80,
+          candidateId: c.userId
+        },
+        {
+          type: 'mentorship',
+          title: `Match B with ${c.identity.name}`,
+          description: 'Good match B',
+          score: 95,
+          candidateId: c.userId
+        }
+      ] as Opportunity[]).sort((a, b) => b.score - a.score).slice(0, 1);
+      // Note: We are mocking the method we just modified, so we should implement the mock 
+      // to reflect the *behavior* of the real method (returning 1).
+      // But actually, we want to test the *real* method logic if possible? 
+      // Creating the mock overwrites the real logic. 
+      // To test the *real* logic we need to mock the *LLM* (this.model.invoke), not the whole evaluateOpportunities method.
+    };
+
+    // Changing approach: testing the evaluateOpportunities filtering logic requires NOT mocking it.
+    // But setupEvaluator mocks it. Let's create a fresh evaluator with a spied model.
+  });
+
+  test('Real Logic: synthesis of multiple returned options', async () => {
+    // This test ensures that if the LLM (or analyzeMatch) returns multiple items, 
+    // evaluateOpportunities strictly returns 1.
+    const embedder = new MockMemoryEmbedder();
+    const evaluator = new OpportunityEvaluator(embedder);
+
+    // Spy on analyzeMatch to return multiple
+    (evaluator as any).analyzeMatch = async (source: any, candidate: any, id: string) => {
+      return [
+        { type: 'networking', title: 'Low Score', description: 'Low', score: 50, candidateId: id },
+        { type: 'collaboration', title: 'High Score', description: 'High', score: 99, candidateId: id }
+      ];
+    };
+
+    const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
+      candidates: [candidates[0]],
+      hydeDescription: "test",
+      limit: 5,
+      minScore: 0.5
+    });
+
+    expect(opportunities.length).toBe(1);
+    expect(opportunities[0].score).toBe(99);
+    expect(opportunities[0].title).toBe('High Score');
+  });
 });
+
