@@ -1,30 +1,30 @@
 # Build stage
-FROM node:24.1.0-alpine AS builder
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json yarn.lock ./
+COPY package.json bun.lock ./
 
 # Install dependencies
-RUN yarn install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN yarn build
+RUN bun run build
 
 # Production stage
-FROM node:24.1.0-alpine AS runner
+FROM oven/bun:1 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 
 # Copy package files
-COPY package*.json yarn.lock ./
+COPY package.json bun.lock ./
 
 # Install only production dependencies
-RUN yarn install --production --frozen-lockfile && yarn cache clean
+RUN bun install --production --frozen-lockfile
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
@@ -32,9 +32,9 @@ COPY --from=builder /app/dist ./dist
 # Create uploads directory with proper permissions
 RUN mkdir -p /app/uploads
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+# Create non-root user (Debian based)
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs -m nodejs
 
 # Change ownership of app directory to nodejs user
 RUN chown -R nodejs:nodejs /app
@@ -43,4 +43,4 @@ USER nodejs
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"] 
+CMD ["bun", "dist/index.js"] 
