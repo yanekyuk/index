@@ -165,7 +165,7 @@ export default function OnboardingPage() {
   const [generatedLocation, setGeneratedLocation] = useState<string | null>(null);
   const [generatedIntents, setGeneratedIntents] = useState<GeneratedIntent[]>([]);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  
+
   // Memoized display values to prevent glitching during reloads
   const [displayIntents, setDisplayIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
   const [displayMembers, setDisplayMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
@@ -176,18 +176,18 @@ export default function OnboardingPage() {
   const loadIntegrations = useCallback(async () => {
     try {
       const config = FLOW_CONFIGS[currentFlow];
-      
+
       // Determine if we should filter by indexId based on flow config
       let queryIndexId: string | undefined;
       if (config.features.requireIndexId) {
         queryIndexId = user?.onboarding?.indexId || createdIndex?.id || undefined;
       }
-      
+
       const response = await integrationsService.getIntegrations(queryIndexId);
-      
+
       const connectedIntegrations = response.integrations || [];
       const availableTypes = response.availableTypes || [];
-      
+
       // Create integration state combining connected and available types
       const updatedIntegrations = availableTypes.map(availableType => {
         const connectedIntegration = connectedIntegrations.find(i => i.type === availableType.type);
@@ -199,7 +199,7 @@ export default function OnboardingPage() {
           indexId: connectedIntegration?.indexId || null
         };
       });
-      
+
       setIntegrations(updatedIntegrations);
       setIntegrationsLoaded(true);
       setIntegrationsIndexId(queryIndexId);
@@ -207,21 +207,21 @@ export default function OnboardingPage() {
       console.error('Failed to fetch integrations:', error);
       // Fallback to default integrations if API fails - filter by flow
       const config = FLOW_CONFIGS[currentFlow];
-      const fallbackIntegrations = config.features.requireIndexId 
+      const fallbackIntegrations = config.features.requireIndexId
         ? getIndexIntegrations().map(i => ({
-            id: null,
-            type: i.type as IntegrationName,
-            name: i.name,
-            connected: false,
-            indexId: null
-          }))
+          id: null,
+          type: i.type as IntegrationName,
+          name: i.name,
+          connected: false,
+          indexId: null
+        }))
         : getUserIntegrations().map(i => ({
-            id: null,
-            type: i.type as IntegrationName,
-            name: i.name,
-            connected: false,
-            indexId: null
-          }));
+          id: null,
+          type: i.type as IntegrationName,
+          name: i.name,
+          connected: false,
+          indexId: null
+        }));
       setIntegrations(fallbackIntegrations);
       setIntegrationsLoaded(true);
       setIntegrationsIndexId(undefined);
@@ -235,10 +235,10 @@ export default function OnboardingPage() {
       if (!wasLoaded) {
         setSummaryLoaded(false);
       }
-      
+
       // Get indexId from user onboarding state or createdIndex state
       const indexId = user?.onboarding?.indexId || createdIndex?.id;
-      
+
       if (!indexId) {
         setCurrentStep('create_index');
         return;
@@ -249,24 +249,24 @@ export default function OnboardingPage() {
         totalIntents: number;
         members: Array<{ id: string; name: string; avatar: string | null }>;
       }>(`/indexes/${indexId}/summary`);
-      
+
       const newIntents = response.exampleIntents || [];
       const newMembers = response.members || [];
       const newTotalIntents = response.totalIntents || 0;
-      
+
       // Update member count
       setMemberCount(newMembers.length);
-      
+
       // Only update display values if there are meaningful changes or first load
-      if (!wasLoaded || 
-          JSON.stringify(newIntents) !== JSON.stringify(displayIntents) ||
-          JSON.stringify(newMembers) !== JSON.stringify(displayMembers) ||
-          newTotalIntents !== displayTotalIntents) {
+      if (!wasLoaded ||
+        JSON.stringify(newIntents) !== JSON.stringify(displayIntents) ||
+        JSON.stringify(newMembers) !== JSON.stringify(displayMembers) ||
+        newTotalIntents !== displayTotalIntents) {
         setDisplayIntents(newIntents);
         setDisplayMembers(newMembers);
         setDisplayTotalIntents(newTotalIntents);
       }
-      
+
       if (!wasLoaded) {
         setSummaryLoaded(true);
       }
@@ -276,13 +276,13 @@ export default function OnboardingPage() {
       if (!summaryLoaded) {
         const fallbackIntents: Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }> = [];
         const fallbackMembers: Array<{ id: string; name: string; avatar: string | null }> = [];
-        
+
         setMemberCount(0);
-        
+
         setDisplayIntents(fallbackIntents);
         setDisplayMembers(fallbackMembers);
         setDisplayTotalIntents(0);
-        
+
         setSummaryLoaded(true);
       }
     }
@@ -291,7 +291,7 @@ export default function OnboardingPage() {
   // Detect flow from query string, user onboarding state, or default
   useEffect(() => {
     const f = searchParams.get('f');
-    
+
     // Only f=2 is allowed to override flow
     if (f === '2') {
       setCurrentFlow(2);
@@ -319,7 +319,7 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (user) {
       setName(user.name || '');
-      
+
       // Pre-fill socials if they exist
       if (user.socials) {
         setSocialX(user.socials.x || '');
@@ -332,41 +332,42 @@ export default function OnboardingPage() {
           setWebsites(['']);
         }
       }
-      
+
       const config = FLOW_CONFIGS[currentFlow];
       const f = searchParams.get('f');
-      
+
       // If onboarding is already completed, redirect to root UNLESS f=2 is present
       if (user.onboarding?.completedAt && f !== '2') {
         router.push('/');
         return;
       }
-      
-      
+
+
       // If user has a saved step in onboarding state, resume from there
       if (user.onboarding?.currentStep && config.steps.includes(user.onboarding.currentStep)) {
         setCurrentStep(user.onboarding.currentStep);
         return;
       }
-      
+
       // If no step info saved, always start with profile (step one)
       if (!user.onboarding?.currentStep) {
         setCurrentStep('profile');
         return;
       }
-      
+
       // For flows requiring index creation, check if index exists
-      if (config.steps.includes('create_index') && !user.onboarding?.indexId) {
+      const isEmployee = user.email?.endsWith('@index.network');
+      if (config.steps.includes('create_index') && isEmployee && !user.onboarding?.indexId) {
         setCurrentStep('create_index');
         return;
       }
-      
+
       // Otherwise, go to connections (next step after profile/create_index)
       const profileIndex = config.steps.indexOf('profile');
       const nextAfterProfile = config.steps[profileIndex + 1];
-      
+
       // For community flow with index already created, skip to connections
-      if (config.steps.includes('create_index') && user.onboarding?.indexId) {
+      if (config.steps.includes('create_index') && (user.onboarding?.indexId || !isEmployee)) {
         const createIndexIdx = config.steps.indexOf('create_index');
         setCurrentStep(config.steps[createIndexIdx + 1] || nextAfterProfile);
       } else {
@@ -379,17 +380,17 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (currentStep === 'connections') {
       const config = FLOW_CONFIGS[currentFlow];
-      
+
       // Determine current indexId
       let currentIndexId: string | undefined;
       if (config.features.requireIndexId) {
         currentIndexId = user?.onboarding?.indexId || createdIndex?.id || undefined;
       }
-      
+
       // Load integrations if not loaded yet OR if the indexId has changed
       const indexIdChanged = currentIndexId !== integrationsIndexId;
       const shouldLoad = !integrationsLoaded || indexIdChanged;
-      
+
       if (shouldLoad) {
         // If flow requires indexId, only load when we have one
         if (config.features.requireIndexId) {
@@ -434,12 +435,12 @@ export default function OnboardingPage() {
     if (currentStep === 'connections') {
       // Initial fetch
       fetchQueueStatus();
-      
+
       // Poll every 3 seconds
       const interval = setInterval(() => {
         fetchQueueStatus();
       }, 1000);
-      
+
       return () => clearInterval(interval);
     } else {
       // Reset when leaving connections step
@@ -468,7 +469,7 @@ export default function OnboardingPage() {
           try {
             const response = await indexService.getIndexes(1, 50);
             // Filter to only include private indexes (invite_only) that user has joined
-            const privateJoined = (response.data || []).filter(index => 
+            const privateJoined = (response.data || []).filter(index =>
               index.permissions?.joinPolicy === 'invite_only'
             );
             setJoinedIndexes(privateJoined);
@@ -489,12 +490,12 @@ export default function OnboardingPage() {
     if (currentStep === 'invite_members') {
       // Load immediately
       loadIndexSummary();
-      
+
       // Set up interval to reload every second
       const interval = setInterval(() => {
         loadIndexSummary();
       }, 1000);
-      
+
       // Cleanup interval when leaving the step or component unmounts
       return () => clearInterval(interval);
     }
@@ -542,7 +543,7 @@ export default function OnboardingPage() {
               if (line.startsWith('data: ')) {
                 try {
                   const event = JSON.parse(line.slice(6));
-                  
+
                   if (event.type === 'status' || event.type === 'progress') {
                     setSummaryStatusMessage(event.message || '');
                   } else if (event.type === 'result' && event.data) {
@@ -589,7 +590,7 @@ export default function OnboardingPage() {
         e.target.value = '';
         return;
       }
-      
+
       setAvatarFile(file);
       const reader = new FileReader();
       reader.onload = () => setAvatarPreview(reader.result as string);
@@ -599,7 +600,7 @@ export default function OnboardingPage() {
 
   // Navigation helpers using flow configuration
   const flowConfig = FLOW_CONFIGS[currentFlow];
-  
+
   const getNextStep = (currentStep: OnboardingStep): OnboardingStep => {
     const currentIndex = flowConfig.steps.indexOf(currentStep);
     if (currentIndex >= 0 && currentIndex < flowConfig.steps.length - 1) {
@@ -618,31 +619,31 @@ export default function OnboardingPage() {
 
   const handleProfileSubmit = async () => {
     if (!user || !name.trim()) return;
-    
+
     setIsLoading(true);
     try {
       let avatarFilename = user.avatar;
-      
+
       if (avatarFile) {
         avatarFilename = await uploadAvatar(avatarFile);
       }
-      
+
       // Build socials object
       const socials = {
         ...(socialX && { x: socialX }),
         ...(socialLinkedin && { linkedin: socialLinkedin }),
         ...(socialGithub && { github: socialGithub }),
-        ...(websites.length > 0 && { 
+        ...(websites.length > 0 && {
           websites: websites.filter(w => w)
         })
       };
-      
+
       const updatedUser = await authService.updateProfile({
         name: name.trim(),
         avatar: avatarFilename || undefined,
         socials: Object.keys(socials).length > 0 ? socials : undefined,
       });
-      
+
       if (updatedUser) {
         // Save onboarding state: flow and next step
         const nextStep = getNextStep('profile');
@@ -650,10 +651,10 @@ export default function OnboardingPage() {
           flow: currentFlow,
           currentStep: nextStep
         });
-        
+
         // Refetch user data in AuthContext to keep it in sync
         await refetchUser();
-        
+
         // Move to next step based on current flow
         setCurrentStep(nextStep);
       }
@@ -668,7 +669,7 @@ export default function OnboardingPage() {
   const toggleIntegration = useCallback(async (type: string) => {
     const item = integrations.find(i => i.type === type);
     if (!item) return;
-    
+
     try {
       setPendingIntegration(type);
       if (item.connected && item.id) {
@@ -679,12 +680,12 @@ export default function OnboardingPage() {
         success(`${item.name} disconnected`);
       } else {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
-        
+
         const config = FLOW_CONFIGS[currentFlow];
-        
+
         // Build payload based on flow configuration
         const payload: { indexId?: string } = {};
-        
+
         if (config.features.requireIndexId) {
           const indexId = user?.onboarding?.indexId || createdIndex?.id;
           if (!indexId) {
@@ -693,31 +694,31 @@ export default function OnboardingPage() {
           }
           payload.indexId = indexId;
         }
-        
+
         const res = await integrationsService.connectIntegration(type, payload);
         const redirect = res.redirectUrl;
         const integrationId = res.integrationId;
-        
+
         if (popup && redirect) {
           popup.location.href = redirect;
         } else if (redirect) {
           window.location.href = redirect;
           return;
         }
-        
+
         if (integrationId) {
           const started = Date.now();
-          
+
           const poll = setInterval(async () => {
             if (popup && popup.closed) {
               clearInterval(poll);
               return;
             }
-            
+
             try {
               // Use the new status endpoint with integrationId
               const s = await integrationsService.getIntegrationStatus(integrationId);
-              
+
               if (s.status === 'connected') {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
@@ -745,7 +746,7 @@ export default function OnboardingPage() {
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
-    
+
     // Validate files before uploading
     const files = Array.from(f);
     const validation = validateFiles(files, 'general');
@@ -753,7 +754,7 @@ export default function OnboardingPage() {
       error(validation.message || 'Invalid file');
       return;
     }
-    
+
     setIsUploading(true);
     try {
       const uploadedFiles = await Promise.all(files.map(async (file: File) => {
@@ -776,12 +777,12 @@ export default function OnboardingPage() {
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl.trim()) return;
-    
+
     let normalizedUrl = linkUrl.trim();
     if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
       normalizedUrl = `https://${normalizedUrl}`;
     }
-    
+
     try {
       setIsAddingLink(true);
       const link = await linksService.createLink(normalizedUrl);
@@ -821,37 +822,37 @@ export default function OnboardingPage() {
 
   const handleCreateIndex = async () => {
     if (!indexName.trim() || !user?.id) return;
-    
+
     setIsLoading(true);
     try {
       const createRequest = {
         title: indexName.trim(),
         joinPolicy: isPrivate ? 'invite_only' as const : 'anyone' as const,
       };
-      
+
       const response = await indexService.createIndex(createRequest);
-      
+
       const indexData = {
         id: response.id,
         name: response.title,
         inviteCode: response.permissions?.invitationLink?.code
       };
-      
+
       setCreatedIndex(indexData);
-      
+
       // Save index ID to onboarding state in database
       const nextStep = getNextStep('create_index');
       await authService.updateOnboardingState({
         indexId: indexData.id,
         currentStep: nextStep
       });
-      
+
       // Refresh indexes context to include the newly created index
       await refreshIndexes();
-      
+
       // Refetch user to get updated onboarding state
       await refetchUser();
-      
+
       success('Index created successfully!');
       setCurrentStep(nextStep);
     } catch (err) {
@@ -877,22 +878,22 @@ export default function OnboardingPage() {
 
   const handleCompleteOnboarding = async () => {
     if (!user?.id) return;
-    
+
     try {
       setIsLoading(true);
-      
+
       // NO LONGER NEEDED - invitation already accepted before onboarding started!
       // Just mark onboarding as completed
       await authService.updateOnboardingState({
         completedAt: new Date().toISOString()
       });
-      
+
       // Refresh indexes to ensure sidebar shows newly joined indexes
       await refreshIndexes();
-      
+
       // Refetch user to get updated onboarding state
       await refetchUser();
-      
+
       router.push('/');
     } catch (error) {
       console.error('Error completing onboarding:', error);
@@ -920,11 +921,11 @@ export default function OnboardingPage() {
                     {avatarPreview ? (
                       <Image src={avatarPreview} alt="Avatar preview" width={80} height={80} className="w-full h-full object-cover" />
                     ) : user?.avatar ? (
-                      <Image 
-                        src={getAvatarUrl(user)} 
-                        alt="Avatar" 
-                        width={80} 
-                        height={80} 
+                      <Image
+                        src={getAvatarUrl(user)}
+                        alt="Avatar"
+                        width={80}
+                        height={80}
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -968,7 +969,7 @@ export default function OnboardingPage() {
               {/* Social Links Section */}
               <div className="space-y-2 pt-0">
                 <h3 className="text-sm font-medium text-black font-ibm-plex-mono mb-2">Socials</h3>
-                
+
                 {/* X (Twitter) */}
                 <div className="flex items-center border border-gray-300">
                   <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
@@ -1070,7 +1071,7 @@ export default function OnboardingPage() {
             const updates: { intro?: string; location?: string } = {};
             if (generatedIntro) updates.intro = generatedIntro;
             if (generatedLocation) updates.location = generatedLocation;
-            
+
             if (Object.keys(updates).length > 0) {
               await authService.updateProfile(updates);
             }
@@ -1112,7 +1113,7 @@ export default function OnboardingPage() {
                 {summaryGenerating ? "Getting to know you" : "Here's what we found"}
               </h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                {summaryGenerating 
+                {summaryGenerating
                   ? "We're reading about you and discovering your intents. This will just take a moment..."
                   : "We've generated your intro and discovered your intents. Review and adjust as needed."}
               </p>
@@ -1271,7 +1272,7 @@ export default function OnboardingPage() {
               <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                 Help Index understand what you're working on and looking for by connecting your accounts and sharing relevant content.
               </p>
-              
+
               {/* Queue Status */}
               {queueStatus?.generateIntents && ((queueStatus.generateIntents.pending ?? 0) > 0 || (queueStatus.generateIntents.active ?? 0) > 0) && (
                 <div className="mb-3 text-[10px] font-ibm-plex-mono text-[#666] bg-[#F8F9FA] px-2 py-1.5 rounded-sm border border-[#E0E0E0]">
@@ -1294,7 +1295,7 @@ export default function OnboardingPage() {
                   </div>
                 </div>
               )}
-              
+
               <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Connect accounts</h2>
             </div>
 
@@ -1309,16 +1310,16 @@ export default function OnboardingPage() {
                 })
                 .map((integration) => {
                   return (
-                    <div 
-                      key={integration.type} 
+                    <div
+                      key={integration.type}
                       className="border border-b-2 border-[#000] p-4 bg-white"
                     >
                       <div className="flex items-center justify-between mb-0">
                         <div className="flex items-center gap-3">
-                          <Image 
-                            src={`/integrations/${integration.type}.png?3`} 
-                            width={24} 
-                            height={24} 
+                          <Image
+                            src={`/integrations/${integration.type}.png?3`}
+                            width={24}
+                            height={24}
                             alt={integration.name}
                           />
                           <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
@@ -1330,24 +1331,22 @@ export default function OnboardingPage() {
                           <button
                             onClick={() => toggleIntegration(integration.type)}
                             disabled={pendingIntegration === integration.type}
-                            className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${
-                              integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                            } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
+                            className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${integration.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                              } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
                           >
                             <span
-                              className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
-                                integration.connected ? 'translate-x-5' : 'translate-x-0'
-                              }`}
+                              className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${integration.connected ? 'translate-x-5' : 'translate-x-0'
+                                }`}
                             />
                             {pendingIntegration === integration.type && (
                               <span className="absolute inset-0 grid place-items-center">
-                              <span
-                                className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
-                                style={{
-                                  marginLeft: integration.connected ? "-20px" : "20px"
-                                }}
-                              />
-                            </span>
+                                <span
+                                  className={`h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin`}
+                                  style={{
+                                    marginLeft: integration.connected ? "-20px" : "20px"
+                                  }}
+                                />
+                              </span>
                             )}
                           </button>
                         )}
@@ -1361,152 +1360,152 @@ export default function OnboardingPage() {
               <h2 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">
                 Add from files & web
               </h2>
-              
+
               <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                 Upload documents or add links to content that represents your work and interests—like research notes, articles, proposals, or blog posts.
               </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
-                  {/* File upload */}
-                  <div className="border border-[#E0E0E0] rounded-sm">
-                    <div className="relative w-full">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        multiple
-                        className="hidden"
-                        id="onboarding-file-upload"
-                        accept={getSupportedFileExtensions('general')}
-                        onChange={(e) => handleFilesSelected(e.target.files)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-sm flex items-center justify-center gap-1.5"
-                      >
-                        {isUploading ? (
-                          <>
-                            <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                            Uploading…
-                          </>
-                        ) : (
-                          <>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                              <path d="M12 5v14"></path>
-                              <path d="M5 12h14"></path>
-                            </svg>
-                            Upload files
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Link input */}
-                  <div className="border border-[#E0E0E0] rounded-sm">
-                    <div className="relative w-full">
-                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
-                        🔗
-                      </span>
-                      <Input
-                        placeholder="Paste URL here"
-                        value={linkUrl}
-                        onChange={(e) => setLinkUrl(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                        className="text-sm bg-white rounded-sm font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
-                      />
-                      {isAddingLink ? (
-                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+                {/* File upload */}
+                <div className="border border-[#E0E0E0] rounded-sm">
+                  <div className="relative w-full">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      id="onboarding-file-upload"
+                      accept={getSupportedFileExtensions('general')}
+                      onChange={(e) => handleFilesSelected(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-sm flex items-center justify-center gap-1.5"
+                    >
+                      {isUploading ? (
+                        <>
+                          <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          Uploading…
+                        </>
                       ) : (
-                        <button
-                          onClick={handleAddLink}
-                          disabled={!linkUrl}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                          aria-label="Add URL"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
                           </svg>
-                        </button>
+                          Upload files
+                        </>
                       )}
-                    </div>
+                    </button>
                   </div>
                 </div>
 
-                {(files.length > 0 || links.length > 0) && (
-                  <div className="space-y-2 pt-3 max-h-[300px] overflow-y-auto">
-                    {files.map((file) => (
-                      <div
-                        key={file.id}
-                        className="group w-full border rounded-sm px-2.5 py-2 transition-colors md:px-3 border-[#E0E0E0] bg-white hover:border-[#CCCCCC]"
+                {/* Link input */}
+                <div className="border border-[#E0E0E0] rounded-sm">
+                  <div className="relative w-full">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
+                      🔗
+                    </span>
+                    <Input
+                      placeholder="Paste URL here"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                      className="text-sm bg-white rounded-sm font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
+                    />
+                    {isAddingLink ? (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <button
+                        onClick={handleAddLink}
+                        disabled={!linkUrl}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        aria-label="Add URL"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {getFileCategoryBadge(file.name, file.type)}
-                            </span>
-                            <span className="text-sm text-[#333] truncate font-medium">{file.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                            <button
-                              className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                              onClick={() => handleDeleteFile(file.id)}
-                              aria-label="Delete file"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                <polyline points="3,6 5,6 21,6"></polyline>
-                                <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                        <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
-                          {formatFileSize(typeof file.size === 'bigint' ? Number(file.size) : (typeof file.size === 'string' ? parseInt(file.size) : file.size))} • {file.createdAt ? formatDate(file.createdAt).split(',')[0] : 'Recently added'}
-                        </div>
-                      </div>
-                    ))}
-                    {links.map((link) => (
-                      <div
-                        key={link.id}
-                        className="group w-full border rounded-sm px-2.5 py-2 transition-colors md:px-3 border-[#E0E0E0] bg-white hover:border-[#CCCCCC]"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <div className="flex-shrink-0">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                              </svg>
-                            </div>
-                            <span className="text-sm text-[#333] truncate font-medium">{link.url}</span>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                            <button
-                              className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                              onClick={() => handleDeleteLink(link.id)}
-                              aria-label="Delete link"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                <polyline points="3,6 5,6 21,6"></polyline>
-                                <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                        <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
-                          {link.createdAt ? formatDate(link.createdAt) : 'Recently added'}
-                        </div>
-                      </div>
-                    ))}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
+
+              {(files.length > 0 || links.length > 0) && (
+                <div className="space-y-2 pt-3 max-h-[300px] overflow-y-auto">
+                  {files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="group w-full border rounded-sm px-2.5 py-2 transition-colors md:px-3 border-[#E0E0E0] bg-white hover:border-[#CCCCCC]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                            {getFileCategoryBadge(file.name, file.type)}
+                          </span>
+                          <span className="text-sm text-[#333] truncate font-medium">{file.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                          <button
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                            onClick={() => handleDeleteFile(file.id)}
+                            aria-label="Delete file"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                              <polyline points="3,6 5,6 21,6"></polyline>
+                              <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
+                        {formatFileSize(typeof file.size === 'bigint' ? Number(file.size) : (typeof file.size === 'string' ? parseInt(file.size) : file.size))} • {file.createdAt ? formatDate(file.createdAt).split(',')[0] : 'Recently added'}
+                      </div>
+                    </div>
+                  ))}
+                  {links.map((link) => (
+                    <div
+                      key={link.id}
+                      className="group w-full border rounded-sm px-2.5 py-2 transition-colors md:px-3 border-[#E0E0E0] bg-white hover:border-[#CCCCCC]"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="flex-shrink-0">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                            </svg>
+                          </div>
+                          <span className="text-sm text-[#333] truncate font-medium">{link.url}</span>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                          <button
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                            onClick={() => handleDeleteLink(link.id)}
+                            aria-label="Delete link"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                              <polyline points="3,6 5,6 21,6"></polyline>
+                              <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
+                        {link.createdAt ? formatDate(link.createdAt) : 'Recently added'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-3 mt-6">
               <Button
@@ -1564,17 +1563,16 @@ export default function OnboardingPage() {
 
               <div>
                 <label className="block text-sm font-bold text-black mb-2 font-ibm-plex-mono">Choose who can discover</label>
-                
+
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                   <button
                     type="button"
                     onClick={() => setIsPrivate(false)}
-                    className={`border-2 p-4 rounded-md text-left transition-all ${
-                      !isPrivate 
-                        ? 'border-[#007EFF] bg-white' 
+                    className={`border-2 p-4 rounded-md text-left transition-all ${!isPrivate
+                        ? 'border-[#007EFF] bg-white'
                         : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={!isPrivate ? "text-[#007EFF]" : "text-black"}>
@@ -1591,11 +1589,10 @@ export default function OnboardingPage() {
                   <button
                     type="button"
                     onClick={() => setIsPrivate(true)}
-                    className={`border-2 p-4 rounded-md text-left transition-all ${
-                      isPrivate 
-                        ? 'border-[#007EFF] bg-white' 
+                    className={`border-2 p-4 rounded-md text-left transition-all ${isPrivate
+                        ? 'border-[#007EFF] bg-white'
                         : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3 mb-2">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={isPrivate ? "text-[#007EFF]" : "text-black"}>
@@ -1628,7 +1625,7 @@ export default function OnboardingPage() {
               >
                 {isLoading ? 'Creating...' : 'Next'}
               </Button>
-              
+
             </div>
           </div>
         );
@@ -1685,12 +1682,12 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            
+
 
             {/* Member invitation section */}
             <div className="mt-6 mb-12">
-            {summaryLoaded ? (
-                (displayMembers.length > 1 ) ? (
+              {summaryLoaded ? (
+                (displayMembers.length > 1) ? (
                   <div className="mt-4">
                     {/* Show member info when there are multiple members and intents */}
                     <div>
@@ -1709,7 +1706,7 @@ export default function OnboardingPage() {
                     <p className="text-black text-[14px] font-ibm-plex-mono mb-4 mt-4">
                       Now, invite them to add their intents! The more intents people share, the easier it becomes to discover each other and connect at the right moment.
                     </p>
-                    
+
                     <div className="flex gap-3">
                       <Button
                         onClick={() => {
@@ -1736,12 +1733,12 @@ export default function OnboardingPage() {
                     <p className="text-black text-[14px] font-ibm-plex-mono mt-4">
                       We're still processing your connected sources to generate your intents and find potential members. This usually takes a few minutes. Check back later to see your results.
                     </p>
-                    <Image 
+                    <Image
                       className="h-auto"
-                      src={'/loading2.gif'} 
-                      alt="Loading..." 
-                      width={300} 
-                      height={200} 
+                      src={'/loading2.gif'}
+                      alt="Loading..."
+                      width={300}
+                      height={200}
                       style={{
                         mixBlendMode: 'multiply',
                         imageRendering: 'auto',
@@ -1781,12 +1778,12 @@ export default function OnboardingPage() {
         // Combine public indexes and user's already-joined private indexes
         // Deduplicate by ID, prioritizing membership status from joinedIndexes
         const allIndexesMap = new Map<string, Index>();
-        
+
         // Add public indexes first
         publicIndexes.forEach(index => {
           allIndexesMap.set(index.id, { ...index, isMember: index.isMember || false });
         });
-        
+
         // Add user's joined private indexes (mark as member)
         // If an index already exists, update it to ensure isMember is true
         joinedIndexes.forEach(index => {
@@ -1799,20 +1796,20 @@ export default function OnboardingPage() {
             allIndexesMap.set(index.id, { ...index, isMember: true });
           }
         });
-        
-        const indexesToShow = allIndexesMap.size > 0 
+
+        const indexesToShow = allIndexesMap.size > 0
           ? Array.from(allIndexesMap.values())
           : mockIndexes.map(m => ({
-              id: m.id,
-              title: m.name,
-              prompt: m.description,
-              permissions: null,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              user: { id: '', name: '', email: null, avatar: null },
-              _count: { members: m.members, files: 0 },
-              isMember: false
-            }));
+            id: m.id,
+            title: m.name,
+            prompt: m.description,
+            permissions: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            user: { id: '', name: '', email: null, avatar: null },
+            _count: { members: m.members, files: 0 },
+            isMember: false
+          }));
 
         const handleToggleJoin = async (index: typeof indexesToShow[number]) => {
           // Skip if this is mock data
@@ -1841,7 +1838,7 @@ export default function OnboardingPage() {
             setSelectedIndexes(prev => new Set(prev).add(index.id));
             success(`Joined ${index.title}!`);
             // Update the index in both lists
-            setPublicIndexes(prev => prev.map(idx => 
+            setPublicIndexes(prev => prev.map(idx =>
               idx.id === index.id ? { ...idx, isMember: true } : idx
             ));
             // If it's a private index, also add it to joinedIndexes
@@ -1851,7 +1848,7 @@ export default function OnboardingPage() {
                 if (!exists) {
                   return [...prev, { ...index, isMember: true }];
                 }
-                return prev.map(idx => 
+                return prev.map(idx =>
                   idx.id === index.id ? { ...idx, isMember: true } : idx
                 );
               });
@@ -1871,7 +1868,7 @@ export default function OnboardingPage() {
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Step into the right indexes</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-              Based on your profile, here are networks where people are already sharing opportunities and ideas.
+                Based on your profile, here are networks where people are already sharing opportunities and ideas.
               </p>
             </div>
 
@@ -1884,7 +1881,7 @@ export default function OnboardingPage() {
                 {indexesToShow.map((index) => {
                   const isJoined = index.isMember || selectedIndexes.has(index.id);
                   const isJoining = isJoiningIndex === index.id;
-                  
+
                   return (
                     <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
                       <div className="text-center">
@@ -1896,11 +1893,10 @@ export default function OnboardingPage() {
                           variant={isJoined ? "default" : "outline"}
                           onClick={() => handleToggleJoin(index)}
                           disabled={isJoined || isJoining}
-                          className={`w-full font-ibm-plex-mono ${
-                            isJoined
+                          className={`w-full font-ibm-plex-mono ${isJoined
                               ? 'bg-[#006D4B] text-white hover:bg-[#005A3E]'
                               : 'border-[#E0E0E0] text-black hover:bg-[#F0F0F0]'
-                          }`}
+                            }`}
                         >
                           {isJoining ? (
                             <>
@@ -1952,7 +1948,7 @@ export default function OnboardingPage() {
           {renderStepContent()}
         </div>
       </div>
-      
+
       {/* Library Modal */}
       <LibraryModal
         open={showLibraryModal}
@@ -1960,9 +1956,9 @@ export default function OnboardingPage() {
         onChanged={() => {
           // Optionally refresh index summary when library changes
           if (currentStep === 'invite_members') {
-            loadIndexSummary(); 
+            loadIndexSummary();
           }
-        }}  
+        }}
       />
     </ClientLayout>
   );

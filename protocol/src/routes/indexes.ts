@@ -395,6 +395,91 @@ router.get('/:id',
 );
 
 // Create new index
+// Create new index
+export const createIndexHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    // Check if user is allowed to create index (must have @index.network email)
+    const userResult = await db.select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, req.user!.id))
+      .limit(1);
+
+    if (!userResult[0]?.email?.endsWith('@index.network')) {
+      return res.status(403).json({ error: 'Only @index.network members can create indexes' });
+    }
+
+    const { title, prompt, joinPolicy } = req.body;
+
+    // Set up permissions with joinPolicy
+    const finalJoinPolicy = joinPolicy || 'invite_only';
+    const permissions = {
+      joinPolicy: finalJoinPolicy,
+      invitationLink: { code: crypto.randomUUID() }, // Always generate share code
+      allowGuestVibeCheck: false,
+      requireApproval: false
+    };
+
+    const newIndex = await db.insert(indexes).values({
+      title,
+      prompt: prompt || null,
+      permissions,
+    }).returning({
+      id: indexes.id,
+      title: indexes.title,
+      prompt: indexes.prompt,
+      permissions: indexes.permissions,
+      createdAt: indexes.createdAt,
+      updatedAt: indexes.updatedAt
+    });
+
+    // Add creator as owner member
+    await addMemberToIndex({
+      indexId: newIndex[0].id,
+      userId: req.user!.id,
+      role: 'owner',
+      prompt: prompt || null,
+      autoAssign: true
+    });
+
+    // Get user information
+    const userData = await db.select({
+      name: users.name,
+      avatar: users.avatar
+    }).from(users)
+      .where(eq(users.id, req.user!.id))
+      .limit(1);
+
+    const result = {
+      id: newIndex[0].id,
+      title: newIndex[0].title,
+      permissions: newIndex[0].permissions,
+      createdAt: newIndex[0].createdAt,
+      updatedAt: newIndex[0].updatedAt,
+      user: {
+        id: req.user!.id, // Use the requesting user ID as owner
+        name: userData[0].name,
+        avatar: userData[0].avatar
+      },
+      _count: {
+        members: 1 // Now has 1 member (the owner)
+      }
+    };
+
+    return res.status(201).json({
+      message: 'Index created successfully',
+      index: result
+    });
+  } catch (error) {
+    console.error('Create index error:', error);
+    return res.status(500).json({ error: 'Failed to create index' });
+  }
+};
+
 router.post('/',
   authenticatePrivy,
   [
@@ -402,79 +487,7 @@ router.post('/',
     body('prompt').optional().trim(),
     body('joinPolicy').optional().isIn(['anyone', 'invite_only']),
   ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { title, prompt, joinPolicy } = req.body;
-
-      // Set up permissions with joinPolicy
-      const finalJoinPolicy = joinPolicy || 'invite_only';
-      const permissions = {
-        joinPolicy: finalJoinPolicy,
-        invitationLink: { code: crypto.randomUUID() }, // Always generate share code
-        allowGuestVibeCheck: false,
-        requireApproval: false
-      };
-
-      const newIndex = await db.insert(indexes).values({
-        title,
-        prompt: prompt || null,
-        permissions,
-      }).returning({
-        id: indexes.id,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        permissions: indexes.permissions,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt
-      });
-
-      // Add creator as owner member
-      await addMemberToIndex({
-        indexId: newIndex[0].id,
-        userId: req.user!.id,
-        role: 'owner',
-        prompt: prompt || null,
-        autoAssign: true
-      });
-
-      // Get user information
-      const userData = await db.select({
-        name: users.name,
-        avatar: users.avatar
-      }).from(users)
-        .where(eq(users.id, req.user!.id))
-        .limit(1);
-
-      const result = {
-        id: newIndex[0].id,
-        title: newIndex[0].title,
-        permissions: newIndex[0].permissions,
-        createdAt: newIndex[0].createdAt,
-        updatedAt: newIndex[0].updatedAt,
-        user: {
-          id: req.user!.id, // Use the requesting user ID as owner
-          name: userData[0].name,
-          avatar: userData[0].avatar
-        },
-        _count: {
-          members: 1 // Now has 1 member (the owner)
-        }
-      };
-
-      return res.status(201).json({
-        message: 'Index created successfully',
-        index: result
-      });
-    } catch (error) {
-      console.error('Create index error:', error);
-      return res.status(500).json({ error: 'Failed to create index' });
-    }
-  }
+  createIndexHandler
 );
 
 // Update index

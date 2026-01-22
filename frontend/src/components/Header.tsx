@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks, Library, User as UserIcon, ChevronDown, Crown, Users } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -220,7 +220,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               />
             </div>
           </Link>
-          
+
           {/* Index Dropdown - only show when authenticated and not in admin mode */}
           {authenticated && !isAdminMode && (
             <div className="relative" ref={indexDropdownRef}>
@@ -241,31 +241,28 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                       {/* All Indexes option */}
                       <button
                         onClick={() => handleIndexClick('all')}
-                        className={`w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-black flex items-center justify-between hover:bg-gray-50 ${
-                          selectedIndexId === 'all' ? 'bg-gray-100 font-medium' : ''
-                        }`}
+                        className={`w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-black flex items-center justify-between hover:bg-gray-50 ${selectedIndexId === 'all' ? 'bg-gray-100 font-medium' : ''
+                          }`}
                       >
                         <span>All Indexes</span>
                       </button>
-                      
+
                       {/* Divider */}
                       {rawIndexes && rawIndexes.length > 0 && (
                         <div className="border-t border-gray-200 my-1" />
                       )}
-                      
+
                       {/* Index items */}
                       {rawIndexes?.map((index) => (
                         <div
                           key={index.id}
-                          className={`group flex items-center justify-between px-3 py-2 hover:bg-gray-50 ${
-                            selectedIndexId === index.id ? 'bg-gray-100' : ''
-                          }`}
+                          className={`group flex items-center justify-between px-3 py-2 hover:bg-gray-50 ${selectedIndexId === index.id ? 'bg-gray-100' : ''
+                            }`}
                         >
                           <button
                             onClick={() => handleIndexClick(index.id)}
-                            className={`flex-1 text-left text-sm font-ibm-plex-mono text-black truncate ${
-                              selectedIndexId === index.id ? 'font-medium' : ''
-                            }`}
+                            className={`flex-1 text-left text-sm font-ibm-plex-mono text-black truncate ${selectedIndexId === index.id ? 'font-medium' : ''
+                              }`}
                           >
                             {index.title}
                           </button>
@@ -362,15 +359,16 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                         <Settings className="h-4 w-4 mr-2" />
                         Preferences
                       </button>
-                      { true && <button
-                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
-                      onClick={() => {
-                        setDropdownOpen(false);
-                        setCreateIndexModalOpen(true);
-                      }}
-                    >
-                      Create Index
-                    </button> }
+                      {user?.email?.endsWith('@index.network') && <button
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setCreateIndexModalOpen(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Index
+                      </button>}
                       <button
                         className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors font-ibm-plex-mono text-sm"
                         onClick={() => {
