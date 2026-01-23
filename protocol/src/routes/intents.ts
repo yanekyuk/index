@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
-import { and, eq, isNull } from 'drizzle-orm';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { checkMultipleIndexesMembership } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
@@ -10,9 +9,6 @@ import { intentService } from '../services/intent.service';
 import { generateEmbedding } from '../lib/embeddings';
 import { IntentSuggester } from '../agents/intent/suggester/intent.suggester';
 import { IntentRefiner } from '../agents/intent/refiner/intent.refiner';
-import db from '../lib/db';
-import { intents } from '../lib/schema';
-import { Events } from '../lib/events';
 
 const router = Router();
 
@@ -290,25 +286,22 @@ router.post('/:id/refine',
       const { id } = req.params;
       const { followupText } = req.body;
 
-      // Fetch existing intent and verify ownership
-      const intent = await db.select({
-        id: intents.id,
-        payload: intents.payload,
-        userId: intents.userId
-      })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
+      // Fetch existing intent and verify ownership via service
+      let intent;
+      try {
+        intent = await intentService.getIntentForProcessing(id, req.user!.id);
+      } catch (error: any) {
+        if (error.message === 'Access denied') {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        throw error;
+      }
 
-      if (intent.length === 0) {
+      if (!intent) {
         return res.status(404).json({ error: 'Intent not found' });
       }
 
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      const originalPayload = intent[0].payload;
+      const originalPayload = intent.payload;
 
       // Use IntentRefiner agent to generate refined payload
       const refiner = new IntentRefiner();
@@ -320,49 +313,26 @@ router.post('/:id/refine',
 
       const refinedPayload = refineResult.refinedPayload;
 
-      // Update the intent with refined payload
+      // Update the intent with refined payload via service
       const newSummary = await summarizeIntent(refinedPayload);
 
-      const updateData: any = {
-        payload: refinedPayload,
-        updatedAt: new Date()
-      };
-
-      if (newSummary) {
-        updateData.summary = newSummary;
-      }
-
       // Regenerate embedding
+      let embedding: number[] | undefined;
       try {
-        const embedding = await generateEmbedding(refinedPayload);
-        updateData.embedding = embedding;
+        embedding = await generateEmbedding(refinedPayload);
       } catch (error) {
         console.error('Failed to regenerate embedding:', error);
       }
 
-      const updatedIntent = await db.update(intents)
-        .set(updateData)
-        .where(eq(intents.id, id))
-        .returning({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          isIncognito: intents.isIncognito,
-          createdAt: intents.createdAt,
-          updatedAt: intents.updatedAt,
-          userId: intents.userId
-        });
-
-      // Trigger intent updated event
-      Events.Intent.onUpdated({
-        intentId: updatedIntent[0].id,
-        userId: req.user!.id,
-        payload: updatedIntent[0].payload
+      const updatedIntent = await intentService.refineIntent(id, req.user!.id, {
+        payload: refinedPayload,
+        summary: newSummary,
+        embedding
       });
 
       return res.json({
         message: 'Intent refined successfully',
-        intent: updatedIntent[0]
+        intent: updatedIntent
       });
     } catch (error) {
       console.error('Refine intent error:', error);
@@ -384,28 +354,24 @@ router.get('/:id/suggestions',
 
       const { id } = req.params;
 
-      // Fetch intent and verify ownership
-      const intent = await db.select({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        userId: intents.userId
-      })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
-
-      if (intent.length === 0) {
-        return res.status(404).json({ error: 'Intent not found' });
+      // Fetch intent and verify ownership via service
+      let intent;
+      try {
+        intent = await intentService.getIntentForProcessing(id, req.user!.id);
+      } catch (error: any) {
+        if (error.message === 'Access denied') {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        throw error;
       }
 
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      if (!intent) {
+        return res.status(404).json({ error: 'Intent not found' });
       }
 
       // Use IntentSuggester agent to generate refinement suggestions
       const suggester = new IntentSuggester();
-      const result = await suggester.run(intent[0].payload);
+      const result = await suggester.run(intent.payload);
 
       return res.json({
         suggestions: result?.suggestions || []
