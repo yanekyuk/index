@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql, ne, isNotNull } from 'drizzle-orm';
+import { eq, and, isNull, sql, ne, isNotNull, notInArray } from 'drizzle-orm';
 import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
 import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
 import { ProfileGenerator } from '../agents/profile/profile.generator';
@@ -9,7 +9,7 @@ import { checkAndTriggerSocialSync } from '../lib/integrations/social-sync';
 import { json2md } from '../lib/json2md/json2md';
 import { log } from '../lib/log';
 import { searchUser } from '../lib/parallel/parallel';
-import { NotificationPreferences, User, UserSocials, userNotificationSettings, userProfiles } from '../lib/schema';
+import { NotificationPreferences, User, UserSocials, userNotificationSettings, userProfiles, users } from '../lib/schema';
 
 export interface UpdateProfileDto {
   name?: string;
@@ -440,6 +440,78 @@ export class ProfileService {
       item: r.item as unknown as T,
       score: 1 - r.distance
     }));
+  }
+
+  /**
+   * Get all users who don't have a profile yet.
+   * Returns user info needed for profile generation.
+   */
+  async getUsersWithoutProfiles(): Promise<Array<{
+    id: string;
+    name: string;
+    email: string;
+    intro: string | null;
+    location: string | null;
+    socials: UserSocials | null;
+  }>> {
+    // Get all user IDs that have profiles
+    const usersWithProfiles = await db.select({ userId: userProfiles.userId }).from(userProfiles);
+    const userIdsWithProfiles = usersWithProfiles.map(p => p.userId);
+
+    // Get all users that don't have profiles (excluding soft-deleted users)
+    let query = db.select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      intro: users.intro,
+      location: users.location,
+      socials: users.socials
+    })
+      .from(users)
+      .where(isNull(users.deletedAt));
+
+    // If there are users with profiles, exclude them
+    if (userIdsWithProfiles.length > 0) {
+      query = db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        intro: users.intro,
+        location: users.location,
+        socials: users.socials
+      })
+        .from(users)
+        .where(and(
+          isNull(users.deletedAt),
+          notInArray(users.id, userIdsWithProfiles)
+        ));
+    }
+
+    return query;
+  }
+
+  /**
+   * Create an initial profile entry for a user.
+   * This creates a minimal profile so that the profile queue can repair/enhance it.
+   */
+  async createInitialProfile(userId: string, userName: string, intro?: string | null, location?: string | null): Promise<void> {
+    await db.insert(userProfiles)
+      .values({
+        userId,
+        identity: {
+          name: userName,
+          bio: intro || '',
+          location: location || ''
+        }
+      })
+      .onConflictDoUpdate({
+        target: userProfiles.userId,
+        set: {
+          updatedAt: new Date()
+        }
+      });
+    
+    log.info('[ProfileService] Created initial profile for user', { userId });
   }
 }
 
