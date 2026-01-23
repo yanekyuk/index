@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
-import { and, eq, isNull } from 'drizzle-orm';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { checkMultipleIndexesMembership } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
@@ -8,10 +7,8 @@ import { suggestTags } from '../agents/core/intent_tag_suggester';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { intentService } from '../services/intent.service';
 import { generateEmbedding } from '../lib/embeddings';
-import { traceableLlm, traceableStructuredLlm } from '../lib/agents';
-import db from '../lib/db';
-import { intents } from '../lib/schema';
-import { Events } from '../lib/events';
+import { IntentSuggester } from '../agents/intent/suggester/intent.suggester';
+import { IntentRefiner } from '../agents/intent/refiner/intent.refiner';
 
 const router = Router();
 
@@ -289,99 +286,53 @@ router.post('/:id/refine',
       const { id } = req.params;
       const { followupText } = req.body;
 
-      // Fetch existing intent and verify ownership
-      const intent = await db.select({
-        id: intents.id,
-        payload: intents.payload,
-        userId: intents.userId
-      })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
+      // Fetch existing intent and verify ownership via service
+      let intent;
+      try {
+        intent = await intentService.getIntentForProcessing(id, req.user!.id);
+      } catch (error: any) {
+        if (error.message === 'Access denied') {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        throw error;
+      }
 
-      if (intent.length === 0) {
+      if (!intent) {
         return res.status(404).json({ error: 'Intent not found' });
       }
 
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      const originalPayload = intent.payload;
+
+      // Use IntentRefiner agent to generate refined payload
+      const refiner = new IntentRefiner();
+      const refineResult = await refiner.run(originalPayload, followupText);
+
+      if (!refineResult) {
+        return res.status(500).json({ error: 'Failed to refine intent' });
       }
 
-      const originalPayload = intent[0].payload;
+      const refinedPayload = refineResult.refinedPayload;
 
-      // Use LLM to generate refined payload
-      const refineCall = traceableLlm('intent-suggester', {
-        intentId: id,
-        originalLength: originalPayload.length,
-        followupLength: followupText.length
-      });
-
-      const systemMessage = {
-        role: 'system',
-        content: `You are an intent refinement specialist. Your task is to refine a user's intent based on their followup input.
-
-Rules:
-- Combine the original intent with the followup refinement
-- Keep the refined intent concise and clear (under 500 characters)
-- Preserve the core meaning while incorporating the refinement
-- Output ONLY the refined intent text, nothing else`
-      };
-
-      const userMessage = {
-        role: 'user',
-        content: `Original intent: ${originalPayload}
-
-Followup refinement: ${followupText}
-
-Generate the refined intent:`
-      };
-
-      const response = await refineCall([systemMessage, userMessage]);
-      const refinedPayload = (response.content as string).trim();
-
-      // Update the intent with refined payload
+      // Update the intent with refined payload via service
       const newSummary = await summarizeIntent(refinedPayload);
-      
-      const updateData: any = {
-        payload: refinedPayload,
-        updatedAt: new Date()
-      };
-      
-      if (newSummary) {
-        updateData.summary = newSummary;
-      }
 
       // Regenerate embedding
+      let embedding: number[] | undefined;
       try {
-        const embedding = await generateEmbedding(refinedPayload);
-        updateData.embedding = embedding;
+        embedding = await generateEmbedding(refinedPayload);
       } catch (error) {
         console.error('Failed to regenerate embedding:', error);
       }
 
-      const updatedIntent = await db.update(intents)
-        .set(updateData)
-        .where(eq(intents.id, id))
-        .returning({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          isIncognito: intents.isIncognito,
-          createdAt: intents.createdAt,
-          updatedAt: intents.updatedAt,
-          userId: intents.userId
-        });
-
-      // Trigger intent updated event
-      Events.Intent.onUpdated({
-        intentId: updatedIntent[0].id,
-        userId: req.user!.id,
-        payload: updatedIntent[0].payload
+      const updatedIntent = await intentService.refineIntent(id, req.user!.id, {
+        payload: refinedPayload,
+        summary: newSummary,
+        embedding
       });
 
       return res.json({
         message: 'Intent refined successfully',
-        intent: updatedIntent[0]
+        intent: updatedIntent
       });
     } catch (error) {
       console.error('Refine intent error:', error);
@@ -403,85 +354,27 @@ router.get('/:id/suggestions',
 
       const { id } = req.params;
 
-      // Fetch intent and verify ownership
-      const intent = await db.select({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        userId: intents.userId
-      })
-        .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
-        .limit(1);
+      // Fetch intent and verify ownership via service
+      let intent;
+      try {
+        intent = await intentService.getIntentForProcessing(id, req.user!.id);
+      } catch (error: any) {
+        if (error.message === 'Access denied') {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        throw error;
+      }
 
-      if (intent.length === 0) {
+      if (!intent) {
         return res.status(404).json({ error: 'Intent not found' });
       }
 
-      if (intent[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      // Use LLM to generate refinement suggestions
-      const suggestionsSchema = {
-        name: 'refinement_suggestions',
-        type: 'object',
-        properties: {
-          suggestions: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                label: { type: 'string', description: 'Short chip label (max 40 chars)' },
-                type: { type: 'string', enum: ['direct', 'prompt'], description: 'direct = apply on click, prompt = prefill input for user to complete' },
-                followupText: { type: 'string', description: 'The followup text to apply (required for direct type)' },
-                prefill: { type: 'string', description: 'Partial text to prefill input (required for prompt type)' }
-              },
-              required: ['label', 'type']
-            }
-          }
-        },
-        required: ['suggestions']
-      };
-
-      const suggestCall = traceableStructuredLlm('intent-suggester', {
-        intentId: id,
-        payloadLength: intent[0].payload.length
-      });
-
-      const systemMessage = {
-        role: 'system',
-        content: `You are a helpful assistant that suggests ways to refine or narrow down a user's intent.
-
-Generate 3-5 contextual refinement suggestions based on the user's intent. Each suggestion has:
-- label: Short chip label (max 40 chars)
-- type: Either "direct" or "prompt"
-- followupText: Complete refinement text (required for "direct" type)
-- prefill: Partial text for user to complete (required for "prompt" type)
-
-Use "direct" type when the suggestion is complete and can be applied immediately:
-- { label: "Founded recently", type: "direct", followupText: "Founded in the last 2 years" }
-- { label: "Seed stage only", type: "direct", followupText: "Only seed stage companies" }
-
-Use "prompt" type when user input is needed to complete the refinement:
-- { label: "Add location", type: "prompt", prefill: "Focus on companies based in " }
-- { label: "Specific industry", type: "prompt", prefill: "In the " }
-- { label: "Company size", type: "prompt", prefill: "With team size of " }
-
-Mix both types to give users quick options and customizable refinements.`
-      };
-
-      const userMessage = {
-        role: 'user',
-        content: `Generate refinement suggestions for this intent:
-
-${intent[0].payload}`
-      };
-
-      const response = await suggestCall([systemMessage, userMessage], suggestionsSchema);
+      // Use IntentSuggester agent to generate refinement suggestions
+      const suggester = new IntentSuggester();
+      const result = await suggester.run(intent.payload);
 
       return res.json({
-        suggestions: response.suggestions || []
+        suggestions: result?.suggestions || []
       });
     } catch (error) {
       console.error('Get suggestions error:', error);
