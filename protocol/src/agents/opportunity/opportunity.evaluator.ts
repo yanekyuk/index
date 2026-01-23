@@ -15,10 +15,10 @@ import { Embedder } from '../common/types';
 // System prompt for the Opportunity Evaluator Agent (Analysis Stage)
 const ANALYSIS_SYSTEM_PROMPT = `
     You are an expert "Opportunity Matcher" and super-connector.
-    Your Goal: Analyze a Source User's "Ideal Match Description" (or their Profile) against a Candidate User's profile to identify A SINGLE HIGH-VALUE opportunity.
+    Your Goal: Analyze a Source User's profile against a Candidate User's profile to identify A SINGLE HIGH-VALUE opportunity.
 
     Input:
-    - Source Context: Either an "Ideal Partner Description" (HyDE) OR the User's own Profile.
+    - Source Context: The Source User's own Profile.
     - Candidate Profile (JSON)
     - Existing Opportunities (Context of matches already made)
 
@@ -26,21 +26,25 @@ const ANALYSIS_SYSTEM_PROMPT = `
     - A list containing EXACTLY ONE "Opportunity" if a match exists.
     - If NO match exists, return an empty list.
     - Score (0-100): How strong is this match?
-    - 90-100: "Must Meet" (Perfect alignment with the Ideal Description).
-    - 70-89: "Should Meet" (Strong overlaps, clear potential).
-    - <70: No opportunity (Return empty list).
+      - 90-100: "Must Meet" (Perfect alignment).
+      - 70-89: "Should Meet" (Strong overlaps, clear potential).
+      - <70: No opportunity (Return empty list).
+
+    **CRITICAL: TWO DESCRIPTIONS REQUIRED**
+    Each opportunity MUST contain TWO separate descriptions:
+    1. **description** (Source-facing): Written for the SOURCE user. Address them as "You". Explain why THEY should meet the Candidate.
+    2. **candidateDescription** (Candidate-facing): Written for the CANDIDATE. Address THEM as "You". Explain why THEY should meet the Source.
+
+    Example:
+    - description: "You should meet Alice because she has expertise in AI that aligns with your goal to build intelligent systems."
+    - candidateDescription: "You should meet Bob because he is building a product that could benefit from your AI expertise."
 
     Rules:
-    1. SYNTHESIS (CRITICAL): If multiple distinct match angles exist (e.g., they share interests in AI AND both like Hiking), do NOT list them separately. SYNTHESIZE them into a SINGLE, robust opportunity description.
-       - The title should be comprehensive (e.g., "Collaboration on AI & Hiking exploration").
-       - The description should weave these points into a cohesive narrative.
-    2. IMPERATIVE: Address the SOURCE User as "You". NEVER use their name. Refer to the CANDIDATE by their name.
+    1. SYNTHESIS (CRITICAL): If multiple distinct match angles exist, SYNTHESIZE them into a SINGLE, robust opportunity.
+    2. NEVER use names when addressing a user directly. Use "You" for the person being addressed.
     3. COMPREHENSIVE: The single opportunity must capture ALL the value of the connection.
-    4. Be specific about the "Why".
-    5. DEDUPLICATION: You must NOT suggest opportunities that are effectively duplicates of "Existing Opportunities".
-       - If the Source has already matched with this Candidate for same reason -> IGNORE.
-       - If the Source has seen this exact opportunity -> IGNORE.
-       - If the match is new/distinct -> INCLUDE it.
+    4. Be specific about the "Why" for BOTH sides.
+    5. DEDUPLICATION: Do NOT suggest opportunities that duplicate "Existing Opportunities".
 `;
 
 
@@ -48,7 +52,8 @@ const ANALYSIS_SYSTEM_PROMPT = `
 const OpportunitySchema = z.object({
   type: z.enum(['collaboration', 'mentorship', 'networking', 'other']),
   title: z.string().describe('Short title of the opportunity'),
-  description: z.string().describe('Comprehensive reasoning why this is a good match, synthesizing all overlapping areas.'),
+  description: z.string().describe('Source-facing: Why the SOURCE user should meet the candidate. Address them as "You".'),
+  candidateDescription: z.string().describe('Candidate-facing: Why the CANDIDATE should meet the source. Address them as "You".'),
   score: z.number().min(0).max(100).describe('Relevance score 0-100'),
   candidateId: z.string().describe('The user ID of the match'),
 });
@@ -264,9 +269,11 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
         opportunitiesList = result.structuredResponse.opportunities;
       }
 
-      const mappedOpportunities = opportunitiesList.map((op: Opportunity) => ({
+      const mappedOpportunities = opportunitiesList.map((op: any) => ({
         ...op,
-        candidateId: candidateUserId
+        candidateId: candidateUserId,
+        // Ensure candidateDescription exists (fallback for backward compat)
+        candidateDescription: op.candidateDescription || op.description
       }));
 
       return mappedOpportunities;

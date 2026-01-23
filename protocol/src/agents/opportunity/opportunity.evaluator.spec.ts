@@ -155,7 +155,8 @@ async function setupEvaluator() {
     return candidates.map(c => ({
       type: 'collaboration',
       title: `Match with ${c.identity.name}`,
-      description: 'Good match',
+      description: 'Good match for source',
+      candidateDescription: 'Good match for candidate',
       score: 90,
       candidateId: c.userId
     }));
@@ -288,14 +289,16 @@ describe('Opportunity Evaluator Tests', () => {
         {
           type: 'collaboration',
           title: `Match A with ${c.identity.name}`,
-          description: 'Good match A',
+          description: 'Good match A for source',
+          candidateDescription: 'Good match A for candidate',
           score: 80,
           candidateId: c.userId
         },
         {
           type: 'mentorship',
           title: `Match B with ${c.identity.name}`,
-          description: 'Good match B',
+          description: 'Good match B for source',
+          candidateDescription: 'Good match B for candidate',
           score: 95,
           candidateId: c.userId
         }
@@ -320,8 +323,8 @@ describe('Opportunity Evaluator Tests', () => {
     // Spy on analyzeMatch to return multiple
     (evaluator as any).analyzeMatch = async (source: any, candidate: any, id: string) => {
       return [
-        { type: 'networking', title: 'Low Score', description: 'Low', score: 50, candidateId: id },
-        { type: 'collaboration', title: 'High Score', description: 'High', score: 99, candidateId: id }
+        { type: 'networking', title: 'Low Score', description: 'Low', candidateDescription: 'Low for candidate', score: 50, candidateId: id },
+        { type: 'collaboration', title: 'High Score', description: 'High', candidateDescription: 'High for candidate', score: 99, candidateId: id }
       ];
     };
 
