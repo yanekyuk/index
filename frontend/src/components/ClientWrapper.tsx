@@ -17,16 +17,16 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   // Define known routes to detect 404 pages
-  const knownRoutes = useMemo(() => ['/', '/simulation', '/onboarding', '/l', '/i', '/u', '/index', '/admin'], []);
+  const knownRoutes = useMemo(() => ['/', '/simulation', '/onboarding', '/l', '/i', '/u', '/index', '/admin', '/blog'], []);
   const isKnownRoute = knownRoutes.some(route =>
     pathname === route ||
     pathname?.startsWith(route + '/')
   );
-  // Show sidebar only on app pages (exclude landing '/' for unauthenticated, onboarding, invitation, and index join pages)
+  // Show sidebar only on app pages (exclude landing '/' for unauthenticated, onboarding, invitation, index join, and blog pages)
   // For authenticated users, '/' is the inbox so show sidebar there too
   const showSidebar = useMemo(() => {
-    // Always hide on onboarding and invitation/index join pages
-    if (pathname === '/onboarding' || pathname?.startsWith('/l/') || pathname?.startsWith('/index/')) {
+    // Always hide on onboarding, invitation/index join pages, and blog
+    if (pathname === '/onboarding' || pathname?.startsWith('/l/') || pathname?.startsWith('/index/') || pathname === '/blog' || pathname?.startsWith('/blog/')) {
       return false;
     }
     // Show on root if authenticated (inbox), otherwise hide (landing page)
@@ -34,7 +34,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
       return isAuthenticated;
     }
     // Show on other app routes
-    return knownRoutes.filter(route => route !== '/' && route !== '/onboarding' && route !== '/l' && route !== '/index').some(route =>
+    return knownRoutes.filter(route => route !== '/' && route !== '/onboarding' && route !== '/l' && route !== '/index' && route !== '/blog').some(route =>
       pathname === route || pathname?.startsWith(route + '/')
     );
   }, [pathname, knownRoutes, isAuthenticated]);

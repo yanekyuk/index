@@ -577,17 +577,19 @@ export default function InboxContent() {
         </div>
       )}
 
-      {/* Discovery input - separate row above content when no intent selected */}
+      {/* Discovery input */}
       {activeTab === 'discover' && !discoveryIntents && (
-        <DiscoveryForm
-          ref={discoveryFormRef}
-          floating={false}
-          onSubmit={(intents) => {
-            if (intents && intents.length > 0) {
-              router.push(`/i/${intents[0].id}`);
-            }
-          }}
-        />
+        <div className="pb-0">
+          <DiscoveryForm
+            ref={discoveryFormRef}
+            floating={false}
+            onSubmit={(intents) => {
+              if (intents && intents.length > 0) {
+                router.push(`/i/${intents[0].id}`);
+              }
+            }}
+          />
+        </div>
       )}
 
       <div className="bg-white w-full h-full border border-gray-800 rounded-sm px-4 py-2 flex flex-col">
@@ -618,7 +620,7 @@ export default function InboxContent() {
 
           {/* Discover Content */}
           {activeTab === 'discover' && (
-            <div className={`bg-white ${discoveryIntents ? 'flex-1 overflow-y-auto' : ''}`}>
+            <div className={`bg-white ${discoveryIntents ? 'flex-1' : ''}`}>
               {discoveryLoading ? (
                 <div className="flex flex-col items-center justify-center px-6 pb-8">
                   <Image

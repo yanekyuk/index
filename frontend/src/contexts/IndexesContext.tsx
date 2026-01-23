@@ -3,6 +3,7 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { Index } from '@/lib/types';
 import { useIndexes as useIndexesService } from '@/contexts/APIContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface IndexesContextType {
   indexes: Index[];
@@ -21,6 +22,7 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const indexesService = useIndexesService();
+  const { isAuthenticated } = useAuthContext();
   const hasFetchedRef = useRef(false);
   const hasDataRef = useRef(false);
 
@@ -58,12 +60,14 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
     setIndexes(prev => prev.filter(index => index.id !== indexId));
   }, []);
 
-  // Initial load - only fetch once
+  // Initial load - only fetch once when authenticated
   useEffect(() => {
-    if (!hasFetchedRef.current) {
+    if (isAuthenticated && !hasFetchedRef.current) {
       refreshIndexes();
+    } else if (!isAuthenticated) {
+      setLoading(false);
     }
-  }, [refreshIndexes]);
+  }, [isAuthenticated, refreshIndexes]);
 
   return (
     <IndexesContext.Provider value={{

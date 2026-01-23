@@ -14,7 +14,7 @@ function LandingPage() {
         {/* Hero Section */}
         <section className="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto mt-8 mb-4 px-4 gap-8">
           <div className="flex-1 max-w-xl sm:mt-24">
-            <h1 className="text-[40px] md:text-[40px] font-medium text-gray-900 mb-6 leading-tight font-playfair">
+            <h1 className="text-[40px] md:text-[40px] font-medium text-gray-900 mb-6 leading-tight font-garamond">
               Discovery that&apos;s always on
             </h1>
             <p className="text-lg text-gray-700 mb-8 font-sans">

@@ -107,90 +107,98 @@ export default function ChatView({
           console.error('Failed to check message permission:', err);
         }
 
-        const ch = await getOrCreateChannel(userId, userName, userAvatar);
-        if (!ch) {
+        // First, check if channel exists using queryChannels (read-only, won't create)
+        const sortedIds = [client.userID, userId].sort().join('_');
+        const expectedChannelId = sortedIds.length > 64 
+          ? (() => {
+              let hash = 0;
+              for (let i = 0; i < sortedIds.length; i++) {
+                const char = sortedIds.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+              }
+              return Math.abs(hash).toString(36).slice(0, 63);
+            })()
+          : sortedIds;
+
+        const existingChannels = await client.queryChannels(
+          { type: 'messaging', id: expectedChannelId },
+          {},
+          { limit: 1 }
+        );
+
+        if (existingChannels.length > 0) {
+          // Channel exists - watch it and load messages
+          const ch = existingChannels[0];
+          currentChannel = ch;
+          
+          if (!mounted) return;
+          
+          await ch.watch();
+          setChannel(ch);
+
+          // Check pending state from channel data
+          const channelData = ch.data as { pending?: boolean; requestedBy?: string; awaitingAdminApproval?: boolean };
+          if (channelData?.pending) {
+            setPendingState({
+              isPending: true,
+              isRequester: channelData.requestedBy === client?.userID,
+              awaitingAdminApproval: channelData.awaitingAdminApproval || false
+            });
+          } else {
+            setPendingState({ isPending: false, isRequester: false, awaitingAdminApproval: false });
+          }
+          
+          // Check if this is a new conversation (no messages and not connected)
+          if (!canMessageDirectly && ch.state.messages.length === 0 && !channelData?.pending) {
+            setIsNewConversation(true);
+          }
+          
+          setMessages(ch.state.messages.map(transformMessage));
+          setLoading(false);
+
+          // Sync messages from channel state
+          syncMessagesHandler = () => {
+            if (mounted && ch.state.messages) {
+              setMessages(ch.state.messages.map(transformMessage));
+              scrollToBottom();
+            }
+          };
+
+          // Listen for new messages
+          handleMessage = (event: ChannelEvent) => {
+            if (mounted && event.channel?.id === ch.id) {
+              syncMessagesHandler?.();
+            }
+          };
+
+          // Listen for message updates (including sent messages)
+          handleMessageUpdated = (event: ChannelEvent) => {
+            if (mounted && event.channel?.id === ch.id) {
+              syncMessagesHandler?.();
+            }
+          };
+
+          ch.on('message.new', handleMessage);
+          ch.on('message.updated', handleMessageUpdated);
+          
+          // Also listen to channel state changes
+          ch.on('channel.updated', syncMessagesHandler);
+        } else {
+          // Channel doesn't exist - this is a new conversation
+          // Create local channel object but DON'T call watch() or query()
+          const newCh = await getOrCreateChannel(userId, userName, userAvatar);
+          if (!newCh) {
+            setLoading(false);
+            return;
+          }
+          currentChannel = newCh;
+          setIsNewConversation(true);
+          setChannel(newCh);
+          setMessages([]);
           setLoading(false);
           return;
         }
-
-        currentChannel = ch;
-        
-        try {
-          await ch.watch();
-        } catch (watchError) {
-          // Channel might not exist yet for new conversations
-          const err = watchError as { message?: string; code?: number };
-          if (err?.message?.includes('does not exist') || err?.code === 16) {
-            // This is a new conversation - channel doesn't exist yet
-            if (!canMessageDirectly) {
-              setIsNewConversation(true);
-              setChannel(ch);
-              setMessages([]);
-              setLoading(false);
-              return;
-            }
-          }
-          throw watchError;
-        }
-
-        if (!mounted) return;
-
-        setChannel(ch);
-
-        // Check pending state from channel data
-        const channelData = ch.data as { pending?: boolean; requestedBy?: string; awaitingAdminApproval?: boolean };
-        if (channelData?.pending) {
-          setPendingState({
-            isPending: true,
-            isRequester: channelData.requestedBy === client?.userID,
-            awaitingAdminApproval: channelData.awaitingAdminApproval || false
-          });
-        } else {
-          setPendingState({ isPending: false, isRequester: false, awaitingAdminApproval: false });
-        }
-
-        // Load messages
-        const response = await ch.query({
-          messages: { limit: 50 },
-        });
-        
-        if (!mounted) return;
-        
-        // Check if this is a new conversation (no messages and not connected)
-        if (!canMessageDirectly && (response.messages || []).length === 0 && !channelData?.pending) {
-          setIsNewConversation(true);
-        }
-        
-        setMessages((response.messages || []).map(transformMessage));
-        setLoading(false);
-
-        // Sync messages from channel state
-        syncMessagesHandler = () => {
-          if (mounted && ch.state.messages) {
-            setMessages(ch.state.messages.map(transformMessage));
-            scrollToBottom();
-          }
-        };
-
-        // Listen for new messages
-        handleMessage = (event: ChannelEvent) => {
-          if (mounted && event.channel?.id === ch.id) {
-            syncMessagesHandler?.();
-          }
-        };
-
-        // Listen for message updates (including sent messages)
-        handleMessageUpdated = (event: ChannelEvent) => {
-          if (mounted && event.channel?.id === ch.id) {
-            syncMessagesHandler?.();
-          }
-        };
-
-        ch.on('message.new', handleMessage);
-        ch.on('message.updated', handleMessageUpdated);
-        
-        // Also listen to channel state changes
-        ch.on('channel.updated', syncMessagesHandler);
       } catch (error) {
         console.error('Error initializing channel:', error);
         if (mounted) {

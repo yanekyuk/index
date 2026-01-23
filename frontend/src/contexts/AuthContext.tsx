@@ -105,7 +105,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
     const isOnboardingPage = pathname === '/onboarding';
-    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/');
+    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog');
     const isProtectedPage = pathname.startsWith('/inbox') || pathname.startsWith('/i/') || isOnboardingPage;
 
     // Determine if we need to redirect

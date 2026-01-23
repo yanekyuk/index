@@ -170,7 +170,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   // Show loading state while Privy is initializing
   if (!ready) {
     return (
-      <header className="w-full py-4 flex justify-between items-center">
+      <header className="w-full py-2 flex justify-between items-center">
         <div className="flex items-center">
           <Link href="/">
             <div className="relative mr-2 cursor-pointer">
@@ -191,7 +191,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
 
   return (
     <div>
-      <header className="w-full py-4 flex justify-between items-center">
+      <header className="w-full pt-2 pb-2 flex justify-between items-center">
         <div className="flex items-center gap-2">
           {/* Mobile-only sidebar toggle */}
           {onToggleSidebar && (
@@ -387,23 +387,39 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               </div>
             </div>
           ) : isAlpha ? (
-            <Button
-              variant="outline"
-              className="flex items-center px-3 py-5"
-              onClick={login}
-            >
-              <LogIn className="h-5 w-5" />
-              <span className="hidden sm:inline mx-2">Login</span>
-            </Button>
+            <div className="flex items-center gap-4">
+              <Link 
+                href="/blog" 
+                className="font-ibm-plex-mono text-sm text-black hover:text-gray-600 transition-colors"
+              >
+                Blog
+              </Link>
+              <Button
+                variant="outline"
+                className="flex items-center px-3 py-5"
+                onClick={login}
+              >
+                <LogIn className="h-5 w-5" />
+                <span className="hidden sm:inline mx-2">Login</span>
+              </Button>
+            </div>
           ) : (
-            <Button
-              variant="outline"
-              className="flex items-center px-3 py-5"
-              onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
-            >
-              <UserPlus className="h-5 w-5" />
-              <span className="hidden sm:inline mx-2">Join the waitlist</span>
-            </Button>
+            <div className="flex items-center gap-4">
+              <Link 
+                href="/blog" 
+                className="font-ibm-plex-mono text-sm text-black hover:text-gray-600 transition-colors"
+              >
+                Blog
+              </Link>
+              <Button
+                variant="outline"
+                className="flex items-center px-3 py-5"
+                onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
+              >
+                <UserPlus className="h-5 w-5" />
+                <span className="hidden sm:inline mx-2">Join the waitlist</span>
+              </Button>
+            </div>
           )
         )}
       </header>

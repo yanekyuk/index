@@ -59,7 +59,9 @@ export default function ChatSidebar() {
           member_limit: 100,
         });
 
-        setChannels(response);
+        // Filter out empty channels (opened but never messaged)
+        const channelsWithMessages = response;//response.filter(ch => ch.state.messages.length > 0);
+        setChannels(channelsWithMessages);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching channels:', error);

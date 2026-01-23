@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @tailwind base;
@@ -24,10 +24,12 @@
 @layer base {
   html {
     @apply scroll-smooth;
+    overscroll-behavior: none;
   }
   
   body {
     @apply text-gray-900 dark:text-gray-100;
+    overscroll-behavior: none;
   }
   
   ::selection {
@@ -78,12 +80,12 @@
     @apply bg-gray-100 text-gray-800;
   }
 
-  .font-inter {
-    @apply font-['Inter'];
+  .font-hanken {
+    @apply font-['Hanken_Grotesk'];
   }
 
-  .font-playfair {
-    @apply font-['Playfair_Display'];
+  .font-garamond {
+    @apply font-['EB_Garamond'];
   }
 
   .font-ibm-plex-mono {
