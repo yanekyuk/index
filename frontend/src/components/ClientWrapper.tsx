@@ -120,7 +120,6 @@ function ClientWrapperContent({
       {/* Header stays persistent across page changes */}
       <div className="max-w-7xl mx-auto px-2">
         <Header
-          showNavigation={false}
           showHeaderButtons={showHeaderButtons}
           forcePublicView={forcePublicView}
           onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
