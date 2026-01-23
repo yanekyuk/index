@@ -92,6 +92,7 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
           type: 'collaboration',
           title: 'Mock Opportunity',
           description: 'A mock description',
+          candidateDescription: 'A mock candidate description',
           score: 95,
           candidateId: candidates[0].userId
         }
