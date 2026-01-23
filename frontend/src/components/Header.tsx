@@ -23,9 +23,10 @@ interface HeaderProps {
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
   showHeaderButtons?: boolean;
+  forcePublicView?: boolean;
 }
 
-export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen, showHeaderButtons = true }: HeaderProps) {
+export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen, showHeaderButtons = true, forcePublicView = false }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -221,8 +222,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
             </div>
           </Link>
 
-          {/* Index Dropdown - only show when authenticated and not in admin mode */}
-          {authenticated && !isAdminMode && (
+          {/* Index Dropdown - only show when authenticated and not in admin mode or forcePublicView */}
+          {authenticated && !isAdminMode && !forcePublicView && (
             <div className="relative" ref={indexDropdownRef}>
               <button
                 onClick={() => setIndexDropdownOpen(!indexDropdownOpen)}
@@ -300,7 +301,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
           )}
         </div>
         {showHeaderButtons && (
-          authenticated ? (
+          (authenticated && !forcePublicView) ? (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setLibraryModalOpen(true)}

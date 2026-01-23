@@ -42,6 +42,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   // Hide header buttons on special pages (onboarding and invitation)
   const showHeaderButtons = useMemo(() =>
     pathname !== '/onboarding' && !pathname?.startsWith('/l/') && !pathname?.startsWith('/index/'), [pathname]);
+  
+  // Force public view (non-authenticated header) on blog pages
+  const forcePublicView = useMemo(() =>
+    pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname]);
 
   // Don't render header on 404 pages (unknown routes)
   if (!isKnownRoute && pathname) {
@@ -63,6 +67,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             showSidebar={showSidebar}
             showChatSidebar={showChatSidebar}
             showHeaderButtons={showHeaderButtons}
+            forcePublicView={forcePublicView}
             mobileSidebarOpen={mobileSidebarOpen}
             setMobileSidebarOpen={setMobileSidebarOpen}
           >
@@ -79,12 +84,14 @@ function ClientWrapperContent({
   showSidebar,
   showChatSidebar,
   showHeaderButtons,
+  forcePublicView,
   mobileSidebarOpen,
   setMobileSidebarOpen,
 }: PropsWithChildren<{
   showSidebar: boolean;
   showChatSidebar: boolean;
   showHeaderButtons: boolean;
+  forcePublicView: boolean;
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
 }>) {
@@ -115,6 +122,7 @@ function ClientWrapperContent({
         <Header
           showNavigation={false}
           showHeaderButtons={showHeaderButtons}
+          forcePublicView={forcePublicView}
           onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
           isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
         />
