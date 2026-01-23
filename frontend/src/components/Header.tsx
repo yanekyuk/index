@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks, Library, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
+import { UserPlus, LogIn, Settings, Library, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -19,14 +19,13 @@ import CreateIndexModal from '@/components/modals/CreateIndexModal';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 
 interface HeaderProps {
-  showNavigation?: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
   showHeaderButtons?: boolean;
   forcePublicView?: boolean;
 }
 
-export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen, showHeaderButtons = true, forcePublicView = false }: HeaderProps) {
+export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButtons = true, forcePublicView = false }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -135,38 +134,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       };
     }
   }, [dropdownOpen, indexDropdownOpen]);
-
-  // Memoize the navigation logic to avoid recalculating on every render
-  const navigationItems = useMemo(() => [
-    {
-      href: "/",
-      icon: (color: string) => (
-        <svg
-          width={44}
-          height={44}
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="object-contain p-1"
-        >
-          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points="22,6 12,13 2,6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
-      label: "Inbox"
-    },
-    {
-      href: "/integrate",
-      icon: (color: string) => (
-        <Blocks
-          size={48}
-          color={color}
-          className="object-contain p-1"
-        />
-      ),
-      label: "Build"
-    }
-  ], []);
 
   // Show loading state while Privy is initializing
   if (!ready) {
@@ -422,30 +389,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
           )
         )}
       </header>
-
-      {showNavigation &&
-        <div className="w-full flex justify-center my-6">
-          <div className="flex gap-8">
-            {navigationItems.map((item) => {
-              const isActive = pathname?.startsWith(item.href);
-              const color = isActive ? "#f59e0b" : "#6b7280";
-
-              return (
-                <Link key={item.href} href={item.href} className="cursor-pointer">
-                  <div className="flex flex-col items-center cursor-pointer">
-                    <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                      {item.icon(color)}
-                    </div>
-                    <span className={`text-sm font-ibm-plex-mono ${isActive ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                      {item.label}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      }
 
       {/* Profile Settings Modal */}
       <ProfileSettingsModal
