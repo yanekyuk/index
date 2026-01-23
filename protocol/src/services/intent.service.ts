@@ -1005,6 +1005,49 @@ export class IntentService {
       throw error;
     }
   }
+
+  /**
+   * Delete all intents and related data.
+   *
+   * WARNING: This is a destructive operation intended for development only.
+   * It removes all intents, their index associations, and related stakes.
+   *
+   * @returns Object containing counts of deleted records
+   */
+  async deleteAllIntents(): Promise<{
+    intentStakeItems: number;
+    intentStakes: number;
+    intentIndexes: number;
+    intents: number;
+  }> {
+    log.info('[IntentService] Deleting all intents and related data');
+
+    // Delete in order to respect foreign key constraints
+    // 1. Delete intent stake items (join table)
+    const deletedStakeItems = await db.delete(intentStakeItems).returning({ id: intentStakeItems.stakeId });
+    log.info(`[IntentService] Deleted ${deletedStakeItems.length} intent stake items`);
+
+    // 2. Delete intent stakes
+    const deletedStakes = await db.delete(intentStakes).returning({ id: intentStakes.id });
+    log.info(`[IntentService] Deleted ${deletedStakes.length} intent stakes`);
+
+    // 3. Delete intent-index associations
+    const deletedIndexes = await db.delete(intentIndexes).returning({ intentId: intentIndexes.intentId });
+    log.info(`[IntentService] Deleted ${deletedIndexes.length} intent-index associations`);
+
+    // 4. Delete all intents
+    const deletedIntents = await db.delete(intents).returning({ id: intents.id });
+    log.info(`[IntentService] Deleted ${deletedIntents.length} intents`);
+
+    log.info('[IntentService] All intents and related data deleted successfully');
+
+    return {
+      intentStakeItems: deletedStakeItems.length,
+      intentStakes: deletedStakes.length,
+      intentIndexes: deletedIndexes.length,
+      intents: deletedIntents.length
+    };
+  }
 }
 
 export const intentService = new IntentService();
