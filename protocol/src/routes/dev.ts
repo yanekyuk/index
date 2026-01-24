@@ -4,6 +4,7 @@ import { addJob as addOpportunityJob } from '../queues/opportunity.queue';
 import { addJob as addProfileJob } from '../queues/profile.queue';
 import { cache } from '../lib/redis';
 import { profileService } from '../services/profile.service';
+import { intentService } from '../services/intent.service';
 import { log } from '../lib/log';
 
 const router = Router();
@@ -140,6 +141,29 @@ router.post('/generate-missing-profiles', async (req: Request, res: Response) =>
     } catch (error) {
         log.error('[Dev] Error generating missing profiles:', { error });
         return res.status(500).json({ error: 'Failed to generate missing profiles' });
+    }
+});
+
+/**
+ * Delete all intents endpoint.
+ *
+ * WARNING: This is a destructive operation that removes ALL intents and related data.
+ * Only available in development environment.
+ */
+router.delete('/delete-all-intents', async (req: Request, res: Response) => {
+    try {
+        log.info('[Dev] Triggering deletion of all intents');
+
+        const result = await intentService.deleteAllIntents();
+
+        log.info('[Dev] All intents deleted successfully', result);
+        return res.json({
+            message: 'All intents and related data deleted successfully',
+            deleted: result
+        });
+    } catch (error) {
+        log.error('[Dev] Error deleting all intents:', { error });
+        return res.status(500).json({ error: 'Failed to delete all intents' });
     }
 });
 
