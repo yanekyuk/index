@@ -235,17 +235,19 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
                             {index.title}
                           </button>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIndexDropdownOpen(false);
-                                router.push(`/admin/${index.id}`);
-                              }}
-                              className="p-1 rounded hover:bg-gray-200"
-                              title="Admin"
-                            >
-                              <Crown className="w-3.5 h-3.5 text-blue-600" />
-                            </button>
+                            {user?.id === index.user.id && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIndexDropdownOpen(false);
+                                  router.push(`/admin/${index.id}`);
+                                }}
+                                className="p-1 rounded hover:bg-gray-200"
+                                title="Admin"
+                              >
+                                <Crown className="w-3.5 h-3.5 text-blue-600" />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();

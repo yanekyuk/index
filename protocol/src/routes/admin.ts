@@ -462,7 +462,7 @@ router.get('/:indexId/pending-count',
       // Verify user is index owner
       const ownerCheck = await checkIndexOwnership(indexId, userId);
       if (!ownerCheck.hasAccess) {
-        return res.json({ count: 0 });
+        return res.status(403).json({ error: 'Only index owners can access this endpoint' });
       }
 
       // Verify index has requireApproval enabled
