@@ -156,7 +156,7 @@ function ClientWrapperContent({
                 />
               </div>
             ) : (
-              <div className="space-y-6 h-full">
+              <div className="">
                 {children}
               </div>
             )}
