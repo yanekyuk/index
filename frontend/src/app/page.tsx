@@ -573,7 +573,7 @@ function LandingPage() {
 
       `}</style>
 
-      <div className="landing-page flex flex-col min-h-screen -mt-16">
+      <div className="landing-page flex flex-col">
         {/* Waitlist Modal */}
         {isWaitlistOpen && (
           <div 
@@ -712,7 +712,7 @@ function LandingPage() {
 
         {/* Hero Section */}
         <section
-          className="hero-section relative px-6 lg:px-12 pt-24 lg:pt-4 pb-8 lg:pb-0 min-h-[auto] lg:min-h-[90vh] overflow-hidden w-full"
+          className="hero-section relative px-6 lg:px-12 pt-8 lg:pt-4 pb-8 lg:pb-0 min-h-[auto] lg:min-h-[90vh] overflow-hidden w-full"
         >
           <div className="max-w-[960px] mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-24 items-center">
             {/* Main content */}
