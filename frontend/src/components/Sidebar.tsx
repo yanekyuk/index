@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import LibraryModal from '@/components/modals/LibraryModal';
-import { Shield, ArrowLeft, Inbox, Users, Settings } from 'lucide-react';
+import { Shield, ArrowLeft, Inbox, Users, Settings, Sparkles } from 'lucide-react';
 import { useAdmin, useIntents } from '@/contexts/APIContext';
 
 interface LatestIntent {
@@ -127,6 +127,16 @@ export default function Sidebar() {
             </div>
 
             <div
+              onClick={() => router.push(`/admin/${adminIndexId}/opportunities`)}
+              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                pathname?.includes('/opportunities') ? 'bg-gray-200' : 'hover:bg-gray-50'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-black font-ibm-plex-mono">Opportunities</span>
+            </div>
+
+            <div
               onClick={() => router.push(`/admin/${adminIndexId}/settings`)}
               className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
                 pathname?.includes('/settings') ? 'bg-gray-200' : 'hover:bg-gray-50'
@@ -137,8 +147,10 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-      ) : (
-        /* Latest Intents Section */
+      ) : null}
+
+      {/* Latest Intents Section - only show when not in admin mode */}
+      {!isAdminMode && (
         <div className="bg-white rounded-sm border-black border p-3 pb-6 pt-6">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>

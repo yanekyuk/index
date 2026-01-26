@@ -40,6 +40,11 @@ export interface HydeResponse {
   embedding?: number[];
 }
 
+export interface HydeOptions {
+  /** Optional instruction to guide the type of match (e.g., "investors", "advisors", "collaborators") */
+  instruction?: string;
+}
+
 /**
  * HydeGenerator Agent (Hypothetical Document Embeddings)
  * 
@@ -69,19 +74,37 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
    * Generates a hypothetical "Ideal Match" description.
    * 
    * @param profileContext - The formatted source user's memory profile (who is looking).
+   * @param options - Optional configuration including instruction to bias the match type.
    * @returns Promise resolving to a string description of the *Target* user.
    */
-  async generate(profileContext: string): Promise<HydeResponse> {
-
-    const messages = [
-      new SystemMessage(HYDE_GENERATION_PROMPT),
-      new HumanMessage(`
+  async generate(profileContext: string, options?: HydeOptions): Promise<HydeResponse> {
+    const instruction = options?.instruction;
+    
+    // Build the human message with optional instruction
+    let humanPrompt = `
         Person who is looking for a match:
         ${profileContext}
         
         Who is the single most valuable connection for this person right now? 
         Describe that Person.
-      `)
+      `;
+    
+    // If instruction provided, add it to guide the match type
+    if (instruction) {
+      humanPrompt = `
+        Person who is looking for a match:
+        ${profileContext}
+        
+        **SPECIFIC SEARCH CONTEXT**: ${instruction}
+        
+        Based on this context, describe the ideal person to connect with.
+        Focus on finding someone who matches this specific need.
+      `;
+    }
+
+    const messages = [
+      new SystemMessage(HYDE_GENERATION_PROMPT),
+      new HumanMessage(humanPrompt)
     ];
 
     log.info(`[HydeGenerator] Generating HyDE profile for user...`);

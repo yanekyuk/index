@@ -47,6 +47,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const forcePublicView = useMemo(() =>
     pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname]);
 
+  // Disable sticky header with background on landing page (unauthenticated) and blog pages
+  const isLandingOrBlog = useMemo(() =>
+    (pathname === '/' && !isAuthenticated) || pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname, isAuthenticated]);
+
   // Don't render header on 404 pages (unknown routes)
   if (!isKnownRoute && pathname) {
     return (
@@ -68,6 +72,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             showChatSidebar={showChatSidebar}
             showHeaderButtons={showHeaderButtons}
             forcePublicView={forcePublicView}
+            isLandingOrBlog={isLandingOrBlog}
             mobileSidebarOpen={mobileSidebarOpen}
             setMobileSidebarOpen={setMobileSidebarOpen}
           >
@@ -85,6 +90,7 @@ function ClientWrapperContent({
   showChatSidebar,
   showHeaderButtons,
   forcePublicView,
+  isLandingOrBlog,
   mobileSidebarOpen,
   setMobileSidebarOpen,
 }: PropsWithChildren<{
@@ -92,6 +98,7 @@ function ClientWrapperContent({
   showChatSidebar: boolean;
   showHeaderButtons: boolean;
   forcePublicView: boolean;
+  isLandingOrBlog: boolean;
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
 }>) {
@@ -117,56 +124,65 @@ function ClientWrapperContent({
         }
       `}</style>
 
-      {/* Header stays persistent across page changes */}
-      <div className="max-w-7xl mx-auto px-2">
-        <Header
-          showHeaderButtons={showHeaderButtons}
-          forcePublicView={forcePublicView}
-          onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
-          isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
-        />
+      {/* Header stays fixed at top (except on landing/blog pages) */}
+      <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 '}>
+        <div className="max-w-7xl mx-auto px-2">
+          <Header
+            showHeaderButtons={showHeaderButtons}
+            forcePublicView={forcePublicView}
+            onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
+            isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
+          />
+        </div>
       </div>
 
       {/* Page content with sidebar */}
       <main>
-        <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
-          {/* Left Sidebar */}
-          {showSidebar && (
-            <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
-              <Sidebar />
-            </aside>
-          )}
+        {isLandingOrBlog ? (
+          // Full-width layout for landing and blog pages
+          <div className="">
+            {children}
+          </div>
+        ) : (
+          <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
+            {/* Left Sidebar - sticky */}
+            {showSidebar && (
+              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-start lg:sticky lg:top-20`}>
+                <Sidebar />
+              </aside>
+            )}
 
-          {/* Main content area - Show ChatView if active, otherwise show children */}
-          <div className={`w-full ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
-            {activeChat ? (
-              <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 120px)' }}>
-                <ChatView
-                  userId={activeChat.userId}
-                  userName={activeChat.userName}
-                  userAvatar={activeChat.userAvatar}
-                  minimized={false}
-                  onClose={() => {
-                    closeChat(activeChat.userId);
-                    clearActiveChat();
-                  }}
-                  onToggleMinimize={() => {}} // Not used in middle column layout
-                />
-              </div>
-            ) : (
-              <div className="space-y-6 h-full">
-                {children}
-              </div>
+            {/* Main content area - Show ChatView if active, otherwise show children */}
+            <div className={`w-full ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
+              {activeChat ? (
+                <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 120px)' }}>
+                  <ChatView
+                    userId={activeChat.userId}
+                    userName={activeChat.userName}
+                    userAvatar={activeChat.userAvatar}
+                    minimized={false}
+                    onClose={() => {
+                      closeChat(activeChat.userId);
+                      clearActiveChat();
+                    }}
+                    onToggleMinimize={() => {}} // Not used in middle column layout
+                  />
+                </div>
+              ) : (
+                <div className="">
+                  {children}
+                </div>
+              )}
+            </div>
+
+            {/* Right Chat Sidebar - sticky */}
+            {showChatSidebar && (
+              <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 lg:self-start lg:sticky lg:top-20">
+                <ChatSidebar />
+              </aside>
             )}
           </div>
-
-          {/* Right Chat Sidebar - can access InboxProvider from inbox page */}
-          {showChatSidebar && (
-            <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0">
-              <ChatSidebar />
-            </aside>
-          )}
-        </div>
+        )}
       </main>
     </div>
   );

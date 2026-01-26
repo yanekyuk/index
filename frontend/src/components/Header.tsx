@@ -143,9 +143,9 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
           <Link href="/">
             <div className="relative mr-2 cursor-pointer">
               <Image
-                src="/logo-black.svg"
+                src="/logos/logo-black-full.svg"
                 alt="Index Network"
-                width={100}
+                width={200}
                 height={36}
                 className="object-contain"
               />
@@ -180,9 +180,9 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
           <Link href="/">
             <div className="relative mr-2 cursor-pointer">
               <Image
-                src="/logo-black.svg"
+                src="/logos/logo-black-full.svg"
                 alt="Index Network"
-                width={100}
+                width={200}
                 height={36}
                 className="object-contain"
               />
@@ -358,9 +358,9 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
             <div className="flex items-center gap-4">
               <Link 
                 href="/blog" 
-                className="font-ibm-plex-mono text-sm text-black hover:text-gray-600 transition-colors"
+                className="font-ibm-plex-mono  text-sm text-black hover:text-gray-600 transition-colors"
               >
-                Blog
+                BLOG
               </Link>
               <Button
                 variant="outline"
