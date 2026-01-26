@@ -83,6 +83,7 @@ function LandingPage() {
       by: number;
       bw: number;
       bh: number;
+      intentIndex: number;
     }> = [];
     const positions: Array<{ x: number; y: number }> = [];
 
@@ -168,6 +169,7 @@ function LandingPage() {
         by,
         bw: (bubbleW / containerW) * 100,
         bh: (bubbleH / containerH) * 100,
+        intentIndex: i % intents.length,
       });
     }
 
@@ -194,6 +196,9 @@ function LandingPage() {
 
     let timeoutId: ReturnType<typeof setTimeout>;
 
+    // Track which intent indices are currently visible
+    const activeIntentIndices = new Set<number>();
+
     function activateSequence() {
       const count = 2 + Math.floor(Math.random() * 2);
       const available = nodes.filter(
@@ -214,7 +219,11 @@ function LandingPage() {
         const noOverlap = toActivate.every(
           (n) => !bubblesOverlap(n, candidate)
         );
-        if (farEnough && noOverlap) {
+        // Ensure no duplicate intents are shown at the same time (including currently visible ones)
+        const uniqueIntent = toActivate.every(
+          (n) => n.intentIndex !== candidate.intentIndex
+        ) && !activeIntentIndices.has(candidate.intentIndex);
+        if (farEnough && noOverlap && uniqueIntent) {
           toActivate.push(candidate);
         }
       }
@@ -222,12 +231,14 @@ function LandingPage() {
       toActivate.forEach((node) => {
         node.el.classList.add("active");
         node.bubble.classList.add("visible");
+        activeIntentIndices.add(node.intentIndex);
       });
 
       setTimeout(() => {
         toActivate.forEach((node) => {
           node.el.classList.remove("active");
           node.bubble.classList.remove("visible");
+          activeIntentIndices.delete(node.intentIndex);
         });
       }, 2200);
     }
@@ -860,7 +871,7 @@ function LandingPage() {
                           className="w-10 h-10 rounded-full object-cover"
                         />
                         <div>
-                          <div className="text-[14px] font-bold text-black font-mono">Nicole Ng</div>
+                          <div className="text-[14px] font-bold text-black font-mono">Nicole</div>
                           <div className="text-[12px] text-[#666] font-mono">1 mutual intent</div>
                         </div>
                       </div>

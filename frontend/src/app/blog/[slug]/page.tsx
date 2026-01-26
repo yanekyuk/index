@@ -52,7 +52,7 @@ const markdownComponents: Components = {
         <div className="my-6">
           <audio
             controls
-            className="w-full"
+            className="w-1/2"
             preload="metadata"
           >
             <source src={href} type={getAudioType(href)} />
@@ -114,7 +114,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       </Link>
 
       {/* Post header */}
-      <header className="mb-10">
+      <header className="mb-10 text-center">
         <time className="text-sm text-black font-ibm-plex-mono">
           {new Date(post.date).toLocaleDateString('en-US', {
             year: 'numeric',
@@ -122,13 +122,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
             day: 'numeric',
           })}
         </time>
-        <h1 className="text-3xl md:text-4xl font-garamond font-medium text-black mt-3 mb-4 leading-tight">
+        <h1 className="text-3xl md:text-4xl font-garamond font-bold text-black mt-3 mb-4 leading-tight">
           {post.title}
         </h1>
       </header>
 
       {/* Post content */}
-      <article className="text-black leading-relaxed [&_h2]:text-2xl [&_h2]:font-garamond [&_h2]:font-medium [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-garamond [&_h3]:font-medium [&_h3]:mt-8 [&_h3]:mb-3 [&_p]:mb-6 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_li]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-6">
+      <article className="text-black text-lg leading-relaxed [&_h2]:text-2xl [&_h2]:font-garamond [&_h2]:font-medium [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-garamond [&_h3]:font-medium [&_h3]:mt-8 [&_h3]:mb-3 [&_p]:mb-6 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_li]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-6">
         <ReactMarkdown components={markdownComponents}>{post.content}</ReactMarkdown>
       </article>
 
