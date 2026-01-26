@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
     }),
   });
 
+  console.log(res);
   if (!res.ok) {
     return NextResponse.json(
       { error: "Subscription failed" },
