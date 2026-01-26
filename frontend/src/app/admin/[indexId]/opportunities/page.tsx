@@ -32,24 +32,17 @@ export default function OpportunitiesPage({ params }: { params: Promise<{ indexI
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [hasSearched, setHasSearched] = useState(false);
 
-  // Search members for @mention
+  // Search members for @mention (only index members, not all users)
   const handleMentionSearch = useCallback(async (query: string): Promise<MentionUser[]> => {
     try {
-      if (!query.trim()) {
-        // Empty query: return first members from the index
-        const result = await indexesService.getMembers(indexId, { limit: 10 });
-        return result.members.map(m => ({
-          id: m.id,
-          name: m.name,
-          avatar: m.avatar
-        }));
-      }
-      // Search with query
-      const users = await indexesService.searchUsers(query, indexId);
-      return users.map(u => ({
-        id: u.id,
-        name: u.name,
-        avatar: u.avatar
+      const result = await indexesService.getMembers(indexId, { 
+        searchQuery: query.trim() || undefined,
+        limit: 10 
+      });
+      return result.members.map(m => ({
+        id: m.id,
+        name: m.name,
+        avatar: m.avatar
       }));
     } catch (err) {
       console.error('Member search failed:', err);

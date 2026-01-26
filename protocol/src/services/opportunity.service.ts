@@ -1312,12 +1312,12 @@ export class OpportunityService {
             sourceUser: {
               id: memberId,
               name: memberProfile.identity?.name || 'Unknown',
-              avatar: memberProfile.identity?.avatar || null
+              avatar: null
             },
             targetUser: {
               id: op.candidateId,
               name: targetProfile.identity?.name || 'Unknown',
-              avatar: targetProfile.identity?.avatar || null
+              avatar: null
             },
             opportunity: {
               type: op.type,
