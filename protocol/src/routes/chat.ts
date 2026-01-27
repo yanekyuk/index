@@ -7,6 +7,7 @@ import { users, userConnectionEvents, indexMembers, indexes } from '../lib/schem
 import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
 import type { CustomChannelData, CustomChannelFilters, CustomChannelMember } from '../types/stream-chat';
+import { IntroMakerGenerator } from '../agents/intent/stake/intro/intro-maker.generator';
 
 const router = Router();
 
@@ -468,6 +469,87 @@ router.get('/can-message/:targetUserId',
     } catch (error) {
       console.error('Error checking message permission:', error);
       return res.status(500).json({ error: 'Failed to check message permission' });
+    }
+  }
+);
+
+// Generate suggested intro message for starting a conversation
+router.post('/suggest-intro',
+  authenticatePrivy,
+  [
+    body('targetUserId').isUUID(),
+    body('mutualIntents').optional().isArray(),
+    body('synthesis').optional().isString()
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const { targetUserId, mutualIntents = [], synthesis } = req.body;
+
+      // Prevent self-messaging
+      if (userId === targetUserId) {
+        return res.status(400).json({ error: 'Cannot generate intro for yourself' });
+      }
+
+      // Get user info
+      const [currentUser, targetUser] = await Promise.all([
+        db.select().from(users).where(eq(users.id, userId)).limit(1),
+        db.select().from(users).where(eq(users.id, targetUserId)).limit(1)
+      ]);
+
+      if (!currentUser[0] || !targetUser[0]) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Extract reasonings from mutual intents
+      const senderReasonings: string[] = [];
+      const recipientReasonings: string[] = [];
+
+      if (mutualIntents && mutualIntents.length > 0) {
+        // Use intent summaries/payloads as reasoning
+        mutualIntents.forEach((intentPair: any) => {
+          if (intentPair.intent) {
+            const text = intentPair.intent.summary || intentPair.intent.payload;
+            senderReasonings.push(text);
+            recipientReasonings.push(text);
+          }
+        });
+      }
+
+      // Skip intro generation if no context available
+      if (senderReasonings.length === 0) {
+        return res.json({
+          message: null,
+          generatedAt: new Date().toISOString()
+        });
+      }
+
+      // Generate intro using agent
+      const introMaker = new IntroMakerGenerator();
+
+      const result = await introMaker.run({
+        sender: {
+          name: currentUser[0].name,
+          reasonings: senderReasonings.slice(0, 3) // Limit to top 3
+        },
+        recipient: {
+          name: targetUser[0].name,
+          reasonings: recipientReasonings.slice(0, 3)
+        }
+      });
+
+      return res.json({
+        message: result.message,
+        generatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error generating intro message:', error);
+      return res.status(500).json({ error: 'Failed to generate intro message' });
     }
   }
 );

@@ -486,6 +486,8 @@ export default function InboxContent() {
               connectionStatus={getConnectionStatus(tabType, requestsView, user.id)}
               onAction={handleConnectionAction}
               size="sm"
+              mutualIntents={intents}
+              synthesis={syntheses[user.id]}
             />
           </div>
         </div>
