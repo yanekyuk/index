@@ -956,7 +956,7 @@ function LandingPage() {
               </div>
 
               <div className="mt-5">
-                <a href="https://blog.index.network" target="_blank" rel="noopener noreferrer" className="btn-link uppercase tracking-wider font-mono">
+                <a href="https://index.network/blog/the-shape-of-what-you-meant" target="_blank" rel="noopener noreferrer" className="btn-link uppercase tracking-wider font-mono">
                   Read the story
                 </a>
               </div>
@@ -984,12 +984,14 @@ function LandingPage() {
                 </p>
 
                 <div>
-                  <button
-                    onClick={() => setIsWaitlistOpen(true)}
+                  <a
+                    href="https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="btn-modern no-underline uppercase tracking-wider font-mono"
                   >
                     Get in touch
-                  </button>
+                  </a>
                 </div>
               </div>
 
