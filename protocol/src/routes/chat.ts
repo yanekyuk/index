@@ -8,6 +8,7 @@ import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
 import type { CustomChannelData, CustomChannelFilters, CustomChannelMember } from '../types/stream-chat';
 import { IntroMakerGenerator } from '../agents/intent/stake/intro/intro-maker.generator';
+import { discoverUsers } from '../lib/discover';
 
 const router = Router();
 
@@ -478,8 +479,6 @@ router.post('/suggest-intro',
   authenticatePrivy,
   [
     body('targetUserId').isUUID(),
-    body('mutualIntents').optional().isArray(),
-    body('synthesis').optional().isString()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -489,7 +488,7 @@ router.post('/suggest-intro',
       }
 
       const userId = req.user!.id;
-      const { targetUserId, mutualIntents = [], synthesis } = req.body;
+      const { targetUserId } = req.body;
 
       // Prevent self-messaging
       if (userId === targetUserId) {
@@ -506,25 +505,35 @@ router.post('/suggest-intro',
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Extract reasonings from mutual intents
+      // Fetch mutual intents/stakes between the two users
+      const { results } = await discoverUsers({
+        authenticatedUserId: userId,
+        userIds: [targetUserId],
+        excludeDiscovered: false,
+        limit: 1
+      });
+
       const senderReasonings: string[] = [];
       const recipientReasonings: string[] = [];
 
-      if (mutualIntents && mutualIntents.length > 0) {
-        // Use intent summaries/payloads as reasoning
-        mutualIntents.forEach((intentPair: any) => {
-          if (intentPair.intent) {
-            const text = intentPair.intent.summary || intentPair.intent.payload;
-            senderReasonings.push(text);
+      if (results.length > 0 && results[0].intents.length > 0) {
+        // Extract reasonings from discovered intents
+        for (const intentData of results[0].intents.slice(0, 3)) {
+          const text = intentData.intent.summary || intentData.intent.payload;
+          senderReasonings.push(text);
+          // Also include the stake reasonings if available
+          if (intentData.reasonings.length > 0) {
+            recipientReasonings.push(...intentData.reasonings.slice(0, 2));
+          } else {
             recipientReasonings.push(text);
           }
-        });
+        }
       }
 
       // Skip intro generation if no context available
       if (senderReasonings.length === 0) {
         return res.json({
-          message: null,
+          message: `Hi ${targetUser[0].name}, I'd love to connect!`,
           generatedAt: new Date().toISOString()
         });
       }
@@ -535,7 +544,7 @@ router.post('/suggest-intro',
       const result = await introMaker.run({
         sender: {
           name: currentUser[0].name,
-          reasonings: senderReasonings.slice(0, 3) // Limit to top 3
+          reasonings: senderReasonings.slice(0, 3)
         },
         recipient: {
           name: targetUser[0].name,
