@@ -592,7 +592,7 @@ export default function InboxContent() {
         </div>
       )}
 
-      <div className="bg-white w-full h-full border border-gray-800 rounded-sm px-4 py-2 flex flex-col">
+      <div className="w-full h-full flex flex-col">
         {!discoveryIntents && (
           <div className="font-ibm-plex-mono text-black text-sm font-bold mb-4 flex items-center gap-2" style={{ marginTop: '8px' }}>
             <Sparkles className="w-4 h-4" />
@@ -620,7 +620,7 @@ export default function InboxContent() {
 
           {/* Discover Content */}
           {activeTab === 'discover' && (
-            <div className={`bg-white ${discoveryIntents ? 'flex-1' : ''}`}>
+            <div className={`${discoveryIntents ? 'flex-1' : ''}`}>
               {discoveryLoading ? (
                 <div className="flex flex-col items-center justify-center px-6 pb-8">
                   <Image

@@ -50,6 +50,12 @@ interface Attachment {
   preview?: string;
 }
 
+const LOADING_STATES = [
+  { message: "Thinking", color: "bg-amber-400" },
+  { message: "Understanding what you're looking for", color: "bg-blue-400" },
+  { message: "Registering your intent", color: "bg-green-400" },
+];
+
 const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({ 
   onSubmit, 
   onRefine, 
@@ -64,6 +70,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
   suggestions: parentSuggestions
 }, ref) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [inputValue, setInputValue] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [fetchedSuggestions, setFetchedSuggestions] = useState<Suggestion[]>([]);
@@ -240,6 +247,18 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
       previewUrlsRef.current = [];
     };
   }, []);
+
+  // Animate loading messages while processing
+  useEffect(() => {
+    if (!isProcessing) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingMessageIndex(i => Math.min(i + 1, LOADING_STATES.length - 1));
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isProcessing]);
 
   // Mention search effect
   useEffect(() => {
@@ -683,10 +702,22 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
             const text = e.clipboardData.getData('text/plain');
             document.execCommand('insertText', false, text);
           }}
-          data-placeholder={isProcessing ? "Thinking..." : (placeholder || (intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?")))}
-          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          data-placeholder={placeholder || (intentId ? "Ask a follow-up question..." : (floating ? "Ask a follow-up question..." : "What's your most important work?"))}
+          className={`flex-1 font-ibm-plex-mono text-black ${floating ? 'text-md' : 'text-lg'} focus:outline-none bg-transparent min-h-[24px] empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 ${isProcessing ? 'opacity-0 pointer-events-none' : ''}`}
           suppressContentEditableWarning
         />
+        
+        {/* Loading indicator with colored dot */}
+        {isProcessing && (
+          <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${LOADING_STATES[loadingMessageIndex].color} animate-pulse`} />
+              <span className="font-ibm-plex-mono text-gray-500 text-sm">
+                {LOADING_STATES[loadingMessageIndex].message}
+              </span>
+            </div>
+          </div>
+        )}
         
         {/* Mention dropdown */}
         {enableMentions && mentionQuery !== null && (mentionResults.length > 0 || isMentionLoading) && (

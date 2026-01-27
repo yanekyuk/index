@@ -8,7 +8,7 @@ import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
 import ClientWrapper from "@/components/ClientWrapper";
 
 export const metadata: Metadata = {
-  title: "Index Network | Discovery Protocol",
+  title: "Index Network",
   description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
   icons: {
     icon: '/favicon-white.png',
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "https://index.network/",
-    title: "Index Network | Discovery Protocol",
+    title: "Index Network",
     description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
     images: [
       {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Index Network | Discovery Protocol",
+    title: "Index Network",
     description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
     images: ["https://index.network/bridge.jpg"],
   },
