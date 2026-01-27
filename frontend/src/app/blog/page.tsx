@@ -21,9 +21,6 @@ export default function BlogPage() {
         <h1 className="text-2xl md:text-3xl font-garamond font-medium text-black">
           Letters from Index
         </h1>
-        <p className="mt-4 text-base font-hanken text-black/80">
-          We're building a way to meet your others - without having to try so hard. Subscribe for updates from the Index desk, featuring conversations with other builders and field notes on engineering serendipity.
-        </p>
       </div>
 
       {posts.length === 0 ? (

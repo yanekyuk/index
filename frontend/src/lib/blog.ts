@@ -5,6 +5,7 @@ export interface BlogPost {
   slug: string;
   title: string;
   date: string;
+  description?: string;
   content: string;
   image?: string;
 }
@@ -127,6 +128,7 @@ export function getPostBySlug(slug: string): BlogPost | null {
     slug,
     title: data.title || 'Untitled',
     date: data.date || new Date().toISOString().split('T')[0],
+    description: data.description,
     content: transformedContent,
     image,
   };
