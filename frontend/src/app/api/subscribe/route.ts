@@ -16,27 +16,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Email is required" }, { status: 400 });
   }
 
-  const tags = type === "waitlist" ? ["waitlist"] : ["newsletter"];
-  
-  const metadata: Record<string, string> = {};
-  if (name) metadata.name = name;
-  if (whatYouDo) metadata.what_you_do = whatYouDo;
-  if (whoToMeet) metadata.who_to_meet = whoToMeet;
-
-  const res = await fetch("https://api.buttondown.com/v1/subscribers", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${process.env.BUTTONDOWN_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email_address: email,
-      tags,
-      metadata,
-    }),
-  });
-
-  console.log(res);
+  const res = await fetch(
+    "https://app.loops.so/api/newsletter-form/cmkq2slhq0aii0iuf7jigfxos",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        source: type,
+        firstName: name,
+        whatYouDo,
+        whoToMeet,
+      }),
+    }
+  );
   if (!res.ok) {
     return NextResponse.json(
       { error: "Subscription failed" },

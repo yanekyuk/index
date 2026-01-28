@@ -72,7 +72,7 @@ export default function Sidebar() {
     <div className="space-y-6 font-mono">
       {/* Admin Mode Sidebar */}
       {isAdminMode && adminIndex ? (
-        <div className="bg-white rounded-sm border-black border p-4">
+        <div className="">
           <button
             onClick={() => router.push('/')}
             className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
@@ -151,7 +151,7 @@ export default function Sidebar() {
 
       {/* Latest Intents Section - only show when not in admin mode */}
       {!isAdminMode && (
-        <div className="bg-white rounded-sm border-black border p-3 pb-6 pt-6">
+        <div className="">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>
             <button
@@ -175,7 +175,7 @@ export default function Sidebar() {
                 <button
                   key={intent.id}
                   onClick={() => router.push(`/i/${intent.id}`)}
-                  className="w-full text-left px-2 py-2 rounded hover:bg-gray-50 transition-colors group"
+                  className="w-full text-left py-2 rounded hover:bg-gray-50 transition-colors group"
                 >
                   <div className="text-sm text-black font-ibm-plex-mono line-clamp-2 mb-1 group-hover:text-gray-700">
                     {intent.summary || intent.payload}

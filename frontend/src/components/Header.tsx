@@ -144,7 +144,7 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
   // Show loading state while Privy is initializing
   if (!ready) {
     return (
-      <header className="w-full py-4 px-4 flex justify-between items-center">
+      <header className="w-full py-2 px-4 flex justify-between items-center">
         <div className="flex items-center">
           <Link href="/">
             <div className="relative mr-2 cursor-pointer">
@@ -165,7 +165,7 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
 
   return (
     <div>
-      <header className="w-full pt-4 pb-4 px-4 flex justify-between items-center">
+      <header className="w-full pt-2 pb-2 px-0 flex justify-between items-center">
         <div className="flex items-center gap-2">
           {/* Mobile-only sidebar toggle */}
           {onToggleSidebar && (

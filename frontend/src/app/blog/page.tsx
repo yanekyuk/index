@@ -16,7 +16,7 @@ export default function BlogPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-    <div className="max-w-3xl w-full mx-auto px-4 py-8 flex-1">
+    <div className="max-w-3xl w-full mx-auto px-4 py-16 flex-1">
       <div className="mb-8">
         <h1 className="text-2xl md:text-3xl font-garamond font-medium text-black">
           Letters from Index

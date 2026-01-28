@@ -135,7 +135,7 @@ function ClientWrapperContent({
       `}</style>
 
       {/* Header stays fixed at top (except on landing/blog pages) */}
-      <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 transition-colors ${isScrolled ? 'bg-white/50 backdrop-blur-3xl' : ''}`}>
+      <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 border border-gray-300  transition-colors ${isScrolled ? 'bg-white/50 backdrop-blur-3xl' : ''}`}>
         <div className="max-w-7xl mx-auto px-2">
           <Header
             showHeaderButtons={showHeaderButtons}
@@ -154,16 +154,18 @@ function ClientWrapperContent({
             {children}
           </div>
         ) : (
-          <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
+          <div className={`max-w-7xl mx-auto px-2 flex min-h-[calc(100vh-80px)] ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
             {/* Left Sidebar - sticky */}
             {showSidebar && (
-              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-start lg:sticky lg:top-20`}>
-                <Sidebar />
+              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-stretch lg:border-r lg:border-gray-300 lg:pr-4`}>
+                <div className="lg:sticky lg:top-20 pt-10">
+                  <Sidebar />
+                </div>
               </aside>
             )}
 
             {/* Main content area - Show ChatView if active, otherwise show children */}
-            <div className={`w-full ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
+            <div className={`w-full pt-10 ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
               {activeChat ? (
                 <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 120px)' }}>
                   <ChatView
@@ -187,8 +189,10 @@ function ClientWrapperContent({
 
             {/* Right Chat Sidebar - sticky */}
             {showChatSidebar && (
-              <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 lg:self-start lg:sticky lg:top-20">
-                <ChatSidebar />
+              <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 lg:self-stretch lg:border-l lg:border-gray-300 lg:pl-4">
+                <div className="lg:sticky lg:top-20 pt-10">
+                  <ChatSidebar />
+                </div>
               </aside>
             )}
           </div>
