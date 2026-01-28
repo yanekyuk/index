@@ -41,6 +41,17 @@ function getAudioType(src: string): string {
   }
 }
 
+function getYouTubeVideoId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s?]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 const markdownComponents: Components = {
   a: ({ href, children }) => {
     const childText = typeof children === 'string' ? children : 
@@ -60,6 +71,25 @@ const markdownComponents: Components = {
           </audio>
         </div>
       );
+    }
+
+    // Check if this is a YouTube link: [youtube](https://youtube.com/watch?v=...)
+    if (childText.toLowerCase() === 'youtube' && href) {
+      const videoId = getYouTubeVideoId(href);
+      if (videoId) {
+        return (
+          <div className="my-6 aspect-video">
+            <iframe
+              className="w-full h-full rounded-lg"
+              src={`https://www.youtube.com/embed/${videoId}`}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        );
+      }
     }
 
     // Regular link
@@ -100,7 +130,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <div className="min-h-screen flex flex-col">
-    <div className="max-w-2xl w-full mx-auto px-4 py-8 flex-1">
+    <div className="max-w-2xl w-full mx-auto px-4 pt-8 pb-24 flex-1">
       {/* Post header */}
       <header className="mb-10 text-center">
         <time className="text-base text-black font-['Times_New_Roman',_serif]">
