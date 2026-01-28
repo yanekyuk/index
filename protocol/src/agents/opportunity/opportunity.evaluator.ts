@@ -50,12 +50,11 @@ const ANALYSIS_SYSTEM_PROMPT = `
 
 // --- SCHEMAS ---
 const OpportunitySchema = z.object({
-  type: z.enum(['collaboration', 'mentorship', 'networking', 'other']),
-  title: z.string().describe('Short title of the opportunity'),
-  description: z.string().describe('Source-facing: Why the SOURCE user should meet the candidate. Address them as "You".'),
+  sourceDescription: z.string().describe('Source-facing: Why the SOURCE user should meet the candidate. Address them as "You".'),
   candidateDescription: z.string().describe('Candidate-facing: Why the CANDIDATE should meet the source. Address them as "You".'),
   score: z.number().min(0).max(100).describe('Relevance score 0-100'),
-  candidateId: z.string().describe('The user ID of the match'),
+  sourceId: z.string().describe('The user ID of the source'),
+  candidateId: z.string().describe('The user ID of the candidate'),
 });
 
 const OpportunityEvaluatorOutputSchema = z.object({
