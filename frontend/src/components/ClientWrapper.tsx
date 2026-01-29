@@ -172,6 +172,7 @@ function ClientWrapperContent({
                     userId={activeChat.userId}
                     userName={activeChat.userName}
                     userAvatar={activeChat.userAvatar}
+                    initialMessage={activeChat.initialMessage}
                     minimized={false}
                     onClose={() => {
                       closeChat(activeChat.userId);
