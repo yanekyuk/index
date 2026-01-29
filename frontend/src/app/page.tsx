@@ -39,6 +39,15 @@ function LandingPage() {
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isWaitlistOpen, waitlistStatus, isRetroModalOpen]);
 
+  // Listen for custom event from header button
+  useEffect(() => {
+    const handleOpenWaitlistModal = () => {
+      setIsWaitlistOpen(true);
+    };
+    window.addEventListener('openWaitlistModal', handleOpenWaitlistModal);
+    return () => window.removeEventListener('openWaitlistModal', handleOpenWaitlistModal);
+  }, []);
+
   const handleWaitlistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!waitlistForm.email || !waitlistForm.name) return;
@@ -402,6 +411,11 @@ function LandingPage() {
           83% { left: 65%; top: 40%; }
         }
 
+        @keyframes radar {
+          0% { transform: scale(1); opacity: 0.8; }
+          100% { transform: scaleY(1.6) scaleX(1.2); opacity: 0; }
+        }
+
         /* Button Style */
         .btn-modern {
           background-color: black !important;
@@ -504,20 +518,21 @@ function LandingPage() {
           border: 2px outset #C0C0C0;
           box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
           min-width: 320px;
-          max-width: 400px;
+          max-width: 500px;
         }
 
         .retro-title-bar {
           background: #0000FF;
           color: white;
-          padding: 4px 8px;
+          padding: 20px 16px;
           font-weight: bold;
-          font-size: 11px;
+          font-size: 16px;
           border-bottom: 1px solid #000;
           display: flex;
           align-items: center;
           height: 20px;
           box-shadow: inset -1px -1px 0 #000080, inset 1px 1px 0 #8080FF;
+          font-family: 'IBM Plex Mono', monospace;
         }
 
         .retro-title-text {
@@ -527,11 +542,13 @@ function LandingPage() {
 
         .retro-content {
           background: #C0C0C0;
-          padding: 20px;
+          padding: 20px 12px;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 16px;
+          line-height: 1.2;
+          font-family: 'IBM Plex Mono', monospace;
         }
 
         .retro-icon {
@@ -549,28 +566,33 @@ function LandingPage() {
           box-shadow: inset -2px -2px 0 #808000, inset 2px 2px 0 #FFFF80;
           align-self: flex-start;
           margin-left: 8px;
+          font-family: 'IBM Plex Mono', monospace;
         }
 
         .retro-message {
-          font-size: 13px;
+          font-size: 18px;
           color: #000;
           text-align: left;
-          line-height: 1.4;
+          line-height: 1.2;
           width: 100%;
           padding: 0 8px;
+          font-family: 'IBM Plex Mono', monospace;
         }
 
         .retro-button {
           background: #C0C0C0;
           border: 2px outset #C0C0C0;
-          padding: 4px 16px;
-          font-size: 11px;
+          padding: 8px 16px;
+          font-size: 16px;
+          margin-top: 12px;
+          margin-bottom: 6px;
           font-weight: bold;
           color: #000;
           cursor: pointer;
           box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #FFFFFF;
           outline: 2px dotted #000;
           outline-offset: 2px;
+          font-family: 'IBM Plex Mono', monospace;
         }
 
         .retro-button:hover {
@@ -584,7 +606,7 @@ function LandingPage() {
 
       `}</style>
 
-      <div className="landing-page flex flex-col">
+      <div className="landing-page flex flex-col min-h-[calc(100vh-80px)]">
         {/* Waitlist Modal */}
         {isWaitlistOpen && (
           <div 
@@ -621,7 +643,7 @@ function LandingPage() {
                     </svg>
                   </div>
                   <h3 id="waitlist-modal-title" className="text-2xl font-garamond text-black mb-2">You&apos;re on the list!</h3>
-                  <p className="text-gray-600 text-[15px]">We&apos;ll be in touch when we&apos;re ready for you.</p>
+                  <p className="text-gray-600 text-[15px]">Check your inbox for your welcome email.</p>
                   <button
                     onClick={() => {
                       setIsWaitlistOpen(false);

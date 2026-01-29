@@ -386,7 +386,15 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
                 Blog
               </Link>
               <button
-                onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
+                onClick={() => {
+                  // Check if we're on the landing page or blog - if so, dispatch custom event to open modal
+                  if ((pathname === '/' && !authenticated) || pathname?.startsWith('/blog')) {
+                    window.dispatchEvent(new CustomEvent('openWaitlistModal'));
+                  } else {
+                    // Fallback to external form for other pages
+                    window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank");
+                  }
+                }}
                 className="bg-black text-white rounded-[2px] px-5 py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#333] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
               >
                 <span className="lg:hidden">Join</span>

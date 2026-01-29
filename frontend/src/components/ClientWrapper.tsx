@@ -131,10 +131,10 @@ function ClientWrapperContent({
       </div>
 
       {/* Page content with sidebar */}
-      <main>
+      <main className={isLandingOrBlog ? "flex flex-col" : ""}>
         {isLandingOrBlog ? (
           // Full-width layout for landing and blog pages
-          <div className="">
+          <div className="flex flex-col min-h-[calc(100vh-80px)]">
             {children}
           </div>
         ) : (
