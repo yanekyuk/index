@@ -3,15 +3,9 @@ config({ path: 'protocol/.env.development', override: true });
 
 import { describe, expect, it } from "bun:test";
 import { SemanticVerifierAgent } from "./semantic.verifier";
-import { Database } from "../../../interfaces/database.interface";
-import { Embedder } from "../../../interfaces/embedder.interface";
-
-// Mock dependencies
-const mockDatabase = {} as Database;
-const mockEmbedder = {} as Embedder;
 
 describe('SemanticVerifierAgent', () => {
-  const verifier = new SemanticVerifierAgent(mockDatabase, mockEmbedder);
+  const verifier = new SemanticVerifierAgent();
   const context = "User is a Junior Developer. Skills: JavaScript, HTML.";
 
   it('should verify a high-quality commissive intent', async () => {

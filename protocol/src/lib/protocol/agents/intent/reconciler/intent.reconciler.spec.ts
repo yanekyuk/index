@@ -3,15 +3,9 @@ config({ path: 'protocol/.env.development', override: true });
 
 import { describe, expect, it } from "bun:test";
 import { IntentReconcilerAgent } from "./intent.reconciler";
-import { Database } from "../../../interfaces/database.interface";
-import { Embedder } from "../../../interfaces/embedder.interface";
-
-// Mock dependencies
-const mockDatabase = {} as Database;
-const mockEmbedder = {} as Embedder;
 
 describe('IntentReconcilerAgent', () => {
-  const reconciler = new IntentReconcilerAgent(mockDatabase, mockEmbedder);
+  const reconciler = new IntentReconcilerAgent();
 
   it('should create a new intent if no match found', async () => {
     const inferred = `- [GOAL] "Learn Rust" (Confidence: high, Score: 85) \n Reasoning: Explicit statement.`;

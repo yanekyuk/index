@@ -3,28 +3,9 @@ config({ path: 'protocol/.env.development', override: true });
 
 import { describe, expect, it } from "bun:test";
 import { OpportunityEvaluator, CandidateProfile } from "./opportunity.evaluator";
-import { Runnable } from "@langchain/core/runnables";
 
 describe('OpportunityEvaluator', () => {
-  // Create a mock Runnable agent that returns a fixed successful response
-  const mockAgent = {
-    invoke: async (input: any) => {
-      return {
-        structuredResponse: {
-          opportunities: [{
-            sourceDescription: "You should meet Bob because...",
-            candidateDescription: "You should meet Alice because...",
-            score: 95,
-            valencyRole: "Peer",
-            sourceId: "user-source",
-            candidateId: "user-bob"
-          }]
-        }
-      };
-    }
-  } as unknown as Runnable;
-
-  const evaluator = new OpportunityEvaluator(mockAgent);
+  const evaluator = new OpportunityEvaluator();
 
   const sourceProfile = `
         Name: Alice
