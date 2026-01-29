@@ -36,7 +36,7 @@ interface ChatViewProps {
   userAvatar?: string;
   minimized: boolean; // Kept for compatibility but not used
   onClose: () => void;
-  onToggleMinimize: () => void; // Kept for compatibility but not used
+  onBack?: () => void; // Optional back handler for page-based navigation
 }
 
 interface ChannelPendingState {
@@ -51,11 +51,10 @@ export default function ChatView({
   userAvatar,
   minimized: _minimized,
   onClose,
-  onToggleMinimize: _onToggleMinimize,
+  onBack,
 }: ChatViewProps) {
   // Suppress unused variable warnings - kept for API compatibility
   void _minimized;
-  void _onToggleMinimize;
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const discoverService = useDiscover();
@@ -337,7 +336,11 @@ export default function ChatView({
   }, [isReady, userId, discoverService]);
 
   const handleBack = () => {
-    clearActiveChat();
+    if (onBack) {
+      onBack();
+    } else {
+      clearActiveChat();
+    }
   };
 
   // Handle responding to message request from within chat view
@@ -370,12 +373,12 @@ export default function ChatView({
   };
 
   return (
-    <div className="w-full rounded-md  flex flex-col" style={{
+    <div className="w-full flex flex-col" style={{
       minHeight: 'calc(100vh - 150px)'
     }}>
-      <div className="bg-white border border-gray-800 rounded-sm flex flex-col flex-1 overflow-hidden">
+      <div className="bg-white flex flex-col flex-1 overflow-hidden">
         {/* Header - exactly like profile card */}
-        <div className="py-4 px-2 sm:px-4 ">
+        <div className="py-4 px-0 sm:px-2">
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
             <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
               <Image
@@ -487,7 +490,7 @@ export default function ChatView({
       )}
 
       {/* Chat container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 flex flex-col">
         {loading ? (
           <div className="text-center text-gray-500 text-sm py-8">
             Loading...
@@ -541,7 +544,7 @@ export default function ChatView({
           </div>
         )}
         
-        <div className="p-4">
+        <div className="p-2 sm:p-4">
           {pendingState.isPending && pendingState.isRequester ? (
             <div className="text-center text-gray-500 text-sm font-ibm-plex-mono py-2">
               Waiting for {userName} to accept your message request
@@ -551,7 +554,7 @@ export default function ChatView({
               Accept the request to continue the conversation
             </div>
           ) : (
-            <div className="bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col">
+            <div className="bg-white flex flex-col">
               <div className="flex items-center px-4 py-2 min-h-[54px]">
                 <input
                   ref={inputRef}

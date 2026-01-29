@@ -1,14 +1,13 @@
 'use client';
 
-import { PropsWithChildren, useEffect, useMemo, useState } from 'react';
+import { PropsWithChildren, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import ChatView from "@/components/chat/ChatView";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
-import { StreamChatProvider, useStreamChat } from "@/contexts/StreamChatContext";
+import { StreamChatProvider } from "@/contexts/StreamChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
@@ -102,21 +101,6 @@ function ClientWrapperContent({
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
 }>) {
-  const { activeChatId, openChats, clearActiveChat, closeChat } = useStreamChat();
-  const [isScrolled, setIsScrolled] = useState(false);
-  
-  // Track scroll position for sticky header background
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 0);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-  
-  // Find the active chat details
-  const activeChat = activeChatId ? openChats.find((c) => c.userId === activeChatId) : null;
-
   return (
     <div className="backdrop relative min-h-screen">
       <style jsx>{`
@@ -135,7 +119,7 @@ function ClientWrapperContent({
       `}</style>
 
       {/* Header stays fixed at top (except on landing/blog pages) */}
-      <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 border border-gray-300  transition-colors ${isScrolled ? 'bg-white/50 backdrop-blur-3xl' : ''}`}>
+      <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 border border-gray-300 transition-colors  bg-white backdrop-blur-3xl}`}>
         <div className="max-w-7xl mx-auto px-2">
           <Header
             showHeaderButtons={showHeaderButtons}
@@ -164,27 +148,9 @@ function ClientWrapperContent({
               </aside>
             )}
 
-            {/* Main content area - Show ChatView if active, otherwise show children */}
+            {/* Main content area */}
             <div className={`w-full pt-10 ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
-              {activeChat ? (
-                <div className="h-full flex flex-col" style={{ minHeight: 'calc(100vh - 120px)' }}>
-                  <ChatView
-                    userId={activeChat.userId}
-                    userName={activeChat.userName}
-                    userAvatar={activeChat.userAvatar}
-                    minimized={false}
-                    onClose={() => {
-                      closeChat(activeChat.userId);
-                      clearActiveChat();
-                    }}
-                    onToggleMinimize={() => {}} // Not used in middle column layout
-                  />
-                </div>
-              ) : (
-                <div className="">
-                  {children}
-                </div>
-              )}
+              {children}
             </div>
 
             {/* Right Chat Sidebar - sticky */}
