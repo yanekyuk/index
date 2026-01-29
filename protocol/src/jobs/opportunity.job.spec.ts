@@ -9,8 +9,6 @@ import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity
 const envPath = path.resolve(__dirname, '../../../../.env.development');
 dotenv.config({ path: envPath });
 
-// --- MOCKS ---
-
 /**
  * Mock OpportunityService - overrides DB methods to return test data.
  * This approach tests the service without hitting the database.
@@ -89,12 +87,11 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
     if (candidates.length > 0) {
       return [
         {
-          type: 'collaboration',
-          title: 'Mock Opportunity',
-          description: 'A mock description',
-          candidateDescription: 'A mock candidate description',
+          sourceId: 'source-user',
           score: 95,
-          candidateId: candidates[0].userId
+          candidateId: candidates[0].userId,
+          sourceDescription: 'A mock description',
+          candidateDescription: 'A mock candidate description'
         }
       ];
     }

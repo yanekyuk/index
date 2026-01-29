@@ -763,7 +763,7 @@ export class OpportunityService {
         if (opportunities.length > 0) {
           log.info(`✨ [OpportunityJob] Found ${opportunities.length} opportunities for ${sourceProfile.userId}:`);
           opportunities.forEach(op => {
-            log.info(`   - [${op.score}] ${op.title} (with ${op.candidateId})`);
+            log.info(`   - [${op.score}] ${op.sourceDescription.substring(0, 50)}... (with ${op.candidateId})`);
           });
 
           allCycleResults.push({
@@ -799,7 +799,7 @@ export class OpportunityService {
 
               const sourceResponse = await intentManager.processImplicitIntent(
                 sourceProfileContext,
-                `Opportunity: ${op.title}. Reason: ${op.description}`,
+                `Opportunity Match. Reason: ${op.sourceDescription}`,
                 sourceActiveContext
               );
 
@@ -836,7 +836,7 @@ export class OpportunityService {
 
               const candidateResponse = await intentManager.processImplicitIntent(
                 candidateProfileContext,
-                `Opportunity: ${op.title}. Reason: ${op.candidateDescription}`,
+                `Opportunity Match. Reason: ${op.candidateDescription}`,
                 candidateActiveContext
               );
 
@@ -863,7 +863,7 @@ export class OpportunityService {
                   sourceIntentId,
                   candidateIntentId,
                   finalStakeScore,
-                  op.description, // Use opportunity reason
+                  `Source: ${op.sourceDescription} | Candidate: ${op.candidateDescription}`, // Use opportunity reason
                   '028ef80e-9b1c-434b-9296-bb6130509482'
                 );
               }
@@ -1015,7 +1015,7 @@ export class OpportunityService {
 
           const sourceResponse = await intentManager.processImplicitIntent(
             profileContext,
-            `Opportunity: ${op.title}. Reason: ${op.description}`,
+            `Opportunity Match. Reason: ${op.sourceDescription}`,
             sourceActiveContext
           );
 
@@ -1051,7 +1051,7 @@ export class OpportunityService {
 
           const candidateResponse = await intentManager.processImplicitIntent(
             candidateProfileContext,
-            `Opportunity: ${op.title}. Reason: ${op.candidateDescription}`,
+            `Opportunity Match. Reason: ${op.candidateDescription}`,
             candidateActiveContext
           );
 
@@ -1076,7 +1076,7 @@ export class OpportunityService {
               rawSourceId,
               candidateIntentId,
               finalStakeScore,
-              op.description,
+              `Source: ${op.sourceDescription} | Candidate: ${op.candidateDescription}`,
               '028ef80e-9b1c-434b-9296-bb6130509482' // OpportunityFinder Agent ID
             );
           }
@@ -1190,11 +1190,11 @@ export class OpportunityService {
       // Convert opportunities to intent options
       for (const op of opportunities) {
         if (op.score >= 70) {
-          log.info(`[OpportunityService] Creating intent option from opportunity: "${op.title}" (score: ${op.score})`);
+          log.info(`[OpportunityService] Creating intent option from opportunity: "${op.sourceDescription.substring(0, 30)}..." (score: ${op.score})`);
 
           newIntentOptions.push({
             userId,
-            payload: `${op.title}: ${op.description}`,
+            payload: `Opportunity: ${op.sourceDescription}`,
             confidence: op.score / 100,
             inferenceType: 'implicit',
             sourceType: 'enrichment',

@@ -4,25 +4,23 @@ import { tool } from "@langchain/core/tools";
 import { Runnable } from "@langchain/core/runnables";
 import { z } from "zod";
 import { log } from "../../../log";
-import { Database } from "../../interfaces/database.interface";
-import { Embedder } from "../../interfaces/embedder.interface";
-
 
 /**
  * Config
  */
 import { config } from "dotenv";
+import { createAgent, ReactAgent } from "langchain";
 config({ path: '.env.development', override: true });
 
-// 
 const model = new ChatOpenAI({
   model: 'google/gemini-3-flash-preview',
   configuration: { baseURL: process.env.OPENROUTER_BASE_URL, apiKey: process.env.OPENROUTER_API_KEY }
-})
+});
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
 // ──────────────────────────────────────────────────────────────
+
 
 const systemPrompt = `
     You are an expert "Opportunity Matcher" and super-connector.
@@ -41,14 +39,18 @@ const systemPrompt = `
       - 70-89: "Should Meet" (Strong overlaps, clear potential).
       - <70: No opportunity (Return empty list).
 
-    **CRITICAL: TWO DESCRIPTIONS REQUIRED**
-    Each opportunity MUST contain TWO separate descriptions:
-    1. **description** (Source-facing): Written for the SOURCE user. Address them as "You". Explain why THEY should meet the Candidate.
-    2. **candidateDescription** (Candidate-facing): Written for the CANDIDATE. Address THEM as "You". Explain why THEY should meet the Source.
+    **CRITICAL: VALENCY & DUAL DESCRIPTIONS**
+    
+    1. **Valency Analysis**:
+       - Determine the semantic role of the Candidate relative to the Source's goal.
+       - "Agent": The Candidate CAN DO something for the Source (e.g., Source needs a dev, Candidate IS a dev).
+       - "Patient": The Candidate NEEDS something from the Source (e.g., Source is a mentor, Candidate needs mentoring).
+       - "Peer": Symmetric collaboration.
 
-    Example:
-    - description: "You should meet Alice because she has expertise in AI that aligns with your goal to build intelligent systems."
-    - candidateDescription: "You should meet Bob because he is building a product that could benefit from your AI expertise."
+    2. **Dual Descriptions (Maxim of Relation)**:
+       - **sourceDescription**: Written for the SOURCE. Why is this valuable *to them*? (e.g., "Alice can build your MVP")
+       - **candidateDescription**: Written for the CANDIDATE. Why is this valuable *to them*? (e.g., "Bob is hiring for the role you want")
+       - NEVER leak intents. Do not say "Bob wants to hire you" if Bob's intent is "Stealth hiring". Say "Bob is working on X".
 
     Rules:
     1. SYNTHESIS (CRITICAL): If multiple distinct match angles exist, SYNTHESIZE them into a SINGLE, robust opportunity.
@@ -66,6 +68,7 @@ const OpportunitySchema = z.object({
   sourceDescription: z.string().describe('Source-facing: Why the SOURCE user should meet the candidate. Address them as "You".'),
   candidateDescription: z.string().describe('Candidate-facing: Why the CANDIDATE should meet the source. Address them as "You".'),
   score: z.number().min(0).max(100).describe('Relevance score 0-100'),
+  valencyRole: z.enum(['Agent', 'Patient', 'Peer']).describe("The semantic role of the Candidate relative to the Source"),
   sourceId: z.string().describe('The user ID of the source'),
   candidateId: z.string().describe('The user ID of the candidate'),
 });
@@ -104,14 +107,12 @@ export interface OpportunityEvaluatorOptions {
 // ──────────────────────────────────────────────────────────────
 
 export class OpportunityEvaluator {
-  private agent: Runnable;
-  private database: Database;
-  private embedder: Embedder;
+  private agent: ReactAgent;
 
-  constructor(database: Database, embedder: Embedder) {
-    this.agent = model;
-    this.database = database;
-    this.embedder = embedder;
+  constructor() {
+    this.agent = createAgent({
+      model, responseFormat, systemPrompt
+    })
   }
 
   /**
@@ -154,63 +155,6 @@ export class OpportunityEvaluator {
 
     // Sort by score and take top 1
     return opportunities.sort((a, b) => b.score - a.score).slice(0, 1);
-  }
-
-  /**
-   * Discovery Mode: Autonomous Retrieval + Analysis
-   * 
-   * 1. Generates search query (embedding source profile or HyDE).
-   * 2. Retrieves candidates using injected Embedder.
-   * 3. Evaluates found candidates.
-   */
-  public async runDiscovery(
-    sourceProfileContext: string,
-    options: OpportunityEvaluatorOptions
-  ): Promise<Opportunity[]> {
-    log.info('[OpportunityEvaluator] Starting Discovery run...');
-
-    const foundCandidates = await this.findCandidates(options);
-    log.info(`[OpportunityEvaluator] Found ${foundCandidates.length} potential candidates from search.`);
-
-    // 3. Evaluate Matches
-    return this.invoke(sourceProfileContext, foundCandidates, options);
-  }
-
-  /**
-   * Find candidates using the injected embedder (HyDE -> Embedding -> Search).
-   */
-  private async findCandidates(
-    options: OpportunityEvaluatorOptions
-  ): Promise<CandidateProfile[]> {
-    if (!this.embedder) {
-      throw new Error("Embedder must be injected to use findCandidates");
-    }
-
-    // 1. Generate Query Vector
-    // STRICT: Use HyDE Description for Search
-    const queryText = options.hydeDescription;
-
-    if (!queryText) {
-      throw new Error("HyDE Description is required for Search.");
-    }
-
-    const embeddingResult = await this.embedder.generate(queryText);
-    // Handle return type (array of vector or single vector)
-    const queryVector = Array.isArray(embeddingResult[0])
-      ? (embeddingResult as number[][])[0]
-      : (embeddingResult as number[]);
-
-    // 2. Search for Candidates
-    const searchResults = await this.embedder.search<CandidateProfile>(
-      queryVector,
-      'profiles', // Assuming 'profiles' collection
-      {
-        filter: options.filter,
-        limit: options.limit || 5,
-      }
-    );
-
-    return searchResults.map(r => r.item);
   }
 
   /**
@@ -266,58 +210,19 @@ export class OpportunityEvaluator {
 
   /**
    * Factory method to expose the agent as a LangChain tool.
-   * 
-   * NOTE: This tool wrapper simplifies the input to just accept a source profile and a stringified candidate list, 
-   * or a HyDE description for discovery. It's a simplified interface for Graph usage.
+   * Simplified to only accept direct evaluation arguments.
+   * PURE: Does not perform any database lookups.
    */
-  public static asTool(database: Database, embedder: Embedder) {
+  public static asTool() {
     return tool(
       async (args: {
-        sourceProfileContext?: string;
-        sourceUserId?: string;
+        sourceProfileContext: string;
         candidatesJson?: string;
-        hydeDescription?: string;
         minScore?: number;
       }) => {
-        const agent = new OpportunityEvaluator(database, embedder);
+        const agent = new OpportunityEvaluator();
 
-        // Resolve Source Profile
-        let sourceProfileContext = args.sourceProfileContext;
-        if (!sourceProfileContext && args.sourceUserId) {
-          try {
-            // Fetch profile using the generic filter approach as 'userId' is not the primary key 'id'
-            // or we could use getById if we knew the profile ID, but we usually have userId.
-            // Using get() with filter is safer given the interface we have.
-            // We can cast the result to any to access properties since we know the schema shape loosely.
-            const profile = await database.get<any>('user_profiles', {
-              filter: { userId: args.sourceUserId }
-            });
-
-            if (profile) {
-              // Format the profile into a context string similar to candidate context
-              const identity = profile.identity || {};
-              const attributes = profile.attributes || {};
-              const narrative = profile.narrative || {};
-
-              sourceProfileContext = `
-                Name: ${identity.name || 'Unknown'}
-                Bio: ${identity.bio || ''}
-                Location: ${identity.location || ''}
-                Interests: ${attributes.interests?.join(', ') || ''}
-                Skills: ${attributes.skills?.join(', ') || ''}
-                Context: ${narrative.context || ''}
-              `.trim();
-            } else {
-              log.warn(`[OpportunityEvaluator] Profile not found for userId: ${args.sourceUserId}`);
-            }
-          } catch (error) {
-            log.error(`[OpportunityEvaluator] Failed to fetch source profile for ${args.sourceUserId}`, { error });
-          }
-        }
-
-        if (!sourceProfileContext) {
-          return "Error: sourceProfileContext or valid sourceUserId is required.";
-        }
+        const sourceProfileContext = args.sourceProfileContext;
 
         let candidates: CandidateProfile[] = [];
         if (args.candidatesJson) {
@@ -330,25 +235,16 @@ export class OpportunityEvaluator {
 
         const options: OpportunityEvaluatorOptions = {
           minScore: args.minScore,
-          hydeDescription: args.hydeDescription
         };
 
-        if (args.hydeDescription && candidates.length === 0) {
-          // Run Discovery
-          return await agent.runDiscovery(sourceProfileContext, options);
-        } else {
-          // Run Evaluation
-          return await agent.invoke(sourceProfileContext, candidates, options);
-        }
+        return await agent.invoke(sourceProfileContext, candidates, options);
       },
       {
         name: 'opportunity_evaluator',
-        description: 'Analyzes user profiles to find high-value connection opportunities. Can search for candidates (Discovery) or evaluate provided ones.',
+        description: 'Evaluates candidates against a source profile. SOURCE PROFILE CONTEXT MUST BE PROVIDED.',
         schema: z.object({
-          sourceProfileContext: z.string().optional().describe('The source user profile context'),
-          sourceUserId: z.string().optional().describe('The User ID of the source user to fetch profile from DB (if context not provided)'),
-          candidatesJson: z.string().optional().describe('JSON string list of CandidateProfile objects to evaluate'),
-          hydeDescription: z.string().optional().describe('HyDE description to search for new candidates (Discovery mode)'),
+          sourceProfileContext: z.string().describe('The resolved source user profile context'),
+          candidatesJson: z.string().optional().describe('JSON string list of Candidates'),
           minScore: z.number().optional().describe('Minimum score to accept a match')
         })
       }

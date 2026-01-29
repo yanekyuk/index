@@ -153,9 +153,8 @@ async function setupEvaluator() {
     // Simple mock logic: Return a match for every candidate passed to it
     // The filtering happens upstream in findCandidates (memorySearcher)
     return candidates.map(c => ({
-      type: 'collaboration',
-      title: `Match with ${c.identity.name}`,
-      description: 'Good match for source',
+      sourceId: 'source-user', // Add sourceId
+      sourceDescription: 'Good match for source', // Rename
       candidateDescription: 'Good match for candidate',
       score: 90,
       candidateId: c.userId
@@ -287,17 +286,15 @@ describe('Opportunity Evaluator Tests', () => {
 
       return candidates.flatMap(c => [
         {
-          type: 'collaboration',
-          title: `Match A with ${c.identity.name}`,
-          description: 'Good match A for source',
+          sourceId: 'source-user',
+          sourceDescription: 'Good match A for source',
           candidateDescription: 'Good match A for candidate',
           score: 80,
           candidateId: c.userId
         },
         {
-          type: 'mentorship',
-          title: `Match B with ${c.identity.name}`,
-          description: 'Good match B for source',
+          sourceId: 'source-user',
+          sourceDescription: 'Good match B for source',
           candidateDescription: 'Good match B for candidate',
           score: 95,
           candidateId: c.userId
@@ -323,8 +320,8 @@ describe('Opportunity Evaluator Tests', () => {
     // Spy on analyzeMatch to return multiple
     (evaluator as any).analyzeMatch = async (source: any, candidate: any, id: string) => {
       return [
-        { type: 'networking', title: 'Low Score', description: 'Low', candidateDescription: 'Low for candidate', score: 50, candidateId: id },
-        { type: 'collaboration', title: 'High Score', description: 'High', candidateDescription: 'High for candidate', score: 99, candidateId: id }
+        { sourceId: source.userId, sourceDescription: 'Low', candidateDescription: 'Low for candidate', score: 50, candidateId: id },
+        { sourceId: source.userId, sourceDescription: 'High Score', candidateDescription: 'High for candidate', score: 99, candidateId: id }
       ];
     };
 
@@ -337,7 +334,7 @@ describe('Opportunity Evaluator Tests', () => {
 
     expect(opportunities.length).toBe(1);
     expect(opportunities[0].score).toBe(99);
-    expect(opportunities[0].title).toBe('High Score');
+    expect(opportunities[0].sourceDescription).toBe('High Score');
   });
 });
 
