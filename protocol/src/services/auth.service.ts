@@ -1,8 +1,7 @@
 import db from '../lib/db';
-import { users, userNotificationSettings, OnboardingState } from '../lib/schema';
+import { userNotificationSettings, OnboardingState } from '../lib/schema';
 import { privyClient } from '../lib/privy';
 import { log } from '../lib/log';
-
 /**
  * AuthService
  * 
