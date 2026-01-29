@@ -88,7 +88,11 @@ export class ParallelScraperAdapter implements Scraper {
 }
 
 // --- Controller ---
+import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
+import { AuthGuard } from '../guards/auth.guard';
+import type { AuthenticatedUser } from '../guards/auth.guard';
 
+@Controller('/profiles')
 export class ProfileController {
   private db: Database;
   private embedder: Embedder;
@@ -107,13 +111,15 @@ export class ProfileController {
    * Syncs/Generates a profile for the given user.
    * This is the main entry point to trigger the profile graph.
    */
-  async sync(userId: string) {
+  @Post('/sync')
+  @UseGuards(AuthGuard)
+  async sync(req: Request, user: AuthenticatedUser) {
     const graph = this.factory.createGraph();
 
     // Invoke the graph
     // The graph expects { userId } in the state.
-    const result = await graph.invoke({ userId });
+    const result = await graph.invoke({ userId: user.id });
 
-    return result;
+    return Response.json(result);
   }
 }
