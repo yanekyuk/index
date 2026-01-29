@@ -1,9 +1,144 @@
 import { ProfileDocument } from '../agents/profile/profile.generator';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTENT TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Minimal intent representation used for graph state population.
+ * Contains only the fields needed for reconciliation logic.
+ */
+export interface ActiveIntent {
+  /** Unique identifier of the intent */
+  id: string;
+  /** Full intent description/payload */
+  payload: string;
+  /** Short summary of the intent (may be null if not generated) */
+  summary: string | null;
+  /** When the intent was created */
+  createdAt: Date;
+}
+
+/**
+ * Input data for creating a new intent.
+ * Supports the full intent pipeline including embedding and index association.
+ */
+export interface CreateIntentData {
+  /** The user who owns this intent */
+  userId: string;
+  /** Full intent description/payload */
+  payload: string;
+  /** Pre-computed summary (optional, will be generated if not provided) */
+  summary?: string | null;
+  /** Pre-computed embedding vector (optional, will be generated if not provided) */
+  embedding?: number[];
+  /** Whether the intent should be hidden from public views */
+  isIncognito?: boolean;
+  /** Index IDs to associate with (optional, uses dynamic scoping if empty) */
+  indexIds?: string[];
+  /** Source type for provenance tracking */
+  sourceType?: 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment';
+  /** Source ID for provenance tracking */
+  sourceId?: string;
+  /** Confidence score from inference (0-1, required) */
+  confidence: number;
+  /** How the intent was inferred */
+  inferenceType: 'explicit' | 'implicit';
+}
+
+/**
+ * Input data for updating an existing intent.
+ * All fields are optional - only provided fields will be updated.
+ */
+export interface UpdateIntentData {
+  /** Updated intent description/payload */
+  payload?: string;
+  /** Updated summary */
+  summary?: string | null;
+  /** Updated embedding vector */
+  embedding?: number[];
+  /** Updated incognito status */
+  isIncognito?: boolean;
+  /** Updated index associations (replaces existing) */
+  indexIds?: string[];
+}
+
+/**
+ * The result of a successful intent creation.
+ * Contains the core fields needed for immediate use.
+ */
+export interface CreatedIntent {
+  /** Unique identifier of the created intent */
+  id: string;
+  /** Full intent description/payload */
+  payload: string;
+  /** Generated or provided summary */
+  summary: string | null;
+  /** Incognito status */
+  isIncognito: boolean;
+  /** Creation timestamp */
+  createdAt: Date;
+  /** Last update timestamp */
+  updatedAt: Date;
+  /** Owner user ID */
+  userId: string;
+}
+
+/**
+ * Full intent record with all fields (for detailed queries).
+ */
+export interface IntentRecord extends CreatedIntent {
+  /** Archival timestamp (null if active) */
+  archivedAt: Date | null;
+  /** Embedding vector (may be null) */
+  embedding?: number[] | null;
+  /** Source type for provenance */
+  sourceType?: string | null;
+  /** Source ID for provenance */
+  sourceId?: string | null;
+}
+
+/**
+ * Intent with similarity score from vector search.
+ */
+export interface SimilarIntent extends IntentRecord {
+  /** Cosine similarity score (0-1) */
+  similarity: number;
+}
+
+/**
+ * Result of an archive operation.
+ */
+export interface ArchiveResult {
+  /** Whether the operation succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+}
+
+/**
+ * Options for vector similarity search.
+ */
+export interface SimilarIntentSearchOptions {
+  /** Maximum number of results to return (default: 10) */
+  limit?: number;
+  /** Minimum similarity threshold (default: 0.7) */
+  threshold?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATABASE INTERFACE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /**
  * Abstract database interface for performing specific domain operations.
  * Decouples the protocol layer from the infrastructure layer.
  */
 export interface Database {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Profile Operations (Preserved)
+  // ─────────────────────────────────────────────────────────────────────────────
+
   /**
    * Retrieves a user profile by userId.
    * @param userId - The unique identifier of the user
@@ -32,5 +167,285 @@ export interface Database {
    * @returns The user record or null if not found
    */
   getUser(userId: string): Promise<any | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Pre-Graph Operations (State Population)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retrieves all active (non-archived) intents for a user.
+   * Used to populate the `activeIntents` field in the Intent Graph state
+   * before graph execution.
+   *
+   * @param userId - The unique identifier of the user
+   * @returns Array of active intents with minimal fields needed for reconciliation
+   *
+   * @example
+   * ```typescript
+   * const activeIntents = await db.getActiveIntents(userId);
+   * const formattedIntents = activeIntents
+   *   .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
+   *   .join('\n');
+   * ```
+   */
+  getActiveIntents(userId: string): Promise<ActiveIntent[]>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Post-Graph Operations (Action Execution)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a new intent with full processing pipeline.
+   * Handles summarization, embedding generation, and index association.
+   *
+   * Called when the reconciler outputs a "create" action.
+   *
+   * @param data - The intent creation data
+   * @returns The created intent with generated fields
+   *
+   * @example
+   * ```typescript
+   * // After graph outputs CREATE action
+   * const newIntent = await db.createIntent({
+   *   userId,
+   *   payload: action.payload,
+   *   confidence: action.score / 100,
+   *   inferenceType: 'explicit',
+   *   sourceType: 'discovery_form'
+   * });
+   * ```
+   */
+  createIntent(data: CreateIntentData): Promise<CreatedIntent>;
+
+  /**
+   * Updates an existing intent.
+   * Re-generates summary and embedding if payload changes.
+   *
+   * Called when the reconciler outputs an "update" action.
+   *
+   * @param intentId - The unique identifier of the intent to update
+   * @param data - The fields to update
+   * @returns The updated intent or null if not found
+   * @throws Error if the intent exists but user doesn't have access
+   *
+   * @example
+   * ```typescript
+   * // After graph outputs UPDATE action
+   * const updated = await db.updateIntent(action.id, {
+   *   payload: action.payload
+   * });
+   * ```
+   */
+  updateIntent(intentId: string, data: UpdateIntentData): Promise<CreatedIntent | null>;
+
+  /**
+   * Archives (soft-deletes) an intent.
+   * Sets the archivedAt timestamp rather than hard deleting.
+   *
+   * Called when the reconciler outputs an "expire" action.
+   *
+   * @param intentId - The unique identifier of the intent to archive
+   * @returns Result object indicating success or failure with error message
+   *
+   * @example
+   * ```typescript
+   * // After graph outputs EXPIRE action
+   * const result = await db.archiveIntent(action.id);
+   * if (!result.success) {
+   *   console.error(`Failed to archive: ${result.error}`);
+   * }
+   * ```
+   */
+  archiveIntent(intentId: string): Promise<ArchiveResult>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Query Operations
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retrieves a single intent by ID.
+   *
+   * @param intentId - The unique identifier of the intent
+   * @returns The full intent record or null if not found
+   */
+  getIntent(intentId: string): Promise<IntentRecord | null>;
+
+  /**
+   * Retrieves an intent with ownership verification.
+   * Ensures the requesting user owns the intent before returning.
+   *
+   * Used for processing operations (refine, suggestions) that require ownership.
+   *
+   * @param intentId - The unique identifier of the intent
+   * @param userId - The user requesting access
+   * @returns The intent if found and owned by user, null if not found
+   * @throws Error with message 'Access denied' if intent exists but is not owned by user
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   const intent = await db.getIntentWithOwnership(intentId, userId);
+   *   if (!intent) return res.status(404).json({ error: 'Not found' });
+   *   // Process intent...
+   * } catch (e) {
+   *   if (e.message === 'Access denied') {
+   *     return res.status(403).json({ error: 'Forbidden' });
+   *   }
+   *   throw e;
+   * }
+   * ```
+   */
+  getIntentWithOwnership(intentId: string, userId: string): Promise<IntentRecord | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Association Operations
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Gets Index IDs where the user has auto-assign membership enabled.
+   * Used for determining which indexes to associate new intents with.
+   *
+   * @param userId - The unique identifier of the user
+   * @returns Array of index IDs
+   *
+   * @example
+   * ```typescript
+   * const indexIds = await db.getUserIndexIds(userId);
+   * if (indexIds.length > 0) {
+   *   await db.associateIntentWithIndexes(intentId, indexIds);
+   * }
+   * ```
+   */
+  getUserIndexIds(userId: string): Promise<string[]>;
+
+  /**
+   * Associates an intent with one or more indexes.
+   * Creates entries in the intentIndexes join table.
+   *
+   * @param intentId - The intent to associate
+   * @param indexIds - Array of index IDs to associate with
+   *
+   * @example
+   * ```typescript
+   * await db.associateIntentWithIndexes(intentId, ['idx_1', 'idx_2']);
+   * ```
+   */
+  associateIntentWithIndexes(intentId: string, indexIds: string[]): Promise<void>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Vector Search Operations
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Finds semantically similar intents using vector search.
+   * Used for deduplication during intent creation and discovery.
+   *
+   * Privacy scoping: Results are always filtered by userId to ensure
+   * users only see their own intents.
+   *
+   * @param embedding - The query embedding vector
+   * @param userId - The user ID for privacy scoping (required)
+   * @param options - Search options (limit, threshold)
+   * @returns Array of intents with similarity scores, sorted by similarity
+   *
+   * @example
+   * ```typescript
+   * // Check for duplicates before creating
+   * const embedding = await embedder.generate(payload);
+   * const similar = await db.findSimilarIntents(embedding, userId, {
+   *   limit: 5,
+   *   threshold: 0.85
+   * });
+   * if (similar.length > 0 && similar[0].similarity > 0.95) {
+   *   // Likely duplicate - consider updating instead
+   * }
+   * ```
+   */
+  findSimilarIntents(
+    embedding: number[],
+    userId: string,
+    options?: SimilarIntentSearchOptions
+  ): Promise<SimilarIntent[]>;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// NARROWED DATABASE INTERFACES (Interface Segregation)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Database interface narrowed for Profile Graph operations.
+ * Provides full profile lifecycle: read, write, and HyDE management.
+ */
+export type ProfileGraphDatabase = Pick<
+  Database,
+  'getProfile' | 'getUser' | 'saveProfile' | 'saveHydeProfile'
+>;
+
+/**
+ * Database interface narrowed for Chat Graph operations.
+ * Read-only context loading for conversation handling.
+ */
+export type ChatGraphDatabase = Pick<
+  Database,
+  'getProfile' | 'getActiveIntents'
+>;
+
+/**
+ * Composite database interface for Chat Graph.
+ * Includes direct ChatGraph operations plus all methods needed by
+ * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph).
+ *
+ * Use this type when ChatGraph orchestrates subgraphs internally.
+ * For direct ChatGraph operations only, use ChatGraphDatabase.
+ */
+export type ChatGraphCompositeDatabase = Pick<
+  Database,
+  // Direct ChatGraph operations
+  | 'getProfile'
+  | 'getActiveIntents'
+  // ProfileGraph subgraph requirements
+  | 'getUser'
+  | 'saveProfile'
+  | 'saveHydeProfile'
+  // IntentGraph subgraph requirements (getActiveIntents already included)
+  | 'createIntent'
+  | 'updateIntent'
+  | 'archiveIntent'
+  // OpportunityGraph subgraph requirements (getProfile already included)
+>;
+
+/**
+ * Database interface narrowed for Opportunity Graph operations.
+ * Minimal profile lookup for opportunity evaluation.
+ */
+export type OpportunityGraphDatabase = Pick<
+  Database,
+  'getProfile'
+>;
+
+/**
+ * Database interface for Intent action execution (post-graph processing).
+ * Used by controllers to execute intent CRUD, query, and vector operations
+ * based on Intent Graph output actions.
+ */
+export type IntentExecutorDatabase = Pick<
+  Database,
+  | 'createIntent'
+  | 'updateIntent'
+  | 'archiveIntent'
+  | 'getIntent'
+  | 'getIntentWithOwnership'
+  | 'getActiveIntents'
+  | 'getUserIndexIds'
+  | 'associateIntentWithIndexes'
+  | 'findSimilarIntents'
+>;
+
+/**
+ * Database interface narrowed for Intent Graph operations.
+ * Provides state population (getActiveIntents) and action execution (create/update/archive).
+ */
+export type IntentGraphDatabase = Pick<
+  Database,
+  'getActiveIntents' | 'createIntent' | 'updateIntent' | 'archiveIntent'
+>;
