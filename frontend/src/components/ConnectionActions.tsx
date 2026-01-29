@@ -15,6 +15,17 @@ export interface ConnectionActionsProps {
   onAction: (action: ConnectionAction, userId: string) => Promise<void>;
   disabled?: boolean;
   size?: 'sm' | 'default' | 'lg';
+  mutualIntents?: Array<{
+    intent: {
+      id: string;
+      summary?: string;
+      payload: string;
+      updatedAt: string;
+    };
+    totalStake: string;
+    agents: unknown[];
+  }>;
+  synthesis?: string;
 }
 
 export default function ConnectionActions({

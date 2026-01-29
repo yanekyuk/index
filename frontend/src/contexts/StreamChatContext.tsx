@@ -11,6 +11,7 @@ interface ChatWindow {
   userName: string;
   userAvatar?: string;
   minimized: boolean;
+  initialMessage?: string;
 }
 
 interface MessageRequest {
@@ -45,7 +46,7 @@ interface StreamChatContextType {
   activeChatId: string | null;
   messageRequests: MessageRequest[];
   messageRequestsLoading: boolean;
-  openChat: (userId: string, userName: string, userAvatar?: string) => void;
+  openChat: (userId: string, userName: string, userAvatar?: string, initialMessage?: string) => void;
   closeChat: (userId: string) => void;
   toggleMinimize: (userId: string) => void;
   setActiveChat: (userId: string | null) => void;
@@ -182,23 +183,24 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     [client, user?.id, api]
   );
 
-  const openChat = useCallback((userId: string, userName: string, userAvatar?: string) => {
+  const openChat = useCallback((userId: string, userName: string, userAvatar?: string, initialMessage?: string) => {
     setOpenChats((prev) => {
       // Check if chat is already open
       const existing = prev.find((c) => c.userId === userId);
       if (existing) {
-        // Bring to front and unminimize
+        // Bring to front and unminimize, but don't override initial message for existing chats
         return prev.map((c) =>
           c.userId === userId ? { ...c, minimized: false } : c
         );
       }
 
-      // Add new chat window
+      // Add new chat window with initial message (only for truly new chats)
       const newChat: ChatWindow = {
         userId,
         userName,
         userAvatar,
         minimized: false,
+        initialMessage,
       };
 
       // If we're at max, remove the oldest one

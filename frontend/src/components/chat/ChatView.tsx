@@ -5,6 +5,7 @@ import { Channel, MessageResponse, LocalMessage } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useDiscover } from '@/contexts/APIContext';
+import { useAuthenticatedAPI } from '@/lib/api';
 import { X, ArrowLeft, Clock, Check, SkipForward, Loader2, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -34,6 +35,7 @@ interface ChatViewProps {
   userId: string;
   userName: string;
   userAvatar?: string;
+  initialMessage?: string;
   minimized: boolean; // Kept for compatibility but not used
   onClose: () => void;
   onToggleMinimize: () => void; // Kept for compatibility but not used
@@ -49,6 +51,7 @@ export default function ChatView({
   userId,
   userName,
   userAvatar,
+  initialMessage,
   minimized: _minimized,
   onClose,
   onToggleMinimize: _onToggleMinimize,
@@ -59,21 +62,36 @@ export default function ChatView({
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const discoverService = useDiscover();
+  const api = useAuthenticatedAPI();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [messageText, setMessageText] = useState('');
+  const [messageText, setMessageText] = useState(initialMessage || '');
   const [loading, setLoading] = useState(true);
   const [pendingState, setPendingState] = useState<ChannelPendingState>({ isPending: false, isRequester: false, awaitingAdminApproval: false });
   const [respondingAction, setRespondingAction] = useState<string | null>(null);
   const [isNewConversation, setIsNewConversation] = useState(false); // True when user needs to send a message request
   const [mutualIntentCount, setMutualIntentCount] = useState<number | null>(null);
+  const [suggestedMessageLoading, setSuggestedMessageLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, []);
+
+  // Auto-resize textarea based on content
+  const autoResizeTextarea = useCallback(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+    }
+  }, []);
+
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [messageText, autoResizeTextarea]);
 
   // Initialize channel
   useEffect(() => {
@@ -228,6 +246,44 @@ export default function ChatView({
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // Clear pre-filled message if this is not actually a new conversation
+  useEffect(() => {
+    if (initialMessage && messages.length > 0 && !isNewConversation) {
+      setMessageText('');
+    }
+  }, [initialMessage, messages.length, isNewConversation]);
+
+  // Fetch suggested intro message for new conversations
+  useEffect(() => {
+    if (!isNewConversation || !isReady || loading || messageText.trim()) return;
+
+    let mounted = true;
+    const fetchSuggestedMessage = async () => {
+      setSuggestedMessageLoading(true);
+      try {
+        const response = await api.post<{ message: string }>('/chat/suggest-intro', {
+          targetUserId: userId,
+        });
+        if (mounted && response.message) {
+          setMessageText(response.message);
+        }
+      } catch (err) {
+        console.error('Failed to generate intro message:', err);
+        // Fallback to a simple generic message
+      } finally {
+        if (mounted) {
+          setSuggestedMessageLoading(false);
+        }
+      }
+    };
+
+    fetchSuggestedMessage();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isNewConversation, isReady, loading, userId, userName, api, messageText]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sendingMessageId) return;
@@ -416,20 +472,11 @@ export default function ChatView({
       {/* Pending state banners */}
       {pendingState.isPending && (
         <div className={`px-4 py-3 border-b ${
-          pendingState.awaitingAdminApproval 
-            ? 'bg-amber-50 border-amber-200' 
-            : pendingState.isRequester 
-              ? 'bg-blue-50 border-blue-200'
-              : 'bg-green-50 border-green-200'
+          pendingState.awaitingAdminApproval || pendingState.isRequester 
+            ? 'bg-blue-50 border-blue-200'
+            : 'bg-green-50 border-green-200'
         }`}>
-          {pendingState.awaitingAdminApproval ? (
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600" />
-              <span className="text-sm text-amber-800 font-ibm-plex-mono">
-                Awaiting admin approval before {userName} can see your message
-              </span>
-            </div>
-          ) : pendingState.isRequester ? (
+          {pendingState.awaitingAdminApproval || pendingState.isRequester ? (
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-blue-600" />
               <span className="text-sm text-blue-800 font-ibm-plex-mono">
@@ -542,31 +589,31 @@ export default function ChatView({
         )}
         
         <div className="p-4">
-          {pendingState.isPending && pendingState.isRequester ? (
-            <div className="text-center text-gray-500 text-sm font-ibm-plex-mono py-2">
-              Waiting for {userName} to accept your message request
-            </div>
+          {pendingState.isPending && (pendingState.isRequester || pendingState.awaitingAdminApproval) ? (
+            null
           ) : pendingState.isPending && !pendingState.isRequester ? (
             <div className="text-center text-gray-500 text-sm font-ibm-plex-mono py-2">
               Accept the request to continue the conversation
             </div>
           ) : (
-            <div className="bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col">
-              <div className="flex items-center px-4 py-2 min-h-[54px]">
-                <input
+            <div className="relative bg-white border border-gray-800 rounded-sm shadow-lg min-h-[52px] flex items-center">
+              <div className="flex-1 overflow-y-auto pl-3 pr-14 py-2 self-center" style={{ maxHeight: '200px' }}>
+                <textarea
                   ref={inputRef}
-                  type="text"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  placeholder={isNewConversation ? `Say hi to ${userName}...` : "Type a message..."}
-                  className="flex-1 font-ibm-plex-mono text-black text-lg focus:outline-none bg-transparent"
+                  placeholder={suggestedMessageLoading ? "Thinking of a message..." : isNewConversation ? `Say hi to ${userName}...` : "Type a message..."}
+                  className="w-full font-ibm-plex-mono text-black text-sm focus:outline-none bg-transparent resize-none overflow-hidden leading-6"
                   disabled={sendingMessageId !== null}
+                  rows={1}
                 />
+              </div>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
                 {sendingMessageId ? (
                   <button
                     onClick={() => setSendingMessageId(null)}
-                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer ml-2"
+                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -574,7 +621,7 @@ export default function ChatView({
                   <button
                     onClick={handleSend}
                     disabled={!messageText.trim()}
-                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ml-2"
+                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
                     <ArrowUp className="w-4 h-4" />
                   </button>

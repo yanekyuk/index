@@ -7,6 +7,8 @@ import { users, userConnectionEvents, indexMembers, indexes } from '../lib/schem
 import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
 import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
 import type { CustomChannelData, CustomChannelFilters, CustomChannelMember } from '../types/stream-chat';
+import { IntroMakerGenerator } from '../agents/intent/stake/intro/intro-maker.generator';
+import { discoverUsers } from '../lib/discover';
 
 const router = Router();
 
@@ -468,6 +470,95 @@ router.get('/can-message/:targetUserId',
     } catch (error) {
       console.error('Error checking message permission:', error);
       return res.status(500).json({ error: 'Failed to check message permission' });
+    }
+  }
+);
+
+// Generate suggested intro message for starting a conversation
+router.post('/suggest-intro',
+  authenticatePrivy,
+  [
+    body('targetUserId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const { targetUserId } = req.body;
+
+      // Prevent self-messaging
+      if (userId === targetUserId) {
+        return res.status(400).json({ error: 'Cannot generate intro for yourself' });
+      }
+
+      // Get user info
+      const [currentUser, targetUser] = await Promise.all([
+        db.select().from(users).where(eq(users.id, userId)).limit(1),
+        db.select().from(users).where(eq(users.id, targetUserId)).limit(1)
+      ]);
+
+      if (!currentUser[0] || !targetUser[0]) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Fetch mutual intents/stakes between the two users
+      const { results } = await discoverUsers({
+        authenticatedUserId: userId,
+        userIds: [targetUserId],
+        excludeDiscovered: false,
+        limit: 1
+      });
+
+      const senderReasonings: string[] = [];
+      const recipientReasonings: string[] = [];
+
+      if (results.length > 0 && results[0].intents.length > 0) {
+        // Extract reasonings from discovered intents
+        for (const intentData of results[0].intents.slice(0, 3)) {
+          const text = intentData.intent.summary || intentData.intent.payload;
+          senderReasonings.push(text);
+          // Also include the stake reasonings if available
+          if (intentData.reasonings.length > 0) {
+            recipientReasonings.push(...intentData.reasonings.slice(0, 2));
+          } else {
+            recipientReasonings.push(text);
+          }
+        }
+      }
+
+      // Skip intro generation if no context available
+      if (senderReasonings.length === 0) {
+        return res.json({
+          message: `Hi ${targetUser[0].name}, I'd love to connect!`,
+          generatedAt: new Date().toISOString()
+        });
+      }
+
+      // Generate intro using agent
+      const introMaker = new IntroMakerGenerator();
+
+      const result = await introMaker.run({
+        sender: {
+          name: currentUser[0].name,
+          reasonings: senderReasonings.slice(0, 3)
+        },
+        recipient: {
+          name: targetUser[0].name,
+          reasonings: recipientReasonings.slice(0, 3)
+        }
+      });
+
+      return res.json({
+        message: result.message,
+        generatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error generating intro message:', error);
+      return res.status(500).json({ error: 'Failed to generate intro message' });
     }
   }
 );
