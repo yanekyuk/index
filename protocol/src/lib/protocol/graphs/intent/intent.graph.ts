@@ -1,15 +1,16 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
-import { IntentGraphState, VerifiedIntent } from "./intent.graph.state";
+import { IntentGraphState, VerifiedIntent, ExecutionResult } from "./intent.graph.state";
 import { ExplicitIntentInferrer } from "../../agents/intent/inferrer/explicit.inferrer";
 import { SemanticVerifierAgent } from "../../agents/intent/verifier/semantic.verifier";
 import { IntentReconcilerAgent } from "../../agents/intent/reconciler/intent.reconciler";
+import { IntentGraphDatabase } from "../../interfaces/database.interface";
 import { log } from "../../../log";
 
 /**
  * Factory class to build and compile the Intent Processing Graph.
  */
 export class IntentGraphFactory {
-  constructor() { }
+  constructor(private database: IntentGraphDatabase) { }
 
   public createGraph() {
     // Instantiate Agents (Nodes)
@@ -18,6 +19,22 @@ export class IntentGraphFactory {
     const reconciler = new IntentReconcilerAgent();
 
     // --- NODE DEFINITIONS ---
+
+    /**
+     * Node 0: Prep
+     * Fetches active intents from database for reconciliation context.
+     */
+    const prepNode = async (state: typeof IntentGraphState.State) => {
+      log.info("[Graph:Prep] Fetching active intents for reconciliation context...");
+      const activeIntents = await this.database.getActiveIntents(state.userId);
+      
+      // Format for reconciler agent
+      const formattedActiveIntents = activeIntents
+        .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
+        .join('\n') || "No active intents.";
+      
+      return { activeIntents: formattedActiveIntents };
+    };
 
     /**
      * Node 1: Inference
@@ -104,22 +121,84 @@ export class IntentGraphFactory {
       return { actions: result.actions };
     };
 
+    /**
+     * Node 4: Executor
+     * Executes reconciler actions against the database.
+     */
+    const executorNode = async (state: typeof IntentGraphState.State) => {
+      const actions = state.actions;
+      if (!actions || actions.length === 0) {
+        return { executionResults: [] };
+      }
+
+      log.info(`[Graph:Executor] Executing ${actions.length} actions...`);
+      const results: ExecutionResult[] = [];
+
+      for (const action of actions) {
+        try {
+          if (action.type === 'create') {
+            const created = await this.database.createIntent({
+              userId: state.userId,
+              payload: action.payload,
+              confidence: action.score ? action.score / 100 : 1.0,
+              inferenceType: 'explicit',
+              sourceType: 'discovery_form'
+            });
+            results.push({ actionType: 'create', success: true, intentId: created.id });
+            log.info(`[Graph:Executor] Created intent: ${created.id}`);
+            
+          } else if (action.type === 'update') {
+            const updated = await this.database.updateIntent(action.id, {
+              payload: action.payload
+            });
+            results.push({
+              actionType: 'update',
+              success: !!updated,
+              intentId: action.id,
+              error: updated ? undefined : 'Intent not found'
+            });
+            log.info(`[Graph:Executor] Updated intent: ${action.id}`);
+            
+          } else if (action.type === 'expire') {
+            const result = await this.database.archiveIntent(action.id);
+            results.push({
+              actionType: 'expire',
+              success: result.success,
+              intentId: action.id,
+              error: result.error
+            });
+            log.info(`[Graph:Executor] Archived intent: ${action.id}`);
+          }
+        } catch (error) {
+          log.error(`[Graph:Executor] Failed to execute ${action.type}:`, { error });
+          results.push({
+            actionType: action.type,
+            success: false,
+            intentId: 'id' in action ? action.id : undefined,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      return { executionResults: results };
+    };
+
     // --- GRAPH ASSEMBLY ---
 
     const workflow = new StateGraph(IntentGraphState)
+      .addNode("prep", prepNode)
       .addNode("inference", inferenceNode)
       .addNode("verification", verificationNode)
       .addNode("reconciler", reconciliationNode)
+      .addNode("executor", executorNode)
 
       // Define Flow
-      .addEdge(START, "inference")
-
-      // Conditional Edge: If no intents found, stop early? 
-      // For simplicity, we just flow to verification, which handles empty list gracefully.
+      .addEdge(START, "prep")
+      .addEdge("prep", "inference")
       .addEdge("inference", "verification")
-
       .addEdge("verification", "reconciler")
-      .addEdge("reconciler", END);
+      .addEdge("reconciler", "executor")
+      .addEdge("executor", END);
 
     return workflow.compile();
   }

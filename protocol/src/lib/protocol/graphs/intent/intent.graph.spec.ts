@@ -7,23 +7,73 @@ config({ path: 'protocol/.env.development', override: true });
 import { describe, expect, it, beforeAll } from "bun:test";
 import { IntentGraphFactory } from "./intent.graph";
 import { IntentGraphState } from "./intent.graph.state";
+import type { IntentGraphDatabase, ActiveIntent, CreatedIntent, ArchiveResult } from "../../interfaces/database.interface";
+
+/**
+ * Mock database for testing the Intent Graph.
+ * Stores intents in memory and provides basic CRUD operations.
+ */
+const createMockDatabase = (): IntentGraphDatabase => {
+  const intents: CreatedIntent[] = [];
+  let idCounter = 1;
+
+  return {
+    async getActiveIntents(userId: string): Promise<ActiveIntent[]> {
+      return intents
+        .filter(i => i.userId === userId)
+        .map(i => ({
+          id: i.id,
+          payload: i.payload,
+          summary: i.summary,
+          createdAt: i.createdAt
+        }));
+    },
+    async createIntent(data: { userId: string; payload: string; confidence: number; inferenceType: 'explicit' | 'implicit'; sourceType?: string }): Promise<CreatedIntent> {
+      const newIntent: CreatedIntent = {
+        id: `intent-${idCounter++}`,
+        userId: data.userId,
+        payload: data.payload,
+        summary: null,
+        isIncognito: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      intents.push(newIntent);
+      return newIntent;
+    },
+    async updateIntent(intentId: string, data: { payload?: string }): Promise<CreatedIntent | null> {
+      const intent = intents.find(i => i.id === intentId);
+      if (!intent) return null;
+      if (data.payload) intent.payload = data.payload;
+      intent.updatedAt = new Date();
+      return intent;
+    },
+    async archiveIntent(intentId: string): Promise<ArchiveResult> {
+      const index = intents.findIndex(i => i.id === intentId);
+      if (index === -1) {
+        return { success: false, error: 'Intent not found' };
+      }
+      intents.splice(index, 1);
+      return { success: true };
+    }
+  };
+};
 
 describe('IntentGraph', () => {
   let graphRunner: any;
+  let mockDatabase: IntentGraphDatabase;
 
   beforeAll(() => {
-    const factory = new IntentGraphFactory();
+    mockDatabase = createMockDatabase();
+    const factory = new IntentGraphFactory(mockDatabase);
     graphRunner = factory.createGraph();
   });
 
   it('should process a clear goal correctly', async () => {
-    const inputState: typeof IntentGraphState.State = {
+    const inputState = {
+      userId: "test-user-1",
       userProfile: "User is a Senior Developer named Alice. She likes generic coding.",
-      activeIntents: "No active intents.",
       inputContent: "I want to build a new React app for my portfolio.",
-      inferredIntents: [],
-      verifiedIntents: [],
-      actions: []
     };
 
     const result = await graphRunner.invoke(inputState);
@@ -38,16 +88,19 @@ describe('IntentGraph', () => {
     const action = result.actions[0];
     expect(action.type).toBe("create");
     expect(action.payload).toContain("React");
+
+    // Verify execution results
+    expect(result.executionResults.length).toBeGreaterThan(0);
+    expect(result.executionResults[0].success).toBe(true);
+    expect(result.executionResults[0].actionType).toBe("create");
+    expect(result.executionResults[0].intentId).toBeDefined();
   }, 60000);
 
   it('should ignore vague nonsense', async () => {
-    const inputState: typeof IntentGraphState.State = {
+    const inputState = {
+      userId: "test-user-2",
       userProfile: "User is a Senior Developer named Alice.",
-      activeIntents: "No active intents.",
       inputContent: "I feel like doing something maybe.",
-      inferredIntents: [],
-      verifiedIntents: [],
-      actions: []
     };
 
     const result = await graphRunner.invoke(inputState);
@@ -57,5 +110,6 @@ describe('IntentGraph', () => {
     // If Verifier drops it, verifiedIntents should be empty.
     // OR Reconciler returns 0 actions.
     expect(result.actions.length).toBe(0);
+    expect(result.executionResults.length).toBe(0);
   }, 60000);
 });
