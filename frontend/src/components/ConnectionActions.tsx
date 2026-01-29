@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useStreamChat } from "@/contexts/StreamChatContext";
@@ -36,14 +37,16 @@ export default function ConnectionActions({
   onAction,
   disabled = false,
 }: ConnectionActionsProps) {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const { success, error } = useNotifications();
   const { openChat, isReady: isChatReady } = useStreamChat();
 
-  // Handle message button click - always opens chat view
+  // Handle message button click - navigates to chat page
   // The chat view will show appropriate notice for non-connected users
   const handleMessage = () => {
     openChat(userId, userName, userAvatar);
+    router.push(`/u/${userId}/chat`);
   };
 
   const handleAction = async (action: ConnectionAction) => {

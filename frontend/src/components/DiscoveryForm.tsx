@@ -7,6 +7,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions, getFileCategoryBadge } from "@/lib/file-validation";
 import { ArrowUp, X, Loader2, Zap, Type, AtSign } from "lucide-react";
+import Image from "next/image";
 import { Intent } from "@/types";
 
 export interface Suggestion {
@@ -740,7 +741,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
                   }`}
                 >
                   {user.avatar && (
-                    <img src={user.avatar} alt="" className="w-5 h-5 rounded-full" />
+                    <Image src={user.avatar} alt="" width={20} height={20} className="w-5 h-5 rounded-full" unoptimized />
                   )}
                   <span className="text-gray-900">{user.name}</span>
                 </button>

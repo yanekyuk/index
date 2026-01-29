@@ -2,6 +2,7 @@ import { getPostBySlug, getAllPostSlugs } from '@/lib/blog';
 import { notFound } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
+import Image from 'next/image';
 import Footer from '@/components/Footer';
 
 export async function generateStaticParams() {
@@ -109,13 +110,22 @@ const markdownComponents: Components = {
     };
     const widthClass = sizeClasses[size] || 'w-full';
     
+    if (!src || typeof src !== 'string') return null;
+    
+    // Check if it's an external URL
+    const isExternal = src.startsWith('http://') || src.startsWith('https://');
+    
     return (
-      <img
-        src={src}
-        alt={altText}
-        className={`${widthClass} rounded-lg my-6 mx-auto block`}
-        loading="lazy"
-      />
+      <div className={`${widthClass} rounded-lg my-6 mx-auto block`}>
+        <Image
+          src={src}
+          alt={altText || ''}
+          width={800}
+          height={600}
+          className="rounded-lg w-full h-auto"
+          unoptimized={isExternal}
+        />
+      </div>
     );
   },
 };

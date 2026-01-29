@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useParams, usePathname } from 'next/navigation';
 import { Channel } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -17,16 +18,22 @@ interface ChannelMember {
 }
 
 export default function ChatSidebar() {
+  const router = useRouter();
+  const params = useParams();
+  const pathname = usePathname();
   const { 
     client, 
     isReady, 
     openChat, 
-    activeChatId, 
-    setActiveChat,
     messageRequests,
     messageRequestsLoading,
     respondToMessageRequest,
   } = useStreamChat();
+  
+  // Get active chat user ID from route params when on chat route (e.g., /u/[id]/chat)
+  const activeChatUserId = pathname?.endsWith('/chat') && params?.id 
+    ? (params.id as string) 
+    : null;
   const { success, error: showError } = useNotifications();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,16 +101,17 @@ export default function ChatSidebar() {
       );
 
       if (otherMember?.user) {
-        // Open chat and set as active
+        // Register in open chats for sidebar state
         openChat(
           otherMember.user.id,
           otherMember.user.name || 'User',
           otherMember.user.image
         );
-        setActiveChat(otherMember.user.id);
+        // Navigate to chat page
+        router.push(`/u/${otherMember.user.id}/chat`);
       }
     },
-    [client, openChat, setActiveChat]
+    [client, openChat, router]
   );
 
   // Handle responding to message requests
@@ -284,15 +292,15 @@ export default function ChatSidebar() {
               const lastMessage = channel.state.messages[channel.state.messages.length - 1];
               const unreadCount = channel.state.unreadCount || 0;
               const hasUnread = unreadCount > 0;
-              const isActive = activeChatId === otherUser.id;
+              const isActive = activeChatUserId === otherUser.id;
 
               return (
                 <button
                   key={channel.id}
                   onClick={() => handleChannelClick(channel)}
-                  className={`w-full py-3 transition-colors text-left ${
+                  className={`w-full py-3 px-3 transition-colors text-left ${
                     isActive
-                      ? 'bg-gray-100 border-l-2 border-black'
+                      ? 'bg-gray-100'
                       : hasUnread
                         ? 'bg-gray-50'
                         : 'hover:bg-gray-50'
