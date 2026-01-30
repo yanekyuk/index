@@ -199,11 +199,14 @@ export class IntentController {
 
     // 3. Create graph and invoke
     const graph = this.factory.createGraph();
-    const result = await graph.invoke({
-      userId: user.id,
-      userProfile: userProfile,
-      inputContent: content,
-    });
+    const result = await graph.invoke(
+      {
+        userId: user.id,
+        userProfile: userProfile,
+        inputContent: content,
+      },
+      { recursionLimit: 100 }
+    );
 
     // 4. Return result
     return Response.json(result);
