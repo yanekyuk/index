@@ -9,6 +9,7 @@
 export type ChatStreamEventType = 
   | 'status'
   | 'routing'
+  | 'thinking'
   | 'subgraph_start'
   | 'subgraph_result'
   | 'token'
@@ -45,6 +46,17 @@ export interface RoutingEvent extends ChatStreamEventBase {
   target: string;
   /** Optional reasoning for the routing decision */
   reasoning?: string;
+}
+
+/**
+ * Thinking event - sent to stream the model's reasoning and decision-making process.
+ */
+export interface ThinkingEvent extends ChatStreamEventBase {
+  type: 'thinking';
+  /** The thinking/reasoning content */
+  content: string;
+  /** Optional step identifier (e.g., 'router', 'inference', 'verification') */
+  step?: string;
 }
 
 /**
@@ -106,6 +118,7 @@ export interface ErrorEvent extends ChatStreamEventBase {
 export type ChatStreamEvent = 
   | StatusEvent
   | RoutingEvent
+  | ThinkingEvent
   | SubgraphStartEvent
   | SubgraphResultEvent
   | TokenEvent
@@ -232,4 +245,11 @@ export function createDoneEvent(
  */
 export function createErrorEvent(sessionId: string, message: string, code?: string): ErrorEvent {
   return createStreamEvent<ErrorEvent>('error', sessionId, { message, code });
+}
+
+/**
+ * Creates a formatted thinking event.
+ */
+export function createThinkingEvent(sessionId: string, content: string, step?: string): ThinkingEvent {
+  return createStreamEvent<ThinkingEvent>('thinking', sessionId, { content, step });
 }

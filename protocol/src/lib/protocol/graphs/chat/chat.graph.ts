@@ -16,6 +16,7 @@ import type { ChatStreamEvent } from "../../../../types/chat-streaming";
 import {
   createStatusEvent,
   createRoutingEvent,
+  createThinkingEvent,
   createSubgraphStartEvent,
   createSubgraphResultEvent,
   createTokenEvent,
@@ -238,8 +239,24 @@ export class ChatGraphFactory {
           currentNode = nodeName;
           yield createStatusEvent(sessionId, `Processing: ${nodeName}`);
           
-          // Emit routing event when router completes
-          // This is handled in on_chain_end below
+          // Emit thinking event for node start
+          const nodeDescriptions: Record<string, string> = {
+            'load_context': 'Loading user profile and active intents...',
+            'router': 'Analyzing your message to determine the best way to help...',
+            'intent_query': 'Fetching your active intents...',
+            'intent_write': 'Processing intent changes...',
+            'profile_query': 'Retrieving your profile...',
+            'profile_write': 'Updating your profile...',
+            'opportunity_subgraph': 'Searching for relevant opportunities...',
+            'respond_direct': 'Preparing response...',
+            'clarify': 'Determining what additional information is needed...',
+            'generate_response': 'Crafting response...'
+          };
+          
+          const description = nodeDescriptions[nodeName];
+          if (description) {
+            yield createThinkingEvent(sessionId, description, nodeName);
+          }
           
           // Emit subgraph start events
           if (nodeName.includes('subgraph')) {
@@ -257,16 +274,61 @@ export class ChatGraphFactory {
             continue;
           }
 
-          // Emit routing decision after router completes
+          // Emit routing decision after router completes with detailed thinking
           if (nodeName === 'router' && event.data?.output?.routingDecision) {
             const decision = event.data.output.routingDecision as RoutingDecision;
+            
+            // Emit detailed thinking about routing decision
+            const targetDescriptions: Record<string, string> = {
+              'intent_query': 'showing your existing intents',
+              'intent_write': 'creating or updating intents',
+              'profile_query': 'showing your profile',
+              'profile_write': 'updating your profile',
+              'opportunity_subgraph': 'finding relevant opportunities',
+              'respond': 'providing a direct response',
+              'clarify': 'asking for clarification'
+            };
+            
+            const targetDesc = targetDescriptions[decision.target] || decision.target;
+            const thinkingContent = `Routing decision: ${targetDesc}\n\nReasoning: ${decision.reasoning || 'No specific reasoning provided'}`;
+            yield createThinkingEvent(sessionId, thinkingContent, 'router');
+            
             yield createRoutingEvent(sessionId, decision.target, decision.reasoning);
           }
 
-          // Emit subgraph result events
+          // Emit subgraph result events with thinking
           if (nodeName.includes('subgraph') && event.data?.output?.subgraphResults) {
             const subgraphName = nodeName.replace('_subgraph', '');
             const results = event.data.output.subgraphResults;
+            
+            // Emit thinking about what the subgraph accomplished
+            if (results && typeof results === 'object') {
+              let resultSummary = `Completed ${subgraphName} processing`;
+              
+              // Add specific details based on subgraph type
+              if ('intent' in results && results.intent) {
+                const intentResult = results.intent as any;
+                if (intentResult.actions) {
+                  resultSummary += `\n- Actions: ${intentResult.actions.length} intent operations`;
+                }
+                if (intentResult.intents) {
+                  resultSummary += `\n- Found ${intentResult.intents.length} intents`;
+                }
+              } else if ('profile' in results && results.profile) {
+                const profileResult = results.profile as any;
+                if (profileResult.updated) {
+                  resultSummary += '\n- Profile updated successfully';
+                }
+              } else if ('opportunity' in results && results.opportunity) {
+                const oppResult = results.opportunity as any;
+                if (oppResult.opportunities) {
+                  resultSummary += `\n- Found ${oppResult.opportunities.length} opportunities`;
+                }
+              }
+              
+              yield createThinkingEvent(sessionId, resultSummary, subgraphName);
+            }
+            
             yield createSubgraphResultEvent(sessionId, subgraphName, results);
           }
         }
