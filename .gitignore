@@ -4,6 +4,7 @@ protocol/temp-uploads/
 AGENTS.md
 postgres/
 .cursor/rules
+.cursor/agents
 .agent
 .vscode/
 !.vscode/index.code-workspace.default
