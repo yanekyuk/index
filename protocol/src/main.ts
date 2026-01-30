@@ -22,11 +22,26 @@ console.log(`Routes registered with prefix ${GLOBAL_PREFIX}`);
 
 Bun.serve({
   port: PORT,
+  idleTimeout: 60, // 60 seconds to prevent request timeout errors
   async fetch(req) {
     const url = new URL(req.url);
     const method = req.method;
 
+    // CORS headers for cross-origin requests
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': process.env.FRONTEND_URL || '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Expose-Headers': 'X-Session-Id',
+      'Access-Control-Max-Age': '86400',
+    };
+
     console.log(`[V2] Request: ${method} ${url.pathname}`);
+
+    // Handle OPTIONS preflight requests
+    if (method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
 
     // Iterate over controllers and routes to find a match.
     // Optimization: could pre-compile regular expressions or a router map.
@@ -53,7 +68,7 @@ Bun.serve({
             const instance = controllerInstances.get(target);
             if (!instance) {
               console.error(`No instance found for controller ${target.name}`);
-              return new Response('Internal Server Error', { status: 500 });
+              return new Response('Internal Server Error', { status: 500, headers: corsHeaders });
             }
 
             // Execute Guards
@@ -79,32 +94,41 @@ Bun.serve({
             const result = await handler.call(instance, req, guardResult);
             console.log(`[V2] Handler invoked successfully`);
 
-            // If result is a Response object, return it.
+            // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
-              return result;
+              // Clone the response with CORS headers added
+              const newHeaders = new Headers(result.headers);
+              Object.entries(corsHeaders).forEach(([key, value]) => {
+                newHeaders.set(key, value);
+              });
+              return new Response(result.body, {
+                status: result.status,
+                statusText: result.statusText,
+                headers: newHeaders,
+              });
             }
             // Otherwise assume JSON
-            return Response.json(result);
+            return Response.json(result, { headers: corsHeaders });
 
           } catch (error: any) {
             console.error(`Error handling ${method} ${fullPath}:`, error);
             const message = error.message || 'Internal Server Error';
             // Map common auth errors
             if (message === 'Access token required' || message === 'Invalid or expired access token') {
-              return new Response(JSON.stringify({ error: message }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+              return new Response(JSON.stringify({ error: message }), { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
             if (message === 'User not found' || message === 'Account deactivated') {
-              return new Response(JSON.stringify({ error: message }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+              return new Response(JSON.stringify({ error: message }), { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
             }
 
-            return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+            return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
           }
         }
       }
     }
 
     console.log(`[V2] No match found for ${url.pathname}`);
-    return new Response('Not Found', { status: 404 });
+    return new Response('Not Found', { status: 404, headers: corsHeaders });
   },
 });
 
