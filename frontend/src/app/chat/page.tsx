@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import ClientLayout from '@/components/ClientLayout';
+import ThinkingDropdown from '@/components/chat/ThinkingDropdown';
 import { cn } from '@/lib/utils';
 
 export default function ChatPage() {
@@ -99,27 +100,38 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-4">
               {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    'flex',
-                    msg.role === 'user' ? 'justify-end' : 'justify-start'
+                <div key={msg.id}>
+                  {msg.role === 'assistant' && msg.thinking && (
+                    <div className="flex justify-start mb-2">
+                      <div className="max-w-[80%]">
+                        <ThinkingDropdown
+                          thinking={msg.thinking}
+                          isStreaming={msg.isStreaming}
+                        />
+                      </div>
+                    </div>
                   )}
-                >
                   <div
                     className={cn(
-                      'max-w-[80%] rounded-sm px-3 py-2',
-                      msg.role === 'user'
-                        ? 'bg-black text-white'
-                        : 'bg-gray-100 text-gray-800'
+                      'flex',
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
                     )}
                   >
-                    <p className="whitespace-pre-wrap text-sm font-ibm-plex-mono">
-                      {msg.content}
-                    </p>
-                    {msg.isStreaming && (
-                      <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
-                    )}
+                    <div
+                      className={cn(
+                        'max-w-[80%] rounded-sm px-3 py-2',
+                        msg.role === 'user'
+                          ? 'bg-black text-white'
+                          : 'bg-gray-100 text-gray-800'
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap text-sm font-ibm-plex-mono">
+                        {msg.content}
+                      </p>
+                      {msg.isStreaming && (
+                        <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
