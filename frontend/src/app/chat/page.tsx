@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { Send, Loader2, Sparkles, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,7 +83,7 @@ export default function ChatPage() {
       <ClientLayout>
         <div className="pb-0 flex flex-col flex-1 min-h-0">
           <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
-            <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg p-8 min-h-[400px] flex items-center justify-center">
+            <div className="w-full bg-white p-8 min-h-[400px] flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
             </div>
           </div>
@@ -95,9 +96,9 @@ export default function ChatPage() {
     <ClientLayout>
       <div className="pb-0 flex flex-col flex-1 min-h-0">
         <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
-          <div className="w-full flex flex-col flex-1 min-h-0 min-h-[400px] bg-white border border-gray-800 rounded-sm shadow-lg overflow-hidden">
-            {/* Header - match DiscoveryForm: px-3 py-2 min-h-[48px] */}
-            <div className="relative flex items-center gap-3 px-3 py-2 min-h-[48px] border-b border-gray-200 flex-shrink-0 bg-white">
+          {/* Title bar card - same depth as DiscoveryForm */}
+          <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+            <div className="relative flex items-center gap-3 px-3 py-2 min-h-[54px]">
               <Sparkles className="h-5 w-5 shrink-0 text-[#006D4B]" aria-hidden />
               {isEditingTitle ? (
                 <input
@@ -128,27 +129,42 @@ export default function ChatPage() {
                   >
                     {displayTitle}
                   </button>
-                  {sessionId && (
-                    <button
-                      type="button"
-                      onClick={startEditingTitle}
-                      title="Rename conversation"
-                      className="shrink-0 p-1 rounded text-gray-500 hover:text-[#006D4B] hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#006D4B]/30"
-                      aria-label="Rename conversation"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={startEditingTitle}
+                    title="Rename conversation"
+                    disabled={!sessionId}
+                    className="shrink-0 p-1 rounded text-gray-500 hover:text-[#006D4B] hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#006D4B]/30 disabled:opacity-50 disabled:pointer-events-none"
+                    aria-label="Rename conversation"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Messages - center area */}
-            <div className="flex-1 p-4 overflow-y-auto min-h-0">
+          {/* Messages area - no card, floats like main view content */}
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex-1 p-4 overflow-y-auto min-h-0 flex flex-col">
               {messages.length === 0 ? (
-                <div className="text-center text-gray-500 py-12">
-                  <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="font-ibm-plex-mono text-sm">
+                <div className="flex flex-col items-center justify-center px-6 pb-8 flex-1">
+                  <Image
+                    className="h-auto"
+                    src="/generic.png"
+                    alt=""
+                    width={300}
+                    height={200}
+                    style={{ imageRendering: 'auto' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.focus()}
+                    className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:text-black transition-colors"
+                  >
+                    Ask me anything
+                  </button>
+                  <p className="text-gray-900 font-500 font-ibm-plex-mono text-sm px-8 mt-2 text-center">
                     Ask me about opportunities, your profile, or anything else!
                   </p>
                 </div>
@@ -199,34 +215,31 @@ export default function ChatPage() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Input */}
-            <form
-              onSubmit={handleSubmit}
-              className="p-4 border-t border-gray-200 flex-shrink-0"
-            >
-              <div className="flex gap-2">
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message..."
-                  disabled={isLoading}
-                  className="flex-1 font-ibm-plex-mono"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={isLoading || !input.trim()}
-                  className="font-ibm-plex-mono"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+          {/* Input form card - same depth as DiscoveryForm */}
+          <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+            <form onSubmit={handleSubmit} className="relative flex items-center px-3 py-2 min-h-[54px]">
+              <Input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type your message..."
+                disabled={isLoading}
+                className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={isLoading || !input.trim()}
+                className="ml-2 shrink-0 font-ibm-plex-mono h-9 w-9 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
             </form>
           </div>
         </div>
