@@ -407,6 +407,27 @@ export class ResponseGeneratorAgent {
       }
     }
 
+    // Handle intent suggestions (when user has profile but no intents)
+    if ((results as any).intentSuggestion) {
+      const suggestion = (results as any).intentSuggestion;
+      sections.push('## Context: User Onboarding');
+      sections.push('');
+      
+      if (suggestion.mode === 'natural_suggestion') {
+        // New natural suggestion format
+        sections.push(`**User:** ${suggestion.userName || 'User'}`);
+        sections.push(`**Their skills:** ${suggestion.skills?.join(', ') || 'Not specified'}`);
+        sections.push(`**Their interests:** ${suggestion.interests?.join(', ') || 'Not specified'}`);
+        sections.push('');
+        sections.push('**User has a profile but no active intents yet.**');
+        sections.push('');
+        sections.push('INSTRUCTION: ' + suggestion.contextMessage);
+      } else {
+        // Legacy format (direct message)
+        sections.push(suggestion.message || 'The user has a profile but no intents. Suggest they share their goals.');
+      }
+    }
+
     // Add validation summary at the end
     if (!hasActualActions && (results.intent?.mode !== 'query' && results.profile?.mode !== 'query')) {
       sections.push('');

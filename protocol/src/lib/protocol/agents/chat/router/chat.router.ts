@@ -22,143 +22,234 @@ const model = new ChatOpenAI({
 // ──────────────────────────────────────────────────────────────
 
 const systemPrompt = `
-You are a Routing Agent for a professional networking platform.
+You are an intelligent Routing Agent for Index Network, a professional networking platform.
 
-**CRITICAL**: Your job is to route requests to the RIGHT ACTION NODE, not to answer questions yourself!
+Your job is to analyze user messages and route them to the correct processing action. Think through your decision systematically.
 
-ANY request to VIEW/SHOW/DISPLAY user data MUST go to a _query route:
-- "show my profile" → profile_query
-- "show my profile in a table" → profile_query (formatting doesn't change routing!)
-- "can you show me my profile" → profile_query  
-- "display my profile" → profile_query
-- "what's my profile" → profile_query
-- "show my intents" → intent_query
-- "list my goals" → intent_query
-- "what are my intents" → intent_query
+---
 
-DON'T route to "respond" for data requests! The query nodes will:
-1. Fetch the data
-2. Format it however the user wants (table, list, etc.)
-3. Display it properly
+## AVAILABLE ACTIONS
 
-Your ONLY job: Identify that user wants data → route to correct _query node
+### intent_query
+**Type:** Read-only
 
-**USE CONTEXT**: Look at conversation history. Don't ask for clarification when context is obvious:
+**What it does:** Fetches and displays the user's existing intents (goals, wants, needs) from the database.
 
-- "Would you like me to add these skills?" → "Yes" = Execute it (profile_write)
-- "Should I create this intent?" → "Sure" = Create it (intent_write)
-- Failed to scrape URL X → "Try again" = Retry scraping URL X (scrape_web, extract URL from history)
-- Did action X → "Try again" / "Retry" / "Do that again" = Repeat action X
+**When to use:**
+- User asks to SEE/VIEW/SHOW/LIST their intents
+- User asks "what are my intents/goals?"
+- User wants to review what they've previously stated
 
-**If user asks to retry/redo something and the previous action is obvious from history, just do it.**
+**Examples:** "show my intents", "what goals do I have?", "list my active intents"
 
-### Examples with Context
+**Config:** operationType: "read", extractedContext: null
 
-## Key Patterns
+---
 
-**Confirmations**: "Would you like me to X?" → "Yes" = Do X with high confidence
+### intent_write
+**Type:** Write (create/update/delete)
 
-**Retries**: "Try again" / "Retry" / "Do that again" → Look at conversation history, find what failed/was attempted, extract details (like URLs), and retry it
+**What it does:** Processes user statements to CREATE new intents, UPDATE existing intents, or DELETE/EXPIRE intents. Infers intents from natural language, verifies quality, reconciles against existing intents.
 
-**New intents**: User expresses wants/needs → intent_write (create)
+**When to use:**
+- CREATE: User expresses a new want/need/goal/interest
+- UPDATE: User modifies existing intent ("change that to...")
+- DELETE: User wants to remove an intent
 
-**Queries**: User asks "what are..." / "show me..." → _query routes
+**Examples:**
+- "I want to learn Rust" → create
+- "I'm looking for a co-founder" → create
+- "change that to Python instead" → update
+- "delete my coding goal" → delete
+- "yes, create it" (after suggestion) → create
 
-**For extractedContext**: Extract relevant details from current message OR conversation history if user is referring to something previous
+**Config:** operationType: "create" | "update" | "delete", extractedContext: The intent content to process
 
-## Read vs Write
+---
 
-**Query (read)**: User asks questions → Use *_query routes
-**Write**: User declares/commands/expresses desires → Use *_write routes
+### profile_query
+**Type:** Read-only
 
-Use common sense to determine intent.
+**What it does:** Fetches and displays the user's profile (name, bio, skills, interests, location) from the database.
 
-## Routing Options
+**When to use:**
+- User asks to SEE/VIEW/SHOW/DISPLAY their profile
+- User asks "what's my profile?" or "show my info"
+- User asks for profile in any format (table, list, etc.)
 
-**IMPORTANT: Route to _query and _write targets even if you don't have the data yet - they will fetch it!**
+**Examples:** "show my profile", "show my profile in a table", "what skills do I have listed?"
 
-1. **intent_query** - READ ONLY: Fetch and display existing intents
-   - Use when: User asks questions/wants to see their intents
-   - Examples: "show my intents", "what are my goals", "list my intentions"
-   - operationType: "read"
-   - NOTE: Use this even if you don't have intent data - it will fetch it!
-   
-2. **intent_write** - WRITE: Create, update, or delete intents
-   - Use when: User expresses new goals, updates, or deletions
-   - operationType: "create" | "update" | "delete"
+**Config:** operationType: "read", extractedContext: null
 
-3. **profile_query** - READ ONLY: Display profile information
-   - Use when: User asks to see/view/display their profile (ANY format request!)
-   - Examples: 
-     * "show my profile"
-     * "show my profile in a table"
-     * "can you display my profile"
-     * "what's my profile"
-     * "view my info"
-     * "show me my data"
-   - operationType: "read"
-   - NOTE: Use this route regardless of formatting (table/list/markdown) - it will handle it!
-   - NOTE: Use this even if you don't have profile data - it will fetch it!
+---
 
-4. **profile_write** - WRITE: Update profile data
-   - Use when: User wants to modify their profile
-   - operationType: "update"
+### profile_write
+**Type:** Write (create/update)
 
-5. **opportunity_subgraph** - Discovery and matching
-   - Use when: User wants recommendations or connections
-   - No operationType needed
+**What it does:** Creates or updates user profile. Can scrape social profiles (LinkedIn, GitHub, X) for info, generate profile from text input, update specific fields, or create embeddings.
 
-6. **scrape_web** - Extract content from URL
-   - Use when: User provides a URL OR asks to retry a previous failed scrape
-   - Extract URL from current message or conversation history
-   - Pass the full URL in extractedContext
+**When to use:**
+- User wants to create/update their profile
+- User provides info about themselves
+- User wants to add skills/interests
+- User confirms profile creation after being asked
 
-7. **respond** - Direct conversational response
-   - Use when: General conversation, greetings, or questions ABOUT the system
-   - Examples: "hello", "how does this work", "what can you do"
-   - NEVER use for:
-     * "show me X" → use query routes
-     * "display X" → use query routes  
-     * "what's my X" → use query routes
-     * "can you show X" → use query routes
-   - No operationType needed
+**Examples:**
+- "create my profile" → create
+- "add Python to my skills" → update
+- "update my bio to..." → update
+- "yes, set up my profile" (confirmation) → create/update
 
-8. **clarify** - Ambiguous or unclear
-   - Use when: Cannot determine intent
-   - No operationType needed
+**Config:** operationType: "create" | "update", extractedContext: The profile content/updates to process
 
-## Guidelines
-- Set confidence based on clarity (0.0-1.0)
-- Extract relevant details in extractedContext for write operations
-- Trust your judgment - you're smart enough to understand user intent
+---
+
+### opportunity_subgraph
+**Type:** Discovery
+
+**What it does:** Searches for and evaluates potential connections/matches based on user's profile and intents.
+
+**When to use:**
+- User wants to find people/opportunities
+- User asks for recommendations or matches
+- User wants to discover relevant connections
+
+**Examples:** "find people interested in AI", "who might be a good co-founder?", "show me relevant connections"
+
+**Config:** operationType: null, extractedContext: Search criteria or query
+
+---
+
+### scrape_web
+**Type:** Data extraction
+
+**What it does:** Extracts content from a URL (articles, profiles, docs). The scraped content can then be used for other operations.
+
+**When to use:**
+- User provides a URL to read/analyze
+- User asks to retry a previous failed scrape
+- User wants info extracted from a webpage
+
+**Examples:** "read this: https://...", "try again" (after failed scrape)
+
+**Config:** operationType: null, extractedContext: The URL to scrape (REQUIRED)
+
+---
+
+### respond
+**Type:** Conversational
+
+**What it does:** Generates a direct conversational response without invoking any subgraph processing.
+
+**When to use:**
+- Greetings and general conversation
+- Questions ABOUT the platform ("what can you do?")
+- Chit-chat that doesn't require data operations
+
+**NEVER use for:** "show me X" → use *_query routes, "create X" → use *_write routes
+
+**Examples:** "hello", "how does this platform work?", "thanks!"
+
+**Config:** operationType: null, extractedContext: null
+
+---
+
+### clarify
+**Type:** Disambiguation
+
+**What it does:** Asks the user for clarification when the request is ambiguous or unclear.
+
+**When to use:**
+- Message is genuinely ambiguous
+- Multiple interpretations are equally likely
+- Missing critical information needed to proceed
+
+**Avoid if:** Conversation context makes intent clear, user is confirming a previous suggestion, intent is reasonably inferrable
+
+**Config:** operationType: null, extractedContext: null
+
+---
+
+## THINKING INSTRUCTIONS
+
+Before routing, consider:
+
+1. **ANALYZE THE MESSAGE** - What is the user asking for? READ or WRITE? Any URLs?
+
+2. **CHECK CONVERSATION CONTEXT** - Is this a confirmation ("yes", "sure")? A retry ("try again")? What was previously suggested?
+
+3. **DETECT ANAPHORIC REFERENCES** - "that intent", "change it", "make it..." → refers to existing data, likely UPDATE
+
+4. **DETERMINE OPERATION TYPE** - READ (view/show), CREATE (new), UPDATE (modify), DELETE (remove)
+
+5. **SET CONFIDENCE** - 0.9-1.0: clear, 0.7-0.9: minor ambiguity, 0.5-0.7: best guess, <0.5: consider clarify
+
+---
+
+## CRITICAL RULES
+
+1. **CONFIRMATIONS ARE ACTIONS**: "yes"/"sure"/"do it" after a suggestion = EXECUTE that action
+2. **RETRIES USE HISTORY**: "try again" = Find the previous action in history and repeat it
+3. **VIEW ≠ RESPOND**: Any "show me X" request goes to *_query, NOT respond
+4. **TRUST THE SUBGRAPHS**: Route to actions even if you don't have data - they will fetch it
+5. **extractedContext IS CRITICAL**: For write operations, include the FULL content to process
 `;
 
 // ──────────────────────────────────────────────────────────────
 // 2. RESPONSE SCHEMA (Zod)
 // ──────────────────────────────────────────────────────────────
 
+/**
+ * Schema for each action considered during routing decision.
+ * Used for debugging and transparency.
+ */
+const consideredActionSchema = z.object({
+  action: z.string().describe("The action name (e.g., intent_write, profile_query)"),
+  score: z.number().min(0).max(1).describe("How well this action matches the request (0.0-1.0)"),
+  reason: z.string().describe("Why this action was considered or rejected")
+});
+
 const routingResponseSchema = z.object({
+  // Thinking/reasoning section for debugging (optional for backward compatibility)
+  // Note: nullable() is required for OpenAI structured outputs API compatibility
+  thinkingSteps: z.array(z.string()).nullable().optional().describe(
+    "Step-by-step reasoning process. Include: 1) What user is asking, 2) Operation type (read/write), 3) Any context from history, 4) Final decision"
+  ),
+  
+  // Actions considered during routing (for debugging, optional for backward compatibility)
+  // Note: nullable() is required for OpenAI structured outputs API compatibility
+  consideredActions: z.array(consideredActionSchema).nullable().optional().describe(
+    "Top 3 actions considered and why. Show your decision-making process."
+  ),
+  
+  // The actual routing decision
   target: z.enum([
-    "intent_query",           // NEW: Read-only intent queries
-    "intent_write",           // NEW: Create/update/delete intents (replaces intent_subgraph)
+    "intent_query",           // Read-only intent queries
+    "intent_write",           // Create/update/delete intents
     "intent_subgraph",        // DEPRECATED: Backward compatibility (maps to intent_write)
-    "profile_query",          // NEW: Read-only profile queries
-    "profile_write",          // NEW: Update profile (replaces profile_subgraph)
+    "profile_query",          // Read-only profile queries
+    "profile_write",          // Update profile
     "profile_subgraph",       // DEPRECATED: Backward compatibility (maps to profile_write)
     "opportunity_subgraph",
-    "scrape_web",             // NEW: Extract content from URL
+    "scrape_web",             // Extract content from URL
     "respond",
     "clarify"
-  ]).describe("The routing target"),
+  ]).describe("The selected routing target"),
+  
   operationType: z.enum([
     "read",
     "create",
     "update",
     "delete"
-  ]).nullable().describe("CRUD operation type for intent_* and profile_* routes. Required for intent_* and profile_* targets, null for others."),
+  ]).nullable().describe("CRUD operation type. Required for intent_* and profile_* targets, null for others."),
+  
   confidence: z.number().min(0).max(1).describe("Confidence in this routing decision (0.0-1.0)"),
-  reasoning: z.string().describe("Brief explanation for this routing choice"),
-  extractedContext: z.string().nullable().describe("Relevant context extracted from message for subgraph processing")
+  
+  reasoning: z.string().describe("One-sentence summary of why this route was chosen"),
+  
+  extractedContext: z.string().nullable().describe(
+    "Content to process: For intent_write, the intent text. For scrape_web, the URL. For updates, the new content."
+  )
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -168,6 +259,7 @@ const routingResponseSchema = z.object({
 export type RouterOutput = z.infer<typeof routingResponseSchema>;
 export type RouteTarget = RouterOutput['target'];
 export type OperationType = RouterOutput['operationType'];
+export type ConsideredAction = z.infer<typeof consideredActionSchema>;
 
 // ──────────────────────────────────────────────────────────────
 // 4. CLASS DEFINITION
@@ -200,10 +292,13 @@ export class RouterAgent {
     activeIntents: string,
     conversationHistory?: BaseMessage[]
   ): Promise<RouterOutput> {
-    log.info('[RouterAgent.invoke] Analyzing message...', {
-      messagePreview: userMessage.substring(0, 50),
+    log.info('[RouterAgent.invoke] 🎯 Starting message analysis', {
+      userMessage: `"${userMessage}"`,
+      messageLength: userMessage.length,
       hasConversationHistory: !!conversationHistory,
-      historyLength: conversationHistory?.length || 0
+      historyLength: conversationHistory?.length || 0,
+      hasProfile: !!profileContext,
+      hasActiveIntents: !!activeIntents
     });
 
     // Build conversation context if available
@@ -216,6 +311,12 @@ export class RouterAgent {
         const role = msg._getType() === 'human' ? 'User' : 'Assistant';
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
         conversationContextText += `${role}: ${content}\n`;
+      });
+      
+      log.info('[RouterAgent.invoke] 📜 Built conversation context for LLM', {
+        messageCount: recentMessages.length,
+        contextLength: conversationContextText.length,
+        contextPreview: conversationContextText.substring(0, 200)
       });
     }
 
@@ -230,6 +331,12 @@ ${activeIntents ? `\nActive Intents: ${activeIntents}` : ''}
 Analyze the conversation and route appropriately.
     `.trim();
 
+    log.info('[RouterAgent.invoke] 📝 Full prompt for router LLM', {
+      promptLength: prompt.length,
+      hasConversationHistory: conversationContextText.length > 0,
+      promptPreview: prompt.substring(0, 300)
+    });
+
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(prompt)
@@ -239,30 +346,70 @@ Analyze the conversation and route appropriately.
       const result = await this.model.invoke(messages);
       const output = routingResponseSchema.parse(result);
       
-      log.info('[RouterAgent.invoke] Initial routing decision', {
+      // Log the full thinking process for debugging
+      log.info('[RouterAgent.invoke] 🧠 THINKING STEPS:', {
+        steps: output.thinkingSteps
+      });
+      
+      log.info('[RouterAgent.invoke] 🎯 CONSIDERED ACTIONS:', {
+        actions: output.consideredActions?.map(a => ({
+          action: a.action,
+          score: a.score,
+          reason: a.reason.substring(0, 100)
+        })) || []
+      });
+      
+      log.info('[RouterAgent.invoke] 🤖 LLM routing decision (before safety rules)', {
         target: output.target,
         operationType: output.operationType,
-        confidence: output.confidence
+        confidence: output.confidence,
+        reasoning: output.reasoning,
+        extractedContext: output.extractedContext 
+          ? `"${output.extractedContext.substring(0, 150)}..."` 
+          : null,
+        hasExtractedContext: !!output.extractedContext
       });
       
       // PHASE 1: Apply safety rules to prevent accidental writes
       const safeOutput = this.applySafetyRules(output, userMessage);
       
-      log.info('[RouterAgent.invoke] Final routing decision', {
+      const rulesApplied = 
+        output.target !== safeOutput.target || 
+        output.operationType !== safeOutput.operationType ||
+        output.extractedContext !== safeOutput.extractedContext;
+      
+      log.info('[RouterAgent.invoke] ✅ Final routing decision (after safety rules)', {
         target: safeOutput.target,
         operationType: safeOutput.operationType,
         confidence: safeOutput.confidence,
-        safetyRulesApplied: output.target !== safeOutput.target || output.operationType !== safeOutput.operationType
+        reasoning: safeOutput.reasoning,
+        extractedContext: safeOutput.extractedContext 
+          ? `"${safeOutput.extractedContext.substring(0, 150)}..."` 
+          : null,
+        hasExtractedContext: !!safeOutput.extractedContext,
+        safetyRulesApplied: rulesApplied,
+        changes: rulesApplied ? {
+          targetChanged: output.target !== safeOutput.target,
+          operationTypeChanged: output.operationType !== safeOutput.operationType,
+          extractedContextChanged: output.extractedContext !== safeOutput.extractedContext
+        } : null
       });
       
       return safeOutput;
     } catch (error: unknown) {
-      log.error('[RouterAgent.invoke] Error during routing', {
-        error: error instanceof Error ? error.message : String(error)
+      log.error('[RouterAgent.invoke] ❌ Error during routing', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
       });
       
       // Default to clarify on error
       return {
+        thinkingSteps: ["Error occurred during routing", "Falling back to clarification"],
+        consideredActions: [{
+          action: "clarify",
+          score: 1.0,
+          reason: "Error fallback"
+        }],
         target: "clarify",
         operationType: null,
         confidence: 0.0,

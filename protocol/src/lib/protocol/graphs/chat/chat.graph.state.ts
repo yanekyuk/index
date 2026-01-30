@@ -9,14 +9,26 @@ import type { RouteTarget } from "../../agents/chat/router/chat.router";
 // ──────────────────────────────────────────────────────────────
 
 /**
+ * Represents an action that was considered during routing.
+ * Used for debugging and transparency.
+ */
+export interface ConsideredAction {
+  action: string;
+  score: number;
+  reason: string;
+}
+
+/**
  * Routing decision structure returned by the RouterAgent.
  * Phase 1: Added operationType to enable read/write detection
+ * Phase 2: Added thinkingSteps and consideredActions for debugging
  */
 export interface RoutingDecision {
   target: RouteTarget;
   confidence: number;
   reasoning: string;
   extractedContext: string | null;
+  
   /**
    * The type of operation being performed.
    * - 'read': Query operation (e.g., "what are my intents?")
@@ -27,6 +39,18 @@ export interface RoutingDecision {
    * Null for backward compatibility when not specified.
    */
   operationType: 'read' | 'create' | 'update' | 'delete' | null;
+  
+  /**
+   * Step-by-step reasoning process from the router.
+   * Used for debugging to understand the decision-making.
+   */
+  thinkingSteps?: string[];
+  
+  /**
+   * Actions that were considered during routing with their scores.
+   * Helps understand why a particular action was chosen.
+   */
+  consideredActions?: ConsideredAction[];
 }
 
 // ──────────────────────────────────────────────────────────────

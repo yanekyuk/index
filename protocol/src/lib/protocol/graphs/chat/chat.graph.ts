@@ -246,27 +246,70 @@ export class ChatGraphFactory {
           currentNode = nodeName;
           yield createStatusEvent(sessionId, `Processing: ${nodeName}`);
           
-          // Emit thinking event for node start
-          const nodeDescriptions: Record<string, string> = {
-            'router': 'Analyzing your message to determine the best way to help...',
-            'check_prerequisites': 'Checking your profile and intent status...',
-            'load_context': 'Loading your profile and active intents...',
-            'suggest_intents': 'Generating intent suggestions based on your profile...',
-            'orchestrator': 'Checking if more operations are needed...',
-            'intent_query': 'Fetching your active intents...',
-            'intent_write': 'Processing intent changes...',
-            'profile_query': 'Retrieving your profile...',
-            'profile_write': 'Updating your profile...',
-            'opportunity_subgraph': 'Searching for relevant opportunities...',
-            'scrape_web': 'Extracting content from the web...',
-            'respond_direct': 'Preparing response...',
-            'clarify': 'Determining what additional information is needed...',
-            'generate_response': 'Crafting response...'
+          // Emit thinking event for node start with clear task identification
+          const nodeDescriptions: Record<string, { description: string; taskType: string }> = {
+            'router': { 
+              description: 'Analyzing message to determine the appropriate action...', 
+              taskType: 'ROUTING' 
+            },
+            'check_prerequisites': { 
+              description: 'Verifying profile and intent requirements...', 
+              taskType: 'PREREQUISITE_CHECK' 
+            },
+            'load_context': { 
+              description: 'Loading user profile and active intents from database...', 
+              taskType: 'CONTEXT_LOADING' 
+            },
+            'suggest_intents': { 
+              description: 'Preparing response with intent suggestions...', 
+              taskType: 'INTENT_SUGGESTION' 
+            },
+            'orchestrator': { 
+              description: 'Evaluating if additional operations are required...', 
+              taskType: 'ORCHESTRATION' 
+            },
+            'intent_query': { 
+              description: 'Executing READ operation: Fetching active intents from database...', 
+              taskType: 'INTENT_QUERY' 
+            },
+            'intent_write': { 
+              description: 'Executing WRITE operation: Processing intent creation/update/deletion...', 
+              taskType: 'INTENT_WRITE' 
+            },
+            'profile_query': { 
+              description: 'Executing READ operation: Fetching profile from database...', 
+              taskType: 'PROFILE_QUERY' 
+            },
+            'profile_write': { 
+              description: 'Executing WRITE operation: Creating/updating user profile...', 
+              taskType: 'PROFILE_WRITE' 
+            },
+            'opportunity_subgraph': { 
+              description: 'Executing DISCOVERY operation: Searching for matching opportunities...', 
+              taskType: 'OPPORTUNITY_SEARCH' 
+            },
+            'scrape_web': { 
+              description: 'Executing EXTRACTION operation: Scraping content from URL...', 
+              taskType: 'WEB_SCRAPE' 
+            },
+            'respond_direct': { 
+              description: 'Preparing direct conversational response...', 
+              taskType: 'DIRECT_RESPONSE' 
+            },
+            'clarify': { 
+              description: 'Preparing clarification request...', 
+              taskType: 'CLARIFICATION' 
+            },
+            'generate_response': { 
+              description: 'Generating final response based on results...', 
+              taskType: 'RESPONSE_GENERATION' 
+            }
           };
           
-          const description = nodeDescriptions[nodeName];
-          if (description) {
-            yield createThinkingEvent(sessionId, description, nodeName);
+          const nodeInfo = nodeDescriptions[nodeName];
+          if (nodeInfo) {
+            const thinkingContent = `**[Task: ${nodeInfo.taskType}]**\n${nodeInfo.description}`;
+            yield createThinkingEvent(sessionId, thinkingContent, nodeName);
           }
           
           // Emit subgraph start events
@@ -289,20 +332,52 @@ export class ChatGraphFactory {
           if (nodeName === 'router' && event.data?.output?.routingDecision) {
             const decision = event.data.output.routingDecision as RoutingDecision;
             
-            // Emit detailed thinking about routing decision
+            // Build detailed thinking content for debugging
+            let thinkingContent = '## Routing Decision Analysis\n\n';
+            
+            // Add thinking steps if available
+            if (decision.thinkingSteps && decision.thinkingSteps.length > 0) {
+              thinkingContent += '### Thinking Steps\n';
+              decision.thinkingSteps.forEach((step, i) => {
+                thinkingContent += `${i + 1}. ${step}\n`;
+              });
+              thinkingContent += '\n';
+            }
+            
+            // Add considered actions if available
+            if (decision.consideredActions && decision.consideredActions.length > 0) {
+              thinkingContent += '### Considered Actions\n';
+              decision.consideredActions.forEach(action => {
+                const scoreBar = '█'.repeat(Math.round(action.score * 10)) + '░'.repeat(10 - Math.round(action.score * 10));
+                thinkingContent += `- **${action.action}** [${scoreBar}] ${(action.score * 100).toFixed(0)}%\n`;
+                thinkingContent += `  ${action.reason}\n`;
+              });
+              thinkingContent += '\n';
+            }
+            
+            // Add final decision
             const targetDescriptions: Record<string, string> = {
-              'intent_query': 'showing your existing intents',
-              'intent_write': 'creating or updating intents',
-              'profile_query': 'showing your profile',
-              'profile_write': 'updating your profile',
-              'opportunity_subgraph': 'finding relevant opportunities',
-              'scrape_web': 'extracting content from a URL',
-              'respond': 'providing a direct response',
-              'clarify': 'asking for clarification'
+              'intent_query': 'Fetching and displaying your existing intents',
+              'intent_write': 'Processing intent creation/update/deletion',
+              'profile_query': 'Retrieving your profile information',
+              'profile_write': 'Updating your profile',
+              'opportunity_subgraph': 'Searching for relevant connections',
+              'scrape_web': 'Extracting content from URL',
+              'respond': 'Generating conversational response',
+              'clarify': 'Requesting clarification'
             };
             
             const targetDesc = targetDescriptions[decision.target] || decision.target;
-            const thinkingContent = `Routing decision: ${targetDesc}\n\nReasoning: ${decision.reasoning || 'No specific reasoning provided'}`;
+            thinkingContent += `### Selected Action\n`;
+            thinkingContent += `**Task: ${decision.target}** (${decision.operationType || 'N/A'})\n`;
+            thinkingContent += `**Description:** ${targetDesc}\n`;
+            thinkingContent += `**Confidence:** ${((decision.confidence || 0) * 100).toFixed(0)}%\n`;
+            thinkingContent += `**Reasoning:** ${decision.reasoning || 'No specific reasoning provided'}\n`;
+            
+            if (decision.extractedContext) {
+              thinkingContent += `\n**Extracted Context:** "${decision.extractedContext.substring(0, 200)}${decision.extractedContext.length > 200 ? '...' : ''}"`;
+            }
+            
             yield createThinkingEvent(sessionId, thinkingContent, 'router');
             
             yield createRoutingEvent(sessionId, decision.target, decision.reasoning);
@@ -508,9 +583,11 @@ export class ChatGraphFactory {
       const lastMessage = state.messages[state.messages.length - 1];
       const userMessage = lastMessage?.content?.toString() || "";
 
-      log.info("[ChatGraph:Router] Analyzing message...", { 
+      log.info("[ChatGraph:Router] 🎯 Analyzing message...", { 
         messagePreview: userMessage.substring(0, 50),
-        hasProfile: !!state.userProfile
+        fullMessage: userMessage,
+        hasProfile: !!state.userProfile,
+        messageCount: state.messages.length
       });
 
       // Build profile context string for the router (may be minimal if prerequisites not checked yet)
@@ -528,6 +605,14 @@ export class ChatGraphFactory {
           ? state.messages.slice(0, -1).slice(-10)  // Exclude current message, take last 10
           : undefined;
         
+        log.info("[ChatGraph:Router] 📜 Conversation context for router", {
+          historyLength: conversationHistory?.length || 0,
+          recentMessages: conversationHistory?.slice(-3).map(m => ({
+            role: m._getType(),
+            content: typeof m.content === 'string' ? m.content.substring(0, 100) : '[non-string]'
+          }))
+        });
+        
         const decision = await routerAgent.invoke(
           userMessage,
           profileContext,
@@ -535,9 +620,14 @@ export class ChatGraphFactory {
           conversationHistory
         );
 
-        log.info("[ChatGraph:Router] Decision made", {
+        log.info("[ChatGraph:Router] ✅ Decision made", {
           target: decision.target,
+          operationType: decision.operationType,
           confidence: decision.confidence,
+          reasoning: decision.reasoning,
+          extractedContext: decision.extractedContext 
+            ? `"${decision.extractedContext.substring(0, 100)}..."` 
+            : null,
           hadConversationContext: !!conversationHistory
         });
 
@@ -545,7 +635,7 @@ export class ChatGraphFactory {
           routingDecision: decision as RoutingDecision
         };
       } catch (error) {
-        log.error("[ChatGraph:Router] Routing failed", { 
+        log.error("[ChatGraph:Router] ❌ Routing failed", { 
           error: error instanceof Error ? error.message : String(error) 
         });
         return {
@@ -667,14 +757,49 @@ export class ChatGraphFactory {
     // ─────────────────────────────────────────────────────────
     const intentSubgraphNode = async (state: typeof ChatGraphState.State) => {
       const operationType = state.routingDecision?.operationType;
+      const extractedContext = state.routingDecision?.extractedContext;
       
-      log.info("[ChatGraph:IntentSubgraph] Processing intents", {
+      log.info("[ChatGraph:IntentSubgraph] 🎯 Starting intent processing", {
         operationType,
-        hasRoutingDecision: !!state.routingDecision
+        hasRoutingDecision: !!state.routingDecision,
+        hasExtractedContext: !!extractedContext,
+        extractedContextPreview: extractedContext 
+          ? `"${extractedContext.substring(0, 100)}..."` 
+          : null
       });
       
       const lastMessage = state.messages[state.messages.length - 1];
-      const inputContent = lastMessage?.content?.toString() || "";
+      const userMessageRaw = lastMessage?.content?.toString() || "";
+      
+      // CRITICAL: Check if router provided extractedContext
+      // If user is confirming (short message + extractedContext exists), use extractedContext
+      // The router already analyzed conversation and extracted the intent - trust it!
+      const isShortMessage = userMessageRaw.length < 50;
+      const isLikelyConfirmation = /^(yes|yeah|yep|yup|sure|ok(ay)?|alright|right|correct|exactly|that'?s? (right|correct)|this is (right|correct)|go ahead|do it|create( it)?|confirm|affirm|absolutely)$/i.test(userMessageRaw.trim().replace(/[.!?]+$/, ''));
+      
+      // Use extractedContext if:
+      // 1. It exists AND
+      // 2. Message is short (<50 chars) AND likely a confirmation
+      const shouldUseExtractedContext = extractedContext && isShortMessage && isLikelyConfirmation;
+      
+      const inputContent = shouldUseExtractedContext 
+        ? extractedContext 
+        : userMessageRaw;
+      
+      log.info("[ChatGraph:IntentSubgraph] 📝 Input content decision", {
+        userMessageRaw: `"${userMessageRaw}"`,
+        userMessageLength: userMessageRaw.length,
+        hasExtractedContext: !!extractedContext,
+        isShortMessage,
+        isLikelyConfirmation,
+        shouldUseExtractedContext,
+        finalInputContent: `"${inputContent.substring(0, 150)}..."`,
+        reasoning: shouldUseExtractedContext 
+          ? "Short confirmation detected - using extractedContext from router"
+          : isShortMessage && extractedContext && !isLikelyConfirmation
+            ? `Message too short but not a confirmation pattern. Raw message: "${userMessageRaw}"`
+            : "Using raw user message as input"
+      });
       
       // Extract conversation context (last 10 messages max for anaphoric resolution)
       // This enables the intent inferrer to resolve references like "that intent"
@@ -683,9 +808,13 @@ export class ChatGraphFactory {
         ? state.messages.slice(-CONTEXT_MESSAGE_LIMIT)
         : undefined;
       
-      log.info("[ChatGraph:IntentSubgraph] Conversation context prepared", {
+      log.info("[ChatGraph:IntentSubgraph] 📜 Conversation context for intent graph", {
         contextMessagesCount: conversationContext?.length || 0,
-        hasContext: !!conversationContext
+        hasContext: !!conversationContext,
+        recentMessages: conversationContext?.slice(-3).map(m => ({
+          role: m._getType(),
+          preview: typeof m.content === 'string' ? m.content.substring(0, 80) : '[non-string]'
+        }))
       });
       
       try {
@@ -698,7 +827,7 @@ export class ChatGraphFactory {
           operationType === 'update' ? 'update' :
           'create';
         
-        log.info("[ChatGraph:IntentSubgraph] Mapped operation type", {
+        log.info("[ChatGraph:IntentSubgraph] 🔀 Mapped operation type", {
           operationType,
           operationMode,
           expectedPath: operationMode === 'delete' ? 'prep → reconciliation → execution' :
@@ -718,12 +847,29 @@ export class ChatGraphFactory {
           targetIntentIds: undefined,  // TODO: Extract from routing decision if needed
         };
 
+        log.info("[ChatGraph:IntentSubgraph] 🚀 Invoking intent graph with input", {
+          userId: intentInput.userId,
+          hasUserProfile: !!intentInput.userProfile,
+          inputContentLength: inputContent.length,
+          inputContentPreview: `"${inputContent.substring(0, 150)}..."`,
+          operationMode,
+          hasConversationContext: !!conversationContext
+        });
+
         const result = await intentGraph.invoke(intentInput);
 
-        log.info("[ChatGraph:IntentSubgraph] Processing complete", {
+        log.info("[ChatGraph:IntentSubgraph] ✅ Intent graph complete", {
           operationMode,
           actionsCount: result.actions?.length || 0,
-          inferredCount: result.inferredIntents?.length || 0
+          inferredCount: result.inferredIntents?.length || 0,
+          actions: result.actions?.map(a => ({
+            type: a.type,
+            payload: 'payload' in a ? a.payload?.substring(0, 50) : undefined,
+            id: 'id' in a ? a.id : undefined
+          })),
+          inferredIntents: result.inferredIntents?.map((i: any) => 
+            typeof i === 'string' ? i.substring(0, 50) : i.description?.substring(0, 50)
+          )
         });
 
         const subgraphResults: SubgraphResults = {
@@ -737,8 +883,9 @@ export class ChatGraphFactory {
 
         return { subgraphResults };
       } catch (error) {
-        log.error("[ChatGraph:IntentSubgraph] Processing failed", {
+        log.error("[ChatGraph:IntentSubgraph] ❌ Processing failed", {
           error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
           operationType
         });
         return {
@@ -1017,50 +1164,53 @@ export class ChatGraphFactory {
 
     // ─────────────────────────────────────────────────────────
     // NODE: Suggest Intents
-    // Suggests creating intents when user has profile but no active intents
+    // When user has profile but no intents and sends a general message,
+    // respond naturally and mention that intents are available.
     // ─────────────────────────────────────────────────────────
     const suggestIntentsNode = async (state: typeof ChatGraphState.State) => {
-      log.info("[ChatGraph:SuggestIntents] User has profile but no intents, suggesting intent creation...");
+      log.info("[ChatGraph:SuggestIntents] User has profile but no intents, preparing natural response with suggestion...");
       
-      // Build a helpful message suggesting the user create intents
       const profile = state.userProfile;
+      const lastMessage = state.messages[state.messages.length - 1];
+      const userMessage = lastMessage?.content?.toString() || "";
       
       if (!profile) {
         log.warn("[ChatGraph:SuggestIntents] No profile available for intent suggestions");
         return {};
       }
 
-      // Generate suggestions based on profile
+      // Get profile details for context
       const skills = profile.attributes?.skills || [];
       const interests = profile.attributes?.interests || [];
+      const userName = profile.identity?.name?.split(' ')[0] || 'there';
       
-      let suggestionText = "I see you have a profile set up, but you haven't created any intents yet. ";
-      suggestionText += "Intents are the core of this platform - they represent what you're looking for or want to achieve.\n\n";
-      suggestionText += "Based on your profile, here are some intent ideas:\n\n";
-      
-      if (skills.length > 0) {
-        suggestionText += `- Share your expertise in ${skills.slice(0, 2).join(' or ')}\n`;
-        suggestionText += `- Find projects that use ${skills.slice(0, 2).join(' and ')}\n`;
-      }
-      
-      if (interests.length > 0) {
-        suggestionText += `- Connect with others interested in ${interests.slice(0, 2).join(' or ')}\n`;
-        suggestionText += `- Learn more about ${interests[0]}\n`;
-      }
-      
-      suggestionText += "\nWhat would you like to accomplish or find on this platform?";
+      // Create a more natural, conversational suggestion
+      // The response generator will use this to craft an appropriate response
+      let contextMessage = `User "${userName}" has a profile but no active intents. `;
+      contextMessage += `They have skills in: ${skills.slice(0, 3).join(', ') || 'not specified'}. `;
+      contextMessage += `Their interests include: ${interests.slice(0, 3).join(', ') || 'not specified'}. `;
+      contextMessage += `\n\nThe user said: "${userMessage}"\n\n`;
+      contextMessage += `INSTRUCTION: Respond naturally to their message first. `;
+      contextMessage += `Then casually mention that they can share their goals or what they're looking for `;
+      contextMessage += `to help connect with relevant people. Don't be pushy about creating intents - `;
+      contextMessage += `just let them know the option exists. Keep it friendly and brief.`;
 
-      log.info("[ChatGraph:SuggestIntents] Generated intent suggestions", {
+      log.info("[ChatGraph:SuggestIntents] Prepared natural response context", {
+        userName,
         hasSkills: skills.length > 0,
-        hasInterests: interests.length > 0
+        hasInterests: interests.length > 0,
+        userMessagePreview: userMessage.substring(0, 50)
       });
 
       return {
         subgraphResults: {
           intentSuggestion: {
-            message: suggestionText,
+            mode: 'natural_suggestion',
+            contextMessage,
+            userName,
             skills,
-            interests
+            interests,
+            userMessage
           }
         } as any
       };
@@ -1221,17 +1371,34 @@ export class ChatGraphFactory {
       const lastMessage = state.messages[state.messages.length - 1];
       const userMessage = lastMessage?.content?.toString() || "";
 
-      log.info("[ChatGraph:GenerateResponse] Generating response with streaming and conversation history...", {
-        messageCount: state.messages.length
+      log.info("[ChatGraph:GenerateResponse] 💬 Starting response generation", {
+        messageCount: state.messages.length,
+        userMessage: `"${userMessage}"`,
+        hasRoutingDecision: !!state.routingDecision,
+        hasSubgraphResults: !!state.subgraphResults
       });
 
       if (!state.routingDecision) {
+        log.error("[ChatGraph:GenerateResponse] ❌ No routing decision available");
         const errorResponse = "I'm sorry, I couldn't process your request. Please try again.";
         return {
           responseText: errorResponse,
           messages: [new AIMessage(errorResponse)]
         };
       }
+      
+      log.info("[ChatGraph:GenerateResponse] 📊 Subgraph results summary", {
+        hasIntentResults: !!state.subgraphResults?.intent,
+        intentActionsCount: state.subgraphResults?.intent?.actions?.length || 0,
+        intentInferredCount: state.subgraphResults?.intent?.inferredIntents?.length || 0,
+        intentActions: state.subgraphResults?.intent?.actions?.map(a => ({
+          type: a.type,
+          payload: 'payload' in a ? a.payload?.substring(0, 50) : undefined
+        })),
+        hasProfileResults: !!state.subgraphResults?.profile,
+        hasOpportunityResults: !!state.subgraphResults?.opportunity,
+        hasScrapeResults: !!state.subgraphResults?.scrape
+      });
 
       try {
         // Create streaming-enabled ChatOpenAI instance
@@ -1254,6 +1421,14 @@ export class ChatGraphFactory {
           state.subgraphResults || {}
         );
 
+        log.info("[ChatGraph:GenerateResponse] 📝 Built prompts for LLM", {
+          systemPromptLength: systemPrompt.length,
+          userPromptLength: userPrompt.length,
+          userPromptPreview: userPrompt.substring(0, 500),
+          routingTarget: state.routingDecision.target,
+          routingOperationType: state.routingDecision.operationType
+        });
+
         // Build messages array with conversation history
         // 1. System prompt
         // 2. Previous conversation messages (user/assistant pairs)
@@ -1267,19 +1442,22 @@ export class ChatGraphFactory {
           // Include all previous conversation messages except the last one
           messages.push(...state.messages.slice(0, -1));
           
-          log.info("[ChatGraph:GenerateResponse] Including conversation history", {
-            historyMessageCount: state.messages.length - 1
+          log.info("[ChatGraph:GenerateResponse] 📜 Including conversation history", {
+            historyMessageCount: state.messages.length - 1,
+            recentHistory: state.messages.slice(-3, -1).map(m => ({
+              role: m._getType(),
+              preview: typeof m.content === 'string' ? m.content.substring(0, 80) : '[non-string]'
+            }))
           });
         }
 
         // Add the final user message with structured prompt context
         messages.push(new HumanMessage(userPrompt));
 
-        log.info("[ChatGraph:GenerateResponse] Invoking streaming model", {
-          systemPromptLength: systemPrompt.length,
-          userPromptLength: userPrompt.length,
+        log.info("[ChatGraph:GenerateResponse] 🚀 Invoking streaming model", {
           totalMessages: messages.length,
-          historyIncluded: state.messages.length > 1
+          historyIncluded: state.messages.length > 1,
+          finalUserPromptLength: userPrompt.length
         });
 
         // Invoke with streaming enabled
@@ -1291,8 +1469,9 @@ export class ChatGraphFactory {
           ? response.content
           : JSON.stringify(response.content);
 
-        log.info("[ChatGraph:GenerateResponse] Streaming response complete", {
-          responseLength: responseText.length
+        log.info("[ChatGraph:GenerateResponse] ✅ Streaming response complete", {
+          responseLength: responseText.length,
+          responsePreview: responseText.substring(0, 200)
         });
 
         // Get suggested actions separately (non-streaming, happens after main response)
@@ -1303,8 +1482,13 @@ export class ChatGraphFactory {
             responseText,
             state.routingDecision
           );
+          
+          log.info("[ChatGraph:GenerateResponse] 💡 Suggested actions generated", {
+            actionsCount: suggestedActions.length,
+            actions: suggestedActions
+          });
         } catch (actionsError) {
-          log.warn("[ChatGraph:GenerateResponse] Failed to get suggested actions", {
+          log.warn("[ChatGraph:GenerateResponse] ⚠️ Failed to get suggested actions", {
             error: actionsError instanceof Error ? actionsError.message : String(actionsError)
           });
           // Continue without suggested actions - not critical
@@ -1316,7 +1500,7 @@ export class ChatGraphFactory {
           messages: [new AIMessage(responseText)]
         };
       } catch (error) {
-        log.error("[ChatGraph:GenerateResponse] Generation failed", {
+        log.error("[ChatGraph:GenerateResponse] ❌ Generation failed", {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
           cause: error instanceof Error ? (error as any).cause : undefined
@@ -1337,49 +1521,83 @@ export class ChatGraphFactory {
     
     // ─────────────────────────────────────────────────────────
     // ROUTING CONDITION: Prerequisites Check
-    // Determines if we need profile/intent onboarding before proceeding
-    // RESPECTS explicit user requests - only intercepts for true onboarding needs
+    // Determines if we need profile/intent onboarding before proceeding.
+    // 
+    // BUSINESS LOGIC (per user requirements):
+    // 1. ALWAYS force profile creation first (except profile_query which shows current state)
+    // 2. When user has profile but no intents and sends general message:
+    //    respond normally, then mention intents are available
     // ─────────────────────────────────────────────────────────
     const prerequisitesCondition = (state: typeof ChatGraphState.State): string => {
       const routingTarget = state.routingDecision?.target;
+      const operationType = state.routingDecision?.operationType;
       
-      // Check if user made an explicit request for data (query routes)
-      const hasExplicitRequest = routingTarget && (
-        routingTarget === 'profile_query' ||
-        routingTarget === 'intent_query' ||
-        routingTarget === 'opportunity_subgraph'
-      );
+      log.info("[ChatGraph:PrerequisitesCondition] 🔍 Evaluating prerequisites", {
+        routingTarget,
+        operationType,
+        hasCompleteProfile: state.hasCompleteProfile,
+        hasActiveIntents: state.hasActiveIntents,
+        thinkingSteps: (state.routingDecision as any)?.thinkingSteps?.slice(0, 2)
+      });
       
-      // If profile is incomplete, prioritize profile completion
-      // UNLESS user explicitly asked to see their profile (let them see what they have)
+      // ═══════════════════════════════════════════════════════════════
+      // RULE 1: Profile Completion Check (ENFORCED)
+      // Always require profile UNLESS user is asking to see their current profile
+      // ═══════════════════════════════════════════════════════════════
       if (!state.hasCompleteProfile && routingTarget !== 'profile_query') {
-        log.info("[ChatGraph:PrerequisitesCondition] Profile incomplete, routing to profile_write", {
-          routingTarget
+        log.info("[ChatGraph:PrerequisitesCondition] ⚠️ PROFILE REQUIRED - No complete profile found", {
+          originalTarget: routingTarget,
+          redirectingTo: 'profile_write',
+          reason: 'Profile must be created before other operations'
         });
         return "profile_write";
       }
       
-      // If user made an explicit request, honor it - don't intercept
-      if (hasExplicitRequest) {
-        log.info("[ChatGraph:PrerequisitesCondition] Explicit request detected, proceeding to load_context", {
-          routingTarget,
+      // ═══════════════════════════════════════════════════════════════
+      // RULE 2: Explicit Requests - Honor User Intent
+      // If user explicitly requests an action, proceed with it
+      // ═══════════════════════════════════════════════════════════════
+      const isExplicitRequest = routingTarget && [
+        'profile_query',
+        'profile_write',
+        'intent_query',
+        'intent_write',
+        'opportunity_subgraph',
+        'scrape_web'
+      ].includes(routingTarget);
+      
+      if (isExplicitRequest) {
+        log.info("[ChatGraph:PrerequisitesCondition] ✅ EXPLICIT REQUEST - Honoring user action", {
+          target: routingTarget,
+          operationType,
           hasProfile: state.hasCompleteProfile,
           hasIntents: state.hasActiveIntents
         });
         return "load_context";
       }
       
-      // If profile exists but no intents AND no explicit request, suggest creating intents
-      // This only triggers for general conversation like "hi" or "what can I do"
-      if (!state.hasActiveIntents) {
-        log.info("[ChatGraph:PrerequisitesCondition] No active intents and no explicit request, suggesting intents", {
+      // ═══════════════════════════════════════════════════════════════
+      // RULE 3: No Intents + General Conversation = Natural Suggestion
+      // User has profile but no intents and is just chatting
+      // Respond naturally, then mention intents are available
+      // ═══════════════════════════════════════════════════════════════
+      if (!state.hasActiveIntents && (routingTarget === 'respond' || routingTarget === 'clarify')) {
+        log.info("[ChatGraph:PrerequisitesCondition] 💬 GENERAL CHAT - Profile exists, no intents", {
+          action: 'Will respond naturally and mention intents casually',
           routingTarget
         });
         return "suggest_intents";
       }
       
-      // Both profile and intents exist, proceed with normal flow
-      log.info("[ChatGraph:PrerequisitesCondition] Prerequisites satisfied, loading context");
+      // ═══════════════════════════════════════════════════════════════
+      // RULE 4: Default - Proceed to load context
+      // User has profile (and possibly intents), continue normal flow
+      // ═══════════════════════════════════════════════════════════════
+      log.info("[ChatGraph:PrerequisitesCondition] ✅ ALL PREREQUISITES MET - Loading context", {
+        routingTarget,
+        hasProfile: state.hasCompleteProfile,
+        hasIntents: state.hasActiveIntents
+      });
       return "load_context";
     };
 
@@ -1390,6 +1608,15 @@ export class ChatGraphFactory {
     const routeCondition = (state: typeof ChatGraphState.State): string => {
       let target: string = state.routingDecision?.target || "respond";
       const operationType = state.routingDecision?.operationType;
+      const extractedContext = state.routingDecision?.extractedContext;
+      
+      log.info("[ChatGraph:RouteCondition] 🔀 Evaluating routing condition", {
+        originalTarget: target,
+        operationType,
+        confidence: state.routingDecision?.confidence,
+        hasExtractedContext: !!extractedContext,
+        extractedContextPreview: extractedContext?.substring(0, 100)
+      });
       
       // Map legacy targets to new targets for backward compatibility
       const legacyMapping: Record<string, string> = {
@@ -1398,7 +1625,7 @@ export class ChatGraphFactory {
       };
       
       if (target in legacyMapping) {
-        log.warn('[ChatGraph:RouteCondition] Legacy target detected, mapping to new target', {
+        log.warn('[ChatGraph:RouteCondition] ⚠️ Legacy target detected, mapping to new target', {
           legacyTarget: target,
           newTarget: legacyMapping[target]
         });
@@ -1418,7 +1645,7 @@ export class ChatGraphFactory {
       ];
       
       if (!validTargets.includes(target)) {
-        log.error("[ChatGraph:RouteCondition] Unknown routing target detected!", {
+        log.error("[ChatGraph:RouteCondition] ❌ Unknown routing target detected!", {
           target,
           routingDecision: state.routingDecision,
           fallbackTo: "respond"
@@ -1428,12 +1655,14 @@ export class ChatGraphFactory {
       }
       
       // Log routing decision with operation type for debugging
-      log.info("[ChatGraph:RouteCondition] 🔀 Routing decision", {
+      log.info("[ChatGraph:RouteCondition] ✅ Final routing decision", {
         target,
         operationType,
         confidence: state.routingDecision?.confidence,
         reasoning: state.routingDecision?.reasoning?.substring(0, 100),
-        fastPath: target.includes('_query')
+        hasExtractedContext: !!extractedContext,
+        fastPath: target.includes('_query'),
+        willInvokeSubgraph: target.includes('_write') || target.includes('_subgraph')
       });
       
       return target;
