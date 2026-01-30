@@ -188,7 +188,7 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     // But should have actions
     expect(result.actions).toBeDefined();
     expect(result.actions!.length).toBeGreaterThan(0);
-    expect(result.actions!.some(a => a.type === 'expire')).toBe(true);
+    expect(result.actions!.some((a: any) => a.type === 'expire')).toBe(true);
   }, 60000);
 
   it('should default to CREATE mode when operationMode not specified', async () => {
