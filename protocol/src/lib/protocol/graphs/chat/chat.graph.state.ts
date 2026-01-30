@@ -10,12 +10,23 @@ import type { RouteTarget } from "../../agents/chat/router.agent";
 
 /**
  * Routing decision structure returned by the RouterAgent.
+ * Phase 1: Added operationType to enable read/write detection
  */
 export interface RoutingDecision {
   target: RouteTarget;
   confidence: number;
   reasoning: string;
-  extractedContext?: string;
+  extractedContext: string | null;
+  /**
+   * The type of operation being performed.
+   * - 'read': Query operation (e.g., "what are my intents?")
+   * - 'create': Create new data (e.g., "I want to learn Rust")
+   * - 'update': Modify existing data (e.g., "update my goal to...")
+   * - 'delete': Remove data (e.g., "delete my coding goal")
+   *
+   * Null for backward compatibility when not specified.
+   */
+  operationType: 'read' | 'create' | 'update' | 'delete' | null;
 }
 
 // ──────────────────────────────────────────────────────────────

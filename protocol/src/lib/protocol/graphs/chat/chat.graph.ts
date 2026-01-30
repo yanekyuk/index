@@ -378,15 +378,22 @@ export class ChatGraphFactory {
         : "";
 
       try {
+        // Pass last 10 messages for context-aware routing (detecting confirmations, etc.)
+        const conversationHistory = state.messages.length > 1
+          ? state.messages.slice(0, -1).slice(-10)  // Exclude current message, take last 10
+          : undefined;
+        
         const decision = await routerAgent.invoke(
           userMessage,
           profileContext,
-          state.activeIntents
+          state.activeIntents,
+          conversationHistory
         );
 
-        log.info("[ChatGraph:Router] Decision made", { 
-          target: decision.target, 
-          confidence: decision.confidence 
+        log.info("[ChatGraph:Router] Decision made", {
+          target: decision.target,
+          confidence: decision.confidence,
+          hadConversationContext: !!conversationHistory
         });
 
         return {
@@ -408,16 +415,154 @@ export class ChatGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Intent Subgraph Wrapper
+    // NODE: Intent Query (Read-Only Fast Path)
+    // Directly fetches and formats active intents without graph processing.
+    // This is the fast path for "what are my intents?" queries.
+    // ─────────────────────────────────────────────────────────
+    const intentQueryNode = async (state: typeof ChatGraphState.State) => {
+      log.info("[ChatGraph:IntentQuery] 🚀 Fast path: Fetching active intents (read-only)...");
+      
+      try {
+        const activeIntents = await this.database.getActiveIntents(state.userId);
+        
+        log.info("[ChatGraph:IntentQuery] ✅ Retrieved intents via fast path", {
+          count: activeIntents.length,
+          costSavings: "~10 LLM calls avoided"
+        });
+        
+        // Format intents for response generator
+        const formattedIntents = activeIntents.map(intent => ({
+          id: intent.id,
+          description: intent.payload,
+          summary: intent.summary || undefined,
+          createdAt: intent.createdAt
+        }));
+        
+        const subgraphResults: SubgraphResults = {
+          intent: {
+            mode: 'query',
+            intents: formattedIntents,
+            count: formattedIntents.length
+          }
+        };
+        
+        return { subgraphResults };
+      } catch (error) {
+        log.error("[ChatGraph:IntentQuery] Query failed", {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return {
+          subgraphResults: {
+            intent: {
+              mode: 'query',
+              intents: [],
+              count: 0,
+              error: 'Failed to fetch intents'
+            }
+          },
+          error: "Intent query failed"
+        };
+      }
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // NODE: Profile Query (Read-Only Fast Path)
+    // Loads user profile from state (already loaded in LoadContext).
+    // Read-only operation for "show me my profile" queries.
+    // ─────────────────────────────────────────────────────────
+    const profileQueryNode = async (state: typeof ChatGraphState.State) => {
+      log.info("[ChatGraph:ProfileQuery] 🚀 Fast path: Loading profile (read-only)...");
+      
+      try {
+        if (!state.userProfile) {
+          log.warn("[ChatGraph:ProfileQuery] No profile found in state");
+          return {
+            subgraphResults: {
+              profile: {
+                mode: 'query',
+                profile: undefined
+              }
+            }
+          };
+        }
+
+        log.info("[ChatGraph:ProfileQuery] ✅ Profile loaded via fast path", {
+          hasProfile: true,
+          costSavings: "Profile generation pipeline avoided"
+        });
+
+        const subgraphResults: SubgraphResults = {
+          profile: {
+            mode: 'query',
+            profile: state.userProfile
+          }
+        };
+
+        return { subgraphResults };
+      } catch (error) {
+        log.error("[ChatGraph:ProfileQuery] Query failed", {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return {
+          subgraphResults: {
+            profile: {
+              mode: 'query',
+              profile: undefined
+            }
+          },
+          error: "Profile query failed"
+        };
+      }
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // NODE: Intent Subgraph Wrapper (Write Path)
     // Maps ChatGraphState to IntentGraphState and invokes
+    // Full pipeline for create/update/delete operations
+    // Phase 4: Passes operationMode to enable conditional flow
+    // Phase 5: Passes conversation context for anaphoric resolution
     // ─────────────────────────────────────────────────────────
     const intentSubgraphNode = async (state: typeof ChatGraphState.State) => {
-      log.info("[ChatGraph:IntentSubgraph] Processing intents...");
+      const operationType = state.routingDecision?.operationType;
+      
+      log.info("[ChatGraph:IntentSubgraph] Processing intents", {
+        operationType,
+        hasRoutingDecision: !!state.routingDecision
+      });
       
       const lastMessage = state.messages[state.messages.length - 1];
       const inputContent = lastMessage?.content?.toString() || "";
       
+      // Extract conversation context (last 10 messages max for anaphoric resolution)
+      // This enables the intent inferrer to resolve references like "that intent"
+      const CONTEXT_MESSAGE_LIMIT = 10;
+      const conversationContext = state.messages.length > 1
+        ? state.messages.slice(-CONTEXT_MESSAGE_LIMIT)
+        : undefined;
+      
+      log.info("[ChatGraph:IntentSubgraph] Conversation context prepared", {
+        contextMessagesCount: conversationContext?.length || 0,
+        hasContext: !!conversationContext
+      });
+      
       try {
+        // Phase 4: Map operationType to operationMode
+        // - delete → delete (skip inference & verification)
+        // - update → update (skip verification for no new intents)
+        // - create or undefined → create (full pipeline)
+        const operationMode: 'create' | 'update' | 'delete' =
+          operationType === 'delete' ? 'delete' :
+          operationType === 'update' ? 'update' :
+          'create';
+        
+        log.info("[ChatGraph:IntentSubgraph] Mapped operation type", {
+          operationType,
+          operationMode,
+          expectedPath: operationMode === 'delete' ? 'prep → reconciliation → execution' :
+                       operationMode === 'update' ? 'prep → inference → reconciliation → execution' :
+                       'prep → inference → verification → reconciliation → execution'
+        });
+        
         // Map ChatGraphState to IntentGraphState input
         const intentInput = {
           userId: state.userId,
@@ -425,11 +570,15 @@ export class ChatGraphFactory {
             ? JSON.stringify(state.userProfile)
             : "",
           inputContent,
+          conversationContext,  // Phase 5: Pass conversation history for anaphoric resolution
+          operationMode,  // Phase 4: Pass operation mode to control graph flow
+          targetIntentIds: undefined,  // TODO: Extract from routing decision if needed
         };
 
         const result = await intentGraph.invoke(intentInput);
 
         log.info("[ChatGraph:IntentSubgraph] Processing complete", {
+          operationMode,
           actionsCount: result.actions?.length || 0,
           inferredCount: result.inferredIntents?.length || 0
         });
@@ -445,10 +594,11 @@ export class ChatGraphFactory {
 
         return { subgraphResults };
       } catch (error) {
-        log.error("[ChatGraph:IntentSubgraph] Processing failed", { 
-          error: error instanceof Error ? error.message : String(error) 
+        log.error("[ChatGraph:IntentSubgraph] Processing failed", {
+          error: error instanceof Error ? error.message : String(error),
+          operationType
         });
-        return { 
+        return {
           subgraphResults: { intent: { actions: [], inferredIntents: [] } },
           error: "Intent processing failed"
         };
@@ -465,10 +615,14 @@ export class ChatGraphFactory {
       const hasUpdateContext = !!state.routingDecision?.extractedContext;
       
       try {
+        // Extract and convert null to undefined for the input property
+        const extractedContext = state.routingDecision?.extractedContext;
+        const inputValue = extractedContext === null ? undefined : extractedContext;
+        
         // Map ChatGraphState to ProfileGraphState input
         const profileInput = {
           userId: state.userId,
-          input: state.routingDecision?.extractedContext,
+          input: inputValue,
           objective: undefined,
           profile: state.userProfile,  // Keep passing existing profile for updates
           hydeDescription: undefined,
@@ -587,13 +741,15 @@ export class ChatGraphFactory {
 
     // ─────────────────────────────────────────────────────────
     // NODE: Generate Response
-    // Synthesizes final response using streaming LLM
+    // Synthesizes final response using streaming LLM with conversation history
     // ─────────────────────────────────────────────────────────
     const generateResponseNode = async (state: typeof ChatGraphState.State) => {
       const lastMessage = state.messages[state.messages.length - 1];
       const userMessage = lastMessage?.content?.toString() || "";
 
-      log.info("[ChatGraph:GenerateResponse] Generating response with streaming...");
+      log.info("[ChatGraph:GenerateResponse] Generating response with streaming and conversation history...", {
+        messageCount: state.messages.length
+      });
 
       if (!state.routingDecision) {
         const errorResponse = "I'm sorry, I couldn't process your request. Please try again.";
@@ -624,17 +780,37 @@ export class ChatGraphFactory {
           state.subgraphResults || {}
         );
 
+        // Build messages array with conversation history
+        // 1. System prompt
+        // 2. Previous conversation messages (user/assistant pairs)
+        // 3. Final structured prompt with routing context
+        const messages: BaseMessage[] = [
+          new SystemMessage(systemPrompt)
+        ];
+
+        // Add conversation history (excluding the last message since we'll add it with structured context)
+        if (state.messages.length > 1) {
+          // Include all previous conversation messages except the last one
+          messages.push(...state.messages.slice(0, -1));
+          
+          log.info("[ChatGraph:GenerateResponse] Including conversation history", {
+            historyMessageCount: state.messages.length - 1
+          });
+        }
+
+        // Add the final user message with structured prompt context
+        messages.push(new HumanMessage(userPrompt));
+
         log.info("[ChatGraph:GenerateResponse] Invoking streaming model", {
           systemPromptLength: systemPrompt.length,
-          userPromptLength: userPrompt.length
+          userPromptLength: userPrompt.length,
+          totalMessages: messages.length,
+          historyIncluded: state.messages.length > 1
         });
 
         // Invoke with streaming enabled
         // LangGraph's streamEvents() will capture `on_chat_model_stream` events from this model
-        const response = await streamingModel.invoke([
-          new SystemMessage(systemPrompt),
-          new HumanMessage(userPrompt)
-        ]);
+        const response = await streamingModel.invoke(messages);
 
         // Extract the response content
         const responseText = typeof response.content === 'string'
@@ -683,15 +859,34 @@ export class ChatGraphFactory {
 
     // ─────────────────────────────────────────────────────────
     // ROUTING CONDITION
-    // Determines which subgraph/node to route to
+    // Determines which subgraph/node to route to based on router decision
+    // Supports both new targets (intent_query, intent_write, etc.) and
+    // legacy targets (intent_subgraph, profile_subgraph) for backward compatibility
     // ─────────────────────────────────────────────────────────
-    const routeCondition = (state: typeof ChatGraphState.State): RouteTarget => {
-      const target = state.routingDecision?.target || "respond";
+    const routeCondition = (state: typeof ChatGraphState.State): string => {
+      let target: string = state.routingDecision?.target || "respond";
+      const operationType = state.routingDecision?.operationType;
       
-      // Defensive logging: verify target is valid
-      const validTargets: RouteTarget[] = [
-        "intent_subgraph",
-        "profile_subgraph",
+      // Map legacy targets to new targets for backward compatibility
+      const legacyMapping: Record<string, string> = {
+        'intent_subgraph': 'intent_write',
+        'profile_subgraph': 'profile_write'
+      };
+      
+      if (target in legacyMapping) {
+        log.warn('[ChatGraph:RouteCondition] Legacy target detected, mapping to new target', {
+          legacyTarget: target,
+          newTarget: legacyMapping[target]
+        });
+        target = legacyMapping[target];
+      }
+      
+      // Defensive validation: verify target is valid
+      const validTargets = [
+        "intent_query",
+        "intent_write",
+        "profile_query",
+        "profile_write",
         "opportunity_subgraph",
         "respond",
         "clarify"
@@ -707,10 +902,13 @@ export class ChatGraphFactory {
         return "respond";
       }
       
-      log.info("[ChatGraph:RouteCondition] Routing to target", {
+      // Log routing decision with operation type for debugging
+      log.info("[ChatGraph:RouteCondition] 🔀 Routing decision", {
         target,
+        operationType,
         confidence: state.routingDecision?.confidence,
-        reasoning: state.routingDecision?.reasoning
+        reasoning: state.routingDecision?.reasoning?.substring(0, 100),
+        fastPath: target.includes('_query')
       });
       
       return target;
@@ -723,8 +921,10 @@ export class ChatGraphFactory {
       // Add Nodes
       .addNode("load_context", loadContextNode)
       .addNode("router", routerNode)
-      .addNode("intent_subgraph", intentSubgraphNode)
-      .addNode("profile_subgraph", profileSubgraphNode)
+      .addNode("intent_query", intentQueryNode)           // NEW: Fast path for intent queries
+      .addNode("intent_write", intentSubgraphNode)        // RENAMED: Was intent_subgraph
+      .addNode("profile_query", profileQueryNode)         // NEW: Fast path for profile queries
+      .addNode("profile_write", profileSubgraphNode)      // RENAMED: Was profile_subgraph
       .addNode("opportunity_subgraph", opportunitySubgraphNode)
       .addNode("respond_direct", respondDirectNode)
       .addNode("clarify", clarifyNode)
@@ -736,16 +936,20 @@ export class ChatGraphFactory {
 
       // Conditional Routing from router node
       .addConditionalEdges("router", routeCondition, {
-        intent_subgraph: "intent_subgraph",
-        profile_subgraph: "profile_subgraph",
+        intent_query: "intent_query",                 // NEW: Route queries to fast path
+        intent_write: "intent_write",                 // NEW: Route writes to full pipeline
+        profile_query: "profile_query",               // NEW: Route profile queries to fast path
+        profile_write: "profile_write",               // NEW: Route profile writes to full pipeline
         opportunity_subgraph: "opportunity_subgraph",
         respond: "respond_direct",
         clarify: "clarify"
       })
 
       // All paths lead to response generation
-      .addEdge("intent_subgraph", "generate_response")
-      .addEdge("profile_subgraph", "generate_response")
+      .addEdge("intent_query", "generate_response")       // NEW: Fast path to response
+      .addEdge("intent_write", "generate_response")       // RENAMED: From intent_subgraph
+      .addEdge("profile_query", "generate_response")      // NEW: Fast path to response
+      .addEdge("profile_write", "generate_response")      // RENAMED: From profile_subgraph
       .addEdge("opportunity_subgraph", "generate_response")
       .addEdge("respond_direct", "generate_response")
       .addEdge("clarify", "generate_response")
