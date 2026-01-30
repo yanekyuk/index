@@ -26,6 +26,7 @@ import {
   createErrorEvent,
 } from '../types/chat-streaming';
 import { log } from '../lib/log';
+import { ChatTitleGenerator } from '../lib/protocol/agents/chat/title.generator';
 
 // --- Adapters ---
 
@@ -468,6 +469,29 @@ export class ChatController {
             routingDecision,
             subgraphResults,
           });
+
+          // Auto-name session with LLM when there is enough context (at least one user + one assistant message)
+          const sessionForTitle = await chatSessionService.getSession(sessionId, user.id);
+          if (sessionForTitle && !sessionForTitle.title?.trim()) {
+            const messagesForTitle = await chatSessionService.getSessionMessages(sessionId, 10);
+            const hasUser = messagesForTitle.some((m) => m.role === 'user');
+            const hasAssistant = messagesForTitle.some((m) => m.role === 'assistant');
+            if (hasUser && hasAssistant) {
+              try {
+                const titleGenerator = new ChatTitleGenerator();
+                const title = await titleGenerator.invoke({
+                  messages: messagesForTitle.map((m) => ({ role: m.role, content: m.content })),
+                });
+                await chatSessionService.updateSessionTitle(sessionId, user.id, title);
+                log.info('[ChatController.messageStream] Session title set', { sessionId, title });
+              } catch (err) {
+                log.warn('[ChatController.messageStream] Failed to set session title', {
+                  sessionId,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+          }
 
           // Send done event
           controller.enqueue(encoder.encode(
