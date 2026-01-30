@@ -4,6 +4,9 @@
     "lib": [
       "es2017"
     ],
+    "types": [
+      "bun-types"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
