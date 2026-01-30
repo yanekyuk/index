@@ -10,6 +10,8 @@ import { useAIChat } from '@/contexts/AIChatContext';
 import ClientLayout from '@/components/ClientLayout';
 import ThinkingDropdown from '@/components/chat/ThinkingDropdown';
 import { cn } from '@/lib/utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -122,12 +124,17 @@ export default function ChatPage() {
                         'max-w-[80%] rounded-sm px-3 py-2',
                         msg.role === 'user'
                           ? 'bg-black text-white'
-                          : 'bg-gray-100 text-gray-800'
+                          : 'bg-gray-100 text-gray-900'
                       )}
                     >
-                      <p className="whitespace-pre-wrap text-sm font-ibm-plex-mono">
-                        {msg.content}
-                      </p>
+                      <article className={cn(
+                        "chat-markdown max-w-none",
+                        msg.role === 'user' && 'chat-markdown-invert'
+                      )}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {msg.content}
+                        </ReactMarkdown>
+                      </article>
                       {msg.isStreaming && (
                         <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
                       )}

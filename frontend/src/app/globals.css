@@ -106,3 +106,145 @@ a#protected-by-privy {
 button {
   cursor: pointer;
 }
+
+/* Chat markdown – aligns with app design (IBM Plex Mono, sharp corners, gray/black) */
+.chat-markdown {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  max-width: none;
+}
+
+.chat-markdown p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-weight: 600;
+  margin-top: 0.75em;
+  margin-bottom: 0.5em;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
+}
+
+.chat-markdown li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.chat-markdown ul > li {
+  list-style-type: disc;
+}
+
+.chat-markdown ol > li {
+  list-style-type: decimal;
+}
+
+.chat-markdown code {
+  font-size: 0.8125em;
+  padding: 0.125em 0.375em;
+  border-radius: 2px;
+  background-color: rgba(0, 0, 0, 0.06);
+  font-weight: 500;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+.chat-markdown pre {
+  border-radius: 2px;
+  padding: 0.75em 1em;
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+  overflow-x: auto;
+  background-color: #1f2937;
+}
+
+.chat-markdown pre code {
+  padding: 0;
+  background-color: transparent;
+  color: #e5e7eb;
+  font-size: 0.8125em;
+}
+
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+  font-size: 0.875em;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.chat-markdown th {
+  font-weight: 600;
+  background-color: #f3f4f6;
+}
+
+.chat-markdown thead th {
+  border-bottom-width: 2px;
+  border-bottom-color: #d1d5db;
+}
+
+.chat-markdown a {
+  text-decoration: underline;
+  font-weight: 500;
+  color: inherit;
+}
+
+.chat-markdown a:hover {
+  opacity: 0.85;
+}
+
+.chat-markdown strong {
+  font-weight: 600;
+}
+
+.chat-markdown hr {
+  border-color: #e5e7eb;
+  margin: 0.75em 0;
+}
+
+/* Inverted (user message – dark bubble) */
+.chat-markdown-invert code {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.chat-markdown-invert pre {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.chat-markdown-invert pre code {
+  color: #e5e7eb;
+}
+
+.chat-markdown-invert th,
+.chat-markdown-invert td {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.chat-markdown-invert th {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.chat-markdown-invert thead th {
+  border-bottom-color: rgba(255, 255, 255, 0.4);
+}
+
+.chat-markdown-invert hr {
+  border-color: rgba(255, 255, 255, 0.3);
+}

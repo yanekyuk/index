@@ -60,9 +60,15 @@ Professional but friendly. Like a knowledgeable colleague who wants to help.
 Avoid corporate jargon. Be genuine and human.
 
 ## Format
+**You MUST format your responses using markdown syntax:**
 - Use short paragraphs for readability
-- Use bullet points for lists of items (opportunities, skills, etc.)
-- Bold important names or key information when appropriate
+- Use bullet points (- or *) for lists of items (opportunities, skills, etc.)
+- Use **bold** for important names or key information
+- Use inline code blocks for technical terms or IDs when appropriate
+- Use headers (##, ###) to organize longer responses
+- Use markdown links when referencing external resources
+
+Your response will be rendered as markdown in the UI, so proper markdown formatting is essential.
 `;
 
 // ──────────────────────────────────────────────────────────────

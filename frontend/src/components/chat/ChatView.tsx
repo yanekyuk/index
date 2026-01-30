@@ -8,6 +8,8 @@ import { useDiscover } from '@/contexts/APIContext';
 import { X, ArrowLeft, Clock, Check, SkipForward, Loader2, ArrowUp } from 'lucide-react';
 import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessage {
   id: string;
@@ -509,6 +511,8 @@ export default function ChatView({
           <>
             {messages.map((message) => {
               const isOwn = message.user?.id === client?.userID;
+              const messageContent = message.text || '';
+              
               return (
                 <div
                   key={message.id}
@@ -517,13 +521,15 @@ export default function ChatView({
                   <div
                     className={`max-w-[75%] px-3 py-2 rounded-sm ${
                       isOwn
-                        ? 'bg-black text-white font-ibm-plex-mono'
-                        : 'bg-gray-100 text-gray-900 font-ibm-plex-mono'
+                        ? 'bg-black text-white'
+                        : 'bg-gray-100 text-gray-900'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {message.text}
-                    </p>
+                    <div className="prose prose-sm max-w-none prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {messageContent}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               );
