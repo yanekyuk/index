@@ -3,8 +3,8 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, BaseMessage, HumanMessage, SystemMessage, isAIMessageChunk } from "@langchain/core/messages";
 import { ChatGraphState, RoutingDecision, SubgraphResults } from "./chat.graph.state";
-import { RouterAgent, RouteTarget } from "../../agents/chat/router.agent";
-import { ResponseGeneratorAgent, RESPONSE_GENERATOR_SYSTEM_PROMPT } from "../../agents/chat/response.generator";
+import { RouterAgent, RouteTarget } from "../../agents/chat/router/chat.router";
+import { ResponseGeneratorAgent, RESPONSE_GENERATOR_SYSTEM_PROMPT } from "../../agents/chat/generator/chat.generator";
 import { IntentGraphFactory } from "../intent/intent.graph";
 import { ProfileGraphFactory } from "../profile/profile.graph";
 import { OpportunityGraph } from "../opportunity/opportunity.graph";
@@ -22,8 +22,8 @@ import {
   createErrorEvent,
 } from "../../../../types/chat-streaming";
 import { chatSessionService } from "../../../../services/chat-session.service";
-import { getCheckpointer } from "./checkpointer";
-import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./token-utils";
+import { getCheckpointer } from "./chat.checkpointer";
+import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./chat.utils";
 
 /**
  * Factory class to build and compile the Chat Graph.

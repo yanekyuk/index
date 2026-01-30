@@ -1,8 +1,8 @@
 import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { ProfileDocument } from "../../agents/profile/profile.generator";
-import type { SubgraphResults } from "../../agents/chat/response.generator";
-import type { RouteTarget } from "../../agents/chat/router.agent";
+import type { SubgraphResults } from "../../agents/chat/generator/chat.generator";
+import type { RouteTarget } from "../../agents/chat/router/chat.router";
 
 // ──────────────────────────────────────────────────────────────
 // 1. ROUTING DECISION TYPES
