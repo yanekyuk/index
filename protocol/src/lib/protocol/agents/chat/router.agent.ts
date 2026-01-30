@@ -1,5 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { createAgent, HumanMessage, ReactAgent } from "langchain";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { log } from "../../../log";
 
@@ -10,10 +10,10 @@ import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
 const model = new ChatOpenAI({
-  model: 'google/gemini-3-flash-preview',
-  configuration: { 
-    baseURL: process.env.OPENROUTER_BASE_URL, 
-    apiKey: process.env.OPENROUTER_API_KEY 
+  model: 'google/gemini-2.5-flash',
+  configuration: {
+    baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    apiKey: process.env.OPENROUTER_API_KEY
   }
 });
 
@@ -76,7 +76,7 @@ const routingResponseSchema = z.object({
   ]).describe("The routing target"),
   confidence: z.number().min(0).max(1).describe("Confidence in this routing decision (0.0-1.0)"),
   reasoning: z.string().describe("Brief explanation for this routing choice"),
-  extractedContext: z.string().optional().describe("Relevant context extracted from message for subgraph processing")
+  extractedContext: z.string().nullable().optional().describe("Relevant context extracted from message for subgraph processing")
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -95,13 +95,11 @@ export type RouteTarget = RouterOutput['target'];
  * It uses structured output to ensure consistent routing decisions.
  */
 export class RouterAgent {
-  private agent: ReactAgent;
+  private model: any;
 
   constructor() {
-    this.agent = createAgent({ 
-      model, 
-      responseFormat: routingResponseSchema, 
-      systemPrompt 
+    this.model = model.withStructuredOutput(routingResponseSchema, {
+      name: "router_agent"
     });
   }
 
@@ -134,11 +132,14 @@ ${activeIntents || "No active intents."}
 Analyze this message and determine the best routing action.
     `.trim();
 
-    const messages = [new HumanMessage(prompt)];
+    const messages = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(prompt)
+    ];
     
     try {
-      const result = await this.agent.invoke({ messages });
-      const output = routingResponseSchema.parse(result.structuredResponse);
+      const result = await this.model.invoke(messages);
+      const output = routingResponseSchema.parse(result);
       
       log.info('[RouterAgent.invoke] Routing decision made', { 
         target: output.target, 

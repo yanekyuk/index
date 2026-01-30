@@ -30,7 +30,8 @@ Follow this canonical order within your agent file:
 
 ```typescript
 import { ChatOpenAI } from "@langchain/openai";
-import { createAgent, HumanMessage, ReactAgent, tool } from "langchain";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { log } from "../../../log";
 import { Database } from "../../interfaces/database.interface";
@@ -43,7 +44,7 @@ import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
 const model = new ChatOpenAI({
-  model: 'google/gemini-3-flash-preview',
+  model: 'google/gemini-2.5-flash',
   configuration: {
     baseURL: process.env.OPENROUTER_BASE_URL,
     apiKey: process.env.OPENROUTER_API_KEY
@@ -86,12 +87,14 @@ export type DocumentType = ResponseType & { id: string; embedding: number[] };
 // ──────────────────────────────────────────────────────────────
 
 export class MyAgent {
-  private agent: ReactAgent;
+  private model: any;
   private database: Database;
   private embedder: Embedder;
 
   constructor(database: Database, embedder: Embedder) {
-    this.agent = createAgent({ model, responseFormat, systemPrompt });
+    this.model = model.withStructuredOutput(responseFormat, {
+      name: "my_agent"
+    });
     this.database = database;
     this.embedder = embedder;
   }
@@ -117,9 +120,12 @@ export class MyAgent {
   public async invoke(input: string, entityId: string) {
     log.info('[MyAgent.invoke] Received input', { input });
     
-    const messages = [new HumanMessage(`Here is the input:\n${input}`)];
-    const result = await this.agent.invoke({ messages });
-    const output = responseFormat.parse(result.structuredResponse);
+    const messages = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(`Here is the input:\n${input}`)
+    ];
+    const result = await this.model.invoke(messages);
+    const output = responseFormat.parse(result);
     
     const textToEmbed = this.toString(output);
     const embedding = await this.embedder.generate(textToEmbed);

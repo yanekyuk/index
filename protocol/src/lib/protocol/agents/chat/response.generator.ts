@@ -1,5 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { createAgent, HumanMessage, ReactAgent } from "langchain";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import type { Runnable } from "@langchain/core/runnables";
 import { z } from "zod";
 import { log } from "../../../log";
 import type { RouterOutput } from "./router.agent";
@@ -10,19 +11,11 @@ import type { RouterOutput } from "./router.agent";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-3-flash-preview',
-  configuration: { 
-    baseURL: process.env.OPENROUTER_BASE_URL, 
-    apiKey: process.env.OPENROUTER_API_KEY 
-  }
-});
-
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
 // ──────────────────────────────────────────────────────────────
 
-const systemPrompt = `
+export const RESPONSE_GENERATOR_SYSTEM_PROMPT = `
 You are a Response Generator for a professional networking platform.
 Your task is to synthesize a helpful, natural response based on system outputs.
 
@@ -55,9 +48,14 @@ Avoid corporate jargon. Be genuine and human.
 // 2. RESPONSE SCHEMA (Zod)
 // ──────────────────────────────────────────────────────────────
 
-const responseSchema = z.object({
+export const responseSchema = z.object({
   response: z.string().describe("The response text to send to the user"),
   suggestedActions: z.array(z.string()).optional().describe("Suggested follow-up actions the user might want to take")
+});
+
+// Schema for just suggested actions (used after streaming)
+export const suggestedActionsSchema = z.object({
+  suggestedActions: z.array(z.string()).describe("Suggested follow-up actions the user might want to take")
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -139,20 +137,45 @@ export interface SubgraphResults {
  * It takes the routing decision and accumulated results to create a coherent user response.
  */
 export class ResponseGeneratorAgent {
-  private agent: ReactAgent;
+  private structuredModel: Runnable;
+  private suggestedActionsModel: ChatOpenAI;
 
   constructor() {
-    this.agent = createAgent({ 
-      model, 
-      responseFormat: responseSchema, 
-      systemPrompt 
+    // Model for structured response generation (non-streaming, for backward compatibility)
+    const baseModel = new ChatOpenAI({
+      model: 'google/gemini-2.5-flash',
+      configuration: {
+        baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+        apiKey: process.env.OPENROUTER_API_KEY
+      }
+    });
+    
+    // Wrap with structured output for the invoke() method
+    this.structuredModel = baseModel.withStructuredOutput(responseSchema);
+    
+    // Separate model for suggested actions (non-streaming, structured output)
+    this.suggestedActionsModel = new ChatOpenAI({
+      model: 'google/gemini-2.5-flash',
+      configuration: {
+        baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+        apiKey: process.env.OPENROUTER_API_KEY
+      }
     });
   }
 
   /**
-   * Formats subgraph results into a readable string for the LLM prompt.
+   * Gets the system prompt for response generation.
+   * Used by external callers needing to build streaming prompts.
    */
-  private formatSubgraphResults(results: SubgraphResults): string {
+  public getSystemPrompt(): string {
+    return RESPONSE_GENERATOR_SYSTEM_PROMPT;
+  }
+
+  /**
+   * Formats subgraph results into a readable string for the LLM prompt.
+   * Public to allow external callers to build prompts for streaming.
+   */
+  public formatSubgraphResults(results: SubgraphResults): string {
     const sections: string[] = [];
 
     if (results.intent) {
@@ -244,11 +267,15 @@ ${formattedResults}
 Generate an appropriate, natural response for the user based on the above context and results.
     `.trim();
 
-    const messages = [new HumanMessage(prompt)];
+    const messages = [
+      new SystemMessage(RESPONSE_GENERATOR_SYSTEM_PROMPT),
+      new HumanMessage(prompt)
+    ];
     
     try {
-      const result = await this.agent.invoke({ messages });
-      const output = responseSchema.parse(result.structuredResponse);
+      const result = await this.structuredModel.invoke(messages);
+      // withStructuredOutput returns the parsed object directly
+      const output = responseSchema.parse(result);
       
       log.info('[ResponseGeneratorAgent.invoke] Response generated', { 
         responseLength: output.response.length,
@@ -266,6 +293,79 @@ Generate an appropriate, natural response for the user based on the above contex
         response: "I apologize, but I encountered an issue processing your request. Could you please try rephrasing your message?",
         suggestedActions: ["Try a simpler request", "Ask for help"]
       };
+    }
+  }
+
+  /**
+   * Builds the user prompt for response generation.
+   * Used by external callers needing to build streaming prompts.
+   */
+  public buildUserPrompt(
+    originalMessage: string,
+    routingDecision: RouterOutput,
+    subgraphResults: SubgraphResults
+  ): string {
+    const formattedResults = this.formatSubgraphResults(subgraphResults);
+
+    return `
+# Original User Message
+${originalMessage}
+
+# Routing Decision
+Target: ${routingDecision.target}
+Confidence: ${routingDecision.confidence}
+Reasoning: ${routingDecision.reasoning}
+
+# Processing Results
+${formattedResults}
+
+Generate an appropriate, natural response for the user based on the above context and results.
+    `.trim();
+  }
+
+  /**
+   * Generates suggested actions based on the response that was already streamed.
+   * This is called AFTER streaming the main response to get follow-up suggestions.
+   *
+   * @param streamedResponse - The response text that was already streamed to the user
+   * @param routingDecision - The routing decision for context
+   * @returns Array of suggested actions
+   */
+  public async getSuggestedActions(
+    streamedResponse: string,
+    routingDecision: RouterOutput
+  ): Promise<string[]> {
+    log.info('[ResponseGeneratorAgent.getSuggestedActions] Generating suggested actions...');
+
+    try {
+      const structuredModel = this.suggestedActionsModel.withStructuredOutput(suggestedActionsSchema);
+
+      const prompt = `
+Based on this response that was just given to the user:
+
+"${streamedResponse}"
+
+The conversation context was: ${routingDecision.target} (${routingDecision.reasoning})
+
+Generate 2-3 helpful follow-up actions the user might want to take next.
+Examples: "Update my profile", "Search for more connections", "Create a new intent", etc.
+      `.trim();
+
+      const result = await structuredModel.invoke([
+        new SystemMessage("You generate helpful suggested follow-up actions for a professional networking assistant."),
+        new HumanMessage(prompt)
+      ]);
+
+      log.info('[ResponseGeneratorAgent.getSuggestedActions] Generated actions', {
+        count: result.suggestedActions?.length || 0
+      });
+
+      return result.suggestedActions || [];
+    } catch (error) {
+      log.error('[ResponseGeneratorAgent.getSuggestedActions] Error generating suggestions', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return ["Ask me another question", "Update my profile"];
     }
   }
 }
