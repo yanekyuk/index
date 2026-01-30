@@ -4,12 +4,19 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import { usePrivy } from '@privy-io/react-auth';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 
+interface ThinkingStep {
+  content: string;
+  step?: string;
+  timestamp: Date;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  thinking?: ThinkingStep[];
 }
 
 interface AIChatContextType {
@@ -102,6 +109,22 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
               const event = JSON.parse(line.slice(6));
               
               switch (event.type) {
+                case 'thinking':
+                  setMessages(prev => prev.map(msg => {
+                    if (msg.id === assistantMessageId) {
+                      const newThinkingStep: ThinkingStep = {
+                        content: event.content,
+                        step: event.step,
+                        timestamp: new Date(event.timestamp),
+                      };
+                      return {
+                        ...msg,
+                        thinking: [...(msg.thinking || []), newThinkingStep],
+                      };
+                    }
+                    return msg;
+                  }));
+                  break;
                 case 'token':
                   setMessages(prev => prev.map(msg =>
                     msg.id === assistantMessageId
