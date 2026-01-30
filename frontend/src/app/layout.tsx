@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { DiscoveryFilterProvider } from "@/contexts/DiscoveryFilterContext";
+import { AIChatSessionsProvider } from "@/contexts/AIChatSessionsContext";
 import { AIChatProvider } from "@/contexts/AIChatContext";
 import ClientWrapper from "@/components/ClientWrapper";
 
@@ -52,11 +53,13 @@ export default function RootLayout({
           <APIProvider>
             <NotificationProvider>
               <DiscoveryFilterProvider>
-                <AIChatProvider>
-                  <ClientWrapper>
-                    {children}
-                  </ClientWrapper>
-                </AIChatProvider>
+                <AIChatSessionsProvider>
+                  <AIChatProvider>
+                    <ClientWrapper>
+                      {children}
+                    </ClientWrapper>
+                  </AIChatProvider>
+                </AIChatSessionsProvider>
               </DiscoveryFilterProvider>
             </NotificationProvider>
           </APIProvider>
