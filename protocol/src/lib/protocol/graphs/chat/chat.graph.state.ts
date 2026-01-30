@@ -2,20 +2,11 @@ import { Annotation, messagesStateReducer } from "@langchain/langgraph";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { ProfileDocument } from "../../agents/profile/profile.generator";
 import type { SubgraphResults } from "../../agents/chat/response.generator";
+import type { RouteTarget } from "../../agents/chat/router.agent";
 
 // ──────────────────────────────────────────────────────────────
 // 1. ROUTING DECISION TYPES
 // ──────────────────────────────────────────────────────────────
-
-/**
- * Available routing targets for the chat graph.
- */
-export type RouteTarget = 
-  | "intent_subgraph"      // Process intents (goals, preferences)
-  | "profile_subgraph"     // Profile queries/updates
-  | "opportunity_subgraph" // Discovery and matching
-  | "respond"              // Direct response (no subgraph needed)
-  | "clarify";             // Need more information
 
 /**
  * Routing decision structure returned by the RouterAgent.
@@ -101,6 +92,15 @@ export const ChatGraphState = Annotation.Root({
    * Overwrites per conversation turn.
    */
   responseText: Annotation<string | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
+   * Suggested follow-up actions for the user.
+   * Generated after the main response is streamed.
+   */
+  suggestedActions: Annotation<string[] | undefined>({
     reducer: (curr, next) => next,
     default: () => undefined,
   }),
