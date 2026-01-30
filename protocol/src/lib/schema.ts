@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex, index, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -279,6 +279,35 @@ export const elaborationRequests = pgTable('elaboration_requests', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// Chat role enum for message roles
+export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system']);
+
+// Chat Sessions table - stores persistent chat conversations
+export const chatSessions = pgTable('chat_sessions', {
+  id: text('id').primaryKey(), // UUID (externally provided)
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title'), // Optional, can be derived from first message
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  metadata: jsonb('metadata'), // For any additional data
+}, (table) => ({
+  userIdx: index('chat_sessions_user_idx').on(table.userId),
+}));
+
+// Chat Messages table - stores individual messages in a chat session
+export const chatMessages = pgTable('chat_messages', {
+  id: text('id').primaryKey(), // Snowflake ID (externally provided)
+  sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  role: chatMessageRoleEnum('role').notNull(),
+  content: text('content').notNull(),
+  routingDecision: jsonb('routing_decision'), // Store routing info
+  subgraphResults: jsonb('subgraph_results'), // Store subgraph outputs
+  tokenCount: integer('token_count'), // For context management
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  sessionIdx: index('chat_messages_session_idx').on(table.sessionId),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
@@ -294,6 +323,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [userProfiles.userId],
   }),
+  chatSessions: many(chatSessions),
 }));
 
 export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
@@ -448,6 +478,23 @@ export const userIntegrationsRelations = relations(userIntegrations, ({ one }) =
   }),
 }));
 
+// Chat Sessions relations
+export const chatSessionsRelations = relations(chatSessions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [chatSessions.userId],
+    references: [users.id],
+  }),
+  messages: many(chatMessages),
+}));
+
+// Chat Messages relations
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  session: one(chatSessions, {
+    fields: [chatMessages.sessionId],
+    references: [chatSessions.id],
+  }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -473,3 +520,7 @@ export type UserNotificationSettings = typeof userNotificationSettings.$inferSel
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
 export type ElaborationRequest = typeof elaborationRequests.$inferSelect;
 export type NewElaborationRequest = typeof elaborationRequests.$inferInsert;
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type NewChatSession = typeof chatSessions.$inferInsert;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type NewChatMessage = typeof chatMessages.$inferInsert;
