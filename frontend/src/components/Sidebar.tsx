@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import LibraryModal from '@/components/modals/LibraryModal';
-import { Shield, ArrowLeft, Inbox, Users, Settings } from 'lucide-react';
+import { Shield, ArrowLeft, Inbox, Users, Settings, Sparkles } from 'lucide-react';
 import { useAdmin, useIntents } from '@/contexts/APIContext';
 
 interface LatestIntent {
@@ -72,7 +72,7 @@ export default function Sidebar() {
     <div className="space-y-6 font-mono">
       {/* Admin Mode Sidebar */}
       {isAdminMode && adminIndex ? (
-        <div className="bg-white rounded-sm border-black border p-4">
+        <div className="">
           <button
             onClick={() => router.push('/')}
             className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
@@ -127,6 +127,16 @@ export default function Sidebar() {
             </div>
 
             <div
+              onClick={() => router.push(`/admin/${adminIndexId}/opportunities`)}
+              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
+                pathname?.includes('/opportunities') ? 'bg-gray-200' : 'hover:bg-gray-50'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-black font-ibm-plex-mono">Opportunities</span>
+            </div>
+
+            <div
               onClick={() => router.push(`/admin/${adminIndexId}/settings`)}
               className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
                 pathname?.includes('/settings') ? 'bg-gray-200' : 'hover:bg-gray-50'
@@ -137,9 +147,11 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
-      ) : (
-        /* Latest Intents Section */
-        <div className="bg-white rounded-sm border-black border p-3 pb-6 pt-6">
+      ) : null}
+
+      {/* Latest Intents Section - only show when not in admin mode */}
+      {!isAdminMode && (
+        <div className="">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>
             <button
@@ -163,7 +175,7 @@ export default function Sidebar() {
                 <button
                   key={intent.id}
                   onClick={() => router.push(`/i/${intent.id}`)}
-                  className="w-full text-left px-2 py-2 rounded hover:bg-gray-50 transition-colors group"
+                  className="w-full text-left py-2 rounded hover:bg-gray-50 transition-colors group"
                 >
                   <div className="text-sm text-black font-ibm-plex-mono line-clamp-2 mb-1 group-hover:text-gray-700">
                     {intent.summary || intent.payload}

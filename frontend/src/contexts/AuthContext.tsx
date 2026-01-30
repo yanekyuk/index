@@ -162,10 +162,18 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const clientId = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID;
+  
+  // During build time, env vars may not be available - render children without Privy
+  if (!appId || !clientId) {
+    return <>{children}</>;
+  }
+
   return (
     <PrivyProvider
-      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""}
-      clientId={process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID || ""}
+      appId={appId}
+      clientId={clientId}
       config={{
         loginMethods: ['email', 'google']
       }}

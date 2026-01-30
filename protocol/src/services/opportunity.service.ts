@@ -6,7 +6,7 @@ import { getUserAccessibleIndexIds } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { IndexEmbedder } from '../lib/embedder';
 import { VectorSearchResult, VectorStoreOption } from '../agents/common/types';
-import { HydeGeneratorAgent } from '../agents/profile/hyde/hyde.generator';
+import { HydeGeneratorAgent, HydeOptions } from '../agents/profile/hyde/hyde.generator';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
 import { UserMemoryProfile } from '../agents/intent/manager/intent.manager.types';
 import { IntentManager } from '../agents/intent/manager/intent.manager';
@@ -1209,6 +1209,165 @@ export class OpportunityService {
 
     return newIntentOptions;
   }
+
+  // ============================================================================
+  // PROMPT-DRIVEN OPPORTUNITY DISCOVERY (Generic - used by admin and members)
+  // ============================================================================
+
+  /**
+   * Discover opportunities for specified members using a natural language prompt.
+   * 
+   * This is the generic method that can be used by:
+   * - Admin routes (for any members in their index)
+   * - Member routes (for themselves only)
+   * 
+   * @param options - Discovery options including prompt and member IDs
+   * @returns Array of discovered opportunities
+   */
+  async discoverOpportunitiesWithPrompt(
+    options: DiscoverOpportunitiesOptions
+  ): Promise<DiscoveredOpportunity[]> {
+    const { prompt, memberIds, limit = 10 } = options;
+    
+    log.info(`[OpportunityService] discoverOpportunitiesWithPrompt called with prompt: "${prompt}" for ${memberIds.length} members`);
+    
+    const allOpportunities: DiscoveredOpportunity[] = [];
+    const evaluator = new OpportunityEvaluator(this.embedder);
+    const hydeGenerator = new HydeGeneratorAgent(this.embedder);
+
+    for (const memberId of memberIds) {
+      try {
+        // 1. Get member profile
+        const memberProfile = await this.getProfile(memberId);
+        if (!memberProfile) {
+          log.warn(`[OpportunityService] Profile not found for member ${memberId}, skipping.`);
+          continue;
+        }
+
+        // 2. Ensure profile has embedding
+        if (!memberProfile.embedding) {
+          log.info(`[OpportunityService] Generating embedding for member ${memberId}...`);
+          const textToEmbed = this.constructProfileText(memberProfile);
+          if (!textToEmbed || textToEmbed.length < 10) {
+            log.warn(`[OpportunityService] Insufficient content for embedding, skipping ${memberId}.`);
+            continue;
+          }
+          const embedding = await this.embedder.generate(textToEmbed) as number[];
+          await this.updateProfileEmbedding(memberProfile.id, embedding);
+          memberProfile.embedding = embedding;
+        }
+
+        // 3. Construct profile context
+        const memoryProfile: UserMemoryProfile = {
+          userId: memberProfile.userId,
+          identity: memberProfile.identity || {},
+          narrative: memberProfile.narrative || {},
+          attributes: memberProfile.attributes || {}
+        } as any;
+
+        const profileContext = json2md.keyValue({
+          bio: memoryProfile.identity.bio || '',
+          location: memoryProfile.identity.location || '',
+          interests: memoryProfile.attributes.interests || [],
+          skills: memoryProfile.attributes.skills || [],
+          context: memoryProfile.narrative?.context || ''
+        });
+
+        // 4. Generate HyDE with instruction from prompt
+        log.info(`[OpportunityService] Generating HyDE for ${memberId} with instruction: "${prompt}"...`);
+        const hydeResult = await hydeGenerator.generate(profileContext, { instruction: prompt });
+
+        if (!hydeResult || !hydeResult.description) {
+          log.warn(`[OpportunityService] Failed to generate HyDE for ${memberId}, skipping.`);
+          continue;
+        }
+
+        const hydeDescription = hydeResult.description;
+        const hydeEmbedding = hydeResult.embedding || await this.embedder.generate(hydeDescription) as number[];
+
+        // 5. Fetch existing stakes to avoid duplicates
+        const existingStakes = await this.getUserStakes(memberId, 20);
+        const existingOpportunitiesContext = existingStakes.length > 0
+          ? existingStakes.map(s => `- Match with ${s.candidateName} (ID: ${s.candidateId}) (Score: ${s.score}): ${s.reason}`).join('\n')
+          : '';
+
+        // 6. Run opportunity discovery
+        log.info(`[OpportunityService] Running discovery for ${memberId}...`);
+        const opportunities = await evaluator.runDiscovery(profileContext, {
+          hydeDescription,
+          limit,
+          minScore: 70,
+          filter: { userId: { ne: memberId } } as any,
+          existingOpportunities: existingOpportunitiesContext
+        });
+
+        log.info(`[OpportunityService] Found ${opportunities.length} opportunities for ${memberId}`);
+
+        // 7. Convert to DiscoveredOpportunity format with user details
+        for (const op of opportunities) {
+          const targetProfile = await this.getProfile(op.candidateId);
+          if (!targetProfile) continue;
+
+          allOpportunities.push({
+            sourceUser: {
+              id: memberId,
+              name: memberProfile.identity?.name || 'Unknown',
+              avatar: null
+            },
+            targetUser: {
+              id: op.candidateId,
+              name: targetProfile.identity?.name || 'Unknown',
+              avatar: null
+            },
+            opportunity: {
+              type: op.type,
+              title: op.title,
+              description: op.description,
+              score: op.score
+            }
+          });
+        }
+
+      } catch (err) {
+        log.error(`[OpportunityService] Error discovering opportunities for ${memberId}:`, { error: err });
+      }
+    }
+
+    // Sort by score descending
+    return allOpportunities.sort((a, b) => b.opportunity.score - a.opportunity.score);
+  }
+}
+
+// ============================================================================
+// PROMPT-DRIVEN DISCOVERY TYPES
+// ============================================================================
+
+/**
+ * Options for prompt-driven opportunity discovery.
+ */
+export interface DiscoverOpportunitiesOptions {
+  /** Natural language prompt describing what to find (e.g., "investors", "collaborators") */
+  prompt: string;
+  /** User IDs to find opportunities FOR */
+  memberIds: string[];
+  /** Optional: Scope to specific index */
+  indexId?: string;
+  /** Maximum opportunities per member */
+  limit?: number;
+}
+
+/**
+ * A discovered opportunity between two users.
+ */
+export interface DiscoveredOpportunity {
+  sourceUser: { id: string; name: string; avatar: string | null };
+  targetUser: { id: string; name: string; avatar: string | null };
+  opportunity: {
+    type: 'collaboration' | 'mentorship' | 'networking' | 'other';
+    title: string;
+    description: string;
+    score: number;
+  };
 }
 
 export const opportunityService = new OpportunityService();

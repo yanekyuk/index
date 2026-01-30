@@ -9,8 +9,8 @@ import { AIChatProvider } from "@/contexts/AIChatContext";
 import ClientWrapper from "@/components/ClientWrapper";
 
 export const metadata: Metadata = {
-  title: "Index Network | Discovery Protocol",
-  description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
+  title: "Index Network",
+  description: "You know that moment when you meet the right person and your next move clicks into place? That sense of magic? You shouldn't have to wait for luck. Index helps your others find you.",
   icons: {
     icon: '/favicon-white.png',
     shortcut: '/favicon-white.png',
@@ -19,19 +19,19 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "https://index.network/",
-    title: "Index Network | Discovery Protocol",
-    description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
+    title: "Index Network",
+    description: "You know that moment when you meet the right person and your next move clicks into place? That sense of magic? You shouldn't have to wait for luck. Index helps your others find you.",
     images: [
       {
-        url: "https://index.network/bridge.jpg",
+        url: "https://index.network/link-preview.png",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Index Network | Discovery Protocol",
-    description: "Let autonomous agents run in the background, reading signals from your files and matching you with the right people-right when it matters.",
-    images: ["https://index.network/bridge.jpg"],
+    title: "Index Network",
+    description: "You know that moment when you meet the right person and your next move clicks into place? That sense of magic? You shouldn't have to wait for luck. Index helps your others find you.",
+    images: ["https://index.network/link-preview.png"],
   },
 };
 

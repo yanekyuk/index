@@ -877,7 +877,7 @@ export default function SettingsPage({ params }: { params: Promise<{ indexId: st
                         ) : (
                           <>
                             <Copy className="h-4 w-4 mr-2" />
-                            Copy Invitation Link
+                            Copy
                           </>
                         )}
                       </Button>

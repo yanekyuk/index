@@ -33,7 +33,6 @@ interface ChatViewProps {
   userAvatar?: string;
   minimized: boolean; // Kept for compatibility but not used
   onClose: () => void;
-  onToggleMinimize: () => void; // Kept for compatibility but not used
 }
 
 export default function ChatView({
@@ -42,11 +41,9 @@ export default function ChatView({
   userAvatar,
   minimized: _minimized,
   onClose,
-  onToggleMinimize: _onToggleMinimize,
 }: ChatViewProps) {
   // Suppress unused variable warnings - kept for API compatibility
   void _minimized;
-  void _onToggleMinimize;
   const { client, isReady, getOrCreateChannel, clearActiveChat } = useStreamChat();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);

@@ -1,3 +1,25 @@
+// Types for opportunity discovery
+export interface DiscoveredOpportunity {
+  sourceUser: { id: string; name: string; avatar: string | null };
+  targetUser: { id: string; name: string; avatar: string | null };
+  opportunity: {
+    type: 'collaboration' | 'mentorship' | 'networking' | 'other';
+    title: string;
+    description: string;
+    score: number;
+  };
+}
+
+export interface OpportunityDiscoveryRequest {
+  prompt: string;
+  memberIds?: string[];
+  limit?: number;
+}
+
+export interface OpportunityDiscoveryResponse {
+  opportunities: DiscoveredOpportunity[];
+}
+
 // Service functions for admin operations
 export const createAdminService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get pending connections for an index
@@ -59,6 +81,11 @@ export const createAdminService = (api: ReturnType<typeof import('../lib/api').u
     return await api.get<{
       count: number;
     }>(`/admin/${indexId}/pending-count`);
+  },
+
+  // Discover opportunities for index members
+  discoverOpportunities: async (indexId: string, request: OpportunityDiscoveryRequest) => {
+    return await api.post<OpportunityDiscoveryResponse>(`/admin/${indexId}/opportunities`, request);
   }
 });
 
