@@ -4,7 +4,7 @@ import db from '../lib/db';
 import { HumanMessage } from '@langchain/core/messages';
 import { IndexEmbedder } from '../lib/embedder';
 import { ChatGraphFactory } from '../lib/protocol/graphs/chat/chat.graph';
-import { getCheckpointer } from '../lib/protocol/graphs/chat/checkpointer';
+import { getCheckpointer } from '../lib/protocol/graphs/chat/chat.checkpointer';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import {
   ChatGraphCompositeDatabase,

@@ -1,7 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
-import { log } from "../../../log";
+import { log } from "../../../../log";
 
 /**
  * Config

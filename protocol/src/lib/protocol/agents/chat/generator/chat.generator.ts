@@ -2,8 +2,8 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { Runnable } from "@langchain/core/runnables";
 import { z } from "zod";
-import { log } from "../../../log";
-import type { RouterOutput } from "./router.agent";
+import { log } from "../../../../log";
+import type { RouterOutput } from "../router/chat.router";
 
 /**
  * Config
