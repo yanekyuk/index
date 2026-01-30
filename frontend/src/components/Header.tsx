@@ -1,8 +1,7 @@
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { LogIn, Settings, Library, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
-import { AIChatButton } from "@/components/ai-chat";
+import { LogIn, Settings, Library, MessageCircle, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -279,6 +278,17 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
           (authenticated && !forcePublicView) ? (
             <div className="flex items-center gap-2">
               <button
+                onClick={() => router.push('/chat')}
+                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[110px]"
+                title="Open AI Chat"
+              >
+                <MessageCircle className="h-6 w-6 text-black" strokeWidth={2} />
+                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
+                  Chat
+                </span>
+              </button>
+
+              <button
                 onClick={() => setLibraryModalOpen(true)}
                 className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[132px]"
               >
@@ -287,8 +297,6 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
                   Library
                 </span>
               </button>
-
-              <AIChatButton />
 
               <div className="relative" ref={dropdownRef}>
                 <div
