@@ -24,11 +24,13 @@ interface AIChatContextType {
   setIsOpen: (open: boolean) => void;
   messages: ChatMessage[];
   sessionId: string | null;
+  sessionTitle: string | null;
   setSessionId: (id: string | null) => void;
   isLoading: boolean;
   sendMessage: (message: string) => Promise<void>;
   clearChat: () => void;
   loadSession: (sessionId: string) => Promise<void>;
+  updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
 }
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
@@ -37,6 +39,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { getAccessToken } = usePrivy();
   const { refetchSessions } = useAIChatSessions();
@@ -172,6 +175,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const clearChat = useCallback(() => {
     setMessages([]);
     setSessionId(null);
+    setSessionTitle(null);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -193,10 +197,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       });
       if (!res.ok) throw new Error('Failed to load session');
       const data = (await res.json()) as {
-        session: { id: string };
+        session: { id: string; title?: string | null };
         messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
       };
       setSessionId(data.session.id);
+      setSessionTitle(data.session.title?.trim() ?? null);
       setMessages(
         data.messages.map((m) => ({
           id: m.id,
@@ -211,17 +216,47 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, [getAccessToken]);
 
+  const updateSessionTitle = useCallback(async (id: string, title: string) => {
+    const token = await getAccessToken();
+    if (!token) return false;
+    const trimmed = title.trim();
+    if (!trimmed) return false;
+
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL_V2 || '';
+      const res = await fetch(`${base}/v2/chat/session/title`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId: id, title: trimmed }),
+      });
+      if (!res.ok) return false;
+      if (sessionId === id) {
+        setSessionTitle(trimmed);
+      }
+      refetchSessions();
+      return true;
+    } catch (err) {
+      console.error('Update session title error:', err);
+      return false;
+    }
+  }, [getAccessToken, sessionId, refetchSessions]);
+
   return (
     <AIChatContext.Provider value={{
       isOpen,
       setIsOpen,
       messages,
       sessionId,
+      sessionTitle,
       setSessionId,
       isLoading,
       sendMessage,
       clearChat,
       loadSession,
+      updateSessionTitle,
     }}>
       {children}
     </AIChatContext.Provider>

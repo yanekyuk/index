@@ -608,4 +608,47 @@ export class ChatController {
 
     return Response.json({ success: true });
   }
+
+  /**
+   * Update a chat session title (rename).
+   *
+   * @param req - The HTTP request object (body: { sessionId: string, title: string })
+   * @param user - The authenticated user from AuthGuard
+   * @returns JSON response with updated session or error
+   */
+  @Post('/session/title')
+  @UseGuards(AuthGuard)
+  async updateSessionTitle(req: Request, user: AuthenticatedUser) {
+    let body: { sessionId?: string; title?: string };
+    try {
+      body = await req.json() as { sessionId?: string; title?: string };
+    } catch {
+      return Response.json(
+        { error: 'Invalid request body. Expected { sessionId: string, title: string }' },
+        { status: 400 }
+      );
+    }
+
+    if (!body.sessionId || body.title === undefined) {
+      return Response.json(
+        { error: 'sessionId and title are required' },
+        { status: 400 }
+      );
+    }
+
+    const title = String(body.title).trim();
+    if (!title) {
+      return Response.json(
+        { error: 'title cannot be empty' },
+        { status: 400 }
+      );
+    }
+
+    const updated = await chatSessionService.updateSessionTitle(body.sessionId, user.id, title);
+    if (!updated) {
+      return Response.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    return Response.json({ success: true, title });
+  }
 }

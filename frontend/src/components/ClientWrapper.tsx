@@ -119,7 +119,7 @@ function ClientWrapperContent({
       `}</style>
 
       {/* Header stays fixed at top (except on landing/blog pages) */}
-      <div className={isLandingOrBlog ? 'z-40' : `sticky top-0 z-40 border border-gray-300 transition-colors  bg-white backdrop-blur-3xl}`}>
+      <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
         <div className="max-w-7xl mx-auto px-2">
           <Header
             showHeaderButtons={showHeaderButtons}
@@ -138,25 +138,25 @@ function ClientWrapperContent({
             {children}
           </div>
         ) : (
-          <div className={`max-w-7xl mx-auto px-2 flex min-h-[calc(100vh-76px)] ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
+          <div className={`max-w-7xl mx-auto px-4 sm:px-6 flex min-h-[calc(100vh-76px)] ${showSidebar ? 'flex-col lg:flex-row lg:gap-6' : 'flex-col'}`}>
             {/* Left Sidebar - sticky */}
             {showSidebar && (
-              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-stretch lg:border-r lg:border-gray-300 lg:pr-4`}>
-                <div className="lg:sticky lg:top-20 pt-10">
+              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-stretch lg:border-r lg:border-gray-300`}>
+                <div className="lg:sticky lg:top-20 pt-6 lg:pt-8">
                   <Sidebar />
                 </div>
               </aside>
             )}
 
             {/* Main content area */}
-            <div className={`w-full pt-10 ${showSidebar ? 'lg:flex-1 lg:min-w-0' : ''} ${showChatSidebar ? 'lg:px-4' : ''}`}>
+            <div className={`w-full min-w-0 flex flex-col pt-6 lg:pt-8 flex-1 min-h-0 ${showSidebar ? 'lg:flex-1' : ''}`}>
               {children}
             </div>
 
             {/* Right Chat Sidebar - sticky */}
             {showChatSidebar && (
-              <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 lg:self-stretch lg:border-l lg:border-gray-300 lg:pl-4">
-                <div className="lg:sticky lg:top-20 pt-10">
+              <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 lg:self-stretch lg:border-l lg:border-gray-300">
+                <div className="lg:sticky lg:top-20 pt-6 lg:pt-8">
                   <ChatSidebar />
                 </div>
               </aside>
