@@ -96,8 +96,8 @@ export default function ChatPage() {
     <ClientLayout>
       <div className="pb-0 flex flex-col flex-1 min-h-0">
         <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
-          {/* Title bar card - same depth as DiscoveryForm */}
-          <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+          {/* Title bar card - AI mode: warm accent (task-oriented) */}
+          <div className="w-full bg-white border border-gray-800 border-l-4 border-l-[#006D4B] rounded-sm shadow-lg flex flex-col flex-shrink-0">
             <div className="relative flex items-center gap-3 px-3 py-2 min-h-[54px]">
               <Sparkles className="h-5 w-5 shrink-0 text-[#006D4B]" aria-hidden />
               {isEditingTitle ? (
@@ -196,6 +196,11 @@ export default function ChatPage() {
                               : 'bg-gray-100 text-gray-900'
                           )}
                         >
+                          {msg.role === 'assistant' && (
+                            <span className="text-[10px] uppercase tracking-wider text-[#006D4B]/70 font-ibm-plex-mono mb-1 block">
+                              AI Assistant
+                            </span>
+                          )}
                           <article className={cn(
                             "chat-markdown max-w-none",
                             msg.role === 'user' && 'chat-markdown-invert'
@@ -224,7 +229,7 @@ export default function ChatPage() {
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
+                placeholder="Ask AI or find opportunities..."
                 disabled={isLoading}
                 className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
               />

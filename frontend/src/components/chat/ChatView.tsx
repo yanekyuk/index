@@ -69,6 +69,7 @@ export default function ChatView({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
+  const [channelRefreshKey, setChannelRefreshKey] = useState(0); // Increment to re-fetch & watch channel (e.g. after message request creates it)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -120,11 +121,22 @@ export default function ChatView({
             })()
           : sortedIds;
 
-        const existingChannels = await client.queryChannels(
+        let existingChannels = await client.queryChannels(
           { type: 'messaging', id: expectedChannelId },
           {},
-          { limit: 1 }
+          { limit: 1, watch: true, state: true }
         );
+
+        // Retry once after short delay if we expected a channel (e.g. after sending message request)
+        if (existingChannels.length === 0 && channelRefreshKey > 0 && mounted) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (!mounted) return;
+          existingChannels = await client.queryChannels(
+            { type: 'messaging', id: expectedChannelId },
+            {},
+            { limit: 1, watch: true, state: true }
+          );
+        }
 
         if (existingChannels.length > 0) {
           // Channel exists - watch it and load messages
@@ -222,7 +234,7 @@ export default function ChatView({
         }
       }
     };
-  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, checkCanMessage]);
+  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, checkCanMessage, channelRefreshKey]);
 
   useEffect(() => {
     scrollToBottom();
@@ -268,6 +280,8 @@ export default function ChatView({
         
         success('Message request sent', `${userName} will see this in their message requests.`);
         setSendingMessageId(null);
+        // Channel was created on backend - re-fetch so we watch it and receive real-time updates
+        setChannelRefreshKey((k) => k + 1);
         scrollToBottom();
         inputRef.current?.focus();
         return;
@@ -375,7 +389,7 @@ export default function ChatView({
   return (
     <div className="pb-0 flex flex-col flex-1 min-h-0 w-full">
       <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
-        {/* Header card - matches AI chat title bar styling */}
+        {/* Header card - human chat: neutral layout, authentic avatar and name */}
         <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
           <div className="relative flex items-center gap-3 px-3 py-2 min-h-[54px]">
             <button
@@ -578,7 +592,7 @@ export default function ChatView({
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
               onKeyDown={handleKeyPress}
-              placeholder={isNewConversation ? `Say hi to ${userName}...` : 'Type a message...'}
+              placeholder={isNewConversation ? `Message ${userName}...` : `Reply to ${userName}...`}
               disabled={sendingMessageId !== null}
               className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
             />

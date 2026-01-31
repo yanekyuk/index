@@ -8,6 +8,7 @@ import LibraryModal from '@/components/modals/LibraryModal';
 import { Shield, ArrowLeft, Inbox, Users, Settings, Sparkles, MessageSquarePlus, Trash2 } from 'lucide-react';
 import { useAdmin, useIntents } from '@/contexts/APIContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
+import ChatSidebar from '@/components/chat/ChatSidebar';
 
 interface LatestIntent {
   id: string;
@@ -85,6 +86,7 @@ export default function Sidebar() {
 
   // Fetch LLM chat sessions when on /chat page
   const isChatPage = pathname === '/chat';
+  const isUserChatPage = pathname === '/conversations' || (!!pathname?.startsWith('/u/') && pathname?.endsWith('/chat'));
   useEffect(() => {
     if (!isChatPage) return;
 
@@ -291,8 +293,13 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Latest Intents Section - only when not in admin mode and not on chat page */}
-      {!isAdminMode && !isChatPage && (
+      {/* User conversations list - when on /conversations or /u/[id]/chat */}
+      {!isAdminMode && isUserChatPage && (
+        <ChatSidebar />
+      )}
+
+      {/* Latest Intents Section - only when not in admin mode and not on chat/user chat pages */}
+      {!isAdminMode && !isChatPage && !isUserChatPage && (
         <div className="">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>

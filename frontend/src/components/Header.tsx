@@ -1,7 +1,7 @@
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { LogIn, Settings, Library, MessageCircle, MessageSquare, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
+import { LogIn, Settings, Library, MessageCircle, Sparkles, MessageSquare, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -39,12 +39,14 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
   const [indexDropdownOpen, setIndexDropdownOpen] = useState(false);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
+  const [connectDropdownOpen, setConnectDropdownOpen] = useState(false);
   const indexesService = useIndexes();
   const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useIndexesState();
   const { setSelectedIndexIds } = useIndexFilter();
   const { success, error } = useNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const indexDropdownRef = useRef<HTMLDivElement>(null);
+  const connectDropdownRef = useRef<HTMLDivElement>(null);
 
   // Check if we're in admin mode
   const isAdminMode = pathname?.startsWith('/admin/');
@@ -137,15 +139,18 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
       if (indexDropdownOpen && indexDropdownRef.current && !indexDropdownRef.current.contains(event.target as Node)) {
         setIndexDropdownOpen(false);
       }
+      if (connectDropdownOpen && connectDropdownRef.current && !connectDropdownRef.current.contains(event.target as Node)) {
+        setConnectDropdownOpen(false);
+      }
     };
 
-    if (dropdownOpen || indexDropdownOpen) {
+    if (dropdownOpen || indexDropdownOpen || connectDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [dropdownOpen, indexDropdownOpen]);
+  }, [dropdownOpen, indexDropdownOpen, connectDropdownOpen]);
 
   // Show loading state while Privy is initializing
   if (!ready) {
@@ -284,27 +289,45 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
         {showHeaderButtons && (
           (authenticated && !forcePublicView) ? (
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => router.push('/conversations')}
-                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[140px]"
-                title="Conversations with people"
-              >
-                <MessageSquare className="h-6 w-6 text-black" strokeWidth={2} />
-                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
-                  Conversations
-                </span>
-              </button>
-
-              <button
-                onClick={() => router.push('/chat')}
-                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[110px]"
-                title="Open AI Chat"
-              >
-                <MessageCircle className="h-6 w-6 text-black" strokeWidth={2} />
-                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
-                  Chat
-                </span>
-              </button>
+              <div className="relative" ref={connectDropdownRef}>
+                <button
+                  onClick={() => setConnectDropdownOpen(!connectDropdownOpen)}
+                  className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] min-w-[120px]"
+                  title="Connect – AI Assistant & Messages"
+                >
+                  <MessageCircle className="h-6 w-6 text-black" strokeWidth={2} />
+                  <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
+                    Connect
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-black transition-transform ${connectDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {connectDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] z-50">
+                    <div className="py-1">
+                      <button
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setConnectDropdownOpen(false);
+                          router.push('/chat');
+                        }}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2 text-[#006D4B]" />
+                        Assistant
+                      </button>
+                      <button
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                        onClick={() => {
+                          setConnectDropdownOpen(false);
+                          router.push('/conversations');
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Messages
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={() => setLibraryModalOpen(true)}
@@ -480,6 +503,7 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
           index={memberSettingsIndex}
         />
       )}
+
     </div>
   );
 } 
