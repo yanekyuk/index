@@ -1,5 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import type { IntentIndexerOutput } from "../../../../agents/intent/indexer/intent.indexer.types";
+import type { IntentIndexerOutput } from "../../agents/index/intent.indexer.types";
 
 /**
  * Intent payload and metadata loaded for index evaluation.

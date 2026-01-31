@@ -5,7 +5,7 @@ import {
   IndexMemberContext,
   AssignmentResult,
 } from "./index.graph.state";
-import { IntentIndexer } from "../../../../agents/intent/indexer/intent.indexer";
+import { IntentIndexer } from "../../agents/index/intent.indexer";
 import { IndexGraphDatabase } from "../../interfaces/database.interface";
 import { log } from "../../../log";
 
