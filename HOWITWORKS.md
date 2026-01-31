@@ -37,7 +37,7 @@ Privacy isn't an afterthought but a foundational design constraint. Index uses a
 
 Rather than algorithmic matching or manual browsing, multiple AI agents coexist to maintain relationships between contextual elements. The integrity of these relationships forms the context itself as an emergent property—this emergence is the architecture, not imposed frameworks or predefined models.
 
-**Technical Implementation**: Context broker agents that analyze intent relationships and create "stakes" – confidence signals about potential matches with explanatory reasoning.
+**Technical Implementation**: Opportunity agents that analyze profile and intent relationships to surface potential connections. Each opportunity carries dual descriptions—one for each party—preserving contextual integrity while enabling meaningful discovery.
 
 ## Core Data Architecture
 
@@ -48,12 +48,14 @@ The core data layer stores the essential relationships between users, their inte
 ```sql
 -- Users have multiple intents across different contexts
 users ←→ intents (1:many)
+-- Users have profiles with semantic embeddings for discovery
+users ←→ user_profiles (1:1)
 -- Intents can belong to multiple indexes (contexts)
 intents ←→ indexes (many:many via intent_indexes)
 -- Indexes have members with specific permissions
 indexes ←→ users (many:many via index_members)
--- Agents create stakes connecting related intents
-intent_stakes → [array of intent_ids] + reasoning
+-- Agents surface opportunities between users
+opportunities → {source_user, candidate_user, dual_descriptions, score}
 ```
 
 **Why this structure**: The many-to-many relationship between intents and indexes is fundamental for enabling **private discovery networks** across organizations, communities, and professional groups. This design allows a single intent to be shared in multiple contexts—such as a global "Open Collaboration" index, a private company workspace, a community hub, or a direct one-on-one share—each governed by its own privacy and access controls. As a result, users can participate in both broad professional discovery and tightly scoped, invite-only collaboration, all while maintaining granular control over where and how their intents are visible. 
@@ -84,65 +86,85 @@ Context isolation makes privacy management practical and intuitive. A researcher
 
 ## Agent Runtime Architecture
 
-### Context Brokers
+### Opportunity Discovery
 
-Context brokers are the primary intelligence layer that processes intents and creates connections:
+The Opportunity system is the intelligence layer that surfaces potential connections between users:
 
 ```typescript
-abstract class BaseContextBroker {
-  abstract onIntentCreated(intentId: string): Promise<void>;
-  abstract onIntentUpdated(intentId: string): Promise<void>; 
-  abstract onIntentArchived(intentId: string): Promise<void>;
+interface Opportunity {
+  sourceId: string;           // User we're finding opportunities FOR
+  candidateId: string;        // Potential match
+  score: number;              // Relevance score (0-100)
+  sourceDescription: string;  // Why valuable TO the source
+  candidateDescription: string; // Why valuable TO the candidate
+  valencyRole: 'Agent' | 'Patient' | 'Peer';
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
 }
 ```
 
 **Current Implementation**:
 
-**Semantic Relevancy Broker**: The first and primary agent implementation uses LLM-based semantic analysis to find related intents across users and creates stakes with explanatory reasoning. This agent represents the foundational intelligence layer for the social intent pairing.
+**Opportunity Evaluator**: An LLM-based agent that analyzes a source user's profile against candidate profiles to identify high-value connection opportunities. The evaluator produces dual descriptions—one written for each party—ensuring contextual integrity is preserved.
 
-**Why this architecture**: The broker pattern enables multiple competing broker agents to operate simultaneously. Each broker can implement different brokerage strategies (semantic, temporal, network-based) and stake on connections they believe are valuable. This creates a vibrant marketplace of social intelligence where agents compete and collaborate to provide the best matches.
+**Valency Analysis**: The agent determines the semantic role of each party:
+- **Agent**: The candidate CAN DO something for the source
+- **Patient**: The candidate NEEDS something from the source  
+- **Peer**: Symmetric collaboration potential
 
-### Stakes as Relevancy Signals
+**Why this architecture**: The dual-description model ensures that each party only sees information relevant to them, never leaking the other party's private intents. This creates trust through transparency while maintaining privacy.
 
-When agents identify potential connections, they create "stakes" – records that commit to a relationship between specific intents:
+### Opportunities as Coordination Primitives
+
+Opportunities are the fundamental unit of potential coordination in Index. An opportunity represents a detected possibility for meaningful connection, existing before any agreement, conversation, or commitment.
+
+**Conceptual Model**: Signal → Interpretation → Projection
+
+1. **Signal**: Raw coordination potential detected by agents (pre-legible, pre-consent)
+2. **Interpretation**: A subjective reading of the signal, always owned by one party
+3. **Projection**: An interpretation offered to another party, attributed to the sender
 
 ```typescript
-interface Stake {
-  intents: string[];       // Array of related intent IDs (references only)
-  amount: bigint;          // Confidence score (future: economic stake)
-  reasoning: string;       // Explanation shared with users (privacy-aware)
-  agent: DID;              // Which agent created this stake
+interface Opportunity {
+  id: string;
+  sourceId: string;              // User for whom this opportunity was surfaced
+  candidateId: string;           // The potential connection
+  score: number;                 // Confidence score (0-100)
+  sourceDescription: string;     // Written FOR the source user
+  candidateDescription: string;  // Written FOR the candidate user
+  valencyRole: 'Agent' | 'Patient' | 'Peer';
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
 }
 ```
 
-**Privacy Architecture**: Stakes contain **only intent IDs and agent reasoning** - never the actual intent content. When users see potential matches, they receive:
-- Agent's explanation of why the match is relevant
-- Confidence scores as staked value  
+**Contextual Integrity**: The dual-description model is fundamental to preserving contextual integrity:
+- **sourceDescription**: Explains why this connection is valuable to the source, addressed as "You"
+- **candidateDescription**: Explains why this connection is valuable to the candidate, addressed as "You"
+- Neither description leaks the other party's private intents
 
-The underlying intent details of other users remain private within the confidential compute environment.
+**Key Invariant**: *A party may only transmit interpretations they own; signals and third-party interpretations never cross boundaries.*
 
-**Strategic Design**: Stakes serve multiple exciting purposes:
-- **Explainability**: Users understand why they're matched
-- **Quality Control**: Agents build reputation based on stake accuracy
+**Strategic Design**: Opportunities serve multiple purposes:
+- **Explainability**: Each party understands why they're being connected
+- **Privacy**: Intent details remain private; only agent-synthesized descriptions are shared
+- **Quality Control**: Agents build reputation based on opportunity acceptance rates
 - **Economic Incentives**: Future token mechanics can reward successful connections
-- **Composability**: Multiple agents can stake on the same intent relationships for different reasons.
 
 ### Multi-Layer Quality Control
 
 Index implements several mechanisms to ensure match quality and prevent abuse:
 
-### Stake Patterns in Index
+### Opportunity Patterns in Index
 
-The system supports multiple staking patterns that enable different types of discovery and community formation:
+The system supports multiple opportunity patterns that enable different types of discovery and community formation:
 
-| **Stake Pattern** | **Description** | **Example** | **Strategic Function** |
+| **Pattern** | **Description** | **Example** | **Strategic Function** |
 |-------------------|------------------------------------------------------------------|----------------------------------------------------------------------------|-------------------------------------|
-| **1:1** | One agent stakes on one intent involving one other person | "Introduce Alice to Bob" | Precision matchmaking |
-| **1:n** | One agent stakes on multiple people for a single user's intent | "Suggest cofounders to Alice" | Personalized recommendations |
-| **n:1** | Multiple agents stake on the same person for one user | "Multiple agents suggest Bob to Alice" | Compounding trust signal |
-| **n:n** | Multiple agents stake on multiple people for one user | "Agents suggest a set of collaborators for Alice's startup" | Community curation / cohort building |
-| **1→n (broadcast)** | One agent stakes on the same person across multiple relevant users | "Suggest Bob to 5 different people looking for AI collaborators" | Demand-side liquidity discovery |
-| **n→1 (converge)** | Many agents stake different dimensions on one match candidate | "Trust agent + skill agent + context agent all stake on the same connection" | Multi-perspective evaluation |
+| **1:1 Direct** | One agent surfaces an opportunity between two users | "Connect Alice with Bob" | Precision matchmaking |
+| **1:n Fan-out** | One agent surfaces multiple opportunities for a single user | "Suggest cofounders to Alice" | Personalized recommendations |
+| **n:1 Convergence** | Multiple agents identify the same candidate for one user | "Multiple agents suggest Bob to Alice" | Compounding confidence signal |
+| **Cohort** | Agent identifies a group of related opportunities | "Build a collaborator cohort for Alice's startup" | Community curation |
+| **Broadcast** | One agent surfaces the same candidate to multiple seekers | "Suggest Bob to 5 people looking for AI collaborators" | Demand-side liquidity |
+| **Multi-perspective** | Different agents evaluate the same pair on different dimensions | "Trust agent + skill agent + context agent all evaluate Alice↔Bob" | Composite opportunity scoring |
 
 These patterns enable Index to scale from individual connections to community-wide discovery while maintaining explainability and agent accountability.
 
@@ -150,18 +172,17 @@ These patterns enable Index to scale from individual connections to community-wi
 
 Index makes discovery markets programmable—allowing anyone to define new economic rules and connection strategies over intents. The future of social coordination is shaped by how these programmable markets are composed, forked, and remixed to surface new forms of connection.
 
-**Customizable Market Logic**: Agents and communities will be able to launch their own discovery markets, each with unique staking, scoring, and reward mechanisms. For example, some markets may reward consensus and safe matches, while others incentivize risk-taking and novel connections.
+**Customizable Market Logic**: Agents and communities will be able to launch their own discovery markets, each with unique scoring and reward mechanisms. For example, some markets may incentivize risk-taking and novel connections, while others optimize for domain-specific expertise.
 
 **Exploration-Driven Incentives**: By supporting mechanisms like logarithmic market scoring rules, these markets can dynamically adjust the "price" of matches. As common connections become saturated, agents are nudged to explore the long tail—surfacing niche, underexplored relationships that might otherwise be missed.
 
 This architecture enables an exciting future where the very logic of discovery is open, remixable, and shaped by the needs and creativity of its participants.
 
-**Multiple Market Perspectives**: The same intent pool can support multiple discovery markets with different strategies:
-- **Consensus-driven markets**: Focus on safe, obvious matches
-- **Exploration markets**: Reward novel, high-risk connections  
+**Multiple Market Perspectives**: The same user pool can support multiple discovery markets with different strategies:
+- **Exploration markets**: Reward novel, serendipitous connections  
 - **Domain-specific markets**: Optimize for particular industries or contexts
 
-As Index Network grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "signal miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
+As Index Network grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "opportunity miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
 
 ### Core Processing Agents
 
@@ -192,27 +213,26 @@ Indexes can be used for:
 
 This simple approach mirrors how we naturally navigate social spaces - we have individual preferences while also being part of communities, organizations, and networks that have their own social dynamics. Each agent accesses only the relevant data needed for its integrity, enabling rich user-centric discovery while maintaining social privacy expectations.
 
-### Dynamic Knowledge Graph Construction via Staking
+### Dynamic Opportunity Graph
 
-Unlike traditional knowledge graphs with fixed relationships, Index creates **situational knowledge graphs** that emerge from agent signals:
+Unlike traditional knowledge graphs with fixed relationships, Index creates **situational opportunity graphs** that emerge from agent evaluations:
 
 ```typescript
-// Between any two users, multiple agents provide different perspectives
-// Note: This represents what's shared with users, not the raw intent data
-const userRelationship = {
-  users: ["user-a", "user-b"],
-  agentSignals: [
-    { agentId: "semantic-matcher", reasoning: "Both working on AI privacy", stake: 0.8 },
-    { agentId: "network-analyzer", reasoning: "Mutual connections in crypto space", stake: 0.7 },
-    { agentId: "experience-matcher", reasoning: "Both have startup exits", stake: 0.9 }
-  ]
-  // Raw intent content remains in confidential compute only
+// An opportunity between two users, with role-aware descriptions
+const opportunity = {
+  sourceId: "user-a",
+  candidateId: "user-b",
+  score: 85,
+  valencyRole: "Agent", // user-b CAN DO something for user-a
+  sourceDescription: "You're looking for ML expertise—this person built recommendation systems at scale",
+  candidateDescription: "You're interested in applied ML—this person is working on a challenging recommendation problem",
+  status: "PENDING"
 }
 ```
 
-**Ephemeral Structure**: When users connect, the knowledge graph for that relationship dissolves, and new graphs form around emerging opportunities. This prevents static categorization while enabling rich, multi-dimensional relationship reasoning.
+**Ephemeral Structure**: When users connect, the opportunity resolves, and new opportunities form around emerging possibilities. This prevents static categorization while enabling dynamic, context-aware discovery.
 
-**Contextual Integrity**: Each agent contributes its own reasoning layer, creating a composite understanding that's richer than any single agent could provide. Agents can build on each other's signals, creating compounding relevance where one agent's output becomes another's input signal.
+**Contextual Integrity**: The dual-description model ensures each party receives information relevant to them without exposing the other party's private context. The agent synthesizes—never copies—creating interpretations that respect boundaries while surfacing value.
 
 ## Discovery and Social Connection Flow
 
@@ -231,10 +251,10 @@ When a user uploads files to an index, the Intent Inferrer agent analyzes the co
 **Future Architecture**: The privacy guarantees will follow established patterns from advertising technology's **data clean rooms**. In the planned architecture:
 
 ```
-Encrypted Intent Data → TEE Processing Environment → Limited Agent Actions → Stake Signals Only
+Encrypted Intent Data → TEE Processing Environment → Limited Agent Actions → Opportunity Signals Only
 ```
 
-Agents can only output **reasoning explanations** and **confidence scores as stakes** to users. The actual intent content of other users remains encrypted and inaccessible outside the confidential compute network. This creates a "privacy superhighway" where agents prove their identity through TEE attestation to gain permissioned access, but can only share derived insights, never raw data.
+Agents can only output **opportunity descriptions** and **confidence scores** to users. The actual intent content of other users remains encrypted and inaccessible outside the confidential compute network. This creates a "privacy superhighway" where agents prove their identity through TEE attestation to gain permissioned access, but can only share derived insights (synthesized descriptions), never raw data.
 
 **Future Direction**: Agent contribution will become permissionless, with norm and flow control enforced using contextual+differential privacy techniques. This will enable open participation by agents while maintaining strong privacy guarantees for all users.
 
@@ -242,10 +262,13 @@ Agents can only output **reasoning explanations** and **confidence scores as sta
 ### 3. Agent-Mediated Connections
 
 ```
-Intent Created → Context Brokers → Semantic Analysis → Stakes Created
+Profile Updated → Opportunity Graph → Candidate Search → Opportunity Evaluation → Opportunities Surfaced
 ```
 
-When intents are created or updated, all registered context brokers receive notifications. Each broker applies its connection logic and creates stakes connecting related intents from different users.
+The Opportunity Graph orchestrates the discovery process:
+1. **Resolve Source Profile**: Load the user's profile context
+2. **Search Candidates**: Use vector similarity to find potential matches
+3. **Evaluate Candidates**: The Opportunity Evaluator agent analyzes each candidate and produces scored opportunities with dual descriptions
 
 
 ## Communication and Synthesis Layer
@@ -253,7 +276,7 @@ When intents are created or updated, all registered context brokers receive noti
 Index automatically generates contextual communications:
 
 **Connection Requests**: Include AI-generated "What Could Happen Here" synthesis
-**Connection Acceptance**: Include AI-generated introduction text based on shared stakes
+**Connection Acceptance**: Include AI-generated introduction text based on the opportunity context
 
 ```typescript
 // Vibe checking: What could this collaboration look like?
@@ -334,11 +357,11 @@ GET /api/indexes/{indexId}/suggested_intents
 
 **Discovery and Connections**:
 ```typescript
-// Get stakes involving user's intents
-GET /api/stakes/by-user?includeDiscovered=false
+// Get opportunities surfaced for the user
+GET /api/opportunities?status=PENDING
 
 // Get discovery results for shared index
-GET /api/stakes/index/{code}/by-user
+GET /api/discover/{indexCode}
 ```
 
 ### Reusable Components
@@ -418,27 +441,31 @@ ACCEPT → [connected]
 
 ### Database Design for Scale
 
-**Intent Stakes as Arrays**: Using arrays for intent relationships enables efficient queries while maintaining data consistency:
+**Opportunities as First-Class Entities**: Each opportunity is stored as a complete record linking two users with scored, role-aware descriptions:
 
 ```sql
--- Find stakes involving specific intents
-WHERE intents @> ARRAY['intent-id-1']::text[]
+-- Find pending opportunities for a user
+SELECT * FROM opportunities 
+WHERE source_id = 'user-id' AND status = 'PENDING'
+ORDER BY score DESC;
 
--- Find stakes connecting two users' intents  
-WHERE EXISTS(SELECT 1 FROM unnest(intents) WHERE intent_id IN (...))
+-- Find mutual opportunities (where both parties have opportunities surfaced)
+SELECT o1.* FROM opportunities o1
+JOIN opportunities o2 ON o1.source_id = o2.candidate_id AND o1.candidate_id = o2.source_id
+WHERE o1.status = 'PENDING';
 ```
 
 ### Agent Processing Architecture
 
-**Asynchronous Broker Execution**: All context brokers process intents in asynchronously, preventing any single agent from blocking the pipeline:
+**Asynchronous Opportunity Processing**: The Opportunity Graph processes candidate evaluations asynchronously, preventing any single evaluation from blocking the pipeline:
 
 ```typescript
-const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
-  try {
-    await broker.onIntentCreated(intentId);
-  } catch (error) {
-    console.error(`Broker ${broker.agentId} failed:`, error);
-  }
-});
+// OpportunityGraph orchestrates the discovery flow
+const graph = new OpportunityGraph(database, embedder);
 
+// Each candidate is evaluated in parallel
+const opportunities = await graph.invoke({
+  sourceUserId: userId,
+  options: { hydeDescription, minScore: 70 }
+});
 ```
