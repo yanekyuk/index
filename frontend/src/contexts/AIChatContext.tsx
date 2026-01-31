@@ -17,6 +17,7 @@ interface ChatMessage {
   timestamp: Date;
   isStreaming?: boolean;
   thinking?: ThinkingStep[];
+  attachmentNames?: string[];
 }
 
 interface AIChatContextType {
@@ -27,7 +28,7 @@ interface AIChatContextType {
   sessionTitle: string | null;
   setSessionId: (id: string | null) => void;
   isLoading: boolean;
-  sendMessage: (message: string) => Promise<void>;
+  sendMessage: (message: string, fileIds?: string[], attachmentNames?: string[]) => Promise<void>;
   clearChat: () => void;
   loadSession: (sessionId: string) => Promise<void>;
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
@@ -45,16 +46,20 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { refetchSessions } = useAIChatSessions();
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const sendMessage = useCallback(async (message: string) => {
+  const sendMessage = useCallback(async (message: string, fileIds?: string[], attachmentNames?: string[]) => {
     const token = await getAccessToken();
     if (!token) return;
 
-    // Add user message
+    const displayContent = message.trim() || (fileIds?.length ? 'Attached file(s).' : '');
+    if (!displayContent) return;
+
+    // Add user message (include attachment names for display)
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: message,
+      content: displayContent,
       timestamp: new Date(),
+      ...(attachmentNames?.length ? { attachmentNames } : {}),
     };
     setMessages(prev => [...prev, userMessage]);
 
@@ -79,8 +84,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message,
+          message: message.trim() || (fileIds?.length ? 'Attached file(s).' : ''),
           sessionId,
+          ...(fileIds?.length ? { fileIds } : {}),
         }),
         signal: abortControllerRef.current.signal,
       });

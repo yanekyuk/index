@@ -1,18 +1,26 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { Send, Loader2, Sparkles, Pencil } from 'lucide-react';
+import { Send, Loader2, Sparkles, Pencil, Paperclip, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAIChat } from '@/contexts/AIChatContext';
+import { useUploadServiceV2 } from '@/services/v2/upload.service';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { validateFiles } from '@/lib/file-validation';
 import ClientLayout from '@/components/ClientLayout';
 import ThinkingDropdown from '@/components/chat/ThinkingDropdown';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+interface PendingFile {
+  id: string;
+  file: File;
+}
 
 export default function ChatPage() {
   const router = useRouter();
@@ -20,9 +28,14 @@ export default function ChatPage() {
   const sessionIdFromUrl = searchParams?.get('sessionId') ?? null;
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle } = useAIChat();
+  const uploadServiceV2 = useUploadServiceV2();
+  const { error: showError } = useNotifications();
   const [input, setInput] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
@@ -51,12 +64,64 @@ export default function ChatPage() {
     }
   }, [messages]);
 
+  const canSend = input.trim() || selectedFiles.length > 0;
+  const isBusy = isLoading || isUploadingFiles;
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const list = Array.from(files);
+    const validation = validateFiles(list, 'general');
+    if (!validation.isValid) {
+      showError(validation.message ?? 'Invalid file(s)');
+      e.target.value = '';
+      return;
+    }
+    setSelectedFiles((prev) => [
+      ...prev,
+      ...list.map((file) => ({ id: crypto.randomUUID(), file })),
+    ]);
+    e.target.value = '';
+  }, [showError]);
+
+  const removeFile = useCallback((id: string) => {
+    setSelectedFiles((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
-    const message = input;
+    if (!canSend || isBusy) return;
+
+    const message = input.trim();
     setInput('');
-    await sendMessage(message);
+
+    let fileIds: string[] = [];
+    const attachmentNames: string[] = [];
+    if (selectedFiles.length > 0) {
+      setIsUploadingFiles(true);
+      console.log('[AI Chat] Uploading', selectedFiles.length, 'file(s)...');
+      try {
+        const uploaded = await Promise.all(
+          selectedFiles.map(({ file }) => uploadServiceV2.uploadFile(file))
+        );
+        fileIds = uploaded.map((f) => f.id);
+        attachmentNames.push(...selectedFiles.map(({ file }) => file.name));
+        setSelectedFiles([]);
+        console.log('[AI Chat] Upload complete:', fileIds.length, 'file(s)', fileIds);
+      } catch (err) {
+        console.error('[AI Chat] Upload failed:', err);
+        showError(err instanceof Error ? err.message : 'Failed to upload file(s)');
+        setIsUploadingFiles(false);
+        return;
+      }
+      setIsUploadingFiles(false);
+    }
+
+    await sendMessage(
+      message || 'Attached file(s).',
+      fileIds.length ? fileIds : undefined,
+      attachmentNames.length ? attachmentNames : undefined
+    );
   };
 
   const displayTitle =
@@ -209,6 +274,11 @@ export default function ChatPage() {
                               {msg.content}
                             </ReactMarkdown>
                           </article>
+                          {msg.role === 'user' && msg.attachmentNames && msg.attachmentNames.length > 0 && (
+                            <p className="text-xs opacity-90 mt-1.5 font-ibm-plex-mono">
+                              Attached: {msg.attachmentNames.join(', ')}
+                            </p>
+                          )}
                           {msg.isStreaming && (
                             <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
                           )}
@@ -224,19 +294,62 @@ export default function ChatPage() {
 
           {/* Input form card - same depth as DiscoveryForm */}
           <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+            {selectedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-3 pt-2 pb-1 border-b border-gray-100">
+                {selectedFiles.map(({ id, file }) => (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-[200px]"
+                  >
+                    <span className="truncate" title={file.name}>
+                      {file.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(id)}
+                      className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#006D4B]/30"
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="relative flex items-center px-3 py-2 min-h-[54px]">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml"
+                onChange={handleFileSelect}
+                className="sr-only"
+                aria-label="Attach files"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={isBusy}
+                onClick={() => fileInputRef.current?.click()}
+                className="shrink-0 h-9 w-9 rounded-full text-gray-500 hover:text-[#006D4B] hover:bg-gray-100 font-ibm-plex-mono"
+                title="Attach files"
+                aria-label="Attach files"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
               <Input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask AI or find opportunities..."
-                disabled={isLoading}
+                disabled={isBusy}
                 className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
               />
               <Button
                 type="submit"
                 size="icon"
-                disabled={isLoading || !input.trim()}
+                disabled={isBusy || !canSend}
                 className="ml-2 shrink-0 font-ibm-plex-mono h-9 w-9 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
