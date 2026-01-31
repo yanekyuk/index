@@ -10,6 +10,8 @@ import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 
 interface ChatMessage {
   id: string;
@@ -36,7 +38,6 @@ interface ChatViewProps {
   userId: string;
   userName: string;
   userAvatar?: string;
-  minimized: boolean; // Kept for compatibility but not used
   onClose: () => void;
   onBack?: () => void; // Optional back handler for page-based navigation
 }
@@ -51,12 +52,9 @@ export default function ChatView({
   userId,
   userName,
   userAvatar,
-  minimized: _minimized,
   onClose,
   onBack,
 }: ChatViewProps) {
-  // Suppress unused variable warnings - kept for API compatibility
-  void _minimized;
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const discoverService = useDiscover();
@@ -375,45 +373,38 @@ export default function ChatView({
   };
 
   return (
-    <div className="w-full flex flex-col" style={{
-      minHeight: 'calc(100vh - 150px)'
-    }}>
-      <div className="bg-white flex flex-col flex-1 overflow-hidden">
-        {/* Header - exactly like profile card */}
-        <div className="py-4 px-0 sm:px-2">
-          <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
-            <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
-              <Image
-                src={avatarUrl}
-                alt={userName}
-                width={48}
-                height={48}
-                className="rounded-full"
-              />
-              <div>
-                <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono text-left">{userName}</h2>
-                <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                  {mutualIntentCount !== null ? (
-                    mutualIntentCount > 0 ? (
-                      <span>{mutualIntentCount} mutual intent{mutualIntentCount !== 1 ? 's' : ''}</span>
-                    ) : (
-                      <span>Potential connection</span>
-                    )
+    <div className="pb-0 flex flex-col flex-1 min-h-0 w-full">
+      <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
+        {/* Header card - matches AI chat title bar styling */}
+        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+          <div className="relative flex items-center gap-3 px-3 py-2 min-h-[54px]">
+            <button
+              onClick={handleBack}
+              className="p-1.5 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+              aria-label="Back"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <Image
+              src={avatarUrl}
+              alt={userName}
+              width={36}
+              height={36}
+              className="rounded-full flex-shrink-0"
+            />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-gray-900 font-ibm-plex-mono truncate">{userName}</h2>
+              <div className="text-sm text-gray-500 font-ibm-plex-mono truncate">
+                {mutualIntentCount !== null ? (
+                  mutualIntentCount > 0 ? (
+                    <span>{mutualIntentCount} mutual intent{mutualIntentCount !== 1 ? 's' : ''}</span>
                   ) : (
-                    <span>Direct message</span>
-                  )}
-                </div>
+                    <span>Potential connection</span>
+                  )
+                ) : (
+                  <span>Direct message</span>
+                )}
               </div>
-            </div>
-            {/* Back button - replacing message button */}
-            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={handleBack}
-                className="flex items-center gap-2 px-3 py-1.5 bg-black text-white text-sm font-ibm-plex-mono hover:bg-gray-800 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back
-              </button>
             </div>
           </div>
         </div>
@@ -491,108 +482,127 @@ export default function ChatView({
         </div>
       )}
 
-      {/* Chat container */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 flex flex-col">
-        {loading ? (
-          <div className="text-center text-gray-500 text-sm py-8">
-            Loading...
-          </div>
-        ) : messages.length === 0 && isNewConversation ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-gray-500 text-sm py-8 px-4">
-              <p className="mb-2">Start a conversation with {userName}</p>
+      {/* Messages area - matches AI chat layout */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-1 p-4 overflow-y-auto min-h-0 flex flex-col">
+          {loading ? (
+            <div className="text-center text-gray-500 text-sm py-8">
+              Loading...
             </div>
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-8">
-            No messages yet. Start the conversation!
-          </div>
-        ) : (
-          <>
-            {messages.map((message) => {
-              const isOwn = message.user?.id === client?.userID;
-              const messageContent = message.text || '';
-              
-              return (
-                <div
-                  key={message.id}
-                  className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[75%] px-3 py-2 rounded-sm ${
-                      isOwn
-                        ? 'bg-black text-white'
-                        : 'bg-gray-100 text-gray-900'
-                    }`}
-                  >
-                    <div className="prose prose-sm max-w-none prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {messageContent}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
-
-      {/* Message input */}
-      <div className="">
-        {/* Notice for new conversations */}
-        {isNewConversation && (
-          <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-            <p className="text-sm text-blue-800 font-ibm-plex-mono">
-              Write your first message. {userName} will see this in their message requests and can choose to accept or decline.
-            </p>
-          </div>
-        )}
-        
-        <div className="p-2 sm:p-4">
-          {pendingState.isPending && pendingState.isRequester ? (
-            <div className="text-center text-gray-500 text-sm font-ibm-plex-mono py-2">
-              Waiting for {userName} to accept your message request
+          ) : messages.length === 0 && isNewConversation ? (
+            <div className="flex flex-col items-center justify-center px-6 pb-8 flex-1">
+              <p className="text-gray-500 text-sm mb-4">Start a conversation with {userName}</p>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.focus()}
+                className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:border-black transition-colors"
+              >
+                Say hi
+              </button>
             </div>
-          ) : pendingState.isPending && !pendingState.isRequester ? (
-            <div className="text-center text-gray-500 text-sm font-ibm-plex-mono py-2">
-              Accept the request to continue the conversation
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 pb-8 flex-1">
+              <p className="text-gray-500 text-sm mb-4">No messages yet. Start the conversation!</p>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.focus()}
+                className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:border-black transition-colors"
+              >
+                Type a message
+              </button>
             </div>
           ) : (
-            <div className="bg-white flex flex-col">
-              <div className="flex items-center px-4 py-2 min-h-[54px]">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder={isNewConversation ? `Say hi to ${userName}...` : "Type a message..."}
-                  className="flex-1 font-ibm-plex-mono text-black text-lg focus:outline-none bg-transparent"
-                  disabled={sendingMessageId !== null}
-                />
-                {sendingMessageId ? (
-                  <button
-                    onClick={() => setSendingMessageId(null)}
-                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer ml-2"
+            <div className="space-y-4">
+              {messages.map((message) => {
+                const isOwn = message.user?.id === client?.userID;
+                const messageContent = message.text || '';
+                return (
+                  <div
+                    key={message.id}
+                    className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}
                   >
-                    <X className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSend}
-                    disabled={!messageText.trim()}
-                    className="h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ml-2"
-                  >
-                    <ArrowUp className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+                    <div
+                      className={cn(
+                        'max-w-[80%] rounded-sm px-3 py-2',
+                        isOwn ? 'bg-black text-white' : 'bg-gray-100 text-gray-900'
+                      )}
+                    >
+                      <article
+                        className={cn(
+                          'chat-markdown max-w-none',
+                          isOwn && 'chat-markdown-invert'
+                        )}
+                      >
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {messageContent}
+                        </ReactMarkdown>
+                      </article>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
       </div>
+
+      {/* Notice for new conversations */}
+      {isNewConversation && (
+        <div className="w-full bg-blue-50 border border-blue-200 rounded-sm px-4 py-3 flex-shrink-0">
+          <p className="text-sm text-blue-800 font-ibm-plex-mono">
+            Write your first message. {userName} will see this in their message requests and can choose to accept or decline.
+          </p>
+        </div>
+      )}
+
+      {/* Input form card - matches AI chat */}
+      {pendingState.isPending && pendingState.isRequester ? (
+        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+          <div className="px-4 py-3 text-center text-gray-500 text-sm font-ibm-plex-mono">
+            Waiting for {userName} to accept your message request
+          </div>
+        </div>
+      ) : pendingState.isPending && !pendingState.isRequester ? (
+        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+          <div className="px-4 py-3 text-center text-gray-500 text-sm font-ibm-plex-mono">
+            Accept the request to continue the conversation
+          </div>
+        </div>
+      ) : (
+        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
+          <div className="relative flex items-center px-3 py-2 min-h-[54px]">
+            <Input
+              ref={inputRef}
+              type="text"
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={handleKeyPress}
+              placeholder={isNewConversation ? `Say hi to ${userName}...` : 'Type a message...'}
+              disabled={sendingMessageId !== null}
+              className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            {sendingMessageId ? (
+              <button
+                type="button"
+                onClick={() => setSendingMessageId(null)}
+                className="ml-2 h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!messageText.trim()}
+                className="ml-2 h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                <ArrowUp className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

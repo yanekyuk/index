@@ -1,7 +1,7 @@
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { LogIn, Settings, Library, MessageCircle, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
+import { LogIn, Settings, Library, MessageCircle, MessageSquare, User as UserIcon, ChevronDown, Crown, Users, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -284,6 +284,17 @@ export default function Header({ onToggleSidebar, isSidebarOpen, showHeaderButto
         {showHeaderButtons && (
           (authenticated && !forcePublicView) ? (
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push('/conversations')}
+                className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[140px]"
+                title="Conversations with people"
+              >
+                <MessageSquare className="h-6 w-6 text-black" strokeWidth={2} />
+                <span className="text-black font-medium font-ibm-plex-mono text-[16px] leading-[23px]">
+                  Conversations
+                </span>
+              </button>
+
               <button
                 onClick={() => router.push('/chat')}
                 className="flex items-center justify-center px-3 py-1 gap-2 bg-white border border-black rounded-[2px] hover:bg-gray-50 transition-colors h-[48px] w-[110px]"

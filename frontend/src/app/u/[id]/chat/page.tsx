@@ -111,7 +111,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         userId={profileData.id}
         userName={profileData.name}
         userAvatar={getAvatarUrl(profileData)}
-        minimized={false}
         onClose={handleClose}
         onBack={handleBack}
       />
