@@ -2,6 +2,7 @@ import { ChatController } from './controllers/chat.controller';
 import { IntentController } from './controllers/intent.controller';
 import { OpportunityController } from './controllers/opportunity.controller';
 import { ProfileController } from './controllers/profile.controller';
+import { UploadController } from './controllers/upload.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 
 const PORT = 3003;
@@ -17,6 +18,7 @@ controllerInstances.set(ProfileController, new ProfileController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(OpportunityController, new OpportunityController());
+controllerInstances.set(UploadController, new UploadController());
 
 console.log(`Routes registered with prefix ${GLOBAL_PREFIX}`);
 
