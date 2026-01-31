@@ -366,6 +366,49 @@ export interface Database {
     userId: string,
     options?: SimilarIntentSearchOptions
   ): Promise<SimilarIntent[]>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Graph Operations (Intent–Index Assignment)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Intent fields needed for index appropriateness evaluation.
+   */
+  getIntentForIndexing(intentId: string): Promise<{
+    id: string;
+    payload: string;
+    userId: string;
+    sourceType: string | null;
+    sourceId: string | null;
+  } | null>;
+
+  /**
+   * Index + member prompts for a user in an index (only when member has autoAssign).
+   * Returns null if user is not a member or autoAssign is false.
+   */
+  getIndexMemberContext(
+    indexId: string,
+    userId: string
+  ): Promise<{
+    indexId: string;
+    indexPrompt: string | null;
+    memberPrompt: string | null;
+  } | null>;
+
+  /**
+   * Whether the intent is currently assigned to the index.
+   */
+  isIntentAssignedToIndex(intentId: string, indexId: string): Promise<boolean>;
+
+  /**
+   * Assigns an intent to an index (inserts intent_indexes row).
+   */
+  assignIntentToIndex(intentId: string, indexId: string): Promise<void>;
+
+  /**
+   * Removes an intent from an index (deletes intent_indexes row).
+   */
+  unassignIntentFromIndex(intentId: string, indexId: string): Promise<void>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -448,4 +491,17 @@ export type IntentExecutorDatabase = Pick<
 export type IntentGraphDatabase = Pick<
   Database,
   'getActiveIntents' | 'createIntent' | 'updateIntent' | 'archiveIntent'
+>;
+
+/**
+ * Database interface narrowed for Index Graph operations.
+ * Provides intent/index context and assignment for intent–index evaluation.
+ */
+export type IndexGraphDatabase = Pick<
+  Database,
+  | 'getIntentForIndexing'
+  | 'getIndexMemberContext'
+  | 'isIntentAssignedToIndex'
+  | 'assignIntentToIndex'
+  | 'unassignIntentFromIndex'
 >;
