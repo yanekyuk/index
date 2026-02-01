@@ -1,0 +1,733 @@
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";
+import type { Embedder } from "../../interfaces/embedder.interface";
+import type { Scraper } from "../../interfaces/scraper.interface";
+import { IntentGraphFactory } from "../intent/intent.graph";
+import { ProfileGraphFactory } from "../profile/profile.graph";
+import { OpportunityGraph } from "../opportunity/opportunity.graph";
+import { IndexGraphFactory } from "../index/index.graph";
+import { log } from "../../../log";
+
+const logger = log.graph.from("chat.tools.ts");
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOOL CONTEXT TYPE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Context passed to all tools, containing the current user and dependencies.
+ * This is bound when creating tools for a specific user session.
+ */
+export interface ToolContext {
+  userId: string;
+  database: ChatGraphCompositeDatabase;
+  embedder: Embedder;
+  scraper: Scraper;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOOL RESULT TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Standard result format for all tools.
+ * Tools return success/error status with data or error message.
+ */
+interface ToolResult<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+function success<T>(data: T): string {
+  return JSON.stringify({ success: true, data });
+}
+
+function error(message: string): string {
+  return JSON.stringify({ success: false, error: message });
+}
+
+/** Matches http/https URLs in text; captures full URL. */
+const URL_IN_TEXT_REGEX = /https?:\/\/[^\s"'<>)\]]+/gi;
+
+/**
+ * Extract unique, valid URLs from a string (e.g. user message or details).
+ */
+function extractUrls(text: string): string[] {
+  if (!text || typeof text !== "string") return [];
+  const matches = text.match(URL_IN_TEXT_REGEX) ?? [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of matches) {
+    const url = raw.replace(/[.,;:!?)]+$/, "").trim();
+    try {
+      new URL(url);
+      if (!seen.has(url)) {
+        seen.add(url);
+        out.push(url);
+      }
+    } catch {
+      // skip invalid
+    }
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TOOL FACTORY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates all chat tools bound to a specific user context.
+ * Tools are created fresh for each user session to ensure proper isolation.
+ */
+export function createChatTools(context: ToolContext) {
+  const { userId, database, embedder, scraper } = context;
+
+  // Pre-compile subgraphs
+  const intentGraph = new IntentGraphFactory(database).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper).createGraph();
+  const opportunityGraph = new OpportunityGraph(database, embedder).compile();
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PROFILE TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const getUserProfile = tool(
+    async () => {
+      logger.info("Tool: get_user_profile", { userId });
+      
+      try {
+        const profile = await database.getProfile(userId);
+        
+        if (!profile) {
+          return success({
+            hasProfile: false,
+            message: "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself."
+          });
+        }
+
+        return success({
+          hasProfile: true,
+          profile: {
+            name: profile.identity.name,
+            bio: profile.identity.bio,
+            location: profile.identity.location,
+            skills: profile.attributes.skills,
+            interests: profile.attributes.interests,
+          }
+        });
+      } catch (err) {
+        logger.error("get_user_profile failed", { error: err });
+        return error("Failed to fetch profile. Please try again.");
+      }
+    },
+    {
+      name: "get_user_profile",
+      description: "Fetches the user's profile including name, bio, skills, interests, and location. Returns profile data or indicates if no profile exists.",
+      schema: z.object({})
+    }
+  );
+
+  const updateUserProfile = tool(
+    async (args: { action: string; details?: string }) => {
+      logger.info("Tool: update_user_profile", { userId, action: args.action });
+      
+      try {
+        const combinedText = [args.action, args.details].filter(Boolean).join("\n");
+        const urls = extractUrls(combinedText);
+        let inputForProfile = args.details ?? args.action;
+
+        // When user provides profile URLs, scrape them first so the profile is built from real content
+        if (urls.length > 0) {
+          logger.info("Profile input contains URLs - scraping before profile update", { urlCount: urls.length });
+          const parts: string[] = [];
+          const maxContentPerUrl = 8000;
+          for (const url of urls) {
+            try {
+              const content = await scraper.extractUrlContent(url);
+              if (content && content.trim()) {
+                const truncated = content.length > maxContentPerUrl
+                  ? content.slice(0, maxContentPerUrl) + "\n\n[Content truncated...]"
+                  : content;
+                parts.push(`Content from ${url}:\n\n${truncated}`);
+              }
+            } catch (err) {
+              logger.warn("Failed to scrape URL for profile", { url, error: err });
+            }
+          }
+          if (parts.length > 0) {
+            inputForProfile = parts.join("\n\n---\n\n");
+          }
+        }
+
+        // Get existing profile for context
+        const existingProfile = await database.getProfile(userId);
+        
+        // Map action to profile graph input
+        const profileInput = {
+          userId,
+          operationMode: 'write' as const,
+          input: inputForProfile,
+          profile: existingProfile ?? undefined,
+          forceUpdate: !!existingProfile
+        };
+
+        const result = await profileGraph.invoke(profileInput);
+        logger.debug("Profile graph response", { result: JSON.stringify(result) });
+
+        // Check if profile graph needs more info
+        if (result.needsUserInfo && result.missingUserInfo?.length > 0) {
+          const missingFields = result.missingUserInfo as string[];
+          let message = "To create your profile, I need more information:\n";
+          
+          if (missingFields.includes('social_urls')) {
+            message += "- A social media profile (LinkedIn, GitHub, X/Twitter, or personal website)\n";
+          }
+          if (missingFields.includes('full_name')) {
+            message += "- Your full name (first and last)\n";
+          }
+          if (missingFields.includes('location')) {
+            message += "- Your location (city and country) - optional but helpful\n";
+          }
+          
+          return success({
+            updated: false,
+            needsMoreInfo: true,
+            message
+          });
+        }
+
+        if (result.profile) {
+          const p = result.profile;
+          const name = p.identity?.name ?? "—";
+          const bio = (p.identity?.bio ?? "").slice(0, 120);
+          const skills = (p.attributes?.skills ?? []).slice(0, 8).join(", ") || "—";
+          const interests = (p.attributes?.interests ?? []).slice(0, 8).join(", ") || "—";
+          return success({
+            updated: true,
+            profileSummary: { name, bio: bio + (bio.length >= 120 ? "…" : ""), skills, interests },
+            operationsPerformed: result.operationsPerformed || {}
+          });
+        }
+
+        return error("Profile update failed. Please try again with more details.");
+      } catch (err) {
+        logger.error("update_user_profile failed", { error: err });
+        return error("Failed to update profile. Please try again.");
+      }
+    },
+    {
+      name: "update_user_profile",
+      description: "Creates or updates the user's profile. Can add/remove skills and interests, update bio, or create a new profile from scratch. Use ONE call to apply all requested changes in a single turn—e.g. if the user asks to update bio, skills, and interests, pass all changes in action (and details if needed); do not call once per field. Use 'action' to describe what to do (e.g. 'update bio to X, add Python to skills, set interests to A and B'). Use 'details' for additional context or pasted content. If the user provides profile URLs (LinkedIn, GitHub, X, etc.), include them in action/details—the tool will scrape and build the profile from fetched content.",
+      schema: z.object({
+        action: z.string().describe("What to do: one or more changes, e.g. 'update bio to X', 'add Python to skills and set interests to A, B', 'create profile'. Combine all requested profile changes into this single action."),
+        details: z.string().optional().describe("Additional context: URLs, specific content, or detailed instructions")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INTENT TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const getActiveIntents = tool(
+    async () => {
+      logger.info("Tool: get_active_intents", { userId });
+      
+      try {
+        const intents = await database.getActiveIntents(userId);
+        
+        if (intents.length === 0) {
+          return success({
+            count: 0,
+            intents: [],
+            message: "You don't have any active intents yet. Share your goals or what you're looking for, and I'll help track them."
+          });
+        }
+
+        return success({
+          count: intents.length,
+          intents: intents.map(i => ({
+            id: i.id,
+            description: i.payload,
+            summary: i.summary,
+            createdAt: i.createdAt
+          }))
+        });
+      } catch (err) {
+        logger.error("get_active_intents failed", { error: err });
+        return error("Failed to fetch intents. Please try again.");
+      }
+    },
+    {
+      name: "get_active_intents",
+      description: "Fetches all of the user's active intents (goals, wants, needs). Returns a list of intents with their descriptions and summaries.",
+      schema: z.object({})
+    }
+  );
+
+  const getIntentsInIndex = tool(
+    async (args: { indexNameOrId: string }) => {
+      logger.info("Tool: get_intents_in_index", { userId, indexNameOrId: args.indexNameOrId });
+      try {
+        const intents = await database.getIntentsInIndexForMember(userId, args.indexNameOrId);
+        return success({
+          intents: intents.map((i) => ({
+            id: i.id,
+            payload: i.payload,
+            summary: i.summary,
+            createdAt: i.createdAt,
+          })),
+          count: intents.length,
+        });
+      } catch (err) {
+        logger.error("get_intents_in_index failed", { error: err });
+        return error("Failed to fetch intents for that index. Please try again.");
+      }
+    },
+    {
+      name: "get_intents_in_index",
+      description: "Lists the user's active intents that are in a specific index (community). Use when the user asks to see their intents within a particular community, e.g. 'my intents in Open Mock Network'. Accepts index display name or index ID. Returns intents only if the user is a member of that index; otherwise returns empty.",
+      schema: z.object({
+        indexNameOrId: z.string().describe("Index display name (e.g. 'Open Mock Network') or index UUID")
+      })
+    }
+  );
+
+  const createIntent = tool(
+    async (args: { description: string }) => {
+      logger.info("Tool: create_intent", { userId, description: args.description.substring(0, 50) });
+      
+      try {
+        let inputContent = args.description;
+        const urls = extractUrls(args.description);
+        if (urls.length > 0) {
+          logger.info("Intent description contains URLs - scraping for context", { urlCount: urls.length });
+          const parts: string[] = [args.description];
+          const maxContentPerUrl = 6000;
+          for (const url of urls) {
+            try {
+              const content = await scraper.extractUrlContent(url);
+              if (content && content.trim()) {
+                const truncated = content.length > maxContentPerUrl
+                  ? content.slice(0, maxContentPerUrl) + "\n\n[Content truncated...]"
+                  : content;
+                parts.push(`Context from ${url}:\n\n${truncated}`);
+              }
+            } catch (err) {
+              logger.warn("Failed to scrape URL for intent context", { url, error: err });
+            }
+          }
+          if (parts.length > 1) inputContent = parts.join("\n\n");
+        }
+
+        // Get user profile for context
+        const profile = await database.getProfile(userId);
+        
+        const intentInput = {
+          userId,
+          userProfile: profile ? JSON.stringify(profile) : "",
+          inputContent,
+          operationMode: 'create' as const
+        };
+
+        const result = await intentGraph.invoke(intentInput);
+        logger.debug("Intent graph response", { result: JSON.stringify(result) });
+
+        // Process execution results
+        const created = (result.executionResults || [])
+          .filter((r: any) => r.actionType === 'create' && r.success)
+          .map((r: any) => ({
+            id: r.intentId,
+            description: r.payload || args.description
+          }));
+
+        // Auto-index created intents
+        if (created.length > 0) {
+          const indexIds = await database.getUserIndexIds(userId);
+          if (indexIds.length > 0) {
+            const indexGraph = new IndexGraphFactory(database).createGraph();
+            for (const intent of created) {
+              for (const indexId of indexIds) {
+                try {
+                  await indexGraph.invoke({ intentId: intent.id, indexId });
+                } catch (e) {
+                  logger.warn("Auto-indexing failed", { intentId: intent.id, indexId });
+                }
+              }
+            }
+          }
+        }
+
+        if (created.length > 0) {
+          const toolResult = success({
+            created: true,
+            intents: created,
+            message: `Created ${created.length} intent(s)`
+          });
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat.tools.ts:create_intent:return',message:'H1: create_intent tool return value',data:{resultPreview:toolResult.substring(0,500),hasClassification:toolResult.includes('"classification"'),hasIndexScore:toolResult.includes('"indexScore"')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          return toolResult;
+        }
+
+        // Check if intents were inferred but not created (e.g., duplicates)
+        const inferredCount = result.inferredIntents?.length || 0;
+        if (inferredCount > 0) {
+          return success({
+            created: false,
+            message: "The intent seems similar to one you already have. Would you like me to update an existing intent instead?"
+          });
+        }
+
+        return error("Couldn't extract a clear intent from that. Could you be more specific about what you're looking for?");
+      } catch (err) {
+        logger.error("create_intent failed", { error: err });
+        return error("Failed to create intent. Please try again.");
+      }
+    },
+    {
+      name: "create_intent",
+      description: "Creates a new intent (goal, want, or need) for the user. Pass a concept-based description: what they want to achieve or find, in human-readable terms. If the user includes URLs (e.g. a repo or project link), include them in the description—the tool will scrape those URLs for context so the intent can be inferred from the actual project/content. Do not embed only raw URLs; describe the goal (e.g. 'Hiring developers for an open-source intent-driven discovery protocol' rather than just 'Hire developers for https://...').",
+      schema: z.object({
+        description: z.string().describe("The intent/goal in conceptual terms; may include URLs—they will be scraped for context")
+      })
+    }
+  );
+
+  // UUID v4 format: 8-4-4-4-12 hex chars (e.g. c2505011-2e45-426e-81dd-b9abb9b72023)
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const updateIntent = tool(
+    async (args: { intentId: string; newDescription: string }) => {
+      const intentId = args.intentId?.trim() ?? "";
+      logger.info("Tool: update_intent", { userId, intentId });
+
+      if (!UUID_REGEX.test(intentId)) {
+        return error(
+          "Invalid intent ID format. Use the exact 'id' value from get_active_intents (UUID format)."
+        );
+      }
+
+      try {
+        const updated = await database.updateIntent(intentId, {
+          payload: args.newDescription
+        });
+
+        if (!updated) {
+          const currentIntents = await database.getActiveIntents(userId);
+          return error(
+            currentIntents.length === 0
+              ? "Intent not found. You have no active intents. Create one with create_intent first."
+              : "Intent not found. The ID may be wrong or from an old session. Here are your current intents—use the exact 'id' from the one you want to update: " +
+                JSON.stringify(currentIntents.map((i) => ({ id: i.id, payload: i.payload, summary: i.summary })))
+          );
+        }
+
+        return success({
+          updated: true,
+          intent: {
+            id: updated.id,
+            description: updated.payload,
+            summary: updated.summary
+          }
+        });
+      } catch (err) {
+        logger.error("update_intent failed", { error: err });
+        if (err instanceof Error && err.message === 'Access denied') {
+          return error("You can only update your own intents.");
+        }
+        return error("Failed to update intent. Please try again.");
+      }
+    },
+    {
+      name: "update_intent",
+      description: "Updates an existing intent with a new description. Requires the intent ID (get it from get_active_intents first) and the new description.",
+      schema: z.object({
+        intentId: z.string().describe("The ID of the intent to update"),
+        newDescription: z.string().describe("The new description for the intent")
+      })
+    }
+  );
+
+  const deleteIntent = tool(
+    async (args: { intentId: string }) => {
+      const intentId = args.intentId?.trim() ?? "";
+      logger.info("Tool: delete_intent", { userId, intentId });
+
+      if (!UUID_REGEX.test(intentId)) {
+        return error(
+          "Invalid intent ID format. Intent IDs must be UUIDs (e.g. c2505011-2e45-426e-81dd-b9abb9b72023). " +
+          "Use the exact 'id' value from get_active_intents—do not add or remove characters."
+        );
+      }
+
+      try {
+        const result = await database.archiveIntent(intentId);
+
+        if (!result.success) {
+          const currentIntents = await database.getActiveIntents(userId);
+          return error(
+            currentIntents.length === 0
+              ? "Intent not found. You have no active intents."
+              : "Intent not found. The ID may be wrong or from an old session. Here are your current intents—use the exact 'id' from the one you want to delete: " +
+                JSON.stringify(currentIntents.map((i) => ({ id: i.id, payload: i.payload, summary: i.summary })))
+          );
+        }
+
+        return success({
+          deleted: true,
+          message: "Intent has been removed."
+        });
+      } catch (err) {
+        logger.error("delete_intent failed", { error: err });
+        return error("Failed to delete intent. Please try again.");
+      }
+    },
+    {
+      name: "delete_intent",
+      description: "Deletes (archives) an existing intent. Requires the intent ID (get it from get_active_intents first). The intent is soft-deleted and can potentially be recovered.",
+      schema: z.object({
+        intentId: z.string().describe("The ID of the intent to delete")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INDEX TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const getIndexMemberships = tool(
+    async () => {
+      logger.info("Tool: get_index_memberships", { userId });
+      
+      try {
+        const [memberships, ownedIndexes] = await Promise.all([
+          database.getIndexMemberships(userId),
+          database.getOwnedIndexes(userId)
+        ]);
+
+        return success({
+          memberOf: memberships.map(m => ({
+            indexId: m.indexId,
+            title: m.indexTitle,
+            description: m.indexPrompt,
+            autoAssign: m.autoAssign,
+            joinedAt: m.joinedAt
+          })),
+          owns: ownedIndexes.map(o => ({
+            indexId: o.id,
+            title: o.title,
+            description: o.prompt,
+            memberCount: o.memberCount,
+            intentCount: o.intentCount,
+            joinPolicy: o.permissions.joinPolicy
+          })),
+          summary: {
+            memberOfCount: memberships.length,
+            ownsCount: ownedIndexes.length
+          }
+        });
+      } catch (err) {
+        logger.error("get_index_memberships failed", { error: err });
+        return error("Failed to fetch index information. Please try again.");
+      }
+    },
+    {
+      name: "get_index_memberships",
+      description: "Fetches all indexes the user is a member of, plus indexes they own. Returns membership details, owned index stats, and counts.",
+      schema: z.object({})
+    }
+  );
+
+  const updateIndexSettings = tool(
+    async (args: { indexId: string; settings: Record<string, unknown> }) => {
+      logger.info("Tool: update_index_settings", { userId, indexId: args.indexId });
+      
+      try {
+        // Verify ownership first
+        const isOwner = await database.isIndexOwner(args.indexId, userId);
+        if (!isOwner) {
+          return error("You can only modify indexes you own. Use get_index_memberships to see your owned indexes.");
+        }
+
+        // Map settings to UpdateIndexSettingsData
+        const settingsData: any = {};
+        
+        if ('title' in args.settings) settingsData.title = args.settings.title;
+        if ('prompt' in args.settings) settingsData.prompt = args.settings.prompt;
+        if ('joinPolicy' in args.settings) settingsData.joinPolicy = args.settings.joinPolicy;
+        if ('allowGuestVibeCheck' in args.settings) settingsData.allowGuestVibeCheck = args.settings.allowGuestVibeCheck;
+        if ('requireApproval' in args.settings) settingsData.requireApproval = args.settings.requireApproval;
+        
+        // Handle common natural language settings
+        if ('private' in args.settings && args.settings.private) {
+          settingsData.joinPolicy = 'invite_only';
+        }
+        if ('public' in args.settings && args.settings.public) {
+          settingsData.joinPolicy = 'anyone';
+        }
+
+        const updated = await database.updateIndexSettings(args.indexId, userId, settingsData);
+
+        return success({
+          updated: true,
+          index: {
+            id: updated.id,
+            title: updated.title,
+            joinPolicy: updated.permissions.joinPolicy,
+            memberCount: updated.memberCount
+          }
+        });
+      } catch (err) {
+        logger.error("update_index_settings failed", { error: err });
+        return error("Failed to update index settings. Please try again.");
+      }
+    },
+    {
+      name: "update_index_settings",
+      description: "Updates settings for an index the user owns. Can change title, description/prompt, join policy (private/public), guest vibe check, and approval requirements. OWNER ONLY - will fail if user doesn't own the index.",
+      schema: z.object({
+        indexId: z.string().describe("The ID of the index to update"),
+        settings: z.record(z.unknown()).describe("Settings to update: { title?, prompt?, joinPolicy?, private?, public?, allowGuestVibeCheck?, requireApproval? }")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DISCOVERY TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const findOpportunities = tool(
+    async (args: { searchQuery: string }) => {
+      logger.info("Tool: find_opportunities", { userId, query: args.searchQuery.substring(0, 50) });
+      
+      try {
+        const profile = await database.getProfile(userId);
+        
+        const opportunityInput = {
+          options: {
+            hydeDescription: args.searchQuery,
+            limit: 5
+          },
+          sourceUserId: userId,
+          sourceProfileContext: profile
+            ? `${profile.identity.name}: ${profile.identity.bio}`
+            : "",
+          candidates: [],
+          opportunities: []
+        };
+
+        const result = await opportunityGraph.invoke(opportunityInput);
+        logger.debug("Opportunity graph response", { result: JSON.stringify(result) });
+        const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+
+        if (opportunities.length === 0) {
+          return success({
+            found: false,
+            count: 0,
+            message: "No matching opportunities found. Try a different search or create intents to improve matching."
+          });
+        }
+
+        return success({
+          found: true,
+          count: opportunities.length,
+          opportunities: opportunities.map((o: any) => ({
+            userId: o.userId,
+            name: o.name,
+            bio: o.bio,
+            matchReason: o.matchReason,
+            score: o.score
+          }))
+        });
+      } catch (err) {
+        logger.error("find_opportunities failed", { error: err });
+        return error("Failed to search for opportunities. Please try again.");
+      }
+    },
+    {
+      name: "find_opportunities",
+      description: "Searches for relevant connections and opportunities based on a search query. Uses semantic matching to find people with complementary skills, interests, or goals.",
+      schema: z.object({
+        searchQuery: z.string().describe("What kind of connections or opportunities to search for")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // UTILITY TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const scrapeUrl = tool(
+    async (args: { url: string }) => {
+      logger.info("Tool: scrape_url", { userId, url: args.url });
+      
+      // Basic URL validation
+      try {
+        new URL(args.url);
+      } catch {
+        return error("Invalid URL format. Please provide a valid URL starting with http:// or https://");
+      }
+      
+      try {
+        const content = await scraper.extractUrlContent(args.url);
+        
+        if (!content) {
+          return error("Couldn't extract content from that URL. It may be blocked, require login, or have no extractable text.");
+        }
+
+        // Truncate very long content
+        const truncatedContent = content.length > 10000
+          ? content.substring(0, 10000) + "\n\n[Content truncated...]"
+          : content;
+
+        return success({
+          url: args.url,
+          contentLength: content.length,
+          content: truncatedContent
+        });
+      } catch (err) {
+        logger.error("scrape_url failed", { error: err, url: args.url });
+        return error("Failed to scrape URL. The page may be inaccessible or blocked.");
+      }
+    },
+    {
+      name: "scrape_url",
+      description: "Extracts text content from a URL (articles, profiles, documentation, etc.). Use this to read web pages, LinkedIn/GitHub profiles, or any public web content.",
+      schema: z.object({
+        url: z.string().describe("The URL to scrape")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RETURN ALL TOOLS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  return [
+    // Profile tools
+    getUserProfile,
+    updateUserProfile,
+    // Intent tools
+    getActiveIntents,
+    getIntentsInIndex,
+    createIntent,
+    updateIntent,
+    deleteIntent,
+    // Index tools
+    getIndexMemberships,
+    updateIndexSettings,
+    // Discovery tools
+    findOpportunities,
+    // Utility tools
+    scrapeUrl
+  ];
+}
+
+/**
+ * Type for the tools array returned by createChatTools.
+ */
+export type ChatTools = ReturnType<typeof createChatTools>;

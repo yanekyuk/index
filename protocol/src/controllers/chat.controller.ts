@@ -83,11 +83,9 @@ export class ChatController {
       messages: [new HumanMessage(messageContent)]
     });
 
-    // 3. Return response with responseText from graph state
+    // 3. Return response with responseText from graph state (agent loop architecture)
     return Response.json({
       response: result.responseText || '',
-      routingDecision: result.routingDecision,
-      subgraphResults: result.subgraphResults,
       error: result.error
     });
   }

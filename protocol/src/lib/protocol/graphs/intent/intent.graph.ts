@@ -6,6 +6,8 @@ import { IntentReconcilerAgent } from "../../agents/intent/reconciler/intent.rec
 import { IntentGraphDatabase } from "../../interfaces/database.interface";
 import { log } from "../../../log";
 
+const logger = log.graph.from("intent.graph.ts");
+
 /**
  * Factory class to build and compile the Intent Processing Graph.
  */
@@ -25,7 +27,7 @@ export class IntentGraphFactory {
      * Fetches active intents from database for reconciliation context.
      */
     const prepNode = async (state: typeof IntentGraphState.State) => {
-      log.info("[Graph:Prep] Starting preparation phase", {
+      logger.info("Starting preparation phase", {
         operationMode: state.operationMode,
         hasContent: !!state.inputContent,
         targetIntentIds: state.targetIntentIds
@@ -38,7 +40,7 @@ export class IntentGraphFactory {
         .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
         .join('\n') || "No active intents.";
       
-      log.info("[Graph:Prep] Fetched active intents", {
+      logger.info("Fetched active intents", {
         count: activeIntents.length,
         operationMode: state.operationMode
       });
@@ -53,7 +55,7 @@ export class IntentGraphFactory {
      * Phase 5: Passes conversation context for anaphoric resolution.
      */
     const inferenceNode = async (state: typeof IntentGraphState.State) => {
-      log.info("[Graph:Inference] Starting inference", {
+      logger.info("Starting inference", {
         operationMode: state.operationMode,
         hasContent: !!state.inputContent,
         contentPreview: state.inputContent?.substring(0, 50),
@@ -75,7 +77,7 @@ export class IntentGraphFactory {
         }
       );
       
-      log.info("[Graph:Inference] Inference complete", {
+      logger.info("Inference complete", {
         inferredCount: result.intents.length,
         operationMode: state.operationMode
       });
@@ -91,17 +93,17 @@ export class IntentGraphFactory {
     const verificationNode = async (state: typeof IntentGraphState.State) => {
       const intents = state.inferredIntents;
       
-      log.info("[Graph:Verification] Starting verification", {
+      logger.info("Starting verification", {
         operationMode: state.operationMode,
         intentCount: intents.length
       });
       
       if (intents.length === 0) {
-        log.info("[Graph:Verification] No intents to verify");
+        logger.info("No intents to verify");
         return { verifiedIntents: [] };
       }
 
-      log.info(`[Graph:Verification] Verifying ${intents.length} intents in parallel...`);
+      logger.info(`Verifying ${intents.length} intents in parallel...`);
 
       // Parallel Execution
       const verificationResults = await Promise.all(
@@ -112,7 +114,7 @@ export class IntentGraphFactory {
             // Filter Logic: Must be a Commissive, Directive, or Declaration
             const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
             if (!VALID_TYPES.includes(verdict.classification)) {
-              log.warn(`[Graph:Verification] Dropping intent: "${intent.description}" (Type: ${verdict.classification})`);
+              logger.warn(`Dropping intent: "${intent.description}" (Type: ${verdict.classification})`);
               return null;
             }
 
@@ -130,7 +132,7 @@ export class IntentGraphFactory {
               score
             };
           } catch (e) {
-            log.error(`[Graph:Verification] Error verifying intent: ${intent.description}`, { error: e });
+            logger.error(`Error verifying intent: ${intent.description}`, { error: e });
             return null;
           }
         })
@@ -138,7 +140,7 @@ export class IntentGraphFactory {
 
       // Filter out nulls
       const verified = verificationResults.filter((i): i is VerifiedIntent => i !== null);
-      log.info(`[Graph:Verification] Verification complete`, {
+      logger.info(`Verification complete`, {
         passed: verified.length,
         total: intents.length,
         operationMode: state.operationMode
@@ -153,7 +155,7 @@ export class IntentGraphFactory {
      * Phase 4: Handles delete operations directly without LLM reconciliation.
      */
     const reconciliationNode = async (state: typeof IntentGraphState.State) => {
-      log.info("[Graph:Reconciliation] Starting reconciliation", {
+      logger.info("Starting reconciliation", {
         operationMode: state.operationMode,
         verifiedIntentCount: state.verifiedIntents.length,
         targetIntentIds: state.targetIntentIds
@@ -162,11 +164,11 @@ export class IntentGraphFactory {
       // Phase 4: Handle delete operations directly
       if (state.operationMode === 'delete') {
         if (!state.targetIntentIds || state.targetIntentIds.length === 0) {
-          log.warn("[Graph:Reconciliation] Delete mode with no target IDs");
+          logger.warn("Delete mode with no target IDs");
           return { actions: [] };
         }
         
-        log.info("[Graph:Reconciliation] Delete mode - generating expire actions", {
+        logger.info("Delete mode - generating expire actions", {
           targetIds: state.targetIntentIds
         });
         
@@ -182,7 +184,7 @@ export class IntentGraphFactory {
       // Standard reconciliation for create/update operations
       const candidates = state.verifiedIntents;
       if (candidates.length === 0) {
-        log.info("[Graph:Reconciliation] No verified intents to reconcile");
+        logger.info("No verified intents to reconcile");
         return { actions: [] };
       }
 
@@ -193,19 +195,31 @@ export class IntentGraphFactory {
         `  Verification: ${c.verification?.classification} (Flags: ${c.verification?.flags.join(', ') || 'None'})`
       ).join('\n');
 
-      log.info("[Graph:Reconciliation] Invoking reconciler agent", {
+      logger.info("Invoking reconciler agent", {
         candidateCount: candidates.length,
         operationMode: state.operationMode
       });
 
       const result = await reconciler.invoke(formattedCandidates, state.activeIntents);
       
-      log.info("[Graph:Reconciliation] Reconciliation complete", {
+      logger.info("Reconciliation complete", {
         actionCount: result.actions.length,
         operationMode: state.operationMode
       });
       
       return { actions: result.actions };
+    };
+
+    /** Strip URLs and "More details at [url]" from intent payloads before persisting. */
+    const sanitizePayload = (payload: string): string => {
+      if (!payload || typeof payload !== "string") return payload;
+      let out = payload
+        .replace(/\s*More details at\s*:?\s*https?:\/\/[^\s"'<>)\]]+/gi, "")
+        .replace(/\s*See\s+https?:\/\/[^\s"'<>)\]]+\s+for\s+more[^.]*\.?/gi, "")
+        .replace(/https?:\/\/[^\s"'<>)\]]+/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return out.replace(/[.,;]\s*$/, "").trim() || payload;
     };
 
     /**
@@ -218,33 +232,36 @@ export class IntentGraphFactory {
         return { executionResults: [] };
       }
 
-      log.info(`[Graph:Executor] Executing ${actions.length} actions...`);
+      logger.info(`Executing ${actions.length} actions...`);
       const results: ExecutionResult[] = [];
 
       for (const action of actions) {
         try {
           if (action.type === 'create') {
+            const sanitizedPayload = sanitizePayload(action.payload);
             const created = await this.database.createIntent({
               userId: state.userId,
-              payload: action.payload,
+              payload: sanitizedPayload,
               confidence: action.score ? action.score / 100 : 1.0,
               inferenceType: 'explicit',
               sourceType: 'discovery_form'
             });
-            results.push({ actionType: 'create', success: true, intentId: created.id });
-            log.info(`[Graph:Executor] Created intent: ${created.id}`);
+            results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
+            logger.info(`Created intent: ${created.id}`);
             
           } else if (action.type === 'update') {
+            const sanitizedPayload = sanitizePayload(action.payload);
             const updated = await this.database.updateIntent(action.id, {
-              payload: action.payload
+              payload: sanitizedPayload
             });
             results.push({
               actionType: 'update',
               success: !!updated,
               intentId: action.id,
+              payload: sanitizedPayload,
               error: updated ? undefined : 'Intent not found'
             });
-            log.info(`[Graph:Executor] Updated intent: ${action.id}`);
+            logger.info(`Updated intent: ${action.id}`);
             
           } else if (action.type === 'expire') {
             const result = await this.database.archiveIntent(action.id);
@@ -254,10 +271,10 @@ export class IntentGraphFactory {
               intentId: action.id,
               error: result.error
             });
-            log.info(`[Graph:Executor] Archived intent: ${action.id}`);
+            logger.info(`Archived intent: ${action.id}`);
           }
         } catch (error) {
-          log.error(`[Graph:Executor] Failed to execute ${action.type}:`, { error });
+          logger.error(`Failed to execute ${action.type}:`, { error });
           results.push({
             actionType: action.type,
             success: false,
@@ -278,11 +295,11 @@ export class IntentGraphFactory {
      */
     const shouldRunInference = (state: typeof IntentGraphState.State): string => {
       if (state.operationMode === 'delete') {
-        log.info('[Graph:Conditional] Delete mode - skipping inference, routing to reconciliation');
+        logger.info('Delete mode - skipping inference, routing to reconciliation');
         return 'reconciler';
       }
       
-      log.info('[Graph:Conditional] Running inference', {
+      logger.info('Running inference', {
         operationMode: state.operationMode
       });
       return 'inference';
@@ -296,22 +313,22 @@ export class IntentGraphFactory {
      */
     const shouldRunVerification = (state: typeof IntentGraphState.State): string => {
       if (state.inferredIntents.length === 0) {
-        log.info('[Graph:Conditional] No intents to verify - skipping verification, routing to reconciliation');
+        logger.info('No intents to verify - skipping verification, routing to reconciliation');
         return 'reconciler';
       }
       
       if (state.operationMode === 'update') {
-        log.info('[Graph:Conditional] Update mode with new intents - running verification');
+        logger.info('Update mode with new intents - running verification');
         return 'verification';
       }
       
       if (state.operationMode === 'create') {
-        log.info('[Graph:Conditional] Create mode - running verification');
+        logger.info('Create mode - running verification');
         return 'verification';
       }
       
       // Default to verification for safety
-      log.info('[Graph:Conditional] Default routing to verification');
+      logger.info('Default routing to verification');
       return 'verification';
     };
 

@@ -84,7 +84,8 @@ const systemPrompt = `
   - When a document describes a project, the project's NAME is irrelevant - only WHAT IT DOES and WHAT TECH IT USES matters.
   - STRIP OUT completely (do not include in any form):
     * ANY project/company/product names from the source document - these mean nothing to outsiders
-    * Source references ("mentioned in", "from the document", "as discussed")
+    * URLs and links (https://..., http://...) - NEVER include URLs in intent descriptions
+    * Phrases that reference URLs: "More details at", "See ... for more", "Project details:", "mentioned in", "from the document", "as discussed"
     * File names ("Claude.md", "README", "the PDF")
   - Describe the WORK and TECHNOLOGIES, never the project name.
   - Examples:

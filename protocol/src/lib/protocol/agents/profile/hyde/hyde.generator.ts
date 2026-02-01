@@ -10,6 +10,8 @@ import { ProfileDocument } from "../profile.generator";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
+const logger = log.agent.from("hyde.generator.ts");
+
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',
   configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
@@ -79,7 +81,7 @@ export class HydeGenerator {
   }
 
   public async invoke(input: string) {
-    log.info('[ProfileGenerator.invoke] Received input', { input });
+    logger.info("Received input", { inputLength: input?.length });
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the profile for the HyDE Generation:\n${input}`)
@@ -87,7 +89,10 @@ export class HydeGenerator {
     const result = await this.model.invoke(messages);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
-    log.info(`[ProfileGenerator.invoke] Successfully generated profile`, { output, textToEmbed });
+    logger.info("Generated HyDE profile", {
+      skillsCount: output.attributes.skills.length,
+      interestsCount: output.attributes.interests.length
+    });
     return { output, textToEmbed };
   }
 

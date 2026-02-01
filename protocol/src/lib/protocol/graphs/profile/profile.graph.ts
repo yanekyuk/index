@@ -326,7 +326,7 @@ export class ProfileGraphFactory {
         // If updating existing profile, include it in the input for context
         let inputWithContext = state.input;
         if (state.profile && state.forceUpdate) {
-          inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nNEW INFORMATION:\n${state.input}\n\nPlease merge the new information with the existing profile, preserving all relevant existing data and updating/adding new details as appropriate.`;
+          inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
           logger.info("Merging with existing profile");
         }
 

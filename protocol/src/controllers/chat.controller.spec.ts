@@ -3,7 +3,8 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
-import { ChatController, ChatDatabaseAdapter } from "./chat.controller";
+import { ChatController } from "./chat.controller";
+import { ChatDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -21,6 +22,9 @@ interface ChatResponse {
 describe("ChatController Integration", () => {
   let controller: ChatController;
   let testUserId: string;
+  /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
+  let testIndexId: string | null = null;
+  let testIndexIdOther: string | null = null;
 
   beforeAll(async () => {
     // Setup - Ensure we are in a clean state (cleanup if previous run failed)
@@ -75,7 +79,14 @@ describe("ChatController Integration", () => {
   });
 
   afterAll(async () => {
-    // Cleanup
+    // Clean up indexes created for getIntentsInIndexForMember tests
+    for (const indexId of [testIndexId, testIndexIdOther]) {
+      if (indexId) {
+        await db.delete(schema.intentIndexes).where(eq(schema.intentIndexes.indexId, indexId));
+        await db.delete(schema.indexMembers).where(eq(schema.indexMembers.indexId, indexId));
+        await db.delete(schema.indexes).where(eq(schema.indexes.id, indexId));
+      }
+    }
     if (testUserId) {
       // Clean up intents first
       await db.delete(schema.intents).where(eq(schema.intents.userId, testUserId));
@@ -175,7 +186,7 @@ describe("ChatController Integration", () => {
 
       // Verify intent no longer appears in active intents
       const activeIntents = await adapter.getActiveIntents(testUserId);
-      const archivedIntent = activeIntents.find(i => i.id === intentId);
+      const archivedIntent = activeIntents.find((i: { id: string }) => i.id === intentId);
       expect(archivedIntent).toBeUndefined();
     });
 
@@ -183,6 +194,61 @@ describe("ChatController Integration", () => {
       const result = await adapter.archiveIntent("00000000-0000-0000-0000-000000000001");
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
+    });
+
+    test("getIntentsInIndexForMember should return empty for unknown index name", async () => {
+      const intents = await adapter.getIntentsInIndexForMember(testUserId, "NonExistent Index Name");
+      expect(intents).toBeArray();
+      expect(intents.length).toBe(0);
+    });
+
+    test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
+      const [index] = await db.insert(schema.indexes).values({
+        title: "Open Mock Network",
+        prompt: "Test index for chat adapter",
+      }).returning({ id: schema.indexes.id });
+      if (!index) throw new Error("Failed to create index");
+      testIndexId = index.id;
+
+      await db.insert(schema.indexMembers).values({
+        indexId: testIndexId,
+        userId: testUserId,
+        permissions: [],
+        autoAssign: false,
+      });
+
+      const activeIntents = await adapter.getActiveIntents(testUserId);
+      expect(activeIntents.length).toBeGreaterThan(0);
+      await adapter.assignIntentToIndex(activeIntents[0].id, testIndexId);
+
+      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Open Mock Network");
+      expect(intents).toBeArray();
+      expect(intents.length).toBe(1);
+      expect(intents[0].payload).toBe("Looking for collaborators on a machine learning project");
+    });
+
+    test("getIntentsInIndexForMember should return intents when queried by index ID", async () => {
+      expect(testIndexId).not.toBeNull();
+      const intents = await adapter.getIntentsInIndexForMember(testUserId!, testIndexId!);
+      expect(intents).toBeArray();
+      expect(intents.length).toBe(1);
+      expect(intents[0].id).toBeDefined();
+      expect(intents[0].payload).toBeDefined();
+      expect(intents[0].summary).toBeDefined();
+      expect(intents[0].createdAt).toBeInstanceOf(Date);
+    });
+
+    test("getIntentsInIndexForMember should return empty when user is not a member of the index", async () => {
+      const [index] = await db.insert(schema.indexes).values({
+        title: "Other Index User Not In",
+        prompt: "Index without test user",
+      }).returning({ id: schema.indexes.id });
+      if (!index) throw new Error("Failed to create index");
+      testIndexIdOther = index.id;
+
+      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Other Index User Not In");
+      expect(intents).toBeArray();
+      expect(intents.length).toBe(0);
     });
   });
 
@@ -295,5 +361,55 @@ describe("ChatController Integration", () => {
       expect(data.response).toBeDefined();
       expect(typeof data.response).toBe('string');
     }, 120000); // Long timeout for LLM calls
+
+    test("should create intent from hiring message with URL without leaking internal JSON or URLs in intent", async () => {
+      // Scenario: User wants to hire developers and provides a GitHub URL for context.
+      // The response must NOT contain internal pipeline JSON (classification, felicity_scores,
+      // actions, indexScore, etc.). Created intents must NOT contain "More details at [url]"
+      // or raw URLs in the description.
+      const mockRequest = {
+        json: async () => ({
+          message: "I want to hire developers who would be interested in the following project: https://github.com/indexnetwork/index"
+        })
+      } as unknown as Request;
+
+      const mockUser: AuthenticatedUser = {
+        id: testUserId,
+        privyId: `privy:chat:${Date.now()}`,
+        email: "test-chat-controller@example.com",
+        name: "Test Chat User"
+      };
+
+      const response = await controller.message(mockRequest, mockUser);
+      const data = await response.json() as ChatResponse;
+
+      expect(response.status).toBe(200);
+      expect(data.response).toBeDefined();
+      expect(typeof data.response).toBe("string");
+
+      // Must NOT contain internal pipeline JSON (streamEvents was emitting nested model output)
+      const internalJsonMarkers = [
+        '"classification"',
+        '"felicity_scores"',
+        '"actions"',
+        '"indexScore"',
+        '"memberScore"',
+        '"semantic_entropy"',
+        '"referential_anchor"',
+        '"intentMode"',
+        '"referentialAnchor"',
+      ];
+      for (const marker of internalJsonMarkers) {
+        expect(data.response).not.toContain(marker);
+      }
+
+      // Created intents must NOT contain URLs or "More details at" in payload
+      const adapter = new ChatDatabaseAdapter();
+      const intents = await adapter.getActiveIntents(testUserId);
+      for (const intent of intents) {
+        expect(intent.payload).not.toMatch(/https?:\/\//);
+        expect(intent.payload.toLowerCase()).not.toContain("more details at");
+      }
+    }, 120000); // Long timeout for LLM + scraping
   });
 });

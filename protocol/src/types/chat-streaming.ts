@@ -14,7 +14,11 @@ export type ChatStreamEventType =
   | 'subgraph_result'
   | 'token'
   | 'done'
-  | 'error';
+  | 'error'
+  // Agent Loop Architecture events
+  | 'tool_start'
+  | 'tool_end'
+  | 'agent_thinking';
 
 /**
  * Base interface for all chat stream events.
@@ -112,6 +116,45 @@ export interface ErrorEvent extends ChatStreamEventBase {
   code?: string;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AGENT LOOP ARCHITECTURE EVENTS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tool start event - sent when a tool begins executing.
+ */
+export interface ToolStartEvent extends ChatStreamEventBase {
+  type: 'tool_start';
+  /** Name of the tool being executed */
+  toolName: string;
+  /** Arguments passed to the tool */
+  toolArgs: Record<string, unknown>;
+}
+
+/**
+ * Tool end event - sent when a tool finishes executing.
+ */
+export interface ToolEndEvent extends ChatStreamEventBase {
+  type: 'tool_end';
+  /** Name of the tool that completed */
+  toolName: string;
+  /** Whether the tool execution succeeded */
+  success: boolean;
+  /** Brief summary of the result */
+  resultSummary?: string;
+}
+
+/**
+ * Agent thinking event - sent between agent iterations.
+ */
+export interface AgentThinkingEvent extends ChatStreamEventBase {
+  type: 'agent_thinking';
+  /** Current iteration number */
+  iteration: number;
+  /** Tools used in this iteration */
+  toolsUsed: string[];
+}
+
 /**
  * Union type of all chat stream events.
  */
@@ -123,7 +166,11 @@ export type ChatStreamEvent =
   | SubgraphResultEvent
   | TokenEvent
   | DoneEvent
-  | ErrorEvent;
+  | ErrorEvent
+  // Agent Loop Architecture events
+  | ToolStartEvent
+  | ToolEndEvent
+  | AgentThinkingEvent;
 
 /**
  * Formats a chat stream event as an SSE message.
@@ -252,4 +299,42 @@ export function createErrorEvent(sessionId: string, message: string, code?: stri
  */
 export function createThinkingEvent(sessionId: string, content: string, step?: string): ThinkingEvent {
   return createStreamEvent<ThinkingEvent>('thinking', sessionId, { content, step });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AGENT LOOP EVENT CREATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a formatted tool start event.
+ */
+export function createToolStartEvent(
+  sessionId: string,
+  toolName: string,
+  toolArgs: Record<string, unknown>
+): ToolStartEvent {
+  return createStreamEvent<ToolStartEvent>('tool_start', sessionId, { toolName, toolArgs });
+}
+
+/**
+ * Creates a formatted tool end event.
+ */
+export function createToolEndEvent(
+  sessionId: string,
+  toolName: string,
+  success: boolean,
+  resultSummary?: string
+): ToolEndEvent {
+  return createStreamEvent<ToolEndEvent>('tool_end', sessionId, { toolName, success, resultSummary });
+}
+
+/**
+ * Creates a formatted agent thinking event.
+ */
+export function createAgentThinkingEvent(
+  sessionId: string,
+  iteration: number,
+  toolsUsed: string[]
+): AgentThinkingEvent {
+  return createStreamEvent<AgentThinkingEvent>('agent_thinking', sessionId, { iteration, toolsUsed });
 }

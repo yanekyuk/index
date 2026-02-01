@@ -3,11 +3,11 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { log } from "../../../log";
-/**
- * Config
- */
 import { config } from "dotenv";
+
 config({ path: '.env.development', override: true });
+
+const logger = log.agent.from("profile.generator.ts");
 
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',
@@ -15,14 +15,11 @@ const model = new ChatOpenAI({
 });
 
 const systemPrompt = `
-    You are an expert profiler. Your task is to synthesize a structured User Profile from raw data scraped from the web (via Parallel.ai).
+    You are an expert profiler. Your task is to synthesize a structured User Profile from raw data or user requests.
 
-    Output Rules:
-    1. Infer their name from the data.
-    2. Synthesize a coherent 'bio'.
-    3. Infer their current 'location' (City, Country formatted).
-    4. Write a rich 'narrative.context' describing their current situation, constraints, and background in detail.
-    5. Extract specific 'skills' and 'interests'.
+    When given EXISTING PROFILE + USER REQUEST: Apply the request to the existing profile. Add, update, or remove skills and interests as the user asks. Preserve everything else. Output the full updated profile.
+
+    When given raw data only: Infer name, bio, location, narrative.context, and extract skills and interests.
 `;
 
 const responseFormat = z.object({
@@ -41,7 +38,7 @@ const responseFormat = z.object({
 });
 
 type Profile = z.infer<typeof responseFormat>;
-export type ProfileDocument = Profile & { userId: string, embedding: number[] | number[][] };
+export type ProfileDocument = Profile & { userId: string, embedding: number[] | number[][] | null };
 
 export class ProfileGenerator {
   private model: any;
@@ -68,7 +65,7 @@ export class ProfileGenerator {
   }
 
   public async invoke(input: string) {
-    log.info('[ProfileGenerator.invoke] Received input', { input });
+    logger.info("Received input", { inputLength: input?.length });
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the raw data:\n${input}`)
@@ -76,7 +73,10 @@ export class ProfileGenerator {
     const result = await this.model.invoke(messages);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
-    log.info(`[ProfileGenerator.invoke] Successfully generated profile`, { output, textToEmbed });
+    logger.info("Generated profile", {
+      skillsCount: output.attributes.skills.length,
+      interestsCount: output.attributes.interests.length
+    });
     return { output, textToEmbed };
   }
 

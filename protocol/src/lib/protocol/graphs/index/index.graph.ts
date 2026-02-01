@@ -9,6 +9,7 @@ import { IntentIndexer } from "../../agents/index/intent.indexer";
 import { IndexGraphDatabase } from "../../interfaces/database.interface";
 import { log } from "../../../log";
 
+const logger = log.graph.from("index.graph.ts");
 const QUALIFICATION_THRESHOLD = 0.7;
 
 /**
@@ -28,14 +29,14 @@ export class IndexGraphFactory {
     // --- NODE DEFINITIONS ---
 
     const prepNode = async (state: typeof IndexGraphState.State) => {
-      log.info("[Graph:Index:Prep] Loading intent and index context", {
+      logger.info("Loading intent and index context", {
         intentId: state.intentId,
         indexId: state.indexId,
       });
 
       const intent = await this.database.getIntentForIndexing(state.intentId);
       if (!intent) {
-        log.warn("[Graph:Index:Prep] Intent not found", { intentId: state.intentId });
+        logger.warn("Intent not found", { intentId: state.intentId });
         return {
           intent: null,
           indexContext: null,
@@ -50,7 +51,7 @@ export class IndexGraphFactory {
         intent.userId
       );
       if (!indexContext) {
-        log.warn("[Graph:Index:Prep] Index context not found (not member or autoAssign false)", {
+        logger.warn("Index context not found (not member or autoAssign false)", {
           indexId: state.indexId,
           userId: intent.userId,
         });
@@ -71,7 +72,7 @@ export class IndexGraphFactory {
         !indexContext.indexPrompt?.trim() && !indexContext.memberPrompt?.trim();
       const skipEvaluation = hasNoPrompts;
 
-      log.info("[Graph:Index:Prep] Context loaded", {
+      logger.info("Context loaded", {
         hasIntent: true,
         hasIndexContext: true,
         isCurrentlyAssigned,
@@ -89,14 +90,14 @@ export class IndexGraphFactory {
 
     const evaluateNode = async (state: typeof IndexGraphState.State) => {
       if (state.error) {
-        log.info("[Graph:Index:Evaluate] Skipping (error from prep)", {
+        logger.info("Skipping evaluation (error from prep)", {
           error: state.error,
         });
         return {};
       }
 
       if (state.skipEvaluation) {
-        log.info("[Graph:Index:Evaluate] No prompts – auto-assign");
+        logger.info("No prompts – auto-assign");
         return {
           evaluation: null,
           shouldAssign: true,
@@ -108,7 +109,7 @@ export class IndexGraphFactory {
         return {};
       }
 
-      log.info("[Graph:Index:Evaluate] Calling IntentIndexer", {
+      logger.info("Calling IntentIndexer", {
         intentId: state.intentId,
         indexId: state.indexId,
       });
@@ -125,7 +126,7 @@ export class IndexGraphFactory {
       );
 
       if (!result) {
-        log.warn("[Graph:Index:Evaluate] IntentIndexer returned null");
+        logger.warn("IntentIndexer returned null");
         return {
           evaluation: null,
           shouldAssign: false,
@@ -163,7 +164,7 @@ export class IndexGraphFactory {
         finalScore = 1.0;
       }
 
-      log.info("[Graph:Index:Evaluate] Evaluation complete", {
+      logger.info("Evaluation complete", {
         indexScore,
         memberScore,
         finalScore,
@@ -179,7 +180,7 @@ export class IndexGraphFactory {
 
     const executeNode = async (state: typeof IndexGraphState.State) => {
       if (state.error) {
-        log.info("[Graph:Index:Execute] Skipping (error)", { error: state.error });
+        logger.info("Skipping execution (error)", { error: state.error });
         return {
           assignmentResult: {
             indexId: state.indexId,
@@ -196,7 +197,7 @@ export class IndexGraphFactory {
       if (shouldAssign && !isCurrentlyAssigned) {
         try {
           await this.database.assignIntentToIndex(state.intentId, state.indexId);
-          log.info("[Graph:Index:Execute] Assigned intent to index", {
+          logger.info("Assigned intent to index", {
             intentId: state.intentId,
             indexId: state.indexId,
             finalScore: state.finalScore,
@@ -210,7 +211,7 @@ export class IndexGraphFactory {
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          log.error("[Graph:Index:Execute] Assign failed", { error: err });
+          logger.error("Assign failed", { error: err });
           return {
             assignmentResult: {
               indexId: state.indexId,
@@ -225,7 +226,7 @@ export class IndexGraphFactory {
       if (!shouldAssign && isCurrentlyAssigned) {
         try {
           await this.database.unassignIntentFromIndex(state.intentId, state.indexId);
-          log.info("[Graph:Index:Execute] Unassigned intent from index", {
+          logger.info("Unassigned intent from index", {
             intentId: state.intentId,
             indexId: state.indexId,
             finalScore: state.finalScore,
@@ -239,7 +240,7 @@ export class IndexGraphFactory {
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          log.error("[Graph:Index:Execute] Unassign failed", { error: err });
+          logger.error("Unassign failed", { error: err });
           return {
             assignmentResult: {
               indexId: state.indexId,

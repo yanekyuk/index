@@ -59,10 +59,11 @@ interface ProfileAttributes {
   skills: string[];
 }
 interface ProfileRow {
+  userId: string;
   identity: ProfileIdentity;
   narrative: ProfileNarrative;
   attributes: ProfileAttributes;
-  embedding: number[] | number[][];
+  embedding: number[] | number[][] | null;
 }
 
 interface IndexMembershipRow {
@@ -191,7 +192,15 @@ export class ChatDatabaseAdapter {
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
       .limit(1);
-    return (result[0] as unknown as ProfileRow) ?? null;
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
   }
 
   async getActiveIntents(userId: string): Promise<ActiveIntentRow[]> {
@@ -216,6 +225,71 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let indexId: string | null = null;
+
+    if (uuidRegex.test(indexNameOrId.trim())) {
+      const membership = await db
+        .select({ indexId: schema.indexMembers.indexId })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            eq(schema.indexMembers.indexId, indexNameOrId.trim()),
+            isNull(schema.indexes.deletedAt)
+          )
+        )
+        .limit(1);
+      indexId = membership[0]?.indexId ?? null;
+    } else {
+      const memberships = await db
+        .select({
+          indexId: schema.indexMembers.indexId,
+          indexTitle: schema.indexes.title,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            isNull(schema.indexes.deletedAt)
+          )
+        );
+      const needle = indexNameOrId.trim().toLowerCase();
+      const match = memberships.find(
+        (m) => (m.indexTitle ?? '').toLowerCase() === needle || (m.indexTitle ?? '').toLowerCase().includes(needle)
+      );
+      indexId = match?.indexId ?? null;
+    }
+
+    if (!indexId) return [];
+
+    try {
+      const result = await db
+        .select({
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+        .where(
+          and(
+            eq(schema.intentIndexes.indexId, indexId),
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt)
+          )
+        );
+      return result;
+    } catch (error: unknown) {
+      console.error('ChatDatabaseAdapter.getIntentsInIndexForMember error:', error);
+      return [];
+    }
+  }
+
   async getUser(userId: string): Promise<User | null> {
     const result = await db.select()
       .from(schema.users)
@@ -230,9 +304,11 @@ export class ChatDatabaseAdapter {
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: Array.isArray(profile.embedding[0])
-        ? (profile.embedding as number[][])[0]
-        : (profile.embedding as number[]),
+      embedding: profile.embedding === null 
+        ? null 
+        : (Array.isArray(profile.embedding[0])
+          ? (profile.embedding as number[][])[0]
+          : (profile.embedding as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -648,7 +724,15 @@ export class ProfileDatabaseAdapter {
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
       .limit(1);
-    return (result[0] as unknown as ProfileRow) ?? null;
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -657,9 +741,11 @@ export class ProfileDatabaseAdapter {
       identity: profile.identity,
       narrative: profile.narrative,
       attributes: profile.attributes,
-      embedding: Array.isArray(profile.embedding[0])
-        ? (profile.embedding as number[][])[0]
-        : (profile.embedding as number[]),
+      embedding: profile.embedding === null 
+        ? null 
+        : (Array.isArray(profile.embedding[0])
+          ? (profile.embedding as number[][])[0]
+          : (profile.embedding as number[])),
       updatedAt: new Date(),
     };
     await db.insert(schema.userProfiles)
@@ -702,7 +788,15 @@ export class OpportunityDatabaseAdapter {
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
       .limit(1);
-    return (result[0] as unknown as ProfileRow) ?? null;
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
   }
 }
 

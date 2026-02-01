@@ -24,6 +24,8 @@ export interface ExecutionResult {
   success: boolean;
   /** The intent ID (created/updated/archived) */
   intentId?: string;
+  /** Final payload (sanitized, for create/update) */
+  payload?: string;
   /** Error message if failed */
   error?: string;
 }
