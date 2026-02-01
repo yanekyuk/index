@@ -207,6 +207,20 @@ export interface SubgraphResults {
     contentLength?: number;
     error?: string;
   };
+  index?: {
+    mode?: 'query';
+    memberships?: Array<{
+      indexId: string;
+      indexTitle: string;
+      indexPrompt: string | null;
+      permissions: string[];
+      memberPrompt: string | null;
+      autoAssign: boolean;
+      joinedAt: Date;
+    }>;
+    count?: number;
+    error?: string;
+  };
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -395,6 +409,33 @@ export class ResponseGeneratorAgent {
         sections.push('Task: Analyze this content and answer the user\'s question about it. Extract relevant information like skills, projects, experience, or whatever the user asked about.');
       } else {
         sections.push('⚠️ No content extracted from the URL.');
+      }
+    }
+
+    if (results.index) {
+      if (results.index.mode === 'query') {
+        sections.push('## Index Membership Query Results');
+        const memberships = results.index.memberships || [];
+        sections.push(`Found ${memberships.length} index membership(s):`);
+
+        if (memberships.length === 0) {
+          sections.push('You are not a member of any indexes yet.');
+          sections.push('Suggestion: Explore and join indexes to connect with communities.');
+        } else {
+          memberships.forEach((m, index) => {
+            sections.push(`${index + 1}. **${m.indexTitle}**`);
+            if (m.indexPrompt) {
+              sections.push(`   Description: ${m.indexPrompt}`);
+            }
+            sections.push(`   Permissions: ${m.permissions.length > 0 ? m.permissions.join(', ') : 'member'}`);
+            if (m.autoAssign) {
+              sections.push(`   Auto-assign: Enabled`);
+            }
+            sections.push(`   Joined: ${new Date(m.joinedAt).toLocaleDateString()}`);
+          });
+          sections.push('');
+          sections.push('Task: Present these index memberships in a conversational, friendly way.');
+        }
       }
     }
 

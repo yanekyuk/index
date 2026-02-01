@@ -126,6 +126,27 @@ export interface SimilarIntentSearchOptions {
   threshold?: number;
 }
 
+/**
+ * Represents a user's membership in an index with full details.
+ * Used for displaying index memberships in chat (index_query).
+ */
+export interface IndexMembership {
+  /** Unique identifier of the index */
+  indexId: string;
+  /** Display title of the index */
+  indexTitle: string;
+  /** Index description/prompt (what the community is about) */
+  indexPrompt: string | null;
+  /** Member's permissions in this index */
+  permissions: string[];
+  /** Member's custom prompt (overrides index prompt for their intents) */
+  memberPrompt: string | null;
+  /** Whether new intents are auto-assigned to this index */
+  autoAssign: boolean;
+  /** When the user joined the index */
+  joinedAt: Date;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DATABASE INTERFACE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -319,6 +340,15 @@ export interface Database {
   getUserIndexIds(userId: string): Promise<string[]>;
 
   /**
+   * Retrieves all indexes the user is a member of with full details.
+   * Used for displaying index memberships in chat (index_query).
+   *
+   * @param userId - The unique identifier of the user
+   * @returns Array of index memberships with details
+   */
+  getIndexMemberships(userId: string): Promise<IndexMembership[]>;
+
+  /**
    * Associates an intent with one or more indexes.
    * Creates entries in the intentIndexes join table.
    *
@@ -457,6 +487,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // OpportunityGraph subgraph requirements (getProfile already included)
   // IndexGraph subgraph requirements (index created intents in user's indexes)
   | 'getUserIndexIds'
+  | 'getIndexMemberships'
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'

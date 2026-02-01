@@ -65,6 +65,16 @@ interface ProfileRow {
   embedding: number[] | number[][];
 }
 
+interface IndexMembershipRow {
+  indexId: string;
+  indexTitle: string;
+  indexPrompt: string | null;
+  permissions: string[];
+  memberPrompt: string | null;
+  autoAssign: boolean;
+  joinedAt: Date;
+}
+
 const { intents, indexes, indexMembers, intentIndexes } = schema;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -310,6 +320,33 @@ export class ChatDatabaseAdapter {
     } catch (error: unknown) {
       console.error('ChatDatabaseAdapter.archiveIntent error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async getIndexMemberships(userId: string): Promise<IndexMembershipRow[]> {
+    try {
+      const result = await db
+        .select({
+          indexId: schema.indexMembers.indexId,
+          indexTitle: schema.indexes.title,
+          indexPrompt: schema.indexes.prompt,
+          permissions: schema.indexMembers.permissions,
+          memberPrompt: schema.indexMembers.prompt,
+          autoAssign: schema.indexMembers.autoAssign,
+          joinedAt: schema.indexMembers.createdAt,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            isNull(schema.indexes.deletedAt)
+          )
+        );
+      return result;
+    } catch (error: unknown) {
+      console.error('ChatDatabaseAdapter.getIndexMemberships error:', error);
+      return [];
     }
   }
 }

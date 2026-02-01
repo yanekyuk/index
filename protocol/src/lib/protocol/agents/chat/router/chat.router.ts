@@ -106,6 +106,22 @@ Your job is to analyze user messages and route them to the correct processing ac
 
 ---
 
+### index_query
+**Type:** Read-only
+
+**What it does:** Fetches and displays the user's index memberships (communities/groups they belong to).
+
+**When to use:**
+- User asks to SEE/VIEW/SHOW/LIST their indexes
+- User asks "what indexes am I in?" or "which communities am I a member of?"
+- User wants to know their group memberships
+
+**Examples:** "show my indexes", "what groups am I in?", "list my communities", "which indexes am I a member of?"
+
+**Config:** operationType: "read", extractedContext: null
+
+---
+
 ### opportunity_subgraph
 **Type:** Discovery
 
@@ -232,6 +248,7 @@ const routingResponseSchema = z.object({
     "profile_query",          // Read-only profile queries
     "profile_write",          // Update profile
     "profile_subgraph",       // DEPRECATED: Backward compatibility (maps to profile_write)
+    "index_query",            // Read-only index membership queries
     "opportunity_subgraph",
     "scrape_web",             // Extract content from URL
     "respond",
@@ -577,7 +594,7 @@ Analyze the conversation and route appropriately.
     
     // Rule 4: Query target with non-read operationType → ensure operationType is read
     if (
-      (output.target === 'intent_query' || output.target === 'profile_query') &&
+      (output.target === 'intent_query' || output.target === 'profile_query' || output.target === 'index_query') &&
       output.operationType !== 'read'
     ) {
       logger.warn('Query target with non-read operationType, correcting', {

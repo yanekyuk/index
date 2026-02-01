@@ -283,6 +283,10 @@ export class ChatGraphFactory {
               description: 'Executing READ operation: Fetching profile from database...', 
               taskType: 'PROFILE_QUERY' 
             },
+            'index_query': { 
+              description: 'Executing READ operation: Fetching index memberships from database...', 
+              taskType: 'INDEX_QUERY' 
+            },
             'profile_write': { 
               description: 'Executing WRITE operation: Creating/updating user profile...', 
               taskType: 'PROFILE_WRITE' 
@@ -364,6 +368,7 @@ export class ChatGraphFactory {
               'intent_write': 'Processing intent creation/update/deletion',
               'profile_query': 'Retrieving your profile information',
               'profile_write': 'Updating your profile',
+              'index_query': 'Retrieving your index memberships',
               'opportunity_subgraph': 'Searching for relevant connections',
               'scrape_web': 'Extracting content from URL',
               'respond': 'Generating conversational response',
@@ -747,6 +752,49 @@ export class ChatGraphFactory {
             }
           },
           error: "Profile query failed"
+        };
+      }
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // NODE: Index Query (Read-Only Fast Path)
+    // Directly fetches and formats user's index memberships without graph processing.
+    // Fast path for "what indexes am I in?" queries.
+    // ─────────────────────────────────────────────────────────
+    const indexQueryNode = async (state: typeof ChatGraphState.State) => {
+      logger.info("🚀 Fast path: Fetching index memberships (read-only)...");
+
+      try {
+        const memberships = await this.database.getIndexMemberships(state.userId);
+
+        logger.info("✅ Retrieved index memberships via fast path", {
+          count: memberships.length,
+          costSavings: "~5 LLM calls avoided"
+        });
+
+        const subgraphResults: SubgraphResults = {
+          index: {
+            mode: 'query',
+            memberships,
+            count: memberships.length
+          }
+        };
+
+        return { subgraphResults };
+      } catch (error) {
+        logger.error("Query failed", {
+          error: error instanceof Error ? error.message : String(error)
+        });
+        return {
+          subgraphResults: {
+            index: {
+              mode: 'query',
+              memberships: [],
+              count: 0,
+              error: 'Failed to fetch index memberships'
+            }
+          },
+          error: "Index query failed"
         };
       }
     };
@@ -1633,6 +1681,7 @@ export class ChatGraphFactory {
         'profile_write',
         'intent_query',
         'intent_write',
+        'index_query',
         'opportunity_subgraph',
         'scrape_web'
       ].includes(routingTarget);
@@ -1709,6 +1758,7 @@ export class ChatGraphFactory {
         "intent_write",
         "profile_query",
         "profile_write",
+        "index_query",
         "opportunity_subgraph",
         "scrape_web",
         "respond",
@@ -1767,6 +1817,7 @@ export class ChatGraphFactory {
       .addNode("intent_write", intentSubgraphNode)
       .addNode("profile_query", profileQueryNode)
       .addNode("profile_write", profileSubgraphNode)
+      .addNode("index_query", indexQueryNode)
       .addNode("opportunity_subgraph", opportunitySubgraphNode)
       .addNode("scrape_web", scrapeWebNode)
       .addNode("respond_direct", respondDirectNode)
@@ -1790,6 +1841,7 @@ export class ChatGraphFactory {
         intent_write: "intent_write",
         profile_query: "profile_query",
         profile_write: "profile_write",
+        index_query: "index_query",
         opportunity_subgraph: "opportunity_subgraph",
         scrape_web: "scrape_web",
         respond: "respond_direct",
@@ -1806,6 +1858,7 @@ export class ChatGraphFactory {
       .addEdge("intent_write", "generate_response")       // Terminal
       .addEdge("profile_query", "generate_response")      // Terminal: Fast path to response
       .addEdge("profile_write", "generate_response")      // Terminal
+      .addEdge("index_query", "generate_response")        // Terminal: Fast path to response
       .addEdge("opportunity_subgraph", "generate_response")  // Terminal
       .addEdge("respond_direct", "generate_response")     // Terminal
       .addEdge("clarify", "generate_response")            // Terminal
