@@ -14,141 +14,116 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { isAuthenticated } = useAuthContext();
 
-  // Define known routes to detect 404 pages
-  const knownRoutes = useMemo(() => ['/', '/simulation', '/onboarding', '/l', '/i', '/u', '/index', '/admin', '/blog', '/chat', '/conversations'], []);
-  const isKnownRoute = knownRoutes.some(route =>
-    pathname === route ||
-    pathname?.startsWith(route + '/')
-  );
-  // Show sidebar only on app pages (exclude landing '/' for unauthenticated, onboarding, invitation, index join, and blog pages)
-  // For authenticated users, '/' is the inbox so show sidebar there too
-  const showSidebar = useMemo(() => {
-    // Always hide on onboarding, invitation/index join pages, and blog
-    if (pathname === '/onboarding' || pathname?.startsWith('/l/') || pathname?.startsWith('/index/') || pathname === '/blog' || pathname?.startsWith('/blog/')) {
-      return false;
-    }
-    // Show on root if authenticated (inbox), otherwise hide (landing page)
-    if (pathname === '/') {
-      return isAuthenticated;
-    }
-    // Show on other app routes
-    return knownRoutes.filter(route => route !== '/' && route !== '/onboarding' && route !== '/l' && route !== '/index' && route !== '/blog').some(route =>
+  const appRoutes = ['/', '/i', '/u', '/conversations', '/chat', '/admin'];
+  const publicRoutes = ['/onboarding', '/l', '/index', '/blog'];
+
+  const isAppRoute = useMemo(() => {
+    if (!isAuthenticated) return false;
+    return appRoutes.some(route => 
       pathname === route || pathname?.startsWith(route + '/')
     );
-  }, [pathname, knownRoutes, isAuthenticated]);
+  }, [pathname, isAuthenticated]);
 
-  // Hide header buttons on special pages (onboarding and invitation)
-  const showHeaderButtons = useMemo(() =>
-    pathname !== '/onboarding' && !pathname?.startsWith('/l/') && !pathname?.startsWith('/index/'), [pathname]);
-  
-  // Force public view (non-authenticated header) on blog pages
-  const forcePublicView = useMemo(() =>
-    pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname]);
-
-  // Disable sticky header with background on landing page (unauthenticated) and blog pages
-  const isLandingOrBlog = useMemo(() =>
-    (pathname === '/' && !isAuthenticated) || pathname === '/blog' || pathname?.startsWith('/blog/'), [pathname, isAuthenticated]);
-
-  // Don't render header on 404 pages (unknown routes)
-  if (!isKnownRoute && pathname) {
-    return (
-      <main>
-        {children}
-      </main>
+  const isPublicRoute = useMemo(() => {
+    return publicRoutes.some(route => 
+      pathname === route || pathname?.startsWith(route + '/')
     );
-  }
+  }, [pathname]);
+
+  const showSidebar = isAppRoute && !isPublicRoute;
+  const showHeader = !showSidebar;
+
+  const isLandingOrBlog = useMemo(() => 
+    (pathname === '/' && !isAuthenticated) || 
+    pathname === '/blog' || 
+    pathname?.startsWith('/blog/'),
+  [pathname, isAuthenticated]);
 
   return (
     <IndexesProvider>
       <IndexFilterProvider>
         <StreamChatProvider>
-          <ClientWrapperContent
-            showSidebar={showSidebar}
-            showHeaderButtons={showHeaderButtons}
-            forcePublicView={forcePublicView}
-            isLandingOrBlog={isLandingOrBlog}
-            mobileSidebarOpen={mobileSidebarOpen}
-            setMobileSidebarOpen={setMobileSidebarOpen}
-          >
-            {children}
-          </ClientWrapperContent>
+          <div className="backdrop relative min-h-screen">
+            <style jsx>{`
+              .backdrop:after {
+                content: "";
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                right: 0;
+                background: url(/noise.jpg);
+                opacity: .12;
+                pointer-events: none;
+                z-index: -1;
+              }
+            `}</style>
+
+            {showSidebar ? (
+              // App layout with sidebar - full height flex
+              <div className="flex h-screen overflow-hidden">
+                {/* Sidebar - fixed width, full height, no scroll */}
+                <aside 
+                  id="app-sidebar"
+                  className={`
+                    fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200
+                    transform transition-transform duration-200 ease-in-out
+                    lg:translate-x-0 lg:relative lg:z-auto
+                    ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                  `}
+                >
+                  <Sidebar />
+                </aside>
+
+                {/* Mobile overlay */}
+                {mobileSidebarOpen && (
+                  <div 
+                    className="fixed inset-0 bg-black/20 z-40 lg:hidden"
+                    onClick={() => setMobileSidebarOpen(false)}
+                  />
+                )}
+
+                {/* Main content area - takes remaining width, scrollable */}
+                <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+                  {/* Mobile header */}
+                  <div className="lg:hidden flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
+                    <button
+                      onClick={() => setMobileSidebarOpen(true)}
+                      className="p-2 -ml-2 rounded-md hover:bg-gray-100"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 6h18M3 12h18M3 18h18" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  {/* Scrollable content area */}
+                  <main className="flex-1 overflow-y-auto flex flex-col">
+                    {children}
+                  </main>
+                </div>
+              </div>
+            ) : (
+              // Public layout without sidebar
+              <>
+                {showHeader && (
+                  <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
+                    <div className="max-w-7xl mx-auto px-4">
+                      <Header 
+                        showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
+                        forcePublicView={isLandingOrBlog}
+                      />
+                    </div>
+                  </div>
+                )}
+                <main className="flex flex-col min-h-[calc(100vh-76px)]">
+                  {children}
+                </main>
+              </>
+            )}
+          </div>
         </StreamChatProvider>
       </IndexFilterProvider>
     </IndexesProvider>
-  );
-}
-
-function ClientWrapperContent({
-  children,
-  showSidebar,
-  showHeaderButtons,
-  forcePublicView,
-  isLandingOrBlog,
-  mobileSidebarOpen,
-  setMobileSidebarOpen,
-}: PropsWithChildren<{
-  showSidebar: boolean;
-  showHeaderButtons: boolean;
-  forcePublicView: boolean;
-  isLandingOrBlog: boolean;
-  mobileSidebarOpen: boolean;
-  setMobileSidebarOpen: (value: boolean | ((prev: boolean) => boolean)) => void;
-}>) {
-  return (
-    <div className="backdrop relative min-h-screen">
-      <style jsx>{`
-        .backdrop:after {
-          content: "";
-          position: fixed;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          right: 0;
-          background: url(/noise.jpg);
-          opacity: .12;
-          pointer-events: none;
-          z-index: -1;
-        }
-      `}</style>
-
-      {/* Header stays fixed at top (except on landing/blog pages) */}
-      <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
-        <div className="max-w-7xl mx-auto px-2">
-          <Header
-            showHeaderButtons={showHeaderButtons}
-            forcePublicView={forcePublicView}
-            onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
-            isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
-          />
-        </div>
-      </div>
-
-      {/* Page content with sidebar */}
-      <main className={isLandingOrBlog ? "flex flex-col" : ""}>
-        {isLandingOrBlog ? (
-          // Full-width layout for landing and blog pages
-          <div className="flex flex-col min-h-[calc(100vh-76px)]">
-            {children}
-          </div>
-        ) : (
-          <div className={`max-w-7xl mx-auto px-4 sm:px-6 flex min-h-[calc(100vh-76px)] ${showSidebar ? 'flex-col lg:flex-row lg:gap-6' : 'flex-col'}`}>
-            {/* Left Sidebar - sticky */}
-            {showSidebar && (
-              <aside id="app-sidebar" className={`w-full lg:w-72 lg:flex-shrink-0 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block lg:self-stretch lg:border-r lg:border-gray-300`}>
-                <div className="lg:sticky lg:top-20 pt-6 lg:pt-8">
-                  <Sidebar />
-                </div>
-              </aside>
-            )}
-
-            {/* Main content area */}
-            <div className={`w-full min-w-0 flex flex-col pt-6 lg:pt-8 flex-1 min-h-0 ${showSidebar ? 'lg:flex-1' : ''}`}>
-              {children}
-            </div>
-          </div>
-        )}
-      </main>
-
-    </div>
   );
 }

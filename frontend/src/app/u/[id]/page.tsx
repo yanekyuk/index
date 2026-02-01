@@ -10,6 +10,7 @@ import { getAvatarUrl } from "@/lib/file-utils";
 import { User } from "@/lib/types";
 import { DiscoverStake } from "@/services/discover";
 import ClientLayout from "@/components/ClientLayout";
+import { ContentContainer } from "@/components/layout";
 
 interface UserProfilePageProps {
   params: Promise<{
@@ -109,19 +110,15 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
 
   return (
     <ClientLayout>
-      <div className="bg-white border border-gray-800 rounded-sm">
-          {/* Back button */}
-          <div className="border-b border-gray-200 px-6 py-4">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-black transition-colors font-ibm-plex-mono text-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </button>
-          </div>
+      {/* Sticky header - full width */}
+      <div className="sticky top-0 bg-white border-b border-gray-200 z-10 px-4 py-3 flex items-center gap-3">
+        <button onClick={() => router.back()} className="text-gray-600 hover:text-black transition-colors text-xl">←</button>
+        <h1 className="font-ibm-plex-mono text-lg font-bold text-black">{profileData.name}</h1>
+      </div>
 
-          <div className="p-8 space-y-8">
+      {/* Scrollable content - centered */}
+      <div className="px-6 lg:px-8 py-6">
+        <ContentContainer className="space-y-8">
             {/* Avatar, Name, and Social Icons */}
             <div className="flex items-start gap-4">
               <Image
@@ -233,8 +230,8 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </ContentContainer>
+      </div>
     </ClientLayout>
   );
 }

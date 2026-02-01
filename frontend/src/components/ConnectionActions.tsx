@@ -19,7 +19,7 @@ export interface ConnectionActionsProps {
   mutualIntents?: Array<{
     intent: {
       id: string;
-      summary?: string;
+      summary?: string | null;
       payload: string;
       updatedAt: string;
     };

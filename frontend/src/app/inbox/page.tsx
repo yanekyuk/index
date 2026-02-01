@@ -1,7 +1,14 @@
-"use client";
+'use client';
 
-import InboxContent from "@/components/InboxContent";
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function InboxPage() {
-  return <InboxContent />;
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/');
+  }, [router]);
+
+  return null;
 }
