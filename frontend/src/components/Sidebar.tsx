@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessageCircle, Settings, MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
+import { Compass, MessageCircle, Settings, MoreHorizontal, Trash2, Loader2, ChevronDown, User as UserIcon, LogIn, Library } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -12,7 +12,17 @@ import { useAIChat } from '@/contexts/AIChatContext';
 import { usePrivy } from '@privy-io/react-auth';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { Channel } from 'stream-chat';
+import { useIndexesState } from '@/contexts/IndexesContext';
+import { useIndexes } from '@/contexts/APIContext';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { Index as IndexType } from '@/lib/types';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
+import PreferencesModal from '@/components/modals/PreferencesModal';
+import CreateIndexModal from '@/components/modals/CreateIndexModal';
+import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
+import IndexSelectorModal from '@/components/modals/IndexSelectorModal';
+import IndexOwnerModal from '@/components/modals/IndexOwnerModal';
+import LibraryModal from '@/components/modals/LibraryModal';
 
 interface ChatSession {
   id: string;
@@ -32,11 +42,14 @@ interface RecentChat {
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user } = useAuthContext();
+  const { user, updateUser, refetchUser } = useAuthContext();
   const { client, isReady } = useStreamChat();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
-  const { getAccessToken } = usePrivy();
+  const { getAccessToken, logout } = usePrivy();
+  const indexesService = useIndexes();
+  const { addIndex } = useIndexesState();
+  const { success, error } = useNotifications();
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -45,10 +58,17 @@ export default function Sidebar() {
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const { updateUser } = useAuthContext();
+  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
+  const [ownerModalIndex, setOwnerModalIndex] = useState<IndexType | null>(null);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
   const [deletingChat, setDeletingChat] = useState<string | null>(null);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [indexModalOpen, setIndexModalOpen] = useState(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const isMessagesView = pathname?.includes('/chat') && pathname?.startsWith('/u/');
   const isHomeView = !isMessagesView;
@@ -58,6 +78,23 @@ export default function Sidebar() {
   
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
+    try {
+      const createRequest = {
+        title: indexData.name,
+        prompt: indexData.prompt,
+        joinPolicy: indexData.joinPolicy
+      };
+      const newIndex = await indexesService.createIndex(createRequest);
+      addIndex(newIndex);
+      setCreateIndexModalOpen(false);
+      success('Index created successfully');
+    } catch (err) {
+      console.error('Error creating index:', err);
+      error('Failed to create index');
+    }
+  }, [indexesService, addIndex, success, error]);
 
   const handleDiscoverClick = () => {
     clearChat();
@@ -204,18 +241,21 @@ export default function Sidebar() {
     };
   }, [isReady, client]);
 
-  // Close chat menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (chatMenuRef.current && !chatMenuRef.current.contains(event.target as Node)) {
         setChatMenuOpen(null);
       }
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false);
+      }
     };
-    if (chatMenuOpen) {
+    if (chatMenuOpen || userDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [chatMenuOpen]);
+  }, [chatMenuOpen, userDropdownOpen]);
 
   const handleDeleteChat = async (channelId: string, chatName: string) => {
     if (!client || deletingChat) return;
@@ -391,11 +431,11 @@ export default function Sidebar() {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* User Profile - always at bottom */}
+      {/* User Profile with Dropdown - always at bottom */}
       {user && (
-        <div className="flex-shrink-0 px-4 py-4">
+        <div className="flex-shrink-0 px-4 py-4 relative" ref={userDropdownRef}>
           <button
-            onClick={() => setIsProfileModalOpen(true)}
+            onClick={() => setUserDropdownOpen(!userDropdownOpen)}
             className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
           >
             <Image
@@ -413,8 +453,66 @@ export default function Sidebar() {
                 Member
               </div>
             </div>
-            <Settings className="w-4 h-4 text-gray-400" />
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${userDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
+
+          {userDropdownOpen && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] z-50">
+              <div className="py-1">
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setIndexModalOpen(true);
+                  }}
+                >
+                  <Compass className="h-4 w-4 mr-2" />
+                  Indexes
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setLibraryModalOpen(true);
+                  }}
+                >
+                  <Library className="h-4 w-4 mr-2" />
+                  Library
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                >
+                  <UserIcon className="h-4 w-4 mr-2" />
+                  Profile
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setPreferencesModalOpen(true);
+                  }}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Preferences
+                </button>
+                <div className="border-t border-gray-200 my-1" />
+                <button
+                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors font-ibm-plex-mono text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    logout();
+                  }}
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -423,7 +521,59 @@ export default function Sidebar() {
         open={isProfileModalOpen}
         onOpenChange={setIsProfileModalOpen}
         user={user}
-        onUserUpdate={updateUser}
+        onUserUpdate={async () => {
+          await refetchUser();
+        }}
+      />
+
+      {/* Preferences Modal */}
+      <PreferencesModal
+        open={preferencesModalOpen}
+        onOpenChange={setPreferencesModalOpen}
+        user={user}
+        onUserUpdate={async () => {
+          await refetchUser();
+        }}
+      />
+
+      {/* Create Index Modal */}
+      <CreateIndexModal
+        open={createIndexModalOpen}
+        onOpenChange={setCreateIndexModalOpen}
+        onSubmit={handleCreateIndex}
+      />
+
+      {/* Member Settings Modal */}
+      {memberSettingsIndex && (
+        <MemberSettingsModal
+          open={!!memberSettingsIndex}
+          onOpenChange={(open) => !open && setMemberSettingsIndex(null)}
+          index={memberSettingsIndex}
+        />
+      )}
+
+      {/* Index Selector Modal */}
+      <IndexSelectorModal
+        open={indexModalOpen}
+        onOpenChange={setIndexModalOpen}
+        onOpenOwnerModal={setOwnerModalIndex}
+        onOpenMemberModal={setMemberSettingsIndex}
+        onCreateIndex={() => setCreateIndexModalOpen(true)}
+      />
+
+      {/* Index Owner Modal */}
+      {ownerModalIndex && (
+        <IndexOwnerModal
+          open={!!ownerModalIndex}
+          onOpenChange={(open) => !open && setOwnerModalIndex(null)}
+          index={ownerModalIndex}
+        />
+      )}
+
+      {/* Library Modal */}
+      <LibraryModal
+        open={libraryModalOpen}
+        onOpenChange={setLibraryModalOpen}
       />
     </div>
   );
