@@ -2,5 +2,15 @@
   "name": "index-monorepo",
   "private": true,
   "packageManager": "bun@1.2.20",
-  "workspaces": ["frontend", "protocol"]
+  "workspaces": ["frontend", "protocol"],
+  "scripts": {
+    "dev": "bun run dev:protocol & bun run dev:frontend",
+    "dev:frontend": "bun --filter frontend dev",
+    "dev:protocol": "bun --filter protocol dev",
+    "build": "bun run build:protocol && bun run build:frontend",
+    "build:frontend": "bun --filter frontend build",
+    "build:protocol": "bun --filter protocol build",
+    "lint": "bun --filter frontend lint && bun --filter protocol lint",
+    "test": "bun --filter protocol test"
+  }
 }
