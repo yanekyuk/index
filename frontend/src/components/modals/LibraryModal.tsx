@@ -678,8 +678,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1144px]' : 'sm:max-w-[804px]'}`}>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200 z-50" />
+        <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 z-50 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1144px]' : 'sm:max-w-[804px]'}`}>
           <div className="flex items-center justify-between mb-2 sm:mb-3 sticky top-0 bg-[#FAFAFA] z-10">
             <div>
               <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
@@ -1130,8 +1130,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           {/* Link Preview */}
           <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
             <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
+              <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[60]" />
+              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto z-[60] sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
                 <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-[#333] mb-3">{preview?.title}</Dialog.Title>
                 {!preview?.content ? (
                   <div className="text-sm text-[#666]">Loading content…</div>
@@ -1149,8 +1149,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           {/* Styled Confirm Dialog */}
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
             <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
+              <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[60]" />
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg z-[60] sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
                 <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">Confirm Delete</Dialog.Title>
                 <p className="text-sm text-[#444] mb-2">{confirm?.message}</p>
                 {relatedIntentCount > 0 ? (
@@ -1196,8 +1196,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             }
           }}>
             <Dialog.Portal>
-              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
+              <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[60]" />
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg z-[60] sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
                 <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">
                   Configure {configureIntegration?.name}
                 </Dialog.Title>

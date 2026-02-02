@@ -163,7 +163,7 @@ export default function ChatSidebar() {
     <div className="flex flex-col">
       {/* Message Requests section */}
       {messageRequests.length > 0 && (
-        <div className="border-b border-gray-200">
+        <div>
           <div className="flex items-center gap-2 px-3 py-3 bg-amber-50">
             <Inbox className="w-5 h-5 text-amber-600" />
             <h2 className="font-bold text-sm text-black font-ibm-plex-mono">
@@ -283,7 +283,7 @@ export default function ChatSidebar() {
             No conversations yet
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div>
             {channels.map((channel) => {
               const members = Object.values(channel.state.members || {}) as ChannelMember[];
               const otherMember = members.find(

@@ -12,6 +12,7 @@ import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ClientLayout from "@/components/ClientLayout";
+import { ContentContainer } from "@/components/layout";
 import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIndexIntegrations, getUserIntegrations } from "@/config/integrations";
@@ -906,7 +907,7 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case 'profile':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-5">
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Introduce yourself</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
@@ -1056,7 +1057,7 @@ export default function OnboardingPage() {
                 {isLoading ? 'Saving...' : 'Next'}
               </Button>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'summary':
@@ -1107,7 +1108,7 @@ export default function OnboardingPage() {
         };
 
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-5">
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">
                 {summaryGenerating ? "Getting to know you" : "Here's what we found"}
@@ -1261,12 +1262,12 @@ export default function OnboardingPage() {
                 {isLoading ? 'Saving...' : 'Next'}
               </Button>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'connections':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-4">
               <h1 className="text-2xl font-bold text-black mb-2 font-ibm-plex-mono">Connect your context</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
@@ -1531,12 +1532,12 @@ export default function OnboardingPage() {
               </Button>
 
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'create_index':
         return (
-          <div className="max-w-2xl mx-auto">
+          <ContentContainer>
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Create your index.</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
@@ -1627,12 +1628,12 @@ export default function OnboardingPage() {
               </Button>
 
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'invite_members':
         return (
-          <div className="max-w-3xl mx-auto" >
+          <ContentContainer>
             <div className="mb-2">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">You're all set—here's a quick snapshot.</h1>
               {summaryLoaded && displayIntents.length > 0 ? (
@@ -1771,7 +1772,7 @@ export default function OnboardingPage() {
                 Complete setup
               </Button>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'join_indexes':

@@ -99,7 +99,7 @@ export default function FeedbackWidget() {
   return (
     <div 
       ref={containerRef}
-      className={`fixed bottom-6 left-6 bg-white border border-gray-200 shadow-lg transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
+      className={`fixed bottom-6 right-6 bg-white border border-gray-200 shadow-lg transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
         isOpen ? "rounded-lg" : "rounded-md hover:bg-gray-50 hover:shadow-md"
       }`}
       style={{

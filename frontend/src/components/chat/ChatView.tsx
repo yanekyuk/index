@@ -4,14 +4,14 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Channel, MessageResponse, LocalMessage } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useDiscover } from '@/contexts/APIContext';
-import { X, ArrowLeft, Clock, Check, SkipForward, Loader2, ArrowUp } from 'lucide-react';
+import { Clock, Check, SkipForward, Loader2, ArrowUp, X, MoreHorizontal, Trash2 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { getAvatarUrl } from '@/lib/file-utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
+import { ContentContainer } from '@/components/layout';
 
 interface ChatMessage {
   id: string;
@@ -21,7 +21,6 @@ interface ChatMessage {
   status?: string;
 }
 
-// Transform MessageResponse or LocalMessage to ChatMessage
 const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => ({
   id: msg.id,
   text: msg.text,
@@ -38,8 +37,9 @@ interface ChatViewProps {
   userId: string;
   userName: string;
   userAvatar?: string;
+  userTitle?: string;
   onClose: () => void;
-  onBack?: () => void; // Optional back handler for page-based navigation
+  onBack?: () => void;
 }
 
 interface ChannelPendingState {
@@ -48,41 +48,30 @@ interface ChannelPendingState {
   awaitingAdminApproval: boolean;
 }
 
-export default function ChatView({
-  userId,
-  userName,
-  userAvatar,
-  onClose,
-  onBack,
-}: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, userTitle, onClose, onBack }: ChatViewProps) {
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
   const { success, error: showError } = useNotifications();
-  const discoverService = useDiscover();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [loading, setLoading] = useState(true);
   const [pendingState, setPendingState] = useState<ChannelPendingState>({ isPending: false, isRequester: false, awaitingAdminApproval: false });
   const [respondingAction, setRespondingAction] = useState<string | null>(null);
-  const [isNewConversation, setIsNewConversation] = useState(false); // True when user needs to send a message request
-  const [mutualIntentCount, setMutualIntentCount] = useState<number | null>(null);
+  const [isNewConversation, setIsNewConversation] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
-  const [channelRefreshKey, setChannelRefreshKey] = useState(0); // Increment to re-fetch & watch channel (e.g. after message request creates it)
+  const [channelRefreshKey, setChannelRefreshKey] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, []);
 
-  // Initialize channel
   useEffect(() => {
-    if (!isReady || !client) {
-      setChannel(null);
-      setMessages([]);
-      setLoading(false);
-      return;
-    }
+    if (!isReady || !client) { setChannel(null); setMessages([]); setLoading(false); return; }
 
     let mounted = true;
     let currentChannel: Channel | null = null;
@@ -92,117 +81,54 @@ export default function ChatView({
 
     const initChannel = async () => {
       try {
-        // First, check if users are connected
         let canMessageDirectly = false;
         try {
           const canMessageResponse = await checkCanMessage(userId);
           canMessageDirectly = canMessageResponse.canMessageDirectly;
-          
-          // If there's already a pending request, we'll load the channel
-          if (canMessageResponse.connectionStatus === 'REQUEST' && canMessageResponse.isInitiator) {
-            // User already sent a request, channel should exist
-            canMessageDirectly = true; // Allow loading the channel
-          }
-        } catch (err) {
-          console.error('Failed to check message permission:', err);
-        }
+          if (canMessageResponse.connectionStatus === 'REQUEST' && canMessageResponse.isInitiator) canMessageDirectly = true;
+        } catch (err) { console.error('Failed to check message permission:', err); }
 
-        // First, check if channel exists using queryChannels (read-only, won't create)
         const sortedIds = [client.userID, userId].sort().join('_');
         const expectedChannelId = sortedIds.length > 64 
-          ? (() => {
-              let hash = 0;
-              for (let i = 0; i < sortedIds.length; i++) {
-                const char = sortedIds.charCodeAt(i);
-                hash = ((hash << 5) - hash) + char;
-                hash = hash & hash;
-              }
-              return Math.abs(hash).toString(36).slice(0, 63);
-            })()
+          ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
           : sortedIds;
 
-        let existingChannels = await client.queryChannels(
-          { type: 'messaging', id: expectedChannelId },
-          {},
-          { limit: 1, watch: true, state: true }
-        );
+        let existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
 
-        // Retry once after short delay if we expected a channel (e.g. after sending message request)
         if (existingChannels.length === 0 && channelRefreshKey > 0 && mounted) {
           await new Promise((r) => setTimeout(r, 500));
           if (!mounted) return;
-          existingChannels = await client.queryChannels(
-            { type: 'messaging', id: expectedChannelId },
-            {},
-            { limit: 1, watch: true, state: true }
-          );
+          existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
         }
 
         if (existingChannels.length > 0) {
-          // Channel exists - watch it and load messages
           const ch = existingChannels[0];
           currentChannel = ch;
-          
           if (!mounted) return;
-          
           await ch.watch();
           setChannel(ch);
 
-          // Check pending state from channel data
           const channelData = ch.data as { pending?: boolean; requestedBy?: string; awaitingAdminApproval?: boolean };
           if (channelData?.pending) {
-            setPendingState({
-              isPending: true,
-              isRequester: channelData.requestedBy === client?.userID,
-              awaitingAdminApproval: channelData.awaitingAdminApproval || false
-            });
+            setPendingState({ isPending: true, isRequester: channelData.requestedBy === client?.userID, awaitingAdminApproval: channelData.awaitingAdminApproval || false });
           } else {
             setPendingState({ isPending: false, isRequester: false, awaitingAdminApproval: false });
           }
           
-          // Check if this is a new conversation (no messages and not connected)
-          if (!canMessageDirectly && ch.state.messages.length === 0 && !channelData?.pending) {
-            setIsNewConversation(true);
-          }
-          
+          if (!canMessageDirectly && ch.state.messages.length === 0 && !channelData?.pending) setIsNewConversation(true);
           setMessages(ch.state.messages.map(transformMessage));
           setLoading(false);
 
-          // Sync messages from channel state
-          syncMessagesHandler = () => {
-            if (mounted && ch.state.messages) {
-              setMessages(ch.state.messages.map(transformMessage));
-              scrollToBottom();
-            }
-          };
-
-          // Listen for new messages
-          handleMessage = (event: ChannelEvent) => {
-            if (mounted && event.channel?.id === ch.id) {
-              syncMessagesHandler?.();
-            }
-          };
-
-          // Listen for message updates (including sent messages)
-          handleMessageUpdated = (event: ChannelEvent) => {
-            if (mounted && event.channel?.id === ch.id) {
-              syncMessagesHandler?.();
-            }
-          };
+          syncMessagesHandler = () => { if (mounted && ch.state.messages) { setMessages(ch.state.messages.map(transformMessage)); scrollToBottom(); } };
+          handleMessage = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
+          handleMessageUpdated = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
 
           ch.on('message.new', handleMessage);
           ch.on('message.updated', handleMessageUpdated);
-          
-          // Also listen to channel state changes
           ch.on('channel.updated', syncMessagesHandler);
         } else {
-          // Channel doesn't exist - this is a new conversation
-          // Create local channel object but DON'T call watch() or query()
           const newCh = await getOrCreateChannel(userId, userName, userAvatar);
-          if (!newCh) {
-            setLoading(false);
-            return;
-          }
+          if (!newCh) { setLoading(false); return; }
           currentChannel = newCh;
           setIsNewConversation(true);
           setChannel(newCh);
@@ -210,12 +136,7 @@ export default function ChatView({
           setLoading(false);
           return;
         }
-      } catch (error) {
-        console.error('Error initializing channel:', error);
-        if (mounted) {
-          setLoading(false);
-        }
-      }
+      } catch (error) { console.error('Error initializing channel:', error); if (mounted) setLoading(false); }
     };
 
     initChannel();
@@ -223,334 +144,197 @@ export default function ChatView({
     return () => {
       mounted = false;
       if (currentChannel) {
-        if (handleMessage) {
-          currentChannel.off('message.new', handleMessage);
-        }
-        if (handleMessageUpdated) {
-          currentChannel.off('message.updated', handleMessageUpdated);
-        }
-        if (syncMessagesHandler) {
-          currentChannel.off('channel.updated', syncMessagesHandler);
-        }
+        if (handleMessage) currentChannel.off('message.new', handleMessage);
+        if (handleMessageUpdated) currentChannel.off('message.updated', handleMessageUpdated);
+        if (syncMessagesHandler) currentChannel.off('channel.updated', syncMessagesHandler);
       }
     };
   }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, checkCanMessage, channelRefreshKey]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sendingMessageId) return;
-
     const text = messageText.trim();
     setMessageText('');
     
-    // Optimistic update - add message immediately
     const tempId = `temp-${Date.now()}`;
-    const optimisticMessage: ChatMessage = {
-      id: tempId,
-      text,
-      user: client?.userID ? { id: client.userID, name: client?.user?.name } : null,
-      created_at: new Date(),
-      status: 'sending',
-    };
+    const optimisticMessage: ChatMessage = { id: tempId, text, user: client?.userID ? { id: client.userID, name: client?.user?.name } : null, created_at: new Date(), status: 'sending' };
     
     setSendingMessageId(tempId);
     setMessages((prev) => [...prev, optimisticMessage]);
     scrollToBottom();
 
     try {
-      // If this is a new conversation with non-connected user, use sendMessageRequest
       if (isNewConversation) {
         const response = await sendMessageRequest(userId, text, userName, userAvatar);
-        
-        // Update state after successful request
         setIsNewConversation(false);
-        setPendingState({
-          isPending: true,
-          isRequester: true,
-          awaitingAdminApproval: response.awaitingAdminApproval || false
-        });
-        
-        // Keep the optimistic message but mark it as sent
-        setMessages((prev) => 
-          prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m)
-        );
-        
+        setPendingState({ isPending: true, isRequester: true, awaitingAdminApproval: response.awaitingAdminApproval || false });
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m));
         success('Message request sent', `${userName} will see this in their message requests.`);
         setSendingMessageId(null);
-        // Channel was created on backend - re-fetch so we watch it and receive real-time updates
         setChannelRefreshKey((k) => k + 1);
         scrollToBottom();
         inputRef.current?.focus();
         return;
       }
 
-      // Regular message send for connected users
       if (!channel) return;
-      
-      const response = await channel.sendMessage({
-        text,
-      });
-      
-      // Replace optimistic message with real one
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== tempId);
-        return [...filtered, transformMessage(response.message)];
-      });
+      const response = await channel.sendMessage({ text });
+      setMessages((prev) => { const filtered = prev.filter((m) => m.id !== tempId); return [...filtered, transformMessage(response.message)]; });
       setSendingMessageId(null);
       scrollToBottom();
       inputRef.current?.focus();
     } catch (error) {
       console.error('Error sending message:', error);
-      // Remove failed optimistic message
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setSendingMessageId(null);
-      setMessageText(text); // Restore message text
+      setMessageText(text);
       showError('Failed to send', error instanceof Error ? error.message : 'Please try again.');
     }
   }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, sendMessageRequest, userId, userName, userAvatar, success, showError]);
 
-  const handleKeyPress = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend]
-  );
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }, [handleSend]);
 
   const avatarUrl = getAvatarUrl({ avatar: userAvatar || null, id: userId, name: userName });
 
-  // Fetch mutual intent count
-  useEffect(() => {
-    const fetchMutualIntents = async () => {
-      try {
-        const result = await discoverService.discoverUsers({
-          userIds: [userId],
-          limit: 1
-        });
-        const userResult = result.results.find(r => r.user.id === userId);
-        if (userResult) {
-          setMutualIntentCount(userResult.intents.length);
-        } else {
-          setMutualIntentCount(0);
-        }
-      } catch (error) {
-        console.error('Error fetching mutual intents:', error);
-        setMutualIntentCount(null);
-      }
-    };
-    
-    if (isReady && userId) {
-      fetchMutualIntents();
-    }
-  }, [isReady, userId, discoverService]);
+  const handleBack = () => { if (onBack) onBack(); else clearActiveChat(); };
 
-  const handleBack = () => {
-    if (onBack) {
-      onBack();
-    } else {
-      clearActiveChat();
-    }
-  };
-
-  // Handle responding to message request from within chat view
   const handleRespondToRequest = async (action: 'ACCEPT' | 'DECLINE' | 'SKIP') => {
     if (!channel?.id || respondingAction) return;
-    
     setRespondingAction(action);
     try {
       await respondToMessageRequest(channel.id, action);
-      
-      // Update local pending state
-      if (action === 'ACCEPT') {
-        setPendingState({ isPending: false, isRequester: false, awaitingAdminApproval: false });
-        success('Request accepted', `You can now chat with ${userName}`);
-      } else {
-        // For decline/skip, close the chat
-        success(action === 'DECLINE' ? 'Request declined' : 'Request skipped', 
-          action === 'DECLINE' ? 'The message request has been declined.' : 'You can revisit this later.');
-        onClose();
-      }
-      
-      // Refresh the message requests list
+      if (action === 'ACCEPT') { setPendingState({ isPending: false, isRequester: false, awaitingAdminApproval: false }); success('Request accepted', `You can now chat with ${userName}`); }
+      else { success(action === 'DECLINE' ? 'Request declined' : 'Request skipped', action === 'DECLINE' ? 'The message request has been declined.' : 'You can revisit this later.'); onClose(); }
       await refreshMessageRequests();
+    } catch (err) { console.error('Failed to respond to request:', err); showError('Failed', err instanceof Error ? err.message : 'Please try again later.'); }
+    finally { setRespondingAction(null); }
+  };
+
+  const formatTime = (date: Date | string | undefined) => {
+    if (!date) return '';
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
+
+  const handleDeleteChat = async () => {
+    if (!channel || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await channel.delete();
+      success('Chat deleted', `Conversation with ${userName} has been deleted.`);
+      onClose();
     } catch (err) {
-      console.error('Failed to respond to request:', err);
-      showError('Failed', err instanceof Error ? err.message : 'Please try again later.');
+      console.error('Failed to delete chat:', err);
+      showError('Failed to delete', err instanceof Error ? err.message : 'Please try again.');
     } finally {
-      setRespondingAction(null);
+      setIsDeleting(false);
+      setShowMenu(false);
     }
   };
 
-  return (
-    <div className="pb-0 flex flex-col flex-1 min-h-0 w-full">
-      <div className="space-y-4 rounded-lg mb-4 flex flex-col flex-1 min-h-0">
-        {/* Header card - human chat: neutral layout, authentic avatar and name */}
-        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
-          <div className="relative flex items-center gap-3 px-3 py-2 min-h-[54px]">
-            <button
-              onClick={handleBack}
-              className="p-1.5 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
-              aria-label="Back"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <Image
-              src={avatarUrl}
-              alt={userName}
-              width={36}
-              height={36}
-              className="rounded-full flex-shrink-0"
-            />
-            <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-gray-900 font-ibm-plex-mono truncate">{userName}</h2>
-              <div className="text-sm text-gray-500 font-ibm-plex-mono truncate">
-                {mutualIntentCount !== null ? (
-                  mutualIntentCount > 0 ? (
-                    <span>{mutualIntentCount} mutual intent{mutualIntentCount !== 1 ? 's' : ''}</span>
-                  ) : (
-                    <span>Potential connection</span>
-                  )
-                ) : (
-                  <span>Direct message</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
 
-      {/* Pending state banners */}
-      {pendingState.isPending && (
-        <div className={`px-4 py-3 border-b ${
-          pendingState.awaitingAdminApproval 
-            ? 'bg-amber-50 border-amber-200' 
-            : pendingState.isRequester 
-              ? 'bg-blue-50 border-blue-200'
-              : 'bg-green-50 border-green-200'
-        }`}>
-          {pendingState.awaitingAdminApproval ? (
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600" />
-              <span className="text-sm text-amber-800 font-ibm-plex-mono">
-                Awaiting admin approval before {userName} can see your message
-              </span>
+  return (
+    <>
+      {/* Sticky header - full width */}
+      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="text-gray-600 hover:text-black transition-colors text-xl mr-2">←</button>
+          <Link href={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <div className="relative">
+              <Image src={avatarUrl} alt={userName} width={44} height={44} className="rounded-full" />
             </div>
-          ) : pendingState.isRequester ? (
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-blue-600" />
-              <span className="text-sm text-blue-800 font-ibm-plex-mono">
-                Message request pending. {userName} hasn't responded yet.
-              </span>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-green-800 font-ibm-plex-mono">
-                  {userName} wants to connect with you
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleRespondToRequest('ACCEPT')}
-                  disabled={!!respondingAction}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:opacity-50"
-                >
-                  {respondingAction === 'ACCEPT' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleRespondToRequest('SKIP')}
-                  disabled={!!respondingAction}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded transition-colors disabled:opacity-50"
-                >
-                  {respondingAction === 'SKIP' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <SkipForward className="w-4 h-4" />
-                  )}
-                  Skip
-                </button>
-                <button
-                  onClick={() => handleRespondToRequest('DECLINE')}
-                  disabled={!!respondingAction}
-                  className="flex items-center gap-1 px-3 py-1.5 text-red-600 hover:bg-red-50 text-sm rounded transition-colors disabled:opacity-50"
-                >
-                  {respondingAction === 'DECLINE' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <X className="w-4 h-4" />
-                  )}
-                  Decline
-                </button>
-              </div>
+            <h2 className="font-ibm-plex-mono font-bold text-lg text-black">{userName}</h2>
+          </Link>
+        </div>
+        <div className="relative" ref={menuRef}>
+          <button 
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <MoreHorizontal className="w-5 h-5 text-gray-500" />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px] z-20">
+              <button
+                onClick={handleDeleteChat}
+                disabled={isDeleting || !channel}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete chat
+              </button>
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Messages area - matches AI chat layout */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="flex-1 p-4 overflow-y-auto min-h-0 flex flex-col">
+      {/* Scrollable content - centered */}
+      <div className="px-6 lg:px-8 py-6 pb-32">
+        <ContentContainer>
+          {/* Pending state banners */}
+          {pendingState.isPending && (
+            <div className={`px-4 py-3 rounded-lg mb-4 ${pendingState.awaitingAdminApproval ? 'bg-amber-50 border border-amber-200' : pendingState.isRequester ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
+              {pendingState.awaitingAdminApproval ? (
+                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-amber-600" /><span className="text-sm text-amber-800 font-ibm-plex-mono">Awaiting admin approval before {userName} can see your message</span></div>
+              ) : pendingState.isRequester ? (
+                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600" /><span className="text-sm text-blue-800 font-ibm-plex-mono">Message request pending. {userName} hasn't responded yet.</span></div>
+              ) : (
+                <div className="space-y-2">
+                  <span className="text-sm text-green-800 font-ibm-plex-mono">{userName} wants to connect with you</span>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleRespondToRequest('ACCEPT')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:opacity-50">
+                      {respondingAction === 'ACCEPT' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Accept
+                    </button>
+                    <button onClick={() => handleRespondToRequest('SKIP')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded transition-colors disabled:opacity-50">
+                      {respondingAction === 'SKIP' ? <Loader2 className="w-4 h-4 animate-spin" /> : <SkipForward className="w-4 h-4" />} Skip
+                    </button>
+                    <button onClick={() => handleRespondToRequest('DECLINE')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 text-red-600 hover:bg-red-50 text-sm rounded transition-colors disabled:opacity-50">
+                      {respondingAction === 'DECLINE' ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />} Decline
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Messages */}
           {loading ? (
-            <div className="text-center text-gray-500 text-sm py-8">
-              Loading...
-            </div>
-          ) : messages.length === 0 && isNewConversation ? (
-            <div className="flex flex-col items-center justify-center px-6 pb-8 flex-1">
-              <p className="text-gray-500 text-sm mb-4">Start a conversation with {userName}</p>
-              <button
-                type="button"
-                onClick={() => inputRef.current?.focus()}
-                className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:border-black transition-colors"
-              >
-                Say hi
-              </button>
-            </div>
+            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 pb-8 flex-1">
-              <p className="text-gray-500 text-sm mb-4">No messages yet. Start the conversation!</p>
-              <button
-                type="button"
-                onClick={() => inputRef.current?.focus()}
-                className="border border-gray-300 py-2 mb-2 text-gray-900 font-semibold font-ibm-plex-mono text-lg px-8 mt-4 hover:border-black transition-colors"
-              >
-                Type a message
-              </button>
-            </div>
+            <div className="flex flex-col items-center justify-center py-20 text-gray-500"><p className="font-ibm-plex-mono text-sm">Start a conversation with {userName}</p></div>
           ) : (
             <div className="space-y-4">
-              {messages.map((message) => {
+              {messages.map((message, index) => {
                 const isOwn = message.user?.id === client?.userID;
-                const messageContent = message.text || '';
+                const showTimestamp = index === 0 || (messages[index - 1] && new Date(message.created_at || '').getTime() - new Date(messages[index - 1].created_at || '').getTime() > 300000);
+
                 return (
-                  <div
-                    key={message.id}
-                    className={cn('flex', isOwn ? 'justify-end' : 'justify-start')}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[80%] rounded-sm px-3 py-2',
-                        isOwn ? 'bg-black text-white' : 'bg-gray-100 text-gray-900'
-                      )}
-                    >
-                      <article
-                        className={cn(
-                          'chat-markdown max-w-none',
-                          isOwn && 'chat-markdown-invert'
-                        )}
-                      >
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {messageContent}
-                        </ReactMarkdown>
-                      </article>
+                  <div key={message.id}>
+                    {showTimestamp && message.created_at && (
+                      <div className="text-center text-xs text-gray-400 font-ibm-plex-mono uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
+                    )}
+                    <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
+                      {!isOwn && <Image src={avatarUrl} alt={userName} width={32} height={32} className="rounded-full flex-shrink-0" />}
+                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
+                        <article className={cn('font-ibm-plex-mono text-sm', isOwn && 'text-white')}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
+                        </article>
+                      </div>
+                      {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs font-ibm-plex-mono font-bold text-gray-600">{client?.user?.name?.charAt(0) || 'U'}</div>}
                     </div>
                   </div>
                 );
@@ -558,66 +342,44 @@ export default function ChatView({
               <div ref={messagesEndRef} />
             </div>
           )}
-        </div>
+        </ContentContainer>
       </div>
 
-      {/* Notice for new conversations */}
-      {isNewConversation && (
-        <div className="w-full bg-blue-50 border border-blue-200 rounded-sm px-4 py-3 flex-shrink-0">
-          <p className="text-sm text-blue-800 font-ibm-plex-mono">
-            Write your first message. {userName} will see this in their message requests and can choose to accept or decline.
-          </p>
-        </div>
-      )}
-
-      {/* Input form card - matches AI chat */}
-      {pendingState.isPending && pendingState.isRequester ? (
-        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
-          <div className="px-4 py-3 text-center text-gray-500 text-sm font-ibm-plex-mono">
-            Waiting for {userName} to accept your message request
-          </div>
-        </div>
-      ) : pendingState.isPending && !pendingState.isRequester ? (
-        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
-          <div className="px-4 py-3 text-center text-gray-500 text-sm font-ibm-plex-mono">
-            Accept the request to continue the conversation
-          </div>
-        </div>
-      ) : (
-        <div className="w-full bg-white border border-gray-800 rounded-sm shadow-lg flex flex-col flex-shrink-0">
-          <div className="relative flex items-center px-3 py-2 min-h-[54px]">
-            <Input
-              ref={inputRef}
-              type="text"
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder={isNewConversation ? `Message ${userName}...` : `Reply to ${userName}...`}
-              disabled={sendingMessageId !== null}
-              className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
-            />
-            {sendingMessageId ? (
-              <button
-                type="button"
-                onClick={() => setSendingMessageId(null)}
-                className="ml-2 h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer flex-shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {/* Fixed input at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 lg:left-64 z-20">
+        <div className="px-6 lg:px-8 py-4">
+          <ContentContainer>
+            {pendingState.isPending && pendingState.isRequester ? (
+              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Waiting for {userName} to accept your message request</div>
+            ) : pendingState.isPending && !pendingState.isRequester ? (
+              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Accept the request to continue the conversation</div>
             ) : (
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!messageText.trim()}
-                className="ml-2 h-9 w-9 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
+              <>
+                <div className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={handleKeyPress}
+                    placeholder={`Type a message to ${userName}...`}
+                    disabled={sendingMessageId !== null}
+                    autoFocus
+                    className="flex-1 bg-transparent border-none outline-none font-ibm-plex-mono text-gray-900 placeholder-gray-500 h-6"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!messageText.trim() || sendingMessageId !== null}
+                    className="shrink-0 h-8 w-8 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
             )}
-          </div>
+          </ContentContainer>
         </div>
-      )}
       </div>
-    </div>
+    </>
   );
 }

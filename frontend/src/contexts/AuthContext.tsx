@@ -15,6 +15,7 @@ type AuthContextType = {
   userLoading: boolean;
   error: string | null;
   refetchUser: () => Promise<void>;
+  updateUser: (user: User) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +35,11 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const api = useAuthenticatedAPI();
   const authService = useAuthService();
+
+  // Update user data directly (for optimistic updates after profile changes)
+  const updateUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
+  }, []);
 
   // Memoized fetch user function
   const fetchUser = useCallback(async () => {
@@ -107,7 +113,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     // DISABLED: Onboarding page check
     // const isOnboardingPage = pathname === '/onboarding';
     const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog');
-    const isProtectedPage = pathname.startsWith('/inbox') || pathname.startsWith('/i/');
+    const isProtectedPage = pathname.startsWith('/i/');
     // DISABLED: Removed isOnboardingPage from isProtectedPage
 
     // Determine if we need to redirect
@@ -136,6 +142,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         userLoading,
         error,
         refetchUser: fetchUser,
+        updateUser,
       }}
     >
       {isLoading ? (
