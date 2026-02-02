@@ -50,6 +50,40 @@ const StreamChatContext = createContext<StreamChatContextType | undefined>(undef
 
 const STREAM_API_KEY = process.env.NEXT_PUBLIC_STREAM_API_KEY || '';
 
+// Simulated message requests for development/testing
+const SIMULATED_MESSAGE_REQUESTS: MessageRequest[] = [
+  {
+    channelId: 'sim_channel_1',
+    requester: {
+      id: 'sim_user_1',
+      name: 'Alex Chen',
+      avatar: undefined,
+    },
+    firstMessage: 'Hey! I saw your work on the AI project and would love to connect.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 mins ago
+  },
+  {
+    channelId: 'sim_channel_2',
+    requester: {
+      id: 'sim_user_2',
+      name: 'Jordan Smith',
+      avatar: undefined,
+    },
+    firstMessage: 'Hi there! I noticed we have mutual connections. Would be great to chat about potential collaboration.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+  },
+  {
+    channelId: 'sim_channel_3',
+    requester: {
+      id: 'sim_user_3',
+      name: 'Sam Wilson',
+      avatar: undefined,
+    },
+    firstMessage: 'Interested in discussing your recent post about distributed systems.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
+  },
+];
+
 export function StreamChatProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuthContext();
   const api = useAuthenticatedAPI();
@@ -210,9 +244,13 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     setMessageRequestsLoading(true);
     try {
       const response = await api.get<{ requests: MessageRequest[] }>('/chat/requests');
-      setMessageRequests(response.requests);
+      // Merge real requests with simulated ones for testing
+      const realRequests = response.requests || [];
+      setMessageRequests([...SIMULATED_MESSAGE_REQUESTS, ...realRequests]);
     } catch (error) {
       console.error('Failed to fetch message requests:', error);
+      // Still show simulated requests even if API fails
+      setMessageRequests(SIMULATED_MESSAGE_REQUESTS);
     } finally {
       setMessageRequestsLoading(false);
     }
@@ -223,6 +261,16 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     channelId: string, 
     action: 'ACCEPT' | 'DECLINE' | 'SKIP'
   ): Promise<void> => {
+    // Check if this is a simulated request
+    const isSimulated = channelId.startsWith('sim_channel_');
+    
+    if (isSimulated) {
+      // Handle simulated requests locally
+      setMessageRequests(prev => prev.filter(r => r.channelId !== channelId));
+      return;
+    }
+    
+    // Handle real requests via API
     await api.post('/chat/request/respond', { channelId, action });
     // Refresh message requests after responding
     await refreshMessageRequests();

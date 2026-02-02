@@ -179,7 +179,10 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         return;
       }
 
-      if (!channel) return;
+      if (!channel) {
+        inputRef.current?.focus();
+        return;
+      }
       const response = await channel.sendMessage({ text });
       setMessages((prev) => { const filtered = prev.filter((m) => m.id !== tempId); return [...filtered, transformMessage(response.message)]; });
       setSendingMessageId(null);
@@ -191,8 +194,22 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
       setSendingMessageId(null);
       setMessageText(text);
       showError('Failed to send', error instanceof Error ? error.message : 'Please try again.');
+      inputRef.current?.focus();
     }
   }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, sendMessageRequest, userId, userName, userAvatar, success, showError]);
+
+  // Auto-focus input on keydown anywhere
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.length === 1 || e.key === 'Backspace') {
+        inputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }, [handleSend]);
 
@@ -345,8 +362,8 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         </ContentContainer>
       </div>
 
-      {/* Fixed input at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 lg:left-64 z-20">
+      {/* Fixed input at bottom - left offset accounts for both sidebars (256px + 256px) */}
+      <div className="fixed bottom-0 left-0 right-0 lg:left-[32rem] z-20">
         <div className="px-6 lg:px-8 py-4">
           <ContentContainer>
             {pendingState.isPending && pendingState.isRequester ? (

@@ -191,6 +191,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         console.error('[AI Chat] Upload failed:', err);
         showError(err instanceof Error ? err.message : 'Failed to upload file(s)');
         setIsUploadingFiles(false);
+        inputRef.current?.focus();
         return;
       }
       setIsUploadingFiles(false);
@@ -201,7 +202,21 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       fileIds.length ? fileIds : undefined,
       attachmentNames.length ? attachmentNames : undefined
     );
+    inputRef.current?.focus();
   };
+
+  // Auto-focus input on keydown/paste anywhere
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key.length === 1 || e.key === 'Backspace') {
+        inputRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const displayTitle =
     sessionTitle ||

@@ -4,14 +4,13 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessageCircle, Settings, MoreHorizontal, Trash2, Loader2, ChevronDown, User as UserIcon, LogIn, Library } from 'lucide-react';
+import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { usePrivy } from '@privy-io/react-auth';
 import { getAvatarUrl } from '@/lib/file-utils';
-import { Channel } from 'stream-chat';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -31,14 +30,6 @@ interface ChatSession {
   updatedAt: string;
 }
 
-interface RecentChat {
-  id: string;
-  recipientId: string;
-  name: string;
-  avatar: string | null;
-  lastMessage: string;
-}
-
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,8 +44,6 @@ export default function Sidebar() {
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
-  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
-  const [loadingChats, setLoadingChats] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -63,19 +52,13 @@ export default function Sidebar() {
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerModalIndex, setOwnerModalIndex] = useState<IndexType | null>(null);
-  const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
-  const [deletingChat, setDeletingChat] = useState<string | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [indexModalOpen, setIndexModalOpen] = useState(false);
-  const chatMenuRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const isMessagesView = pathname?.includes('/chat') && pathname?.startsWith('/u/');
   const isHomeView = !isMessagesView;
-  
-  // Extract current chat user ID from pathname (e.g., /u/abc123/chat -> abc123)
-  const currentChatUserId = pathname?.match(/^\/u\/([^/]+)\/chat/)?.[1] || null;
-  
+
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
@@ -129,8 +112,8 @@ export default function Sidebar() {
           router.push(`/u/${recipientId}/chat`);
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch most recent chat:', error);
+    } catch (err) {
+      console.error('Failed to fetch most recent chat:', err);
     } finally {
       setNavigatingToChat(false);
     }
@@ -138,8 +121,6 @@ export default function Sidebar() {
 
   // Fetch AI chat sessions
   useEffect(() => {
-    if (!isHomeView) return;
-    
     const fetchSessions = async () => {
       try {
         setLoadingSessions(true);
@@ -160,49 +141,7 @@ export default function Sidebar() {
     };
 
     fetchSessions();
-  }, [isHomeView, sessionsVersion, getAccessToken]);
-
-  // Fetch user-to-user chats when on messages view
-  useEffect(() => {
-    if (!isMessagesView || !isReady || !client) return;
-    
-    const fetchChats = async () => {
-      try {
-        setLoadingChats(true);
-        const filter = {
-          type: 'messaging',
-          members: { $in: [client.userID || ''] },
-        };
-        const sort = [{ last_message_at: -1 as const }];
-        const channels = await client.queryChannels(filter, sort, {
-          limit: 5,
-          watch: false,
-          state: true,
-        });
-
-        const chats: RecentChat[] = channels.map((channel: Channel) => {
-          const members = Object.values(channel.state.members || {});
-          const otherMember = members.find(m => m.user_id !== client.userID);
-          const otherUser = otherMember?.user;
-          return {
-            id: channel.id || '',
-            recipientId: otherUser?.id || '',
-            name: otherUser?.name || 'Unknown',
-            avatar: otherUser?.image || null,
-            lastMessage: channel.state.messages?.[channel.state.messages.length - 1]?.text || '',
-          };
-        }).filter((chat: RecentChat) => chat.recipientId);
-
-        setRecentChats(chats);
-      } catch (error) {
-        console.error('Failed to fetch chats:', error);
-      } finally {
-        setLoadingChats(false);
-      }
-    };
-
-    fetchChats();
-  }, [isMessagesView, isReady, client]);
+  }, [sessionsVersion, getAccessToken]);
 
   // Track unread message count
   useEffect(() => {
@@ -244,33 +183,15 @@ export default function Sidebar() {
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (chatMenuRef.current && !chatMenuRef.current.contains(event.target as Node)) {
-        setChatMenuOpen(null);
-      }
       if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
         setUserDropdownOpen(false);
       }
     };
-    if (chatMenuOpen || userDropdownOpen) {
+    if (userDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [chatMenuOpen, userDropdownOpen]);
-
-  const handleDeleteChat = async (channelId: string, chatName: string) => {
-    if (!client || deletingChat) return;
-    setDeletingChat(channelId);
-    try {
-      const channel = client.channel('messaging', channelId);
-      await channel.delete();
-      setRecentChats(prev => prev.filter(c => c.id !== channelId));
-      setChatMenuOpen(null);
-    } catch (error) {
-      console.error('Failed to delete chat:', error);
-    } finally {
-      setDeletingChat(null);
-    }
-  };
+  }, [userDropdownOpen]);
 
   return (
     <div className="flex flex-col h-full font-ibm-plex-mono overflow-hidden">
@@ -320,111 +241,36 @@ export default function Sidebar() {
         </button>
       </nav>
 
-      {/* Recent Section - fixed height, no scroll */}
+      {/* Recent Section - AI chat sessions */}
       <div className="flex-shrink-0 mt-8 px-4">
-        {isHomeView && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Recent
-              </h3>
-            </div>
-            {loadingSessions ? (
-              <div className="text-sm text-gray-400">Loading...</div>
-            ) : chatSessions.length === 0 ? (
-              <div className="text-sm text-gray-400">No conversations yet</div>
-            ) : (
-              <div className="space-y-1">
-                {chatSessions.slice(0, 4).map((session) => {
-                  const isSelected = currentSessionId === session.id;
-                  return (
-                    <button
-                      key={session.id}
-                      onClick={() => router.push(`/d/${session.id}`)}
-                      className={`w-full text-left py-2 px-2 -mx-2 rounded-md text-sm transition-colors truncate ${
-                        isSelected
-                          ? 'bg-gray-50 text-black font-medium'
-                          : 'text-gray-700 hover:text-black hover:bg-gray-50'
-                      }`}
-                    >
-                      {session.title || 'Untitled conversation'}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-
-        {isMessagesView && (
-          <>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-              Recent
-            </h3>
-            {loadingChats ? (
-              <div className="text-sm text-gray-400">Loading...</div>
-            ) : recentChats.length === 0 ? (
-              <div className="text-sm text-gray-400">No messages yet</div>
-            ) : (
-              <div className="space-y-1">
-                {recentChats.slice(0, 4).map((chat) => {
-                  const isSelected = currentChatUserId === chat.recipientId;
-                  return (
-                  <div 
-                    key={chat.id} 
-                    className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors ${
-                      isSelected 
-                        ? 'bg-gray-50' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <button
-                      onClick={() => router.push(`/u/${chat.recipientId}/chat`)}
-                      className={`flex-1 flex items-center gap-3 text-sm text-left ${
-                        isSelected 
-                          ? 'text-black font-medium' 
-                          : 'text-gray-700 hover:text-black'
-                      }`}
-                    >
-                      <Image
-                        src={getAvatarUrl({ avatar: chat.avatar, id: chat.recipientId, name: chat.name })}
-                        alt={chat.name}
-                        width={28}
-                        height={28}
-                        className="rounded-full flex-shrink-0"
-                      />
-                      <span className="truncate">{chat.name}</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setChatMenuOpen(chatMenuOpen === chat.id ? null : chat.id);
-                      }}
-                      className="p-1 opacity-0 group-hover:opacity-100 hover:bg-gray-100 rounded transition-all flex-shrink-0"
-                    >
-                      <MoreHorizontal className="w-4 h-4 text-gray-400" />
-                    </button>
-                    {chatMenuOpen === chat.id && (
-                      <div 
-                        ref={chatMenuRef}
-                        className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[140px] z-30"
-                      >
-                        <button
-                          onClick={() => handleDeleteChat(chat.id, chat.name)}
-                          disabled={deletingChat === chat.id}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                        >
-                          {deletingChat === chat.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            History
+          </h3>
+        </div>
+        {loadingSessions ? (
+          <div className="text-sm text-gray-400">Loading...</div>
+        ) : chatSessions.length === 0 ? (
+          <div className="text-sm text-gray-400">No conversations yet</div>
+        ) : (
+          <div className="space-y-1">
+            {chatSessions.slice(0, 4).map((session) => {
+              const isSelected = currentSessionId === session.id;
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => router.push(`/d/${session.id}`)}
+                  className={`w-full text-left py-2 px-2 -mx-2 rounded-md text-sm transition-colors truncate ${
+                    isSelected
+                      ? 'bg-gray-50 text-black font-medium'
+                      : 'text-gray-700 hover:text-black hover:bg-gray-50'
+                  }`}
+                >
+                  {session.title || 'Untitled conversation'}
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
 

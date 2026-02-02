@@ -4,6 +4,7 @@ import { PropsWithChildren, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
+import ChatSidebar from "@/components/ChatSidebar";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
 import { StreamChatProvider } from "@/contexts/StreamChatContext";
@@ -38,6 +39,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname === '/blog' || 
     pathname?.startsWith('/blog/'),
   [pathname, isAuthenticated]);
+
+  const isMessagesView = useMemo(() => 
+    pathname?.includes('/chat') && pathname?.startsWith('/u/'),
+  [pathname]);
 
   return (
     <IndexesProvider>
@@ -74,6 +79,15 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                 >
                   <Sidebar />
                 </aside>
+
+                {/* Secondary sidebar for chat - only on messages view */}
+                {isMessagesView && (
+                  <aside 
+                    className="hidden lg:block w-64 bg-white border-r border-gray-200 flex-shrink-0"
+                  >
+                    <ChatSidebar />
+                  </aside>
+                )}
 
                 {/* Mobile overlay */}
                 {mobileSidebarOpen && (
