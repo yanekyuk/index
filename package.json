@@ -1,0 +1,6 @@
+{
+  "name": "index-monorepo",
+  "private": true,
+  "packageManager": "bun@1.2.20",
+  "workspaces": ["frontend", "protocol"]
+}
