@@ -163,6 +163,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const [discoveryLoading, setDiscoveryLoading] = useState(true);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
+  const navigatingToHomeRef = useRef(false);
   const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
 
   const connectionsService = useConnections();
@@ -205,6 +206,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     if (sessionIdFromUrl) {
       loadSession(sessionIdFromUrl).finally(() => setSessionLoaded(true));
     } else {
+      navigatingToHomeRef.current = true;
       clearChat();
       setSessionLoaded(true);
     }
@@ -218,6 +220,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // Update URL when session changes: push so back from /d/id returns to /
   useEffect(() => {
+    if (navigatingToHomeRef.current) {
+      navigatingToHomeRef.current = false;
+      return;
+    }
     if (sessionId && !sessionIdFromUrl) {
       router.push(`/d/${sessionId}`);
     }
@@ -806,7 +812,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
         <button
           type="button"
-          onClick={() => router.push('/')}
+          onClick={() => {
+            clearChat();
+            router.push('/');
+          }}
           className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"
           aria-label="Back to home"
         >
