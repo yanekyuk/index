@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, Sparkles, Pencil, Paperclip, X } from 'lucide-react';
+import { Send, Loader2, Sparkles, Pencil, Paperclip, X, Globe, Zap, Type, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAIChat } from '@/contexts/AIChatContext';
@@ -19,6 +19,9 @@ import { StakesByUserResponse } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useIndexFilter } from '@/contexts/IndexFilterContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
+import { useSuggestions } from '@/hooks/useSuggestions';
 
 interface PendingFile {
   id: string;
@@ -28,6 +31,113 @@ interface PendingFile {
 interface ChatContentProps {
   sessionIdParam?: string | null;
 }
+
+// Mock data types
+interface MockOpportunity {
+  id: string;
+  user: { id: string; name: string; avatar: string | null };
+  sharedIntents: number;
+  backingAgents: number;
+  synthesis: string;
+  friendNote?: { name: string; text: string };
+  expired: boolean;
+}
+
+interface MockBridgeMatch {
+  id: string;
+  userA: { id: string; name: string; role: string; avatar: string | null };
+  userB: { id: string; name: string; role: string; avatar: string | null };
+  reason: string;
+  expired: boolean;
+}
+
+interface MockQuestionMatch {
+  id: string;
+  question: string;
+  user: { id: string; name: string; avatar: string | null };
+  sharedIntents: number;
+  backingAgents: number;
+  synthesis: string;
+  expired: boolean;
+}
+
+// Mock data for home sections
+const mockOpportunities: MockOpportunity[] = [
+  {
+    id: '1',
+    user: { id: 'u1', name: 'Mary', avatar: null },
+    sharedIntents: 3,
+    backingAgents: 3,
+    synthesis: "You're stuck on how to frame privacy guarantees for your inference layer. Mary just shipped a TEE-based approach last month and is now questioning whether the tradeoffs were right. Her uncertainty is fresh, and you have the use case that would stress-test her assumptions before she commits further.",
+    friendNote: { name: 'Vivek', text: 'Mary would be a good person to talk to about agents' },
+    expired: false
+  },
+  {
+    id: '2',
+    user: { id: 'u2', name: 'James', avatar: null },
+    sharedIntents: 2,
+    backingAgents: 2,
+    synthesis: "You need distribution for your dev tool but have no GTM motion. James is three weeks from launching a developer community and hasn't locked in the tooling partners yet. If you wait, he'll commit to alternatives and the window closes.",
+    expired: false
+  },
+  {
+    id: '3',
+    user: { id: 'u3', name: 'Elena', avatar: null },
+    sharedIntents: 1,
+    backingAgents: 1,
+    synthesis: 'No clear opportunity at this time.',
+    expired: true
+  }
+];
+
+const mockPerspectives: MockOpportunity[] = [
+  {
+    id: '1',
+    user: { id: 'u4', name: 'David', avatar: null },
+    sharedIntents: 3,
+    backingAgents: 3,
+    synthesis: "David is trying to decide whether to build or buy auth infrastructure before his Series A closes next month. You've been through this exact decision twice—once wrong, once right. He doesn't have time to learn from his own mistakes here.",
+    friendNote: { name: 'Vivek', text: 'David is genuinely uncertain and would value an outside perspective' },
+    expired: false
+  },
+  {
+    id: '2',
+    user: { id: 'u5', name: 'Priya', avatar: null },
+    sharedIntents: 2,
+    backingAgents: 1,
+    synthesis: 'No clear opportunity at this time.',
+    expired: true
+  }
+];
+
+const mockQuestionMatches: MockQuestionMatch[] = [
+  {
+    id: '1',
+    question: 'Who might be a good early hire or advisor for my startup?',
+    user: { id: 'u6', name: 'Rachel', avatar: null },
+    sharedIntents: 3,
+    backingAgents: 3,
+    synthesis: "You're looking for someone who's scaled ops from seed to Series B. Rachel just left that exact role after a difficult exit and is actively figuring out what's next. She has capacity now that she won't have in six weeks.",
+    expired: false
+  }
+];
+
+const mockBridgeMatches: MockBridgeMatch[] = [
+  {
+    id: '1',
+    userA: { id: 'a1', name: 'Alice', role: 'Co-founder at Comp', avatar: null },
+    userB: { id: 'b1', name: 'Sarah', role: 'Co-founder at Dolares', avatar: null },
+    reason: "Alice is two weeks from demo day with no lead investor committed. Sarah has dry powder allocated for exactly this stage and sector, but her fund's deployment deadline is end of quarter. Neither knows the other exists.",
+    expired: false
+  },
+  {
+    id: '2',
+    userA: { id: 'a2', name: 'Marcus', role: 'CTO at TechFlow', avatar: null },
+    userB: { id: 'b2', name: 'Nina', role: 'Head of Eng at ScaleUp', avatar: null },
+    reason: 'No clear opportunity at this time.',
+    expired: true
+  }
+];
 
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
@@ -45,6 +155,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const [showExpired, setShowExpired] = useState(false);
 
   // Discovery state
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
@@ -52,10 +163,43 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const [discoveryLoading, setDiscoveryLoading] = useState(true);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
+  const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
 
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
+  
+  // Index filter
+  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
+  const { indexes } = useIndexesState();
+  const selectedIndexId = selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
+  
+  // Suggestions (for conversation mode)
+  const { suggestions } = useSuggestions({
+    indexId: selectedIndexId,
+    enabled: messages.length > 0,
+  });
+  
+  const handleIndexSelect = useCallback((indexId: string | null) => {
+    if (indexId === null) {
+      setSelectedIndexIds([]);
+    } else {
+      setSelectedIndexIds([indexId]);
+    }
+  }, [setSelectedIndexIds]);
+  
+  const handleSuggestionClick = useCallback((suggestion: { label: string; type: string; followupText?: string; prefill?: string }) => {
+    if (suggestion.type === 'prompt' && suggestion.prefill) {
+      setInput(suggestion.prefill);
+      inputRef.current?.focus();
+    } else if (suggestion.type === 'direct' && suggestion.followupText) {
+      setInput(suggestion.followupText);
+      // Auto-submit after a brief delay
+      setTimeout(() => {
+        inputRef.current?.form?.requestSubmit();
+      }, 50);
+    }
+  }, []);
 
   useEffect(() => {
     if (sessionIdFromUrl) {
@@ -319,38 +463,336 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // HOME STATE - No messages yet
   if (messages.length === 0) {
+    const selectedIndex = indexes.find(i => selectedIndexIds.includes(i.id));
+    
     return (
       <div className="px-6 lg:px-8 py-6">
         <ContentContainer>
           <div className="my-6" />
-          {renderInputForm()}
+          
+          {/* Input with index dropdown */}
+          <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml"
+              onChange={handleFileSelect}
+              className="sr-only"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={isBusy}
+              onClick={() => fileInputRef.current?.click()}
+              className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#006D4B] hover:bg-gray-200 p-0"
+              title="Attach files"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="What are you looking for?"
+              disabled={isBusy}
+              autoFocus
+              className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-500"
+            />
+            
+            {/* Index dropdown - left of submit */}
+            {indexes.length > 0 && (
+              <div className="relative flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsIndexDropdownOpen(!isIndexDropdownOpen)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-full text-sm font-ibm-plex-mono text-gray-700 transition-colors"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span className="max-w-[100px] truncate">{selectedIndex?.title || 'Everywhere'}</span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", isIndexDropdownOpen && "rotate-180")} />
+                </button>
+                
+                {isIndexDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setIsIndexDropdownOpen(false)} />
+                    <div className="absolute right-0 top-full mt-2 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px]">
+                      <button
+                        type="button"
+                        onClick={() => { handleIndexSelect(null); setIsIndexDropdownOpen(false); }}
+                        className={cn(
+                          "w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 flex items-center gap-2",
+                          selectedIndexIds.length === 0 && "text-gray-900 font-medium"
+                        )}
+                      >
+                        <Globe className="w-4 h-4" />
+                        Everywhere
+                      </button>
+                      {indexes.map((index) => (
+                        <button
+                          key={index.id}
+                          type="button"
+                          onClick={() => { handleIndexSelect(index.id); setIsIndexDropdownOpen(false); }}
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 truncate",
+                            selectedIndexIds.includes(index.id) && "text-gray-900 font-medium"
+                          )}
+                        >
+                          {index.title}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isBusy || !canSend}
+              className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </form>
+          
+          {/* Selected files */}
+          {selectedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {selectedFiles.map(({ id, file }) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 text-gray-800 text-sm font-ibm-plex-mono max-w-[200px]"
+                >
+                  <span className="truncate" title={file.name}>{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(id)}
+                    className="shrink-0 p-0.5 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 
-          {!discoveryLoading && discoverStakes.length > 0 && (
-            <div className="mt-12">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 font-ibm-plex-mono">
-                Waiting for action
-              </h3>
-              <div className="space-y-4 divide-y divide-gray-100">
-                {discoverStakes.slice(0, 3).map((stake) => (
-                  <DiscoveryCard
-                    key={stake.user.id}
-                    user={stake.user}
-                    intents={stake.intents}
-                    synthesis={syntheses[stake.user.id]}
-                    synthesisLoading={synthesisLoading[stake.user.id]}
-                    onUserClick={() => handleUserClick(stake.user.id)}
-                    onAction={handleConnectionAction}
-                  />
+          {/* Show expired toggle */}
+          <div className="mt-8 flex justify-end">
+            <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer font-ibm-plex-mono">
+              <input
+                type="checkbox"
+                checked={showExpired}
+                onChange={(e) => setShowExpired(e.target.checked)}
+                className="rounded border-gray-300 text-black focus:ring-black"
+              />
+              Show expired
+            </label>
+          </div>
+
+          {/* Section 1: Opportunities waiting for action */}
+          <div className="mt-8">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 font-ibm-plex-mono">
+              Opportunities waiting for action
+            </h3>
+            <div className="space-y-4">
+              {mockOpportunities
+                .filter(item => showExpired || !item.expired)
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "bg-white border border-gray-200 rounded-lg p-4",
+                      item.expired && "opacity-50"
+                    )}
+                  >
+                    <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                          {item.user.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-900 font-ibm-plex-mono">{item.user.name}</h4>
+                          <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                            {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-2 sm:mt-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
+                          Start Chat
+                        </button>
+                        <button className="bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                      {item.synthesis}
+                    </p>
+                    {item.friendNote && (
+                      <blockquote className="border-l-2 border-gray-300 pl-3 text-sm text-gray-600 italic">
+                        <span className="font-semibold not-italic">{item.friendNote.name} thinks:</span> {item.friendNote.text}
+                      </blockquote>
+                    )}
+                  </div>
                 ))}
+            </div>
+          </div>
+
+          {/* Section 2: Your perspective is crucial */}
+          <div className="mt-10">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 font-ibm-plex-mono">
+              Your perspective is crucial:
+            </h3>
+            <div className="space-y-4">
+              {mockPerspectives
+                .filter(item => showExpired || !item.expired)
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "bg-white border border-gray-200 rounded-lg p-4",
+                      item.expired && "opacity-50"
+                    )}
+                  >
+                    <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                          {item.user.name.charAt(0)}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-gray-900 font-ibm-plex-mono">{item.user.name}</h4>
+                          <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                            {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-2 sm:mt-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
+                          Start Chat
+                        </button>
+                        <button className="bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed mb-3">
+                      {item.synthesis}
+                    </p>
+                    {item.friendNote && (
+                      <blockquote className="border-l-2 border-gray-300 pl-3 text-sm text-gray-600 italic">
+                        <span className="font-semibold not-italic">{item.friendNote.name} thinks:</span> {item.friendNote.text}
+                      </blockquote>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Section 3: Question-driven matches */}
+          {mockQuestionMatches.filter(item => showExpired || !item.expired).length > 0 && (
+            <div className="mt-10">
+              <h3 className="text-sm font-medium text-gray-900 mb-4 font-ibm-plex-mono">
+                {mockQuestionMatches[0].question}
+              </h3>
+              <div className="space-y-4">
+                {mockQuestionMatches
+                  .filter(item => showExpired || !item.expired)
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        "bg-white border border-gray-200 rounded-lg p-4",
+                        item.expired && "opacity-50"
+                      )}
+                    >
+                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                            {item.user.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-900 font-ibm-plex-mono">{item.user.name}</h4>
+                            <p className="text-xs text-gray-500 font-ibm-plex-mono">
+                              {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-2 sm:mt-0">
+                          <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
+                            Start Chat
+                          </button>
+                          <button className="bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
+                            Skip
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {item.synthesis}
+                      </p>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
 
-          {discoveryLoading && (
-            <div className="mt-8 flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          {/* Section 4: You should act as a bridge */}
+          <div className="mt-10">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 font-ibm-plex-mono">
+              You should act as a bridge
+            </h3>
+            <div className="space-y-4">
+              {mockBridgeMatches
+                .filter(item => showExpired || !item.expired)
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "bg-white border border-gray-200 rounded-lg p-4",
+                      item.expired && "opacity-50"
+                    )}
+                  >
+                    <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                            {item.userA.name.charAt(0)}
+                          </div>
+                          <div className="text-left">
+                            <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userA.name}</h4>
+                            <p className="text-xs text-gray-500">{item.userA.role}</p>
+                          </div>
+                        </div>
+                        <span className="text-gray-400 mx-2">↔</span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold">
+                            {item.userB.name.charAt(0)}
+                          </div>
+                          <div className="text-left">
+                            <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userB.name}</h4>
+                            <p className="text-xs text-gray-500">{item.userB.role}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-3 sm:mt-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
+                          This is a good match
+                        </button>
+                        <button className="bg-gray-100 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                    <blockquote className="border-l-2 border-gray-300 pl-3 text-sm text-gray-600 italic">
+                      {item.reason}
+                    </blockquote>
+                  </div>
+                ))}
             </div>
-          )}
+          </div>
         </ContentContainer>
       </div>
     );
@@ -475,9 +917,29 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       </div>
 
       {/* Fixed input at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 lg:left-64 z-20">
+      <div className="fixed bottom-0 left-0 right-0 lg:left-64 z-20 bg-white">
         <div className="px-6 lg:px-8 py-4">
           <ContentContainer>
+            {/* Suggestion chips - always visible in conversation */}
+            {suggestions.length > 0 && (
+              <div className="mb-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                {suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestionClick(suggestion)}
+                    disabled={isBusy}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-ibm-plex-mono text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap flex-shrink-0"
+                  >
+                    {suggestion.type === 'direct' ? (
+                      <Zap className="w-3 h-3 text-gray-400" />
+                    ) : (
+                      <Type className="w-3 h-3 text-gray-400" />
+                    )}
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {renderInputForm()}
           </ContentContainer>
         </div>
