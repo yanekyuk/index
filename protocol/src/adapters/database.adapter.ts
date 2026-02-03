@@ -556,6 +556,50 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
+  async getIndexMembersForMember(indexId: string, requestingUserId: string) {
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) {
+      throw new Error('Access denied: Not a member of this index');
+    }
+
+    const members = await db
+      .select({
+        userId: indexMembers.userId,
+        name: users.name,
+        avatar: users.avatar,
+        email: users.email,
+        permissions: indexMembers.permissions,
+        memberPrompt: indexMembers.prompt,
+        autoAssign: indexMembers.autoAssign,
+        joinedAt: indexMembers.createdAt,
+      })
+      .from(indexMembers)
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(eq(indexMembers.indexId, indexId));
+
+    const result = await Promise.all(
+      members.map(async (m) => {
+        const [intentCountRow] = await db
+          .select({ count: count() })
+          .from(intentIndexes)
+          .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+          .where(and(eq(intentIndexes.indexId, indexId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
+        return {
+          userId: m.userId,
+          name: m.name,
+          avatar: m.avatar,
+          email: m.email,
+          permissions: m.permissions ?? [],
+          memberPrompt: m.memberPrompt,
+          autoAssign: m.autoAssign,
+          joinedAt: m.joinedAt,
+          intentCount: Number(intentCountRow?.count ?? 0),
+        };
+      })
+    );
+    return result;
+  }
+
   async isIndexOwner(indexId: string, userId: string): Promise<boolean> {
     const rows = await db
       .select({ userId: indexMembers.userId })
@@ -623,6 +667,62 @@ export class ChatDatabaseAdapter {
     const isOwner = await this.isIndexOwner(indexId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
+    }
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+
+    const rows = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        userId: intents.userId,
+        userName: users.name,
+        createdAt: intents.createdAt,
+      })
+      .from(intentIndexes)
+      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+      .innerJoin(users, eq(intents.userId, users.id))
+      .where(and(eq(intentIndexes.indexId, indexId), isNull(intents.archivedAt)))
+      .orderBy(desc(intents.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return rows.map((r) => ({
+      id: r.id,
+      payload: r.payload,
+      summary: r.summary,
+      userId: r.userId,
+      userName: r.userName,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async isIndexMember(indexId: string, userId: string): Promise<boolean> {
+    const rows = await db
+      .select({ userId: indexMembers.userId })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(
+          eq(indexMembers.indexId, indexId),
+          eq(indexMembers.userId, userId),
+          isNull(indexes.deletedAt)
+        )
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async getIndexIntentsForMember(
+    indexId: string,
+    requestingUserId: string,
+    options?: { limit?: number; offset?: number }
+  ) {
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) {
+      throw new Error('Access denied: Not a member of this index');
     }
 
     const limit = options?.limit ?? 50;

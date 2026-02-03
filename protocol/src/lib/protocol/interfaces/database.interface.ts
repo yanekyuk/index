@@ -574,6 +574,21 @@ export interface Database {
   ): Promise<IndexMemberDetails[]>;
 
   /**
+   * Get all members of an index with their details.
+   * **MEMBER ONLY** - any member of the index can list members (not just owners).
+   * Returns same shape as getIndexMembersForOwner; email may be omitted for privacy.
+   *
+   * @param indexId - The index to get members for
+   * @param requestingUserId - The user requesting (must be a member of the index)
+   * @returns Array of member details with intent counts
+   * @throws Error if requestingUserId is not a member of the index
+   */
+  getIndexMembersForMember(
+    indexId: string,
+    requestingUserId: string
+  ): Promise<IndexMemberDetails[]>;
+
+  /**
    * Get all indexed intents for an index.
    * **OWNER ONLY** - throws if user is not an owner.
    *
@@ -584,6 +599,22 @@ export interface Database {
    * @throws Error if requestingUserId is not an owner
    */
   getIndexIntentsForOwner(
+    indexId: string,
+    requestingUserId: string,
+    options?: { limit?: number; offset?: number }
+  ): Promise<IndexedIntentDetails[]>;
+
+  /**
+   * Get all indexed intents for an index.
+   * **MEMBER ONLY** - any member of the index can list intents (not just owners).
+   *
+   * @param indexId - The index to get intents for
+   * @param requestingUserId - The user requesting (must be a member of the index)
+   * @param options - Pagination options
+   * @returns Array of intent details with owner info
+   * @throws Error if requestingUserId is not a member of the index
+   */
+  getIndexIntentsForMember(
     indexId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
@@ -663,7 +694,9 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getOwnedIndexes'
   | 'isIndexOwner'
   | 'getIndexMembersForOwner'
+  | 'getIndexMembersForMember'
   | 'getIndexIntentsForOwner'
+  | 'getIndexIntentsForMember'
   | 'updateIndexSettings'
 >;
 
