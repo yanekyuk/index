@@ -48,7 +48,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     <IndexesProvider>
       <IndexFilterProvider>
         <StreamChatProvider>
-          <div className="backdrop relative min-h-screen">
+          <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
             <style jsx>{`
               .backdrop:after {
                 content: "";

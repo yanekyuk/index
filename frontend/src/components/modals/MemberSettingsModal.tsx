@@ -409,7 +409,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                   Leave Network
                 </Dialog.Title>
                 <Dialog.Description className="text-sm text-[#555] font-ibm-plex-mono mb-6 leading-relaxed">
-                  Are you sure you want to leave <span className="font-semibold text-[#333]">&quot;{index.title}&quot;</span>? This action cannot be undone and you will lose access to all shared intents in this network.
+                  Are you sure you want to leave <span className="font-semibold text-[#333]">&quot;{index.title}&quot;</span>? This action cannot be undone and you will lose access to all mutual intents in this network.
                 </Dialog.Description>
                 <div className="flex gap-3 justify-end">
                   <Button

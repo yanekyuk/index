@@ -152,7 +152,7 @@ export default function ChatSidebar() {
           </div>
           <h2 className="font-bold text-sm text-black font-ibm-plex-mono">Conversations</h2>
         </div>
-        <div className="text-center text-gray-500 text-sm py-8">
+        <div className="text-center text-[#3D3D3D] text-sm py-8">
           Loading...
         </div>
       </div>
@@ -200,11 +200,11 @@ export default function ChatSidebar() {
                           className="rounded-full flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <span className="font-bold text-sm font-ibm-plex-mono text-gray-900 block truncate">
+                          <span className="font-bold text-sm  text-gray-900 block truncate">
                             {request.requester?.name || 'User'}
                           </span>
                           {request.firstMessage && (
-                            <p className="text-xs text-gray-500 font-ibm-plex-mono truncate mt-0.5">
+                            <p className="text-xs text-[#3D3D3D]  truncate mt-0.5">
                               {request.firstMessage}
                             </p>
                           )}
@@ -268,18 +268,18 @@ export default function ChatSidebar() {
         </div>
         <h2 className="font-bold text-sm text-black font-ibm-plex-mono flex-1 min-w-0">Conversations</h2>
         {totalUnreadCount > 0 && (
-          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-black text-white font-ibm-plex-mono">
+          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-black text-white ">
             {totalUnreadCount}
           </span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto min-h-[300px]">
         {loading ? (
-          <div className="text-center text-gray-500 text-sm py-8">
+          <div className="text-center text-[#3D3D3D] text-sm py-8">
             Loading conversations...
           </div>
         ) : channels.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-8 px-3">
+          <div className="text-center text-[#3D3D3D] text-sm py-8 px-3">
             No conversations yet
           </div>
         ) : (
@@ -320,20 +320,20 @@ export default function ChatSidebar() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className={`text-sm font-ibm-plex-mono truncate ${
+                        <span className={`text-sm  truncate ${
                           hasUnread ? 'font-bold text-black' : 'font-medium text-gray-900'
                         }`}>
                           {otherUser.name || 'User'}
                         </span>
                         {hasUnread && (
-                          <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
+                          <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full ">
                             {unreadCount}
                           </span>
                         )}
                       </div>
                       {lastMessage && (
-                        <p className={`text-xs font-ibm-plex-mono truncate ${
-                          hasUnread ? 'text-gray-800' : 'text-gray-500'
+                        <p className={`text-xs  truncate ${
+                          hasUnread ? 'text-[#3D3D3D]' : 'text-[#3D3D3D]'
                         }`}>
                           {lastMessage.text || 'Attachment'}
                         </p>

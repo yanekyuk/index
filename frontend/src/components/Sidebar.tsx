@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library } from 'lucide-react';
+import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -50,12 +50,14 @@ export default function Sidebar() {
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerModalIndex, setOwnerModalIndex] = useState<IndexType | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const isMessagesView = pathname?.includes('/chat') && pathname?.startsWith('/u/');
   const isLibraryView = pathname?.startsWith('/library');
   const isNetworksView = pathname?.startsWith('/networks');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView;
+  const isHistoryView = pathname?.startsWith('/d/');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
@@ -194,7 +196,7 @@ export default function Sidebar() {
   }, [userDropdownOpen]);
 
   return (
-    <div className="flex flex-col h-full font-ibm-plex-mono overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Logo */}
       <div className="flex-shrink-0 px-4 py-6">
         <Link href="/">
@@ -214,8 +216,8 @@ export default function Sidebar() {
           onClick={handleDiscoverClick}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
             isHomeView
-              ? 'bg-gray-100 text-black font-medium'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+              ? 'bg-gray-100 text-black font-bold'
+              : 'text-black font-medium hover:bg-gray-50'
           }`}
         >
           <Compass className="w-5 h-5" />
@@ -227,8 +229,8 @@ export default function Sidebar() {
           disabled={navigatingToChat}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
             isMessagesView
-              ? 'bg-gray-100 text-black font-medium'
-              : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+              ? 'bg-gray-100 text-black font-bold'
+              : 'text-black font-medium hover:bg-gray-50'
           } ${navigatingToChat ? 'opacity-50 cursor-wait' : ''}`}
         >
           <MessageCircle className="w-5 h-5" />
@@ -239,40 +241,51 @@ export default function Sidebar() {
             </span>
           )}
         </button>
-      </nav>
 
-      {/* Recent Section - AI chat sessions */}
-      <div className="flex-shrink-0 mt-8 px-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            History
-          </h3>
+        {/* History menu item with submenu */}
+        <div>
+          <button
+            onClick={() => setHistoryExpanded(!historyExpanded)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+              isHistoryView
+                ? 'bg-gray-100 text-black font-bold'
+                : 'text-black font-medium hover:bg-gray-50'
+            }`}
+          >
+            <History className="w-5 h-5" />
+            <span className="flex-1 text-left">History</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${historyExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* History submenu */}
+          {historyExpanded && (
+            <div className="mt-1 ml-8 space-y-0.5">
+              {loadingSessions ? (
+                <div className="text-sm text-gray-400 py-2">Loading...</div>
+              ) : chatSessions.length === 0 ? (
+                <div className="text-sm text-gray-400 py-2">No conversations yet</div>
+              ) : (
+                chatSessions.slice(0, 4).map((session) => {
+                  const isSelected = currentSessionId === session.id;
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => router.push(`/d/${session.id}`)}
+                      className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors truncate ${
+                        isSelected
+                          ? 'bg-gray-100 text-black font-bold'
+                          : 'text-black font-medium hover:bg-gray-50'
+                      }`}
+                    >
+                      {session.title || 'Untitled chat'}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
         </div>
-        {loadingSessions ? (
-          <div className="text-sm text-gray-400">Loading...</div>
-        ) : chatSessions.length === 0 ? (
-          <div className="text-sm text-gray-400">No conversations yet</div>
-        ) : (
-          <div className="space-y-1">
-            {chatSessions.slice(0, 4).map((session) => {
-              const isSelected = currentSessionId === session.id;
-              return (
-                <button
-                  key={session.id}
-                  onClick={() => router.push(`/d/${session.id}`)}
-                  className={`w-full text-left py-2 px-2 -mx-2 rounded-md text-sm transition-colors truncate ${
-                    isSelected
-                      ? 'bg-gray-50 text-black font-medium'
-                      : 'text-gray-700 hover:text-black hover:bg-gray-50'
-                  }`}
-                >
-                  {session.title || 'Untitled chat'}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      </nav>
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -306,7 +319,7 @@ export default function Sidebar() {
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-black shadow-[0px_1px_0px_#000000] rounded-[2px] z-50">
               <div className="py-1">
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
                     router.push('/networks');
@@ -316,7 +329,7 @@ export default function Sidebar() {
                   Networks
                 </button>
                 <button
-                  className={`w-full px-4 py-2 text-left flex items-center font-ibm-plex-mono text-sm ${
+                  className={`w-full px-4 py-2 text-left flex items-center text-sm ${
                     isLibraryView 
                       ? 'text-black bg-gray-100 font-medium' 
                       : 'text-gray-700 hover:bg-gray-50'
@@ -330,7 +343,7 @@ export default function Sidebar() {
                   Library
                 </button>
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
                     setIsProfileModalOpen(true);
@@ -340,7 +353,7 @@ export default function Sidebar() {
                   Profile
                 </button>
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
+                  className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
                     setPreferencesModalOpen(true);
@@ -351,7 +364,7 @@ export default function Sidebar() {
                 </button>
                 <div className="border-t border-gray-200 my-1" />
                 <button
-                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors font-ibm-plex-mono text-sm"
+                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
                     logout();

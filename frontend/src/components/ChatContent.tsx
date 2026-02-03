@@ -42,16 +42,16 @@ const STATIC_OPPORTUNITIES: MockOpportunity[] = [
   {
     id: 'static-1',
     user: { id: 'au', name: 'Sofia Chen', avatar: STATIC_AVATARS.p1 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are [exploring privacy](https://index.network/intents/65c37d58-a75d-4bf1-b746-f2a050f48eba) within agent-native protocols, which aligns perfectly with Sofia\'s work building privacy standards for the open metaverse. It\'s a rare find to meet someone else who thinks decentralized ID is the real solution to our data crisis, so you two should definitely compare notes.',
-    friendNote: { name: 'Index', text: 'Good fit based on shared intent.' },
+    friendNote: { name: 'Index', text: 'Good fit based on mutual intent.' },
     expired: false,
   },
   {
     id: 'static-2',
     user: { id: 'ms', name: 'James Okonkwo', avatar: STATIC_AVATARS.p2 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are [experimenting with coordination](https://index.network/intents/cd9c9a91-f56c-40ed-b48a-073aa8706a9e) for multi-agent systems, which aligns perfectly with James Okonkwo\'s deep expertise in behavioral economics and incentive design. It is a rare chance to bridge your technical models with his experience in building trust-based game theory—basically, the ultimate brain trust for your agents.',
     expired: false,
@@ -59,7 +59,7 @@ const STATIC_OPPORTUNITIES: MockOpportunity[] = [
   {
     id: 'static-3',
     user: { id: 'at', name: 'Maya Patel', avatar: STATIC_AVATARS.p3 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are looking to [partner with ecosystems](https://index.network/intents/14378471-d361-455b-a25f-967351404369) to seed high-intent users, which aligns perfectly with Maya Patel\'s expertise in driving Web3 growth through data-driven community strategies. It seems like a great time to brainstorm how her background in decentralized outreach can help you accelerate those network effects—plus, two heads are always better than one when navigating the crypto wild west.',
     expired: false,
@@ -70,7 +70,7 @@ const STATIC_PERSPECTIVES: MockOpportunity[] = [
   {
     id: 'static-p1',
     user: { id: 'au', name: 'Sofia Chen', avatar: STATIC_AVATARS.p1 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are [exploring privacy](https://index.network/intents/65c37d58-a75d-4bf1-b746-f2a050f48eba) within agent-native protocols, which aligns perfectly with Sofia\'s work building privacy standards for the open metaverse. It\'s a rare find to meet someone else who thinks decentralized ID is the real solution to our data crisis, so you two should definitely compare notes.',
     friendNote: { name: 'Alex', text: 'Would intro again—rare alignment.' },
@@ -79,7 +79,7 @@ const STATIC_PERSPECTIVES: MockOpportunity[] = [
   {
     id: 'static-p2',
     user: { id: 'ms', name: 'James Okonkwo', avatar: STATIC_AVATARS.p2 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are [experimenting with coordination](https://index.network/intents/cd9c9a91-f56c-40ed-b48a-073aa8706a9e) for multi-agent systems, which aligns perfectly with James Okonkwo\'s deep expertise in behavioral economics and incentive design. It is a rare chance to bridge your technical models with his experience in building trust-based game theory—basically, the ultimate brain trust for your agents.',
     friendNote: { name: 'Sam', text: 'Seen their work. Worth your time.' },
@@ -91,7 +91,7 @@ const STATIC_PERSPECTIVES2: MockOpportunity[] = [
   {
     id: 'static-p2-1',
     user: { id: 'at', name: 'Maya Patel', avatar: STATIC_AVATARS.p3 },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'You are looking to [partner with ecosystems](https://index.network/intents/14378471-d361-455b-a25f-967351404369) to seed high-intent users, which aligns perfectly with Maya Patel\'s expertise in driving Web3 growth through data-driven community strategies. It seems like a great time to brainstorm how her background in decentralized outreach can help you accelerate those network effects—plus, two heads are always better than one when navigating the crypto wild west.',
     friendNote: { name: 'Jordan', text: 'One of the sharpest in the space.' },
@@ -100,7 +100,7 @@ const STATIC_PERSPECTIVES2: MockOpportunity[] = [
   {
     id: 'static-p2-2',
     user: { id: 'mr', name: 'Lucas Berg', avatar: STATIC_AVATARS.p4 },
-    sharedIntents: 2,
+    mutualIntents: 2,
     backingAgents: 2,
     synthesis: 'You are looking to [connect with innovators](https://index.network/intents/d034b346-7c04-4d9e-9321-9a98ae307098) to discuss retail media, while Lucas Berg brings a unique blend of clinical expertise and deep crypto experience dating back to 2016. His background in full-stack development and blockchain offers a fresh technical perspective for your [potential integrations](https://index.network/intents/d034b346-7c04-4d9e-9321-9a98ae307098), proving that even orthodontists can be tech pioneers.',
     friendNote: { name: 'Riley', text: 'Known them for years. Strong vouch.' },
@@ -138,7 +138,7 @@ interface ChatContentProps {
 interface MockOpportunity {
   id: string;
   user: { id: string; name: string; avatar: string | null };
-  sharedIntents: number;
+  mutualIntents: number;
   backingAgents: number;
   synthesis: string;
   friendNote?: { name: string; text: string };
@@ -159,7 +159,7 @@ interface MockQuestionMatch {
   id: string;
   question: string;
   user: { id: string; name: string; avatar: string | null };
-  sharedIntents: number;
+  mutualIntents: number;
   backingAgents: number;
   synthesis: string;
   expired: boolean;
@@ -177,7 +177,7 @@ const mockOpportunities: MockOpportunity[] = [
   {
     id: '1',
     user: { id: 'u1', name: 'Mary', avatar: null },
-    sharedIntents: 3,
+    mutualIntents: 3,
     backingAgents: 3,
     synthesis: "You're stuck on how to frame privacy guarantees for your inference layer. Mary just shipped a TEE-based approach last month and is now questioning whether the tradeoffs were right. Her uncertainty is fresh, and you have the use case that would stress-test her assumptions before she commits further.",
     friendNote: { name: 'Vivek', text: 'Mary would be a good person to talk to about agents' },
@@ -186,7 +186,7 @@ const mockOpportunities: MockOpportunity[] = [
   {
     id: '2',
     user: { id: 'u2', name: 'James', avatar: null },
-    sharedIntents: 2,
+    mutualIntents: 2,
     backingAgents: 2,
     synthesis: "You need distribution for your dev tool but have no GTM motion. James is three weeks from launching a developer community and hasn't locked in the tooling partners yet. If you wait, he'll commit to alternatives and the window closes.",
     expired: false
@@ -194,7 +194,7 @@ const mockOpportunities: MockOpportunity[] = [
   {
     id: '3',
     user: { id: 'u3', name: 'Elena', avatar: null },
-    sharedIntents: 1,
+    mutualIntents: 1,
     backingAgents: 1,
     synthesis: 'No clear opportunity at this time.',
     expired: true,
@@ -206,7 +206,7 @@ const mockPerspectives: MockOpportunity[] = [
   {
     id: '1',
     user: { id: 'u4', name: 'David', avatar: null },
-    sharedIntents: 3,
+    mutualIntents: 3,
     backingAgents: 3,
     synthesis: "David is trying to decide whether to build or buy auth infrastructure before his Series A closes next month. You've been through this exact decision twice—once wrong, once right. He doesn't have time to learn from his own mistakes here.",
     friendNote: { name: 'Vivek', text: 'David is genuinely uncertain and would value an outside perspective' },
@@ -215,7 +215,7 @@ const mockPerspectives: MockOpportunity[] = [
   {
     id: '2',
     user: { id: 'u5', name: 'Priya', avatar: null },
-    sharedIntents: 2,
+    mutualIntents: 2,
     backingAgents: 1,
     synthesis: 'No clear opportunity at this time.',
     expired: true,
@@ -228,7 +228,7 @@ const mockQuestionMatches: MockQuestionMatch[] = [
     id: '1',
     question: 'Who might be a good early hire or advisor for my startup?',
     user: { id: 'u6', name: 'Rachel', avatar: null },
-    sharedIntents: 3,
+    mutualIntents: 3,
     backingAgents: 3,
     synthesis: "You're looking for someone who's scaled ops from seed to Series B. Rachel just left that exact role after a difficult exit and is actively figuring out what's next. She has capacity now that she won't have in six weeks.",
     expired: false
@@ -531,7 +531,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           ))}
         </div>
       )}
-      <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-[#F8F8F8] border border-[#E9E9E9] rounded-full px-4 py-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -560,7 +560,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           placeholder="What are you looking for?"
           disabled={isBusy}
           autoFocus
-          className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-700"
+          className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#3D3D3D]"
         />
         <Button
           type="submit"
@@ -589,10 +589,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         ? discoverStakes.slice(0, 2).map((s, i) => ({
             id: s.user.id,
             user: { id: s.user.id, name: s.user.name, avatar: s.user.avatar },
-            sharedIntents: s.intents?.length ?? 0,
+            mutualIntents: s.intents?.length ?? 0,
             backingAgents: s.intents?.length ?? 0,
             synthesis: syntheses[s.user.id] ?? `Strong overlap with your intents. Worth a conversation.`,
-            friendNote: i === 0 ? { name: 'Index', text: 'Good fit based on shared intent.' } as const : undefined,
+            friendNote: i === 0 ? { name: 'Index', text: 'Good fit based on mutual intent.' } as const : undefined,
             expired: false
           }))
         : mockOpportunities.filter(o => !o.expired);
@@ -603,7 +603,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         ? discoverStakes.slice(0, 2).map((s, i) => ({
             id: `p-${s.user.id}`,
             user: { id: s.user.id, name: s.user.name, avatar: s.user.avatar },
-            sharedIntents: s.intents?.length ?? 0,
+            mutualIntents: s.intents?.length ?? 0,
             backingAgents: s.intents?.length ?? 0,
             synthesis: syntheses[s.user.id] ?? `Your experience could help. They're weighing a similar decision.`,
             friendNote: i === 0 ? { name: 'Index', text: 'Your perspective would add value here.' } as const : undefined,
@@ -628,12 +628,16 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     ].sort((a, b) => b.expiredAt.localeCompare(a.expiredAt));
 
     return (
-      <div className="px-6 lg:px-8 py-4 bg-[#fafafa] min-h-full">
+      <div className="px-6 lg:px-8 py-4 bg-[#FDFDFD] min-h-full">
         <ContentContainer className="text-left">
-          <div className="my-4" />
+          <div className="mt-12 mb-6">
+            <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
+              Find your others
+            </h1>
+          </div>
           
           {/* Input with index dropdown */}
-          <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
+          <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-[#F8F8F8] border border-[#E9E9E9] rounded-full px-4 py-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -660,7 +664,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               placeholder="What are you looking for?"
               disabled={isBusy}
               autoFocus
-              className="flex-1 font-ibm-plex-mono border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-500"
+              className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-[#3D3D3D]"
             />
             
             {/* Index dropdown - left of submit */}
@@ -669,7 +673,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 <button
                   type="button"
                   onClick={() => setIsIndexDropdownOpen(!isIndexDropdownOpen)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-full text-sm font-ibm-plex-mono text-gray-700 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-black transition-colors hover:bg-gray-100"
                 >
                   {selectedIndex ? <Lock className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
                   <span className="max-w-[100px] truncate">{selectedIndex?.title || 'Everywhere'}</span>
@@ -684,7 +688,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         type="button"
                         onClick={() => { handleIndexSelect(null); setIsIndexDropdownOpen(false); }}
                         className={cn(
-                          "w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 flex items-center gap-2",
+                          "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
                           selectedIndexIds.length === 0 && "text-gray-900 font-medium"
                         )}
                       >
@@ -697,7 +701,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           type="button"
                           onClick={() => { handleIndexSelect(index.id); setIsIndexDropdownOpen(false); }}
                           className={cn(
-                            "w-full px-3 py-2 text-left text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 flex items-center gap-2",
+                            "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
                             selectedIndexIds.includes(index.id) && "text-gray-900 font-medium"
                           )}
                         >
@@ -743,8 +747,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           )}
 
           {/* Section 1: Opportunities waiting for action */}
-          <div className="mt-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
+          <div className="mt-12">
+            <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
               Opportunities waiting for action
             </h3>
             <div className="space-y-3">
@@ -752,42 +756,47 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   <div
                     key={item.id}
                     className={cn(
-                      "bg-[#f5f5f5] rounded-md p-3",
+                      "bg-[#F8F8F8] rounded-md p-4",
                       item.expired && "opacity-50"
                     )}
                   >
-                    <div className="flex items-center gap-2 min-w-0 mb-2">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-                        <Image src={getAvatarUrl(item.user)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                          <Image src={getAvatarUrl(item.user)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-gray-900 text-sm">{item.user.name}</h4>
+                          <p className="text-[11px] text-[#3D3D3D]">
+                            {item.mutualIntents} mutual intent
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.user.name}</h4>
-                        <p className="text-[11px] text-gray-500 font-ibm-plex-mono">
-                          {item.sharedIntents} shared intent · {item.backingAgents} backing agents
-                        </p>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                          Start Chat
+                        </button>
+                        <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
+                          Skip
+                        </button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-gray-700 leading-snug mb-2 [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.synthesis}</ReactMarkdown>
                     </div>
                     {item.friendNote && (
-                      <div className="mb-2">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#EDF7ED] text-[11px] text-[#006D4B] border border-[#006D4B]/30">
-                          <span className="w-5 h-5 rounded-full overflow-hidden shrink-0">
-                            <Image src="https://i.pravatar.cc/150?img=68" alt="" width={20} height={20} className="w-full h-full object-cover" />
+                      <div className="mt-3">
+                        <div className="inline-flex items-center gap-2.5 px-3 py-2 bg-[#F0F0F0] rounded-full">
+                          <div className="relative shrink-0">
+                            <Image src="https://i.pravatar.cc/150?img=68" alt="" width={28} height={28} className="w-7 h-7 rounded-full object-cover" />
+                            <span className="absolute bottom-0 left-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#F0F0F0]" />
+                          </div>
+                          <span className="text-[13px] text-[#3D3D3D]">
+                            <span className="font-semibold">{item.friendNote.name}:</span> {item.friendNote.text}
                           </span>
-                          {item.friendNote.name}: {item.friendNote.text}
-                        </span>
+                        </div>
                       </div>
                     )}
-                    <div className="flex gap-1.5 justify-start">
-                      <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
-                        Start Chat
-                      </button>
-                      <button className="bg-transparent border border-gray-400 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
-                        Skip
-                      </button>
-                    </div>
                   </div>
               ))}
             </div>
@@ -795,7 +804,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
           {/* Section 2: Your perspective is crucial */}
           <div className="mt-6">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
+            <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
               Your perspective is crucial
             </h3>
             <div className="space-y-3">
@@ -803,42 +812,47 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   <div
                     key={item.id}
                     className={cn(
-                      "bg-[#f5f5f5] rounded-md p-3",
+                      "bg-[#F8F8F8] rounded-md p-4",
                       item.expired && "opacity-50"
                     )}
                   >
-                    <div className="flex items-center gap-2 min-w-0 mb-2">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-                        <Image src={getAvatarUrl(item.user)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                          <Image src={getAvatarUrl(item.user)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-gray-900 text-sm">{item.user.name}</h4>
+                          <p className="text-[11px] text-[#3D3D3D]">
+                            {item.mutualIntents} mutual intent
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.user.name}</h4>
-                        <p className="text-[11px] text-gray-500 font-ibm-plex-mono">
-                          {item.sharedIntents} shared intent · {item.backingAgents} backing agents
-                        </p>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                          Start Chat
+                        </button>
+                        <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
+                          Skip
+                        </button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-gray-700 leading-snug mb-2 [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.synthesis}</ReactMarkdown>
                     </div>
                     {item.friendNote && (
-                      <div className="mb-2">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-[#EDF7ED] text-[11px] text-[#006D4B] border border-[#006D4B]/30">
-                          <span className="w-5 h-5 rounded-full overflow-hidden shrink-0">
-                            <Image src="https://i.pravatar.cc/150?img=68" alt="" width={20} height={20} className="w-full h-full object-cover" />
+                      <div className="mt-3">
+                        <div className="inline-flex items-center gap-2.5 px-3 py-2 bg-[#F0F0F0] rounded-full">
+                          <div className="relative shrink-0">
+                            <Image src="https://i.pravatar.cc/150?img=68" alt="" width={28} height={28} className="w-7 h-7 rounded-full object-cover" />
+                            <span className="absolute bottom-0 left-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#F0F0F0]" />
+                          </div>
+                          <span className="text-[13px] text-[#3D3D3D]">
+                            <span className="font-semibold">{item.friendNote.name}:</span> {item.friendNote.text}
                           </span>
-                          {item.friendNote.name}: {item.friendNote.text}
-                        </span>
+                        </div>
                       </div>
                     )}
-                    <div className="flex gap-1.5 justify-start">
-                      <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
-                        Start Chat
-                      </button>
-                      <button className="bg-transparent border border-gray-400 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
-                        Skip
-                      </button>
-                    </div>
                   </div>
                 ))}
             </div>
@@ -846,7 +860,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
           {/* Section: You're the connector they need (bridge) */}
           <div className="mt-6">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
+            <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left">
               You&apos;re the connector they need
             </h3>
             <div className="space-y-3">
@@ -854,41 +868,43 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   <div
                     key={item.id}
                     className={cn(
-                      "bg-[#f5f5f5] rounded-md p-3",
+                      "bg-[#F8F8F8] rounded-md p-4",
                       item.expired && "opacity-50"
                     )}
                   >
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-2">
-                      <div className="flex items-center gap-2 text-left min-w-0">
-                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-                          <Image src={getAvatarUrl(item.userA)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
+                        <div className="flex items-center gap-2 text-left min-w-0">
+                          <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                            <Image src={getAvatarUrl(item.userA)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-gray-900 text-sm">{item.userA.name}</h4>
+                            <p className="text-[11px] text-[#3D3D3D]">{item.userA.role}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userA.name}</h4>
-                          <p className="text-[11px] text-gray-500">{item.userA.role}</p>
+                        <span className="text-[#3D3D3D] shrink-0" aria-hidden>↔</span>
+                        <div className="flex items-center gap-2 text-left min-w-0">
+                          <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                            <Image src={getAvatarUrl(item.userB)} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-gray-900 text-sm">{item.userB.name}</h4>
+                            <p className="text-[11px] text-[#3D3D3D]">{item.userB.role}</p>
+                          </div>
                         </div>
                       </div>
-                      <span className="text-gray-500 shrink-0" aria-hidden>↔</span>
-                      <div className="flex items-center gap-2 text-left min-w-0 sm:ml-0">
-                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-                          <Image src={getAvatarUrl(item.userB)} alt="" width={32} height={32} className="w-full h-full object-cover" />
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userB.name}</h4>
-                          <p className="text-[11px] text-gray-500">{item.userB.role}</p>
-                        </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                          Good match
+                        </button>
+                        <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
+                          Pass
+                        </button>
                       </div>
                     </div>
-                      <div className="text-[14px] text-gray-700 leading-snug text-left mb-2 [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.reason}</ReactMarkdown>
-                      </div>
-                    <div className="flex gap-1.5 justify-start">
-                      <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors font-ibm-plex-mono">
-                        This is a good match
-                      </button>
-                      <button className="bg-transparent border border-gray-400 text-gray-700 px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors font-ibm-plex-mono">
-                        Pass
-                      </button>
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed text-left [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.reason}</ReactMarkdown>
                     </div>
                   </div>
                 ))}
@@ -897,7 +913,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
           {/* Section: Expired (after frictioned scroll) — all together, ordered by date */}
           <section className="mt-8 pt-6 border-t border-gray-200/80 pb-8 border-b-4 border-gray-200/80">
-            <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer font-ibm-plex-mono mb-3 pb-4">
+            <label className="flex items-center gap-2 text-xs text-[#3D3D3D] cursor-pointer mb-3 pb-4">
               <input
                 type="checkbox"
                 checked={showExpired}
@@ -908,10 +924,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             </label>
             {showExpired && (
               <>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 font-ibm-plex-mono text-left">
+                <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-2 font-ibm-plex-mono text-left">
                   Expired
                 </h3>
-                <p className="text-sm text-gray-600 mb-4 font-ibm-plex-mono">
+                <p className="text-sm text-[#3D3D3D] mb-4">
                   This no longer presents itself as possible. Timing does that.
                 </p>
               </>
@@ -919,13 +935,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             {showExpired && expiredItems.length > 0 && (
               <div className="space-y-3">
                 {expiredItems.map((entry) => {
-                  const expiredCardClass = "bg-[#f5f5f5] rounded-md p-3 opacity-80";
+                  const expiredCardClass = "bg-[#F8F8F8] rounded-md p-4 opacity-80";
                   const headerClass = "flex items-center gap-2 min-w-0 mb-2";
                   const avatarClass = "w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0";
-                  const titleClass = "font-bold text-gray-900 font-ibm-plex-mono text-sm";
-                  const metaClass = "text-[11px] text-gray-500 font-ibm-plex-mono";
-                  const bodyClass = "text-[14px] text-gray-700 leading-snug mb-2";
-                  const expiredMetaClass = "text-[11px] text-gray-400 mt-2 font-ibm-plex-mono";
+                  const titleClass = "font-bold text-gray-900 text-sm";
+                  const metaClass = "text-[11px] text-[#3D3D3D]";
+                  const bodyClass = "text-[14px] text-[#3D3D3D] leading-snug mb-2";
+                  const expiredMetaClass = "text-[11px] text-gray-400 mt-2";
 
                   if (entry.type === 'opportunity' || entry.type === 'perspective') {
                     const item = entry.data;
@@ -936,13 +952,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           <div className="min-w-0">
                             <h4 className={titleClass}>{item.user.name}</h4>
                             <p className={metaClass}>
-                              {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                              {item.mutualIntents} mutual intent
                             </p>
                           </div>
                         </div>
                         <p className={bodyClass}>{item.synthesis}</p>
                         {item.friendNote && (
-                          <p className="text-[12px] text-gray-600 pl-2 border-l border-gray-300 mb-2">
+                          <p className="text-[12px] text-[#3D3D3D] pl-2 border-l border-gray-300 mb-2">
                             <span className="font-semibold">{item.friendNote.name} thinks:</span> {item.friendNote.text}
                           </p>
                         )}
@@ -959,7 +975,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           <div className="min-w-0">
                             <h4 className={titleClass}>{item.user.name}</h4>
                             <p className={metaClass}>
-                              {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                              {item.mutualIntents} mutual intent
                             </p>
                           </div>
                         </div>
@@ -979,7 +995,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             <p className={metaClass}>{item.userA.role}</p>
                           </div>
                         </div>
-                        <span className="text-gray-500 shrink-0" aria-hidden>↔</span>
+                        <span className="text-[#3D3D3D] shrink-0" aria-hidden>↔</span>
                         <div className="flex items-center gap-2 text-left min-w-0">
                           <div className={avatarClass}>{item.userB.name.charAt(0)}</div>
                           <div className="min-w-0">
@@ -1092,7 +1108,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       )}
                     >
                       {msg.role === 'assistant' && (
-                        <span className="text-[10px] uppercase tracking-wider text-[#007EFF]/70 font-ibm-plex-mono mb-1 block">
+                        <span className="text-[10px] uppercase tracking-wider text-[#007EFF]/70 mb-1 block">
                           AI Assistant
                         </span>
                       )}
@@ -1105,7 +1121,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </ReactMarkdown>
                       </article>
                       {msg.role === 'user' && msg.attachmentNames && msg.attachmentNames.length > 0 && (
-                        <p className="text-xs opacity-90 mt-1.5 font-ibm-plex-mono">
+                        <p className="text-xs opacity-90 mt-1.5">
                           Attached: {msg.attachmentNames.join(', ')}
                         </p>
                       )}
@@ -1141,7 +1157,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     key={index}
                     onClick={() => handleSuggestionClick(suggestion)}
                     disabled={isBusy}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-ibm-plex-mono text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap flex-shrink-0"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-[#3D3D3D] hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap flex-shrink-0"
                   >
                     {suggestion.type === 'direct' ? (
                       <Zap className="w-3 h-3 text-gray-400" />

@@ -60,7 +60,7 @@ Felicity services two distinct pipelines: **AI-Generated Matches** (Opportunity 
 
 *Goal: Prevent the Opportunity Finder from suggesting "hallucinated" matches where users lack the actual skills.*
 
-1. **Generation:** Opportunity Finder uses HyDE/RAG to find a match and **generates** a "Shared Intent" (e.g., *"User A and B should co-found a fintech startup"*).
+1. **Generation:** Opportunity Finder uses HyDE/RAG to find a match and **generates** a "Mutual Intent" (e.g., *"User A and B should co-found a fintech startup"*).
 2. **Validation (Semantic Verifier):**
 * The Evaluator **MUST** call `SemanticVerifierAgent` on the generated proposal.
 * **Input:** The AI-Generated Intent.
@@ -81,7 +81,7 @@ Felicity services two distinct pipelines: **AI-Generated Matches** (Opportunity 
 
 1. **Ingestion:** User A chats with User B.
 2. **Monitoring (Pragmatic Monitor):**
-* **Input:** Active Shared Intent ("Build Fintech App") + Recent Chat Logs.
+* **Input:** Active Mutual Intent ("Build Fintech App") + Recent Chat Logs.
 * **Check:** Are they discussing fintech? Did they say "Let's stop"?
 * **Result:**
 * If `CONTRADICTED`: **Intent Manager** expires the intent.

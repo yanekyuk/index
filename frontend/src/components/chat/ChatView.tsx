@@ -269,7 +269,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
       {/* Sticky header - full width */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center justify-between min-h-[68px]">
         <div className="flex items-center gap-3">
-          <button onClick={handleBack} className="text-gray-600 hover:text-black transition-colors text-xl mr-2">←</button>
+          <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">←</button>
           <Link href={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div className="relative">
               <Image src={avatarUrl} alt={userName} width={44} height={44} className="rounded-full" />
@@ -282,7 +282,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
             onClick={() => setShowMenu(!showMenu)}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
-            <MoreHorizontal className="w-5 h-5 text-gray-500" />
+            <MoreHorizontal className="w-5 h-5 text-[#3D3D3D]" />
           </button>
           {showMenu && (
             <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px] z-20">
@@ -306,17 +306,17 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
           {pendingState.isPending && (
             <div className={`px-4 py-3 rounded-lg mb-4 ${pendingState.awaitingAdminApproval ? 'bg-amber-50 border border-amber-200' : pendingState.isRequester ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
               {pendingState.awaitingAdminApproval ? (
-                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-amber-600" /><span className="text-sm text-amber-800 font-ibm-plex-mono">Awaiting admin approval before {userName} can see your message</span></div>
+                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-amber-600" /><span className="text-sm text-amber-800 ">Awaiting admin approval before {userName} can see your message</span></div>
               ) : pendingState.isRequester ? (
-                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600" /><span className="text-sm text-blue-800 font-ibm-plex-mono">Message request pending. {userName} hasn't responded yet.</span></div>
+                <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600" /><span className="text-sm text-blue-800 ">Message request pending. {userName} hasn't responded yet.</span></div>
               ) : (
                 <div className="space-y-2">
-                  <span className="text-sm text-green-800 font-ibm-plex-mono">{userName} wants to connect with you</span>
+                  <span className="text-sm text-green-800 ">{userName} wants to connect with you</span>
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleRespondToRequest('ACCEPT')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:opacity-50">
                       {respondingAction === 'ACCEPT' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Accept
                     </button>
-                    <button onClick={() => handleRespondToRequest('SKIP')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded transition-colors disabled:opacity-50">
+                    <button onClick={() => handleRespondToRequest('SKIP')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-[#3D3D3D] text-sm rounded transition-colors disabled:opacity-50">
                       {respondingAction === 'SKIP' ? <Loader2 className="w-4 h-4 animate-spin" /> : <SkipForward className="w-4 h-4" />} Skip
                     </button>
                     <button onClick={() => handleRespondToRequest('DECLINE')} disabled={!!respondingAction} className="flex items-center gap-1 px-3 py-1.5 text-red-600 hover:bg-red-50 text-sm rounded transition-colors disabled:opacity-50">
@@ -332,7 +332,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
           {loading ? (
             <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
           ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500"><p className="font-ibm-plex-mono text-sm">Start a conversation with {userName}</p></div>
+            <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]"><p className=" text-sm">Start a conversation with {userName}</p></div>
           ) : (
             <div className="space-y-4">
               {messages.map((message, index) => {
@@ -342,16 +342,16 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                 return (
                   <div key={message.id}>
                     {showTimestamp && message.created_at && (
-                      <div className="text-center text-xs text-gray-400 font-ibm-plex-mono uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
+                      <div className="text-center text-xs text-gray-400  uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
                     )}
                     <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
                       {!isOwn && <Image src={avatarUrl} alt={userName} width={32} height={32} className="rounded-full flex-shrink-0" />}
                       <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                        <article className={cn('font-ibm-plex-mono text-sm', isOwn && 'text-white')}>
+                        <article className={cn(' text-sm', isOwn && 'text-white')}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
                         </article>
                       </div>
-                      {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs font-ibm-plex-mono font-bold text-gray-600">{client?.user?.name?.charAt(0) || 'U'}</div>}
+                      {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs  font-bold text-[#3D3D3D]">{client?.user?.name?.charAt(0) || 'U'}</div>}
                     </div>
                   </div>
                 );
@@ -367,9 +367,9 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         <div className="px-6 lg:px-8 py-4">
           <ContentContainer>
             {pendingState.isPending && pendingState.isRequester ? (
-              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Waiting for {userName} to accept your message request</div>
+              <div className="text-center text-[#3D3D3D]  text-sm">Waiting for {userName} to accept your message request</div>
             ) : pendingState.isPending && !pendingState.isRequester ? (
-              <div className="text-center text-gray-500 font-ibm-plex-mono text-sm">Accept the request to continue the conversation</div>
+              <div className="text-center text-[#3D3D3D]  text-sm">Accept the request to continue the conversation</div>
             ) : (
               <>
                 <div className="flex items-center gap-3 bg-gray-100 rounded-full px-4 py-3">
@@ -382,7 +382,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                     placeholder={`Type a message to ${userName}...`}
                     disabled={sendingMessageId !== null}
                     autoFocus
-                    className="flex-1 bg-transparent border-none outline-none font-ibm-plex-mono text-gray-900 placeholder-gray-500 h-6"
+                    className="flex-1 bg-transparent border-none outline-none  text-gray-900 placeholder-gray-500 h-6"
                   />
                   <button
                     onClick={handleSend}

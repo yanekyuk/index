@@ -146,7 +146,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       }}
     >
       {isLoading ? (
-        <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="min-h-screen flex items-center justify-center bg-[#FDFDFD]">
           <video autoPlay loop muted playsInline className="w-40 h-40">
             <source src="/loading-tree.m4v" type="video/mp4" />
           </video>

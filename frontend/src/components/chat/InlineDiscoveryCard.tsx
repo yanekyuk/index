@@ -42,11 +42,11 @@ export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardPr
           <div className="flex items-center justify-between gap-2 mb-2">
             <button
               onClick={handleViewProfile}
-              className="font-bold text-sm text-gray-900 font-ibm-plex-mono hover:text-gray-700 truncate"
+              className="font-bold text-sm text-gray-900  hover:text-gray-700 truncate"
             >
               {discovery.candidateName || 'Potential Connection'}
             </button>
-            <span className="text-xs text-gray-500 font-ibm-plex-mono flex-shrink-0">
+            <span className="text-xs text-gray-500  flex-shrink-0">
               {Math.round(discovery.score)}% match
             </span>
           </div>
@@ -56,14 +56,14 @@ export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardPr
           <div className="flex gap-2 mt-3">
             <button
               onClick={handleViewProfile}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors font-ibm-plex-mono"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors "
             >
               <User className="w-3.5 h-3.5" />
               View Profile
             </button>
             <button
               onClick={handleStartChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded transition-colors font-ibm-plex-mono"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded transition-colors "
             >
               <MessageCircle className="w-3.5 h-3.5" />
               Start Conversation
