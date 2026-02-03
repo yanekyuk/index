@@ -899,7 +899,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           </div>
 
           {/* Section: Expired (after frictioned scroll) — all together, ordered by date */}
-          <section className="mt-8 pt-6 border-t border-gray-200/80">
+          <section className="mt-8 pt-6 border-t border-gray-200/80 pb-8 border-b-4 border-gray-200/80">
             <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer font-ibm-plex-mono mb-3 pb-4">
               <input
                 type="checkbox"
@@ -909,92 +909,90 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               />
               Show expired
             </label>
+            {showExpired && (
+              <>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 font-ibm-plex-mono text-left">
+                  Expired
+                </h3>
+                <p className="text-sm text-gray-600 mb-4 font-ibm-plex-mono">
+                  This was a thing for a moment. Then it wasn’t.
+                </p>
+              </>
+            )}
             {showExpired && expiredItems.length > 0 && (
               <div className="space-y-3">
                 {expiredItems.map((entry) => {
+                  const expiredCardClass = "bg-[#f5f5f5] rounded-md p-3 opacity-80";
+                  const headerClass = "flex items-center gap-2 min-w-0 mb-2";
+                  const avatarClass = "w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0";
+                  const titleClass = "font-bold text-gray-900 font-ibm-plex-mono text-sm";
+                  const metaClass = "text-[11px] text-gray-500 font-ibm-plex-mono";
+                  const bodyClass = "text-[14px] text-gray-700 leading-snug mb-2";
+                  const expiredMetaClass = "text-[11px] text-gray-400 mt-2 font-ibm-plex-mono";
+
                   if (entry.type === 'opportunity' || entry.type === 'perspective') {
                     const item = entry.data;
                     return (
-                      <div key={`${entry.type}-${item.id}`} className="bg-[#f5f5f5] rounded-md p-3 opacity-75">
-                        <div className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-2 mb-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0">
-                              {item.user.name.charAt(0)}
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.user.name}</h4>
-                              <p className="text-[11px] text-gray-500 font-ibm-plex-mono">
-                                {item.sharedIntents} shared intent · {item.backingAgents} backing agents
-                              </p>
-                            </div>
+                      <div key={`${entry.type}-${item.id}`} className={expiredCardClass}>
+                        <div className={headerClass}>
+                          <div className={avatarClass}>{item.user.name.charAt(0)}</div>
+                          <div className="min-w-0">
+                            <h4 className={titleClass}>{item.user.name}</h4>
+                            <p className={metaClass}>
+                              {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                            </p>
                           </div>
                         </div>
-                        <p className="text-[13px] text-gray-700 leading-snug mb-2">{item.synthesis}</p>
+                        <p className={bodyClass}>{item.synthesis}</p>
                         {item.friendNote && (
-                          <p className="text-[12px] text-gray-600 pl-2 border-l border-gray-300">
+                          <p className="text-[12px] text-gray-600 pl-2 border-l border-gray-300 mb-2">
                             <span className="font-semibold">{item.friendNote.name} thinks:</span> {item.friendNote.text}
                           </p>
                         )}
-                        <p className="text-[11px] text-gray-400 mt-2 font-ibm-plex-mono">
-                          Expired {new Date(entry.expiredAt).toLocaleDateString()}
-                        </p>
+                        <p className={expiredMetaClass}>Expired {new Date(entry.expiredAt).toLocaleDateString()}</p>
                       </div>
                     );
                   }
                   if (entry.type === 'question') {
                     const item = entry.data;
                     return (
-                      <div key={`question-${item.id}`} className="bg-[#f5f5f5] rounded-md p-3 opacity-75">
-                        <div className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-2 mb-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0">
-                              {item.user.name.charAt(0)}
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.user.name}</h4>
-                              <p className="text-[11px] text-gray-500 font-ibm-plex-mono">
-                                {item.sharedIntents} shared intent · {item.backingAgents} backing agents
-                              </p>
-                            </div>
+                      <div key={`question-${item.id}`} className={expiredCardClass}>
+                        <div className={headerClass}>
+                          <div className={avatarClass}>{item.user.name.charAt(0)}</div>
+                          <div className="min-w-0">
+                            <h4 className={titleClass}>{item.user.name}</h4>
+                            <p className={metaClass}>
+                              {item.sharedIntents} shared intent · {item.backingAgents} backing agents
+                            </p>
                           </div>
                         </div>
-                        <p className="text-[13px] text-gray-700 leading-snug">{item.synthesis}</p>
-                        <p className="text-[11px] text-gray-400 mt-2 font-ibm-plex-mono">
-                          Expired {new Date(entry.expiredAt).toLocaleDateString()}
-                        </p>
+                        <p className={bodyClass}>{item.synthesis}</p>
+                        <p className={expiredMetaClass}>Expired {new Date(entry.expiredAt).toLocaleDateString()}</p>
                       </div>
                     );
                   }
                   const item = entry.data;
                   return (
-                    <div key={`bridge-${item.id}`} className="rounded-md opacity-75">
+                    <div key={`bridge-${item.id}`} className={expiredCardClass}>
                       <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-2">
                         <div className="flex items-center gap-2 text-left min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0">
-                            {item.userA.name.charAt(0)}
-                          </div>
+                          <div className={avatarClass}>{item.userA.name.charAt(0)}</div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userA.name}</h4>
-                            <p className="text-[11px] text-gray-500">{item.userA.role}</p>
+                            <h4 className={titleClass}>{item.userA.name}</h4>
+                            <p className={metaClass}>{item.userA.role}</p>
                           </div>
                         </div>
                         <span className="text-gray-500 shrink-0" aria-hidden>↔</span>
                         <div className="flex items-center gap-2 text-left min-w-0">
-                          <div className="w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center text-gray-600 text-sm font-semibold shrink-0">
-                            {item.userB.name.charAt(0)}
-                          </div>
+                          <div className={avatarClass}>{item.userB.name.charAt(0)}</div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-gray-900 font-ibm-plex-mono text-sm">{item.userB.name}</h4>
-                            <p className="text-[11px] text-gray-500">{item.userB.role}</p>
+                            <h4 className={titleClass}>{item.userB.name}</h4>
+                            <p className={metaClass}>{item.userB.role}</p>
                           </div>
                         </div>
                       </div>
-                      <div className="bg-[#f0f0f0] rounded-md px-3 py-2 mb-2">
-                        <p className="text-[13px] text-gray-700 leading-snug text-left">{item.reason}</p>
-                      </div>
-                      <p className="text-[11px] text-gray-400 font-ibm-plex-mono">
-                        Expired {new Date(entry.expiredAt).toLocaleDateString()}
-                      </p>
+                      <p className={bodyClass}>{item.reason}</p>
+                      <p className={expiredMetaClass}>Expired {new Date(entry.expiredAt).toLocaleDateString()}</p>
                     </div>
                   );
                 })}
