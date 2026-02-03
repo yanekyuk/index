@@ -482,10 +482,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const displayTitle =
-    sessionTitle ||
-    (messages[0]?.role === 'user' ? (messages[0].content.slice(0, 50).trim() + (messages[0].content.length > 50 ? '…' : '')) : null) ||
-    'New chat';
+  const displayTitle = sessionTitle || 'Untitled chat';
 
   const startEditingTitle = () => {
     if (!sessionId) return;

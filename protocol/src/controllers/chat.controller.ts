@@ -246,6 +246,7 @@ export class ChatController {
           });
 
           // Auto-name session with LLM when there is enough context (at least one user + one assistant message)
+          let sessionTitle: string | undefined;
           const sessionForTitle = await chatSessionService.getSession(sessionId, user.id);
           if (sessionForTitle && !sessionForTitle.title?.trim()) {
             const messagesForTitle = await chatSessionService.getSessionMessages(sessionId, 10);
@@ -254,11 +255,11 @@ export class ChatController {
             if (hasUser && hasAssistant) {
               try {
                 const titleGenerator = new ChatTitleGenerator();
-                const title = await titleGenerator.invoke({
+                sessionTitle = await titleGenerator.invoke({
                   messages: messagesForTitle.map((m) => ({ role: m.role, content: m.content })),
                 });
-                await chatSessionService.updateSessionTitle(sessionId, user.id, title);
-                logger.info('Session title set', { sessionId, title });
+                await chatSessionService.updateSessionTitle(sessionId, user.id, sessionTitle);
+                logger.info('Session title set', { sessionId, title: sessionTitle });
               } catch (err) {
                 logger.warn('Failed to set session title', {
                   sessionId,
@@ -266,11 +267,13 @@ export class ChatController {
                 });
               }
             }
+          } else if (sessionForTitle?.title) {
+            sessionTitle = sessionForTitle.title;
           }
 
-          // Send done event
+          // Send done event with title
           controller.enqueue(encoder.encode(
-            formatSSEEvent(createDoneEvent(sessionId, fullResponse, routingDecision, subgraphResults))
+            formatSSEEvent(createDoneEvent(sessionId, fullResponse, routingDecision, subgraphResults, sessionTitle))
           ));
 
         } catch (error) {

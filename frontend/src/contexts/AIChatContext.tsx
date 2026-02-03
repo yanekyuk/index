@@ -104,6 +104,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       const newSessionId = response.headers.get('X-Session-Id');
       if (newSessionId && !sessionId) {
         setSessionId(newSessionId);
+        // Show new session in sidebar immediately (will display as "Untitled chat")
         refetchSessions();
       }
 
@@ -156,6 +157,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ? { ...msg, content: event.response || msg.content, isStreaming: false }
                       : msg
                   ));
+                  // Update session title if provided by backend
+                  if (event.title) {
+                    setSessionTitle(event.title);
+                  }
+                  // Refetch sessions after streaming completes (title is generated on backend)
+                  refetchSessions();
                   break;
                 case 'error':
                   setMessages(prev => prev.map(msg =>

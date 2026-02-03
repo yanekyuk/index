@@ -119,9 +119,11 @@ export default function Sidebar() {
 
   // Fetch AI chat sessions
   useEffect(() => {
+    const isInitialLoad = sessionsVersion === 0;
     const fetchSessions = async () => {
       try {
-        setLoadingSessions(true);
+        // Only show loading on initial load, not on refetches
+        if (isInitialLoad) setLoadingSessions(true);
         const token = await getAccessToken();
         if (!token) return;
         
@@ -134,7 +136,7 @@ export default function Sidebar() {
       } catch (error) {
         console.error('Failed to fetch chat sessions:', error);
       } finally {
-        setLoadingSessions(false);
+        if (isInitialLoad) setLoadingSessions(false);
       }
     };
 
@@ -264,7 +266,7 @@ export default function Sidebar() {
                       : 'text-gray-700 hover:text-black hover:bg-gray-50'
                   }`}
                 >
-                  {session.title || 'Untitled conversation'}
+                  {session.title || 'Untitled chat'}
                 </button>
               );
             })}
