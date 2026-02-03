@@ -95,9 +95,9 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
     <Dialog.Root open={open} onOpenChange={(open) => !isSubmitting && onOpenChange(open)}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Index</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Network</DialogTitle>
           <DialogDescription>
-            Create a new index to organize and share your knowledge base.
+            Create a new network to organize and share your knowledge base.
           </DialogDescription>
         </DialogHeader>
 
@@ -105,7 +105,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-black">
-                <div className="mb-2">Index Name</div>
+                <div className="mb-2">Network Name</div>
               </label>
               <Input
                 id="name"
@@ -117,7 +117,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                     handleSubmit(e);
                   }
                 }}
-                placeholder="Enter index name..."
+                placeholder="Enter network name..."
                 required
                 minLength={1}
                 disabled={isSubmitting}
@@ -133,7 +133,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 className="resize-none"
-                placeholder="Define what people can share in this index..."
+                placeholder="Define what people can share in this network..."
                 rows={3}
                 disabled={isSubmitting}
               />

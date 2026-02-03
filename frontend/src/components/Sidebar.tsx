@@ -19,7 +19,6 @@ import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import PreferencesModal from '@/components/modals/PreferencesModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
-import IndexSelectorModal from '@/components/modals/IndexSelectorModal';
 import IndexOwnerModal from '@/components/modals/IndexOwnerModal';
 
 interface ChatSession {
@@ -51,12 +50,12 @@ export default function Sidebar() {
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerModalIndex, setOwnerModalIndex] = useState<IndexType | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [indexModalOpen, setIndexModalOpen] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const isMessagesView = pathname?.includes('/chat') && pathname?.startsWith('/u/');
   const isLibraryView = pathname?.startsWith('/library');
-  const isHomeView = !isMessagesView && !isLibraryView;
+  const isNetworksView = pathname?.startsWith('/networks');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
@@ -308,11 +307,11 @@ export default function Sidebar() {
                   className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center font-ibm-plex-mono text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
-                    setIndexModalOpen(true);
+                    router.push('/networks');
                   }}
                 >
                   <Compass className="h-4 w-4 mr-2" />
-                  Indexes
+                  Networks
                 </button>
                 <button
                   className={`w-full px-4 py-2 text-left flex items-center font-ibm-plex-mono text-sm ${
@@ -400,15 +399,6 @@ export default function Sidebar() {
           index={memberSettingsIndex}
         />
       )}
-
-      {/* Index Selector Modal */}
-      <IndexSelectorModal
-        open={indexModalOpen}
-        onOpenChange={setIndexModalOpen}
-        onOpenOwnerModal={setOwnerModalIndex}
-        onOpenMemberModal={setMemberSettingsIndex}
-        onCreateIndex={() => setCreateIndexModalOpen(true)}
-      />
 
       {/* Index Owner Modal */}
       {ownerModalIndex && (

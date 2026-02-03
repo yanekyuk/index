@@ -263,10 +263,10 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
       setOriginalTitle(title);
       setOriginalPrompt(prompt);
       updateIndex(updatedIndex);
-      success('Index settings updated successfully');
+      success('Network settings updated successfully');
     } catch (err) {
       console.error('Error updating index:', err);
-      error('Failed to update index settings');
+      error('Failed to update network settings');
     } finally {
       setIsSavingSettings(false);
     }
@@ -277,12 +277,12 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
       setIsDeletingIndex(true);
       await indexesService.deleteIndex(index.id);
       removeIndex(index.id);
-      success('Index deleted successfully');
+      success('Network deleted successfully');
       setShowDeleteConfirmation(false);
       onOpenChange(false);
     } catch (err) {
       console.error('Error deleting index:', err);
-      error('Failed to delete index');
+      error('Failed to delete network');
     } finally {
       setIsDeletingIndex(false);
     }
@@ -469,7 +469,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
               <Tabs.Content value="settings" className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">Title</label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter index title" />
+                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter network title" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">Prompt</label>
@@ -493,11 +493,11 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                     <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="text-sm font-medium text-red-900">Delete this index</h4>
-                          <p className="text-sm text-red-700 mt-1">Deleting an index is permanent.</p>
+                          <h4 className="text-sm font-medium text-red-900">Delete this network</h4>
+                          <p className="text-sm text-red-700 mt-1">Deleting a network is permanent.</p>
                         </div>
                         <Button variant="outline" onClick={() => setShowDeleteConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4 mr-2" />Delete Index
+                          <Trash2 className="h-4 w-4 mr-2" />Delete Network
                         </Button>
                       </div>
                     </div>
@@ -542,7 +542,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
 
                 {/* Link Section */}
                 <div className="pt-4">
-                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">{anyoneCanJoin ? 'Index Link' : 'Invitation Link'}</h4>
+                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">{anyoneCanJoin ? 'Network Link' : 'Invitation Link'}</h4>
                   <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                     {anyoneCanJoin ? <Globe className="h-4 w-4 text-gray-500" /> : <Lock className="h-4 w-4 text-gray-500" />}
                     <code className="flex-1 text-xs text-gray-700 font-mono truncate">
@@ -602,7 +602,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
 
               {/* Integrations Tab */}
               <Tabs.Content value="integrations" className="space-y-4">
-                <p className="text-sm text-gray-600 font-ibm-plex-mono">Connect external services to sync data with your index.</p>
+                <p className="text-sm text-gray-600 font-ibm-plex-mono">Connect external services to sync data with your network.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {integrations.map((it) => {
                     const integrationDef = INTEGRATIONS.find(i => i.type === it.type);
@@ -704,12 +704,12 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
           <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirmation(false)} />
           <div className="relative bg-white rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Delete &apos;{currentIndex.title}&apos;</h2>
-            <p className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the index name to confirm.</p>
+            <p className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the network name to confirm.</p>
             <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={currentIndex.title} className="mb-4" />
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowDeleteConfirmation(false)}>Cancel</Button>
               <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeletingIndex ? 'Deleting...' : 'Delete Index'}
+                {isDeletingIndex ? 'Deleting...' : 'Delete Network'}
               </Button>
             </div>
           </div>

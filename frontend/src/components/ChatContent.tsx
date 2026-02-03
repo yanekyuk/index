@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Send, Loader2, Sparkles, Pencil, Paperclip, X, Globe, Zap, Type, ChevronDown, Lock } from 'lucide-react';
+import { Send, Loader2, Sparkles, Pencil, Paperclip, X, Globe, Zap, Type, ChevronDown, Lock, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAIChat } from '@/contexts/AIChatContext';
@@ -216,12 +216,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [messages]);
 
-  // Update URL when session changes (without navigation to avoid remount)
+  // Update URL when session changes: push so back from /d/id returns to /
   useEffect(() => {
     if (sessionId && !sessionIdFromUrl) {
-      window.history.replaceState(null, '', `/d/${sessionId}`);
+      router.push(`/d/${sessionId}`);
     }
-  }, [sessionId, sessionIdFromUrl]);
+  }, [sessionId, sessionIdFromUrl, router]);
 
   // Fetch discoveries for home state
   const fetchSynthesis = useCallback(async (targetUserId: string) => {
@@ -804,6 +804,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     <>
       {/* Sticky header - full width, min-h-[68px] matches ChatView header height */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"
+          aria-label="Back to home"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
         <Sparkles className="h-5 w-5 shrink-0 text-[#006D4B]" aria-hidden />
         {isEditingTitle ? (
           <input
