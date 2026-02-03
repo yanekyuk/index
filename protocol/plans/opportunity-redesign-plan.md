@@ -586,12 +586,10 @@ WHERE expires_at IS NOT NULL;
 
 ### 5.6 Drizzle Schema
 
-```typescript
-// schemas/hyde.schema.ts
+All table schemas live in **`src/schemas/database.schema.ts`** (do not create `lib/protocol/schemas/`).
 
-import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
-import { vector } from 'pgvector/drizzle-orm';
-import { HydeStrategy, HydeTargetCorpus, HydeContext } from '../lib/protocol/agents/hyde/hyde.strategies';
+```typescript
+// src/schemas/database.schema.ts (excerpt: HyDE table)
 
 export type HydeSourceType = 'intent' | 'profile' | 'query';
 
@@ -1665,9 +1663,7 @@ WHERE actors @> '[{"intents": ["intent-abc123"]}]'::jsonb;
 ### 6.3 Drizzle Schema
 
 ```typescript
-// schemas/database.schema.ts
-
-import { pgTable, uuid, jsonb, text, numeric, timestamp, index, pgEnum } from 'drizzle-orm/pg-core';
+// src/schemas/database.schema.ts (excerpt: Opportunity types and table)
 
 // JSON type definitions
 export interface OpportunityDetection {
@@ -3028,16 +3024,21 @@ GET /api/opportunities?role=agent
 ### Step 1: Database Schema & Types
 **Goal**: Create the foundation — tables and TypeScript types.
 
-- [ ] Create `lib/protocol/schemas/hyde.schema.ts` (Drizzle schema for `hyde_documents`)
-- [ ] Create `lib/protocol/schemas/opportunity.schema.ts` (Drizzle schema for `opportunities`)
-- [ ] Generate migration: `bun run db:generate`
-- [ ] Apply migration: `bun run db:migrate`
-- [ ] Add TypeScript types to `lib/protocol/interfaces/database.interface.ts`:
-  - [ ] `HydeDocument`, `CreateHydeDocumentData`
-  - [ ] `Opportunity`, `CreateOpportunityData`, `OpportunityQueryOptions`
-  - [ ] `OpportunityDetection`, `OpportunityActor`, `OpportunityInterpretation`, `OpportunityContext`
+**Convention**: All Drizzle schemas live in `src/schemas/database.schema.ts`. Do not create schemas in `lib/protocol`.
 
-**Test**: 
+- [x] Add to `src/schemas/database.schema.ts`:
+  - [x] `hyde_documents` table (HyDE storage: source_type, source_id, strategy, target_corpus, hyde_text, hyde_embedding, context, expires_at)
+  - [x] `opportunities` table (redesign: detection, actors, interpretation, context as JSONB; index_id, confidence, status, expires_at)
+  - [x] `opportunity_status` enum: `pending` | `viewed` | `accepted` | `rejected` | `expired`
+  - [x] Types: `HydeSourceType`, `OpportunityDetection`, `OpportunityActor`, `OpportunitySignal`, `OpportunityInterpretation`, `OpportunityContext`
+- [x] Generate migration: `bun run db:generate` (or add migration manually)
+- [x] Apply migration: `bun run db:migrate`
+- [x] Add TypeScript types to `lib/protocol/interfaces/database.interface.ts`:
+  - [x] `HydeDocument`, `CreateHydeDocumentData`, `HydeSourceType`
+  - [x] `Opportunity`, `CreateOpportunityData`, `OpportunityQueryOptions`, `OpportunityStatus`
+  - [x] Re-export `OpportunityDetection`, `OpportunityActor`, `OpportunityInterpretation`, `OpportunityContext`, `OpportunitySignal`
+
+**Test**:
 - Verify tables exist via `bun run db:studio`
 - TypeScript compiles without errors
 

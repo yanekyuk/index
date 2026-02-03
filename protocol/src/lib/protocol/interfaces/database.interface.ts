@@ -1,4 +1,10 @@
 import { ProfileDocument } from '../agents/profile/profile.generator';
+import type {
+  OpportunityDetection,
+  OpportunityActor,
+  OpportunityInterpretation,
+  OpportunityContext,
+} from '../../../schemas/database.schema';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTENT TYPES
@@ -232,6 +238,85 @@ export interface UpdateIndexSettingsData {
   allowGuestVibeCheck?: boolean;
   /** Require approval for new members (optional) */
   requireApproval?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HYDE DOCUMENT TYPES (Opportunity Redesign)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type HydeSourceType = 'intent' | 'profile' | 'query';
+
+export interface HydeDocument {
+  id: string;
+  sourceType: HydeSourceType;
+  sourceId: string | null;
+  sourceText: string | null;
+  strategy: string;
+  targetCorpus: string;
+  hydeText: string;
+  hydeEmbedding: number[];
+  context: Record<string, unknown> | null;
+  createdAt: Date;
+  expiresAt: Date | null;
+}
+
+export interface CreateHydeDocumentData {
+  sourceType: HydeSourceType;
+  sourceId?: string;
+  sourceText?: string;
+  strategy: string;
+  targetCorpus: string;
+  hydeText: string;
+  hydeEmbedding: number[];
+  context?: Record<string, unknown>;
+  expiresAt?: Date;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// OPPORTUNITY TYPES (Opportunity Redesign)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type {
+  OpportunityDetection,
+  OpportunityActor,
+  OpportunityInterpretation,
+  OpportunityContext,
+  OpportunitySignal,
+} from '../../../schemas/database.schema';
+
+export type OpportunityStatus = 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+
+export interface Opportunity {
+  id: string;
+  detection: OpportunityDetection;
+  actors: OpportunityActor[];
+  interpretation: OpportunityInterpretation;
+  context: OpportunityContext;
+  indexId: string;
+  confidence: string;
+  status: OpportunityStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date | null;
+}
+
+export interface CreateOpportunityData {
+  detection: OpportunityDetection;
+  actors: OpportunityActor[];
+  interpretation: OpportunityInterpretation;
+  context: OpportunityContext;
+  indexId: string;
+  confidence: string;
+  status?: OpportunityStatus;
+  expiresAt?: Date;
+}
+
+export interface OpportunityQueryOptions {
+  status?: OpportunityStatus;
+  indexId?: string;
+  role?: string;
+  limit?: number;
+  offset?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -13,7 +13,8 @@ export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 
 export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE']);
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['PENDING', 'ACCEPTED', 'REJECTED']);
+// Opportunity redesign: lifecycle status (message-first: accepted = B replied, rejected = B skipped)
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['pending', 'viewed', 'accepted', 'rejected', 'expired']);
 export const elaborationRequestStatusEnum = pgEnum('elaboration_request_status', ['OPEN', 'RESOLVED', 'ABANDONED']);
 
 // Onboarding state type
@@ -135,23 +136,80 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// HyDE documents: hypothetical documents for multi-strategy semantic search (opportunity redesign)
+export type HydeSourceType = 'intent' | 'profile' | 'query';
+
+export const hydeDocuments = pgTable('hyde_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceType: text('source_type').$type<HydeSourceType>().notNull(),
+  sourceId: uuid('source_id'),
+  sourceText: text('source_text'),
+  strategy: text('strategy').notNull(), // 'mirror' | 'reciprocal' | 'mentor' | ...
+  targetCorpus: text('target_corpus').notNull(), // 'profiles' | 'intents'
+  context: jsonb('context'),
+  hydeText: text('hyde_text').notNull(),
+  hydeEmbedding: vector('hyde_embedding', { dimensions: 2000 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (table) => ({
+  sourceIdx: index('hyde_source_idx').on(table.sourceType, table.sourceId),
+  strategyIdx: index('hyde_strategy_idx').on(table.strategy),
+  embeddingIdx: index('hyde_embedding_idx').using('hnsw', table.hydeEmbedding.op('vector_cosine_ops')),
+  expiresIdx: index('hyde_expires_idx').on(table.expiresAt),
+  sourceStrategyUnique: uniqueIndex('hyde_source_strategy_unique').on(table.sourceType, table.sourceId, table.strategy, table.targetCorpus),
+}));
+
+// Opportunity redesign: JSON types for extensible opportunity model
+export interface OpportunityDetection {
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added';
+  createdBy?: string;
+  triggeredBy?: string;
+  timestamp: string;
+}
+
+export interface OpportunityActor {
+  role: string;
+  identityId: string;
+  intents?: string[];
+  profile?: boolean;
+}
+
+export interface OpportunitySignal {
+  type: string;
+  weight: number;
+  detail?: string;
+}
+
+export interface OpportunityInterpretation {
+  category: string;
+  summary: string;
+  confidence: number;
+  signals?: OpportunitySignal[];
+}
+
+export interface OpportunityContext {
+  indexId: string;
+  conversationId?: string;
+  triggeringIntentId?: string;
+}
+
+// Opportunities table (redesign: detection, actors, interpretation, context as JSONB)
 export const opportunities = pgTable('opportunities', {
   id: uuid('id').primaryKey().defaultRandom(),
-  // References
-  sourceId: uuid('source_id').notNull().references(() => users.id),
-  candidateId: uuid('candidate_id').notNull().references(() => users.id),
-  // Data
-  score: integer('score').notNull(),
-  sourceDescription: text('source_description').notNull(), // Description shown to the SOURCE user
-  candidateDescription: text('candidate_description').notNull(), // Description shown to the CANDIDATE user
-  // Timestamps
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  // Semantic Governance
-  valencyRole: text('valency_role'), // e.g., "Agent", "Patient"
-  status: opportunityStatusEnum('status').default('PENDING'),
-  rejectionReason: text('rejection_reason'),
-})
+  detection: jsonb('detection').$type<OpportunityDetection>().notNull(),
+  actors: jsonb('actors').$type<OpportunityActor[]>().notNull(),
+  interpretation: jsonb('interpretation').$type<OpportunityInterpretation>().notNull(),
+  context: jsonb('context').$type<OpportunityContext>().notNull(),
+  indexId: uuid('index_id').notNull().references(() => indexes.id),
+  confidence: numeric('confidence').notNull(),
+  status: opportunityStatusEnum('status').notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (table) => ({
+  indexIdx: index('opportunities_index_idx').on(table.indexId),
+  statusIdx: index('opportunities_status_idx').on(table.status),
+}));
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -369,6 +427,14 @@ export const indexesRelations = relations(indexes, ({ many }) => ({
   members: many(indexMembers),
   intents: many(intentIndexes),
   integrations: many(userIntegrations),
+  opportunities: many(opportunities),
+}));
+
+export const opportunitiesRelations = relations(opportunities, ({ one }) => ({
+  index: one(indexes, {
+    fields: [opportunities.indexId],
+    references: [indexes.id],
+  }),
 }));
 
 
@@ -524,3 +590,7 @@ export type ChatSession = typeof chatSessions.$inferSelect;
 export type NewChatSession = typeof chatSessions.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type NewChatMessage = typeof chatMessages.$inferInsert;
+export type HydeDocument = typeof hydeDocuments.$inferSelect;
+export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
+export type Opportunity = typeof opportunities.$inferSelect;
+export type NewOpportunity = typeof opportunities.$inferInsert;
