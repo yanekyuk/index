@@ -11,15 +11,16 @@ export interface IndexEmbedderOptions {
   searcher?: (queryVector: number[], collection: string, options?: VectorStoreOption<any>) => Promise<VectorSearchResult<any>[]>;
 }
 
+/**
+ * Default embedder used across the app: OpenRouter API with OpenAI embedding model
+ * (openai/text-embedding-3-large). Generate() uses OpenRouterGenerator; search()
+ * requires an injected searcher (e.g. pgvector).
+ */
 export class IndexEmbedder implements Embedder {
   private generator: EmbeddingGenerator;
   private searcher?: (queryVector: number[], collection: string, options?: VectorStoreOption<any>) => Promise<VectorSearchResult<any>[]>;
 
   constructor(options?: IndexEmbedderOptions) {
-    // Initialize Generator (defaults to OpenRouterGenerator)
-    // NOTE: OpenRouterGenerator currently doesn't take constructor args for model, it hardcodes 'openai/text-embedding-3-large'.
-    // If we want to support model selection, we should update OpenRouterGenerator or pass it here.
-    // For now, initializing default.
     this.generator = new OpenRouterGenerator();
 
     // Initialize Searcher

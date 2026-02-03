@@ -3105,19 +3105,19 @@ GET /api/opportunities?role=agent
 ### Step 5: Embedder Adapter with HyDE Search
 **Goal**: Vector search infrastructure with HyDE-aware multi-strategy search.
 
-- [ ] Extend `Embedder` interface in `lib/protocol/interfaces/embedder.interface.ts`:
-  - [ ] `HydeSearchOptions` type
-  - [ ] `HydeCandidate` type
-  - [ ] `searchWithHydeEmbeddings(hydeEmbeddings, options)` method
-- [ ] Create `src/adapters/embedder.adapter.ts`:
-  - [ ] `generate(text)` — OpenAI embeddings
-  - [ ] `search(queryVector, collection, options)` — pgvector similarity
-  - [ ] `searchWithHydeEmbeddings(...)` — multi-strategy search with merge/rank
+- [x] Extend `Embedder` interface in `lib/protocol/interfaces/embedder.interface.ts`:
+  - [x] `HydeSearchOptions` type
+  - [x] `HydeCandidate` type
+  - [x] `searchWithHydeEmbeddings(hydeEmbeddings, options)` method
+- [x] Create `src/adapters/embedder.adapter.ts`:
+  - [x] `generate(text)` — OpenAI embeddings
+  - [x] `search(queryVector, collection, options)` — pgvector similarity
+  - [x] `searchWithHydeEmbeddings(...)` — multi-strategy search with merge/rank
 
 **Test**:
-- Integration test: Generate embedding, store, search returns match
-- Integration test: Multi-strategy search merges results correctly
-- Integration test: Index scope filtering works
+- [x] Integration test: Generate embedding, store, search returns match
+- [x] Integration test: Multi-strategy search merges results correctly
+- [x] Integration test: Index scope filtering works
 
 ---
 
