@@ -16,6 +16,7 @@ This document outlines a redesign of the Opportunity system with an **extensible
 5. **Separates data from presentation** — Descriptions generated at render time
 6. **Supports agent-driven notifications** — No static thresholds
 7. **Follows Interface → Adapter → Graph → Controller pattern** — No services layer
+8. **Message-first connections** — No mutual "accept"; User A sends a message, User B replies (= accept) or skips (= reject)
 
 ---
 
@@ -65,6 +66,7 @@ This document outlines a redesign of the Opportunity system with an **extensible
 - ❌ Data migration from `intent_stakes`
 - ❌ Static notification thresholds
 - ❌ **Services layer** — Use interfaces + adapters instead
+- ❌ **Mutual accept** — Connections are message-first: B replies (= accept) or skips (= reject)
 
 ---
 
@@ -120,7 +122,7 @@ interface Opportunity {
   };
   
   // ═══════════════════════════════════════════════════════════════
-  // LIFECYCLE
+  // LIFECYCLE (message-first: accepted = B replied, rejected = B skipped)
   // ═══════════════════════════════════════════════════════════════
   status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   createdAt: string;
@@ -2969,15 +2971,27 @@ async function onMemberRemoved(indexId: string, userId: string) {
 ```mermaid
 stateDiagram-v2
     [*] --> pending: Created
-    pending --> viewed: User opens
+    pending --> viewed: User B opens / sees message
     pending --> expired: TTL or intent archived
-    viewed --> accepted: User accepts
-    viewed --> rejected: User rejects
+    viewed --> accepted: User B replies
+    viewed --> rejected: User B skips
     viewed --> expired: TTL exceeded
     accepted --> [*]: Terminal
     rejected --> [*]: Terminal
     expired --> [*]: Terminal
 ```
+
+### 12.6 Connection Flow (Message-First)
+
+Connections are **no longer mutual "accept"**. The flow is message-first:
+
+1. **User A** discovers **User B** through an opportunity (graph, chat, or manual).
+2. **User A** can send a message to User B (outbound message creates the connection attempt; opportunity may be created or linked at this point).
+3. **User B** sees this message (e.g. in inbox or opportunity detail).
+4. **User B** can **reply** to the message → treated as **accept** (opportunity status → `accepted`, connection established).
+5. **User B** can **skip** the message → treated as **rejection** (opportunity status → `rejected`, no connection).
+
+So: **reply = accept**, **skip = reject**. There is no separate "accept" or "reject" button; the first reply from B constitutes acceptance, and an explicit skip (or equivalent) constitutes rejection.
 
 ---
 
@@ -2989,7 +3003,7 @@ stateDiagram-v2
 |--------|----------|-------------|
 | `GET` | `/api/opportunities` | List opportunities for authenticated user |
 | `GET` | `/api/opportunities/:id` | Get single opportunity (presentation included) |
-| `PATCH` | `/api/opportunities/:id/status` | Update status (accept/reject) |
+| `PATCH` | `/api/opportunities/:id/status` | Update status (reply = accept, skip = reject) |
 | `POST` | `/api/indexes/:indexId/opportunities` | Create manual opportunity (curator) |
 | `GET` | `/api/indexes/:indexId/opportunities` | List all opportunities in index (admin) |
 
@@ -3045,7 +3059,7 @@ GET /api/opportunities?role=agent
 - [ ] Add API routes:
   - [ ] `GET /api/opportunities` (list for user)
   - [ ] `GET /api/opportunities/:id` (get with presentation)
-  - [ ] `PATCH /api/opportunities/:id/status` (accept/reject)
+  - [ ] `PATCH /api/opportunities/:id/status` (reply = accept, skip = reject)
   - [ ] `POST /api/indexes/:indexId/opportunities` (manual create)
   - [ ] `GET /api/indexes/:indexId/opportunities` (admin list)
 
@@ -3131,6 +3145,7 @@ Per product owner decision, we do a **clean break**:
 
 ### Communication Plan
 - Notify users that "Connections" section is being upgraded
+- **New model**: message-first — User A sends a message; User B replies (= accept) or skips (= reject). No mutual "accept" flow.
 - Existing connections (accepted stakes) remain as connections
 - Unaccepted stakes are not carried over
 
