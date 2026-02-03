@@ -4,8 +4,8 @@ import type { ChatGraphState, SubgraphResults } from "../chat.graph.state";
 
 /**
  * Creates an index query node that fetches index memberships.
- * If user asks about a specific owned index, returns full members + intents.
- * Implements owner-only access controls.
+ * If user asks about a specific index they belong to, returns members and intents for that index.
+ * Intents and members are visible to all members of the index (not just owners).
  */
 export function createIndexQueryNode(
   database: ChatGraphCompositeDatabase,
@@ -31,26 +31,12 @@ export function createIndexQueryNode(
           idx.title.toLowerCase().includes(extractedContext.toLowerCase())
         );
         if (matchedOwned) {
-          // Programmatic guard: only fetch owner-only data after verifying ownership.
-          // (matchedOwned is from getOwnedIndexes, but this ensures we never leak if matching logic changes.)
           const isOwner = await database.isIndexOwner(matchedOwned.id, state.userId);
-          if (!isOwner) {
-            const membershipMatch = memberships.find((m) =>
-              m.indexTitle.toLowerCase().includes(extractedContext.toLowerCase())
-            );
-            if (membershipMatch) {
-              specificIndexData = {
-                index: membershipMatch,
-                isOwner: false,
-                accessDeniedMessage:
-                  "You are a member of this index but not an owner. You can only view your own indexed intents. Ask the owner for full access."
-              };
-            }
-          } else {
+          if (isOwner) {
             try {
               const [members, intents] = await Promise.all([
                 database.getIndexMembersForOwner(matchedOwned.id, state.userId),
-                database.getIndexIntentsForOwner(matchedOwned.id, state.userId, { limit: 20 })
+                database.getIndexIntentsForMember(matchedOwned.id, state.userId, { limit: 20 })
               ]);
               specificIndexData = {
                 index: matchedOwned,
@@ -69,18 +55,71 @@ export function createIndexQueryNode(
                 error: err instanceof Error ? err.message : String(err)
               });
             }
+          } else {
+            // Member but not owner: show intents and members (all members can see index intents and members)
+            const membershipMatch = memberships.find((m) =>
+              m.indexId === matchedOwned.id || m.indexTitle.toLowerCase().includes(extractedContext.toLowerCase())
+            );
+            if (membershipMatch) {
+              try {
+                const [members, intents] = await Promise.all([
+                  database.getIndexMembersForMember(membershipMatch.indexId, state.userId),
+                  database.getIndexIntentsForMember(membershipMatch.indexId, state.userId, { limit: 20 })
+                ]);
+                specificIndexData = {
+                  index: membershipMatch,
+                  members,
+                  intents,
+                  isOwner: false
+                };
+                logger.info("✅ Member access: members and intents loaded for index", {
+                  indexId: membershipMatch.indexId,
+                  memberCount: members.length,
+                  intentCount: intents.length
+                });
+              } catch (err) {
+                logger.warn("Failed to load member data for index", {
+                  indexId: membershipMatch.indexId,
+                  error: err instanceof Error ? err.message : String(err)
+                });
+                specificIndexData = {
+                  index: membershipMatch,
+                  isOwner: false
+                };
+              }
+            }
           }
         } else {
           const membershipMatch = memberships.find((m) =>
             m.indexTitle.toLowerCase().includes(extractedContext.toLowerCase())
           );
           if (membershipMatch) {
-            specificIndexData = {
-              index: membershipMatch,
-              isOwner: false,
-              accessDeniedMessage:
-                "You are a member of this index but not an owner. You can only view your own indexed intents. Ask the owner for full access."
-            };
+            try {
+              const [members, intents] = await Promise.all([
+                database.getIndexMembersForMember(membershipMatch.indexId, state.userId),
+                database.getIndexIntentsForMember(membershipMatch.indexId, state.userId, { limit: 20 })
+              ]);
+              specificIndexData = {
+                index: membershipMatch,
+                members,
+                intents,
+                isOwner: false
+              };
+              logger.info("✅ Member access: members and intents loaded for index", {
+                indexId: membershipMatch.indexId,
+                memberCount: members.length,
+                intentCount: intents.length
+              });
+            } catch (err) {
+              logger.warn("Failed to load member data for index", {
+                indexId: membershipMatch.indexId,
+                error: err instanceof Error ? err.message : String(err)
+              });
+              specificIndexData = {
+                index: membershipMatch,
+                isOwner: false
+              };
+            }
           }
         }
       }

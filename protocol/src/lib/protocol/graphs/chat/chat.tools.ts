@@ -561,15 +561,31 @@ export function createChatTools(context: ToolContext) {
     return match?.id ?? null;
   }
 
+  /**
+   * Resolve index name or ID to indexId for any index the user is a member of.
+   * Returns null if not found or user is not a member.
+   */
+  async function resolveMemberIndexId(indexNameOrId: string): Promise<string | null> {
+    const trimmed = indexNameOrId.trim();
+    const memberships = await database.getIndexMemberships(userId);
+    if (INDEX_UUID_REGEX.test(trimmed)) {
+      const membership = memberships.find((m) => m.indexId === trimmed);
+      return membership ? trimmed : null;
+    }
+    const needle = trimmed.toLowerCase();
+    const match = memberships.find((m) => (m.indexTitle ?? "").toLowerCase() === needle || (m.indexTitle ?? "").toLowerCase().includes(needle));
+    return match?.indexId ?? null;
+  }
+
   const listIndexMembers = tool(
     async (args: { indexNameOrId: string }) => {
       logger.info("Tool: list_index_members", { userId, indexNameOrId: args.indexNameOrId });
       try {
-        const indexId = await resolveOwnedIndexId(args.indexNameOrId);
+        const indexId = await resolveMemberIndexId(args.indexNameOrId);
         if (!indexId) {
-          return error("Index not found or you are not an owner. Use get_index_memberships to see indexes you own.");
+          return error("Index not found or you are not a member. Use get_index_memberships to see indexes you belong to.");
         }
-        const members = await database.getIndexMembersForOwner(indexId, userId);
+        const members = await database.getIndexMembersForMember(indexId, userId);
         const result = success({
           indexId,
           count: members.length,
@@ -584,15 +600,15 @@ export function createChatTools(context: ToolContext) {
         return result;
       } catch (err) {
         logger.error("list_index_members failed", { error: err });
-        if (err instanceof Error && err.message === "Access denied: Not an owner of this index") {
-          return error("You can only list members for indexes you own. Use get_index_memberships to see your owned indexes.");
+        if (err instanceof Error && err.message === "Access denied: Not a member of this index") {
+          return error("You must be a member of that index to list its members. Use get_index_memberships to see your indexes.");
         }
         return error("Failed to fetch index members. Please try again.");
       }
     },
     {
       name: "list_index_members",
-      description: "OWNER ONLY. Lists all members of an index you own with their details (name, intent count, joined date, permissions). Do NOT include email addresses—privacy. Use when the user asks to see who is in an index, list members, etc.",
+      description: "Lists all members of an index (community) you are a member of, with their details (name, intent count, joined date, permissions). Do NOT include email addresses—privacy. Use when the user asks to see who is in an index, list members, etc.",
       schema: z.object({
         indexNameOrId: z.string().describe("Index display name (e.g. 'AI Founders') or index UUID"),
       }),
@@ -603,11 +619,11 @@ export function createChatTools(context: ToolContext) {
     async (args: { indexNameOrId: string; limit?: number; offset?: number }) => {
       logger.info("Tool: list_index_intents", { userId, indexNameOrId: args.indexNameOrId });
       try {
-        const indexId = await resolveOwnedIndexId(args.indexNameOrId);
+        const indexId = await resolveMemberIndexId(args.indexNameOrId);
         if (!indexId) {
-          return error("Index not found or you are not an owner. Use get_index_memberships to see indexes you own.");
+          return error("Index not found or you are not a member. Use get_index_memberships to see indexes you belong to.");
         }
-        const intents = await database.getIndexIntentsForOwner(indexId, userId, {
+        const intents = await database.getIndexIntentsForMember(indexId, userId, {
           limit: args.limit ?? 50,
           offset: args.offset ?? 0,
         });
@@ -615,24 +631,24 @@ export function createChatTools(context: ToolContext) {
           indexId,
           count: intents.length,
           intents: intents.map((i) => ({
+            userName: i.userName,
             payload: i.payload,
             summary: i.summary,
-            userName: i.userName,
             createdAt: i.createdAt,
           })),
         });
         return result;
       } catch (err) {
         logger.error("list_index_intents failed", { error: err });
-        if (err instanceof Error && err.message === "Access denied: Not an owner of this index") {
-          return error("You can only list intents for indexes you own. Use get_index_memberships to see your owned indexes.");
+        if (err instanceof Error && err.message === "Access denied: Not a member of this index") {
+          return error("You must be a member of that index to list its intents. Use get_index_memberships to see your indexes.");
         }
         return error("Failed to fetch index intents. Please try again.");
       }
     },
     {
       name: "list_index_intents",
-      description: "OWNER ONLY. Lists all intents registered to an index you own, with owner info (payload, summary, userName, createdAt). Supports pagination via limit and offset. Use when the user asks to see all intents in an index, what intents are in a community, etc.",
+      description: "Lists all intents in an index you are a member of, with creator info (userName, payload, summary, createdAt). Use when the user asks to see intents in a community or from other members. Supports pagination.",
       schema: z.object({
         indexNameOrId: z.string().describe("Index display name (e.g. 'AI Founders') or index UUID"),
         limit: z.number().optional().describe("Max number of intents to return (default 50)"),

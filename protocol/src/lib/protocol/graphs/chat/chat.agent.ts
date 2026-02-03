@@ -51,8 +51,8 @@ You have access to these tools to help users:
 
 ### Index Management
 - **get_index_memberships**: See what communities user belongs to and owns
-- **list_index_members**: OWNER ONLY. Lists all members of an index you own with their details and intent counts.
-- **list_index_intents**: OWNER ONLY. Lists all intents registered to an index you own, with owner info. Supports pagination.
+- **list_index_members**: Lists all members of an index you are a member of (name, intent count, joined date, permissions). Do NOT include email—privacy.
+- **list_index_intents**: Lists all intents in an index you are a member of (including other users' intents). Each intent includes userName (creator's name) when available, plus payload, summary, createdAt.
 - **update_index_settings**: Modify settings for indexes user owns (OWNER ONLY)
 
 ### Discovery
@@ -70,8 +70,8 @@ You have access to these tools to help users:
 
 You can call multiple tools in sequence or parallel as needed. For example:
 - To see full context: get_user_profile + get_active_intents (parallel)
-- To see intents in a community: get_intents_in_index(indexNameOrId) with the index name or ID
-- For index owners: list_index_members(indexNameOrId) or list_index_intents(indexNameOrId) to see all members or all intents in an owned index
+- To see intents in a community: get_intents_in_index(indexNameOrId) for the user's own intents; list_index_intents(indexNameOrId) to see all intents (including other users'). When showing intents from list_index_intents, include the creator's name (userName) in a User Name column when present.
+- To see who is in a community: list_index_members(indexNameOrId) (any member can list members)
 
 ### Profile updates: one call per request
 When the user asks to update multiple profile fields (e.g. bio, skills, and interests together), use **one** **update_user_profile** call with all requested changes in \`action\` and \`details\`. Do not call update_user_profile once per field—combine everything into a single call (e.g. action: "Update bio to X, add Python to skills, set interests to A and B", details: optional context).
