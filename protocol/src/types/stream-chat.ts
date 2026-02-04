@@ -4,7 +4,6 @@ import type { ChannelData, ChannelResponse, ChannelFilters, PartialUpdateChannel
 export interface CustomChannelData extends ChannelData {
   pending?: boolean;
   requestedBy?: string;
-  awaitingAdminApproval?: boolean;
   declined?: boolean;
   skipped?: boolean;
 }
@@ -12,7 +11,6 @@ export interface CustomChannelData extends ChannelData {
 export interface CustomChannelResponse extends ChannelResponse {
   pending?: boolean;
   requestedBy?: string;
-  awaitingAdminApproval?: boolean;
   declined?: boolean;
   skipped?: boolean;
 }
@@ -23,7 +21,7 @@ export interface CustomChannelFilters extends ChannelFilters {
 
 export interface CustomPartialUpdateChannel extends Omit<PartialUpdateChannel, 'set' | 'unset'> {
   set?: Partial<CustomChannelResponse>;
-  unset?: Array<keyof ChannelResponse | 'requestedBy' | 'pending' | 'awaitingAdminApproval' | 'declined' | 'skipped'>;
+  unset?: Array<keyof ChannelResponse | 'requestedBy' | 'pending' | 'declined' | 'skipped'>;
 }
 
 // Extended member type with user info

@@ -38,7 +38,7 @@ An **Index** represents a curated community or collection of related intents. Ea
 |-------|-------------|
 | `title` | Human-readable name for the community |
 | `prompt` | LLM-evaluated purpose/scope definition (e.g., "AI/ML professionals seeking collaborators") |
-| `permissions` | Access control (joinPolicy, invitationLink, requireApproval) |
+| `permissions` | Access control (joinPolicy, invitationLink) |
 
 ### Index Members
 

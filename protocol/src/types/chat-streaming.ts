@@ -103,6 +103,8 @@ export interface DoneEvent extends ChatStreamEventBase {
   routingDecision?: Record<string, unknown>;
   /** Optional subgraph results metadata */
   subgraphResults?: Record<string, unknown>;
+  /** Optional session title (auto-generated or existing) */
+  title?: string;
 }
 
 /**
@@ -278,12 +280,14 @@ export function createDoneEvent(
   sessionId: string,
   response: string,
   routingDecision?: Record<string, unknown>,
-  subgraphResults?: Record<string, unknown>
+  subgraphResults?: Record<string, unknown>,
+  title?: string
 ): DoneEvent {
   return createStreamEvent<DoneEvent>('done', sessionId, { 
     response, 
     routingDecision, 
-    subgraphResults 
+    subgraphResults,
+    title
   });
 }
 

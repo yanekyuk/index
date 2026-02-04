@@ -698,7 +698,6 @@ export function createChatTools(context: ToolContext) {
         if ('prompt' in args.settings) settingsData.prompt = args.settings.prompt;
         if ('joinPolicy' in args.settings) settingsData.joinPolicy = args.settings.joinPolicy;
         if ('allowGuestVibeCheck' in args.settings) settingsData.allowGuestVibeCheck = args.settings.allowGuestVibeCheck;
-        if ('requireApproval' in args.settings) settingsData.requireApproval = args.settings.requireApproval;
         
         // Handle common natural language settings
         if ('private' in args.settings && args.settings.private) {
@@ -726,10 +725,10 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "update_index_settings",
-      description: "Updates settings for an index the user owns. Can change title, description/prompt, join policy (private/public), guest vibe check, and approval requirements. OWNER ONLY - will fail if user doesn't own the index.",
+      description: "Updates settings for an index the user owns. Can change title, description/prompt, join policy (private/public), and guest vibe check. OWNER ONLY - will fail if user doesn't own the index.",
       schema: z.object({
         indexId: z.string().describe("The ID of the index to update"),
-        settings: z.record(z.unknown()).describe("Settings to update: { title?, prompt?, joinPolicy?, private?, public?, allowGuestVibeCheck?, requireApproval? }")
+        settings: z.record(z.unknown()).describe("Settings to update: { title?, prompt?, joinPolicy?, private?, public?, allowGuestVibeCheck? }")
       })
     }
   );

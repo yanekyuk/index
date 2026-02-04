@@ -1,7 +1,7 @@
 import { ISODateString, UUID } from './common';
 import { UserSummary } from './users';
 
-export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE' | 'OWNER_APPROVE' | 'OWNER_DENY';
+export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
 export interface ConnectionEvent {
   id: UUID;
@@ -33,21 +33,4 @@ export interface ConnectionsByUserResponse {
 export interface CreateConnectionActionRequest {
   targetUserId: UUID;
   action: ConnectionAction;
-}
-
-// Admin specific connection types
-export interface PendingConnection {
-  id: UUID;
-  initiator: UserSummary;
-  receiver: UserSummary;
-  createdAt: ISODateString;
-}
-
-export interface AdminConnectionResponse {
-  connections: PendingConnection[];
-}
-
-export interface AdminConnectionActionRequest {
-  initiatorUserId: UUID;
-  receiverUserId: UUID;
 }

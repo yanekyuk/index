@@ -76,11 +76,11 @@ export default function ChatPage({ params }: ChatPageProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <h2 className="text-xl font-bold text-red-600 mb-2 font-ibm-plex-mono">Error</h2>
-        <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
+        <h2 className="text-xl font-bold text-red-600 mb-2 ">Error</h2>
+        <p className="text-gray-600 mb-4 ">{error}</p>
         <button
           onClick={() => router.push('/')}
-          className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 font-ibm-plex-mono"
+          className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 "
         >
           Go Back
         </button>

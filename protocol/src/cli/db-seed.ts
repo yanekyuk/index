@@ -81,23 +81,21 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
           permissions: {
             joinPolicy: 'anyone',
             invitationLink: null,
-            allowGuestVibeCheck: false,
-            requireApproval: false // Open
+            allowGuestVibeCheck: false
           },
         });
       }
 
-      // 2. Restricted Index (Requires Approval)
+      // 2. Private Index
       if (type === 'restricted' || type === 'both') {
         await db.insert(indexes).values({
           id: RESTRICTED_INDEX_ID,
-          title: 'Restricted Mock Network',
+          title: 'Private Mock Network',
           prompt: 'Exclusive members only',
           permissions: {
             joinPolicy: 'invite_only',
             invitationLink: null,
-            allowGuestVibeCheck: false,
-            requireApproval: true // Restricted
+            allowGuestVibeCheck: false
           },
         });
       }

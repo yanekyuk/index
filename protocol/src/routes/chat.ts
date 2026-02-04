@@ -3,8 +3,8 @@ import { body, validationResult } from 'express-validator';
 import { StreamChat, type PartialUpdateChannel } from 'stream-chat';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/drizzle/drizzle';
-import { users, userConnectionEvents, indexMembers, indexes } from '../schemas/database.schema';
-import { eq, isNull, and, or, desc, inArray, sql } from 'drizzle-orm';
+import { users, userConnectionEvents } from '../schemas/database.schema';
+import { eq, isNull, and, or, desc } from 'drizzle-orm';
 import { sendConnectionRequestNotification, sendConnectionAcceptedNotification } from '../lib/notification-service';
 import type { CustomChannelData, CustomChannelFilters, CustomChannelMember } from '../types/stream-chat';
 import { IntroMakerGenerator } from '../agents/intent/stake/intro/intro-maker.generator';
@@ -59,40 +59,6 @@ async function getConnectionStatus(userId1: string, userId2: string): Promise<{ 
     status: latestEvent[0]?.eventType || null,
     isInitiator: latestEvent[0]?.initiatorUserId === userId1
   };
-}
-
-// Helper: Check if requireApproval is needed for shared indexes
-async function requiresAdminApproval(userId1: string, userId2: string): Promise<boolean> {
-  // Get shared indexes between users
-  const memberships = await db.select({
-    userId: indexMembers.userId,
-    indexId: indexMembers.indexId,
-    requireApproval: sql<boolean>`(${indexes.permissions}->>'requireApproval')::boolean`
-  })
-    .from(indexMembers)
-    .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
-    .where(inArray(indexMembers.userId, [userId1, userId2]));
-
-  // Build map of indexes per user
-  const userIndexMap = new Map<string, Set<string>>();
-  const indexApprovalMap = new Map<string, boolean>();
-  
-  memberships.forEach(m => {
-    if (!userIndexMap.has(m.userId)) userIndexMap.set(m.userId, new Set());
-    userIndexMap.get(m.userId)!.add(m.indexId);
-    indexApprovalMap.set(m.indexId, m.requireApproval === true);
-  });
-
-  const user1Indexes = userIndexMap.get(userId1) || new Set();
-  const user2Indexes = userIndexMap.get(userId2) || new Set();
-  
-  // Find shared indexes
-  const sharedIndexIds = [...user1Indexes].filter(id => user2Indexes.has(id));
-  
-  if (sharedIndexIds.length === 0) return false;
-  
-  // If ALL shared indexes require approval, return true
-  return sharedIndexIds.every(id => indexApprovalMap.get(id) === true);
 }
 
 // Helper: Generate consistent channel ID
@@ -234,9 +200,6 @@ router.post('/request',
         return res.status(400).json({ error: 'You already have a pending request to this user' });
       }
 
-      // Check if admin approval is required
-      const needsAdminApproval = await requiresAdminApproval(userId, targetUserId);
-
       // Create connection REQUEST event
       await db.insert(userConnectionEvents)
         .values({
@@ -269,7 +232,6 @@ router.post('/request',
         created_by_id: userId,
         pending: true,
         requestedBy: userId,
-        awaitingAdminApproval: needsAdminApproval,
       } as CustomChannelData);
       await channel.create();
 
@@ -284,8 +246,7 @@ router.post('/request',
 
       return res.json({ 
         channelId,
-        pending: true,
-        awaitingAdminApproval: needsAdminApproval
+        pending: true
       });
     } catch (error) {
       console.error('Error creating message request:', error);
@@ -356,7 +317,7 @@ router.post('/request/respond',
         // Update channel to remove pending state
         // Note: Stream Chat supports custom fields at runtime, but TypeScript types don't include them
         await channel.updatePartial({
-          set: { pending: false, awaitingAdminApproval: false },
+          set: { pending: false },
           unset: ['requestedBy']
         } as unknown as PartialUpdateChannel);
 
@@ -410,13 +371,11 @@ router.get('/requests',
         pending: true
       } as CustomChannelFilters, { created_at: -1 });
 
-      // Filter out channels where user is the requester or awaiting admin approval
+      // Filter out channels where user is the requester
       const channels = allPendingChannels.filter(ch => {
         const data = ch.data as CustomChannelData;
         // User should NOT be the requester (they should see incoming requests)
         if (data.requestedBy === userId) return false;
-        // Don't show if waiting for admin approval
-        if (data.awaitingAdminApproval === true) return false;
         return true;
       });
 

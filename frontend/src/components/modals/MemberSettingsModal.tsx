@@ -188,7 +188,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
       success(`Successfully left ${index.title}`);
       onOpenChange(false);
     } catch {
-      error('Failed to leave index');
+      error('Failed to leave network');
     } finally {
       setIsLeaving(false);
     }
@@ -219,10 +219,10 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     setRemovingIntents(prev => new Set([...prev, intentId]));
     try {
       await indexesService.removeMemberIntent(index.id, intentId);
-      success('Intent removed from index');
+      success('Intent removed from network');
       await fetchMemberIntents();
     } catch {
-      error('Failed to remove intent from index');
+      error('Failed to remove intent from network');
     } finally {
       setRemovingIntents(prev => {
         const newSet = new Set(prev);
@@ -265,7 +265,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                 variant="outline"
                 className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
               >
-                {isLeaving ? 'Leaving...' : 'Leave index'}
+                {isLeaving ? 'Leaving...' : 'Leave network'}
               </Button>
             )}
           </div>
@@ -363,7 +363,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
             {/* Intents Panel */}
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full pr-3 flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-x-hidden lg:w-[340px]`}>
               <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents in this Index</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents in this Network</h3>
                 <span className="text-xs text-[#666] font-ibm-plex-mono">{indexedIntents.length}</span>
               </div>
               
@@ -406,10 +406,10 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
               <Dialog.Overlay className="fixed inset-0 bg-black/60 animate-in fade-in duration-200 z-50" />
               <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[420px] bg-[#FAFAFA] border border-[#E0E0E0] rounded-lg p-6 shadow-xl focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50">
                 <Dialog.Title className="text-lg font-bold text-[#333] font-ibm-plex-mono mb-3">
-                  Leave Index
+                  Leave Network
                 </Dialog.Title>
                 <Dialog.Description className="text-sm text-[#555] font-ibm-plex-mono mb-6 leading-relaxed">
-                  Are you sure you want to leave <span className="font-semibold text-[#333]">&quot;{index.title}&quot;</span>? This action cannot be undone and you will lose access to all shared intents in this index.
+                  Are you sure you want to leave <span className="font-semibold text-[#333]">&quot;{index.title}&quot;</span>? This action cannot be undone and you will lose access to all mutual intents in this network.
                 </Dialog.Description>
                 <div className="flex gap-3 justify-end">
                   <Button
@@ -424,7 +424,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                     disabled={isLeaving}
                     className="font-ibm-plex-mono bg-red-600 hover:bg-red-700 text-white"
                   >
-                    {isLeaving ? 'Leaving...' : 'Leave Index'}
+                    {isLeaving ? 'Leaving...' : 'Leave Network'}
                   </Button>
                 </div>
               </Dialog.Content>

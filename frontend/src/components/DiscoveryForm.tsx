@@ -6,9 +6,12 @@ import { IntentAction } from "@/services/discover";
 import { usePrivy } from "@privy-io/react-auth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { validateFiles, getSupportedFileExtensions, getFileCategoryBadge } from "@/lib/file-validation";
-import { ArrowUp, X, Loader2, Zap, Type, AtSign } from "lucide-react";
+import { ArrowUp, X, Loader2, Zap, Type, AtSign, Globe } from "lucide-react";
 import Image from "next/image";
 import { Intent } from "@/types";
+import { useIndexFilter } from "@/contexts/IndexFilterContext";
+import { useIndexesState } from "@/contexts/IndexesContext";
+import { useSuggestions } from "@/hooks/useSuggestions";
 
 export interface Suggestion {
   label: string;
@@ -38,6 +41,8 @@ interface DiscoveryFormProps {
   placeholder?: string;
   // Parent-provided suggestions
   suggestions?: Suggestion[];
+  // Index filter
+  showIndexFilter?: boolean;
 }
 
 export interface DiscoveryFormRef {
@@ -68,7 +73,8 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
   onMentionsChange,
   onPromptSubmit,
   placeholder,
-  suggestions: parentSuggestions
+  suggestions: parentSuggestions,
+  showIndexFilter = false
 }, ref) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -77,6 +83,7 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
   const [fetchedSuggestions, setFetchedSuggestions] = useState<Suggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [applyingSuggestionIndex, setApplyingSuggestionIndex] = useState<number | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   // Mention state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionResults, setMentionResults] = useState<MentionUser[]>([]);
@@ -85,6 +92,18 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
   const mentionDropdownRef = useRef<HTMLDivElement>(null);
   
   const { discoverService, intentsService } = useAPI();
+  
+  // Index filter state
+  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
+  const { indexes } = useIndexesState();
+  const selectedIndexId = selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
+  
+  // Use suggestions hook
+  const { suggestions: hookSuggestions, isLoading: isHookSuggestionsLoading } = useSuggestions({
+    intentId,
+    indexId: selectedIndexId,
+    enabled: isFocused && !parentSuggestions?.length,
+  });
   const { getAccessToken } = usePrivy();
   const { error } = useNotifications();
   const inputRef = useRef<HTMLDivElement>(null);
@@ -537,18 +556,59 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
     }
   };
 
-  // Combine parent suggestions with fetched suggestions
+  // Combine parent suggestions with fetched/hook suggestions
   const allSuggestions = [
     ...(parentSuggestions || []),
-    ...(intentId ? fetchedSuggestions : [])
+    ...(intentId ? fetchedSuggestions : hookSuggestions)
   ];
+  
+  // Index filter handlers
+  const handleIndexSelect = useCallback((indexId: string | null) => {
+    if (indexId === null) {
+      setSelectedIndexIds([]);
+    } else {
+      setSelectedIndexIds([indexId]);
+    }
+  }, [setSelectedIndexIds]);
 
+  const showSuggestions = isFocused && (allSuggestions.length > 0 || isLoadingSuggestions || isHookSuggestionsLoading);
+  
   const formContent = (
     <>
-      {/* Suggestion chips */}
-      {(allSuggestions.length > 0 || isLoadingSuggestions) && (
+      {/* Index filter chips */}
+      {showIndexFilter && indexes.length > 0 && (
         <div className="px-3 pt-2 pb-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
-          {isLoadingSuggestions ? (
+          <button
+            onClick={() => handleIndexSelect(null)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-full text-xs font-ibm-plex-mono transition-colors whitespace-nowrap flex-shrink-0 ${
+              selectedIndexIds.length === 0
+                ? 'bg-black text-white border-black'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+            }`}
+          >
+            <Globe className="w-3 h-3" />
+            Everywhere
+          </button>
+          {indexes.map((index) => (
+            <button
+              key={index.id}
+              onClick={() => handleIndexSelect(index.id)}
+              className={`inline-flex items-center px-3 py-1 border rounded-full text-xs font-ibm-plex-mono transition-colors whitespace-nowrap flex-shrink-0 ${
+                selectedIndexIds.includes(index.id)
+                  ? 'bg-black text-white border-black'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+              }`}
+            >
+              {index.title}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Suggestion chips - only show when focused */}
+      {showSuggestions && (
+        <div className="px-3 pt-2 pb-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
+          {(isLoadingSuggestions || isHookSuggestionsLoading) ? (
             <div className="flex items-center gap-1.5 text-gray-500">
               <Loader2 className="w-3 h-3 animate-spin" />
               <span className="font-ibm-plex-mono text-xs">Loading...</span>
@@ -628,6 +688,11 @@ const DiscoveryForm = forwardRef<DiscoveryFormRef, DiscoveryFormProps>(({
           ref={inputRef}
           contentEditable={!isProcessing}
           onInput={handleContentInput}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => {
+            // Delay blur to allow suggestion clicks
+            setTimeout(() => setIsFocused(false), 200);
+          }}
           onKeyDown={(e) => {
             // Handle mention navigation
             if (mentionQuery !== null && mentionResults.length > 0) {

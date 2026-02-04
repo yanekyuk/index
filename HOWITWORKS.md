@@ -208,8 +208,8 @@ sumarizeIntent(text: string, maxLength: number)
 
 Indexes can be used for:
 - **Individuals**: Personal indexes that can be used for sharing, organisation.
-- **Group**: Community or organizational indexes that represent shared intentions.
-- **Network**: Shared intentions among inter-group connections.
+- **Group**: Community or organizational indexes that represent mutual intentions.
+- **Network**: Mutual intentions among inter-group connections.
 
 This simple approach mirrors how we naturally navigate social spaces - we have individual preferences while also being part of communities, organizations, and networks that have their own social dynamics. Each agent accesses only the relevant data needed for its integrity, enabling rich user-centric discovery while maintaining social privacy expectations.
 

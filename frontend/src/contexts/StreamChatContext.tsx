@@ -27,7 +27,6 @@ interface CanMessageResponse {
 interface SendMessageRequestResponse {
   channelId: string;
   pending: boolean;
-  awaitingAdminApproval?: boolean;
   alreadyConnected?: boolean;
 }
 

@@ -421,8 +421,7 @@ export const createIndexHandler = async (req: AuthRequest, res: Response) => {
     const permissions = {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() }, // Always generate share code
-      allowGuestVibeCheck: false,
-      requireApproval: false
+      allowGuestVibeCheck: false
     };
 
     const newIndex = await db.insert(indexes).values({
@@ -530,8 +529,7 @@ router.put('/:id',
         const currentPermissions = existingIndex[0]?.permissions || {
           joinPolicy: 'invite_only',
           invitationLink: null,
-          allowGuestVibeCheck: false,
-          requireApproval: false
+          allowGuestVibeCheck: false
         };
 
         updatedPermissions = {
@@ -956,8 +954,7 @@ router.patch('/:id/permissions',
       const currentPermissions = existingIndex[0]?.permissions || {
         joinPolicy: 'invite_only',
         invitationLink: null,
-        allowGuestVibeCheck: false,
-        requireApproval: false
+        allowGuestVibeCheck: false
       };
 
       // Update permissions
@@ -982,9 +979,6 @@ router.patch('/:id/permissions',
         allowGuestVibeCheck: allowGuestVibeCheck !== undefined
           ? allowGuestVibeCheck
           : currentPermissions.allowGuestVibeCheck,
-        requireApproval: req.body.requireApproval !== undefined
-          ? req.body.requireApproval
-          : (currentPermissions.requireApproval ?? false),
         invitationLink
       };
 
@@ -1043,8 +1037,7 @@ router.patch('/:id/regenerate-invitation',
       const currentPermissions = existingIndex[0]?.permissions || {
         joinPolicy: 'invite_only',
         invitationLink: null,
-        allowGuestVibeCheck: false,
-        requireApproval: false
+        allowGuestVibeCheck: false
       };
 
       // Only regenerate if it's invite_only
@@ -1055,8 +1048,7 @@ router.patch('/:id/regenerate-invitation',
       // Generate new invitation link
       const updatedPermissions = {
         ...currentPermissions,
-        invitationLink: { code: crypto.randomUUID() },
-        requireApproval: currentPermissions.requireApproval ?? false
+        invitationLink: { code: crypto.randomUUID() }
       };
 
       const updatedIndex = await db.update(indexes)

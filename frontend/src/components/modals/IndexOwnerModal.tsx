@@ -9,7 +9,7 @@ import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useIndexes, useAdmin, useSynthesis } from '@/contexts/APIContext';
+import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -20,7 +20,6 @@ import { Member } from '@/services/indexes';
 import { INTEGRATIONS } from '@/config/integrations';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
-import ConnectionRequestCard from '@/components/ConnectionRequestCard';
 
 interface IntegrationItem {
   id: string | null;
@@ -29,13 +28,6 @@ interface IntegrationItem {
   connected: boolean;
   connectedAt?: string | null;
   lastSyncAt?: string | null;
-}
-
-interface PendingConnection {
-  id: string;
-  initiator: { id: string; name: string; avatar: string | null };
-  receiver: { id: string; name: string; avatar: string | null };
-  createdAt: string;
 }
 
 const SUPPORTED_INTEGRATIONS = [
@@ -52,8 +44,6 @@ interface IndexOwnerModalProps {
 
 export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwnerModalProps) {
   const indexesService = useIndexes();
-  const adminService = useAdmin();
-  const synthesisService = useSynthesis();
   const { indexes, updateIndex, removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
   const { user } = useAuthContext();
@@ -63,7 +53,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
   const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
 
   // Tab management
-  const [activeTab, setActiveTab] = useState<'settings' | 'access' | 'integrations' | 'approvals'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'access' | 'integrations'>('settings');
 
   // Settings state
   const [title, setTitle] = useState(currentIndex.title || '');
@@ -78,7 +68,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
 
   // Access state
   const [anyoneCanJoin, setAnyoneCanJoin] = useState(currentIndex.permissions?.joinPolicy === 'anyone');
-  const [requireApproval, setRequireApproval] = useState(currentIndex.permissions?.requireApproval || false);
   const [members, setMembers] = useState<Member[]>([]);
   const [memberFilterQuery, setMemberFilterQuery] = useState('');
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -100,13 +89,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
   const [slackChannelModalOpen, setSlackChannelModalOpen] = useState(false);
   const [selectedSlackIntegration, setSelectedSlackIntegration] = useState<IntegrationItem | null>(null);
 
-  // Approvals state
-  const [pendingConnections, setPendingConnections] = useState<PendingConnection[]>([]);
-  const [approvalsLoading, setApprovalsLoading] = useState(false);
-  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
-  const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
-
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
@@ -115,7 +97,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
       setOriginalTitle(currentIndex.title);
       setOriginalPrompt(currentIndex.prompt || '');
       setAnyoneCanJoin(currentIndex.permissions?.joinPolicy === 'anyone');
-      setRequireApproval(currentIndex.permissions?.requireApproval || false);
       if (currentIndex.permissions?.invitationLink?.code && currentIndex.permissions.joinPolicy === 'invite_only') {
         setInvitationLink({ code: currentIndex.permissions.invitationLink.code });
       }
@@ -214,40 +195,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
     }
   }, [open, activeTab, loadIntegrations]);
 
-  // Load pending approvals
-  const loadPendingConnections = useCallback(async () => {
-    setApprovalsLoading(true);
-    try {
-      const response = await adminService.getPendingConnections(index.id);
-      setPendingConnections(response.connections);
-      response.connections.forEach(connection => {
-        const cacheKey = `${connection.initiator.id}-${connection.receiver.id}`;
-        setSynthesisLoading(prev => ({ ...prev, [cacheKey]: true }));
-        synthesisService.generateVibeCheck({
-          targetUserId: connection.receiver.id,
-          initiatorId: connection.initiator.id,
-          indexIds: [index.id]
-        }).then(res => {
-          setSyntheses(prev => ({ ...prev, [cacheKey]: res.synthesis }));
-        }).catch(() => {
-          setSyntheses(prev => ({ ...prev, [cacheKey]: "" }));
-        }).finally(() => {
-          setSynthesisLoading(prev => ({ ...prev, [cacheKey]: false }));
-        });
-      });
-    } catch (err) {
-      console.error('Failed to load pending connections:', err);
-    } finally {
-      setApprovalsLoading(false);
-    }
-  }, [index.id, adminService, synthesisService]);
-
-  useEffect(() => {
-    if (open && activeTab === 'approvals') {
-      loadPendingConnections();
-    }
-  }, [open, activeTab, loadPendingConnections]);
-
   // Handlers
   const handleSaveSettings = async () => {
     if (!title.trim()) {
@@ -263,10 +210,10 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
       setOriginalTitle(title);
       setOriginalPrompt(prompt);
       updateIndex(updatedIndex);
-      success('Index settings updated successfully');
+      success('Network settings updated successfully');
     } catch (err) {
       console.error('Error updating index:', err);
-      error('Failed to update index settings');
+      error('Failed to update network settings');
     } finally {
       setIsSavingSettings(false);
     }
@@ -277,23 +224,22 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
       setIsDeletingIndex(true);
       await indexesService.deleteIndex(index.id);
       removeIndex(index.id);
-      success('Index deleted successfully');
+      success('Network deleted successfully');
       setShowDeleteConfirmation(false);
       onOpenChange(false);
     } catch (err) {
       console.error('Error deleting index:', err);
-      error('Failed to delete index');
+      error('Failed to delete network');
     } finally {
       setIsDeletingIndex(false);
     }
   };
 
-  const handleUpdatePermissions = async (joinPolicy: boolean, reqApproval?: boolean) => {
+  const handleUpdatePermissions = async (joinPolicy: boolean) => {
     try {
-      const updates: { joinPolicy: 'anyone' | 'invite_only'; requireApproval?: boolean } = {
+      const updates: { joinPolicy: 'anyone' | 'invite_only' } = {
         joinPolicy: joinPolicy ? 'anyone' : 'invite_only',
       };
-      if (reqApproval !== undefined) updates.requireApproval = reqApproval;
       await indexesService.updatePermissions(index.id, updates);
       const updatedIndex = await indexesService.getIndex(index.id);
       updateIndex(updatedIndex);
@@ -395,32 +341,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
     }
   };
 
-  const handleApproveConnection = async (connection: PendingConnection) => {
-    setProcessingIds(prev => new Set(prev).add(connection.id));
-    try {
-      await adminService.approveConnection(index.id, connection.initiator.id, connection.receiver.id);
-      setPendingConnections(prev => prev.filter(c => c.id !== connection.id));
-      success('Connection approved');
-    } catch {
-      error('Failed to approve connection');
-    } finally {
-      setProcessingIds(prev => { const n = new Set(prev); n.delete(connection.id); return n; });
-    }
-  };
-
-  const handleDenyConnection = async (connection: PendingConnection) => {
-    setProcessingIds(prev => new Set(prev).add(connection.id));
-    try {
-      await adminService.denyConnection(index.id, connection.initiator.id, connection.receiver.id);
-      setPendingConnections(prev => prev.filter(c => c.id !== connection.id));
-      success('Connection denied');
-    } catch {
-      error('Failed to deny connection');
-    } finally {
-      setProcessingIds(prev => { const n = new Set(prev); n.delete(connection.id); return n; });
-    }
-  };
-
   const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt;
   const isDeleteConfirmationValid = deleteConfirmationText === currentIndex.title;
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
@@ -454,14 +374,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
               <Tabs.Trigger value="integrations" className="px-4 py-2 text-sm font-ibm-plex-mono text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black">
                 Integrations
               </Tabs.Trigger>
-              <Tabs.Trigger value="approvals" className="px-4 py-2 text-sm font-ibm-plex-mono text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black">
-                Approvals
-                {pendingConnections.length > 0 && (
-                  <span className="ml-2 bg-red-100 text-red-600 text-xs px-1.5 py-0.5 rounded-full">
-                    {pendingConnections.length}
-                  </span>
-                )}
-              </Tabs.Trigger>
             </Tabs.List>
 
             <div className="flex-1 overflow-y-auto p-6">
@@ -469,7 +381,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
               <Tabs.Content value="settings" className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">Title</label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter index title" />
+                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Enter network title" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">Prompt</label>
@@ -493,11 +405,11 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                     <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <h4 className="text-sm font-medium text-red-900">Delete this index</h4>
-                          <p className="text-sm text-red-700 mt-1">Deleting an index is permanent.</p>
+                          <h4 className="text-sm font-medium text-red-900">Delete this network</h4>
+                          <p className="text-sm text-red-700 mt-1">Deleting a network is permanent.</p>
                         </div>
                         <Button variant="outline" onClick={() => setShowDeleteConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4 mr-2" />Delete Index
+                          <Trash2 className="h-4 w-4 mr-2" />Delete Network
                         </Button>
                       </div>
                     </div>
@@ -529,20 +441,9 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between py-4 border-t border-gray-200">
-                  <div>
-                    <h4 className="text-sm font-medium font-ibm-plex-mono">Approve connection requests</h4>
-                    <p className="text-xs text-gray-600 mt-1">Members need approval for connections.</p>
-                  </div>
-                  <label className="relative inline-flex cursor-pointer">
-                    <input type="checkbox" checked={requireApproval} onChange={(e) => { setRequireApproval(e.target.checked); handleUpdatePermissions(anyoneCanJoin, e.target.checked); }} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500" />
-                  </label>
-                </div>
-
                 {/* Link Section */}
                 <div className="pt-4">
-                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">{anyoneCanJoin ? 'Index Link' : 'Invitation Link'}</h4>
+                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">{anyoneCanJoin ? 'Network Link' : 'Invitation Link'}</h4>
                   <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                     {anyoneCanJoin ? <Globe className="h-4 w-4 text-gray-500" /> : <Lock className="h-4 w-4 text-gray-500" />}
                     <code className="flex-1 text-xs text-gray-700 font-mono truncate">
@@ -602,7 +503,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
 
               {/* Integrations Tab */}
               <Tabs.Content value="integrations" className="space-y-4">
-                <p className="text-sm text-gray-600 font-ibm-plex-mono">Connect external services to sync data with your index.</p>
+                <p className="text-sm text-gray-600 font-ibm-plex-mono">Connect external services to sync data with your network.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {integrations.map((it) => {
                     const integrationDef = INTEGRATIONS.find(i => i.type === it.type);
@@ -665,34 +566,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                   })}
                 </div>
               </Tabs.Content>
-
-              {/* Approvals Tab */}
-              <Tabs.Content value="approvals">
-                {approvalsLoading ? (
-                  <div className="flex justify-center py-12"><div className="h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>
-                ) : pendingConnections.length === 0 ? (
-                  <div className="text-center py-12"><p className="text-gray-500 font-ibm-plex-mono">No pending connection requests</p></div>
-                ) : (
-                  <div className="space-y-3">
-                    {pendingConnections.map((connection) => {
-                      const cacheKey = `${connection.initiator.id}-${connection.receiver.id}`;
-                      return (
-                        <ConnectionRequestCard
-                          key={connection.id}
-                          initiator={connection.initiator}
-                          receiver={connection.receiver}
-                          createdAt={connection.createdAt}
-                          synthesis={syntheses[cacheKey]}
-                          synthesisLoading={synthesisLoading[cacheKey]}
-                          onApprove={() => handleApproveConnection(connection)}
-                          onDeny={() => handleDenyConnection(connection)}
-                          isProcessing={processingIds.has(connection.id)}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </Tabs.Content>
             </div>
           </Tabs.Root>
         </Dialog.Content>
@@ -704,12 +577,12 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
           <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirmation(false)} />
           <div className="relative bg-white rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Delete &apos;{currentIndex.title}&apos;</h2>
-            <p className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the index name to confirm.</p>
+            <p className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the network name to confirm.</p>
             <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={currentIndex.title} className="mb-4" />
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowDeleteConfirmation(false)}>Cancel</Button>
               <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeletingIndex ? 'Deleting...' : 'Delete Index'}
+                {isDeletingIndex ? 'Deleting...' : 'Delete Network'}
               </Button>
             </div>
           </div>

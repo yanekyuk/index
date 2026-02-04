@@ -34,14 +34,14 @@ export default function ThinkingDropdown({ thinking, isStreaming }: ThinkingDrop
             <ChevronRight className="w-4 h-4 text-gray-600" />
           )}
           <Brain className="w-4 h-4 text-purple-600" />
-          <span className="text-sm font-medium text-gray-700 font-ibm-plex-mono">
+          <span className="text-sm font-medium text-gray-700 ">
             Thinking
             {isStreaming && (
               <span className="ml-2 inline-block w-1.5 h-1.5 bg-purple-600 rounded-full animate-pulse" />
             )}
           </span>
         </div>
-        <span className="text-xs text-gray-500 font-ibm-plex-mono">
+        <span className="text-xs text-gray-500 ">
           {thinking.length} step{thinking.length !== 1 ? 's' : ''}
         </span>
       </button>
@@ -54,11 +54,11 @@ export default function ThinkingDropdown({ thinking, isStreaming }: ThinkingDrop
               className="border-l-2 border-purple-300 pl-3 py-1"
             >
               {step.step && (
-                <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1 font-ibm-plex-mono">
+                <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1 ">
                   {step.step.replace(/_/g, ' ')}
                 </div>
               )}
-              <p className="text-sm text-gray-700 whitespace-pre-wrap font-ibm-plex-mono">
+              <p className="text-sm text-gray-700 whitespace-pre-wrap ">
                 {step.content}
               </p>
             </div>

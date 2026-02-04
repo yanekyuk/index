@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Calendar, Trash2, ExternalLink, FileText, Link as LinkIcon, Slack, MessageSquare } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface BaseIntent {
   id: string;
@@ -46,24 +48,33 @@ export default function IntentList<T extends BaseIntent>({
     });
   }, [intents]);
 
+  const getSourceIcon = (type?: string) => {
+    switch (type) {
+      case 'file': return <FileText className="w-3 h-3" />;
+      case 'link': return <LinkIcon className="w-3 h-3" />;
+      case 'integration': return <Slack className="w-3 h-3" />; // Assuming mostly Slack for now
+      default: return <MessageSquare className="w-3 h-3" />;
+    }
+  };
+
   if (isLoading) {
     return (
-      <div className={`flex items-center justify-center py-6 ${className}`}>
-        <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
+      <div className={cn("flex items-center justify-center py-12", className)}>
+        <span className="h-6 w-6 border-2 border-gray-300 border-t-black rounded-full animate-spin" />
       </div>
     );
   }
 
   if (sortedIntents.length === 0) {
     return (
-      <div className={`text-xs text-[#666] font-ibm-plex-mono py-4 text-center ${className}`}>
+      <div className={cn("text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg", className)}>
         <p>{emptyMessage}</p>
       </div>
     );
   }
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={cn("space-y-3", className)}>
       {sortedIntents.map((intent) => {
         const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
         const createdAt = new Date(intent.createdAt);
@@ -74,47 +85,70 @@ export default function IntentList<T extends BaseIntent>({
         const isFresh = newIntentIds.has(intent.id);
         const isSelectedSource = selectedIntentIds.has(intent.id);
         const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
+        const isRemoving = removingIntentIds.has(intent.id);
         
-        const cardClasses = `relative border rounded-sm px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
-          ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
-          : isFresh
-            ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
-            : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
-
         return (
-          <div key={intent.id} className={`group ${cardClasses}`}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {createdLabel && (
-                  <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-[#777]"
-                    >
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                      <line x1="16" y1="2" x2="16" y2="6" />
-                      <line x1="8" y1="2" x2="8" y2="6" />
-                      <line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
-                    {createdLabel}
-                  </span>
-                )}
-                {isFresh && !isSelectedSource && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
-                )}
+          <div 
+            key={intent.id} 
+            className={cn(
+              "group relative p-4 rounded-lg border transition-all duration-200",
+              isSelectedSource 
+                ? "border-blue-200 bg-blue-50/50" 
+                : isFresh
+                  ? "border-green-200 bg-green-50/50"
+                  : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+            )}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-900 leading-relaxed font-medium">
+                  {summary}
+                </p>
+                
+                <div className="flex items-center gap-3 mt-2.5">
+                  {/* Date Badge */}
+                  {createdLabel && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono">
+                      <Calendar className="w-3 h-3" />
+                      <span>{createdLabel}</span>
+                    </div>
+                  )}
+
+                  {/* Source Badge */}
+                  {intent.sourceType && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 font-ibm-plex-mono px-2 py-0.5 rounded-full bg-gray-100/50 border border-gray-100">
+                      {getSourceIcon(intent.sourceType)}
+                      <span className="capitalize">{intent.sourceType}</span>
+                    </div>
+                  )}
+
+                  {/* New Badge */}
+                  {isFresh && !isSelectedSource && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] tracking-wide font-ibm-plex-mono font-medium uppercase border border-green-200">
+                      New
+                    </span>
+                  )}
+                </div>
               </div>
-              
-              <div className="flex items-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+
+              {/* Actions */}
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onOpenIntentSource && canOpenSource && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onOpenIntentSource(intent);
+                    }}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-black hover:bg-gray-100 transition-colors"
+                    title="Open Source"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                )}
+                
                 {(onArchiveIntent || onRemoveIntent) && (
                   <button
-                    type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -124,44 +158,19 @@ export default function IntentList<T extends BaseIntent>({
                         onArchiveIntent(intent);
                       }
                     }}
-                    disabled={removingIntentIds.has(intent.id)}
-                    className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-red-600 hover:text-red-700 hover:bg-[#E6E6E6]"
-                    aria-label={onRemoveIntent ? "Remove intent" : "Archive intent"}
+                    disabled={isRemoving}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                    title={onRemoveIntent ? "Remove" : "Archive"}
                   >
-                    {removingIntentIds.has(intent.id) ? (
-                      <div className="h-3 w-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                    {isRemoving ? (
+                      <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3,6 5,6 21,6"></polyline>
-                        <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                      </svg>
+                      <Trash2 className="w-4 h-4" />
                     )}
-                  </button>
-                )}
-                {onOpenIntentSource && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onOpenIntentSource(intent);
-                    }}
-                    className={canOpenSource
-                      ? 'h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
-                      : 'h-6 w-6 grid place-items-center rounded-sm bg-[#EEF5FF] text-[#3563E9]'}
-                    aria-label={canOpenSource ? 'Open source' : 'View source details'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="7 7 17 7 17 17"></polyline>
-                      <line x1="7" y1="17" x2="17" y2="7"></line>
-                    </svg>
                   </button>
                 )}
               </div>
             </div>
-            <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
           </div>
         );
       })}

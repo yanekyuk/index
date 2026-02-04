@@ -221,7 +221,7 @@ export function createIndexWriteNode(
         };
       }
 
-      const changes: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean; requireApproval?: boolean } = {};
+      const changes: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean } = {};
       if (changesStr) {
         const lower = changesStr.toLowerCase();
         if (lower.includes('private') || lower.includes('invite_only')) {
@@ -231,9 +231,6 @@ export function createIndexWriteNode(
         }
         if (lower.includes('guest') && lower.includes('vibe')) {
           changes.allowGuestVibeCheck = !lower.includes('disable') && !lower.includes('off');
-        }
-        if (lower.includes('require') && lower.includes('approval')) {
-          changes.requireApproval = !lower.includes('don\'t') && !lower.includes('disable');
         }
       }
 

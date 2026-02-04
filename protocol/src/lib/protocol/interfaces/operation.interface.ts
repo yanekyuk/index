@@ -39,7 +39,6 @@ export interface IndexSnapshot {
   prompt: string | null;
   joinPolicy: 'anyone' | 'invite_only';
   allowGuestVibeCheck: boolean;
-  requireApproval: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

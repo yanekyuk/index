@@ -16,7 +16,6 @@ import { ContentContainer } from "@/components/layout";
 import { useIndexService } from "@/services/indexes";
 import { useIntegrationsService } from "@/services/integrations";
 import { IntegrationName, getIndexIntegrations, getUserIntegrations } from "@/config/integrations";
-import LibraryModal from "@/components/modals/LibraryModal";
 import { validateFiles, getSupportedFileExtensions, formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import { formatDate } from "@/lib/utils";
 import { useIndexesState } from "@/contexts/IndexesContext";
@@ -171,7 +170,6 @@ export default function OnboardingPage() {
   const [displayIntents, setDisplayIntents] = useState<Array<{ id: string; payload: string; summary?: string; isIncognito: boolean; createdAt: string; updatedAt: string }>>([]);
   const [displayMembers, setDisplayMembers] = useState<Array<{ id: string; name: string; avatar: string | null }>>([]);
   const [displayTotalIntents, setDisplayTotalIntents] = useState(0);
-  const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   // Load integrations status
   const loadIntegrations = useCallback(async () => {
@@ -1950,17 +1948,6 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Library Modal */}
-      <LibraryModal
-        open={showLibraryModal}
-        onOpenChange={setShowLibraryModal}
-        onChanged={() => {
-          // Optionally refresh index summary when library changes
-          if (currentStep === 'invite_members') {
-            loadIndexSummary();
-          }
-        }}
-      />
     </ClientLayout>
   );
 }

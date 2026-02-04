@@ -7,7 +7,6 @@ export type IndexJoinPolicy = 'anyone' | 'invite_only';
 export interface IndexPermissions {
   joinPolicy: IndexJoinPolicy;
   allowGuestVibeCheck?: boolean;
-  requireApproval?: boolean;
   invitationLink?: {
     code: string;
   } | null;
@@ -56,7 +55,6 @@ export interface UpdateIndexRequest {
   permissions?: {
     joinPolicy?: IndexJoinPolicy;
     allowGuestVibeCheck?: boolean;
-    requireApproval?: boolean;
   };
 }
 

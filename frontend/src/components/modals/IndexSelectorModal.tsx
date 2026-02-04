@@ -31,7 +31,7 @@ export default function IndexSelectorModal({
         <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-[400px] bg-white border border-black rounded-[2px] shadow-lg focus:outline-none animate-in fade-in zoom-in-95 duration-200 z-50 max-h-[70vh] flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
             <Dialog.Title className="text-sm font-semibold font-ibm-plex-mono text-black">
-              My Indexes
+              My Networks
             </Dialog.Title>
             <Dialog.Close asChild>
               <button className="text-gray-500 hover:text-black transition-colors">
@@ -84,7 +84,7 @@ export default function IndexSelectorModal({
               </div>
             ) : (
               <div className="px-4 py-8 text-center text-gray-500 text-sm font-ibm-plex-mono">
-                No indexes yet
+                No networks yet
               </div>
             )}
           </div>
@@ -99,7 +99,7 @@ export default function IndexSelectorModal({
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-ibm-plex-mono text-gray-700 hover:bg-gray-50 border border-gray-200 rounded transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                Create Index
+                Create Network
               </button>
             </div>
           )}

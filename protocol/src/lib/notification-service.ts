@@ -2,12 +2,11 @@
  * @deprecated This module is deprecated.
  */
 import db from './drizzle/drizzle';
-import { users, intents, intentStakes, intentStakeItems, userNotificationSettings, indexMembers, indexes } from '../schemas/database.schema';
+import { users, intents, intentStakes, intentStakeItems, userNotificationSettings } from '../schemas/database.schema';
 import { eq, sql, and, inArray } from 'drizzle-orm';
 import {
     sendConnectionRequestEmail,
-    sendConnectionAcceptedEmail,
-    sendOwnerApprovalEmail
+    sendConnectionAcceptedEmail
 } from './email/email.module';
 import { synthesizeVibeCheck, synthesizeIntro } from './synthesis';
 import DOMPurify from 'isomorphic-dompurify';
@@ -70,76 +69,6 @@ async function checkConnectionUpdatesEnabled(userId: string): Promise<boolean> {
  */
 export async function sendConnectionRequestNotification(initiatorUserId: string, receiverUserId: string): Promise<void> {
     try {
-        // --- APPROVAL LOGIC START ---
-        // Get all shared indexes between users
-        const sharedIndexes = await db.select({
-            id: indexes.id,
-            title: indexes.title,
-            permissions: indexes.permissions
-        })
-            .from(indexes)
-            .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
-            .where(and(
-                eq(indexMembers.userId, initiatorUserId),
-                sql`${indexes.id} IN (
-                SELECT index_id FROM index_members WHERE user_id = ${receiverUserId}
-            )`
-            ));
-
-        // Separating indexes
-        const approvalIndices = sharedIndexes.filter(i => (i.permissions as any)?.requireApproval);
-        const autoIndices = sharedIndexes.filter(i => !(i.permissions as any)?.requireApproval);
-
-        // 1. Handle Approval Indices (Send Owner Emails)
-        if (approvalIndices.length > 0) {
-            console.log(`Connection request includes ${approvalIndices.length} indexes requiring approval`);
-
-            // Get initiator and receiver names if not already fetched
-            // We need them for the owner email
-            const [initiator, receiver] = await Promise.all([
-                db.select({ name: users.name }).from(users).where(eq(users.id, initiatorUserId)).limit(1),
-                db.select({ name: users.name }).from(users).where(eq(users.id, receiverUserId)).limit(1)
-            ]);
-
-            if (initiator[0]?.name && receiver[0]?.name) {
-                for (const index of approvalIndices) {
-                    const owners = await db.select({
-                        email: users.email,
-                        name: users.name
-                    })
-                        .from(indexMembers)
-                        .innerJoin(users, eq(users.id, indexMembers.userId))
-                        .where(and(
-                            eq(indexMembers.indexId, index.id),
-                            sql`'owner' = ANY(${indexMembers.permissions})`
-                        ));
-
-                    for (const owner of owners) {
-                        await sendOwnerApprovalEmail(
-                            owner.email,
-                            owner.name,
-                            initiator[0].name,
-                            receiver[0].name,
-                            index.title,
-                            index.id
-                        );
-                    }
-                }
-            } else {
-                console.log('Skipping owner emails due to missing user names');
-            }
-        }
-
-        // 2. Logic to determine if we block the user email
-        // If there are NO auto-indices (only approval required ones), we stop here.
-        // If there ARE auto-indices, we proceed to send the standard request email below.
-        if (autoIndices.length === 0 && approvalIndices.length > 0) {
-            console.log('Blocking connection request email to receiver: Only approval-required indexes shared.');
-            return;
-        }
-
-        // --- APPROVAL LOGIC END ---
-
         // Check if receiver has connection updates enabled
         const shouldSend = await checkConnectionUpdatesEnabled(receiverUserId);
         if (!shouldSend) {

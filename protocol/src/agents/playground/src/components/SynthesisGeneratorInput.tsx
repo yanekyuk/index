@@ -130,7 +130,7 @@ export const SynthesisGeneratorInput: React.FC<SynthesisGeneratorInputProps> = (
               updateInput({ intents: p });
             } catch { }
           }}
-          label="SHARED INTENTS"
+          label="MUTUAL INTENTS"
           badge="Reasoning"
           operations={['json2md']}
           viewMode={intentsViewMode}
