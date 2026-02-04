@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect } from 'bun:test';
 import { decideNotificationPriority } from './notification.agent';
 

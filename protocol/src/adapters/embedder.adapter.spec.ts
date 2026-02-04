@@ -3,9 +3,9 @@
  * Requires DATABASE_URL; OPENROUTER_API_KEY needed for generate() tests.
  * Run: bun test src/adapters/embedder.adapter.spec.ts
  */
-import { config } from 'dotenv';
-import { resolve } from 'path';
-config({ path: resolve(__dirname, '../../.env.development'), override: true });
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';

@@ -1,9 +1,9 @@
 /**
  * Tests for the smartest harness: fixture resolution, input refs, runner (no LLM).
  */
-
-import { config } from 'dotenv';
-config({ path: '.env.development', override: true });
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

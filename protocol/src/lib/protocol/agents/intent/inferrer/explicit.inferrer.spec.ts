@@ -1,5 +1,6 @@
+/** Config */
 import { config } from "dotenv";
-config({ path: 'protocol/.env.development', override: true });
+config({ path: '.env.test' });
 
 import { describe, expect, it } from "bun:test";
 import { ExplicitIntentInferrer } from "./explicit.inferrer";

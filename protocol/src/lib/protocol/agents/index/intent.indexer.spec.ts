@@ -1,8 +1,6 @@
-/**
- * Load environment variables
- */
+/** Config */
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: '.env.test' });
 
 import { describe, expect, it } from "bun:test";
 import { IntentIndexer } from "./intent.indexer";

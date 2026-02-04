@@ -1,13 +1,10 @@
 // src/agents/intent/input-validator/input-validator.spec.ts
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { SyntacticValidatorAgent } from './syntactic.evaluator';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('Input Validator Agent (Phase 1)', () => {
   let agent: SyntacticValidatorAgent;

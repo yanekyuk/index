@@ -5,8 +5,9 @@
  * - No internal pipeline JSON leak in responseText
  * - Agent error path returns fallback message and error state
  */
+/** Config */
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: '.env.test' });
 
 import { describe, test, expect, spyOn, beforeAll } from "bun:test";
 import { z } from "zod";

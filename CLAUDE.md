@@ -27,7 +27,7 @@ bun run db:seed                             # Seed database with sample data
 bun run db:flush                            # Flush all data from database
 
 # Testing
-bun test                                    # Run tests with vitest
+bun test                                    # Run tests with bun test
 bun test tests/e2e.test.ts                  # Run specific test file
 bun test --watch                            # Run tests in watch mode
 

@@ -1,16 +1,10 @@
 /**
  * Integration tests for all database adapters in database.adapter.ts.
  * Requires DATABASE_URL and migrated schema. Run: bun test src/adapters/database.adapter.spec.ts
- *
- * Env loading: if DATABASE_URL is already set (CI or local), we skip dotenv so it is never
- * overwritten. Otherwise we load .env.test without override so existing env vars take precedence.
  */
-import { config } from 'dotenv';
-import { resolve } from 'path';
-
-if (!process.env.DATABASE_URL) {
-  config({ path: resolve(__dirname, '../../.env.test') });
-}
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';

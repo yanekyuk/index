@@ -1,6 +1,10 @@
 /**
  * Unit tests for chat tools (createChatTools, get_intents_in_index, list_index_members, list_index_intents).
  */
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { createChatTools, type ToolContext } from "./chat.tools";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";

@@ -1,4 +1,4 @@
-import { IndexEmbedder } from '../lib/embedder';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile/profile.graph';
 import type { ProfileGraphDatabase } from '../lib/protocol/interfaces/database.interface';
 import type { Scraper } from '../lib/protocol/interfaces/scraper.interface';
@@ -18,8 +18,7 @@ export class ProfileController {
 
   constructor() {
     this.db = new ProfileDatabaseAdapter();
-    // IndexEmbedder (from ../lib/embedder) implements Embedder interface
-    this.embedder = new IndexEmbedder();
+    this.embedder = new EmbedderAdapter();
     this.scraper = new ScraperAdapter();
     this.factory = new ProfileGraphFactory(this.db, this.embedder, this.scraper);
   }

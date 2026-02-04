@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, jest, mock } from 'bun:test';
 import { QueueFactory } from './bullmq';
 import { Queue, Worker, QueueEvents } from 'bullmq';

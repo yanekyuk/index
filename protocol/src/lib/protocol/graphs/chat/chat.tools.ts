@@ -17,6 +17,7 @@ import { HydeGenerator } from "../../agents/hyde/hyde.generator";
 import { IndexGraphFactory } from "../index/index.graph";
 import { RedisCacheAdapter } from "../../../../adapters/cache.adapter";
 import { runDiscoverFromQuery } from "./nodes/discover.nodes";
+import { queueOpportunityNotification } from "../../../../queues/notification.queue";
 import { log } from "../../../log";
 
 const logger = log.graph.from("chat.tools.ts");
@@ -934,7 +935,6 @@ export function createChatTools(context: ToolContext) {
         };
 
         const opportunity = await database.createOpportunity(data);
-        const { queueOpportunityNotification } = await import("../../../../queues/notification.queue");
         const recipientIds = actors.filter((a) => a.role !== "introducer").map((a) => a.identityId);
         for (const recipientId of recipientIds) {
           if (recipientId === userId) continue;

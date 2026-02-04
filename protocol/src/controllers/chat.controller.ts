@@ -5,7 +5,7 @@ import path from 'path';
 import { getUploadsPath } from '../lib/paths';
 import { loadFileContent } from '../lib/uploads';
 import { HumanMessage } from '@langchain/core/messages';
-import { IndexEmbedder } from '../lib/embedder';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ChatGraphFactory } from '../lib/protocol/graphs/chat/chat.graph';
 import { getCheckpointer } from '../lib/protocol/graphs/chat/chat.checkpointer';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -39,8 +39,7 @@ export class ChatController {
 
   constructor() {
     this.db = new ChatDatabaseAdapter();
-    // IndexEmbedder (from ../lib/embedder) implements Embedder interface
-    this.embedder = new IndexEmbedder();
+    this.embedder = new EmbedderAdapter();
     this.scraper = new ScraperAdapter();
     this.factory = new ChatGraphFactory(this.db, this.embedder, this.scraper);
   }

@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import {
   cleanupExpiredHyde,
@@ -11,8 +15,11 @@ describe('HydeJob', () => {
       const deleteExpiredHydeDocuments = mock(async () => 3);
       const deps: HydeJobDeps = {
         database: {
+          getIntentForIndexing: mock(async () => null as any),
+          deleteHydeDocumentsForSource: mock(async () => 0),
           deleteExpiredHydeDocuments,
-        } as HydeJobDeps['database'],
+          getStaleHydeDocuments: mock(async () => []),
+        },
       };
       const count = await cleanupExpiredHyde(deps);
       expect(count).toBe(3);
@@ -23,8 +30,11 @@ describe('HydeJob', () => {
       const deleteExpiredHydeDocuments = mock(async () => 0);
       const deps: HydeJobDeps = {
         database: {
+          getIntentForIndexing: mock(async () => null as any),
+          deleteHydeDocumentsForSource: mock(async () => 0),
           deleteExpiredHydeDocuments,
-        } as HydeJobDeps['database'],
+          getStaleHydeDocuments: mock(async () => []),
+        },
       };
       const count = await cleanupExpiredHyde(deps);
       expect(count).toBe(0);
@@ -37,9 +47,10 @@ describe('HydeJob', () => {
       const deps: HydeJobDeps = {
         database: {
           getStaleHydeDocuments,
-          getIntentForIndexing: mock(async () => null),
+          getIntentForIndexing: mock(async () => null as any),
           deleteHydeDocumentsForSource: mock(async () => 0),
-        } as HydeJobDeps['database'],
+          deleteExpiredHydeDocuments: mock(async () => 0),
+        },
       };
       const count = await refreshStaleHyde(deps);
       expect(count).toBe(0);
@@ -66,9 +77,10 @@ describe('HydeJob', () => {
       const deps: HydeJobDeps = {
         database: {
           getStaleHydeDocuments,
-          getIntentForIndexing,
+          getIntentForIndexing: getIntentForIndexing as any,
           deleteHydeDocumentsForSource,
-        } as HydeJobDeps['database'],
+          deleteExpiredHydeDocuments: mock(async () => 0),
+        },
       };
       const count = await refreshStaleHyde(deps);
       expect(count).toBe(0);

@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { json2md } from './json2md';
 
 console.log("🧪 Testing json2md Utility...\n");

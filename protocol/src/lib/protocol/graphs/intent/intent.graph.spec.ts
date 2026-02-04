@@ -1,8 +1,9 @@
 /**
  * Tests for IntentGraph
  */
+/** Config */
 import { config } from "dotenv";
-config({ path: 'protocol/.env.development', override: true });
+config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll } from "bun:test";
 import { IntentGraphFactory } from "./intent.graph";

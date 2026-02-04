@@ -12,7 +12,7 @@ export const QUEUE_NAME = 'opportunity-processing-queue';
  * - process_opportunities: timestamp, force (legacy full cycle).
  * - process_intent_opportunities: intentId, userId (new graph per intent).
  */
-export interface OpportunityJobData {
+export interface OpportunityJobData extends Record<string, unknown> {
   timestamp?: number;
   force?: boolean;
   intentId?: string;

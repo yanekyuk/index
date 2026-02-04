@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { ProfileGraphFactory } from './profile.graph';
 import { ProfileGraphDatabase } from '../../interfaces/database.interface';

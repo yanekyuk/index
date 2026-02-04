@@ -1,8 +1,8 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { IntentController } from "./intent.controller";
 import { IntentDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";

@@ -1,11 +1,9 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { StakeEvaluator } from './stake.evaluator';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../../../.env.development');
-dotenv.config({ path: envPath });
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { StakeEvaluator } from './stake.evaluator';
 
 describe('StakeMatcher Tests', () => {
   let matcher: StakeEvaluator;

@@ -1,13 +1,11 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { ExplicitIntentInferrer } from './explicit.inferrer';
 import { InferredIntent } from './explicit.inferrer.types';
 import { UserMemoryProfile } from '../../manager/intent.manager.types';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('ExplicitIntentInferrer Tests', () => {
   let detector: ExplicitIntentInferrer;

@@ -2,9 +2,9 @@
  * HyDE strategy registry tests using Smartest (spec-driven scenarios).
  * Each strategy is validated via a scenario: fixtures → SUT (config + prompt) → schema verification.
  */
-
-import { config } from 'dotenv';
-config({ path: '.env.development', override: true });
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';

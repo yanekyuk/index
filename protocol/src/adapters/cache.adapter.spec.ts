@@ -2,6 +2,10 @@
  * Unit tests for RedisCacheAdapter (Cache interface implementation).
  * Requires Redis to be available (e.g. localhost:6379). Run with Redis up to exercise the adapter.
  */
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { RedisCacheAdapter } from './cache.adapter';
 

@@ -1,11 +1,7 @@
-/**
- * Load environment variables
- */
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
-/**
- * Imports
- */
+config({ path: '.env.test' });
+
 import { ProfileGenerator } from "./profile.generator";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { searchUser } from "../../../parallel/parallel";

@@ -1,6 +1,10 @@
 /**
  * Unit tests for discover node: runDiscoverFromQuery with mocked opportunity graph.
  */
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect } from "bun:test";
 import { runDiscoverFromQuery } from "./discover.nodes";
 import type { ChatGraphCompositeDatabase } from "../../../interfaces/database.interface";

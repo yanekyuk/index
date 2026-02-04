@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { OpportunityController } from "./opportunity.controller";
 import { OpportunityDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 
@@ -207,7 +207,7 @@ describe("OpportunityController Integration", () => {
       await db.delete(schema.users)
         .where(eq(schema.users.id, candidateUserId));
     }
-    await closeDb();
+    // Do not close db: other specs may run in the same process.
   });
 
   test("discover should return 400 if query is missing", async () => {

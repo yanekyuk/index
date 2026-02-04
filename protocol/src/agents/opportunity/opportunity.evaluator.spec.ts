@@ -1,3 +1,6 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from 'bun:test';
 import { OpportunityEvaluator } from './opportunity.evaluator';

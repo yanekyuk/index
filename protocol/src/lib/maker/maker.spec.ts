@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { makerSolve, MakerConfig } from './maker';
 // @ts-ignore
 import { describe, it, expect, jest, beforeEach, mock, hoisted } from 'bun:test';

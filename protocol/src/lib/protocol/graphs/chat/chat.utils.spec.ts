@@ -1,6 +1,10 @@
 /**
  * Unit tests for chat.utils (token utilities and selectStrategiesFromQuery).
  */
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect } from "bun:test";
 import {
   estimateTokenCount,

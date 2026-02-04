@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, spyOn, mock, beforeAll } from 'bun:test';
 import { Response } from 'express';
 

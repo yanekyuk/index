@@ -5,7 +5,7 @@ import { opportunityNotificationTemplate } from '../lib/email/templates/opportun
 import { emitOpportunityNotification } from '../lib/notification-events';
 import { getRedisClient } from '../lib/redis';
 import { log } from '../lib/log';
-import type { NotificationJobData } from '../queues/notification.queue';
+import type { NotificationJobData } from '../queues/notification.types';
 
 const API_URL = process.env.API_URL || 'https://index.network';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://index.network';

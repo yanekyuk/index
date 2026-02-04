@@ -3,8 +3,9 @@
  * Covers createGraph, createStreamingGraph (with/without checkpointer), and loadSessionContext
  * (empty session, with messages, truncation, and error path).
  */
+/** Config */
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, spyOn, afterEach } from "bun:test";
 import { HumanMessage } from "@langchain/core/messages";

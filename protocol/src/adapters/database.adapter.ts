@@ -496,6 +496,50 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  async getIntent(intentId: string) {
+    const rows = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId,
+        archivedAt: intents.archivedAt,
+        embedding: intents.embedding,
+        sourceType: intents.sourceType,
+        sourceId: intents.sourceId,
+      })
+      .from(intents)
+      .where(eq(intents.id, intentId))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const emb = row.embedding;
+    const embedding: number[] | null =
+      emb == null
+        ? null
+        : Array.isArray(emb) && emb.length > 0 && Array.isArray(emb[0])
+          ? (emb[0] as number[])
+          : Array.isArray(emb)
+            ? (emb as number[])
+            : null;
+    return {
+      id: row.id,
+      payload: row.payload,
+      summary: row.summary,
+      isIncognito: row.isIncognito,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      userId: row.userId,
+      archivedAt: row.archivedAt,
+      embedding: embedding ?? undefined,
+      sourceType: row.sourceType ?? undefined,
+      sourceId: row.sourceId ?? undefined,
+    };
+  }
+
   async getIntentForIndexing(intentId: string) {
     const rows = await db
       .select({

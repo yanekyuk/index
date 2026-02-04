@@ -9,6 +9,8 @@ export interface EmailJobData {
     subject: string;
     html: string;
     text: string;
+    /** Optional Resend headers (e.g. List-Unsubscribe). */
+    headers?: Record<string, string>;
 }
 
 export type EmailJob = Job<EmailJobData>;

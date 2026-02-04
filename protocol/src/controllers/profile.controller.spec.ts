@@ -1,11 +1,11 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ProfileController } from "./profile.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 
@@ -48,10 +48,8 @@ describe("ProfileController Integration", () => {
     // Cleanup
     if (testUserId) {
       await db.delete(schema.users).where(eq(schema.users.id, testUserId));
-      // Cascading delete should handle profile, but just in case
-      // await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, testUserId));
     }
-    await closeDb();
+    // Do not close db: other integration specs may run in the same process.
   });
 
   test("sync should generate a profile for a new user", async () => {

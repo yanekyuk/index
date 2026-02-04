@@ -6,8 +6,9 @@
  * - Query "who needs a React developer" → coherent response (matches/opportunities or join index)
  * - Results formatted appropriately for chat (no raw JSON; table or list when listing people)
  */
+/** Config */
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { z } from "zod";

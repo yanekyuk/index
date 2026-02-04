@@ -1,5 +1,7 @@
-import * as dotenv from 'dotenv';
-import path from 'path';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, mock } from 'bun:test';
 import { log } from '../lib/log';
 import {
@@ -10,10 +12,6 @@ import {
 import { OpportunityService } from '../services/opportunity.service';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
 import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity.evaluator.types';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('OpportunityJob', () => {
   describe('expireStaleOpportunities', () => {

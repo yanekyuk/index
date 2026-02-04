@@ -6,9 +6,9 @@
  * Scenarios use Smartest to generate input data (source profile, query) and to
  * validate output shape and semantics (opportunities with detection, actors, interpretation).
  */
-
-import { config } from 'dotenv';
-config({ path: '.env.development', override: true });
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, spyOn, beforeAll } from 'bun:test';
 import { z } from 'zod';

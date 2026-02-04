@@ -1,13 +1,10 @@
 // src/agents/intent/felicity/pragmatic/pragmatic-monitor.spec.ts
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { PragmaticMonitorAgent } from './pragmatic.evaluator';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('Pragmatic Monitor (Discourse Analysis)', () => {
   let agent: PragmaticMonitorAgent;

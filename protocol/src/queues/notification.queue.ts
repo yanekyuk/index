@@ -1,25 +1,12 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { log } from '../lib/log';
+import type { NotificationJobData, NotificationPriority } from './notification.types';
+import { processOpportunityNotification } from '../jobs/notification.job';
 
 export const QUEUE_NAME = 'notification-queue';
 
-/**
- * Priority for opportunity notifications.
- * - immediate: WebSocket broadcast (real-time)
- * - high: Email via Resend
- * - low: Aggregate for weekly digest (no immediate email)
- */
-export type NotificationPriority = 'immediate' | 'high' | 'low';
-
-/**
- * Job payload for opportunity notification.
- */
-export interface NotificationJobData {
-  opportunityId: string;
-  recipientId: string;
-  priority: NotificationPriority;
-}
+export type { NotificationJobData, NotificationPriority } from './notification.types';
 
 /**
  * Notification Queue.
@@ -34,7 +21,6 @@ export const notificationQueue = QueueFactory.createQueue<NotificationJobData>(Q
  */
 async function notificationProcessor(job: Job<NotificationJobData>) {
   if (job.name === 'process_opportunity_notification') {
-    const { processOpportunityNotification } = await import('../jobs/notification.job');
     await processOpportunityNotification(job.data);
   } else {
     log.warn(`[NotificationProcessor] Unknown job name: ${job.name}`);

@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ChatController } from "./chat.controller";
 import { ChatDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 
@@ -93,7 +93,7 @@ describe("ChatController Integration", () => {
       // Clean up user (cascading delete should handle profile)
       await db.delete(schema.users).where(eq(schema.users.id, testUserId));
     }
-    await closeDb();
+    // Do not close db here: other integration specs (profile, opportunity) run in the same process and need the pool.
   });
 
   describe("ChatDatabaseAdapter", () => {
@@ -217,7 +217,15 @@ describe("ChatController Integration", () => {
         autoAssign: false,
       });
 
-      const activeIntents = await adapter.getActiveIntents(testUserId);
+      // Ensure we have an active intent to assign (previous test may have archived the one it created)
+      let activeIntents = await adapter.getActiveIntents(testUserId);
+      if (activeIntents.length === 0) {
+        await adapter.createIntent({
+          userId: testUserId,
+          payload: "Looking for collaborators on a machine learning project",
+        });
+        activeIntents = await adapter.getActiveIntents(testUserId);
+      }
       expect(activeIntents.length).toBeGreaterThan(0);
       await adapter.assignIntentToIndex(activeIntents[0].id, testIndexId);
 
@@ -312,7 +320,7 @@ describe("ChatController Integration", () => {
       expect(data.response).toBeDefined();
       expect(typeof data.response).toBe('string');
       expect(data.response!.length).toBeGreaterThan(0);
-      expect(data.routingDecision).toBeDefined();
+      // Non-streaming /message returns only { response, error }; routingDecision is only in the streaming endpoint.
     }, 120000); // Long timeout for LLM calls
 
     test("should process an intent-related message", async () => {
@@ -335,9 +343,7 @@ describe("ChatController Integration", () => {
       expect(response.status).toBe(200);
       expect(data.response).toBeDefined();
       expect(typeof data.response).toBe('string');
-      expect(data.routingDecision).toBeDefined();
-      // The router should identify this as intent-related
-      // But we don't strictly enforce the routing target since it depends on LLM output
+      // Non-streaming /message returns only { response, error }; routingDecision is only in the streaming endpoint.
     }, 120000); // Long timeout for LLM calls
 
     test("should process a profile-related message", async () => {

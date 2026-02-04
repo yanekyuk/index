@@ -1,11 +1,9 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { IntentAuditor } from './intent.auditor';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { IntentAuditor } from './intent.auditor';
 
 describe('IntentAuditor Tests', () => {
   let auditor: IntentAuditor;

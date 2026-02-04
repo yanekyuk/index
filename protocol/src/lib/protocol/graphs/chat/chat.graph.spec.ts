@@ -4,8 +4,9 @@
  * and streaming tests live in ./tests/ (chat.graph.factory.spec.ts,
  * chat.graph.invoke.spec.ts, chat.graph.streaming.spec.ts).
  */
+/** Config */
 import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll } from "bun:test";
 import { HumanMessage } from "@langchain/core/messages";

@@ -2,11 +2,11 @@
  * Integration tests for UploadController.
  * Require DATABASE_URL and a running PostgreSQL (same as other controller specs).
  */
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-
+/** Config */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { UploadController } from "./upload.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
 import db, { closeDb } from '../lib/drizzle/drizzle';

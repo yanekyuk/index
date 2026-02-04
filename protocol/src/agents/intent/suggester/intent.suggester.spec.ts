@@ -1,11 +1,9 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { IntentSuggester } from './intent.suggester';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { IntentSuggester } from './intent.suggester';
 
 describe('IntentSuggester Tests', () => {
   let suggester: IntentSuggester;

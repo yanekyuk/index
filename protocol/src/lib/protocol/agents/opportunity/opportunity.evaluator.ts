@@ -9,7 +9,7 @@ import type { HydeStrategy } from "../hyde/hyde.strategies";
  * Config
  */
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.development' });
 
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',

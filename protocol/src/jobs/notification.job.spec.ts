@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, mock } from 'bun:test';
 import { processOpportunityNotification } from './notification.job';
 import { onOpportunityNotification } from '../lib/notification-events';

@@ -86,14 +86,16 @@ export interface NewsletterQueue {
 // OPPORTUNITY QUEUE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export interface OpportunityJobData {
-  timestamp: number;
-  force: boolean;
+export interface OpportunityJobData extends Record<string, unknown> {
+  timestamp?: number;
+  force?: boolean;
+  intentId?: string;
+  userId?: string;
 }
 
 export interface OpportunityQueue {
   addJob(
-    name: 'process_opportunities',
+    name: string,
     data: OpportunityJobData,
     priority?: number
   ): Promise<AddJobResult>;

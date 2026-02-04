@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, it, expect, mock } from 'bun:test';
 import { IntentEvents } from './intent.event';
 
