@@ -104,12 +104,17 @@ classDiagram
         +get_user_profile()
         +update_user_profile()
         +get_active_intents()
+        +get_intents_in_index()
         +create_intent()
         +update_intent()
         +delete_intent()
         +get_index_memberships()
+        +list_index_members()
+        +list_index_intents()
         +update_index_settings()
         +find_opportunities()
+        +list_my_opportunities()
+        +create_opportunity_between_members()
         +scrape_url()
     }
 
@@ -162,7 +167,7 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 10 tools, organized by domain:
+The agent has access to 15 tools, organized by domain:
 
 ### Profile Tools
 
@@ -176,6 +181,7 @@ The agent has access to 10 tools, organized by domain:
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `get_active_intents` | List user's goals/wants | "What are my intents?", "Show my goals" |
+| `get_intents_in_index` | List intents in an index | "What intents are in this community?" |
 | `create_intent` | Create new intent | "I want to learn Rust", "Looking for a co-founder" |
 | `update_intent` | Modify existing intent | "Change that goal to...", "Update my coding intent" |
 | `delete_intent` | Remove an intent | "Delete that goal", "Remove my learning intent" |
@@ -185,6 +191,8 @@ The agent has access to 10 tools, organized by domain:
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `get_index_memberships` | List communities | "What indexes am I in?", "Show my communities" |
+| `list_index_members` | List members of an index | "Who is in this index?" |
+| `list_index_intents` | List intents in an index | "What intents are in this index?" |
 | `update_index_settings` | Modify index (owner-only) | "Make my index private", "Update index description" |
 
 ### Discovery Tools
@@ -192,6 +200,8 @@ The agent has access to 10 tools, organized by domain:
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
 | `find_opportunities` | Search for connections | "Find people interested in AI", "Who can help with ML?" |
+| `list_my_opportunities` | List user's opportunities | "Show my opportunities", "What matches do I have?" |
+| `create_opportunity_between_members` | Create opportunity between two members | "Introduce me to X", "Create opportunity with Y" |
 
 ### Utility Tools
 
@@ -332,7 +342,7 @@ graphs/chat/
 ├── chat.graph.ts           # Factory class, single agent_loop node
 ├── chat.graph.state.ts     # Simplified state annotation
 ├── chat.agent.ts           # ChatAgent class with ReAct loop
-├── chat.tools.ts           # 10 tool definitions
+├── chat.tools.ts           # 15 tool definitions
 ├── chat.utils.ts           # Token counting & truncation
 ├── chat.checkpointer.ts    # PostgreSQL state persistence
 ├── README.md               # This file
@@ -341,8 +351,8 @@ graphs/chat/
 │   ├── index.ts            # Barrel export
 │   └── chat.streaming.ts   # Streaming service with tool events
 │
-├── nodes/                  # [DEPRECATED] Old node definitions
-├── conditions/             # [DEPRECATED] Old routing conditions
+├── nodes/                  # [DEPRECATED] Old node definitions (no longer used)
+├── tests/                  # Factory, invoke, streaming specs
 └── REFACTORING_SUMMARY.md  # Migration notes
 ```
 
@@ -396,10 +406,9 @@ export const HARD_ITERATION_LIMIT = 12;
 
 ### Deprecated Files
 
-The following files are kept for reference but no longer used:
+The following are kept for reference but no longer used:
 
-- `nodes/*.nodes.ts` - Old node definitions
-- `conditions/chat.conditions.ts` - Old routing conditions
+- `nodes/*.nodes.ts` - Old node definitions (replaced by single agent_loop + tools)
 
 ### Breaking Changes
 

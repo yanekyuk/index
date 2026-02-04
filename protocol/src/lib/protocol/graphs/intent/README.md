@@ -137,6 +137,7 @@ const result = await graph.invoke({
 graphs/intent/
 ├── intent.graph.ts       # IntentGraphFactory, nodes, conditional edges
 ├── intent.graph.state.ts # IntentGraphState, VerifiedIntent, ExecutionResult
+├── intent.graph.spec.ts  # Tests
 ├── PHASE4-README.md      # Phase 4 conditional flow notes
 └── README.md             # This file
 ```

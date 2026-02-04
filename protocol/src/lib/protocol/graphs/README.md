@@ -1,6 +1,6 @@
 # Protocol Graphs
 
-LangGraph workflows in the Index Network protocol. Each graph is built via a factory with injected dependencies (database, embedder, etc.) and exposes a compiled runnable (e.g. `createGraph()` or `compile()` then `invoke()`).
+LangGraph workflows in the Index Network protocol. Graphs are built with injected dependencies (database, embedder, etc.) and expose a compiled runnable. Most use a **factory** with `createGraph()`; the **Opportunity** graph uses a class with `compile()`.
 
 | Graph | Purpose | README |
 |-------|---------|--------|

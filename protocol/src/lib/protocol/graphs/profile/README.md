@@ -141,6 +141,7 @@ const result = await graph.invoke({
 graphs/profile/
 ├── profile.graph.ts       # ProfileGraphFactory, nodes, conditional edges
 ├── profile.graph.state.ts # ProfileGraphState annotation
+├── profile.graph.spec.ts  # Tests
 └── README.md              # This file
 ```
 

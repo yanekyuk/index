@@ -24,3 +24,25 @@ This directory contains the core agents responsible for the **Intent Lifecycle**
   - `CREATE`: New valid goal.
   - `UPDATE`: improved description or score.
   - `EXPIRE`: Completed or abandoned goal (Tombstone).
+
+## File structure
+
+```
+agents/intent/
+├── README.md                    # This file
+├── inferrer/
+│   ├── explicit.inferrer.ts     # ExplicitIntentInferrer
+│   ├── explicit.inferrer.spec.ts
+│   └── PHASE3-README.md
+├── verifier/
+│   ├── semantic.verifier.ts    # SemanticVerifier
+│   └── semantic.verifier.spec.ts
+└── reconciler/
+    ├── intent.reconciler.ts    # IntentReconciler
+    └── intent.reconciler.spec.ts
+```
+
+## Related
+
+- **Intent graph**: `../graphs/intent/` — orchestrates these agents (prep → inference → verification → reconciler → executor).
+- **Chat tools**: `../graphs/chat/chat.tools.ts` — create_intent, update_intent, delete_intent invoke the intent graph.

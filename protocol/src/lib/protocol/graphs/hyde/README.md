@@ -118,6 +118,7 @@ const result = await graph.invoke({
 graphs/hyde/
 ├── hyde.graph.ts        # HydeGraphFactory, node definitions
 ├── hyde.graph.state.ts  # HydeGraphState annotation
+├── hyde.graph.spec.ts   # Tests
 ├── index.ts             # Barrel export
 └── README.md            # This file
 ```

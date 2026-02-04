@@ -2,6 +2,8 @@
 
 The Opportunity graph finds and persists **opportunities** (matches between a source user and candidates) using HyDE-based search and an LLM evaluator. It can run from an intent (intent payload + index scope) or from an ad-hoc query.
 
+**API note:** This graph uses the `OpportunityGraph` class with `compile()` (not a factory with `createGraph()`). You instantiate `OpportunityGraph` with dependencies, then call `compile()` to get the runnable graph.
+
 ## Overview
 
 **Flow:** `resolve_source_profile` → (conditional) `invoke_hyde` → `search_candidates` → `deduplicate` → `evaluate_candidates` → `persist_opportunities` → END.
@@ -146,9 +148,11 @@ const result = await graph.invoke({
 
 ```
 graphs/opportunity/
-├── opportunity.graph.ts   # OpportunityGraph, compile(), node implementations
+├── opportunity.graph.ts   # OpportunityGraph class, compile(), node implementations
 ├── opportunity.state.ts   # OpportunityGraphState, createInitialState()
 ├── opportunity.utils.ts   # selectStrategies, deriveRolesFromStrategy
+├── opportunity.utils.spec.ts
+├── opportunity.graph.spec.ts
 ├── OPPORTUNITY-GRAPH-LLM-AGENTS.md
 └── README.md              # This file
 ```
