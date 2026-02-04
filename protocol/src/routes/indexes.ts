@@ -17,6 +17,7 @@ import {
 import { IndexEvents } from '../events/index.event';
 import { MemberEvents } from '../events/user.event';
 import { IntentService } from '../services/intent.service';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { resolveFileUser } from '../lib/user-utils';
 import { addMemberToIndex } from '../lib/index-members';
 // Removed intent-filtering import - using existing suggestions system
@@ -763,6 +764,9 @@ router.delete('/:id/members/:userId',
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
 
+      const opportunityDb = new ChatDatabaseAdapter();
+      await opportunityDb.expireOpportunitiesForRemovedMember(id, userId);
+
       return res.json({ message: 'Member removed successfully' });
     } catch (error) {
       console.error('Remove member error:', error);
@@ -803,6 +807,9 @@ router.post('/:id/leave',
       // Remove member
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+      const opportunityDb = new ChatDatabaseAdapter();
+      await opportunityDb.expireOpportunitiesForRemovedMember(id, req.user!.id);
 
       return res.json({ message: 'Successfully left the index' });
     } catch (error) {

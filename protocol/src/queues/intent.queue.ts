@@ -4,9 +4,17 @@ import { ExplicitIntentInferrer } from '../agents/intent/inferrer/explicit/expli
 import { profileService } from '../services/profile.service';
 import { intentService } from '../services/intent.service';
 import { IndexGraphFactory } from '../lib/protocol/graphs/index/index.graph';
-import { IndexGraphDatabaseAdapter } from '../adapters/database.adapter';
+import { IndexGraphDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { createIntentQueueAdapter } from '../adapters/queue.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { RedisCacheAdapter } from '../adapters/cache.adapter';
+import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
+import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
+import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
 import { log } from '../lib/log';
+
+/** Persisted HyDE strategies to pre-generate on intent create/update. */
+const PERSISTED_HYDE_STRATEGIES = ['mirror', 'reciprocal'] as const;
 
 /**
  * Queue Name Constant
@@ -54,6 +62,13 @@ export interface GenerateIntentsJobData {
 }
 
 /**
+ * Job Data Interface: HyDE generation for an intent (create or refresh).
+ */
+export interface HydeIntentJobData {
+  intentId: string;
+}
+
+/**
  * Intent Processing Queue.
  * 
  * RESPONSIBILITIES:
@@ -72,6 +87,12 @@ async function intentProcessor(job: Job) {
       break;
     case 'generate_intents':
       await generateIntents(job.data as GenerateIntentsJobData);
+      break;
+    case 'generate_hyde':
+      await generateHydeForIntent(job.data as HydeIntentJobData);
+      break;
+    case 'refresh_hyde':
+      await refreshHydeForIntent(job.data as HydeIntentJobData);
       break;
     default:
       log.warn(`[IntentProcessor] Unknown job name: ${job.name}`);
@@ -168,6 +189,66 @@ async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
   }
 }
 
+/**
+ * Job: `generate_hyde` — Pre-generate HyDE documents for a new intent (persisted strategies).
+ */
+async function generateHydeForIntent(data: HydeIntentJobData): Promise<void> {
+  const { intentId } = data;
+  const db = new ChatDatabaseAdapter();
+  const intent = await db.getIntentForIndexing(intentId);
+  if (!intent) {
+    log.warn(`[IntentProcessor:generate_hyde] Intent not found: ${intentId}`);
+    return;
+  }
+  const embedder = new EmbedderAdapter();
+  const cache = new RedisCacheAdapter();
+  const generator = new HydeGenerator();
+  const hydeGraph = new HydeGraphFactory(
+    db as unknown as HydeGraphDatabase,
+    embedder,
+    cache,
+    generator
+  ).createGraph();
+  await hydeGraph.invoke({
+    sourceText: intent.payload,
+    sourceType: 'intent',
+    sourceId: intentId,
+    strategies: [...PERSISTED_HYDE_STRATEGIES],
+    forceRegenerate: false,
+  });
+  log.info(`[IntentProcessor:generate_hyde] Generated HyDE for intent ${intentId}`);
+}
+
+/**
+ * Job: `refresh_hyde` — Regenerate HyDE documents for an updated intent.
+ */
+async function refreshHydeForIntent(data: HydeIntentJobData): Promise<void> {
+  const { intentId } = data;
+  const db = new ChatDatabaseAdapter();
+  const intent = await db.getIntentForIndexing(intentId);
+  if (!intent) {
+    log.warn(`[IntentProcessor:refresh_hyde] Intent not found: ${intentId}`);
+    return;
+  }
+  const embedder = new EmbedderAdapter();
+  const cache = new RedisCacheAdapter();
+  const generator = new HydeGenerator();
+  const hydeGraph = new HydeGraphFactory(
+    db as unknown as HydeGraphDatabase,
+    embedder,
+    cache,
+    generator
+  ).createGraph();
+  await hydeGraph.invoke({
+    sourceText: intent.payload,
+    sourceType: 'intent',
+    sourceId: intentId,
+    strategies: [...PERSISTED_HYDE_STRATEGIES],
+    forceRegenerate: true,
+  });
+  log.info(`[IntentProcessor:refresh_hyde] Refreshed HyDE for intent ${intentId}`);
+}
+
 export const intentWorker = QueueFactory.createWorker(QUEUE_NAME, intentProcessor);
 export const queueEvents = QueueFactory.createQueueEvents(QUEUE_NAME);
 
@@ -181,7 +262,7 @@ export const queueEvents = QueueFactory.createQueueEvents(QUEUE_NAME);
  */
 export async function addJob(
   name: string,
-  data: IndexIntentJobData | GenerateIntentsJobData,
+  data: IndexIntentJobData | GenerateIntentsJobData | HydeIntentJobData,
   priority: number = 0
 ): Promise<Job> {
   return intentQueue.add(name, data, {

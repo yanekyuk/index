@@ -1,6 +1,12 @@
 import * as dotenv from 'dotenv';
 import path from 'path';
+import { describe, it, expect, mock } from 'bun:test';
 import { log } from '../lib/log';
+import {
+  expireStaleOpportunities,
+  onIntentCreated,
+  onIntentUpdated,
+} from './opportunity.job';
 import { OpportunityService } from '../services/opportunity.service';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
 import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity.evaluator.types';
@@ -8,6 +14,53 @@ import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity
 // Load env
 const envPath = path.resolve(__dirname, '../../../../.env.development');
 dotenv.config({ path: envPath });
+
+describe('OpportunityJob', () => {
+  describe('expireStaleOpportunities', () => {
+    it('returns count of expired opportunities', async () => {
+      const expireStaleOpportunitiesDb = mock(async () => 2);
+      const count = await expireStaleOpportunities({
+        database: { expireStaleOpportunities: expireStaleOpportunitiesDb },
+      });
+      expect(count).toBe(2);
+      expect(expireStaleOpportunitiesDb).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns 0 when no stale opportunities', async () => {
+      const expireStaleOpportunitiesDb = mock(async () => 0);
+      const count = await expireStaleOpportunities({
+        database: { expireStaleOpportunities: expireStaleOpportunitiesDb },
+      });
+      expect(count).toBe(0);
+    });
+  });
+
+  describe('onIntentCreated', () => {
+    it('enqueues process_opportunities job', async () => {
+      const addJob = mock(async () => ({} as any));
+      await onIntentCreated('intent-123', { addJob });
+      expect(addJob).toHaveBeenCalledTimes(1);
+      expect(addJob).toHaveBeenCalledWith(
+        'process_opportunities',
+        expect.objectContaining({ force: false }),
+        5
+      );
+    });
+  });
+
+  describe('onIntentUpdated', () => {
+    it('enqueues process_opportunities job', async () => {
+      const addJob = mock(async () => ({} as any));
+      await onIntentUpdated('intent-456', { addJob });
+      expect(addJob).toHaveBeenCalledTimes(1);
+      expect(addJob).toHaveBeenCalledWith(
+        'process_opportunities',
+        expect.objectContaining({ force: false }),
+        5
+      );
+    });
+  });
+});
 
 /**
  * Mock OpportunityService - overrides DB methods to return test data.

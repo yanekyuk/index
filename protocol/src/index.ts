@@ -8,7 +8,8 @@ import helmet from 'helmet';
 import { initializeBrokers } from './agents/context_brokers/connector';
 import { emailWorker } from './lib/email/queue/email.worker';
 import { initWeeklyNewsletterJob } from './jobs/newsletter.job';
-import { initOpportunityFinderJob } from './jobs/opportunity.job'
+import { initOpportunityFinderJob } from './jobs/opportunity.job';
+import { initHydeJobs } from './jobs/hyde.job';
 import './queues/intent.queue';
 import './queues/newsletter.queue';
 import './queues/opportunity.queue';
@@ -222,10 +223,9 @@ app.use('*', (req, res) => {
     // Workers are auto-started upon import
     console.log('🟢 Queue workers initialized');
 
-
-
     initWeeklyNewsletterJob();
     initOpportunityFinderJob();
+    initHydeJobs();
   } catch (err) {
     console.error('🔴 Failed to initialize services:', err);
   }

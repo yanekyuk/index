@@ -1,6 +1,8 @@
-import { intentQueue, queueEvents } from '../queues/intent.queue';
+import { intentQueue, addJob as addIntentJob, queueEvents } from '../queues/intent.queue';
 import { stakeService } from '../services/stake.service';
 import { indexService } from '../services/index.service';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { onIntentCreated, onIntentUpdated } from '../jobs/opportunity.job';
 
 export interface IntentEvent {
   intentId: string;
@@ -63,6 +65,10 @@ export class IntentEvents {
       // Replaces legacy triggerBrokersOnIntentCreated
       await stakeService.processIntent(event.intentId);
 
+      // Pre-generate HyDE for new intent (persisted strategies)
+      await addIntentJob('generate_hyde', { intentId: event.intentId }, 6);
+      // Trigger opportunity graph cycle
+      await onIntentCreated(event.intentId);
     } catch (error) {
       // Failed to queue intent indexing
       console.error('Failed to queue intent indexing:', error);
@@ -116,6 +122,9 @@ export class IntentEvents {
       // Trigger Stake Service via processIntent (Re-evaluation)
       await stakeService.processIntent(event.intentId);
 
+      // Refresh HyDE for updated intent
+      await addIntentJob('refresh_hyde', { intentId: event.intentId }, 6);
+      await onIntentUpdated(event.intentId);
     } catch (error) {
       // Failed to queue intent indexing
       console.error('Failed to queue intent indexing:', error);
@@ -123,14 +132,26 @@ export class IntentEvents {
   }
 
   /**
-   * Triggered when an intent is archived
+   * Triggered when an intent is archived.
+   * Expires related opportunities and deletes HyDE documents for this intent.
+   * @param event - Intent event with intentId and userId.
+   * @param opts - Optional; pass a mock database for testing.
    */
-  static async onArchived(event: IntentEvent): Promise<void> {
+  static async onArchived(
+    event: IntentEvent,
+    opts?: {
+      database?: Pick<
+        ChatDatabaseAdapter,
+        'expireOpportunitiesByIntent' | 'deleteHydeDocumentsForSource'
+      >;
+    }
+  ): Promise<void> {
     try {
-      // Placeholder for archive logic
-      // await triggerBrokersOnIntentArchived(event.intentId);
+      const db = opts?.database ?? new ChatDatabaseAdapter();
+      await db.expireOpportunitiesByIntent(event.intentId);
+      await db.deleteHydeDocumentsForSource('intent', event.intentId);
     } catch (error) {
-      // Failed to process archived intent
+      console.error('IntentEvents.onArchived failed:', error);
     }
   }
 }

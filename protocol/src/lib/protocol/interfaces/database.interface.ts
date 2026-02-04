@@ -888,6 +888,13 @@ export interface Database {
     indexId: string,
     userId: string
   ): Promise<number>;
+
+  /**
+   * Expire opportunities whose expires_at <= now. Used by maintenance cron.
+   *
+   * @returns Number of opportunities updated to expired
+   */
+  expireStaleOpportunities(): Promise<number>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -980,6 +987,7 @@ export type OpportunityMaintenanceDatabase = Pick<
   | 'deleteHydeDocumentsForSource'
   | 'expireOpportunitiesByIntent'
   | 'expireOpportunitiesForRemovedMember'
+  | 'expireStaleOpportunities'
   | 'getIntent'
 >;
 

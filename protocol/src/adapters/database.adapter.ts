@@ -929,6 +929,9 @@ export class ChatDatabaseAdapter {
   async expireOpportunitiesForRemovedMember(indexId: string, userId: string): Promise<number> {
     return this.opportunityAdapter.expireOpportunitiesForRemovedMember(indexId, userId);
   }
+  async expireStaleOpportunities(): Promise<number> {
+    return this.opportunityAdapter.expireStaleOpportunities();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1185,6 +1188,23 @@ export class OpportunityDatabaseAdapter {
         and(
           eq(opportunities.indexId, indexId),
           sql`${opportunities.actors} @> ${JSON.stringify([{ identityId: userId }])}::jsonb`
+        )
+      )
+      .returning({ id: opportunities.id });
+    return updated.length;
+  }
+
+  /** Set status to expired for opportunities with expires_at <= now. Used by cron. */
+  async expireStaleOpportunities(): Promise<number> {
+    const now = new Date();
+    const updated = await db
+      .update(opportunities)
+      .set({ status: 'expired', updatedAt: now })
+      .where(
+        and(
+          isNotNull(opportunities.expiresAt),
+          lte(opportunities.expiresAt, now),
+          ne(opportunities.status, 'expired')
         )
       )
       .returning({ id: opportunities.id });

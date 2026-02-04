@@ -46,6 +46,7 @@ controllerInstances.set(UploadController, new UploadController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
+// Cron jobs (newsletter, opportunity finder, HyDE) are registered in index.ts (runs with queue workers).
 Bun.serve({
   port: PORT,
   idleTimeout: 60, // 60 seconds to prevent request timeout errors
