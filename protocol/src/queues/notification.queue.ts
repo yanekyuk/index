@@ -46,7 +46,8 @@ export async function queueOpportunityNotification(
   recipientId: string,
   priority: NotificationPriority
 ): Promise<Job<NotificationJobData>> {
-  const priorityNum = priority === 'immediate' ? 10 : priority === 'high' ? 5 : 1;
+  // BullMQ: lower number = higher priority
+  const priorityNum = priority === 'immediate' ? 0 : priority === 'high' ? 5 : 10;
   return notificationQueue.add(
     'process_opportunity_notification',
     { opportunityId, recipientId, priority },
