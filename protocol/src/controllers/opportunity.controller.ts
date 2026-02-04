@@ -365,6 +365,14 @@ export class IndexOpportunityController {
     };
 
     const opportunity = await this.db.createOpportunity(data);
+    const { queueOpportunityNotification } = await import('../queues/notification.queue');
+    const recipientIds = data.actors
+      .filter((a) => a.role !== 'introducer')
+      .map((a) => a.identityId);
+    for (const recipientId of recipientIds) {
+      if (recipientId === user.id) continue;
+      await queueOpportunityNotification(opportunity.id, recipientId, 'high');
+    }
     return new Response(JSON.stringify(opportunity), {
       status: 201,
       headers: { 'Content-Type': 'application/json' },

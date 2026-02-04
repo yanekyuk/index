@@ -935,6 +935,12 @@ export function createChatTools(context: ToolContext) {
         };
 
         const opportunity = await database.createOpportunity(data);
+        const { queueOpportunityNotification } = await import("../../../../queues/notification.queue");
+        const recipientIds = actors.filter((a) => a.role !== "introducer").map((a) => a.identityId);
+        for (const recipientId of recipientIds) {
+          if (recipientId === userId) continue;
+          await queueOpportunityNotification(opportunity.id, recipientId, "high");
+        }
         return success({
           created: true,
           opportunityId: opportunity.id,

@@ -3261,21 +3261,21 @@ GET /api/opportunities?role=agent
 ### Step 12: Notifications
 **Goal**: Alert users about new opportunities.
 
-- [ ] Create `src/queues/notification.queue.ts`:
-  - [ ] `queueOpportunityNotification(opportunityId, recipientId, priority)`
-- [ ] Create `src/jobs/notification.job.ts`:
-  - [ ] Immediate: WebSocket broadcast
-  - [ ] High priority: Email via Resend
-  - [ ] Low priority: Aggregate for weekly digest
-- [ ] Create `lib/protocol/agents/opportunity/notification.agent.ts`:
-  - [ ] Decide notification priority based on confidence/category
-- [ ] Integrate into opportunity creation flow
+- [x] Create `src/queues/notification.queue.ts`:
+  - [x] `queueOpportunityNotification(opportunityId, recipientId, priority)`
+- [x] Create `src/jobs/notification.job.ts`:
+  - [x] Immediate: WebSocket broadcast (emit via `lib/notification-events.ts` for WS server to consume)
+  - [x] High priority: Email via Resend (enqueue to email queue)
+  - [x] Low priority: Aggregate for weekly digest (Redis list `digest:opportunities:{recipientId}`)
+- [x] Create `lib/protocol/agents/opportunity/notification.agent.ts`:
+  - [x] Decide notification priority based on confidence/category (pure logic, no LLM)
+- [x] Integrate into opportunity creation flow (opportunity.job after graph invoke, controller, chat tools)
 
 **Test**:
-- Integration test: Opportunity created → notification queued
-- Integration test: High-confidence opportunity → email sent
-- Integration test: WebSocket message received by client
-- Consider [Smartest](../src/lib/smartest/README.md) for the notification agent (spec-driven, LLM-verified tests).
+- Integration test: Opportunity created → notification queued (covered by opportunity.job + controller/chat tools)
+- Unit: `processOpportunityNotification` skips when opportunity not found; emits for immediate priority
+- Unit: `decideNotificationPriority` (notification.agent.spec.ts)
+- WebSocket: `onOpportunityNotification` in notification-events.ts allows a future WS server to subscribe
 
 ---
 

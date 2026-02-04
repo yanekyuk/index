@@ -1,9 +1,12 @@
 import cron from 'node-cron';
 import { addJob as addJobDefault } from '../queues/opportunity.queue';
+import { queueOpportunityNotification } from '../queues/notification.queue';
+import { decideNotificationPriority } from '../lib/protocol/agents/opportunity/notification.agent';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import type { OpportunityGraphDatabase, HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
+import type { Opportunity } from '../lib/protocol/interfaces/database.interface';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { OpportunityGraph } from '../lib/protocol/graphs/opportunity/opportunity.graph';
@@ -86,14 +89,23 @@ export async function runIntentOpportunityGraph(
   }
 
   try {
-    await compiled.invoke({
+    const result = await compiled.invoke({
       sourceUserId: userId,
       intentId,
       sourceText,
       indexScope,
       options: {},
     });
-    log.info('[OpportunityJob] runIntentOpportunityGraph completed', { intentId, userId });
+    const opportunities = (result?.opportunities ?? []) as Opportunity[];
+    for (const opp of opportunities) {
+      const recipientId = opp.actors?.find((a) => a.identityId !== userId)?.identityId ?? opp.actors?.[1]?.identityId;
+      if (!recipientId) continue;
+      const confidence = parseFloat(String(opp.confidence)) || 0.5;
+      const category = (opp as { interpretation?: { category?: string } }).interpretation?.category ?? 'collaboration';
+      const priority = decideNotificationPriority({ confidence, category });
+      await queueOpportunityNotification(opp.id, recipientId, priority);
+    }
+    log.info('[OpportunityJob] runIntentOpportunityGraph completed', { intentId, userId, opportunitiesNotified: opportunities.length });
   } catch (err) {
     log.error('[OpportunityJob] runIntentOpportunityGraph failed', { intentId, userId, error: err });
     throw err;

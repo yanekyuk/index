@@ -13,6 +13,7 @@ import { initHydeJobs } from './jobs/hyde.job';
 import './queues/intent.queue';
 import './queues/newsletter.queue';
 import './queues/opportunity.queue';
+import './queues/notification.queue';
 import './queues/profile.queue';
 /**
  * PLAYGROUND
