@@ -1,6 +1,7 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import type { Id } from '../types/common';
 
 // Enums
 export const connectionAction = pgEnum('connection_action', [
@@ -162,15 +163,15 @@ export const hydeDocuments = pgTable('hyde_documents', {
 // Opportunity redesign: JSON types for extensible opportunity model
 export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added';
-  createdBy?: string;
-  triggeredBy?: string;
+  createdBy?: Id<'users'>;
+  triggeredBy?: Id<'users'>;
   timestamp: string;
 }
 
 export interface OpportunityActor {
   role: string;
-  identityId: string;
-  intents?: string[];
+  identityId: Id<'users'>;
+  intents?: Id<'intents'>[];
   profile?: boolean;
 }
 
@@ -188,9 +189,9 @@ export interface OpportunityInterpretation {
 }
 
 export interface OpportunityContext {
-  indexId: string;
-  conversationId?: string;
-  triggeringIntentId?: string;
+  indexId: Id<'indexes'>;
+  conversationId?: Id<'chatSessions'>;
+  triggeringIntentId?: Id<'intents'>;
 }
 
 // Opportunities table (redesign: detection, actors, interpretation, context as JSONB)
