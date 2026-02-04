@@ -1,10 +1,16 @@
 /**
  * Integration tests for all database adapters in database.adapter.ts.
  * Requires DATABASE_URL and migrated schema. Run: bun test src/adapters/database.adapter.spec.ts
+ *
+ * Env loading: if DATABASE_URL is already set (CI or local), we skip dotenv so it is never
+ * overwritten. Otherwise we load .env.test without override so existing env vars take precedence.
  */
 import { config } from 'dotenv';
 import { resolve } from 'path';
-config({ path: resolve(__dirname, '../../.env.development'), override: true });
+
+if (!process.env.DATABASE_URL) {
+  config({ path: resolve(__dirname, '../../.env.test') });
+}
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { eq, inArray } from 'drizzle-orm';
@@ -81,6 +87,8 @@ beforeAll(async () => {
     userId: userAId,
     payload: TEST_PREFIX + 'Intent 1 payload',
     summary: 'Summary 1',
+    sourceType: 'discovery_form',
+    sourceId: userAId,
   });
   await db.insert(intentIndexes).values({ intentId: intent1Id, indexId });
   fixture = { userAId, userBId, indexId, intent1Id, intent2Id: null, extraIntentIds: [] };
@@ -272,6 +280,8 @@ describe('ChatDatabaseAdapter', () => {
       id: newIntentId,
       userId: fixture.userBId,
       payload: TEST_PREFIX + 'For assign test',
+      sourceType: 'discovery_form',
+      sourceId: fixture.userBId,
     });
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
     await adapter.assignIntentToIndex(newIntentId, fixture.indexId);
@@ -504,6 +514,8 @@ describe('IndexGraphDatabaseAdapter', () => {
       id: newIntentId,
       userId: fixture.userBId,
       payload: TEST_PREFIX + 'Index graph assign test',
+      sourceType: 'discovery_form',
+      sourceId: fixture.userBId,
     });
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
     await adapter.assignIntentToIndex(newIntentId, fixture.indexId);
