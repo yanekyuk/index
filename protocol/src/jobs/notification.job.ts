@@ -12,6 +12,10 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://index.network';
 
 /** Digest list key prefix: digest:opportunities:{recipientId}. List of opportunityId strings, TTL 7 days. */
 const DIGEST_LIST_PREFIX = 'digest:opportunities:';
+/** Dedupe key prefix: digest:dedupe:{recipientId}:{opportunityId}. SET NX EX to avoid duplicate digest entries on retries. */
+const DIGEST_DEDUPE_PREFIX = 'digest:dedupe:';
+/** Email dedupe key prefix: email:opportunity:dedupe:{recipientId}:{opportunityId}. */
+const EMAIL_OPPORTUNITY_DEDUPE_PREFIX = 'email:opportunity:dedupe:';
 const DIGEST_TTL_SEC = 7 * 24 * 3600;
 
 /**
@@ -98,6 +102,17 @@ async function sendHighPriorityEmail(
     unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=connectionUpdates`;
   }
 
+  const redis = getRedisClient();
+  const emailDedupeKey = `${EMAIL_OPPORTUNITY_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
+  const setResult = await redis.set(emailDedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
+  if (setResult !== 'OK') {
+    log.info('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
+      recipientId,
+      opportunityId,
+    });
+    return;
+  }
+
   const template = opportunityNotificationTemplate(
     recipient.name ?? 'there',
     summary,
@@ -105,18 +120,21 @@ async function sendHighPriorityEmail(
     unsubscribeUrl
   );
 
-  await addEmailJob({
-    to: recipient.email,
-    subject: template.subject,
-    html: template.html,
-    text: template.text,
-    headers: unsubscribeUrl
-      ? {
-          'List-Unsubscribe': `<mailto:hello@index.network?subject=Unsubscribe>, <${unsubscribeUrl}>`,
-          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-        }
-      : undefined,
-  });
+  await addEmailJob(
+    {
+      to: recipient.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      headers: unsubscribeUrl
+        ? {
+            'List-Unsubscribe': `<mailto:hello@index.network?subject=Unsubscribe>, <${unsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
+        : undefined,
+    },
+    { jobId: `opportunity-email:${recipientId}:${opportunityId}` }
+  );
   log.info('[NotificationJob] Enqueued high-priority opportunity email', {
     recipientId,
     opportunityId,
@@ -126,9 +144,18 @@ async function sendHighPriorityEmail(
 async function addToDigest(recipientId: string, opportunityId: string): Promise<void> {
   try {
     const redis = getRedisClient();
-    const key = `${DIGEST_LIST_PREFIX}${recipientId}`;
-    await redis.rpush(key, opportunityId);
-    await redis.expire(key, DIGEST_TTL_SEC);
+    const dedupeKey = `${DIGEST_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
+    const setResult = await redis.set(dedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
+    if (setResult !== 'OK') {
+      log.info('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
+        recipientId,
+        opportunityId,
+      });
+      return;
+    }
+    const listKey = `${DIGEST_LIST_PREFIX}${recipientId}`;
+    await redis.rpush(listKey, opportunityId);
+    await redis.expire(listKey, DIGEST_TTL_SEC);
     log.info('[NotificationJob] Added opportunity to weekly digest list', {
       recipientId,
       opportunityId,
