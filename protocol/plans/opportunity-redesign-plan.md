@@ -2217,7 +2217,7 @@ export class OpportunityController {
         },
         indexId,
         confidence: confidence || 0.8,
-        status: permission.requiresApproval ? 'pending' : 'pending', // Could add 'pending_approval' status
+        status: 'pending',
       };
 
       // Create via database interface
@@ -2237,25 +2237,25 @@ export class OpportunityController {
     creatorId: string,
     parties: Array<{ userId: string }>,
     indexId: string
-  ): Promise<{ allowed: boolean; requiresApproval: boolean }> {
+  ): Promise<{ allowed: boolean }> {
     const isOwner = await this.database.isIndexOwner(indexId, creatorId);
     const isSelfIncluded = parties.some(p => p.userId === creatorId);
 
     if (isOwner) {
-      return { allowed: true, requiresApproval: false };
+      return { allowed: true };
     }
 
     const isMember = await this.database.isIndexMember(indexId, creatorId);
     if (!isMember) {
-      return { allowed: false, requiresApproval: false };
+      return { allowed: false };
     }
 
     if (isSelfIncluded) {
-      return { allowed: true, requiresApproval: false };
+      return { allowed: true };
     }
 
-    // Non-owner member, not involved → needs approval
-    return { allowed: true, requiresApproval: true };
+    // Non-owner member, not in parties — allowed (any index member can create)
+    return { allowed: true };
   }
 
   // ... other controller methods (listForUser, getById, updateStatus)
@@ -3209,7 +3209,7 @@ GET /api/opportunities?role=agent
 **Test**:
 - API test: List returns user's opportunities (integration test in `opportunity.controller.spec.ts`; requires DB)
 - API test: Status update changes status (integration test; requires DB)
-- API test: Manual create requires owner permission (logic in `checkCreatePermission`; integration test requires DB)
+- API test: Manual create requires index member permission (logic in `checkCreatePermission`; integration test requires DB)
 - API test: Presentation copy varies by viewer role (`opportunity.presentation.spec.ts`)
 
 ---

@@ -327,19 +327,6 @@ export class IndexOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    // Only persist when the opportunity is "fully approved": index owner or creator is in the party list.
-    // When requiresApproval is true (non-owner member creating for other parties), we reject so that
-    // we never persist an opportunity that would need owner approval. An approval workflow (e.g.
-    // pending_approval status + owner approve endpoint) can be added later to allow creating in
-    // a pending state and then promoting to pending/viewed after approval.
-    if (permission.requiresApproval) {
-      return new Response(
-        JSON.stringify({
-          error: 'Creating opportunities between other parties requires approval from the index owner. This approval workflow is not yet supported.',
-        }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
 
     const partyIds = parties.map((p) => p.userId);
     const exists = await this.db.opportunityExistsBetweenActors(partyIds, indexId);
@@ -378,7 +365,6 @@ export class IndexOpportunityController {
       status: 'pending',
     };
 
-    // Persist only when requiresApproval is false (see check above); otherwise request is rejected with 403.
     const opportunity = await this.db.createOpportunity(data);
     const recipientIds = data.actors
       .filter((a) => a.role !== 'introducer')
@@ -397,13 +383,13 @@ export class IndexOpportunityController {
     creatorId: string,
     parties: Array<{ userId: string }>,
     indexId: string
-  ): Promise<{ allowed: boolean; requiresApproval: boolean }> {
+  ): Promise<{ allowed: boolean }> {
     const isOwner = await this.db.isIndexOwner(indexId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
-    if (isOwner) return { allowed: true, requiresApproval: false };
+    if (isOwner) return { allowed: true };
     const isMember = await this.db.isIndexMember(indexId, creatorId);
-    if (!isMember) return { allowed: false, requiresApproval: false };
-    if (isSelfIncluded) return { allowed: true, requiresApproval: false };
-    return { allowed: true, requiresApproval: true };
+    if (!isMember) return { allowed: false };
+    if (isSelfIncluded) return { allowed: true };
+    return { allowed: true };
   }
 }
