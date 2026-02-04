@@ -3242,18 +3242,19 @@ GET /api/opportunities?role=agent
 ### Step 11: Chat Integration
 **Goal**: Discovery via chat interface.
 
-- [ ] Add `selectStrategiesFromQuery(query)` to `lib/protocol/graphs/chat/chat.utils.ts`
-- [ ] Create discover node in `lib/protocol/graphs/chat/nodes/discover.nodes.ts`:
-  - [ ] Invoke HyDE graph with ad-hoc query
-  - [ ] Search with generated embeddings
-  - [ ] Return formatted candidates
-- [ ] Update chat graph to route discovery queries to discover node
-- [ ] Add discovery results formatting in response generator
+- [x] Add `selectStrategiesFromQuery(query)` to `lib/protocol/graphs/chat/chat.utils.ts`
+- [x] Create discover node in `lib/protocol/graphs/chat/nodes/discover.nodes.ts`:
+  - [x] Invoke HyDE graph with ad-hoc query
+  - [x] Search with generated embeddings
+  - [x] Return formatted candidates
+- [x] Update chat graph to route discovery queries to discover node (find_opportunities tool uses runDiscoverFromQuery)
+- [x] Add discovery results formatting in response generator (enriched candidates in discover.nodes + agent table/list rules)
 
 **Test**:
-- E2E test: Chat query "find me a mentor" → returns matching profiles
-- E2E test: Query "who needs a React developer" → returns matching intents
-- E2E test: Results formatted appropriately for chat response
+- [x] E2E test: Chat query "find me a mentor" → returns matching profiles (Smartest: `tests/chat.discover.spec.ts`)
+- [x] E2E test: Query "who needs a React developer" → returns matching intents (Smartest)
+- [x] E2E test: Results formatted appropriately for chat response (Smartest)
+- [x] Unit: `selectStrategiesFromQuery` in `chat.utils.spec.ts`; `runDiscoverFromQuery` in `nodes/discover.nodes.spec.ts`
 
 ---
 

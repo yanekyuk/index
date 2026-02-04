@@ -16,6 +16,7 @@
  */
 
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
+import type { HydeStrategy } from "../../agents/hyde/hyde.strategies";
 
 /**
  * Default maximum tokens to allow for context.
@@ -217,4 +218,57 @@ export function exceedsTokenLimit(
   maxTokens: number = MAX_CONTEXT_TOKENS
 ): boolean {
   return calculateTotalTokens(messages) > maxTokens;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// DISCOVERY: Map natural-language chat query to HyDE strategies
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Map a natural-language discovery query (e.g. from chat) to HyDE strategies.
+ * Used when the user asks ad-hoc questions like "find me a mentor" or
+ * "who needs a React developer" so we run the right strategy mix (profiles vs intents).
+ *
+ * - Mentor/guidance → mirror, reciprocal, mentor
+ * - Investor/funding → mirror, reciprocal, investor
+ * - Collaborator/co-founder/partner → mirror, reciprocal, collaborator
+ * - Hiring/job/developer needed → mirror, reciprocal, hiree
+ * - Default → mirror, reciprocal
+ *
+ * @param query - User's free-text discovery query
+ * @returns Array of HyDE strategy names to run
+ */
+export function selectStrategiesFromQuery(query: string): HydeStrategy[] {
+  const base: HydeStrategy[] = ["mirror", "reciprocal"];
+  const q = (query ?? "").toLowerCase().trim();
+  if (!q) return base;
+
+  if (
+    /mentor|guide|guidance|learn from|advice from|someone to teach|teach me/i.test(q)
+  ) {
+    base.push("mentor");
+  }
+  if (
+    /investor|invest|funding|raise|seed|series|vc|capital|back (us|me|this)/i.test(
+      q
+    )
+  ) {
+    base.push("investor");
+  }
+  if (
+    /co-?founder|collaborator|partner|peer|build together|work together|collaborat/i.test(
+      q
+    )
+  ) {
+    base.push("collaborator");
+  }
+  if (
+    /hire|hiring|who needs|looking for (a |an )?(developer|engineer|designer|react|frontend|backend)|job|role|position|developer needed|engineer needed/i.test(
+      q
+    )
+  ) {
+    base.push("hiree");
+  }
+
+  return [...new Set(base)];
 }

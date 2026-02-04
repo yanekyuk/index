@@ -150,9 +150,12 @@ export class OpportunityGraph {
   ): Promise<Partial<OpportunityGraphState>> {
     const sourceText = state.sourceText ?? state.options?.hydeDescription ?? '';
     const sourceType = state.intentId ? ('intent' as const) : ('query' as const);
-    const strategies = selectStrategies(sourceText, {
-      indexId: state.indexScope?.[0],
-    });
+    const strategies =
+      (state.options?.strategies?.length ?? 0) > 0
+        ? (state.options!.strategies as HydeStrategy[])
+        : selectStrategies(sourceText, {
+            indexId: state.indexScope?.[0],
+          });
 
     logger.info?.('[OpportunityGraph] Invoking HyDE', {
       sourceType,

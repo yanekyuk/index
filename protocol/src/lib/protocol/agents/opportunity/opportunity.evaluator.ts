@@ -3,6 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../../../log";
+import type { HydeStrategy } from "../hyde/hyde.strategies";
 
 /**
  * Config
@@ -95,6 +96,8 @@ export interface OpportunityEvaluatorOptions {
   minScore?: number;
   limit?: number;
   hydeDescription?: string;
+  /** When set (e.g. from chat discovery), HyDE runs only these strategies instead of inferring from intent. */
+  strategies?: HydeStrategy[];
   existingOpportunities?: string;
   candidates?: CandidateProfile[]; // For direct evaluation
   filter?: Record<string, unknown>;

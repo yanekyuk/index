@@ -3,7 +3,6 @@ import { z } from "zod";
 import type {
   ChatGraphCompositeDatabase,
   HydeGraphDatabase,
-  Opportunity,
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
@@ -15,6 +14,7 @@ import { HydeGraphFactory } from "../hyde/hyde.graph";
 import { HydeGenerator } from "../../agents/hyde/hyde.generator";
 import { IndexGraphFactory } from "../index/index.graph";
 import { RedisCacheAdapter } from "../../../../adapters/cache.adapter";
+import { runDiscoverFromQuery } from "./nodes/discover.nodes";
 import { log } from "../../../log";
 
 const logger = log.graph.from("chat.tools.ts");
@@ -196,7 +196,7 @@ export function createChatTools(context: ToolContext) {
         };
 
         const result = await profileGraph.invoke(profileInput);
-        logger.debug("Profile graph response", { result: JSON.stringify(result) });
+        logger.debug("Profile graph response", { result });
 
         // Check if profile graph needs more info
         if (result.needsUserInfo && result.missingUserInfo?.length > 0) {
@@ -355,7 +355,7 @@ export function createChatTools(context: ToolContext) {
         };
 
         const result = await intentGraph.invoke(intentInput);
-        logger.debug("Intent graph response", { result: JSON.stringify(result) });
+        logger.debug("Intent graph response", { result });
 
         // Process execution results
         const created = (result.executionResults || [])
@@ -743,60 +743,28 @@ export function createChatTools(context: ToolContext) {
       try {
         const memberships = await database.getIndexMemberships(userId);
         const indexScope = memberships.map((m) => m.indexId);
-        if (indexScope.length === 0) {
-          return success({
-            found: false,
-            count: 0,
-            message:
-              "You need to join at least one index (community) to discover opportunities. Use get_index_memberships to see available indexes, or create one.",
-          });
-        }
 
-        const result = await opportunityGraph.invoke({
-          sourceUserId: userId,
-          sourceText: args.searchQuery,
+        const result = await runDiscoverFromQuery({
+          opportunityGraph,
+          database,
+          userId,
+          query: args.searchQuery,
           indexScope,
-          options: {
-            hydeDescription: args.searchQuery,
-            limit: 5,
-          },
+          limit: 5,
         });
-        logger.debug("Opportunity graph response", { result: JSON.stringify(result) });
-        const opportunities: Opportunity[] = Array.isArray(result.opportunities)
-          ? result.opportunities
-          : [];
 
-        if (opportunities.length === 0) {
+        if (!result.found) {
           return success({
             found: false,
             count: 0,
-            message:
-              "No matching opportunities found. Try a different search or create intents to improve matching.",
+            message: result.message ?? "No matching opportunities found.",
           });
         }
-
-        const enriched = await Promise.all(
-          opportunities.map(async (opp) => {
-            const candidateActor = opp.actors.find((a) => a.identityId !== userId);
-            const candidateUserId = candidateActor?.identityId ?? "";
-            const profile = candidateUserId ? await database.getProfile(candidateUserId) : null;
-            return {
-              opportunityId: opp.id,
-              userId: candidateUserId,
-              name: profile?.identity?.name ?? undefined,
-              bio: profile?.identity?.bio ?? undefined,
-              matchReason: opp.interpretation.summary,
-              score: typeof opp.interpretation.confidence === "number"
-                ? opp.interpretation.confidence
-                : parseFloat(String(opp.interpretation.confidence)) || 0,
-            };
-          })
-        );
 
         return success({
           found: true,
-          count: enriched.length,
-          opportunities: enriched,
+          count: result.count,
+          opportunities: result.opportunities ?? [],
         });
       } catch (err) {
         logger.error("find_opportunities failed", { error: err });

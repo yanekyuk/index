@@ -175,7 +175,7 @@ export class ChatGraphStreamingService {
         if (event.event === "on_tool_end") {
           const toolName = event.name || "unknown_tool";
           const output = event.data?.output;
-          logger.debug("Tool response (streaming)", { toolName, output: typeof output === "string" ? output : JSON.stringify(output) });
+          logger.debug("Tool response (streaming)", { toolName, output: typeof output === "string" ? output : output });
 
           // Parse output to determine success
           let success = true;
@@ -264,7 +264,7 @@ export class ChatGraphStreamingService {
           // #region agent log
           fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat.streaming.ts:emit_token',message:'H4: Emitting token from on_chain_end',data:{responsePreview:responseText.substring(0,400),hasClassification:responseText.includes('"classification"'),willEmit:!!responseText},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
           // #endregion
-          logger.debug("Agent loop output", { output: JSON.stringify(output), responseText });
+          logger.debug("Agent loop output", { output, responseText });
           if (responseText) {
             yield createTokenEvent(sessionId, responseText);
           }

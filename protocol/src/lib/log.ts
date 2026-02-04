@@ -57,10 +57,31 @@ function shouldLog(level: LogLevel) {
   return order[level] >= order[currentLevel];
 }
 
+/** Keys that are known to hold embedding/vector data (do not log their values). */
+const EMBEDDING_KEYS = new Set([
+  'embedding',
+  'hydeEmbedding',
+  'hydeEmbeddings',
+  'vector',
+  'vectors',
+  'embeddingArray',
+  'embeddings',
+]);
+
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    typeof value[0] === 'number'
+  );
+}
+
+/** Recursively redact embedding/vector arrays so they are never logged. */
 function fmt(message: string, meta?: Record<string, unknown>) {
   if (!meta) return message;
   try {
-    return `${message} ${JSON.stringify(meta)}`;
+    const sanitized = sanitizeForLogInternal(meta) as Record<string, unknown>;
+    return `${message} ${JSON.stringify(sanitized)}`;
   } catch {
     return message;
   }
@@ -146,6 +167,44 @@ export const log = {
   route: addFrom('route'),
   server: addFrom('server'),
 };
+
+/** Sanitize an object for logging: redact embedding/vector arrays. Use before logging objects that may contain embeddings. */
+export function sanitizeForLog(value: unknown): unknown {
+  return sanitizeForLogInternal(value);
+}
+
+function sanitizeForLogInternal(value: unknown): unknown {
+  if (value == null) return value;
+  if (isNumberArray(value)) return `[redacted: ${value.length} values]`;
+  if (Array.isArray(value)) {
+    if (value.length > 0 && typeof value[0] === 'number') return `[redacted: ${value.length} values]`;
+    return value.map(sanitizeForLogInternal);
+  }
+  if (typeof value === 'object' && value.constructor === Object) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (EMBEDDING_KEYS.has(k) || isNumberArray(v)) {
+        out[k] = isNumberArray(v) ? `[redacted: ${v.length} values]` : sanitizeForLogInternal(v);
+      } else if (v != null && typeof v === 'object' && !Array.isArray(v) && v.constructor === Object) {
+        const nested = v as Record<string, unknown>;
+        if (Object.keys(nested).every((key) => isNumberArray(nested[key]))) {
+          out[k] = Object.fromEntries(
+            Object.entries(nested).map(([key, val]) => [
+              key,
+              isNumberArray(val) ? `[redacted: ${val.length} values]` : val,
+            ])
+          );
+        } else {
+          out[k] = sanitizeForLogInternal(v);
+        }
+      } else {
+        out[k] = sanitizeForLogInternal(v);
+      }
+    }
+    return out;
+  }
+  return value;
+}
 
 export type { LogLevel };
 
