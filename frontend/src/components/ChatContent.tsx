@@ -686,8 +686,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   onClick={() => setIsIndexDropdownOpen(!isIndexDropdownOpen)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-black transition-colors hover:bg-gray-100"
                 >
-                  {selectedIndex ? <Lock className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
-                  <span>{selectedIndex?.title || 'Everywhere'}</span>
+                  {selectedIndexIds.includes('my-network') || selectedIndex?.permissions?.joinPolicy === 'invite_only' ? (
+                    <Lock className="w-4 h-4" />
+                  ) : selectedIndex ? (
+                    <Globe className="w-4 h-4" />
+                  ) : (
+                    <Globe className="w-4 h-4" />
+                  )}
+                  <span>
+                    {selectedIndexIds.includes('my-network')
+                      ? 'My network'
+                      : selectedIndex?.title || 'Everywhere'}
+                  </span>
                   <ChevronDown className={cn("w-4 h-4 transition-transform", isIndexDropdownOpen && "rotate-180")} />
                 </button>
                 
@@ -706,20 +716,44 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         <Globe className="w-4 h-4" />
                         Everywhere
                       </button>
-                      {indexes.map((index) => (
-                        <button
-                          key={index.id}
-                          type="button"
-                          onClick={() => { handleIndexSelect(index.id); setIsIndexDropdownOpen(false); }}
-                          className={cn(
-                            "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                            selectedIndexIds.includes(index.id) && "text-gray-900 font-medium"
-                          )}
-                        >
-                          <Lock className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">{index.title}</span>
-                        </button>
-                      ))}
+                      <button
+                        type="button"
+                        onClick={() => { handleIndexSelect('my-network'); setIsIndexDropdownOpen(false); }}
+                        className={cn(
+                          "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                          selectedIndexIds.includes('my-network') && "text-gray-900 font-medium"
+                        )}
+                      >
+                        <Lock className="w-4 h-4" />
+                        My network
+                      </button>
+                      {/* Separator */}
+                      <div className="my-1 border-t border-gray-200" />
+                      {[...indexes]
+                        .sort((a, b) => {
+                          const aPrivate = a.permissions?.joinPolicy === 'invite_only';
+                          const bPrivate = b.permissions?.joinPolicy === 'invite_only';
+                          // Public first, then alphabetical
+                          if (aPrivate !== bPrivate) return aPrivate ? 1 : -1;
+                          return (a.title || '').localeCompare(b.title || '');
+                        })
+                        .map((index) => {
+                          const isPrivate = index.permissions?.joinPolicy === 'invite_only';
+                          return (
+                            <button
+                              key={index.id}
+                              type="button"
+                              onClick={() => { handleIndexSelect(index.id); setIsIndexDropdownOpen(false); }}
+                              className={cn(
+                                "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                                selectedIndexIds.includes(index.id) && "text-gray-900 font-medium"
+                              )}
+                            >
+                              {isPrivate ? <Lock className="w-4 h-4 flex-shrink-0" /> : <Globe className="w-4 h-4 flex-shrink-0" />}
+                              <span className="truncate">{index.title}</span>
+                            </button>
+                          );
+                        })}
                     </div>
                   </>
                 )}

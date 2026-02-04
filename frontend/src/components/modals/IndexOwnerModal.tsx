@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
 import { X, Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown } from 'lucide-react';
@@ -346,6 +346,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
 
   return (
+    <>
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200 z-50" />
@@ -426,7 +427,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                       className={`border-2 p-3 rounded-md text-left transition-all ${anyoneCanJoin ? 'border-blue-500 bg-white' : 'border-gray-200 bg-gray-50 hover:border-blue-300'}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <Globe className={`h-4 w-4 ${anyoneCanJoin ? 'text-blue-500' : 'text-gray-600'}`} />
-                        <h4 className="text-sm font-medium font-ibm-plex-mono">Anyone can join</h4>
+                        <h4 className="text-sm font-medium font-ibm-plex-mono text-black">Anyone can join</h4>
                       </div>
                       <p className="text-xs text-gray-600">People can discover and join freely.</p>
                     </button>
@@ -434,7 +435,7 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
                       className={`border-2 p-3 rounded-md text-left transition-all ${!anyoneCanJoin ? 'border-blue-500 bg-white' : 'border-gray-200 bg-gray-50 hover:border-blue-300'}`}>
                       <div className="flex items-center gap-2 mb-1.5">
                         <Lock className={`h-4 w-4 ${!anyoneCanJoin ? 'text-blue-500' : 'text-gray-600'}`} />
-                        <h4 className="text-sm font-medium font-ibm-plex-mono">Private</h4>
+                        <h4 className="text-sm font-medium font-ibm-plex-mono text-black">Private</h4>
                       </div>
                       <p className="text-xs text-gray-600">Only invited people can join.</p>
                     </button>
@@ -571,25 +572,6 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
         </Dialog.Content>
       </Dialog.Portal>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirmation && typeof window !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowDeleteConfirmation(false)} />
-          <div className="relative bg-white rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Delete &apos;{currentIndex.title}&apos;</h2>
-            <p className="text-sm text-gray-600 mb-4">This action cannot be undone. Type the network name to confirm.</p>
-            <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={currentIndex.title} className="mb-4" />
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowDeleteConfirmation(false)}>Cancel</Button>
-              <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
-                {isDeletingIndex ? 'Deleting...' : 'Delete Network'}
-              </Button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
       {/* Directory Config Modal */}
       {selectedIntegrationForConfig?.id && (
         <DirectoryConfigModal
@@ -610,5 +592,30 @@ export default function IndexOwnerModal({ open, onOpenChange, index }: IndexOwne
         />
       )}
     </Dialog.Root>
+
+    {/* Delete Confirmation Modal */}
+    <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
+          <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">
+            Delete &apos;{currentIndex.title}&apos;
+          </AlertDialog.Title>
+          <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+            This action cannot be undone. Type the network name to confirm.
+          </AlertDialog.Description>
+          <Input value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} placeholder={currentIndex.title} className="mb-4" />
+          <div className="flex justify-end gap-3">
+            <AlertDialog.Cancel asChild>
+              <Button variant="outline">Cancel</Button>
+            </AlertDialog.Cancel>
+            <Button onClick={handleDeleteIndex} disabled={isDeletingIndex || !isDeleteConfirmationValid} className="bg-red-600 hover:bg-red-700 text-white">
+              {isDeletingIndex ? 'Deleting...' : 'Delete Network'}
+            </Button>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+    </>
   );
 }

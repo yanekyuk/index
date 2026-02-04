@@ -2,18 +2,17 @@
   "name": "index-monorepo",
   "private": true,
   "packageManager": "bun@1.2.20",
-  "workspaces": ["frontend", "protocol"],
   "scripts": {
     "dev": "bun run dev:protocol & bun run dev:frontend",
-    "dev:frontend": "bun --filter frontend dev",
-    "dev:protocol": "bun --filter protocol dev",
+    "dev:frontend": "cd frontend && bun run dev",
+    "dev:protocol": "cd protocol && bun run dev",
     "build": "bun run build:protocol && bun run build:frontend",
-    "build:frontend": "bun --filter frontend build",
-    "build:protocol": "bun --filter protocol build",
+    "build:frontend": "cd frontend && bun run build",
+    "build:protocol": "cd protocol && bun run build",
     "start": "bun run start:protocol & bun run start:frontend",
-    "start:frontend": "bun --filter frontend start",
-    "start:protocol": "bun --filter protocol start",
-    "lint": "bun --filter frontend lint && bun --filter protocol lint",
-    "test": "bun --filter protocol test"
+    "start:frontend": "cd frontend && bun run start",
+    "start:protocol": "cd protocol && bun run start",
+    "lint": "cd frontend && bun run lint && cd ../protocol && bun run lint",
+    "test": "cd protocol && bun test"
   }
 }
