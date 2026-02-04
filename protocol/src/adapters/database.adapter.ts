@@ -1145,12 +1145,12 @@ export class OpportunityDatabaseAdapter {
       eq(opportunities.indexId, indexId),
       ne(opportunities.status, expired),
     ];
+    // Require that all given actorIds appear in actors (opportunity may have extra actors, e.g. introducer)
     for (const actorId of actorIds) {
       conditions.push(
         sql`${opportunities.actors} @> ${JSON.stringify([{ identityId: actorId }])}::jsonb`
       );
     }
-    conditions.push(sql`jsonb_array_length(${opportunities.actors}) = ${actorIds.length}`);
     const rows = await db
       .select({ id: opportunities.id })
       .from(opportunities)

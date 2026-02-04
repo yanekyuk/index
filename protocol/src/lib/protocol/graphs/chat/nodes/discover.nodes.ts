@@ -142,7 +142,17 @@ export async function runDiscoverFromQuery(
       opportunities: enriched,
     };
   } catch (err) {
-    logger.error?.("[Discover] Discovery failed", { userId, error: err });
+    const errMessage = err instanceof Error ? err.message : String(err);
+    const errCause = err instanceof Error && err.cause ? String(err.cause) : undefined;
+    const errStack = err instanceof Error ? err.stack : undefined;
+    logger.error?.("[Discover] Discovery failed", {
+      userId,
+      error: err,
+      message: errMessage,
+      cause: errCause,
+      stack: errStack,
+      serialized: JSON.stringify(err, Object.getOwnPropertyNames(err instanceof Error ? err : Object(err))),
+    });
     return {
       found: false,
       count: 0,

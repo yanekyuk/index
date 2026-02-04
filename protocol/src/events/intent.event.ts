@@ -67,8 +67,8 @@ export class IntentEvents {
 
       // Pre-generate HyDE for new intent (persisted strategies)
       await addIntentJob('generate_hyde', { intentId: event.intentId }, 6);
-      // Trigger opportunity graph cycle
-      await onIntentCreated(event.intentId);
+      // Trigger opportunity graph cycle (legacy) and intent-scoped opportunity graph (new)
+      await onIntentCreated(event.intentId, { userId: event.userId });
     } catch (error) {
       // Failed to queue intent indexing
       console.error('Failed to queue intent indexing:', error);
@@ -124,7 +124,7 @@ export class IntentEvents {
 
       // Refresh HyDE for updated intent
       await addIntentJob('refresh_hyde', { intentId: event.intentId }, 6);
-      await onIntentUpdated(event.intentId);
+      await onIntentUpdated(event.intentId, { userId: event.userId });
     } catch (error) {
       // Failed to queue intent indexing
       console.error('Failed to queue intent indexing:', error);

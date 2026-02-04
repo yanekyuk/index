@@ -203,14 +203,31 @@ export class OpportunityGraph {
       return { candidates: [] };
     }
 
-    const candidates = await this.embedder.searchWithHydeEmbeddings(map, {
-      strategies,
-      indexScope: indexScope ?? [],
-      excludeUserId: sourceUserId,
-      limitPerStrategy: options?.limit ?? 10,
-      limit: options?.limit ?? 20,
-      minScore: 0.5,
-    });
+    const scope = indexScope ?? [];
+    if (scope.length === 0) {
+      logger.warn?.('[OpportunityGraph] No indexScope for search; returning no candidates.');
+      return { candidates: [] };
+    }
+
+    let candidates: HydeCandidate[];
+    try {
+      candidates = await this.embedder.searchWithHydeEmbeddings(map, {
+        strategies,
+        indexScope: scope,
+        excludeUserId: sourceUserId,
+        limitPerStrategy: options?.limit ?? 10,
+        limit: options?.limit ?? 20,
+        minScore: 0.5,
+      });
+    } catch (searchErr) {
+      const msg = searchErr instanceof Error ? searchErr.message : String(searchErr);
+      logger.error?.('[OpportunityGraph] search_candidates failed', {
+        error: searchErr,
+        message: msg,
+        indexScopeLength: scope.length,
+      });
+      return { candidates: [] };
+    }
 
     logger.info?.('[OpportunityGraph] Search found', { count: candidates.length });
     return { candidates };

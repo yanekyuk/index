@@ -3,6 +3,8 @@ import { z } from "zod";
 import type {
   ChatGraphCompositeDatabase,
   HydeGraphDatabase,
+  CreateOpportunityData,
+  OpportunityActor,
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
@@ -780,6 +782,185 @@ export function createChatTools(context: ToolContext) {
     }
   );
 
+  const listMyOpportunities = tool(
+    async () => {
+      logger.info("Tool: list_my_opportunities", { userId });
+      try {
+        const list = await database.getOpportunitiesForUser(userId, { limit: 30 });
+        if (list.length === 0) {
+          return success({
+            count: 0,
+            message: "You have no opportunities yet. Use find_opportunities to search for connections, or ask someone to suggest a connection for you.",
+            opportunities: [],
+          });
+        }
+        const sourceLabel: Record<string, string> = {
+          chat: "Suggested in chat",
+          opportunity_graph: "System match",
+          manual: "Manual",
+          cron: "Scheduled",
+          member_added: "Member added",
+        };
+        const enriched = await Promise.all(
+          list.map(async (opp) => {
+            const otherParties = opp.actors.filter((a) => a.identityId !== userId && a.role === "party");
+            const introducer = opp.actors.find((a) => a.role === "introducer");
+            const partyIds = otherParties.map((a) => a.identityId);
+            const idsToResolve = introducer ? [...partyIds, introducer.identityId] : partyIds;
+            const [indexRecord, ...userRecords] = await Promise.all([
+              database.getIndex(opp.indexId),
+              ...idsToResolve.map((uid) => database.getUser(uid)),
+            ]);
+            const connectedWith = userRecords.slice(0, partyIds.length).map((u) => u?.name ?? "Unknown");
+            const suggestedBy = introducer ? (userRecords[partyIds.length]?.name ?? "Unknown") : null;
+            const category = opp.interpretation?.category ?? "connection";
+            const confidence = opp.interpretation?.confidence ?? (opp.confidence ? Number(opp.confidence) : null);
+            const source = opp.detection?.source ? (sourceLabel[opp.detection.source] ?? opp.detection.source) : null;
+            return {
+              id: opp.id,
+              indexName: indexRecord?.title ?? opp.indexId,
+              connectedWith,
+              suggestedBy,
+              summary: opp.interpretation?.summary ?? "Connection opportunity",
+              status: opp.status,
+              category,
+              confidence: confidence != null ? confidence : null,
+              source,
+            };
+          })
+        );
+        return success({
+          count: enriched.length,
+          message: `You have ${enriched.length} opportunity(en).`,
+          opportunities: enriched,
+        });
+      } catch (err) {
+        logger.error("list_my_opportunities failed", { error: err });
+        return error("Failed to list opportunities. Please try again.");
+      }
+    },
+    {
+      name: "list_my_opportunities",
+      description:
+        "Lists the current user's opportunities (suggested connections). Use when the user asks to see their opportunities. Returns for each: id, indexName, connectedWith (names of the people you're matched with, role party), suggestedBy (name of who suggested it if role introducer, else null), summary, status, category, confidence (0-1 match strength), source (e.g. Suggested in chat, System match). Present all of these fields in your reply so the user gets a full picture.",
+      schema: z.object({})
+    }
+  );
+
+  // UUID v4 for user IDs
+  const USER_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  const createOpportunityBetweenMembers = tool(
+    async (args: {
+      indexNameOrId: string;
+      firstMemberRef: string;
+      secondMemberRef: string;
+      reasoning: string;
+    }) => {
+      logger.info("Tool: create_opportunity_between_members", {
+        userId,
+        indexNameOrId: args.indexNameOrId,
+        first: args.firstMemberRef.substring(0, 30),
+        second: args.secondMemberRef.substring(0, 30),
+      });
+
+      try {
+        const indexId = await resolveMemberIndexId(args.indexNameOrId);
+        if (!indexId) {
+          return error("Index not found or you are not a member. Use get_index_memberships to see indexes you belong to.");
+        }
+
+        const members = await database.getIndexMembersForMember(indexId, userId);
+
+        const resolveRef = (ref: string): string | null => {
+          const trimmed = ref.trim();
+          if (USER_ID_REGEX.test(trimmed)) {
+            const found = members.find((m) => m.userId === trimmed);
+            return found ? trimmed : null;
+          }
+          const needle = trimmed.toLowerCase();
+          const found = members.find(
+            (m) =>
+              (m.name ?? "").toLowerCase() === needle ||
+              (m.name ?? "").toLowerCase().includes(needle) ||
+              needle.includes((m.name ?? "").toLowerCase())
+          );
+          return found?.userId ?? null;
+        };
+
+        const firstUserId = resolveRef(args.firstMemberRef);
+        const secondUserId = resolveRef(args.secondMemberRef);
+
+        if (!firstUserId || !secondUserId) {
+          return error(
+            "Could not resolve one or both members. Use list_index_members to see names and ensure both people are in that index. firstMemberRef and secondMemberRef can be display names (e.g. Yanki, Seref) or user IDs."
+          );
+        }
+        if (firstUserId === secondUserId) {
+          return error("The two members must be different people.");
+        }
+
+        const partyIds = [firstUserId, secondUserId];
+        const exists = await database.opportunityExistsBetweenActors(partyIds, indexId);
+        if (exists) {
+          return success({
+            created: false,
+            message: "An opportunity already exists between these two members in this index.",
+          });
+        }
+
+        const actors: OpportunityActor[] = [
+          { role: "party", identityId: firstUserId, intents: [], profile: true },
+          { role: "party", identityId: secondUserId, intents: [], profile: true },
+          { role: "introducer", identityId: userId, intents: [], profile: false },
+        ];
+
+        const data: CreateOpportunityData = {
+          detection: {
+            source: "chat",
+            createdBy: userId,
+            timestamp: new Date().toISOString(),
+          },
+          actors,
+          interpretation: {
+            category: "collaboration",
+            summary: args.reasoning.trim() || "Suggested connection by a community member.",
+            confidence: 0.8,
+            signals: [{ type: "curator_judgment", weight: 1, detail: "Suggested via chat" }],
+          },
+          context: { indexId },
+          indexId,
+          confidence: "0.8",
+          status: "pending",
+        };
+
+        const opportunity = await database.createOpportunity(data);
+        return success({
+          created: true,
+          opportunityId: opportunity.id,
+          message: "Opportunity created. Both members can see it in their opportunities list.",
+        });
+      } catch (err) {
+        logger.error("create_opportunity_between_members failed", { error: err });
+        if (err instanceof Error && err.message === "Access denied: Not a member of this index") {
+          return error("You must be a member of that index to suggest a connection. Use get_index_memberships to see your indexes.");
+        }
+        return error("Failed to create opportunity. Please try again.");
+      }
+    },
+    {
+      name: "create_opportunity_between_members",
+      description:
+        "Creates an opportunity (suggested connection) between two members of an index. Use when a user says they think two people should meet, e.g. 'I think Yanki and Seref should meet'. You must first use list_index_intents or list_index_members to identify the index and the two members' names. firstMemberRef and secondMemberRef can be display names (e.g. Yanki, Seref) or user IDs. You must be a member of the index. reasoning should briefly explain why they should connect.",
+      schema: z.object({
+        indexNameOrId: z.string().describe("Index display name or UUID (must be an index you are a member of)"),
+        firstMemberRef: z.string().describe("First person: display name (e.g. Yanki) or user ID"),
+        secondMemberRef: z.string().describe("Second person: display name (e.g. Seref) or user ID"),
+        reasoning: z.string().describe("Brief reason why these two should connect (e.g. complementary intents)"),
+      }),
+    }
+  );
+
   // ─────────────────────────────────────────────────────────────────────────────
   // UTILITY TOOLS
   // ─────────────────────────────────────────────────────────────────────────────
@@ -847,6 +1028,8 @@ export function createChatTools(context: ToolContext) {
     updateIndexSettings,
     // Discovery tools
     findOpportunities,
+    listMyOpportunities,
+    createOpportunityBetweenMembers,
     // Utility tools
     scrapeUrl
   ];

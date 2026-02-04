@@ -944,6 +944,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
   | 'opportunityExistsBetweenActors'
+  | 'getOpportunitiesForUser'
   // HyDE graph (used by OpportunityGraph)
   | 'getHydeDocument'
   | 'getHydeDocumentsForSource'

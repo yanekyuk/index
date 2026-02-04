@@ -3,15 +3,20 @@ import { QueueFactory } from '../lib/bullmq/bullmq';
 import { createOpportunityQueueAdapter } from '../adapters/queue.adapter';
 import { log } from '../lib/log';
 import { opportunityService } from '../services/opportunity.service';
+import { runIntentOpportunityGraph } from '../jobs/opportunity.job';
 
 export const QUEUE_NAME = 'opportunity-processing-queue';
 
 /**
  * Job payload for the Opportunity Queue.
+ * - process_opportunities: timestamp, force (legacy full cycle).
+ * - process_intent_opportunities: intentId, userId (new graph per intent).
  */
 export interface OpportunityJobData {
-  timestamp: number;
-  force: boolean;
+  timestamp?: number;
+  force?: boolean;
+  intentId?: string;
+  userId?: string;
 }
 
 /**
@@ -28,11 +33,18 @@ export const opportunityQueue = QueueFactory.createQueue<OpportunityJobData>(QUE
 
 /**
  * Processor Function
- * Routes jobs to the appropriate handler in OpportunityService.
+ * Routes jobs to the appropriate handler.
  */
-async function opportunityProcessor(job: Job) {
+async function opportunityProcessor(job: Job<OpportunityJobData>) {
   if (job.name === 'process_opportunities') {
     await opportunityService.runOpportunityFinderCycle();
+  } else if (job.name === 'process_intent_opportunities') {
+    const { intentId, userId } = job.data ?? {};
+    if (intentId && userId) {
+      await runIntentOpportunityGraph(intentId, userId);
+    } else {
+      log.warn('[OpportunityProcessor] process_intent_opportunities missing intentId or userId', job.data);
+    }
   } else {
     log.warn(`[OpportunityProcessor] Unknown job name: ${job.name}`);
   }

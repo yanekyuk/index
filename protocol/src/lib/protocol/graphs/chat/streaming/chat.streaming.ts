@@ -30,6 +30,8 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   get_index_memberships: "Checking your indexes...",
   update_index_settings: "Updating index settings...",
   find_opportunities: "Searching for opportunities...",
+  list_my_opportunities: "Listing your opportunities...",
+  create_opportunity_between_members: "Creating suggested connection...",
   scrape_url: "Reading web content..."
 };
 

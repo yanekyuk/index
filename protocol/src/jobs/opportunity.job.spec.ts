@@ -36,7 +36,7 @@ describe('OpportunityJob', () => {
   });
 
   describe('onIntentCreated', () => {
-    it('enqueues process_opportunities job', async () => {
+    it('enqueues process_opportunities job when no userId', async () => {
       const addJob = mock(async () => ({} as any));
       await onIntentCreated('intent-123', { addJob });
       expect(addJob).toHaveBeenCalledTimes(1);
@@ -46,10 +46,26 @@ describe('OpportunityJob', () => {
         5
       );
     });
+
+    it('enqueues process_opportunities and process_intent_opportunities when userId provided', async () => {
+      const addJob = mock(async () => ({} as any));
+      await onIntentCreated('intent-123', { addJob, userId: 'user-456' });
+      expect(addJob).toHaveBeenCalledTimes(2);
+      expect(addJob).toHaveBeenCalledWith(
+        'process_opportunities',
+        expect.objectContaining({ force: false }),
+        5
+      );
+      expect(addJob).toHaveBeenCalledWith(
+        'process_intent_opportunities',
+        { intentId: 'intent-123', userId: 'user-456' },
+        6
+      );
+    });
   });
 
   describe('onIntentUpdated', () => {
-    it('enqueues process_opportunities job', async () => {
+    it('enqueues process_opportunities job when no userId', async () => {
       const addJob = mock(async () => ({} as any));
       await onIntentUpdated('intent-456', { addJob });
       expect(addJob).toHaveBeenCalledTimes(1);
