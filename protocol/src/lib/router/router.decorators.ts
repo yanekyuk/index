@@ -90,6 +90,12 @@ export function Delete(path: string = ''): MethodDecorator {
   };
 }
 
+export function Patch(path: string = ''): MethodDecorator {
+  return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    RouteRegistry.registerRoute(target, 'PATCH', path, propertyKey);
+  };
+}
+
 export function UseGuards(...guards: Guard[]): MethodDecorator {
   return (target: object, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
     for (const guard of guards) {

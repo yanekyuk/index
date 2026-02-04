@@ -466,6 +466,16 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  async getIndex(indexId: string): Promise<{ id: string; title: string } | null> {
+    const rows = await db
+      .select({ id: schema.indexes.id, title: schema.indexes.title })
+      .from(schema.indexes)
+      .where(and(eq(schema.indexes.id, indexId), isNull(schema.indexes.deletedAt)))
+      .limit(1);
+    const row = rows[0];
+    return row ? { id: row.id, title: row.title } : null;
+  }
+
   async getUserIndexIds(userId: string): Promise<string[]> {
     try {
       const result = await db

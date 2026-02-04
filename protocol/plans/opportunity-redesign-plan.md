@@ -3190,27 +3190,27 @@ GET /api/opportunities?role=agent
 ### Step 9: Opportunity API
 **Goal**: REST endpoints for opportunities.
 
-- [ ] Refactor `src/controllers/opportunity.controller.ts`:
-  - [ ] Constructor injects `OpportunityControllerDatabase`
-  - [ ] Add `presentOpportunity()` pure function
-  - [ ] `listOpportunities(userId, options)` — for user
-  - [ ] `getOpportunity(id, viewerId)` — with presentation
-  - [ ] `updateStatus(id, status)` — reply/skip
-  - [ ] `createManual(indexId, actorIds, interpretation)` — curator create
-  - [ ] `listForIndex(indexId, options)` — admin view
-- [ ] Add routes in `src/routes/opportunity.routes.ts`:
-  - [ ] `GET /api/opportunities`
-  - [ ] `GET /api/opportunities/:id`
-  - [ ] `PATCH /api/opportunities/:id/status`
-  - [ ] `POST /api/indexes/:indexId/opportunities`
-  - [ ] `GET /api/indexes/:indexId/opportunities`
-- [ ] Add permission checks (owner vs member)
+- [x] Refactor `src/controllers/opportunity.controller.ts`:
+  - [x] Constructor injects `OpportunityControllerDatabase`
+  - [x] Add `presentOpportunity()` pure function (in `lib/protocol/opportunity/opportunity.presentation.ts`)
+  - [x] `listOpportunities(userId, options)` — for user
+  - [x] `getOpportunity(id, viewerId)` — with presentation
+  - [x] `updateStatus(id, status)` — reply/skip
+  - [x] `createManual(indexId, actorIds, interpretation)` — curator create (on `IndexOpportunityController`)
+  - [x] `listForIndex(indexId, options)` — admin view (on `IndexOpportunityController`)
+- [x] Add routes (via controller decorators + path param matching in `main.ts`):
+  - [x] `GET /v2/opportunities`
+  - [x] `GET /v2/opportunities/:id`
+  - [x] `PATCH /v2/opportunities/:id/status`
+  - [x] `POST /v2/indexes/:indexId/opportunities`
+  - [x] `GET /v2/indexes/:indexId/opportunities`
+- [x] Add permission checks (owner vs member)
 
 **Test**:
-- API test: List returns user's opportunities
-- API test: Status update changes status
-- API test: Manual create requires owner permission
-- API test: Presentation copy varies by viewer role
+- API test: List returns user's opportunities (integration test in `opportunity.controller.spec.ts`; requires DB)
+- API test: Status update changes status (integration test; requires DB)
+- API test: Manual create requires owner permission (logic in `checkCreatePermission`; integration test requires DB)
+- API test: Presentation copy varies by viewer role (`opportunity.presentation.spec.ts`)
 
 ---
 

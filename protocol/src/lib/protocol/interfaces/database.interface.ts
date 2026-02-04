@@ -531,6 +531,11 @@ export interface Database {
   getIndexMemberships(userId: string): Promise<IndexMembership[]>;
 
   /**
+   * Get index by ID (id and title only). Used for opportunity presentation.
+   */
+  getIndex(indexId: string): Promise<{ id: string; title: string } | null>;
+
+  /**
    * Associates an intent with one or more indexes.
    * Creates entries in the intentIndexes join table.
    *
@@ -940,6 +945,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // IndexGraph subgraph requirements (index created intents in user's indexes)
   | 'getUserIndexIds'
   | 'getIndexMemberships'
+  | 'getIndex'
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'
@@ -990,6 +996,9 @@ export type OpportunityControllerDatabase = Pick<
   | 'opportunityExistsBetweenActors'
   | 'isIndexOwner'
   | 'isIndexMember'
+  | 'getUser'
+  | 'getIndex'
+  | 'getIndexMemberships'
 >;
 
 /**
