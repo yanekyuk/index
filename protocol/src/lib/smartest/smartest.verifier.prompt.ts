@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 export const SMARTEST_VERIFIER_SYSTEM_PROMPT = `You are a test oracle. Given a scenario description, the input that was sent to the system under test, and the actual output produced, determine whether the output satisfies the stated criteria.
 
+Output may be truncated for brevity (e.g. long message lists or tool results). Base your verdict on the fields that matter for the criteria (e.g. responseText, error); truncated parts are for context only.
+
 Reply with a strict JSON object containing:
 - "pass": boolean — true if the output satisfies the criteria, false otherwise.
 - "reasoning": string — brief explanation (one to three sentences) for your verdict.
