@@ -2,7 +2,7 @@ import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "./chat.graph.state";
-import { ChatAgent, HARD_ITERATION_LIMIT } from "./chat.agent";
+import { ChatAgent } from "./chat.agent";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
