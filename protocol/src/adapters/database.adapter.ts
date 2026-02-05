@@ -210,6 +210,73 @@ export class IntentDatabaseAdapter {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
+
+  async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let indexId: string | null = null;
+
+    if (uuidRegex.test(indexNameOrId.trim())) {
+      const membership = await db
+        .select({ indexId: schema.indexMembers.indexId })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            eq(schema.indexMembers.indexId, indexNameOrId.trim()),
+            isNull(schema.indexes.deletedAt)
+          )
+        )
+        .limit(1);
+      indexId = membership[0]?.indexId ?? null;
+    } else {
+      const memberships = await db
+        .select({
+          indexId: schema.indexMembers.indexId,
+          indexTitle: schema.indexes.title,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            isNull(schema.indexes.deletedAt)
+          )
+        );
+      const needle = indexNameOrId.trim().toLowerCase();
+      const match = memberships.find(
+        (m) => (m.indexTitle ?? '').toLowerCase() === needle || (m.indexTitle ?? '').toLowerCase().includes(needle)
+      );
+      indexId = match?.indexId ?? null;
+    }
+
+    if (!indexId) {
+      return [];
+    }
+
+    try {
+      const result = await db
+        .select({
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+        .where(
+          and(
+            eq(schema.intentIndexes.indexId, indexId),
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt)
+          )
+        );
+      return result;
+    } catch (error: unknown) {
+      console.error('IntentDatabaseAdapter.getIntentsInIndexForMember error:', error);
+      return [];
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
