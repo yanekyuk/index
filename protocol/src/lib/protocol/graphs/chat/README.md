@@ -207,7 +207,12 @@ The agent has access to 15 tools, organized by domain:
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `scrape_url` | Extract web content | "Read my LinkedIn", "Check this GitHub profile" |
+| `scrape_url` | Extract web content (optionally objective-aware) | "Read my LinkedIn", "Check this GitHub profile", "Create an intent from this repo link" |
+
+**scrape_url** accepts an optional `objective` parameter. When the downstream use is known, pass it so the returned content is tailored:
+- For **profile** (LinkedIn, GitHub, etc.): `objective: "User wants to update their profile from this page."`
+- For **intent** (project/repo link to turn into an intent): `objective: "User wants to create an intent from this link (project/repo or similar)."`
+- Omit for general research. The agent is prompted to use the appropriate objective when the user's goal is clear (see chat-revision Phase 1).
 
 ### Tool Result Format
 

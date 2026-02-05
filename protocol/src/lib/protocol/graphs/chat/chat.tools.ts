@@ -159,32 +159,10 @@ export function createChatTools(context: ToolContext) {
       logger.info("Tool: update_user_profile", { userId, action: args.action });
       
       try {
-        const combinedText = [args.action, args.details].filter(Boolean).join("\n");
-        const urls = extractUrls(combinedText);
-        let inputForProfile = args.details ?? args.action;
-
-        // When user provides profile URLs, scrape them first so the profile is built from real content
-        if (urls.length > 0) {
-          logger.info("Profile input contains URLs - scraping before profile update", { urlCount: urls.length });
-          const parts: string[] = [];
-          const maxContentPerUrl = 8000;
-          for (const url of urls) {
-            try {
-              const content = await scraper.extractUrlContent(url);
-              if (content && content.trim()) {
-                const truncated = content.length > maxContentPerUrl
-                  ? content.slice(0, maxContentPerUrl) + "\n\n[Content truncated...]"
-                  : content;
-                parts.push(`Content from ${url}:\n\n${truncated}`);
-              }
-            } catch (err) {
-              logger.warn("Failed to scrape URL for profile", { url, error: err });
-            }
-          }
-          if (parts.length > 0) {
-            inputForProfile = parts.join("\n\n---\n\n");
-          }
-        }
+        // Use action + details as-is. The agent must call scrape_url first for any URLs and pass
+        // the scraped content in details to avoid duplicate scraping and to support login-walled
+        // sites (e.g. LinkedIn) via Parallel search in scrape_url.
+        const inputForProfile = [args.action, args.details].filter(Boolean).join("\n") || (args.details ?? args.action);
 
         // Get existing profile for context
         const existingProfile = await database.getProfile(userId);
@@ -244,7 +222,7 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "update_user_profile",
-      description: "Creates or updates the user's profile. Can add/remove skills and interests, update bio, or create a new profile from scratch. Use ONE call to apply all requested changes in a single turn—e.g. if the user asks to update bio, skills, and interests, pass all changes in action (and details if needed); do not call once per field. Use 'action' to describe what to do (e.g. 'update bio to X, add Python to skills, set interests to A and B'). Use 'details' for additional context or pasted content. If the user provides profile URLs (LinkedIn, GitHub, X, etc.), include them in action/details—the tool will scrape and build the profile from fetched content.",
+      description: "Creates or updates the user's profile. Can add/remove skills and interests, update bio, or create a new profile from scratch. Use ONE call to apply all requested changes in a single turn—e.g. if the user asks to update bio, skills, and interests, pass all changes in action (and details if needed); do not call once per field. Use 'action' to describe what to do (e.g. 'update bio to X, add Python to skills, set interests to A and B'). Use 'details' for additional context or pasted content. For profile URLs: you MUST call scrape_url first for each URL, then pass the scraped content in 'details'—do not pass raw URLs here.",
       schema: z.object({
         action: z.string().describe("What to do: one or more changes, e.g. 'update bio to X', 'add Python to skills and set interests to A, B', 'create profile'. Combine all requested profile changes into this single action."),
         details: z.string().optional().describe("Additional context: URLs, specific content, or detailed instructions")
@@ -331,9 +309,10 @@ export function createChatTools(context: ToolContext) {
           logger.info("Intent description contains URLs - scraping for context", { urlCount: urls.length });
           const parts: string[] = [args.description];
           const maxContentPerUrl = 6000;
+          const intentObjective = "User wants to create an intent from this link (project/repo or similar).";
           for (const url of urls) {
             try {
-              const content = await scraper.extractUrlContent(url);
+              const content = await scraper.extractUrlContent(url, { objective: intentObjective });
               if (content && content.trim()) {
                 const truncated = content.length > maxContentPerUrl
                   ? content.slice(0, maxContentPerUrl) + "\n\n[Content truncated...]"
@@ -971,8 +950,8 @@ export function createChatTools(context: ToolContext) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const scrapeUrl = tool(
-    async (args: { url: string }) => {
-      logger.info("Tool: scrape_url", { userId, url: args.url });
+    async (args: { url: string; objective?: string }) => {
+      logger.info("Tool: scrape_url", { userId, url: args.url, hasObjective: !!args.objective });
       
       // Basic URL validation
       try {
@@ -982,7 +961,9 @@ export function createChatTools(context: ToolContext) {
       }
       
       try {
-        const content = await scraper.extractUrlContent(args.url);
+        const content = await scraper.extractUrlContent(args.url, {
+          objective: args.objective?.trim() || undefined,
+        });
         
         if (!content) {
           return error("Couldn't extract content from that URL. It may be blocked, require login, or have no extractable text.");
@@ -1005,9 +986,10 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "scrape_url",
-      description: "Extracts text content from a URL (articles, profiles, documentation, etc.). Use this to read web pages, LinkedIn/GitHub profiles, or any public web content.",
+      description: "Extracts text content from a URL (articles, profiles, documentation, etc.). Use this to read web pages, LinkedIn/GitHub profiles, or any public web content. Pass 'objective' when you know the downstream use: e.g. 'User wants to create an intent from this link (project/repo).' or 'User wants to update their profile from this page.' — this returns content better suited for that use.",
       schema: z.object({
-        url: z.string().describe("The URL to scrape")
+        url: z.string().describe("The URL to scrape"),
+        objective: z.string().optional().describe("Optional: why we're scraping. E.g. 'User wants to create an intent from this link' or 'User wants to update their profile from this page'. Omit for generic extraction.")
       })
     }
   );
