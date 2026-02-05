@@ -343,6 +343,7 @@ export const chatSessions = pgTable('chat_sessions', {
   id: text('id').primaryKey(), // UUID (externally provided)
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title'), // Optional, can be derived from first message
+  indexId: uuid('index_id').references(() => indexes.id, { onDelete: 'set null' }), // Optional index scope for this conversation
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   metadata: jsonb('metadata'), // For any additional data

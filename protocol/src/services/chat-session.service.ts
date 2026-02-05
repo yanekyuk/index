@@ -30,24 +30,49 @@ function generateSnowflakeId(): string {
 export class ChatSessionService {
   /**
    * Create a new chat session for a user.
-   * 
+   *
    * @param userId - The user's UUID
    * @param title - Optional title for the session
+   * @param indexId - Optional index (community) ID to scope the conversation
    * @returns The created session ID
    */
-  async createSession(userId: string, title?: string): Promise<string> {
-    logger.info('Creating new session', { userId, title });
-    
+  async createSession(userId: string, title?: string, indexId?: string): Promise<string> {
+    logger.info('Creating new session', { userId, title, indexId: indexId ?? undefined });
+
     const id = crypto.randomUUID();
     await db.insert(chatSessions).values({
       id,
       userId,
       title,
+      indexId: indexId?.trim() || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    
+
     return id;
+  }
+
+  /**
+   * Update the index scope for a session. Validates ownership.
+   *
+   * @param sessionId - The session ID
+   * @param userId - The user ID to validate ownership
+   * @param indexId - The index ID to set, or undefined to clear
+   * @returns True if updated, false if not found or unauthorized
+   */
+  async updateSessionIndex(sessionId: string, userId: string, indexId: string | undefined): Promise<boolean> {
+    const session = await this.getSession(sessionId, userId);
+    if (!session) {
+      return false;
+    }
+
+    await db
+      .update(chatSessions)
+      .set({ indexId: indexId?.trim() || null, updatedAt: new Date() })
+      .where(eq(chatSessions.id, sessionId));
+
+    logger.info('Session index updated', { sessionId, indexId: indexId ?? null });
+    return true;
   }
 
   /**

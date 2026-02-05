@@ -133,6 +133,7 @@ export class ChatGraphFactory {
       message: string;
       sessionId: string;
       maxContextMessages?: number;
+      indexId?: string;
     },
     checkpointer?: MemorySaver | PostgresSaver
   ) {

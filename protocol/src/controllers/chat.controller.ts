@@ -159,20 +159,31 @@ export class ChatController {
     }
 
     // 2. Validate or create session
+    const requestIndexId =
+      typeof body.indexId === 'string' && body.indexId.trim() ? body.indexId.trim() : undefined;
+
     let currentSessionId = body.sessionId;
     if (!currentSessionId) {
-      currentSessionId = await chatSessionService.createSession(user.id);
+      currentSessionId = await chatSessionService.createSession(user.id, undefined, requestIndexId);
     } else {
       const session = await chatSessionService.getSession(currentSessionId, user.id);
       if (!session) {
         return Response.json({ error: 'Session not found' }, { status: 404 });
       }
+      if (requestIndexId !== undefined) {
+        await chatSessionService.updateSessionIndex(currentSessionId, user.id, requestIndexId);
+      }
     }
+
+    // Effective index for this run: request body overrides; otherwise use session's persisted index
+    const sessionForIndex = await chatSessionService.getSession(currentSessionId, user.id);
+    const effectiveIndexId = requestIndexId ?? sessionForIndex?.indexId ?? undefined;
 
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = this.factory;
     const useCheckpointer = body.useCheckpointer ?? false;
+    const indexIdForStream = effectiveIndexId;
 
     // 3. Save user message
     await chatSessionService.addMessage({
@@ -212,14 +223,13 @@ export class ChatController {
           let subgraphResults: Record<string, unknown> | undefined;
 
           // Use context-aware streaming to load previous messages
-          const indexId = typeof body.indexId === 'string' && body.indexId.trim() ? body.indexId.trim() : undefined;
           for await (const event of factory.streamChatEventsWithContext(
             {
               userId: user.id,
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
-              indexId,
+              indexId: indexIdForStream,
             },
             checkpointer
           )) {
