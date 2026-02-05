@@ -1,9 +1,11 @@
-import db from './db';
-import { users } from './schema';
+import db from './drizzle/drizzle';
+import { users } from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 import { log } from './log';
 import type { IntegrationName } from './integrations/config';
 import { privyClient } from './privy';
+
+const logger = log.lib.from("lib/user-utils.ts");
 
 export interface ExtractedUser {
   email: string;
@@ -53,7 +55,7 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
     }
     
     // Create user in our database
-    log.info('Creating user in database', { 
+    logger.info('Creating user in database', { 
       email: extractedUser.email,
       provider: extractedUser.provider,
       privyId: extractedUser.privyId
@@ -77,11 +79,19 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
       });
     
     const user = newUser[0];
-    log.info('Successfully created user', { 
+    logger.info('Successfully created user', { 
       userId: user.id,
       email: user.email,
       provider: extractedUser.provider 
     });
+
+    // Ensure personal index ("My Own Private Index") exists for new user
+    try {
+      const { indexService } = await import('../services/index.service');
+      await indexService.ensurePersonalIndex(user.id);
+    } catch (err) {
+      logger.error('Failed to ensure personal index for new user', { userId: user.id, error: err });
+    }
     
     return {
       id: user.id,
@@ -92,7 +102,7 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
     };
     
   } catch (error) {
-    log.error('Failed to create user', { 
+    logger.error('Failed to create user', { 
       email: extractedUser.email,
       provider: extractedUser.provider,
       error: error instanceof Error ? error.message : String(error) 
@@ -166,7 +176,7 @@ export async function resolveFileUser(params: {
     
     if (existingUser.length > 0) {
       const user = existingUser[0];
-      log.info('File import user already exists', { email, userId: user.id });
+      logger.info('File import user already exists', { email, userId: user.id });
       
       // Check if any fields need updating (only update empty fields)
       const updates: any = {};
@@ -227,7 +237,7 @@ export async function resolveFileUser(params: {
             name: users.name
           });
         
-        log.info('Updated existing user with missing data from file import', { 
+        logger.info('Updated existing user with missing data from file import', { 
           email,
           userId: user.id,
           updatedFields: Object.keys(updates)
@@ -292,7 +302,7 @@ export async function resolveFileUser(params: {
     
     return createdUser;
   } catch (error) {
-    log.error('Failed to resolve file user', { 
+    logger.error('Failed to resolve file user', { 
       email, 
       error: error instanceof Error ? error.message : String(error) 
     });
@@ -359,7 +369,7 @@ export async function resolveIntegrationUser(params: {
               });
             
             if (updatedUser.length > 0) {
-              log.info('Updated existing user with missing data', { 
+              logger.info('Updated existing user with missing data', { 
                 email,
                 provider,
                 providerId,
@@ -379,7 +389,7 @@ export async function resolveIntegrationUser(params: {
         }
       }
       
-      log.debug('Integration user already exists', { email, provider, providerId, userId: user.id });
+      logger.debug('Integration user already exists', { email, provider, providerId, userId: user.id });
       
       return {
         id: user.id,
@@ -418,7 +428,7 @@ export async function resolveIntegrationUser(params: {
     
     return createdUser;
   } catch (error) {
-    log.error('Failed to resolve integration user', { 
+    logger.error('Failed to resolve integration user', { 
       email, 
       provider, 
       providerId, 

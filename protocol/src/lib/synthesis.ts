@@ -4,8 +4,8 @@
 import { vibeCheck, vibeCheckNewsletter, type VibeCheckOptions } from '../agents/external/vibe_checker';
 import { IntroGenerator } from '../agents/intent/stake/intro/intro.generator';
 import { cache } from './redis';
-import db from './db';
-import { users as usersTable } from './schema';
+import db from './drizzle/drizzle';
+import { users as usersTable } from '../schemas/database.schema';
 import { inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { getConnectingStakes, stakeBuildPairs, stakeUserItems } from './stakes';

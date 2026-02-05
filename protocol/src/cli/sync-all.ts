@@ -10,8 +10,8 @@ import { Command, Option } from 'commander';
 import { runSync } from '../lib/sync';
 import { setLevel } from '../lib/log';
 import { getSyncProviderNames, getIntegrationNames, type SyncProviderName } from '../lib/integrations/config';
-import db from '../lib/db';
-import { userIntegrations } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { userIntegrations } from '../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
 
 const PROVIDERS: ReadonlyArray<SyncProviderName> = getSyncProviderNames();

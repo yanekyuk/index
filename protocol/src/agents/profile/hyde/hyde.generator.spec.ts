@@ -1,13 +1,11 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { HydeGeneratorAgent } from './hyde.generator';
 import { UserMemoryProfile } from '../../intent/manager/intent.manager.types';
 import { IndexEmbedder } from '../../../lib/embedder';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 // Mock Source Profile
 const mockProfile: UserMemoryProfile = {

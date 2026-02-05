@@ -10,7 +10,7 @@ console.log(process.env.DATABASE_URL);
 
 import { Command } from 'commander';
 import { sql } from 'drizzle-orm';
-import db, { closeDb } from '../lib/db';
+import db, { closeDb } from '../lib/drizzle/drizzle';
 import { setLevel } from '../lib/log';
 
 type GlobalOpts = {

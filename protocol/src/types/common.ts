@@ -8,6 +8,9 @@ export type ISODateString = string;
 // UUID string
 export type UUID = string;
 
+/** Branded ID for type-safe entity references (keyed by Drizzle table name). */
+export type Id<T extends string = string> = string & { readonly __table?: T };
+
 // Pagination info
 export interface PaginationInfo {
   current: number;

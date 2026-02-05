@@ -8,8 +8,8 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { Command } from 'commander';
 import { eq, ne, isNull, sql, and } from 'drizzle-orm';
-import db, { closeDb } from '../lib/db';
-import { intents, intentStakes, intentStakeItems, users } from '../lib/schema';
+import db, { closeDb } from '../lib/drizzle/drizzle';
+import { intents, intentStakes, intentStakeItems, users } from '../schemas/database.schema';
 import { SEMANTIC_RELEVANCY_AGENT_ID } from '../lib/agent-ids';
 
 const program = new Command();

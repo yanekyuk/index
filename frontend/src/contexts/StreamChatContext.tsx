@@ -6,14 +6,6 @@ import { useAuthContext } from './AuthContext';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useAuthenticatedAPI } from '@/lib/api';
 
-interface ChatWindow {
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  minimized: boolean;
-  initialMessage?: string;
-}
-
 interface MessageRequest {
   channelId: string;
   requester: {
@@ -35,21 +27,16 @@ interface CanMessageResponse {
 interface SendMessageRequestResponse {
   channelId: string;
   pending: boolean;
-  awaitingAdminApproval?: boolean;
   alreadyConnected?: boolean;
 }
 
 interface StreamChatContextType {
   client: StreamChat | null;
   isReady: boolean;
-  openChats: ChatWindow[];
-  activeChatId: string | null;
   messageRequests: MessageRequest[];
   messageRequestsLoading: boolean;
   openChat: (userId: string, userName: string, userAvatar?: string, initialMessage?: string) => void;
   closeChat: (userId: string) => void;
-  toggleMinimize: (userId: string) => void;
-  setActiveChat: (userId: string | null) => void;
   clearActiveChat: () => void;
   getOrCreateChannel: (userId: string, userName: string, userAvatar?: string) => Promise<Channel | null>;
   checkCanMessage: (targetUserId: string) => Promise<CanMessageResponse>;
@@ -60,16 +47,47 @@ interface StreamChatContextType {
 
 const StreamChatContext = createContext<StreamChatContextType | undefined>(undefined);
 
-const STREAM_API_KEY = '6238du93us6h';
-const MAX_OPEN_CHATS = 3;
+const STREAM_API_KEY = process.env.NEXT_PUBLIC_STREAM_API_KEY || '';
+
+// Simulated message requests for development/testing
+const SIMULATED_MESSAGE_REQUESTS: MessageRequest[] = [
+  {
+    channelId: 'sim_channel_1',
+    requester: {
+      id: 'sim_user_1',
+      name: 'Alex Chen',
+      avatar: undefined,
+    },
+    firstMessage: 'Hey! I saw your work on the AI project and would love to connect.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 mins ago
+  },
+  {
+    channelId: 'sim_channel_2',
+    requester: {
+      id: 'sim_user_2',
+      name: 'Jordan Smith',
+      avatar: undefined,
+    },
+    firstMessage: 'Hi there! I noticed we have mutual connections. Would be great to chat about potential collaboration.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+  },
+  {
+    channelId: 'sim_channel_3',
+    requester: {
+      id: 'sim_user_3',
+      name: 'Sam Wilson',
+      avatar: undefined,
+    },
+    firstMessage: 'Interested in discussing your recent post about distributed systems.',
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
+  },
+];
 
 export function StreamChatProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuthContext();
   const api = useAuthenticatedAPI();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [openChats, setOpenChats] = useState<ChatWindow[]>([]);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messageRequests, setMessageRequests] = useState<MessageRequest[]>([]);
   const [messageRequestsLoading, setMessageRequestsLoading] = useState(false);
 
@@ -183,57 +201,17 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     [client, user?.id, api]
   );
 
-  const openChat = useCallback((userId: string, userName: string, userAvatar?: string, initialMessage?: string) => {
-    setOpenChats((prev) => {
-      // Check if chat is already open
-      const existing = prev.find((c) => c.userId === userId);
-      if (existing) {
-        // Bring to front and unminimize, but don't override initial message for existing chats
-        return prev.map((c) =>
-          c.userId === userId ? { ...c, minimized: false } : c
-        );
-      }
-
-      // Add new chat window with initial message (only for truly new chats)
-      const newChat: ChatWindow = {
-        userId,
-        userName,
-        userAvatar,
-        minimized: false,
-        initialMessage,
-      };
-
-      // If we're at max, remove the oldest one
-      if (prev.length >= MAX_OPEN_CHATS) {
-        return [...prev.slice(1), newChat];
-      }
-
-      return [...prev, newChat];
-    });
-    // Automatically set as active chat
-    setActiveChatId(userId);
+  // No-op stubs for compatibility with callers that invoke before router.push
+  const openChat = useCallback((_userId: string, _userName: string, _userAvatar?: string, _initialMessage?: string) => {
+    // Previously managed openChats for floating windows; now full-page only
   }, []);
 
-  const closeChat = useCallback((userId: string) => {
-    setOpenChats((prev) => prev.filter((c) => c.userId !== userId));
-    // Clear active chat if it's the one being closed
-    setActiveChatId((prev) => prev === userId ? null : prev);
-  }, []);
-
-  const setActiveChat = useCallback((userId: string | null) => {
-    setActiveChatId(userId);
+  const closeChat = useCallback((_userId: string) => {
+    // Previously removed from openChats; now a no-op
   }, []);
 
   const clearActiveChat = useCallback(() => {
-    setActiveChatId(null);
-  }, []);
-
-  const toggleMinimize = useCallback((userId: string) => {
-    setOpenChats((prev) =>
-      prev.map((c) =>
-        c.userId === userId ? { ...c, minimized: !c.minimized } : c
-      )
-    );
+    // Previously cleared activeChatId; now a no-op
   }, []);
 
   // Check if user can message another user directly
@@ -265,9 +243,13 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     setMessageRequestsLoading(true);
     try {
       const response = await api.get<{ requests: MessageRequest[] }>('/chat/requests');
-      setMessageRequests(response.requests);
+      // Merge real requests with simulated ones for testing
+      const realRequests = response.requests || [];
+      setMessageRequests([...SIMULATED_MESSAGE_REQUESTS, ...realRequests]);
     } catch (error) {
       console.error('Failed to fetch message requests:', error);
+      // Still show simulated requests even if API fails
+      setMessageRequests(SIMULATED_MESSAGE_REQUESTS);
     } finally {
       setMessageRequestsLoading(false);
     }
@@ -278,6 +260,16 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     channelId: string, 
     action: 'ACCEPT' | 'DECLINE' | 'SKIP'
   ): Promise<void> => {
+    // Check if this is a simulated request
+    const isSimulated = channelId.startsWith('sim_channel_');
+    
+    if (isSimulated) {
+      // Handle simulated requests locally
+      setMessageRequests(prev => prev.filter(r => r.channelId !== channelId));
+      return;
+    }
+    
+    // Handle real requests via API
     await api.post('/chat/request/respond', { channelId, action });
     // Refresh message requests after responding
     await refreshMessageRequests();
@@ -295,14 +287,10 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
       value={{
         client,
         isReady,
-        openChats,
-        activeChatId,
         messageRequests,
         messageRequestsLoading,
         openChat,
         closeChat,
-        toggleMinimize,
-        setActiveChat,
         clearActiveChat,
         getOrCreateChannel,
         checkCanMessage,

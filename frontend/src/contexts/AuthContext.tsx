@@ -15,6 +15,7 @@ type AuthContextType = {
   userLoading: boolean;
   error: string | null;
   refetchUser: () => Promise<void>;
+  updateUser: (user: User) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +35,11 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const api = useAuthenticatedAPI();
   const authService = useAuthService();
+
+  // Update user data directly (for optimistic updates after profile changes)
+  const updateUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
+  }, []);
 
   // Memoized fetch user function
   const fetchUser = useCallback(async () => {
@@ -104,16 +110,19 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     console.log('pathname', pathname);
 
     const isHomePage = pathname === '/';
-    const isOnboardingPage = pathname === '/onboarding';
+    // DISABLED: Onboarding page check
+    // const isOnboardingPage = pathname === '/onboarding';
     const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog');
-    const isProtectedPage = pathname.startsWith('/inbox') || pathname.startsWith('/i/') || isOnboardingPage;
+    const isProtectedPage = pathname.startsWith('/i/');
+    // DISABLED: Removed isOnboardingPage from isProtectedPage
 
     // Determine if we need to redirect
     // Don't redirect authenticated users from root - they should see inbox there
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));
-    const shouldRedirectOnboardingToHome = !authenticated && isOnboardingPage;
+    // DISABLED: Onboarding redirect logic
+    // const shouldRedirectOnboardingToHome = !authenticated && isOnboardingPage;
 
-    if (shouldRedirectToHome || shouldRedirectOnboardingToHome) {
+    if (shouldRedirectToHome) {
       router.push('/');
       return; // Will re-evaluate when pathname changes
     }
@@ -133,10 +142,11 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         userLoading,
         error,
         refetchUser: fetchUser,
+        updateUser,
       }}
     >
       {isLoading ? (
-        <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="min-h-screen flex items-center justify-center bg-[#FDFDFD]">
           <video autoPlay loop muted playsInline className="w-40 h-40">
             <source src="/loading-tree.m4v" type="video/mp4" />
           </video>

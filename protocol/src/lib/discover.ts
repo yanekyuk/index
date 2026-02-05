@@ -1,6 +1,6 @@
 import { inArray } from 'drizzle-orm';
-import db from './db';
-import { users } from './schema';
+import db from './drizzle/drizzle';
+import { users } from '../schemas/database.schema';
 import { getConnectingStakes, stakeUserItems, stakeOtherUsers } from './stakes';
 
 export interface DiscoverFilters {

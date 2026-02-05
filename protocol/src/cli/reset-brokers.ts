@@ -10,8 +10,8 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 console.log(process.env);
 
 
-import db from '../lib/db';
-import { intents, intentStakes } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { intents, intentStakes } from '../schemas/database.schema';
 import { isNull, inArray, asc } from 'drizzle-orm';
 import { initializeBrokers, triggerBrokersOnIntentCreated, getRegisteredBrokers } from '../agents/context_brokers/connector';
 import { INTENT_INFERRER_AGENT_ID } from '../lib/agent-ids';

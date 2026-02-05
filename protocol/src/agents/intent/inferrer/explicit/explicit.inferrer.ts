@@ -5,6 +5,8 @@ import { IntentDetector, IntentDetectorResponse } from "./explicit.inferrer.type
 import { z } from "zod";
 import { log } from "../../../../lib/log";
 
+const logger = log.agent.from("agents/intent/inferrer/explicit/explicit.inferrer.ts");
+
 /**
  * Model Configuration
  */
@@ -99,10 +101,10 @@ export class ExplicitIntentInferrer extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       // Return structured response directly
       const response = result.structuredResponse as IntentDetectorResponse;
-      log.info(`[ExplicitIntentInferrer] Found ${response.intents.length} intents in content.`);
+      logger.info(`[ExplicitIntentInferrer] Found ${response.intents.length} intents in content.`);
       return response;
     } catch (error) {
-      log.error("[ExplicitIntentInferrer] Error in ExplicitIntentInferrer", { error });
+      logger.error("[ExplicitIntentInferrer] Error in ExplicitIntentInferrer", { error });
       // Fallback: return empty intents if LLM fails
       return { intents: [] };
     }

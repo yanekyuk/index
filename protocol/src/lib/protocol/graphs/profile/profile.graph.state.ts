@@ -1,0 +1,137 @@
+import { Annotation } from "@langchain/langgraph";
+import { ProfileDocument } from "../../agents/profile/profile.generator";
+
+/**
+ * The Graph State for Profile Generation.
+ */
+export const ProfileGraphState = Annotation.Root({
+  // --- Inputs (Required at start) ---
+  /**
+   * The User ID to link the profile to.
+   */
+  userId: Annotation<string>,
+
+  // --- Control Fields (Operation Mode) ---
+
+  /**
+   * Operation mode controls graph flow:
+   * - 'query': Fast path - only retrieve existing profile (no generation)
+   * - 'write': Full pipeline - generate/update profile and hyde as needed
+   */
+  operationMode: Annotation<'query' | 'write'>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 'write',
+  }),
+
+  /**
+   * Flag to force profile regeneration even if profile exists.
+   * When true with new input, the graph will re-generate and update the profile.
+   */
+  forceUpdate: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  // --- Intermediate State ---
+
+  /**
+   * Internal objective constructed from user data.
+   */
+  objective: Annotation<string | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
+   * Raw input data (either provided or scraped).
+   */
+  input: Annotation<string | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
+   * The generated or loaded profile document.
+   * Includes embedding, hydeDescription, and hydeEmbedding from DB.
+   */
+  profile: Annotation<ProfileDocument | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
+   * Flags to track what needs to be generated.
+   */
+  needsProfileGeneration: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  needsProfileEmbedding: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  needsHydeGeneration: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  needsHydeEmbedding: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /**
+   * Flag indicating that user information is insufficient for accurate profile generation.
+   * When true, the graph should request additional information from the user.
+   */
+  needsUserInfo: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /**
+   * List of missing user information fields.
+   * Used to construct a helpful clarification message.
+   */
+  missingUserInfo: Annotation<string[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  // --- Output ---
+
+  /**
+   * The generated HyDE description string from the HydeGenerator.
+   */
+  hydeDescription: Annotation<string | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  /**
+   * Error message if any step fails (non-fatal).
+   */
+  error: Annotation<string | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
+  }),
+
+  // --- Operation Tracking (for transparency) ---
+
+  /**
+   * Tracks which operations were actually performed during this graph execution.
+   * Used to provide explicit feedback to the user about what happened.
+   */
+  operationsPerformed: Annotation<{
+    scraped?: boolean;
+    generatedProfile?: boolean;
+    embeddedProfile?: boolean;
+    generatedHyde?: boolean;
+    embeddedHyde?: boolean;
+  }>({
+    reducer: (curr, next) => ({ ...curr, ...next }),
+    default: () => ({}),
+  }),
+});

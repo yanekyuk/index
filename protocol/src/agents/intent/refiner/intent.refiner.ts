@@ -4,6 +4,8 @@ import { log } from "../../../lib/log";
 import { z } from "zod";
 import { IntentRefinerOutput } from "./intent.refiner.types";
 
+const logger = log.agent.from("agents/intent/refiner/intent.refiner.ts");
+
 /**
  * System prompt defining the IntentRefiner's behavior.
  * 
@@ -58,7 +60,7 @@ export class IntentRefiner extends BaseLangChainAgent {
    * @returns Refined intent payload or null if generation fails
    */
   async run(originalPayload: string, followupText: string): Promise<IntentRefinerOutput | null> {
-    log.info(`[IntentRefiner] Refining intent...`);
+    logger.info(`[IntentRefiner] Refining intent...`);
 
     const prompt = `Original intent: ${originalPayload}
 
@@ -75,10 +77,10 @@ Generate the refined intent:`;
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as IntentRefinerOutput;
 
-      log.info(`[IntentRefiner] Refined payload: ${output.refinedPayload.substring(0, 50)}...`);
+      logger.info(`[IntentRefiner] Refined payload: ${output.refinedPayload.substring(0, 50)}...`);
       return output;
     } catch (error: any) {
-      log.error("[IntentRefiner] Error during execution", {
+      logger.error("[IntentRefiner] Error during execution", {
         error,
         message: error?.message,
         stack: error?.stack

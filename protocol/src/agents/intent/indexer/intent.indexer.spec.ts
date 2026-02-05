@@ -1,11 +1,9 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { IntentIndexer } from './intent.indexer';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { IntentIndexer } from './intent.indexer';
 
 describe('IntentIndexer Tests', () => {
   let indexer: IntentIndexer;

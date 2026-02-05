@@ -2,6 +2,8 @@ import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
 import { ensureIndexMembership } from '../membership-utils';
+
+const logger = log.lib.from("lib/integrations/providers/googledocs.ts");
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
 const MAX_INTENTS_PER_DOCUMENT = 3;
@@ -106,7 +108,7 @@ function extractContentFromDocument(responseData: any): string {
   
 
   if (!content) {
-    log.warn('⚠️ No content found in document response');
+    logger.warn('⚠️ No content found in document response');
     return '';
   }
 
@@ -179,22 +181,22 @@ export async function initGoogleDocs(
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
-      log.info('Skipping intent generation for index integration', { integrationId });
+      logger.info('Skipping intent generation for index integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
-    log.info('Google Docs objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.info('Google Docs objects sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -207,12 +209,12 @@ export async function initGoogleDocs(
     // Apply incremental sync filter only for subsequent syncs
     if (lastSyncAt) {
       searchArgs.modified_after = lastSyncAt.toISOString();
-      log.info('Applying modified_after filter', { modified_after: searchArgs.modified_after });
+      logger.info('Applying modified_after filter', { modified_after: searchArgs.modified_after });
     } else {
-      log.info('🆕 First sync - fetching all documents');
+      logger.info('🆕 First sync - fetching all documents');
     }
 
-    log.info('🔍 Searching Google Docs', { connectedAccountId });
+    logger.info('🔍 Searching Google Docs', { connectedAccountId });
 
     // Search for documents
     let searchResponse: GoogleDocsSearchResponse;
@@ -223,25 +225,25 @@ export async function initGoogleDocs(
         arguments: searchArgs
       }) as GoogleDocsSearchResponse;
     } catch (error) {
-      log.error('Error searching Google Docs', { error, connectedAccountId, searchArgs });
+      logger.error('Error searching Google Docs', { error, connectedAccountId, searchArgs });
       throw error;
     }
 
     // Check for API permission errors in search response
     if (searchResponse?.error && searchResponse.error.includes('PERMISSION_DENIED')) {
-      log.error('🚫 Google Docs API permission denied during search');
+      logger.error('🚫 Google Docs API permission denied during search');
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Check for API not enabled errors in search response
     if (searchResponse?.error && searchResponse.error.includes('Google Docs API has not been used')) {
-      log.error('🔧 Google Docs API not enabled during search');
+      logger.error('🔧 Google Docs API not enabled during search');
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Fallback: try alternative search if initial search returns no results
     if (!searchResponse?.data?.documents?.length) {
-      log.info('🔄 No documents found, trying alternative search...');
+      logger.info('🔄 No documents found, trying alternative search...');
       
       try {
         const alternativeResponse = await composio.tools.execute('GOOGLEDOCS_SEARCH_DOCUMENTS', {
@@ -254,15 +256,15 @@ export async function initGoogleDocs(
           searchResponse = alternativeResponse;
         }
       } catch (altError) {
-        log.error('Alternative search failed', { altError });
+        logger.error('Alternative search failed', { altError });
       }
     }
 
     const documents = searchResponse?.data?.documents || [];
-    log.info('📄 Google Docs search results', { count: documents.length });
+    logger.info('📄 Google Docs search results', { count: documents.length });
 
     if (!documents.length) {
-      log.warn('⚠️ No documents found in Google Docs search');
+      logger.warn('⚠️ No documents found in Google Docs search');
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
@@ -274,7 +276,7 @@ export async function initGoogleDocs(
     const account = accounts?.items?.find((acc: any) => acc.id === connectedAccountId);
     
     if (!account) {
-      log.error('Connected account not found', { connectedAccountId, integrationId });
+      logger.error('Connected account not found', { connectedAccountId, integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
@@ -289,16 +291,16 @@ export async function initGoogleDocs(
         const payload = JSON.parse(atob(idToken.split('.')[1]));
         userEmail = payload.email;
       } catch (error) {
-        log.error('Failed to parse JWT token', { error });
+        logger.error('Failed to parse JWT token', { error });
       }
     }
     
     if (!userEmail) {
-      log.error('❌ User email not found in connected account', { connectedAccountId });
+      logger.error('❌ User email not found in connected account', { connectedAccountId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
-    log.info('👤 Processing documents', { userEmail, count: documents.length });
+    logger.info('👤 Processing documents', { userEmail, count: documents.length });
 
     const allDocuments: GoogleDocsDocument[] = [];
 
@@ -309,7 +311,7 @@ export async function initGoogleDocs(
       // Only process documents owned by the connected user
       const isOwner = doc.owners?.some(owner => owner.emailAddress === userEmail);
       if (!isOwner) {
-        log.info('⏭️ Skipping document - user is not owner', { documentId: doc.id, documentName: doc.name });
+        logger.info('⏭️ Skipping document - user is not owner', { documentId: doc.id, documentName: doc.name });
         continue;
       }
 
@@ -333,13 +335,13 @@ export async function initGoogleDocs(
 
         // Check for API permission errors
         if (documentResponse?.error && documentResponse.error.includes('PERMISSION_DENIED')) {
-          log.error('🚫 Google Docs API permission denied', { documentId: doc.id, documentName: doc.name });
+          logger.error('🚫 Google Docs API permission denied', { documentId: doc.id, documentName: doc.name });
           continue;
         }
 
         // Check for API not enabled errors
         if (documentResponse?.error && documentResponse.error.includes('Google Docs API has not been used')) {
-          log.error('🔧 Google Docs API not enabled', { documentId: doc.id, documentName: doc.name });
+          logger.error('🔧 Google Docs API not enabled', { documentId: doc.id, documentName: doc.name });
           continue;
         }
 
@@ -349,7 +351,7 @@ export async function initGoogleDocs(
         
         // Skip documents with no extractable content
         if (!content.trim()) {
-          log.warn('📄 Document has no content', { documentId: doc.id, documentName: doc.name });
+          logger.warn('📄 Document has no content', { documentId: doc.id, documentName: doc.name });
           continue;
         }
 
@@ -364,15 +366,15 @@ export async function initGoogleDocs(
           owners: doc.owners // Include owners for user extraction
         });
 
-        log.info('✅ Document processed', { documentId: doc.id, documentName: doc.name, contentLength: content.length });
+        logger.info('✅ Document processed', { documentId: doc.id, documentName: doc.name, contentLength: content.length });
 
       } catch (error) {
-        log.error('❌ Error fetching document', { documentId: doc.id, error: (error as Error).message });
+        logger.error('❌ Error fetching document', { documentId: doc.id, error: (error as Error).message });
         // Continue processing other documents to maximize data collection
       }
     }
 
-    log.info('✅ Google Docs documents fetched', { count: allDocuments.length });
+    logger.info('✅ Google Docs documents fetched', { count: allDocuments.length });
     
     if (allDocuments.length === 0) {
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -398,7 +400,7 @@ export async function initGoogleDocs(
         }, 6);
         totalIntentsGenerated++;
       } catch (error) {
-        log.error('Error processing document', { documentId: document.id, error: error instanceof Error ? error.message : String(error) });
+        logger.error('Error processing document', { documentId: document.id, error: error instanceof Error ? error.message : String(error) });
       }
     }
     
@@ -409,7 +411,7 @@ export async function initGoogleDocs(
     };
 
   } catch (error) {
-    log.error('❌ Google Docs sync error', { error: (error as Error).message });
+    logger.error('❌ Google Docs sync error', { error: (error as Error).message });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }

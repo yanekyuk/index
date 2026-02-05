@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { ArrowLeftRight } from 'lucide-react';
+import { ArrowLeftRight, Route } from 'lucide-react';
 import { getAvatarUrl } from '@/lib/file-utils';
 
 interface MatchPerson {
@@ -32,7 +32,8 @@ export default function ConnectorMatches({ matches, onMatch, onPass }: Connector
 
   return (
     <div className="mt-6">
-      <h2 className="font-ibm-plex-mono text-black text-lg font-bold mb-4 text-center">
+      <h2 className="font-ibm-plex-mono text-black text-lg font-bold mb-4 text-center flex items-center justify-center gap-2">
+        <Route className="w-5 h-5 shrink-0" aria-hidden />
         You're the connector they need
       </h2>
       

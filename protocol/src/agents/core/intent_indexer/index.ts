@@ -1,5 +1,5 @@
-import db from '../../../lib/db';
-import { intents, intentIndexes, indexes, indexMembers } from '../../../lib/schema';
+import db from '../../../lib/drizzle/drizzle';
+import { intents, intentIndexes, indexes, indexMembers } from '../../../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { evaluateIntentAppropriateness } from './evaluator';
 

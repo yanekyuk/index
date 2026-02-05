@@ -9,3 +9,4 @@ export * from './links';
 export * from './common';
 export * from './api';
 export * from './discover';
+export * from './chat-streaming';

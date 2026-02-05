@@ -1,13 +1,10 @@
 // src/agents/intent/felicity/semantic/semantic-verifier.spec.ts
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { SemanticVerifierAgent } from './semantic.evaluator';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('Semantic Verifier Agent (Phase 2)', () => {
   let agent: SemanticVerifierAgent;

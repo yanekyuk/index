@@ -1,5 +1,5 @@
-import db from './db';
-import { intents, intentIndexes } from './schema';
+import db from './drizzle/drizzle';
+import { intents, intentIndexes } from '../schemas/database.schema';
 import { eq, isNull, and, ne, inArray } from 'drizzle-orm';
 import { checkMultipleIndexesMembership, getUserAccessibleIndexIds } from './index-access';
 

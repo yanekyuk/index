@@ -1,5 +1,5 @@
-import db from '../lib/db';
-import { intents, intentIndexes, intentStakes, intentStakeItems, indexes, indexMembers, users, files, indexLinks, userIntegrations } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { intents, intentIndexes, intentStakes, intentStakeItems, indexes, indexMembers, users, files, indexLinks, userIntegrations } from '../schemas/database.schema';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { IndexEmbedder } from '../lib/embedder';
 import { VectorStoreOption, VectorSearchResult } from '../agents/common/types';
@@ -10,6 +10,8 @@ import { IntentIndexer } from '../agents/intent/indexer/intent.indexer';
 import { log } from '../lib/log';
 import { getDisplayName } from '../lib/integrations/config';
 import { IntentManager } from '../agents/intent/manager/intent.manager';
+
+const logger = log.service.from("IntentService");
 
 export interface CreateIntentOptions {
   payload: string;
@@ -66,7 +68,7 @@ export class IntentService {
     payload: string,
     profileContext: string
   ): Promise<{ actions: any[]; generatedIntents: CreatedIntent[] }> {
-    console.log(`[IntentService] Processing explicit interaction regarding: "${payload.substring(0, 50)}..."`);
+    logger.info(`[IntentService] Processing explicit interaction regarding: "${payload.substring(0, 50)}..."`);
 
     // 1. Get Active Intents Context
     const activeIntents = await this.getUserIntentObjects(userId);
@@ -97,14 +99,14 @@ export class IntentService {
             // Reasoning/Score isn't stored directly on intent, but stake is created in createIntent
           });
           generatedIntents.push(newIntent);
-          console.log(`[IntentService] Executed CREATE action: ${newIntent.id}`);
+          logger.info(`[IntentService] Executed CREATE action: ${newIntent.id}`);
 
         } else if (action.type === 'update') {
           // Update existing intent
           await this.updateIntent(action.id, userId, {
             payload: action.payload
           });
-          console.log(`[IntentService] Executed UPDATE action: ${action.id}`);
+          logger.info(`[IntentService] Executed UPDATE action: ${action.id}`);
 
           // Fetch updated intent to return if needed, though strictly it's not "generated" new
           // We might want to add it to generated lists if we want to show "effect"
@@ -115,10 +117,10 @@ export class IntentService {
         } else if (action.type === 'expire') {
           // Archive intent
           await this.archiveIntent(action.id, userId);
-          console.log(`[IntentService] Executed EXPIRE action: ${action.id}`);
+          logger.info(`[IntentService] Executed EXPIRE action: ${action.id}`);
         }
       } catch (error) {
-        console.error(`[IntentService] Failed to execute action ${action.type}:`, error);
+        logger.error(`[IntentService] Failed to execute action ${action.type}:`, { error });
       }
     }
 
@@ -197,7 +199,7 @@ export class IntentService {
         .slice(0, limit);
 
     } catch (error) {
-      console.error('IntentService.findSimilarIntents error:', error);
+      logger.error('IntentService.findSimilarIntents error:', { error });
       return [];
     }
   }
@@ -615,7 +617,7 @@ export class IntentService {
     summary: string | null;
     userId: string;
   } | null> {
-    log.info('[IntentService] Fetching intent for processing', { intentId, userId });
+    logger.info('[IntentService] Fetching intent for processing', { intentId, userId });
 
     const intent = await db.select({
       id: intents.id,
@@ -628,12 +630,12 @@ export class IntentService {
       .limit(1);
 
     if (intent.length === 0) {
-      log.info('[IntentService] Intent not found for processing', { intentId });
+      logger.info('[IntentService] Intent not found for processing', { intentId });
       return null;
     }
 
     if (intent[0].userId !== userId) {
-      log.info('[IntentService] Access denied to intent', { intentId, userId, ownerId: intent[0].userId });
+      logger.info('[IntentService] Access denied to intent', { intentId, userId, ownerId: intent[0].userId });
       throw new Error('Access denied');
     }
 
@@ -673,7 +675,7 @@ export class IntentService {
     updatedAt: Date;
     userId: string;
   }> {
-    log.info('[IntentService] Refining intent', { intentId, userId });
+    logger.info('[IntentService] Refining intent', { intentId, userId });
 
     const updateData: Record<string, unknown> = {
       payload: data.payload,
@@ -702,7 +704,7 @@ export class IntentService {
       });
 
     if (updatedIntent.length === 0) {
-      log.error('[IntentService] Failed to refine intent - not found after update', { intentId });
+      logger.error('[IntentService] Failed to refine intent - not found after update', { intentId });
       throw new Error('Intent not found');
     }
 
@@ -713,7 +715,7 @@ export class IntentService {
       payload: updatedIntent[0].payload
     });
 
-    log.info('[IntentService] Intent refined successfully', { intentId });
+    logger.info('[IntentService] Intent refined successfully', { intentId });
     return updatedIntent[0];
   }
 
@@ -734,7 +736,7 @@ export class IntentService {
    */
   async createIntent(options: CreateIntentOptions): Promise<CreatedIntent> {
     try {
-      console.log(`[IntentService.createIntent] Starting with:`, {
+      logger.info(`[IntentService.createIntent] Starting with:`, {
         payload: options.payload.substring(0, 50) + '...',
         userId: options.userId,
         indexIds: options.indexIds,
@@ -755,33 +757,33 @@ export class IntentService {
         updatedAt
       } = options;
 
-      console.log(`[IntentService.createIntent] Parameters destructured`);
+      logger.info(`[IntentService.createIntent] Parameters destructured`);
 
       // Ensure createdAt and updatedAt are Date objects if provided
       const createdAtDate = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : undefined;
       const updatedAtDate = updatedAt ? (updatedAt instanceof Date ? updatedAt : new Date(updatedAt)) : undefined;
 
       if (createdAtDate) {
-        console.log(`[IntentService.createIntent] Creating intent with datetime: ${createdAtDate.toISOString()}`);
+        logger.info(`[IntentService.createIntent] Creating intent with datetime: ${createdAtDate.toISOString()}`);
       }
 
       // Generate summary
-      console.log(`[IntentService.createIntent] About to generate summary...`);
+      logger.info(`[IntentService.createIntent] About to generate summary...`);
       const summary = await summarizeIntent(payload);
-      console.log(`[IntentService.createIntent] Summary generated:`, summary);
+      logger.info(`[IntentService.createIntent] Summary generated:`, { summary });
 
       // Generate embedding for semantic search
-      console.log(`[IntentService.createIntent] Generating embedding...`);
+      logger.info(`[IntentService.createIntent] Generating embedding...`);
       let embedding: number[] | null = null;
       try {
         embedding = await this.intentEmbedder.generate(payload) as number[];
-        console.log(`[IntentService.createIntent] Embedding generated: ${embedding ? `${embedding.length} dimensions` : 'null'}`);
+        logger.info(`[IntentService.createIntent] Embedding generated: ${embedding ? `${embedding.length} dimensions` : 'null'}`);
       } catch (error) {
-        console.error('[IntentService.createIntent] Failed to generate embedding:', error);
+        logger.error('[IntentService.createIntent] Failed to generate embedding:', { error });
         // Continue without embedding - it's optional
       }
 
-      console.log(`[IntentService.createIntent] Inserting intent into database...`);
+      logger.info(`[IntentService.createIntent] Inserting intent into database...`);
 
       // Create the intent
       let newIntent;
@@ -806,22 +808,22 @@ export class IntentService {
           userId: intents.userId
         });
       } catch (error) {
-        console.error('[IntentService.createIntent] Failed to insert intent into DB:', error);
+        logger.error('[IntentService.createIntent] Failed to insert intent into DB:', { error });
         throw error;
       }
 
-      console.log(`[IntentService.createIntent] ✅ Intent inserted:`, newIntent);
+      logger.info(`[IntentService.createIntent] ✅ Intent inserted:`, { newIntent });
 
       if (!newIntent || newIntent.length === 0) {
         throw new Error('Failed to create intent - no intent returned from insert');
       }
 
       const createdIntent = newIntent[0];
-      console.log(`[IntentService.createIntent] ✅ Created intent with ID: ${createdIntent.id}`);
+      logger.info(`[IntentService.createIntent] ✅ Created intent with ID: ${createdIntent.id}`);
 
       // Associate with indexes if provided
       if (indexIds.length > 0) {
-        console.log(`[IntentService.createIntent] Associating intent ${createdIntent.id} with ${indexIds.length} indexes:`, indexIds);
+        logger.info(`[IntentService.createIntent] Associating intent ${createdIntent.id} with ${indexIds.length} indexes:`, { indexIds });
         try {
           await db.insert(intentIndexes).values(
             indexIds.map((indexId: string) => ({
@@ -829,14 +831,14 @@ export class IntentService {
               indexId: indexId
             }))
           );
-          console.log(`[IntentService.createIntent] ✅ Successfully associated with indexes`);
+          logger.info(`[IntentService.createIntent] ✅ Successfully associated with indexes`);
         } catch (error) {
-          console.error(`[IntentService.createIntent] ❌ Failed to associate intent ${createdIntent.id} with indexes:`, error);
+          logger.error(`[IntentService.createIntent] ❌ Failed to associate intent ${createdIntent.id} with indexes:`, { error });
           throw error;
         }
       } else {
         // Dynamic scoping: Intents are associated with users, and users are associated with indexes.
-        log.info(`[IntentService.createIntent] Intent ${createdIntent.id} created without explicit index links (using dynamic User scope).`);
+        logger.info(`[IntentService.createIntent] Intent ${createdIntent.id} created without explicit index links (using dynamic User scope).`);
       }
 
       // Create inference stake (always required)
@@ -854,9 +856,9 @@ export class IntentService {
           intentId: createdIntent.id,
           userId: createdIntent.userId
         });
-        console.log(`[IntentService.createIntent] ✅ Created inference stake for intent ${createdIntent.id}: ${inferenceType} (${confidence})`);
+        logger.info(`[IntentService.createIntent] ✅ Created inference stake for intent ${createdIntent.id}: ${inferenceType} (${confidence})`);
       } catch (error) {
-        console.error(`[IntentService.createIntent] Failed to create inference stake for intent ${createdIntent.id}:`, error);
+        logger.error(`[IntentService.createIntent] Failed to create inference stake for intent ${createdIntent.id}:`, { error });
         // Continue without inference stake - it's optional
       }
 
@@ -867,11 +869,11 @@ export class IntentService {
         payload: createdIntent.payload
       });
 
-      console.log(`[IntentService.createIntent] ✅ Successfully completed for intent ${createdIntent.id}`);
+      logger.info(`[IntentService.createIntent] ✅ Successfully completed for intent ${createdIntent.id}`);
       return createdIntent;
     } catch (error) {
-      console.error(`[IntentService.createIntent] ❌ FATAL ERROR:`, error);
-      console.error(`[IntentService.createIntent] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
+      logger.error(`[IntentService.createIntent] ❌ FATAL ERROR:`, { error });
+      logger.error(`[IntentService.createIntent] Error stack:`, { stack: error instanceof Error ? error.stack : 'No stack trace' });
       throw error;
     }
   }
@@ -989,7 +991,7 @@ export class IntentService {
           intentId,
           indexId
         });
-        console.log(`[IntentService] Indexed intent ${intentId} to index ${indexId} (Score: ${finalScore})`);
+        logger.info(`[IntentService] Indexed intent ${intentId} to index ${indexId} (Score: ${finalScore})`);
       } else if (!isAppropriate && isCurrentlyAssigned) {
         // De-index it
         await db.delete(intentIndexes)
@@ -997,11 +999,11 @@ export class IntentService {
             eq(intentIndexes.intentId, intentId),
             eq(intentIndexes.indexId, indexId)
           ));
-        console.log(`[IntentService] Removed intent ${intentId} from index ${indexId} (Score: ${finalScore})`);
+        logger.info(`[IntentService] Removed intent ${intentId} from index ${indexId} (Score: ${finalScore})`);
       }
 
     } catch (error) {
-      console.error(`[IntentService] Error processing intent ${intentId} for index ${indexId}:`, error);
+      logger.error(`[IntentService] Error processing intent ${intentId} for index ${indexId}:`, { error });
       throw error;
     }
   }
@@ -1020,26 +1022,26 @@ export class IntentService {
     intentIndexes: number;
     intents: number;
   }> {
-    log.info('[IntentService] Deleting all intents and related data');
+    logger.info('[IntentService] Deleting all intents and related data');
 
     // Delete in order to respect foreign key constraints
     // 1. Delete intent stake items (join table)
     const deletedStakeItems = await db.delete(intentStakeItems).returning({ id: intentStakeItems.stakeId });
-    log.info(`[IntentService] Deleted ${deletedStakeItems.length} intent stake items`);
+    logger.info(`[IntentService] Deleted ${deletedStakeItems.length} intent stake items`);
 
     // 2. Delete intent stakes
     const deletedStakes = await db.delete(intentStakes).returning({ id: intentStakes.id });
-    log.info(`[IntentService] Deleted ${deletedStakes.length} intent stakes`);
+    logger.info(`[IntentService] Deleted ${deletedStakes.length} intent stakes`);
 
     // 3. Delete intent-index associations
     const deletedIndexes = await db.delete(intentIndexes).returning({ intentId: intentIndexes.intentId });
-    log.info(`[IntentService] Deleted ${deletedIndexes.length} intent-index associations`);
+    logger.info(`[IntentService] Deleted ${deletedIndexes.length} intent-index associations`);
 
     // 4. Delete all intents
     const deletedIntents = await db.delete(intents).returning({ id: intents.id });
-    log.info(`[IntentService] Deleted ${deletedIntents.length} intents`);
+    logger.info(`[IntentService] Deleted ${deletedIntents.length} intents`);
 
-    log.info('[IntentService] All intents and related data deleted successfully');
+    logger.info('[IntentService] All intents and related data deleted successfully');
 
     return {
       intentStakeItems: deletedStakeItems.length,

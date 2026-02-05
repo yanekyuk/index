@@ -16,7 +16,7 @@ mock.module('../templates/connection-accepted.template', () => ({
   connectionAcceptedTemplate: jest.fn(() => ({ subject: 'Accepted Subject', html: '<p>Accepted HTML</p>', text: 'Accepted Text' }))
 }));
 
-mock.module('../../db', () => ({
+mock.module('../../drizzle/drizzle', () => ({
   default: {
     select: jest.fn(() => ({
       from: jest.fn(() => ({

@@ -10,8 +10,8 @@ console.log(process.env.DATABASE_URL);
 
 import { Command } from 'commander';
 import { eq } from 'drizzle-orm';
-import db, { closeDb } from '../lib/db';
-import { indexMembers, indexes, users, userProfiles, agents } from '../lib/schema';
+import db, { closeDb } from '../lib/drizzle/drizzle';
+import { indexMembers, indexes, users, userProfiles, agents } from '../schemas/database.schema';
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 
@@ -81,23 +81,21 @@ async function seedDatabase(type: 'open' | 'restricted' | 'both'): Promise<{ ok:
           permissions: {
             joinPolicy: 'anyone',
             invitationLink: null,
-            allowGuestVibeCheck: false,
-            requireApproval: false // Open
+            allowGuestVibeCheck: false
           },
         });
       }
 
-      // 2. Restricted Index (Requires Approval)
+      // 2. Private Index
       if (type === 'restricted' || type === 'both') {
         await db.insert(indexes).values({
           id: RESTRICTED_INDEX_ID,
-          title: 'Restricted Mock Network',
+          title: 'Private Mock Network',
           prompt: 'Exclusive members only',
           permissions: {
             joinPolicy: 'invite_only',
             invitationLink: null,
-            allowGuestVibeCheck: false,
-            requireApproval: true // Restricted
+            allowGuestVibeCheck: false
           },
         });
       }

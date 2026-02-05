@@ -1,5 +1,5 @@
 import { BaseContextBroker } from '../base';
-import { intents, intentStakes, intentStakeItems } from '../../../lib/schema';
+import { intents, intentStakes, intentStakeItems } from '../../../schemas/database.schema';
 import { eq, sql, and, desc, inArray } from 'drizzle-orm';
 import { traceableStructuredLlm, withTimeoutAndRetry } from "../../../lib/agents";
 import { z } from "zod";

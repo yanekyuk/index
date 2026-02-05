@@ -1,6 +1,6 @@
 import express from 'express';
-import db from '../lib/db';
-import { userNotificationSettings, users } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { userNotificationSettings, users } from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 
 const router = express.Router();

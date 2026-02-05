@@ -14,8 +14,10 @@ Index Network is a private, intent-driven discovery protocol built on autonomous
 cd protocol
 
 # Development
-bun --watch src/index.ts                    # Start dev server with hot reload
+bun --watch src/index.ts                    # Start dev server with hot reload (Express, default)
 bun dist/index.js                           # Start production server
+bun run dev:v2                              # Start V2 dev server (Bun.serve, port 3003, hot reload)
+bun run start:v2                            # Start V2 production server
 
 # Database (Drizzle ORM)
 bun run db:generate                         # Generate migrations after schema changes
@@ -27,7 +29,7 @@ bun run db:seed                             # Seed database with sample data
 bun run db:flush                            # Flush all data from database
 
 # Testing
-bun test                                    # Run tests with vitest
+bun test                                    # Run tests with bun test
 bun test tests/e2e.test.ts                  # Run specific test file
 bun test --watch                            # Run tests in watch mode
 
@@ -88,13 +90,27 @@ index/
 
 **Key Directories**:
 - `src/agents/` - LangGraph-based AI agents for intent processing
-- `src/routes/` - Express API route handlers
+- `src/controllers/` - API controllers for the V2 server (chat, intent, opportunity, profile, upload); used with decorator-based routing in `main.ts`
+- `src/adapters/` - Implementations of protocol interfaces (database, embedder, cache, queue, scraper); implement interfaces from `src/lib/protocol/interfaces/`
+- `src/routes/` - Express API route handlers (used by `index.ts`); V2 API is served by `main.ts` with controllers + decorator router
 - `src/services/` - Business logic layer
-- `src/lib/` - Utilities, database schema, infrastructure
+- `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
+- `src/guards/` - Auth/validation guards for the decorator router (e.g. `auth.guard.ts`)
+- `src/types/` - Shared TypeScript types
+- `src/cli/` - CLI and maintenance scripts (db-seed, db-flush, integration-worker, social-worker, trigger-integration, audit-intent-freshness, etc.)
+- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`
+- `src/lib/protocol/` - Protocol layer: `graphs/` (LangGraph state machines: chat, hyde, index, intent, opportunity, profile), `agents/` (intent indexer, inferrer, reconciler, verifier, opportunity evaluator, profile/hyde generators), `interfaces/` (database, embedder, cache, queue, scraper), `docs/`
 - `src/middleware/` - Express middleware (auth, validation)
 - `src/queues/` - BullMQ job queue definitions
 - `src/jobs/` - Scheduled cron jobs
 - `src/events/` - Event emitters for agent system
+
+### Server Entry Points
+
+The protocol has two entry points:
+
+- **Express (default)** — `protocol/src/index.ts`: Express app, `authenticatePrivy`, routes mounted under `/api/*`, queue workers and cron jobs registered. Started with `bun run dev` / `bun run start`.
+- **V2 (Bun.serve)** — `protocol/src/main.ts`: Bun native server on port 3003, global prefix `/v2`, controller classes registered via `RouteRegistry` (`@Controller`, `@Get`, `@Post`, etc.) in `src/lib/router/router.decorators.ts`, guards, and adapter-injected controllers (e.g. `ChatDatabaseAdapter` for opportunity controller). Started with `bun run dev:v2` / `bun run start:v2`.
 
 ### Agent System (LangGraph-Based)
 
@@ -123,6 +139,8 @@ All agents extend `BaseLangChainAgent` which wraps LangChain's ChatOpenAI model 
    - Event-driven agents that react to intent lifecycle (onIntentCreated, onIntentUpdated, onIntentArchived)
    - Example: `SemanticRelevancyBroker` finds semantically related intents and creates stakes linking them
 
+A parallel protocol-oriented layer lives under `src/lib/protocol/`: **Graphs** (`lib/protocol/graphs/`) — chat, hyde, index, intent, opportunity, profile (LangGraph state machines); **Agents** (`lib/protocol/agents/`) — intent (inferrer, reconciler, verifier), index (intent indexer), opportunity (evaluator, notification agent), profile/hyde generators. See `PROFILE-GRAPH-IMPLEMENTATION-SUMMARY.md` and docs under `lib/protocol/docs/` for design details.
+
 **Agent Execution Pattern**:
 ```typescript
 // Agents are called from services
@@ -130,14 +148,14 @@ const result = await agent.run(input);
 
 // Services handle persistence and event emission
 await db.insert(intents).values(result);
-IntentEvents.onIntentCreated(intentId);
+IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
-// Brokers react to events asynchronously
+// Brokers react to events asynchronously (they implement onIntentCreated(intentId), etc.)
 ```
 
 ### Database Layer (Drizzle ORM)
 
-**Schema Location**: `protocol/src/lib/schema.ts`
+**Schema Location**: `protocol/src/schemas/database.schema.ts`. The Drizzle client is in `protocol/src/lib/drizzle/drizzle.ts`.
 
 **Core Tables**:
 - `users` - User accounts (Privy authentication)
@@ -147,8 +165,14 @@ IntentEvents.onIntentCreated(intentId);
 - `index_members` - Membership with custom prompts and auto-assignment settings
 - `intent_indexes` - Many-to-many junction (intents ↔ indexes)
 - `intent_stakes` - Relationships between intents with confidence tracking
+- `intent_stake_items` - Per-stake item details (linked to intent_stakes)
 - `files` / `user_integrations` - Source tracking for intents
 - `user_connection_events` - Connection requests/approvals
+- `chat_sessions` / `chat_messages` - Chat session and message storage (chat graph, chat-session.service)
+- `user_notification_settings` - User notification preferences
+- `agents` - Context broker agent registry (context_brokers/connector)
+- `opportunities` - Opportunity records (detection, actors, interpretation, context, status); see migration 0018
+- `hyde_documents` - Stored HyDE documents for retrieval
 
 **Key Features**:
 - pgvector extension for 2000-dimensional embeddings
@@ -167,6 +191,7 @@ IntentEvents.onIntentCreated(intentId);
 - `newsletter.queue.ts` - Weekly digest generation
 - `opportunity.queue.ts` - Matching intents with opportunities
 - `profile.queue.ts` - User profile generation
+- `notification.queue.ts` - Notification delivery (see `notification.job.ts`; registered in index.ts)
 
 **Job Pattern**:
 - Default: 3 retries with exponential backoff (1s delay)
@@ -177,11 +202,11 @@ IntentEvents.onIntentCreated(intentId);
 
 ### API Routes Organization
 
-**Location**: `protocol/src/routes/`
+**Location**: `protocol/src/routes/` for Express. V2 endpoints live under `/v2` and are defined by controller decorators (see Server Entry Points and Adapter/Controller patterns).
 
-**Middleware Pattern**: All routes use `authenticatePrivy` middleware which validates Privy JWT tokens and creates/updates users in DB.
+**Middleware Pattern**: Express routes use `authenticatePrivy` middleware which validates Privy JWT tokens and creates/updates users in DB.
 
-**Key Routes**:
+**Key Routes (Express, `/api`)**:
 - `/api/auth` - Authentication (Privy integration)
 - `/api/intents` - Intent CRUD, generation, suggestions
 - `/api/indexes` - Community management
@@ -191,6 +216,15 @@ IntentEvents.onIntentCreated(intentId);
 - `/api/discover` - Discovery/matching endpoint
 - `/api/chat` - Chat interface
 - `/api/queue` - Queue monitoring
+- `/api/users` - User management
+- `/api/upload` - Upload handling
+- `/api/synthesis` - Synthesis
+- `/api/sync` - Sync
+- `/api/feedback` - Feedback
+- `/api/notifications` - Notifications
+- `/api/links` - Links
+- `/api/dev` - Dev utilities
+- `/api/agents` - Agent playground (getAvailableAgents, runAgent)
 
 ### Frontend Architecture
 
@@ -200,10 +234,16 @@ IntentEvents.onIntentCreated(intentId);
 - `src/app/` - Next.js App Router pages (file-based routing)
   - `/index/[indexId]` - Index detail pages
   - `/u/[id]` - User profile pages
-  - `/i/[id]` - Intent detail pages
+  - `/u/[id]/chat` - User chat
+  - `/d/[id]` - Discovery/detail (e.g. by id)
+  - `/l/[code]` - Link redirect (e.g. by code)
+  - `/library` - Library
+  - `/networks` - Networks
   - `/onboarding` - User onboarding flows
-  - `/inbox` - User inbox/notifications
-  - `/blog` - Markdown-based blog posts
+  - `/blog` - Blog listing; `/blog/[slug]` - Markdown-based blog posts
+  - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
+  - `/api/blog`, `/api/subscribe` - API routes for blog and subscription
+  - Intents may be viewed in discover/chat or other contexts (no dedicated `/i/[id]` route)
 - `src/components/` - Reusable React components
 - `src/contexts/` - React Context providers (Auth, API, Notifications, StreamChat)
 - `src/services/` - Frontend API clients (typed fetch wrappers)
@@ -214,6 +254,14 @@ IntentEvents.onIntentCreated(intentId);
 **UI Libraries**: Tailwind CSS, Radix UI, Lucide React, Ant Design, react-markdown
 
 ## Important Patterns & Conventions
+
+### Adapter Pattern
+
+Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
+
+### Controller and Decorator Routing (V2)
+
+V2 uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
 
 ### Polymorphic Source Tracking
 
@@ -267,11 +315,13 @@ await intentQueue.add('generate_intents', { sourceId });
 
 ### Event-Driven Broker System
 
+Intent events live in `protocol/src/events/intent.event.ts` (the service imports from there; `src/lib/events.ts` contains a parallel/legacy implementation). API: `IntentEvents.onCreated(event)`, `IntentEvents.onUpdated(event)`, `IntentEvents.onArchived(event)` where `event` has `intentId`, `userId`, and optional `payload`, `previousStatus`. Brokers implement `onIntentCreated(intentId)` (and similar); the connector calls these from the event handlers.
+
 Decoupled event handling for extensibility:
 
 ```typescript
 // Service emits events after DB transaction
-IntentEvents.onIntentCreated(intentId);
+IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 // Brokers listen and react independently
 SemanticRelevancyBroker.onIntentCreated(intentId);
@@ -334,7 +384,6 @@ NODE_ENV=development
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` - LLM observability
 - `SENTRY_DSN` - Error tracking
 - `PARALLELS_API_KEY` - Web crawling and profile extraction
-- `SNOWFLAKE_*` - Social media data warehouse
 
 ### Frontend Environment Variables
 
@@ -363,7 +412,7 @@ bun test path/to/test.ts   # Specific test file
 
 ### Making Schema Changes
 
-1. **Edit schema**: Modify `protocol/src/lib/schema.ts`
+1. **Edit schema**: Modify `protocol/src/schemas/database.schema.ts`
 2. **Generate migration**: `bun run db:generate`
 3. **Review migration**: Check `drizzle/` directory for generated SQL
 4. **Apply migration**: `bun run db:migrate`
@@ -411,6 +460,7 @@ If Sentry is configured (`SENTRY_DSN`):
 - All agents use Zod schemas for validation
 - Prefer type inference from Drizzle schema over manual types
 - Use `Id<'tableName'>` type from `_generated/dataModel` for document IDs
+- For new files in the protocol, follow the `{domain}.{purpose}.{extension}` naming convention (see `.cursor/rules/file-naming-convention.mdc`)
 
 ### Agents
 
@@ -428,9 +478,14 @@ If Sentry is configured (`SENTRY_DSN`):
 - Return typed results
 - Use Drizzle for type-safe queries
 
+### Controllers
+
+- Controllers handle HTTP (request/response) and delegate business logic to services or protocol graphs
+- They may accept adapters (database, queue) via constructor injection for testability
+
 ### API Routes
 
-- All routes use `authenticatePrivy` middleware
+- Express routes use `authenticatePrivy` middleware
 - Validate input with express-validator
 - Use `AuthRequest` type for authenticated requests
 - Handle errors with try/catch and proper HTTP status codes
@@ -438,6 +493,7 @@ If Sentry is configured (`SENTRY_DSN`):
 
 ### Database
 
+- Canonical schema and table definitions live in `src/schemas/database.schema.ts`; import from there (not from `lib/schema`)
 - Use Drizzle's query builder for type safety
 - Define relations in schema for automatic joins
 - Create indexes for frequently queried columns

@@ -7,6 +7,7 @@ import { profileService } from '../services/profile.service';
 import { intentService } from '../services/intent.service';
 import { log } from '../lib/log';
 
+const logger = log.route.from("routes/dev.ts");
 const router = Router();
 
 // Middleware to ensure this is only available in development
@@ -23,14 +24,14 @@ router.post('/newsletter/trigger', async (req: Request, res: Response) => {
         const { date } = req.body;
         const now = date ? new Date(date) : new Date();
 
-        console.log(`Manually triggering weekly newsletter with date: ${now.toISOString()}`);
+        logger.info(`Manually triggering weekly newsletter with date: ${now.toISOString()}`);
 
         await sendWeeklyNewsletter(now, true, 1);
 
         console.timeEnd('ManualNewsletterTrigger');
         res.json({ message: 'Weekly newsletter job completed' });
     } catch (error) {
-        console.error('Error triggering newsletter:', error);
+        logger.error('Error triggering newsletter:', { error });
         console.timeEnd('ManualNewsletterTrigger');
         res.status(500).json({ error: 'Failed to trigger newsletter' });
     }
@@ -38,29 +39,29 @@ router.post('/newsletter/trigger', async (req: Request, res: Response) => {
 
 router.post('/opportunity-finder/trigger', async (req: Request, res: Response) => {
     try {
-        console.log('Manually triggering Opportunity Finder Cycle via Queue');
+        logger.info('Manually triggering Opportunity Finder Cycle via Queue');
         await addOpportunityJob('process_opportunities', {
             timestamp: Date.now(),
             force: true
         });
         res.json({ message: 'Opportunity Finder Cycle job added to queue.' });
     } catch (error) {
-        console.error('Error triggering Opportunity Finder:', error);
+        logger.error('Error triggering Opportunity Finder:', { error });
         res.status(500).json({ error: 'Failed to trigger Opportunity Finder cycle' });
     }
 });
 
 router.post('/reset-matches', async (req: Request, res: Response) => {
     try {
-        console.log('Manually checking and clearing Redis cache for matches (synthesis)...');
+        logger.info('Manually checking and clearing Redis cache for matches (synthesis)...');
 
         // Clear the 'synthesis' hash in Redis where descriptions are cached
         await cache.del('synthesis');
 
-        console.log('✅ Redis cache for matches cleared.');
+        logger.info('✅ Redis cache for matches cleared.');
         res.json({ message: 'Redis cache for matches (synthesis) cleared successfully.' });
     } catch (error) {
-        console.error('Error resetting matches cache:', error);
+        logger.error('Error resetting matches cache:', { error });
         res.status(500).json({ error: 'Failed to reset matches cache' });
     }
 });
@@ -76,20 +77,20 @@ router.post('/reset-matches', async (req: Request, res: Response) => {
  */
 router.post('/generate-missing-profiles', async (req: Request, res: Response) => {
     try {
-        log.info('[Dev] Triggering profile generation for users without profiles');
+        logger.info('[Dev] Triggering profile generation for users without profiles');
         
         // Get all users without profiles
         const usersWithoutProfiles = await profileService.getUsersWithoutProfiles();
         
         if (usersWithoutProfiles.length === 0) {
-            log.info('[Dev] No users without profiles found');
+            logger.info('[Dev] No users without profiles found');
             return res.json({
                 message: 'No users without profiles found',
                 queued: 0
             });
         }
         
-        log.info(`[Dev] Found ${usersWithoutProfiles.length} users without profiles`);
+        logger.info(`[Dev] Found ${usersWithoutProfiles.length} users without profiles`);
         
         let queued = 0;
         const errors: string[] = [];
@@ -112,10 +113,10 @@ router.post('/generate-missing-profiles', async (req: Request, res: Response) =>
                 });
                 
                 queued++;
-                log.info(`[Dev] Queued profile generation for user ${user.id} (${user.name})`);
+                logger.info(`[Dev] Queued profile generation for user ${user.id} (${user.name})`);
             } catch (error) {
                 const errorMsg = `Failed to queue profile for user ${user.id}: ${error instanceof Error ? error.message : String(error)}`;
-                log.error(`[Dev] ${errorMsg}`);
+                logger.error(`[Dev] ${errorMsg}`);
                 errors.push(errorMsg);
             }
         }
@@ -135,11 +136,11 @@ router.post('/generate-missing-profiles', async (req: Request, res: Response) =>
             response.errors = errors;
         }
         
-        log.info(`[Dev] Profile generation queuing complete: ${queued}/${usersWithoutProfiles.length}`);
+        logger.info(`[Dev] Profile generation queuing complete: ${queued}/${usersWithoutProfiles.length}`);
         return res.json(response);
         
     } catch (error) {
-        log.error('[Dev] Error generating missing profiles:', { error });
+        logger.error('[Dev] Error generating missing profiles:', { error });
         return res.status(500).json({ error: 'Failed to generate missing profiles' });
     }
 });
@@ -152,17 +153,17 @@ router.post('/generate-missing-profiles', async (req: Request, res: Response) =>
  */
 router.delete('/delete-all-intents', async (req: Request, res: Response) => {
     try {
-        log.info('[Dev] Triggering deletion of all intents');
+        logger.info('[Dev] Triggering deletion of all intents');
 
         const result = await intentService.deleteAllIntents();
 
-        log.info('[Dev] All intents deleted successfully', result);
+        logger.info('[Dev] All intents deleted successfully', result);
         return res.json({
             message: 'All intents and related data deleted successfully',
             deleted: result
         });
     } catch (error) {
-        log.error('[Dev] Error deleting all intents:', { error });
+        logger.error('[Dev] Error deleting all intents:', { error });
         return res.status(500).json({ error: 'Failed to delete all intents' });
     }
 });

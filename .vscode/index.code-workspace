@@ -23,6 +23,17 @@
             "Index": "core", // Maps "Index" to the 'core' icon
             "Frontend": "client", // Maps "Frontend" to the 'client' icon
             "Protocol": "api" // Maps "Protocol" to the 'api' icon
+        },
+        "material-icon-theme.folders.associations": {
+            "protocol": "core",
+            "agents": "robot",
+            "graphs": "api",
+            "profile": "public",
+            "intent": "lib",
+            "opportunity": "event",
+            "adapters": "database",
+            "index": "public",
+            "smartest": "test",
         }
     }
 }

@@ -1,12 +1,10 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from 'bun:test';
 import { IntroGenerator } from './intro.generator';
 import { IntroGeneratorInput } from './intro.generator.types';
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('IntroGenerator Tests', () => {
   let generator: IntroGenerator;

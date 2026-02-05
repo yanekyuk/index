@@ -4,6 +4,7 @@ import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Index, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
+import { ContentContainer } from "@/components/layout";
 import { usePrivy } from '@privy-io/react-auth';
 import { useIndexes } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
@@ -99,14 +100,14 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
               return;
             }
 
-            // Check if user needs onboarding
-            const hasCompletedOnboarding = response.user.onboarding?.completedAt;
-            if (!hasCompletedOnboarding) {
-              router.push('/onboarding');
-              return;
-            }
+            // DISABLED: Onboarding check
+            // const hasCompletedOnboarding = response.user.onboarding?.completedAt;
+            // if (!hasCompletedOnboarding) {
+            //   router.push('/onboarding');
+            //   return;
+            // }
             
-            // User is authenticated, member, and onboarded - go to root
+            // User is authenticated and member - go to root
             router.push('/');
           }
         } catch (err) {
@@ -175,17 +176,17 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
     switch (state.step) {
       case 'loading':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400 mb-4" />
               <p className="text-gray-600 font-ibm-plex-mono">Loading index...</p>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'error':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-6">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -203,12 +204,12 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             >
               Go to Homepage
             </Button>
-          </div>
+          </ContentContainer>
         );
 
       case 'auth-required':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
                 You're about to join this network
@@ -250,12 +251,12 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
                 Sign in to join
               </Button>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'ready-to-join':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">
                 You're about to join this network
@@ -297,22 +298,22 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
                 Join
               </Button>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'joining':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
               <p className="text-gray-600 font-ibm-plex-mono">Joining index...</p>
             </div>
-          </div>
+          </ContentContainer>
         );
 
       case 'already-member':
         return (
-          <div className="max-w-3xl mx-auto">
+          <ContentContainer>
             <div className="mb-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
                 <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +331,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             >
               Go to your Inbox
             </Button>
-          </div>
+          </ContentContainer>
         );
 
       default:

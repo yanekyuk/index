@@ -5,6 +5,8 @@ import { ProfileGeneratorOutput } from './profile.generator.types';
 import { log } from '../../lib/log';
 import { Embedder } from '../common/types';
 
+const logger = log.agent.from("agents/profile/profile.generator.ts");
+
 export const SYSTEM_PROMPT = `
     You are an expert profiler. Your task is to synthesize a structured User Profile from raw data scraped from the web (via Parallel.ai).
 
@@ -69,7 +71,7 @@ export class ProfileGenerator extends BaseLangChainAgent {
      * @returns Promise resolving to a fully structured `ProfileGeneratorOutput` object (Identity, Narrative, Attributes).
      */
     async run(input: string): Promise<ProfileGeneratorOutput & { embedding?: number[] }> {
-        log.debug('[ProfileGenerator] Processing input', { inputLength: input.length });
+        logger.debug('[ProfileGenerator] Processing input', { inputLength: input.length });
 
         const messages = [
             new SystemMessage(SYSTEM_PROMPT),
@@ -78,11 +80,11 @@ export class ProfileGenerator extends BaseLangChainAgent {
 
         const result = await this.model.invoke(messages);
         const output = result.structuredResponse as ProfileGeneratorOutput;
-        log.info(`[ProfileGenerator] Successfully generated profile for "${output.profile.identity.name}".`);
+        logger.info(`[ProfileGenerator] Successfully generated profile for "${output.profile.identity.name}".`);
 
         let embedding: number[] | undefined;
         if (this.embedder) {
-            log.info(`[ProfileGenerator] Generating embedding for profile...`);
+            logger.info(`[ProfileGenerator] Generating embedding for profile...`);
             // Construct text to embed: Bio + Context + Aspirations + Skills + Interests
             const p = output.profile;
             const parts = [

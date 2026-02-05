@@ -145,12 +145,14 @@ export default function ChatSidebar() {
 
   if (!isReady) {
     return (
-      <div className="">
-        <div className="flex items-center gap-2 mb-4">
-          <MessageSquare className="w-5 h-5 text-gray-600" />
+      <div className="flex flex-col">
+        <div className="flex items-center gap-3 mb-3 min-h-[54px] flex-shrink-0 px-3">
+          <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+            <MessageSquare className="w-5 h-5 text-gray-600" />
+          </div>
           <h2 className="font-bold text-sm text-black font-ibm-plex-mono">Conversations</h2>
         </div>
-        <div className="text-center text-gray-500 text-sm py-8">
+        <div className="text-center text-[#3D3D3D] text-sm py-8">
           Loading...
         </div>
       </div>
@@ -161,7 +163,7 @@ export default function ChatSidebar() {
     <div className="flex flex-col">
       {/* Message Requests section */}
       {messageRequests.length > 0 && (
-        <div className="border-b border-gray-200">
+        <div>
           <div className="flex items-center gap-2 px-3 py-3 bg-amber-50">
             <Inbox className="w-5 h-5 text-amber-600" />
             <h2 className="font-bold text-sm text-black font-ibm-plex-mono">
@@ -198,11 +200,11 @@ export default function ChatSidebar() {
                           className="rounded-full flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <span className="font-bold text-sm font-ibm-plex-mono text-gray-900 block truncate">
+                          <span className="font-bold text-sm  text-gray-900 block truncate">
                             {request.requester?.name || 'User'}
                           </span>
                           {request.firstMessage && (
-                            <p className="text-xs text-gray-500 font-ibm-plex-mono truncate mt-0.5">
+                            <p className="text-xs text-[#3D3D3D]  truncate mt-0.5">
                               {request.firstMessage}
                             </p>
                           )}
@@ -259,27 +261,29 @@ export default function ChatSidebar() {
         </div>
       )}
 
-      {/* Conversations header */}
-      <div className="flex items-center gap-2 mb-3">
-        <MessageSquare className="w-5 h-5 text-gray-600" />
-        <h2 className="font-bold text-sm text-black font-ibm-plex-mono">Conversations</h2>
+      {/* Conversations header - min-h-[54px] aligns with ChatView header bar; w-10 matches avatar width for alignment */}
+      <div className="flex items-center gap-3 mb-3 min-h-[54px] flex-shrink-0 px-3">
+        <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
+          <MessageSquare className="w-5 h-5 text-gray-600" />
+        </div>
+        <h2 className="font-bold text-sm text-black font-ibm-plex-mono flex-1 min-w-0">Conversations</h2>
         {totalUnreadCount > 0 && (
-          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-black text-white font-ibm-plex-mono">
+          <span className="ml-auto text-xs px-2 py-1 rounded-full bg-black text-white ">
             {totalUnreadCount}
           </span>
         )}
       </div>
       <div className="flex-1 overflow-y-auto min-h-[300px]">
         {loading ? (
-          <div className="text-center text-gray-500 text-sm py-8">
+          <div className="text-center text-[#3D3D3D] text-sm py-8">
             Loading conversations...
           </div>
         ) : channels.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-8 px-3">
+          <div className="text-center text-[#3D3D3D] text-sm py-8 px-3">
             No conversations yet
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div>
             {channels.map((channel) => {
               const members = Object.values(channel.state.members || {}) as ChannelMember[];
               const otherMember = members.find(
@@ -316,20 +320,20 @@ export default function ChatSidebar() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className={`text-sm font-ibm-plex-mono truncate ${
+                        <span className={`text-sm  truncate ${
                           hasUnread ? 'font-bold text-black' : 'font-medium text-gray-900'
                         }`}>
                           {otherUser.name || 'User'}
                         </span>
                         {hasUnread && (
-                          <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
+                          <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full ">
                             {unreadCount}
                           </span>
                         )}
                       </div>
                       {lastMessage && (
-                        <p className={`text-xs font-ibm-plex-mono truncate ${
-                          hasUnread ? 'text-gray-800' : 'text-gray-500'
+                        <p className={`text-xs  truncate ${
+                          hasUnread ? 'text-[#3D3D3D]' : 'text-[#3D3D3D]'
                         }`}>
                           {lastMessage.text || 'Attachment'}
                         </p>

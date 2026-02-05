@@ -2,6 +2,7 @@ import { Queue, Worker, QueueEvents, Job, Processor, WorkerOptions, QueueOptions
 import { getRedisClient } from '../redis';
 import { log } from '../log';
 
+const logger = log.lib.from("bullmq");
 const redisClient = getRedisClient();
 
 const SHARED_REDIS_OPTS = {
@@ -52,7 +53,7 @@ export class QueueFactory {
    * @returns Configured BullMQ Queue instance.
    */
   static createQueue<T = any>(name: string, options?: Omit<QueueOptions, 'connection'>): Queue<T> {
-    log.info(`[QueueFactory] Initializing Queue: ${name}`);
+    logger.info(`[QueueFactory] Initializing Queue: ${name}`);
     return new Queue<T>(name, {
       connection: SHARED_REDIS_OPTS,
       defaultJobOptions: DEFAULT_JOB_OPTS,
@@ -72,7 +73,7 @@ export class QueueFactory {
    * @returns Configured BullMQ Worker instance.
    */
   static createWorker<T = any>(name: string, processor: Processor<T>, options?: Omit<WorkerOptions, 'connection'>): Worker<T> {
-    log.info(`[QueueFactory] Initializing Worker: ${name}`);
+    logger.info(`[QueueFactory] Initializing Worker: ${name}`);
     return new Worker<T>(name, processor, {
       connection: SHARED_REDIS_OPTS,
       concurrency: 1, // Default to sequential processing

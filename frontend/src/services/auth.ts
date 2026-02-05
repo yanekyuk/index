@@ -6,7 +6,7 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
   // Upload avatar
   uploadAvatar: async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
-    return result.avatarFilename;
+    return result.avatarUrl;
   },
 
   // Update user profile

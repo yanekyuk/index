@@ -1,5 +1,13 @@
-
+/**
+ * Generates embeddings via OpenRouter API using the OpenAI embedding model.
+ * All embedding generation in the app should go through OpenRouter with this model for consistency.
+ */
 import OpenAI from 'openai';
+import {
+  OPENROUTER_EMBEDDING_BASE_URL,
+  OPENROUTER_EMBEDDING_DIMENSIONS,
+  OPENROUTER_EMBEDDING_MODEL,
+} from './embedder.config';
 import { EmbeddingGenerator } from './embedder.types';
 
 export class OpenRouterGenerator implements EmbeddingGenerator {
@@ -8,7 +16,7 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENROUTER_API_KEY,
-      baseURL: 'https://openrouter.ai/api/v1',
+      baseURL: OPENROUTER_EMBEDDING_BASE_URL,
       defaultHeaders: {
         'HTTP-Referer': 'https://index.network',
         'X-Title': 'Index Network',
@@ -16,38 +24,30 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
     });
   }
 
-  async generate(text: string | string[], dimensions: number = 2000): Promise<number[] | number[][]> {
+  async generate(
+    text: string | string[],
+    dimensions: number = OPENROUTER_EMBEDDING_DIMENSIONS
+  ): Promise<number[] | number[][]> {
     const texts = Array.isArray(text) ? text : [text];
 
     // Clean texts
-    const cleanTexts = texts.map(t => t.replace(/\n/g, ' ').trim()).filter(Boolean);
+    const cleanTexts = texts.map((t) => t.replace(/\n/g, ' ').trim()).filter(Boolean);
 
     if (cleanTexts.length === 0) {
       throw new Error('Text cannot be empty');
     }
 
     try {
-      // Note: This implements the single vector return signature from original lib/embeddings.ts
-      // If we want batch support we might need to update the interface or this logic.
-      // For now, staying compatible with current usage which seems to be single-string primarily.
-      // The interface I defined in types.ts allows returning number[][] but the original code returned number[].
-      // For safety, I'll stick to single string logic first or handle array correctly.
-
       const response = await this.openai.embeddings.create({
-        model: 'openai/text-embedding-3-large',
+        model: OPENROUTER_EMBEDDING_MODEL,
         input: cleanTexts,
         dimensions,
         encoding_format: 'float',
       });
 
       if (!response.data || response.data.length === 0) {
-        throw new Error('No embedding data returned from OpenAI');
+        throw new Error('No embedding data returned from OpenRouter');
       }
-
-      // If input was a single string, return single array. 
-      // If input was array, return the first one (following original logic) OR we should support batch.
-      // The original `generateEmbedding` took `text: string`, so it returned `number[]`.
-      // My new interface defines `generate(text: string | string[]): Promise<number[] | number[][]>`.
 
       if (Array.isArray(text)) {
         return response.data.map(d => d.embedding);

@@ -1,5 +1,5 @@
-import db from './db';
-import { indexes, indexMembers } from './schema';
+import db from './drizzle/drizzle';
+import { indexes, indexMembers } from '../schemas/database.schema';
 import { eq, isNull, and, sql, or } from 'drizzle-orm';
 
 export const EVERYONE_USER_ID = '00000000-0000-0000-0000-000000000000';

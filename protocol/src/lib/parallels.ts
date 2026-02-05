@@ -1,6 +1,7 @@
 import { log } from './log';
 import Parallel from 'parallel-web';
 
+const logger = log.lib.from("lib/parallels.ts");
 const PARALLELS_API_KEY = process.env.PARALLELS_API_KEY || '';
 
 // Initialize Parallel client
@@ -16,7 +17,7 @@ export async function extractUrlContent(url: string): Promise<string | null> {
   }
 
   try {
-    log.info('Extracting URL content', { url });
+    logger.info('Extracting URL content', { url });
     
     const extract = await parallelClient.beta.extract({
       urls: [url],
@@ -30,17 +31,17 @@ export async function extractUrlContent(url: string): Promise<string | null> {
       },
     });
     
-    log.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
+    logger.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
     
     if (extract.results && extract.results.length > 0) {
       const result = extract.results[0];
       // Access content from result - check common property names
       const content = (result as any).content || (result as any).excerpts?.[0] || (result as any).excerpt || (result as any).markdown || null;
-      log.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
+      logger.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
       return content;
     }
 
-    log.warn('No results in extract response', { url, extract });
+    logger.warn('No results in extract response', { url, extract });
     return null;
   } catch (error) {
     const errorDetails = error instanceof Error ? {
@@ -48,7 +49,7 @@ export async function extractUrlContent(url: string): Promise<string | null> {
       name: error.name,
       stack: error.stack,
     } : { error };
-    log.error('Failed to extract URL content', { url, error: errorDetails });
+    logger.error('Failed to extract URL content', { url, error: errorDetails });
     return null;
   }
 }
@@ -125,12 +126,12 @@ export async function generateSummaryWithIntents(
     }
     
     if (Object.keys(cleanedInput).length === 0) {
-      log.error('No valid fields provided to generateSummaryWithIntents', { input });
+      logger.error('No valid fields provided to generateSummaryWithIntents', { input });
       onEvent?.({ type: 'error', message: 'Hmm, I need something to work with. Could you share your name, email, or a profile link?' });
       return null;
     }
 
-    log.info('Starting summary generation', { fields: Object.keys(cleanedInput) });
+    logger.info('Starting summary generation', { fields: Object.keys(cleanedInput) });
     onEvent?.({ type: 'status', message: 'Let me get to know you...' });
 
     // Create task with events enabled using beta API
@@ -361,7 +362,7 @@ Generate intents naturally, you decide how many intents to generate (typically 3
       },
     });
 
-    log.info('Task created', { runId: taskRun.run_id });
+    logger.info('Task created', { runId: taskRun.run_id });
     onEvent?.({ type: 'status', message: 'Reading about you...' });
 
     // Stream events using SDK with simplified event handling
@@ -486,7 +487,7 @@ Generate intents naturally, you decide how many intents to generate (typically 3
     } catch (streamError: any) {
       clearInterval(linkBatchInterval);
       clearInterval(finalStageInterval);
-      log.error('Error streaming events', { error: streamError.message });
+      logger.error('Error streaming events', { error: streamError.message });
       // Fallback to result endpoint if streaming fails
       if (!hasCompleted) {
         try {
@@ -517,7 +518,7 @@ Generate intents naturally, you decide how many intents to generate (typically 3
             return finalResult;
           }
         } catch (resultError: any) {
-          log.error('Failed to get result after stream error', { error: resultError.message });
+          logger.error('Failed to get result after stream error', { error: resultError.message });
           onEvent?.({ type: 'error', message: resultError.message || 'Had trouble finishing up. Could you try again?' });
           return null;
         }
@@ -525,7 +526,7 @@ Generate intents naturally, you decide how many intents to generate (typically 3
       throw streamError;
     }
 
-    log.info('Task completed', { runId: taskRun.run_id, hasResult: !!finalResult });
+    logger.info('Task completed', { runId: taskRun.run_id, hasResult: !!finalResult });
 
     if (finalResult) {
       return finalResult;
@@ -535,7 +536,7 @@ Generate intents naturally, you decide how many intents to generate (typically 3
     return null;
   } catch (error) {
     const errorMessage = (error as Error).message;
-    log.error('Failed to generate summary', { error: errorMessage });
+    logger.error('Failed to generate summary', { error: errorMessage });
     onEvent?.({ type: 'error', message: errorMessage });
     return null;
   }

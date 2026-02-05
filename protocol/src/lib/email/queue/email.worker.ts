@@ -2,12 +2,15 @@ import { Worker } from 'bullmq';
 import { EMAIL_QUEUE_NAME } from './email.queue';
 import { getBullMQConnection } from '../../redis';
 import processor from './email.processor';
+import { log } from '../../log';
+
+const logger = log.lib.from('[DEPRECATED] email.worker');
 
 export class EmailWorker {
     private worker: Worker;
 
     constructor() {
-        console.log('[EmailWorker] Initializing worker for queue:', EMAIL_QUEUE_NAME);
+        logger.info('Initializing worker for queue', { queue: EMAIL_QUEUE_NAME });
         
         // Use dedicated BullMQ connection options (no lazyConnect, maxRetriesPerRequest: null)
         // This ensures the Worker connects immediately and can receive jobs
@@ -23,33 +26,33 @@ export class EmailWorker {
         });
 
         this.worker.on('failed', (job, err) => {
-            console.error(`[EmailWorker] Email job ${job?.id} failed:`, err);
+            logger.error('Email job failed', { jobId: job?.id, error: err });
         });
 
         this.worker.on('active', (job) => {
-            console.log(`[EmailWorker] Job ${job.id} is now ACTIVE`);
+            logger.info('Job is now ACTIVE', { jobId: job.id });
         });
 
         this.worker.on('completed', (job) => {
             if (job) {
-                console.log(`[EmailWorker] Email job ${job.id} sent to ${job.data.to}`);
+                logger.info('Email job sent', { jobId: job.id, to: job.data.to });
             }
         });
 
         this.worker.on('stalled', (jobId) => {
-            console.warn(`[EmailWorker] Job ${jobId} has STALLED`);
+            logger.warn('Job has STALLED', { jobId });
         });
 
         this.worker.on('drained', () => {
-            console.log('[EmailWorker] Queue is DRAINED');
+            logger.info('Queue is DRAINED');
         });
 
         this.worker.on('error', (err) => {
-            console.error(`[EmailWorker] Worker error:`, err);
+            logger.error('Worker error', { error: err });
         });
 
         this.worker.on('ready', () => {
-            console.log('[EmailWorker] Worker is READY and connected to Redis');
+            logger.info('Worker is READY and connected to Redis');
         });
     }
 
@@ -57,12 +60,12 @@ export class EmailWorker {
         if (this.worker.isPaused()) {
             this.worker.resume();
         }
-        console.log('📧 Email worker started');
+        logger.info('Email worker started');
     }
 
     async stop() {
         await this.worker.close();
-        console.log('📧 Email worker stopped');
+        logger.info('Email worker stopped');
     }
 }
 

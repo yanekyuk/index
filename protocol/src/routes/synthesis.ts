@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
-import db from '../lib/db';
-import { intents, intentStakes, agents, users, intentIndexes } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { intents, intentStakes, agents, users, intentIndexes } from '../schemas/database.schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import { stakeService } from '../services/stake.service';

@@ -1,4 +1,4 @@
-import db from './db';
+import db from './drizzle/drizzle';
 import { ChatOpenAI } from "@langchain/openai";
 import { CallbackHandler } from "langfuse-langchain";
 

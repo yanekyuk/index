@@ -1,195 +1,463 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Image from 'next/image';
+import Link from 'next/link';
+import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, Handshake, History } from 'lucide-react';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useStreamChat } from '@/contexts/StreamChatContext';
+import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
+import { useAIChat } from '@/contexts/AIChatContext';
+import { usePrivy } from '@privy-io/react-auth';
+import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import LibraryModal from '@/components/modals/LibraryModal';
-import { Shield, ArrowLeft, Inbox, Users, Settings, Sparkles } from 'lucide-react';
-import { useAdmin, useIntents } from '@/contexts/APIContext';
+import { useIndexes } from '@/contexts/APIContext';
+import { useNotifications } from '@/contexts/NotificationContext';
+import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
+import PreferencesModal from '@/components/modals/PreferencesModal';
+import CreateIndexModal from '@/components/modals/CreateIndexModal';
+import { fetchMyOpportunities, getOtherPartyIds, type V2Opportunity } from '@/services/opportunities';
 
-interface LatestIntent {
+interface ChatSession {
   id: string;
-  payload: string;
-  summary?: string | null;
+  title: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { indexes: rawIndexes } = useIndexesState();
-  const adminService = useAdmin();
-  const intentsService = useIntents();
-  const [pendingCount, setPendingCount] = useState<number>(0);
-  const [latestIntents, setLatestIntents] = useState<LatestIntent[]>([]);
-  const [loadingIntents, setLoadingIntents] = useState(false);
-  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const { user, updateUser, refetchUser } = useAuthContext();
+  const { client, isReady } = useStreamChat();
+  const { sessionsVersion } = useAIChatSessions();
+  const { clearChat } = useAIChat();
+  const { getAccessToken, logout } = usePrivy();
+  const indexesService = useIndexes();
+  const { addIndex } = useIndexesState();
+  const { success, error } = useNotifications();
   
-  // Check if we're in admin mode
-  const isAdminMode = pathname?.startsWith('/admin/');
-  const adminIndexId = isAdminMode ? pathname?.split('/admin/')[1]?.split('/')[0] : null;
-  const adminIndex = rawIndexes?.find(idx => idx.id === adminIndexId);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [navigatingToChat, setNavigatingToChat] = useState(false);
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
+  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [opportunities, setOpportunities] = useState<V2Opportunity[]>([]);
+  const [loadingOpportunities, setLoadingOpportunities] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch pending count when in admin mode and approval is enabled
-  useEffect(() => {
-    if (isAdminMode && adminIndexId && adminIndex?.permissions?.requireApproval) {
-      const fetchPendingCount = async () => {
-        try {
-          const response = await adminService.getPendingCount(adminIndexId);
-          setPendingCount(response.count);
-        } catch (error) {
-          console.error('Failed to fetch pending count:', error);
-        }
+  const isMessagesView = pathname?.includes('/chat') && pathname?.startsWith('/u/');
+  const isLibraryView = pathname?.startsWith('/library');
+  const isNetworksView = pathname?.startsWith('/networks');
+  const isHistoryView = pathname?.startsWith('/d/');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView;
+
+  // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
+  const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
+
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
+    try {
+      const createRequest = {
+        title: indexData.name,
+        prompt: indexData.prompt,
+        joinPolicy: indexData.joinPolicy
       };
-      fetchPendingCount();
-      // Poll every 30 seconds
-      const interval = setInterval(fetchPendingCount, 30000);
-      return () => clearInterval(interval);
+      const newIndex = await indexesService.createIndex(createRequest);
+      addIndex(newIndex);
+      setCreateIndexModalOpen(false);
+      success('Index created successfully');
+    } catch (err) {
+      console.error('Error creating index:', err);
+      error('Failed to create index');
     }
-  }, [isAdminMode, adminIndexId, adminIndex?.permissions?.requireApproval, adminService]);
+  }, [indexesService, addIndex, success, error]);
 
-  // Fetch latest intents (only in normal mode, not admin mode)
+  const handleDiscoverClick = () => {
+    clearChat();
+    router.push('/');
+  };
+
+  const handleChatClick = async () => {
+    if (!isReady || !client) {
+      return;
+    }
+
+    setNavigatingToChat(true);
+    try {
+      const filter = {
+        type: 'messaging',
+        members: { $in: [client.userID || ''] },
+      };
+      const sort = [{ last_message_at: -1 as const }];
+      const channels = await client.queryChannels(filter, sort, {
+        limit: 1,
+        watch: false,
+        state: true,
+      });
+
+      if (channels.length > 0) {
+        const channel = channels[0];
+        const members = Object.values(channel.state.members || {});
+        const otherMember = members.find(m => m.user_id !== client.userID);
+        const recipientId = otherMember?.user?.id;
+        
+        if (recipientId) {
+          router.push(`/u/${recipientId}/chat`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch most recent chat:', err);
+    } finally {
+      setNavigatingToChat(false);
+    }
+  };
+
+  // Fetch AI chat sessions
   useEffect(() => {
-    if (isAdminMode) return;
-    
-    const fetchLatestIntents = async () => {
+    const isInitialLoad = sessionsVersion === 0;
+    const fetchSessions = async () => {
       try {
-        setLoadingIntents(true);
-        const response = await intentsService.getIntents(1, 5, false);
-        // API returns { intents, pagination } not { data, pagination }
-        setLatestIntents((response as { intents?: LatestIntent[] }).intents?.slice(0, 5) || []);
+        // Only show loading on initial load, not on refetches
+        if (isInitialLoad) setLoadingSessions(true);
+        const token = await getAccessToken();
+        if (!token) return;
+        
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL_V2}/v2/chat/sessions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch sessions');
+        const data = await res.json() as { sessions: ChatSession[] };
+        setChatSessions(data.sessions.slice(0, 5));
       } catch (error) {
-        console.error('Failed to fetch latest intents:', error);
+        console.error('Failed to fetch chat sessions:', error);
       } finally {
-        setLoadingIntents(false);
+        if (isInitialLoad) setLoadingSessions(false);
       }
     };
 
-    fetchLatestIntents();
-  }, [isAdminMode, intentsService]);
+    fetchSessions();
+  }, [sessionsVersion, getAccessToken]);
+
+  // Fetch opportunities for the current user (v2)
+  useEffect(() => {
+    if (!user?.id) return;
+    const load = async () => {
+      try {
+        setLoadingOpportunities(true);
+        const token = await getAccessToken();
+        if (!token) return;
+        const list = await fetchMyOpportunities(token, { status: 'pending', limit: 10 });
+        setOpportunities(list);
+      } catch (e) {
+        console.error('Failed to fetch opportunities:', e);
+      } finally {
+        setLoadingOpportunities(false);
+      }
+    };
+    load();
+  }, [user?.id, getAccessToken]);
+
+  // Track unread message count
+  useEffect(() => {
+    if (!isReady || !client) return;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const filter = {
+          type: 'messaging',
+          members: { $in: [client.userID || ''] },
+        };
+        const channels = await client.queryChannels(filter, {}, {
+          watch: true,
+          state: true,
+        });
+        
+        const total = channels.reduce((sum, ch) => sum + (ch.state.unreadCount || 0), 0);
+        setTotalUnreadCount(total);
+      } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+      }
+    };
+
+    fetchUnreadCount();
+
+    // Listen for message events to update unread count
+    const handleEvent = () => fetchUnreadCount();
+    client.on('message.new', handleEvent);
+    client.on('message.read', handleEvent);
+    client.on('notification.mark_read', handleEvent);
+
+    return () => {
+      client.off('message.new', handleEvent);
+      client.off('message.read', handleEvent);
+      client.off('notification.mark_read', handleEvent);
+    };
+  }, [isReady, client]);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    if (userDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userDropdownOpen]);
 
   return (
-    <div className="space-y-6 font-mono">
-      {/* Admin Mode Sidebar */}
-      {isAdminMode && adminIndex ? (
-        <div className="">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Logo */}
+      <div className="flex-shrink-0 px-4 py-6">
+        <Link href="/">
+          <Image
+            src="/logos/logo-black-full.svg"
+            alt="Index Network"
+            width={160}
+            height={28}
+            className="object-contain"
+          />
+        </Link>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-shrink-0 px-2 space-y-1">
+        <button
+          onClick={handleDiscoverClick}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+            isHomeView
+              ? 'bg-gray-100 text-black font-bold'
+              : 'text-black font-medium hover:bg-gray-50'
+          }`}
+        >
+          <Compass className="w-5 h-5" />
+          Discover
+        </button>
+
+        <button
+          onClick={handleChatClick}
+          disabled={navigatingToChat}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+            isMessagesView
+              ? 'bg-gray-100 text-black font-bold'
+              : 'text-black font-medium hover:bg-gray-50'
+          } ${navigatingToChat ? 'opacity-50 cursor-wait' : ''}`}
+        >
+          <MessageCircle className="w-5 h-5" />
+          <span className="flex-1 text-left">Chat</span>
+          {totalUnreadCount > 0 && (
+            <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+              {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+            </span>
+          )}
+        </button>
+
+        {/* History menu item with submenu */}
+        <div>
           <button
-            onClick={() => router.push('/')}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-ibm-plex-mono text-sm mb-6 transition-colors"
+            onClick={() => setHistoryExpanded(!historyExpanded)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+              isHistoryView
+                ? 'bg-gray-100 text-black font-bold'
+                : 'text-black font-medium hover:bg-gray-50'
+            }`}
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to User Mode
+            <History className="w-5 h-5" />
+            <span className="flex-1 text-left">History</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${historyExpanded ? 'rotate-180' : ''}`} />
           </button>
-          
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-              <Shield className="w-5 h-5 text-gray-600" />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg text-black font-ibm-plex-mono">
-                {adminIndex.title}
-              </h2>
-              <p className="text-sm text-gray-600 font-ibm-plex-mono">
-                Admin Mode
-              </p>
-            </div>
-          </div>
 
-          {/* Admin Menu */}
-          <div className="space-y-1">
-            {adminIndex.permissions?.requireApproval && (
-              <div
-                onClick={() => router.push(`/admin/${adminIndexId}/approvals`)}
-                className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
-                  pathname?.includes('/approvals') ? 'bg-gray-200' : 'hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Inbox className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm text-black font-ibm-plex-mono">Approval</span>
-                </div>
-                {pendingCount > 0 && (
-                  <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full font-ibm-plex-mono">
-                    {pendingCount}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div
-              onClick={() => router.push(`/admin/${adminIndexId}/directory`)}
-              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
-                pathname?.includes('/directory') ? 'bg-gray-200' : 'hover:bg-gray-50'
-              }`}
-            >
-              <Users className="w-4 h-4 text-gray-600" />
-              <span className="text-sm text-black font-ibm-plex-mono">Directory</span>
+          {/* History submenu */}
+          {historyExpanded && (
+            <div className="mt-1 ml-8 space-y-0.5">
+              {loadingSessions ? (
+                <div className="text-sm text-gray-400 py-2">Loading...</div>
+              ) : chatSessions.length === 0 ? (
+                <div className="text-sm text-gray-400 py-2">No conversations yet</div>
+              ) : (
+                chatSessions.slice(0, 4).map((session) => {
+                  const isSelected = currentSessionId === session.id;
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => router.push(`/d/${session.id}`)}
+                      className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors truncate ${
+                        isSelected
+                          ? 'bg-gray-100 text-black font-normal'
+                          : 'text-black font-normal hover:bg-gray-50'
+                      }`}
+                    >
+                      {session.title || 'Untitled chat'}
+                    </button>
+                  );
+                })
+              )}
             </div>
-
-            <div
-              onClick={() => router.push(`/admin/${adminIndexId}/opportunities`)}
-              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
-                pathname?.includes('/opportunities') ? 'bg-gray-200' : 'hover:bg-gray-50'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-gray-600" />
-              <span className="text-sm text-black font-ibm-plex-mono">Opportunities</span>
-            </div>
-
-            <div
-              onClick={() => router.push(`/admin/${adminIndexId}/settings`)}
-              className={`flex items-center gap-2 px-3 py-2 rounded cursor-pointer transition-colors ${
-                pathname?.includes('/settings') ? 'bg-gray-200' : 'hover:bg-gray-50'
-              }`}
-            >
-              <Settings className="w-4 h-4 text-gray-600" />
-              <span className="text-sm text-black font-ibm-plex-mono">Settings</span>
-            </div>
-          </div>
+          )}
         </div>
-      ) : null}
+      </nav>
 
-      {/* Latest Intents Section - only show when not in admin mode */}
-      {!isAdminMode && (
-        <div className="">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-black font-ibm-plex-mono">Latest</h3>
-            <button
-              onClick={() => setLibraryModalOpen(true)}
-              className="text-xs text-gray-600 hover:text-black font-ibm-plex-mono transition-colors"
-            >
-              View all
-            </button>
-          </div>
-          {loadingIntents ? (
-            <div className="text-center text-gray-500 py-4 text-sm">
-              Loading...
-            </div>
-          ) : latestIntents.length === 0 ? (
-            <div className="text-center text-gray-500 py-4 text-sm">
-              No intents yet
-            </div>
+      {/* Opportunities */}
+      {user?.id && (
+        <div className="flex-shrink-0 mt-6 px-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Opportunities
+          </h3>
+          {loadingOpportunities ? (
+            <div className="text-sm text-gray-400">Loading...</div>
+          ) : opportunities.length === 0 ? (
+            <div className="text-sm text-gray-400">No pending opportunities</div>
           ) : (
             <div className="space-y-2">
-              {latestIntents.map((intent) => (
-                <button
-                  key={intent.id}
-                  onClick={() => router.push(`/i/${intent.id}`)}
-                  className="w-full text-left py-2 rounded hover:bg-gray-50 transition-colors group"
-                >
-                  <div className="text-sm text-black font-ibm-plex-mono line-clamp-2 mb-1 group-hover:text-gray-700">
-                    {intent.summary || intent.payload}
+              {opportunities.slice(0, 5).map((opp) => {
+                const otherIds = getOtherPartyIds(opp, user.id);
+                const firstOtherId = otherIds[0];
+                const summary = opp.interpretation?.summary ?? 'Suggested connection';
+                return (
+                  <div key={opp.id} className="rounded-md border border-gray-200 bg-gray-50/50 px-2 py-2">
+                    <p className="text-xs text-gray-700 line-clamp-2">{summary}</p>
+                    {firstOtherId && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/u/${firstOtherId}/chat`)}
+                        className="mt-2 flex items-center gap-1 text-xs font-medium text-black hover:underline"
+                      >
+                        <Handshake className="w-3.5 h-3.5" />
+                        Chat
+                      </button>
+                    )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      <LibraryModal
-        open={libraryModalOpen}
-        onOpenChange={setLibraryModalOpen}
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* User Profile with Dropdown - always at bottom */}
+      {user && (
+        <div className="flex-shrink-0 px-4 py-4 relative" ref={userDropdownRef}>
+          <button
+            onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+            className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
+          >
+            <Image
+              src={getAvatarUrl(user)}
+              alt={user.name || 'User'}
+              width={40}
+              height={40}
+              className="rounded-full flex-shrink-0"
+            />
+            <div className="flex-1 min-w-0 text-left">
+              <div className="text-sm font-medium text-black truncate">
+                {user.name}
+              </div>
+              <div className="text-xs text-gray-500">
+                Member
+              </div>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${userDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {userDropdownOpen && (
+            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-[#E9E9E9] rounded-sm z-50">
+              <div className="py-1">
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    router.push('/networks');
+                  }}
+                >
+                  <Compass className="h-4 w-4 mr-2" />
+                  Networks
+                </button>
+                <button
+                  className={`w-full px-4 py-2 text-left flex items-center text-sm ${
+                    isLibraryView 
+                      ? 'text-gray-800 bg-gray-100 font-medium' 
+                      : 'text-gray-800 hover:bg-gray-50'
+                  }`}
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    router.push('/library');
+                  }}
+                >
+                  <Library className="h-4 w-4 mr-2" />
+                  Library
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                >
+                  <UserIcon className="h-4 w-4 mr-2" />
+                  Profile Settings
+                </button>
+                <button
+                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    setPreferencesModalOpen(true);
+                  }}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Preferences
+                </button>
+                <div className="border-t border-[#E9E9E9] my-1" />
+                <button
+                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors text-sm"
+                  onClick={() => {
+                    setUserDropdownOpen(false);
+                    logout();
+                  }}
+                >
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        open={isProfileModalOpen}
+        onOpenChange={setIsProfileModalOpen}
+        user={user}
+        onUserUpdate={async () => {
+          await refetchUser();
+        }}
+      />
+
+      {/* Preferences Modal */}
+      <PreferencesModal
+        open={preferencesModalOpen}
+        onOpenChange={setPreferencesModalOpen}
+        user={user}
+        onUserUpdate={async () => {
+          await refetchUser();
+        }}
+      />
+
+      {/* Create Index Modal */}
+      <CreateIndexModal
+        open={createIndexModalOpen}
+        onOpenChange={setCreateIndexModalOpen}
+        onSubmit={handleCreateIndex}
       />
     </div>
   );

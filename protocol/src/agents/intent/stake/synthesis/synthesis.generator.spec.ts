@@ -1,12 +1,10 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { SynthesisGenerator } from './synthesis.generator';
 import { SynthesisGeneratorInput } from './synthesis.generator.types';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('SynthesisGenerator Tests', () => {
   let generator: SynthesisGenerator;

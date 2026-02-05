@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
-import db from '../lib/db';
-import { users, userNotificationSettings } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { users, userNotificationSettings } from '../schemas/database.schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 import { User, UpdateProfileRequest } from '../types';

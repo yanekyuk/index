@@ -3,7 +3,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { AuthService } from '../services/auth.service';
 import { ProfileService } from '../services/profile.service';
 import { UserService } from '../services/user.service';
-import { OnboardingState } from '../lib/schema';
+import { OnboardingState } from '../schemas/database.schema';
 import { addJob } from '../queues/profile.queue';
 
 const router = Router();

@@ -1,6 +1,6 @@
 import crypto from 'crypto';
-import db from './db';
-import { userIntegrations, indexLinks } from './schema';
+import db from './drizzle/drizzle';
+import { userIntegrations, indexLinks } from '../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from './log';
 import { processFiles } from './integrations/files/processor';
@@ -16,6 +16,8 @@ import { initSlack } from './integrations/providers/slack';
 import { initDiscord } from './integrations/providers/discord';
 import { initNotion } from './integrations/providers/notion';
 import { initGoogleDocs } from './integrations/providers/googledocs';
+
+const logger = log.lib.from("lib/sync.ts");
 
 interface SyncResult {
   success: boolean;
@@ -80,7 +82,7 @@ export async function syncIntegration(
         return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Directory sync provider not found' };
       }
 
-      log.info('Running directory sync', { integrationId, integrationType });
+      logger.info('Running directory sync', { integrationId, integrationType });
       const result = await syncDirectoryMembers(integrationId, provider);
 
       // Update sync timestamp
@@ -147,7 +149,7 @@ export async function syncIntegration(
     return finalResult;
 
   } catch (error) {
-    log.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });
+    logger.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });
     return {
       success: false,
       filesImported: 0,

@@ -1,5 +1,5 @@
-import db from '../../lib/db';
-import { intents, intentStakes, intentStakeItems, type IntentStake, agents, intentIndexes } from '../../lib/schema';
+import db from '../../lib/drizzle/drizzle';
+import { intents, intentStakes, intentStakeItems, type IntentStake, agents, intentIndexes } from '../../schemas/database.schema';
 import { eq, or, desc, like, sql, and, ne, isNull, inArray } from 'drizzle-orm';
 import { getAccessibleIntents } from '../../lib/intent-access';
 import { generateEmbedding } from '../../lib/embeddings';

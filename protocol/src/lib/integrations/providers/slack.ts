@@ -1,6 +1,8 @@
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
+
+const appLogger = log.lib.from("lib/integrations/providers/slack.ts");
 import { INTEGRATIONS } from '../config';
 import { getSlackLogger } from './slack-logger';
 import { ensureIndexMembership } from '../membership-utils';
@@ -48,13 +50,13 @@ const getRetryAfterDelay = (error: any): number => {
   if (retryAfter) {
     const seconds = parseInt(retryAfter, 10);
     if (!isNaN(seconds)) {
-      log.info(`Slack provided Retry-After: ${seconds} seconds`);
+      appLogger.info(`Slack provided Retry-After: ${seconds} seconds`);
       return seconds * 1000; // Convert to milliseconds
     }
   }
   
   // Default to 60 seconds if no Retry-After header found
-  log.info('No Retry-After header found, using default 60 seconds');
+  appLogger.info('No Retry-After header found, using default 60 seconds');
   return RATE_LIMIT_RETRY_MS;
 };
 
@@ -126,18 +128,18 @@ export async function initSlack(
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      appLogger.error('Integration not found', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Slack requires index integration
     if (!integration.indexId) {
-      log.warn('Slack integration requires an index', { integrationId });
+      appLogger.warn('Slack integration requires an index', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      appLogger.error('No connected account ID found for integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
     
@@ -147,7 +149,7 @@ export async function initSlack(
     let totalNewUsersCreated = 0;
 
     const syncFrom = lastSyncAt ? lastSyncAt.toISOString() : 'all time';
-    log.info('Slack sync starting', { integrationId, since: syncFrom });
+    appLogger.info('Slack sync starting', { integrationId, since: syncFrom });
     
     const logger = getSlackLogger();
     logger.updateIntegrationStart(integrationId, syncFrom);
@@ -187,7 +189,7 @@ export async function initSlack(
       filteredChannels = channels.filter(ch => selectedChannelIds.includes(ch.id));
     }
     
-    log.info('Slack channels', { total: channels.length, selected: filteredChannels.length });
+    appLogger.info('Slack channels', { total: channels.length, selected: filteredChannels.length });
     
     logger.updateChannelCounts(integrationId, channels.length, filteredChannels.length);
     logger.setChannels(
@@ -236,9 +238,9 @@ export async function initSlack(
         }
       }
       
-      log.debug('Slack users fetched', { count: userMap.size });
+      appLogger.debug('Slack users fetched', { count: userMap.size });
     } catch (error) {
-      log.error('Failed to fetch Slack users', { error: (error as Error).message });
+      appLogger.error('Failed to fetch Slack users', { error: (error as Error).message });
     }
 
     // Fetch messages from all channels
@@ -248,7 +250,7 @@ export async function initSlack(
       const channelId = ch.id;
       const channelName = ch.name || ch.id;
       
-      log.info(`Processing channel ${channelsProcessed + 1}/${filteredChannels.length}: ${channelName}`);
+      appLogger.info(`Processing channel ${channelsProcessed + 1}/${filteredChannels.length}: ${channelName}`);
       
       logger.updateChannelStatus(integrationId, channelId, 'running');
       
@@ -305,7 +307,7 @@ export async function initSlack(
               if (retries <= MAX_RETRIES) {
                 const retryDelay = getRetryAfterDelay(error);
                 logger.updateRateLimit(integrationId, channelId, retryDelay);
-                log.warn(`Rate limit hit on page ${pageNum}, waiting ${retryDelay}ms before retry ${retries}/${MAX_RETRIES}`, {
+                appLogger.warn(`Rate limit hit on page ${pageNum}, waiting ${retryDelay}ms before retry ${retries}/${MAX_RETRIES}`, {
                   channelName,
                   error: (error as Error).message,
                   errorDetails: JSON.stringify(error, null, 2)
@@ -314,7 +316,7 @@ export async function initSlack(
                 logger.clearRateLimit(integrationId, channelId);
                 continue; // Retry the request
               } else {
-                log.error(`Rate limit exceeded max retries for channel`, {
+                appLogger.error(`Rate limit exceeded max retries for channel`, {
                   channelName,
                   pageNum,
                   error: (error as Error).message
@@ -329,7 +331,7 @@ export async function initSlack(
         }
         
         if (!history) {
-          log.error('Failed to fetch history after retries', { channelName, pageNum });
+          appLogger.error('Failed to fetch history after retries', { channelName, pageNum });
           break; // Move to next channel
         }
 
@@ -340,7 +342,7 @@ export async function initSlack(
           channelMessages += messages.length;
           const hasMore = !!history?.data?.response_metadata?.next_cursor;
           
-          log.debug(`Fetched page ${pageNum}`, { 
+          appLogger.debug(`Fetched page ${pageNum}`, { 
             channelName,
             messagesInPage: messages.length,
             channelMessagesTotal: channelMessages,
@@ -371,7 +373,7 @@ export async function initSlack(
             
             // Only include messages with valid user profiles
             if (!userProfile?.profile?.email) {
-              log.debug('Skipping message without user email', { userId: msg.user });
+              appLogger.debug('Skipping message without user email', { userId: msg.user });
               continue;
             }
             
@@ -422,7 +424,7 @@ export async function initSlack(
           }
         } catch (error) {
           // This catch is for message processing errors, not API errors (those are caught above)
-          log.error('Failed to process messages for channel', { 
+          appLogger.error('Failed to process messages for channel', { 
             channelName, 
             channelId, 
             error: (error as Error).message 
@@ -433,7 +435,7 @@ export async function initSlack(
       
       channelsProcessed++;
       logger.updateChannelStatus(integrationId, channelId, 'done', channelMessages);
-      log.info(`Channel done: ${channelName}`, { messages: channelMessages });
+      appLogger.info(`Channel done: ${channelName}`, { messages: channelMessages });
       
       // Add delay between channels to respect rate limits (especially for non-Marketplace apps)
       if (channelsProcessed < filteredChannels.length) {
@@ -442,7 +444,7 @@ export async function initSlack(
     }
     
     logger.completeIntegration(integrationId);
-    log.info('Slack sync complete', { integrationId, channels: channelsProcessed });
+    appLogger.info('Slack sync complete', { integrationId, channels: channelsProcessed });
     
     return {
       intentsGenerated: totalIntentsGenerated,
@@ -450,7 +452,7 @@ export async function initSlack(
       newUsersCreated: totalNewUsersCreated
     };
   } catch (error) {
-    log.error('Slack sync error', { integrationId, error: (error as Error).message });
+    appLogger.error('Slack sync error', { integrationId, error: (error as Error).message });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }
@@ -479,7 +481,7 @@ async function processMessage(
     });
     
     if (!resolvedUser) {
-      log.error('Failed to resolve user', { providerId: message.user, email: message.user_profile.email });
+      appLogger.error('Failed to resolve user', { providerId: message.user, email: message.user_profile.email });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
     
@@ -505,7 +507,7 @@ async function processMessage(
       newUsersCreated
     };
   } catch (error) {
-    log.error('Failed to process message', {
+    appLogger.error('Failed to process message', {
       providerId: message.user,
       error: error instanceof Error ? error.message : String(error)
     });

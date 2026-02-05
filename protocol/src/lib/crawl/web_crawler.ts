@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { log } from '../../lib/log';
 import type { IntegrationFile } from '../../lib/integrations';
+
+const logger = log.lib.from("lib/crawl/web_crawler.ts");
 import { extractUrlContent } from '../parallels';
 
 type CrawlResult = {
@@ -28,7 +30,7 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
       const content = await extractUrlContent(url);
       return { url, content };
     } catch (error) {
-      log.warn('Failed to extract URL content', { url, error: (error as Error).message });
+      logger.warn('Failed to extract URL content', { url, error: (error as Error).message });
       return { url, content: null };
     }
   });
@@ -37,7 +39,7 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
 
   for (const { url, content } of results) {
     if (!url || !content || content.length < 10) {
-      log.warn(`Skipping result for ${url}: URL or content missing (content len: ${content?.length || 0})`);
+      logger.warn(`Skipping result for ${url}: URL or content missing (content len: ${content?.length || 0})`);
       continue;
     }
 
@@ -54,7 +56,7 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
       });
       urlMap[id] = { url, contentHash: sha1(content), lastModified: now };
     } catch (e) {
-      log.warn('Parallels result skipped', { url, error: (e as Error).message });
+      logger.warn('Parallels result skipped', { url, error: (e as Error).message });
     }
   }
 

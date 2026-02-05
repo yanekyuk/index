@@ -1,12 +1,17 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
+import type { JobsOptions } from 'bullmq';
+import { createNewsletterQueueAdapter } from '../adapters/queue.adapter';
 import { weeklyNewsletterTemplate, Match } from '../lib/email/templates/weekly-newsletter.template';
 import { sendEmail } from '../lib/email/transport.helper';
 import { toZonedTime, format } from 'date-fns-tz';
 import { getConnectingStakes, stakeOtherUsers } from '../lib/stakes';
 import { log } from '../lib/log';
 import { userService } from '../services/user.service';
+
 import { stakeService } from '../services/stake.service';
+
+const logger = log.queue.from("NewsletterQueue");
 
 export const NEWSLETTER_QUEUE_NAME = 'weekly-newsletter-queue';
 
@@ -92,36 +97,36 @@ export async function newsletterProcessor(job: Job) {
   } else if (job.name === 'process_newsletter') {
     return processNewsletterJob(job as Job<NewsletterJobData>);
   } else {
-    log.warn(`[NewsletterWorker] Unknown job name: ${job.name}`);
+    logger.warn(`[NewsletterWorker] Unknown job name: ${job.name}`);
   }
 }
 
 async function processNewsletterJob(job: Job<NewsletterJobData>) {
   const { recipientId, candidates, force } = job.data;
-  console.log(`[NewsletterWorker] Processing email job ${job.id} for recipient ${recipientId} with ${candidates.length} candidates`);
+  logger.info(`[NewsletterWorker] Processing email job ${job.id} for recipient ${recipientId} with ${candidates.length} candidates`);
 
   try {
     // 1. Fetch Recipient Details
     const recipient = await userService.getUserForNewsletter(recipientId);
 
     if (!recipient || !recipient.email) {
-      console.error(`[NewsletterWorker] User ${recipientId} not found or no email`);
+      logger.error(`[NewsletterWorker] User ${recipientId} not found or no email`);
       return;
     }
 
     if (recipient.prefs?.weeklyNewsletter === false) {
-      console.log(`[NewsletterWorker] User ${recipient.email} opted out`);
+      logger.info(`[NewsletterWorker] User ${recipient.email} opted out`);
       return;
     }
 
     if (!recipient.onboarding?.completedAt) {
-      console.log(`[NewsletterWorker] User ${recipient.email} has not completed onboarding. Skipping.`);
+      logger.info(`[NewsletterWorker] User ${recipient.email} has not completed onboarding. Skipping.`);
       return;
     }
 
     let unsubscribeToken = recipient.unsubscribeToken;
     if (!unsubscribeToken) {
-      console.log(`[NewsletterWorker] User ${recipientId} missing unsubscribe token. Creating settings row.`);
+      logger.info(`[NewsletterWorker] User ${recipientId} missing unsubscribe token. Creating settings row.`);
       const upsertedSettings = await userService.ensureNotificationSettings(recipientId);
       if (upsertedSettings) {
         unsubscribeToken = upsertedSettings.unsubscribeToken;
@@ -150,7 +155,7 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
           synthesisResult
         };
       } catch (err) {
-        console.error(`[NewsletterWorker] Failed vibe check for ${candidate.userId}`, err);
+        logger.error(`[NewsletterWorker] Failed vibe check for ${candidate.userId}`, { error: err });
         return null;
       }
     }));
@@ -172,11 +177,11 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
     }
 
     if (matches.length === 0) {
-      console.log(`[NewsletterWorker] No successful matches generated for ${recipient.email}`);
+      logger.info(`[NewsletterWorker] No successful matches generated for ${recipient.email}`);
       return;
     }
 
-    console.log(`[NewsletterWorker] Preparing email for ${recipient.email} with ${matches.length} matches`);
+    logger.info(`[NewsletterWorker] Preparing email for ${recipient.email} with ${matches.length} matches`);
 
     const API_URL = process.env.API_URL || 'https://index.network.api';
     let unsubscribeUrl: string | undefined;
@@ -187,7 +192,7 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
     const template = weeklyNewsletterTemplate(recipient.name, matches, unsubscribeUrl);
 
     if (process.env.NODE_ENV === 'development' && process.env.ENABLE_EMAIL_TESTING !== 'true') {
-      console.log(`[DEV] Would send email to ${recipient.email} (${matches.length} matches)`);
+      logger.info(`[DEV] Would send email to ${recipient.email} (${matches.length} matches)`);
     } else {
       await sendEmail({
         to: recipient.email,
@@ -202,11 +207,11 @@ async function processNewsletterJob(job: Job<NewsletterJobData>) {
 
       await userService.updateLastWeeklyEmailSent(recipientId);
 
-      console.log(`[NewsletterWorker] Sent newsletter to ${recipient.email}`);
+      logger.info(`[NewsletterWorker] Sent newsletter to ${recipient.email}`);
     }
 
   } catch (error) {
-    console.error(`[NewsletterWorker] Error processing job for ${recipientId}:`, error);
+    logger.error(`[NewsletterWorker] Error processing job for ${recipientId}:`, { error });
     throw error;
   }
 }
@@ -225,7 +230,7 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
   const { force, daysSince = 7 } = job.data;
   const now = new Date();
 
-  console.log(`[NewsletterWorker] Starting weekly cycle (Force: ${force})`);
+  logger.info(`[NewsletterWorker] Starting weekly cycle (Force: ${force})`);
   console.time('WeeklyCycle');
 
   try {
@@ -239,7 +244,7 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
     const affectedUserIds = await stakeService.getAffectedUserIdsFromStakes(recentStakes.map(s => s.id));
     console.timeEnd('FetchStakes');
 
-    console.log(`[NewsletterWorker] Found ${recentStakes.length} recent stakes involving ${affectedUserIds.length} users`);
+    logger.info(`[NewsletterWorker] Found ${recentStakes.length} recent stakes involving ${affectedUserIds.length} users`);
 
     console.time('ProcessMatches');
     let dispatchedCount = 0;
@@ -320,11 +325,11 @@ async function processWeeklyCycle(job: Job<WeeklyCycleJobData>) {
     }
 
     console.timeEnd('ProcessMatches');
-    console.log(`[NewsletterWorker] Weekly cycle completed. Dispatched ${dispatchedCount} jobs.`);
+    logger.info(`[NewsletterWorker] Weekly cycle completed. Dispatched ${dispatchedCount} jobs.`);
     console.timeEnd('WeeklyCycle');
 
   } catch (error) {
-    console.error('[NewsletterWorker] Error in weekly cycle:', error);
+    logger.error('[NewsletterWorker] Error in weekly cycle:', { error });
     throw error;
   }
 }
@@ -368,3 +373,24 @@ export async function addJob(
 
   return newsletterQueue.add(name, data, options);
 }
+
+function newsletterAddJobOptions(
+  name: string,
+  _data: NewsletterJobData | WeeklyCycleJobData,
+  _priority?: number
+): JobsOptions | undefined {
+  if (name === 'process_newsletter') {
+    const d = _data as NewsletterJobData;
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+    return { jobId: `newsletter-${d.recipientId}-${dateStr}` };
+  }
+  if (name === 'start_weekly_cycle') return { removeOnComplete: true };
+  return undefined;
+}
+
+/** Adapter implementing NewsletterQueue; use for DI or when depending on the adapter contract. */
+export const newsletterQueueAdapter = createNewsletterQueueAdapter(
+  newsletterQueue,
+  newsletterAddJobOptions
+);

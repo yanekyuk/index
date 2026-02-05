@@ -82,6 +82,9 @@ export interface AgentModelOptions {
   /** Maximum number of retries */
   maxRetries?: number;
 
+  /** Enable streaming for token-by-token responses */
+  streaming?: boolean;
+
   /** OpenRouter reasoning configuration */
   reasoning?: {
     exclude?: boolean;
@@ -108,7 +111,7 @@ export interface AgentModelOptions {
  * @param options - Configuration options.
  */
 function createBaseOpenRouterModel(preset: string | undefined, options: AgentModelOptions = {}): ChatOpenAI {
-  const { model, temperature, maxTokens, topP, timeout, maxRetries, reasoning, modelKwargs } = options;
+  const { model, temperature, maxTokens, topP, timeout, maxRetries, streaming = false, reasoning, modelKwargs } = options;
 
   const finalModelKwargs = { ...modelKwargs };
   if (reasoning) {
@@ -121,10 +124,10 @@ function createBaseOpenRouterModel(preset: string | undefined, options: AgentMod
 
   return new ChatOpenAI({
     model: modelName,
-    streaming: false,
+    streaming,
     apiKey: process.env.OPENROUTER_API_KEY!,
     configuration: {
-      baseURL: 'https://openrouter.ai/api/v1',
+      baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
     },
     temperature,
     maxTokens,

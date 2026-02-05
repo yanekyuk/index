@@ -1,14 +1,12 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { ProfileGenerator } from './profile.generator';
 import { IndexEmbedder } from '../../lib/embedder';
 import { json2md } from '../../lib/json2md/json2md';
 import { searchUser } from '../../lib/parallel/parallel';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../.env.development');
-dotenv.config({ path: envPath });
 
 describe('ProfileGenerator Tests', () => {
   let embedder: IndexEmbedder;

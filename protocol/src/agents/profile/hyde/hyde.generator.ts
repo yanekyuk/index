@@ -5,6 +5,8 @@ import { BaseLangChainAgent } from '../../../lib/langchain/langchain';
 import { log } from '../../../lib/log';
 import { Embedder } from '../../common/types';
 
+const logger = log.agent.from("agents/profile/hyde/hyde.generator.ts");
+
 // System prompt for HyDE Generation
 const HYDE_GENERATION_PROMPT = `
     You are a Profile Profiler.
@@ -107,7 +109,7 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
       new HumanMessage(humanPrompt)
     ];
 
-    log.info(`[HydeGenerator] Generating HyDE profile for user...`);
+    logger.info(`[HydeGenerator] Generating HyDE profile for user...`);
 
     try {
       // The model is configured with structured output
@@ -121,11 +123,11 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
         description = result.description;
       }
 
-      log.info(`[HydeGenerator] Successfully generated HyDE profile.`);
+      logger.info(`[HydeGenerator] Successfully generated HyDE profile.`);
 
       let embedding: number[] | undefined;
       if (this.embedder) {
-        log.info(`[HydeGenerator] Generating embedding for HyDE profile...`);
+        logger.info(`[HydeGenerator] Generating embedding for HyDE profile...`);
         const embedResult = await this.embedder.generate(description);
         // Helper to handle number[] | number[][]
         embedding = Array.isArray(embedResult[0]) ? (embedResult as number[][])[0] : (embedResult as number[]);
@@ -134,7 +136,7 @@ export class HydeGeneratorAgent extends BaseLangChainAgent {
       return { description, embedding };
 
     } catch (error) {
-      log.error("[HydeGenerator] Error generating HyDE profile", { error });
+      logger.error("[HydeGenerator] Error generating HyDE profile", { error });
       throw error;
     }
   }

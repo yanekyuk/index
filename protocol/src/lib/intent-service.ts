@@ -1,5 +1,5 @@
-import db from './db';
-import { intents, intentIndexes, intentStakes, intentStakeItems } from './schema';
+import db from './drizzle/drizzle';
+import { intents, intentIndexes, intentStakes, intentStakeItems } from '../schemas/database.schema';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { generateEmbedding } from './embeddings';
 import { Events } from './events';

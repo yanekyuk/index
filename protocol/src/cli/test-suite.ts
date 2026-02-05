@@ -33,9 +33,9 @@ const ctx: TestContext = {
 
 async function main() {
     // Dynamic imports
-    type DbModule = typeof import('../lib/db');
-    const { default: db, closeDb } = await import('../lib/db.js') as unknown as DbModule;
-    const { users, files, indexLinks, intents, intentStakes } = await import('../lib/schema.js');
+    type DbModule = typeof import('../lib/drizzle/drizzle');
+    const { default: db, closeDb } = await import('../lib/drizzle/drizzle.js') as unknown as DbModule;
+    const { users, files, indexLinks, intents, intentStakes } = await import('../schemas/database.schema.js');
     const { intentService } = await import('../services/intent.service.js');
     const { discoverUsers } = await import('../lib/discover.js');
     const { sendConnectionRequestNotification } = await import('../lib/notification-service.js');

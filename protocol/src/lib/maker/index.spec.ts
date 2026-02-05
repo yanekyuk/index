@@ -1,3 +1,7 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { makerSolve, MakerConfig } from './index';
 // @ts-ignore
 import { describe, it, expect, vi, beforeEach } from 'vitest';

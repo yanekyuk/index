@@ -21,12 +21,15 @@ export interface CandidateProfile {
  * - `candidateDescription`: Written for the CANDIDATE ("You should meet Y because...")
  */
 export interface Opportunity {
-    type: 'collaboration' | 'mentorship' | 'networking' | 'other';
-    title: string;
+    // References
+    sourceId: string;
+    candidateId: string;
     /** Source-facing description: explains why the source should meet the candidate */
-    description: string;
+    sourceDescription: string;
     /** Candidate-facing description: explains why the candidate should meet the source */
     candidateDescription: string;
+    /**
+     * Score between 0 and 100
+     */
     score: number;
-    candidateId: string;
 }

@@ -6,6 +6,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../../lib/log";
 import { PragmaticMonitorOutput } from "./pragmatic.evaluator.types";
 
+const logger = log.agent.from("agents/intent/evaluator/pragmatic/pragmatic.evaluator.ts");
+
 const SYSTEM_PROMPT = `
 You are the Pragmatic Monitor (Discourse consistency Checker).
 
@@ -60,7 +62,7 @@ export class PragmaticMonitorAgent extends BaseLangChainAgent {
    * @param subsequent_discourse - Stringified list of recent messages or new intents.
    */
   async run(target_intent: string, subsequent_discourse: string): Promise<PragmaticMonitorOutput | null> {
-    log.info(`[PragmaticMonitor] Checking discourse consistency...`);
+    logger.info(`[PragmaticMonitor] Checking discourse consistency...`);
 
     const prompt = `
       # Target Intent (Past Promise)
@@ -81,10 +83,10 @@ export class PragmaticMonitorAgent extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as PragmaticMonitorOutput;
 
-      log.info(`[PragmaticMonitor] Status: ${output.status} | Confidence: ${output.confidence_score}`);
+      logger.info(`[PragmaticMonitor] Status: ${output.status} | Confidence: ${output.confidence_score}`);
       return output;
     } catch (error) {
-      log.error("[PragmaticMonitor] Error during execution", { error });
+      logger.error("[PragmaticMonitor] Error during execution", { error });
       return null;
     }
   }

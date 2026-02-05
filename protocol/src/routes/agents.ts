@@ -1,8 +1,8 @@
 import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { agents } from '../lib/schema';
-import db from '../lib/db';
+import { agents } from '../schemas/database.schema';
+import db from '../lib/drizzle/drizzle';
 import { eq, isNull, desc, count, and } from 'drizzle-orm';
 
 const router = Router();

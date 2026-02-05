@@ -3,7 +3,8 @@ txt/
 protocol/temp-uploads/
 AGENTS.md
 postgres/
-.cursor/rules
+.cluade
+.cursor
 .agent
 .vscode/
 !.vscode/index.code-workspace.default

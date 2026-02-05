@@ -4,6 +4,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../lib/log";
 import { IntentIndexerOutput } from "./intent.indexer.types";
 
+const logger = log.agent.from("agents/intent/indexer/intent.indexer.ts");
+
 const SYSTEM_PROMPT = `
 You are an expert Intent Evaluator for a social networking protocol.
 
@@ -61,7 +63,7 @@ export class IntentIndexer extends BaseLangChainAgent {
     memberPrompt: string | null,
     sourceName?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    log.info(`[IntentIndexer] Evaluating intent...`);
+    logger.info(`[IntentIndexer] Evaluating intent...`);
 
     const contextParts = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
@@ -90,10 +92,10 @@ export class IntentIndexer extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as IntentIndexerOutput;
 
-      log.info(`[IntentIndexer] Evaluation complete. IndexScore: ${output.indexScore}, MemberScore: ${output.memberScore}`);
+      logger.info(`[IntentIndexer] Evaluation complete. IndexScore: ${output.indexScore}, MemberScore: ${output.memberScore}`);
       return output;
     } catch (error) {
-      log.error("[IntentIndexer] Error during execution", { error });
+      logger.error("[IntentIndexer] Error during execution", { error });
       return null;
     }
   }

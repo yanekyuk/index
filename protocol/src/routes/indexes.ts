@@ -1,7 +1,7 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import db from '../lib/db';
-import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { indexes, users, indexMembers, intentIndexes, intents } from '../schemas/database.schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
 import {
@@ -17,13 +17,13 @@ import {
 import { IndexEvents } from '../events/index.event';
 import { MemberEvents } from '../events/user.event';
 import { IntentService } from '../services/intent.service';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { resolveFileUser } from '../lib/user-utils';
 import { addMemberToIndex } from '../lib/index-members';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 import { Index, CreateIndexRequest, UpdateIndexRequest, PaginatedResponse, APIResponse } from '../types';
-
-
+import { log } from '../lib/log';
 
 const router = Router();
 
@@ -420,8 +420,7 @@ export const createIndexHandler = async (req: AuthRequest, res: Response) => {
     const permissions = {
       joinPolicy: finalJoinPolicy,
       invitationLink: { code: crypto.randomUUID() }, // Always generate share code
-      allowGuestVibeCheck: false,
-      requireApproval: false
+      allowGuestVibeCheck: false
     };
 
     const newIndex = await db.insert(indexes).values({
@@ -529,8 +528,7 @@ router.put('/:id',
         const currentPermissions = existingIndex[0]?.permissions || {
           joinPolicy: 'invite_only',
           invitationLink: null,
-          allowGuestVibeCheck: false,
-          requireApproval: false
+          allowGuestVibeCheck: false
         };
 
         updatedPermissions = {
@@ -763,6 +761,14 @@ router.delete('/:id/members/:userId',
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
 
+      // Best-effort: ChatDatabaseAdapter.expireOpportunitiesForRemovedMember; failures are logged and do not affect the response.
+      try {
+        const opportunityDb = new ChatDatabaseAdapter();
+        await opportunityDb.expireOpportunitiesForRemovedMember(id, userId);
+      } catch (err) {
+        log.route.warn('expireOpportunitiesForRemovedMember failed after member removal', { indexId: id, userId, err });
+      }
+
       return res.json({ message: 'Member removed successfully' });
     } catch (error) {
       console.error('Remove member error:', error);
@@ -803,6 +809,14 @@ router.post('/:id/leave',
       // Remove member
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+      // Best-effort: ChatDatabaseAdapter.expireOpportunitiesForRemovedMember; failures are logged and do not affect the response.
+      try {
+        const opportunityDb = new ChatDatabaseAdapter();
+        await opportunityDb.expireOpportunitiesForRemovedMember(id, req.user!.id);
+      } catch (err) {
+        log.route.warn('expireOpportunitiesForRemovedMember failed after leave index', { indexId: id, userId: req.user!.id, err });
+      }
 
       return res.json({ message: 'Successfully left the index' });
     } catch (error) {
@@ -949,8 +963,7 @@ router.patch('/:id/permissions',
       const currentPermissions = existingIndex[0]?.permissions || {
         joinPolicy: 'invite_only',
         invitationLink: null,
-        allowGuestVibeCheck: false,
-        requireApproval: false
+        allowGuestVibeCheck: false
       };
 
       // Update permissions
@@ -975,9 +988,6 @@ router.patch('/:id/permissions',
         allowGuestVibeCheck: allowGuestVibeCheck !== undefined
           ? allowGuestVibeCheck
           : currentPermissions.allowGuestVibeCheck,
-        requireApproval: req.body.requireApproval !== undefined
-          ? req.body.requireApproval
-          : (currentPermissions.requireApproval ?? false),
         invitationLink
       };
 
@@ -1036,8 +1046,7 @@ router.patch('/:id/regenerate-invitation',
       const currentPermissions = existingIndex[0]?.permissions || {
         joinPolicy: 'invite_only',
         invitationLink: null,
-        allowGuestVibeCheck: false,
-        requireApproval: false
+        allowGuestVibeCheck: false
       };
 
       // Only regenerate if it's invite_only
@@ -1048,8 +1057,7 @@ router.patch('/:id/regenerate-invitation',
       // Generate new invitation link
       const updatedPermissions = {
         ...currentPermissions,
-        invitationLink: { code: crypto.randomUUID() },
-        requireApproval: currentPermissions.requireApproval ?? false
+        invitationLink: { code: crypto.randomUUID() }
       };
 
       const updatedIndex = await db.update(indexes)
@@ -1744,11 +1752,17 @@ router.get('/:indexId/intents',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Build base conditions for intents in this index
-      const baseCondition = and(
-        showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
-        eq(intentIndexes.indexId, indexId)
-      );
+      // Owners see all intents in the index; members see only their own
+      const baseCondition = isOwner
+        ? and(
+            showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
+            eq(intentIndexes.indexId, indexId)
+          )
+        : and(
+            showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
+            eq(intentIndexes.indexId, indexId),
+            eq(intents.userId, req.user!.id)
+          );
 
       const selectFields = {
         id: intents.id,

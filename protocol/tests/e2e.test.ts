@@ -14,7 +14,7 @@ async function runTest() {
     console.log('🚀 Starting Email E2E Test...\n');
 
     // Dynamic imports
-    const { default: db, closeDb } = await import('../src/lib/db');
+    const { default: db, closeDb } = await import('../src/lib/drizzle/drizzle');
     const { users, intents, intentStakes, agents } = await import('../src/lib/schema');
     const { analyzeContent } = await import('../src/agents/core/intent_inferrer');
     const { evaluateIntentPairMutuality } = await import('../src/agents/context_brokers/semantic_relevancy');

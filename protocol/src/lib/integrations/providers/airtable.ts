@@ -1,6 +1,8 @@
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { ensureIndexMembership } from '../membership-utils';
+
+const logger = log.lib.from("lib/integrations/providers/airtable.ts");
 import { getIntegrationById } from '../integration-utils';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 
@@ -75,22 +77,22 @@ export async function initAirtable(
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
-      log.info('Skipping intent generation for index integration', { integrationId });
+      logger.info('Skipping intent generation for index integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
-    log.info('Airtable sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.info('Airtable sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     
     // Fetch records
     const records = await fetchRecords(integrationId, integration.userId, integration.connectedAccountId, lastSyncAt);
@@ -114,7 +116,7 @@ export async function initAirtable(
       intentCount: MAX_INTENTS_PER_USER
     }, 6);
 
-    log.info('Airtable sync complete', {
+    logger.info('Airtable sync complete', {
       integrationId,
       recordsProcessed: records.length,
       intentsGenerated: 1,
@@ -127,7 +129,7 @@ export async function initAirtable(
       newUsersCreated: 0
     };
   } catch (error) {
-    log.error('Airtable sync error', { integrationId, error: (error as Error).message });
+    logger.error('Airtable sync error', { integrationId, error: (error as Error).message });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }
@@ -144,18 +146,18 @@ async function fetchRecords(
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return [];
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
-      log.info('Skipping intent generation for index integration', { integrationId });
+      logger.info('Skipping intent generation for index integration', { integrationId });
       return [];
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return [];
     }
 
@@ -170,13 +172,13 @@ async function fetchRecords(
         arguments: {}
       }) as AirtableApiResponse;
     } catch (error) {
-      log.error('Failed to get Airtable user info', { integrationId, error: (error as Error).message });
+      logger.error('Failed to get Airtable user info', { integrationId, error: (error as Error).message });
       throw error;
     }
 
     const userData = userInfoResp?.data?.response_data;
     if (!userData?.id || !userData?.email) {
-      log.error('Failed to get Airtable user info', { 
+      logger.error('Failed to get Airtable user info', { 
         integrationId, 
         hasData: !!userInfoResp?.data,
         dataKeys: userInfoResp?.data ? Object.keys(userInfoResp.data) : [],
@@ -192,7 +194,7 @@ async function fetchRecords(
       name: userData.email.split('@')[0]
     };
 
-    log.info('Airtable user info', { userId: airtableUser.id, email: airtableUser.email });
+    logger.info('Airtable user info', { userId: airtableUser.id, email: airtableUser.email });
 
     // List all accessible bases
     const bases: AirtableBase[] = [];
@@ -214,7 +216,7 @@ async function fetchRecords(
       }
     } while (offset);
 
-    log.info('Airtable bases', { count: bases.length });
+    logger.info('Airtable bases', { count: bases.length });
     if (!bases.length) return [];
 
     // Process each base and its tables
@@ -231,12 +233,12 @@ async function fetchRecords(
 
         const schemaData = schemaResp?.data?.response_data;
         if (!schemaData?.tables) {
-          log.warn('No tables found in base', { baseId: base.id, baseName: base.name });
+          logger.warn('No tables found in base', { baseId: base.id, baseName: base.name });
           continue;
         }
 
         const tables = schemaData.tables;
-        log.info('Base tables', { baseId: base.id, baseName: base.name, tableCount: tables.length });
+        logger.info('Base tables', { baseId: base.id, baseName: base.name, tableCount: tables.length });
 
         // Process each table's records
         for (const table of tables) {
@@ -290,7 +292,7 @@ async function fetchRecords(
                     const commentsData = commentsResp?.data?.response_data;
                     comments = commentsData?.comments || [];
                   } catch (commentError) {
-                    log.debug('Comments not available for record', {
+                    logger.debug('Comments not available for record', {
                       baseId: base.id,
                       tableId: table.id,
                       recordId: record.id,
@@ -318,7 +320,7 @@ async function fetchRecords(
 
                   tableRecords.push(airtableRecord);
                 } catch (error) {
-                  log.error('Failed to process record', {
+                  logger.error('Failed to process record', {
                     baseId: base.id,
                     tableId: table.id,
                     recordId: record.id,
@@ -331,7 +333,7 @@ async function fetchRecords(
             } while (recordOffset);
 
             allRecords.push(...tableRecords);
-            log.info('Table records processed', {
+            logger.info('Table records processed', {
               baseId: base.id,
               baseName: base.name,
               tableId: table.id,
@@ -340,7 +342,7 @@ async function fetchRecords(
             });
 
           } catch (error) {
-            log.error('Failed to process table', {
+            logger.error('Failed to process table', {
               baseId: base.id,
               baseName: base.name,
               tableId: table.id,
@@ -351,7 +353,7 @@ async function fetchRecords(
         }
 
       } catch (error) {
-        log.error('Failed to process base', {
+        logger.error('Failed to process base', {
           baseId: base.id,
           baseName: base.name,
           error: error instanceof Error ? error.message : String(error)
@@ -359,7 +361,7 @@ async function fetchRecords(
       }
     }
 
-    log.info('Airtable records fetched', { 
+    logger.info('Airtable records fetched', { 
       integrationId, 
       count: allRecords.length,
       recordsWithComments: allRecords.filter(r => r.comments && r.comments.length > 0).length
@@ -367,7 +369,7 @@ async function fetchRecords(
     
     return allRecords;
   } catch (error) {
-    log.error('Failed to fetch Airtable records', { integrationId, error: (error as Error).message });
+    logger.error('Failed to fetch Airtable records', { integrationId, error: (error as Error).message });
     return [];
   }
 }

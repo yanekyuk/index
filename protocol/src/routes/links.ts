@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult, param } from 'express-validator';
-import db from '../lib/db';
-import { indexLinks } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { indexLinks } from '../schemas/database.schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { and, desc, eq } from 'drizzle-orm';
 import path from 'path';

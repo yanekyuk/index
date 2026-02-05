@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 import { NewsletterJobData, WeeklyCycleJobData, addNewsletterJob } from './newsletter.queue';
-import db from '../db';
-import { users, userNotificationSettings, intentStakes, intents, userConnectionEvents, intentStakeItems } from '../schema'; // Assuming schema path
+import db from '../drizzle/drizzle';
+import { users, userNotificationSettings, intentStakes, intents, userConnectionEvents, intentStakeItems } from '../../schemas/database.schema';
 import { eq, gt, inArray, or, and } from 'drizzle-orm';
 import { synthesizeNewsletterVibeCheck } from '../synthesis';
 import { weeklyNewsletterTemplate, Match } from '../email/templates/weekly-newsletter.template';

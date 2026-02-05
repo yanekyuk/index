@@ -1,6 +1,6 @@
 import { eq, sql, inArray } from 'drizzle-orm';
-import db from './db';
-import { intents, intentStakes, intentStakeItems, indexMembers, userConnectionEvents, intentIndexes } from './schema';
+import db from './drizzle/drizzle';
+import { intents, intentStakes, intentStakeItems, indexMembers, userConnectionEvents, intentIndexes } from '../schemas/database.schema';
 import { getUserAccessibleIndexIds } from './index-access';
 
 // ============================================================================

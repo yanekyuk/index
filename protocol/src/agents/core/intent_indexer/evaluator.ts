@@ -1,6 +1,6 @@
 import { traceableLlm } from '../../../lib/agents';
-import db from '../../../lib/db';
-import { files, indexLinks, userIntegrations } from '../../../lib/schema';
+import db from '../../../lib/drizzle/drizzle';
+import { files, indexLinks, userIntegrations } from '../../../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 import { getDisplayName } from '../../../lib/integrations/config';
 

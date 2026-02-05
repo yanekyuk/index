@@ -6,8 +6,9 @@ import { ImplicitInferrer } from '../inferrer/implicit/implicit.inferrer';
 import { z } from "zod";
 
 import { log } from "../../../lib/log";
-
 import { SemanticVerifierAgent } from "../evaluator/semantic/semantic.evaluator";
+
+const logger = log.agent.from("agents/intent/manager/intent.manager.ts");
 
 const SYSTEM_PROMPT = `
 You are an expert Intent Manager. Your goal is to reconcile NEWLY INFERRED intents with the user's ACTIVE intents.
@@ -111,9 +112,9 @@ export class IntentManager extends BaseLangChainAgent {
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
     // 1. Run Explicit Detector (Pure Extraction)
-    log.info(`[IntentManagerAgent] Processing explicit content: "${content ? content.substring(0, 50) + '...' : 'None'}"`);
+    logger.info(`[IntentManagerAgent] Processing explicit content: "${content ? content.substring(0, 50) + '...' : 'None'}"`);
     const { intents: inferredIntents } = await this.explicitDetector.run(content, profileContext);
-    log.info(`[IntentManagerAgent] Inferred ${inferredIntents.length} explicit intents.`);
+    logger.info(`[IntentManagerAgent] Inferred ${inferredIntents.length} explicit intents.`);
 
     return this.verifyAndReconcile(inferredIntents, activeIntentsContext, profileContext);
   }
@@ -130,17 +131,17 @@ export class IntentManager extends BaseLangChainAgent {
     additionalContext: string,
     activeIntentsContext: string
   ): Promise<IntentManagerResponse> {
-    log.info(`[IntentManagerAgent] Processing implicit context...`);
+    logger.info(`[IntentManagerAgent] Processing implicit context...`);
 
     // 1. Run Implicit Inferrer
     const implicitIntent = await this.implicitInferrer.run(profileContext, additionalContext);
 
     if (!implicitIntent) {
-      log.info(`[IntentManagerAgent] No implicit intent inferred.`);
+      logger.info(`[IntentManagerAgent] No implicit intent inferred.`);
       return { actions: [] };
     }
 
-    log.info(`[IntentManagerAgent] Inferred implicit intent: "${implicitIntent.payload}" (${implicitIntent.confidence}%)`);
+    logger.info(`[IntentManagerAgent] Inferred implicit intent: "${implicitIntent.payload}" (${implicitIntent.confidence}%)`);
 
     // Map to InferredIntent format for shared processing
     const inferredIntents: InferredIntent[] = [{
@@ -171,10 +172,10 @@ export class IntentManager extends BaseLangChainAgent {
 
     for (const intent of inferredIntents) {
       const verdict = await this.semanticVerifier.run(intent.description, profileContext);
-      log.info(`[IntentManagerAgent] Verdict for "${intent.description}":`, (verdict as unknown) as Record<string, unknown> || {});
+      logger.info(`[IntentManagerAgent] Verdict for "${intent.description}":`, (verdict as unknown) as Record<string, unknown> || {});
 
       if (!verdict) {
-        log.warn(`[IntentManagerAgent] Skipping intent verification due to error: "${intent.description}"`);
+        logger.warn(`[IntentManagerAgent] Skipping intent verification due to error: "${intent.description}"`);
         continue;
       }
 
@@ -185,7 +186,7 @@ export class IntentManager extends BaseLangChainAgent {
       const isValidType = VALID_TYPES.includes(verdict.classification);
 
       if (!isValidType) {
-        log.warn(`[IntentManagerAgent] Rejected intent (invalid Speech Act Type): "${intent.description}" Type: ${verdict.classification}`, {
+        logger.warn(`[IntentManagerAgent] Rejected intent (invalid Speech Act Type): "${intent.description}" Type: ${verdict.classification}`, {
           reason: verdict.reasoning,
           scores: verdict.felicity_scores
         });
@@ -207,12 +208,12 @@ export class IntentManager extends BaseLangChainAgent {
     }
 
     if (verifiedIntents.length === 0) {
-      log.info(`[IntentManagerAgent] All inferred intents were rejected by Semantic Verifier.`);
+      logger.info(`[IntentManagerAgent] All inferred intents were rejected by Semantic Verifier.`);
       return { actions: [] };
     }
 
     // 3. Reconcile with Active Intents (LLM Decision)
-    log.info(`[IntentManagerAgent] Reconciling ${verifiedIntents.length} verified intents...`);
+    logger.info(`[IntentManagerAgent] Reconciling ${verifiedIntents.length} verified intents...`);
     return this.reconcileIntentsWithLLM(verifiedIntents, activeIntentsContext);
   }
 
@@ -258,10 +259,10 @@ export class IntentManager extends BaseLangChainAgent {
     try {
       const result = await this.model.invoke({ messages });
       const structuredResponse = result.structuredResponse as IntentManagerResponse;
-      log.info(`[IntentManagerAgent] Decision: ${structuredResponse.actions.length} actions generated.`);
+      logger.info(`[IntentManagerAgent] Decision: ${structuredResponse.actions.length} actions generated.`);
       return structuredResponse;
     } catch (error) {
-      log.error("[IntentManagerAgent] Error in IntentManager reconciliation", {
+      logger.error("[IntentManagerAgent] Error in IntentManager reconciliation", {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         raw: error

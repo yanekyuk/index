@@ -1,8 +1,11 @@
 import { Job } from 'bullmq';
 import { QueueFactory } from '../lib/bullmq/bullmq';
+import { createProfileQueueAdapter } from '../adapters/queue.adapter';
 import { log } from '../lib/log';
 import { profileService } from '../services/profile.service';
 import { opportunityService } from '../services/opportunity.service';
+
+const logger = log.queue.from("ProfileQueue");
 
 export const PROFILE_QUEUE_NAME = 'profile-update';
 
@@ -25,20 +28,20 @@ export const profileQueue = QueueFactory.createQueue<ProfileUpdateJobData>(PROFI
 // Processor Function
 export async function profileProcessor(job: Job<ProfileUpdateJobData>) {
   const { userId, intro, userName } = job.data;
-  log.info(`[ProfileWorker] Processing job ${job.id} for user ${userId}`);
+  logger.info(`[ProfileWorker] Processing job ${job.id} for user ${userId}`);
 
   try {
     // 1. Repair Profile if needed
     const userProfile = await profileService.repairProfileIfIncomplete(userId, intro, userName);
 
     if (!userProfile) {
-      log.warn(`[ProfileWorker] Profile not found for user ${userId}, aborting job`);
+      logger.warn(`[ProfileWorker] Profile not found for user ${userId}, aborting job`);
       return;
     }
 
     // 2. Run Full Opportunity Finder for this user
     // This finds matching candidates, creates intents for BOTH users, and creates stakes
-    log.info(`[ProfileWorker] Running Opportunity Finder for user ${userId}...`);
+    logger.info(`[ProfileWorker] Running Opportunity Finder for user ${userId}...`);
     await opportunityService.runOpportunityFinderForUser(userId);
 
     // 3. Update HyDE Embedding (may already be done by opportunity finder, but ensure it's saved)
@@ -57,10 +60,10 @@ export async function profileProcessor(job: Job<ProfileUpdateJobData>) {
       }
     });
 
-    log.info(`[ProfileWorker] Job ${job.id} completed successfully`);
+    logger.info(`[ProfileWorker] Job ${job.id} completed successfully`);
 
   } catch (error) {
-    log.error(`[ProfileWorker] Job ${job.id} failed:`, { error });
+    logger.error(`[ProfileWorker] Job ${job.id} failed:`, { error });
     throw error;
   }
 }
@@ -98,9 +101,9 @@ export const addJob = async (
       },
       removeOnComplete: true,
     });
-    log.info(`[ProfileQueue] Added job for user ${data.userId}`);
+    logger.info(`[ProfileQueue] Added job for user ${data.userId}`);
   } catch (error) {
-    log.error(`[ProfileQueue] Failed to add job for user ${data.userId}`, { error });
+    logger.error(`[ProfileQueue] Failed to add job for user ${data.userId}`, { error });
     // In strict addJob signature, we should return Promise<Job>. But original code swallowed error and logged it.
     // The template says "returns The created Job instance".
     // I should probably let it throw or handle it properly.
@@ -111,3 +114,6 @@ export const addJob = async (
     throw error;
   }
 };
+
+/** Adapter implementing ProfileQueue; use for DI or when depending on the adapter contract. */
+export const profileQueueAdapter = createProfileQueueAdapter(profileQueue);

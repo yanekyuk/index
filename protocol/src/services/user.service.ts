@@ -1,7 +1,9 @@
-import db from '../lib/db';
-import { users, userNotificationSettings, userProfiles, User, userConnectionEvents } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { users, userNotificationSettings, userProfiles, User, userConnectionEvents } from '../schemas/database.schema';
 import { eq, inArray, or, and } from 'drizzle-orm';
 import { log } from '../lib/log';
+
+const logger = log.service.from("UserService");
 
 /**
  * UserService
@@ -14,7 +16,7 @@ import { log } from '../lib/log';
  */
 export class UserService {
     async findById(userId: string) {
-        log.info('[UserService] Finding user by ID', { userId });
+        logger.info('[UserService] Finding user by ID', { userId });
         const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
         return result[0] || null;
     }
@@ -58,7 +60,7 @@ export class UserService {
     }
 
     async update(userId: string, data: Partial<User>) {
-        log.info('[UserService] Updating user', { userId, fields: Object.keys(data) });
+        logger.info('[UserService] Updating user', { userId, fields: Object.keys(data) });
         const result = await db.update(users)
             .set({
                 ...data,
@@ -71,7 +73,7 @@ export class UserService {
     }
 
     async softDelete(userId: string) {
-        log.info('[UserService] Soft deleting user', { userId });
+        logger.info('[UserService] Soft deleting user', { userId });
         await db.update(users)
             .set({ deletedAt: new Date() })
             .where(eq(users.id, userId));

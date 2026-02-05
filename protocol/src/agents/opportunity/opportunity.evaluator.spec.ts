@@ -1,3 +1,6 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll } from 'bun:test';
 import { OpportunityEvaluator } from './opportunity.evaluator';
@@ -7,6 +10,8 @@ import { CandidateProfile, Opportunity } from './opportunity.evaluator.types';
 import { UserMemoryProfile } from '../intent/manager/intent.manager.types';
 import { log } from '../../lib/log';
 import { json2md } from '../../lib/json2md/json2md';
+
+const logger = log.service.from("opportunity");
 
 // Mock Embedder that uses MemorySearcher
 class MockMemoryEmbedder implements Embedder {
@@ -153,9 +158,8 @@ async function setupEvaluator() {
     // Simple mock logic: Return a match for every candidate passed to it
     // The filtering happens upstream in findCandidates (memorySearcher)
     return candidates.map(c => ({
-      type: 'collaboration',
-      title: `Match with ${c.identity.name}`,
-      description: 'Good match for source',
+      sourceId: 'source-user', // Add sourceId
+      sourceDescription: 'Good match for source', // Rename
       candidateDescription: 'Good match for candidate',
       score: 90,
       candidateId: c.userId
@@ -175,7 +179,7 @@ const sourceProfileContext = json2md.keyValue({
 
 describe('Opportunity Evaluator Tests', () => {
   test('Basic Flow & Filtering (MinScore 0.5)', async () => {
-    log.info("--- Test: Basic Flow & Filtering (MinScore 0.5) ---");
+    logger.info("--- Test: Basic Flow & Filtering (MinScore 0.5) ---");
     const evaluator = await setupEvaluator();
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
@@ -190,7 +194,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Empty Candidates List', async () => {
-    log.info("--- Test: Empty Candidates List ---");
+    logger.info("--- Test: Empty Candidates List ---");
     const evaluator = await setupEvaluator();
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
@@ -203,7 +207,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('High Threshold (MinScore 1.5 - Impossible)', async () => {
-    log.info("--- Test: High Threshold (MinScore 1.5 - Impossible) ---");
+    logger.info("--- Test: High Threshold (MinScore 1.5 - Impossible) ---");
     const evaluator = await setupEvaluator();
 
     // candidateB has score 1.0 (vector match). If we ask for 1.1, should find nothing.
@@ -219,7 +223,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Candidate Missing UserId (Graceful Fail)', async () => {
-    log.info("--- Test: Candidate Missing UserId (Graceful Fail) ---");
+    logger.info("--- Test: Candidate Missing UserId (Graceful Fail) ---");
     const evaluator = await setupEvaluator();
 
     const candidateNoId = { ...candidates[0], userId: undefined } as any;
@@ -237,7 +241,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Deduplication Prompt Logic', async () => {
-    log.info("--- Test: Deduplication Prompt Logic ---");
+    logger.info("--- Test: Deduplication Prompt Logic ---");
     const evaluator = await setupEvaluator();
 
     const spyModel = {
@@ -274,7 +278,7 @@ describe('Opportunity Evaluator Tests', () => {
 
 
   test('Synthesized Opportunity (Best Single Option)', async () => {
-    log.info("--- Test: Synthesized Opportunity (Best Single Option) ---");
+    logger.info("--- Test: Synthesized Opportunity (Best Single Option) ---");
     const evaluator = await setupEvaluator();
 
     // Mock returning multiple distinct opportunities for a single candidate
@@ -287,17 +291,15 @@ describe('Opportunity Evaluator Tests', () => {
 
       return candidates.flatMap(c => [
         {
-          type: 'collaboration',
-          title: `Match A with ${c.identity.name}`,
-          description: 'Good match A for source',
+          sourceId: 'source-user',
+          sourceDescription: 'Good match A for source',
           candidateDescription: 'Good match A for candidate',
           score: 80,
           candidateId: c.userId
         },
         {
-          type: 'mentorship',
-          title: `Match B with ${c.identity.name}`,
-          description: 'Good match B for source',
+          sourceId: 'source-user',
+          sourceDescription: 'Good match B for source',
           candidateDescription: 'Good match B for candidate',
           score: 95,
           candidateId: c.userId
@@ -323,8 +325,8 @@ describe('Opportunity Evaluator Tests', () => {
     // Spy on analyzeMatch to return multiple
     (evaluator as any).analyzeMatch = async (source: any, candidate: any, id: string) => {
       return [
-        { type: 'networking', title: 'Low Score', description: 'Low', candidateDescription: 'Low for candidate', score: 50, candidateId: id },
-        { type: 'collaboration', title: 'High Score', description: 'High', candidateDescription: 'High for candidate', score: 99, candidateId: id }
+        { sourceId: source.userId, sourceDescription: 'Low', candidateDescription: 'Low for candidate', score: 50, candidateId: id },
+        { sourceId: source.userId, sourceDescription: 'High Score', candidateDescription: 'High for candidate', score: 99, candidateId: id }
       ];
     };
 
@@ -337,7 +339,7 @@ describe('Opportunity Evaluator Tests', () => {
 
     expect(opportunities.length).toBe(1);
     expect(opportunities[0].score).toBe(99);
-    expect(opportunities[0].title).toBe('High Score');
+    expect(opportunities[0].sourceDescription).toBe('High Score');
   });
 });
 

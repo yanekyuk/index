@@ -1,6 +1,54 @@
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/** Named context for styled logs (emoji + color). */
+export type LogContext =
+  | 'controller'
+  | 'service'
+  | 'agent'
+  | 'cli'
+  | 'graph'
+  | 'job'
+  | 'queue'
+  | 'protocol'
+  | 'route'
+  | 'router'
+  | 'server'
+  | 'lib';
+
 const order: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
+
+const RESET = '\x1b[0m';
+
+/** Whether to use ANSI color (TTY or FORCE_COLOR). */
+function useColor(): boolean {
+  if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true') return true;
+  return Boolean(process.stdout?.isTTY);
+}
+
+/** Hex to ANSI 24-bit foreground (e.g. #ffc106 → RGB escape). */
+function hexToAnsi(hex: string): string {
+  const n = hex.replace(/^#/, '');
+  if (n.length !== 6) return '';
+  const r = parseInt(n.slice(0, 2), 16);
+  const g = parseInt(n.slice(2, 4), 16);
+  const b = parseInt(n.slice(4, 6), 16);
+  return `\x1b[38;2;${r};${g};${b}m`;
+}
+
+const CONTEXT_STYLES: Record<LogContext, { emoji: string; color: string }> = {
+  controller: { emoji: '📡', color: '#ffc106' },
+  service: { emoji: '⚙️', color: '#17a2b8' },
+  agent: { emoji: '🤖', color: '#6f42c1' },
+  cli: { emoji: '💻', color: '#6c757d' },
+  graph: { emoji: '🕸️', color: '#20c997' },
+  job: { emoji: '⏰', color: '#0dcaf0' },
+  queue: { emoji: '📬', color: '#fd7e14' },
+  protocol: { emoji: '📜', color: '#198754' },
+  route: { emoji: '🛤️', color: '#e83e8c' },
+  router: { emoji: '🔀', color: '#e83e8c' },
+  server: { emoji: '🌐', color: '#6c757d' },
+  lib: { emoji: '📚', color: '#0d6efd' },
+};
 
 function envLevel(): LogLevel {
   const v = (process.env.LOG_LEVEL || '').toLowerCase();
@@ -19,25 +67,190 @@ function shouldLog(level: LogLevel) {
   return order[level] >= order[currentLevel];
 }
 
-function fmt(message: string, meta?: Record<string, unknown>) {
-  if (!meta) return message;
-  try { return `${message} ${JSON.stringify(meta)}`; } catch { return message; }
+/** Keys that are known to hold embedding/vector data (do not log their values). */
+const EMBEDDING_KEYS = new Set([
+  'embedding',
+  'hydeEmbedding',
+  'hydeEmbeddings',
+  'vector',
+  'vectors',
+  'embeddingArray',
+  'embeddings',
+]);
+
+function isNumberArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    typeof value[0] === 'number'
+  );
 }
 
-export const log = {
-  debug(message: string, meta?: Record<string, unknown>) {
-    if (shouldLog('debug')) console.debug(fmt(message, meta));
-  },
-  info(message: string, meta?: Record<string, unknown>) {
-    if (shouldLog('info')) console.info(fmt(message, meta));
-  },
-  warn(message: string, meta?: Record<string, unknown>) {
-    if (shouldLog('warn')) console.warn(fmt(message, meta));
-  },
-  error(message: string, meta?: Record<string, unknown>) {
-    if (shouldLog('error')) console.error(fmt(message, meta));
-  },
+/** Recursively redact embedding/vector arrays so they are never logged. */
+function fmt(message: string, meta?: Record<string, unknown>) {
+  if (!meta) return message;
+  try {
+    const sanitized = sanitizeForLogInternal(meta) as Record<string, unknown>;
+    return `${message} ${JSON.stringify(sanitized)}`;
+  } catch {
+    return message;
+  }
+}
+
+/**
+ * Source path is relative to src/ (e.g. "controllers/chat.controller.ts").
+ * Non-deprecated: lib/*, controllers/, adapters/, jobs/, queues/, and root main.ts only.
+ * index.ts at root is deprecated. All other paths (routes/, services/, agents/, etc.) are deprecated.
+ */
+export function isDeprecatedSource(sourcePath: string): boolean {
+  const normalized = sourcePath.replace(/\\/g, '/');
+  if (normalized === 'index.ts') return true;
+  if (normalized === 'main.ts') return false;
+  if (normalized.startsWith('lib/')) return false;
+  if (normalized.startsWith('controllers/')) return false;
+  if (normalized.startsWith('adapters/')) return false;
+  if (normalized.startsWith('jobs/')) return false;
+  if (normalized.startsWith('queues/')) return false;
+  return true;
+}
+
+/** Red used for error level regardless of context. */
+const ERROR_COLOR = '#dc3545';
+
+/** Wrap line with emoji + source + optional color. Format: "emoji source: message" (source required for consistency). Adds [DEPRECATED] for non-blessed paths. Error level always uses red. */
+function wrapWithContext(
+  context: LogContext | undefined,
+  source: string | undefined,
+  line: string,
+  level?: LogLevel
+): { start: string; end: string } {
+  if (!context || !CONTEXT_STYLES[context])
+    return { start: source ? `${source}: ` : '', end: '' };
+  const { emoji, color } = CONTEXT_STYLES[context];
+  const useErrorColor = level === 'error';
+  const effectiveColor = useErrorColor ? ERROR_COLOR : color;
+  const colorOn = useColor() && effectiveColor;
+  const ansi = colorOn ? hexToAnsi(effectiveColor) : '';
+  const reset = colorOn ? RESET : '';
+  const deprecatedTag =
+    context === 'cli' || context === 'route'
+      ? '[DEPRECATED] '
+      : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol'
+        ? ''
+        : (source && isDeprecatedSource(source))
+          ? '[DEPRECATED] '
+          : '';
+  const prefix = source ? `${emoji} ${deprecatedTag}${source}: ` : `${emoji} `;
+  return { start: ansi ? `${ansi}${prefix}` : prefix, end: reset };
+}
+
+type LogMethod = (message: string, meta?: Record<string, unknown>) => void;
+
+export type LoggerWithSource = {
+  debug: LogMethod;
+  info: LogMethod;
+  warn: LogMethod;
+  error: LogMethod;
 };
+
+function createLogger(
+  context: LogContext | undefined,
+  source?: string
+): LoggerWithSource {
+  return {
+    debug(message: string, meta?: Record<string, unknown>) {
+      if (!shouldLog('debug')) return;
+      const line = fmt(message, meta);
+      const { start, end } = wrapWithContext(context, source, line);
+      console.debug(start + line + end);
+    },
+    info(message: string, meta?: Record<string, unknown>) {
+      if (!shouldLog('info')) return;
+      const line = fmt(message, meta);
+      const { start, end } = wrapWithContext(context, source, line);
+      console.info(start + line + end);
+    },
+    warn(message: string, meta?: Record<string, unknown>) {
+      if (!shouldLog('warn')) return;
+      const line = fmt(message, meta);
+      const { start, end } = wrapWithContext(context, source, line);
+      console.warn(start + line + end);
+    },
+    error(message: string, meta?: Record<string, unknown>) {
+      if (!shouldLog('error')) return;
+      const line = fmt(message, meta);
+      const { start, end } = wrapWithContext(context, source, line, 'error');
+      console.error(start + line + end);
+    },
+  };
+}
+
+function addFrom<T extends LogContext>(context: T): LoggerWithSource & { from: (source: string) => LoggerWithSource } {
+  const logger = createLogger(context) as LoggerWithSource & { from: (source: string) => LoggerWithSource };
+  logger.from = (source: string) => createLogger(context, source);
+  return logger;
+}
+
+const base = createLogger(undefined, undefined);
+
+/** Logger with optional context (emoji + color). Use .from('filename.ts') for consistent source in every line. */
+export const log = {
+  ...base,
+  withContext(context: LogContext, source?: string) {
+    return source ? createLogger(context, source) : addFrom(context);
+  },
+  /** Pre-bound logger. Pass path relative to src/ (e.g. "controllers/chat.controller.ts"). Non-blessed paths get [DEPRECATED] in output. */
+  controller: addFrom('controller'),
+  service: addFrom('service'),
+  agent: addFrom('agent'),
+  cli: addFrom('cli'),
+  graph: addFrom('graph'),
+  job: addFrom('job'),
+  queue: addFrom('queue'),
+  protocol: addFrom('protocol'),
+  route: addFrom('route'),
+  router: addFrom('router'),
+  server: addFrom('server'),
+  lib: addFrom('lib'),
+};
+
+/** Sanitize an object for logging: redact embedding/vector arrays. Use before logging objects that may contain embeddings. */
+export function sanitizeForLog(value: unknown): unknown {
+  return sanitizeForLogInternal(value);
+}
+
+function sanitizeForLogInternal(value: unknown): unknown {
+  if (value == null) return value;
+  if (isNumberArray(value)) return `[redacted: ${value.length} values]`;
+  if (Array.isArray(value)) {
+    if (value.length > 0 && typeof value[0] === 'number') return `[redacted: ${value.length} values]`;
+    return value.map(sanitizeForLogInternal);
+  }
+  if (typeof value === 'object' && value.constructor === Object) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (EMBEDDING_KEYS.has(k) || isNumberArray(v)) {
+        out[k] = isNumberArray(v) ? `[redacted: ${v.length} values]` : sanitizeForLogInternal(v);
+      } else if (v != null && typeof v === 'object' && !Array.isArray(v) && v.constructor === Object) {
+        const nested = v as Record<string, unknown>;
+        if (Object.keys(nested).every((key) => isNumberArray(nested[key]))) {
+          out[k] = Object.fromEntries(
+            Object.entries(nested).map(([key, val]) => [
+              key,
+              isNumberArray(val) ? `[redacted: ${val.length} values]` : val,
+            ])
+          );
+        } else {
+          out[k] = sanitizeForLogInternal(v);
+        }
+      } else {
+        out[k] = sanitizeForLogInternal(v);
+      }
+    }
+    return out;
+  }
+  return value;
+}
 
 export type { LogLevel };
 

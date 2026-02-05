@@ -5,8 +5,8 @@
  * Archives intents that are no longer valid (expired job postings, past events, etc.)
  */
 
-import db from '../../../lib/db';
-import { intents, users } from '../../../lib/schema';
+import db from '../../../lib/drizzle/drizzle';
+import { intents, users } from '../../../schemas/database.schema';
 import { isNull, eq } from 'drizzle-orm';
 import { traceableStructuredLlm } from '../../../lib/agents';
 import { z } from 'zod';

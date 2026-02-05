@@ -3,13 +3,14 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers, useDiscover } from "@/contexts/APIContext";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { User } from "@/lib/types";
 import { DiscoverStake } from "@/services/discover";
 import ClientLayout from "@/components/ClientLayout";
+import { ContentContainer } from "@/components/layout";
 
 interface UserProfilePageProps {
   params: Promise<{
@@ -76,10 +77,8 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
   if (authLoading || isLoading) {
     return (
       <ClientLayout>
-        <div className="bg-white border border-gray-800 rounded-sm p-8">
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-          </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         </div>
       </ClientLayout>
     );
@@ -89,17 +88,15 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
   if (error) {
     return (
       <ClientLayout>
-        <div className="bg-white border border-gray-800 rounded-sm p-8">
-          <div className="text-center py-12">
-            <h2 className="text-xl font-bold text-red-600 mb-2 font-ibm-plex-mono">Error</h2>
-            <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
-            <button
-              onClick={() => router.back()}
-              className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 font-ibm-plex-mono"
-            >
-              Go Back
-            </button>
-          </div>
+        <div className="text-center py-12">
+          <h2 className="text-xl font-bold text-red-600 mb-2 font-ibm-plex-mono">Error</h2>
+          <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
+          <button
+            onClick={() => router.back()}
+            className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 font-ibm-plex-mono"
+          >
+            Go Back
+          </button>
         </div>
       </ClientLayout>
     );
@@ -109,19 +106,15 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
 
   return (
     <ClientLayout>
-      <div className="bg-white border border-gray-800 rounded-sm">
-          {/* Back button */}
-          <div className="border-b border-gray-200 px-6 py-4">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-black transition-colors font-ibm-plex-mono text-sm"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back
-            </button>
-          </div>
+      {/* Sticky header - full width */}
+      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
+        <button onClick={() => router.back()} className="text-gray-600 hover:text-black transition-colors text-xl mr-2">←</button>
+        <h1 className="font-ibm-plex-mono text-lg font-bold text-black">{profileData.name}</h1>
+      </div>
 
-          <div className="p-8 space-y-8">
+      {/* Scrollable content - centered */}
+      <div className="px-6 lg:px-8 py-6">
+        <ContentContainer className="space-y-8">
             {/* Avatar, Name, and Social Icons */}
             <div className="flex items-start gap-4">
               <Image
@@ -202,6 +195,15 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
               )}
             </div>
 
+            {/* Message CTA Button */}
+            <button
+              onClick={() => router.push(`/u/${resolvedParams.id}/chat`)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-black text-white rounded-sm hover:bg-gray-800 transition-colors font-ibm-plex-mono text-sm font-medium"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Message
+            </button>
+
             {/* Intro Section */}
             {profileData.intro && (
               <div>
@@ -233,8 +235,8 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </ContentContainer>
+      </div>
     </ClientLayout>
   );
 }

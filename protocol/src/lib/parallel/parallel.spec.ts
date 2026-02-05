@@ -1,10 +1,8 @@
-import * as dotenv from 'dotenv';
-import path from 'path';
-import { searchUser } from './parallel';
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
 
-// Load env
-const envPath = path.resolve(__dirname, '../../../.env.development');
-dotenv.config({ path: envPath });
+import { searchUser } from './parallel';
 
 async function runTests() {
     console.log("🧪 Starting Parallel Client Tests...\n");

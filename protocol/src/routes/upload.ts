@@ -1,12 +1,9 @@
 import { Router, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import fs from 'fs';
-import { getUploadsPath } from '../lib/paths';
-import { createUploadClient, cleanupUploadedFiles } from '../lib/uploads';
-import { AvatarUploadResponse } from '../types';
+import { uploadAvatarToS3 } from '../lib/s3';
+import { FILE_SIZE_LIMITS, validateFileTypeByMetadata } from '../lib/uploads.config';
 
 const router = Router();
 
@@ -14,30 +11,52 @@ const router = Router();
 // FILE UPLOAD ROUTES
 // ============================================================================
 // This router handles direct file upload operations:
-// - Avatar uploads for user profiles
-// - Uses multer for file handling and validation
+// - Avatar uploads for user profiles (to S3)
 // ============================================================================
+
+// Use memory storage for avatar uploads (will be uploaded to S3)
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: FILE_SIZE_LIMITS.AVATAR,
+    files: 1
+  },
+  fileFilter: (req, file, cb) => {
+    // Only validate file type here; size is validated by multer limits
+    const validation = validateFileTypeByMetadata(
+      file.originalname,
+      file.mimetype,
+      'avatar'
+    );
+    if (validation.isValid) {
+      cb(null, true);
+    } else {
+      cb(new Error(validation.message || 'Invalid file type'));
+    }
+  }
+});
 
 // Upload avatar endpoint
 router.post('/avatar',
   authenticatePrivy,
-  (req: AuthRequest, res: Response, next: any) => {
-    try {
-      const upload = createUploadClient('avatar', req.user!.id);
-      upload.single('avatar')(req as any, res as any, next);
-    } catch (error) {
-      next(error);
-    }
-  },
+  avatarUpload.single('avatar'),
   async (req: AuthRequest, res: Response) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      // Return the full path including userId segment to match the actual file location
+
+      const extension = path.extname(req.file.originalname).slice(1).toLowerCase() || 'png';
+      const avatarUrl = await uploadAvatarToS3(
+        req.file.buffer,
+        req.user!.id,
+        extension,
+        req.file.mimetype
+      );
+
       return res.json({ 
         message: 'Avatar uploaded successfully',
-        avatarFilename: `${req.user!.id}/${req.file.filename}`
+        avatarUrl
       });
     } catch (error) {
       console.error('Avatar upload error:', error);
@@ -46,4 +65,4 @@ router.post('/avatar',
   }
 );
 
-export default router; 
+export default router;

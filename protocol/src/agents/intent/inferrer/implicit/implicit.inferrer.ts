@@ -5,6 +5,8 @@ import { ImplicitInferrerOutputSchema, ImplicitIntent } from "./implicit.inferre
 import { log } from "../../../../lib/log";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
+const logger = log.agent.from("agents/intent/inferrer/implicit/implicit.inferrer.ts");
+
 // TODO: (@yanekyuk) Currently this returns "Expand my professional network in the tech community to gain insights into AI applications in AdTech"
 //                    AdTech Part is too much specificity.
 const SYSTEM_PROMPT = `
@@ -66,7 +68,7 @@ export class ImplicitInferrer extends BaseLangChainAgent {
     profileContext: string,
     additionalContext: string
   ): Promise<ImplicitIntent | null> {
-    log.info(`[ImplicitInferrer] Inferring intent from opportunity context...`);
+    logger.info(`[ImplicitInferrer] Inferring intent from opportunity context...`);
 
     const prompt = `
       # User Profile
@@ -88,14 +90,14 @@ export class ImplicitInferrer extends BaseLangChainAgent {
       const output = result.structuredResponse as z.infer<typeof ImplicitInferrerOutputSchema>;
 
       if (output.intent.confidence < 70) {
-        log.info(`[ImplicitInferrer] Low confidence (${output.intent.confidence}), skipping.`);
+        logger.info(`[ImplicitInferrer] Low confidence (${output.intent.confidence}), skipping.`);
         return null;
       }
 
-      log.info(`[ImplicitInferrer] Inferred intent: "${output.intent.payload}"`);
+      logger.info(`[ImplicitInferrer] Inferred intent: "${output.intent.payload}"`);
       return output.intent;
     } catch (error) {
-      log.error("[ImplicitInferrer] Error inferring implicit intent", { error });
+      logger.error("[ImplicitInferrer] Error inferring implicit intent", { error });
       return null;
     }
   }

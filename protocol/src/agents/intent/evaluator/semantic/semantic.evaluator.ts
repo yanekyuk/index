@@ -6,6 +6,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../../lib/log";
 import { SemanticVerifierOutput } from "./semantic.evaluator.types";
 
+const logger = log.agent.from("agents/intent/evaluator/semantic/semantic.evaluator.ts");
+
 const SYSTEM_PROMPT = `
 You are the Semantic Verification Engine (Illocutionary Layer).
 
@@ -84,7 +86,7 @@ export class SemanticVerifierAgent extends BaseLangChainAgent {
    * @param context - The User Profile as a JSON string.
    */
   async run(content: string, context: string): Promise<SemanticVerifierOutput | null> {
-    log.info(`[SemanticVerifier] Verifying felicity conditions...`);
+    logger.info(`[SemanticVerifier] Verifying felicity conditions...`);
 
     const prompt = `
       # User Profile (Context)
@@ -105,10 +107,10 @@ export class SemanticVerifierAgent extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as SemanticVerifierOutput;
 
-      log.info(`[SemanticVerifier] Verdict: ${output.classification} with scores of auth ${output.felicity_scores.authority}, sincerity ${output.felicity_scores.sincerity}, and clarity ${output.felicity_scores.clarity}. Flags: ${output.flags.join(', ')}. Reasoning: ${output.reasoning}`);
+      logger.info(`[SemanticVerifier] Verdict: ${output.classification} with scores of auth ${output.felicity_scores.authority}, sincerity ${output.felicity_scores.sincerity}, and clarity ${output.felicity_scores.clarity}. Flags: ${output.flags.join(', ')}. Reasoning: ${output.reasoning}`);
       return output;
     } catch (error) {
-      log.error("[SemanticVerifier] Error during execution", { error });
+      logger.error("[SemanticVerifier] Error during execution", { error });
       return null;
     }
   }

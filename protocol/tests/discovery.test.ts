@@ -21,7 +21,7 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 console.log('process.env', process.env);
 
 import { v4 as uuidv4 } from 'uuid';
-import db from '../src/lib/db';
+import db from '../src/lib/drizzle/drizzle';
 import { 
   users, 
   indexes, 
@@ -32,7 +32,7 @@ import {
   intentStakeItems,
   userConnectionEvents,
   agents
-} from '../src/lib/schema';
+} from '../src/schemas/database.schema';
 import { discoverUsers } from '../src/lib/discover';
 import { eq, inArray } from 'drizzle-orm';
 

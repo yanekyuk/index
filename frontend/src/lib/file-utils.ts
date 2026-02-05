@@ -1,13 +1,10 @@
 // Utility functions for file URL generation
 
-const getBaseUrl = () => {
-  return process.env.NEXT_PUBLIC_STATIC_URL || 'http://localhost:3001';
-};
-
 /**
  * Generate URL for avatar files
+ * Returns relative URLs for Next.js Image optimization
  * @param params - Object containing avatar and id/name properties
- * @returns Full URL to the avatar file
+ * @returns URL to the avatar file
  */
 export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name?: string } | null): string => {
   
@@ -19,15 +16,19 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
     return `https://api.dicebear.com/9.x/shapes/png?seed=${seed}`;
   }
   
-  // If it's already a full URL, return as is
+  // Full external URLs (dicebear, slack, etc.) - return as is
   if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
     return avatar;
   }
   
-  // Remove leading slash if present
-  const cleanFilename = avatar.startsWith('/') ? avatar.slice(1) : avatar;
+  // Storage URLs - return as is
+  if (avatar.startsWith('/storage/')) {
+    return avatar;
+  }
   
-  return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
+  // Relative path (e.g., "avatars/userId/file.jpg") - prepend /storage/
+  const cleanPath = avatar.startsWith('/') ? avatar.slice(1) : avatar;
+  return `/storage/${cleanPath}`;
 };
 
 

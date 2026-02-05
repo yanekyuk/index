@@ -64,9 +64,7 @@ export const validateFileUploads = (files: Express.Multer.File[], uploadType: Up
 
 export function createFileFilter(uploadContext: UploadContext) {
   return (req: any, file: Express.Multer.File, cb: any) => {
-    // Map upload contexts to validation types
-    const validationType: UploadType = uploadContext === 'avatar' ? 'avatar' : 'general';
-    const validation = validateFileType(file, validationType);
+    const validation = validateFileType(file, 'general');
     if (validation.isValid) {
       cb(null, true);
     } else {
@@ -211,19 +209,11 @@ export async function cleanupUploadedFiles(files: Express.Multer.File[]): Promis
 
 export function createUploadClient(
   uploadContext: UploadContext,
-  userId?: string
+  userId: string
 ): multer.Multer {
-  const isAvatar = uploadContext === 'avatar';
-  
-  // Validate userId is provided for upload types that require it
-  if (!userId) {
-    throw new Error(`userId is required for upload context: ${uploadContext}`);
-  }
-  
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      const uploadDir = isAvatar ? 'avatars' : 'files';
-      const targetDir = getUploadsPath(uploadDir, userId);
+      const targetDir = getUploadsPath('files', userId);
       
       if (!fs.existsSync(targetDir)) {
         try {
@@ -247,8 +237,8 @@ export function createUploadClient(
   return multer({
     storage,
     limits: {
-      fileSize: isAvatar ? FILE_SIZE_LIMITS.AVATAR : FILE_SIZE_LIMITS.GENERAL,
-      files: isAvatar ? 1 : MAX_FILES_PER_UPLOAD
+      fileSize: FILE_SIZE_LIMITS.GENERAL,
+      files: MAX_FILES_PER_UPLOAD
     },
     fileFilter
   });

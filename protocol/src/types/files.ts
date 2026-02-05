@@ -17,5 +17,5 @@ export interface FileUploadResponse {
 
 export interface AvatarUploadResponse {
   message: string;
-  avatarFilename: string;
+  avatarUrl: string;
 }

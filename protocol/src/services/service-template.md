@@ -12,8 +12,8 @@ Services are the core business logic layer of the application. They handle data 
 All services should follow this structure:
 
 \`\`\`typescript
-import db from '../lib/db';
-import { myTable, relatedTable } from '../lib/schema';
+import db from '../lib/drizzle/drizzle';
+import { myTable, relatedTable } from '../schemas/database.schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { log } from '../lib/log';
 
@@ -74,7 +74,7 @@ export const myService = new MyService();
 ## Best Practices
 
 ### 1. Database Access
-- Always import \`db\` from \`../lib/db\`.
+- Always import \`db\` from \`../lib/drizzle/drizzle\`.
 - Import tables and types from \`../lib/schema\`.
 - Use \`drizzle-orm\` operators (\`eq\`, \`and\`, \`or\`, etc.) for queries.
 - Prefer `async/await` for all DB operations.

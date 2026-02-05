@@ -1,5 +1,5 @@
-import db from './db';
-import { intents, indexes, indexMembers } from './schema';
+import db from './drizzle/drizzle';
+import { intents, indexes, indexMembers } from '../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import {
   triggerBrokersOnIntentCreated,

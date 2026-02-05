@@ -1,13 +1,11 @@
+/** Config */
+import { config } from "dotenv";
+config({ path: '.env.test' });
+
 import { describe, test, expect, beforeAll, spyOn } from 'bun:test';
-import * as dotenv from 'dotenv';
-import path from 'path';
 import { IntentManager } from './intent.manager';
 import { ImplicitInferrer } from '../inferrer/implicit/implicit.inferrer';
 import { SemanticVerifierAgent } from '../evaluator/semantic/semantic.evaluator';
-
-// Load env
-const envPath = path.resolve(__dirname, '../../../../.env.development');
-dotenv.config({ path: envPath });
 
 // Mock Data for Tests
 const mockProfile = {
