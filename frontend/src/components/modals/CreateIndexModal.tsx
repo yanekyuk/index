@@ -1,67 +1,17 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { X, Globe, Lock } from "lucide-react";
+import { useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { X, Globe, Lock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (index: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => Promise<void>;
 }
-
-interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
-  className?: string;
-  children?: React.ReactNode;
-}
-
-interface DialogTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
-  className?: string;
-  children?: React.ReactNode;
-}
-
-interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
-  className?: string;
-  children?: React.ReactNode;
-}
-
-// Create simple wrapper components for dialog parts
-const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
-  <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-    <Dialog.Content
-      className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
-      {...props}
-    >
-      {children}
-      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </Dialog.Close>
-    </Dialog.Content>
-  </Dialog.Portal>
-);
-
-const DialogHeader = ({ className, children, ...props }: DialogComponentProps) => (
-  <div className={`flex flex-col space-y-1.5 text-center sm:text-left ${className}`} {...props}>
-    {children}
-  </div>
-);
-
-const DialogTitle = ({ className, children, ...props }: DialogTitleProps) => (
-  <Dialog.Title className={`text-lg font-semibold leading-none tracking-tight ${className}`} {...props}>
-    {children}
-  </Dialog.Title>
-);
-
-const DialogDescription = ({ className, children, ...props }: DialogDescriptionProps) => (
-  <Dialog.Description className={`text-sm text-gray-500 ${className}`} {...props}>
-    {children}
-  </Dialog.Description>
-);
 
 export default function CreateIndexModal({ open, onOpenChange, onSubmit }: CreateIndexModalProps) {
   const [name, setName] = useState('');
@@ -71,11 +21,8 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!name.trim() || isSubmitting) {
-      return;
-    }
-    
+    if (!name.trim() || isSubmitting) return;
+
     setIsSubmitting(true);
     try {
       await onSubmit({ name: name.trim(), prompt: prompt.trim() || undefined, joinPolicy });
@@ -85,127 +32,109 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
       onOpenChange(false);
     } catch (error) {
       console.error('Error creating index:', error);
-      // You might want to show an error state here
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!isSubmitting) {
+      if (!open) {
+        setName('');
+        setPrompt('');
+        setJoinPolicy('invite_only');
+      }
+      onOpenChange(open);
+    }
+  };
+
   return (
-    <Dialog.Root open={open} onOpenChange={(open) => !isSubmitting && onOpenChange(open)}>
-      <DialogContent className="max-w-lg mx-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Network</DialogTitle>
-          <DialogDescription>
-            Create a new network to organize and share your knowledge base.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-black">
-                <div className="mb-2">Network Name</div>
-              </label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-                placeholder="Enter network name..."
-                required
-                minLength={1}
-                disabled={isSubmitting}
-              />
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg w-full max-w-md z-[100] focus:outline-none">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <Dialog.Title className="text-lg font-bold text-black">
+                Create Network
+              </Dialog.Title>
+              <Dialog.Close className="p-1 rounded-sm hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="h-4 w-4" />
+              </Dialog.Close>
             </div>
 
-            <div>
-              <label htmlFor="prompt" className="text-md font-medium font-ibm-plex-mono text-black">
-                <div className="mb-2">Agent instructions (Optional)</div>
-              </label>
-              <Textarea
-                id="prompt"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                className="resize-none"
-                placeholder="Define what people can share in this network..."
-                rows={3}
-                disabled={isSubmitting}
-              />
-            </div>
-
-            <div>
-              <label className="text-md font-medium font-ibm-plex-mono text-black">
-                <div className="mb-2">Who can join</div>
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setJoinPolicy('anyone')}
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Name</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Network name"
                   disabled={isSubmitting}
-                  className={`border-2 p-3 rounded-md text-left transition-all ${
-                    joinPolicy === 'anyone'
-                      ? 'border-[#007EFF] bg-white' 
-                      : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? "text-[#007EFF]" : "text-gray-600"}`} />
-                    <h4 className={`text-sm font-medium font-ibm-plex-mono ${joinPolicy === 'anyone' ? "text-black" : "text-[#666]"}`}>
-                      Anyone can join
-                    </h4>
-                  </div>
-                  <p className="text-xs text-gray-600 font-ibm-plex-mono">
-                    People can discover and join freely.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setJoinPolicy('invite_only')}
-                  disabled={isSubmitting}
-                  className={`border-2 p-3 rounded-md text-left transition-all ${
-                    joinPolicy === 'invite_only'
-                      ? 'border-[#007EFF] bg-white' 
-                      : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
-                  } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? "text-[#007EFF]" : "text-gray-600"}`} />
-                    <h4 className={`text-sm font-medium font-ibm-plex-mono ${joinPolicy === 'invite_only' ? "text-black" : "text-[#666]"}`}>
-                      Private
-                    </h4>
-                  </div>
-                  <p className="text-xs text-gray-600 font-ibm-plex-mono">
-                    Only people with the invitation link can join.
-                  </p>
-                </button>
+                  autoFocus
+                />
               </div>
-            </div>
 
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline" 
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={!name.trim() || isSubmitting}
-              >
-                {isSubmitting ? 'Creating...' : 'Create'}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </DialogContent>
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Description <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="What people can share in this network..."
+                  rows={3}
+                  disabled={isSubmitting}
+                  className="resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">Who can join</label>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setJoinPolicy('anyone')}
+                    disabled={isSubmitting}
+                    className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
+                      joinPolicy === 'anyone' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                    } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? 'text-black' : 'text-gray-400'}`} />
+                    <div>
+                      <p className="text-sm font-medium text-black">Public</p>
+                      <p className="text-xs text-gray-500">Anyone can discover and join</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJoinPolicy('invite_only')}
+                    disabled={isSubmitting}
+                    className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${
+                      joinPolicy === 'invite_only' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                    } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? 'text-black' : 'text-gray-400'}`} />
+                    <div>
+                      <p className="text-sm font-medium text-black">Private</p>
+                      <p className="text-xs text-gray-500">Only people with invitation link</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!name.trim() || isSubmitting}>
+                  {isSubmitting ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
     </Dialog.Root>
   );
-} 
+}

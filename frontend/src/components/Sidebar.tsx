@@ -404,7 +404,7 @@ export default function Sidebar() {
                   }}
                 >
                   <UserIcon className="h-4 w-4 mr-2" />
-                  Profile
+                  Profile Settings
                 </button>
                 <button
                   className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
