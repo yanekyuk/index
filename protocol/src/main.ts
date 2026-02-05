@@ -1,4 +1,5 @@
 import { ChatController } from './controllers/chat.controller';
+import { IndexController } from './controllers/index.controller';
 import { IntentController } from './controllers/intent.controller';
 import { OpportunityController, IndexOpportunityController } from './controllers/opportunity.controller';
 import { ChatDatabaseAdapter } from './adapters/database.adapter';
@@ -11,7 +12,7 @@ import { log } from './lib/log';
 const PORT = 3003;
 const GLOBAL_PREFIX = '/v2';
 
-const logger = log.server.from("main.ts");
+const logger = log.server.from("main");
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
@@ -38,6 +39,7 @@ logger.info('Initializing V2 Server...');
 const controllerInstances = new Map();
 controllerInstances.set(ProfileController, new ProfileController());
 controllerInstances.set(ChatController, new ChatController());
+controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
 const opportunityDb: OpportunityControllerDatabase = new ChatDatabaseAdapter() as OpportunityControllerDatabase;
 controllerInstances.set(OpportunityController, new OpportunityController(opportunityDb));
