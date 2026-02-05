@@ -215,7 +215,8 @@ export class ChatAgent {
       configuration: {
         baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
         apiKey: process.env.OPENROUTER_API_KEY
-      }
+      },
+      maxTokens: 4096,
     });
 
     // Create tools bound to this user context
