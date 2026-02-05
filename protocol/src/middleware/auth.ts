@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { privyClient } from '../lib/privy';
 import db from '../lib/drizzle/drizzle';
 import { users } from '../schemas/database.schema';
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { indexService } from '../services/index.service';
 
 interface AuthRequest extends Request {
   user?: {
@@ -166,6 +167,14 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
 
     if (userData.deletedAt) {
       return res.status(401).json({ error: 'Account deactivated' });
+    }
+
+    // Ensure user has a personal index ("My Own Private Index") - create if missing
+    try {
+      await indexService.ensurePersonalIndex(userData.id);
+    } catch (err) {
+      console.error('Failed to ensure personal index for user', userData.id, err);
+      // Continue with auth; next request or migration can retry
     }
 
     req.user = {

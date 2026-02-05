@@ -9,7 +9,6 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll } from "bun:test";
-import { HumanMessage } from "@langchain/core/messages";
 import { ChatGraphFactory } from "./chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
@@ -71,6 +70,9 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
         memberCount: 0,
         intentCount: 0,
       }) as any,
+    softDeleteIndex: noop,
+    deleteProfile: noop,
+    updateOpportunityStatus: noopNull,
   } as unknown as ChatGraphCompositeDatabase;
 }
 
@@ -118,57 +120,5 @@ describe("ChatGraphFactory", () => {
       expect(graph).toBeDefined();
       expect(typeof graph.streamEvents).toBe("function");
     });
-  });
-
-  describe("Graph Invocation", () => {
-    it("should invoke graph with a simple message and return responseText", async () => {
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: testUserId,
-        messages: [new HumanMessage("Hello, how are you?")],
-      });
-
-      expect(result).toBeDefined();
-      expect(result.responseText).toBeDefined();
-      expect(typeof result.responseText).toBe("string");
-      expect(result.responseText!.length).toBeGreaterThan(0);
-      expect(result.messages).toBeDefined();
-      expect(Array.isArray(result.messages)).toBe(true);
-      expect(result.shouldContinue).toBe(false);
-    }, 120000);
-
-    it("should not leak internal pipeline JSON in response", async () => {
-      // Regression: streamEvents was emitting nested model output (classification, felicity_scores,
-      // actions, indexScore) to the user. The invoke path uses agent.run() directly, so it was
-      // never affected - but we verify the graph output is clean for consistency.
-      const graph = factory.createGraph();
-      const result = await graph.invoke({
-        userId: testUserId,
-        messages: [
-          new HumanMessage(
-            "I want to hire developers for an open-source intent-driven discovery protocol. More details at https://example.com/repo"
-          ),
-        ],
-      });
-
-      expect(result.responseText).toBeDefined();
-      const response = result.responseText!;
-
-      const internalJsonMarkers = [
-        '"classification"',
-        '"felicity_scores"',
-        '"actions"',
-        '"indexScore"',
-        '"memberScore"',
-        '"semantic_entropy"',
-        '"referential_anchor"',
-        '"intentMode"',
-        '"referentialAnchor"',
-      ];
-
-      for (const marker of internalJsonMarkers) {
-        expect(response).not.toContain(marker);
-      }
-    }, 120000);
   });
 });

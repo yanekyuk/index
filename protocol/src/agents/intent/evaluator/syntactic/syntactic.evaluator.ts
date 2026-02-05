@@ -6,6 +6,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../../lib/log";
 import { SyntacticValidatorOutput } from "./syntactic.evaluator.types";
 
+const logger = log.agent.from("agents/intent/evaluator/syntactic/syntactic.evaluator.ts");
+
 const SYSTEM_PROMPT = `
   You are the Input Validation Gatekeeper for an Intent Protocol.
 
@@ -58,12 +60,12 @@ export class SyntacticValidatorAgent extends BaseLangChainAgent {
    * @param context - (Optional) Unused in this phase, kept for interface consistency.
    */
   async run(content: string): Promise<SyntacticValidatorOutput | null> {
-    log.info(`[InputValidator] Validating input length: ${content.length}`);
+    logger.info(`[InputValidator] Validating input length: ${content.length}`);
 
     // Pre-flight optimization: Auto-fail empty or extremely short strings
     // This saves an LLM call for obvious garbage.
     if (!content || content.trim().length < 5) {
-      log.info(`[InputValidator] Auto-reject: Input too short.`);
+      logger.info(`[InputValidator] Auto-reject: Input too short.`);
       return {
         status: "FAIL",
         language: "unknown",
@@ -81,11 +83,10 @@ export class SyntacticValidatorAgent extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as SyntacticValidatorOutput;
 
-      log.info(`[InputValidator] Validation complete. Status: ${output.status}`);
+      logger.info(`[InputValidator] Validation complete. Status: ${output.status}`);
       return output;
     } catch (error) {
-      console.error(error)
-      log.error("[InputValidator] Error during execution", { error });
+      logger.error("[InputValidator] Error during execution", { error });
       return null;
     }
   }

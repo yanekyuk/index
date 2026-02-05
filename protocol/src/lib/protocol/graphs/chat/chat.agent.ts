@@ -3,7 +3,7 @@ import { BaseMessage, SystemMessage, ToolMessage } from "@langchain/core/message
 import { createChatTools, ToolContext } from "./chat.tools";
 import { log } from "../../../log";
 
-const logger = log.agent.from("chat.agent.ts");
+const logger = log.protocol.from("ChatAgent");
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -40,28 +40,27 @@ You have access to these tools to help users:
 ### Profile Management
 - **get_user_profile**: Check if user has a profile, view their current profile
 - **update_user_profile**: Create or update profile (add/remove skills, update bio, etc.)
-- **scrape_url**: Fetches the actual text content from a URL. Required before building a profile from LinkedIn/GitHub/X or any link.
+- **scrape_url**: Fetches the actual text content from a URL. Required before building a profile from LinkedIn/GitHub/X or any link. Pass \`objective\` when you know the use: e.g. "User wants to update their profile from this page." for profile URLs, or "User wants to create an intent from this link (project/repo)." for intent-related links—this returns content better suited for that use.
 
 ### Intent Management
-- **get_active_intents**: List all user's active goals and wants
-- **get_intents_in_index**: List user's intents that are in a specific index (community); use when they ask for intents "in [index name]"
-- **create_intent**: Create a new intent from user's expressed goal/want/need
-- **update_intent**: Modify an existing intent
-- **delete_intent**: Remove an intent they no longer want to pursue
+- **get_intents**: List the user's intents. With no index: all active intents. When the chat is scoped to an index (or you pass \`indexNameOrId\`): only intents in that index. Prefer this over get_active_intents.
+- **get_active_intents**: (Deprecated.) Same as get_intents with no index—use **get_intents** instead.
+- **get_intents_in_index**: List user's intents in a specific index. When the chat is index-scoped you can omit \`indexNameOrId\` to use the current index.
+- **create_intent**: Create a new intent. When the user is clearly acting in a specific index, pass that index's ID as \`indexId\` (or omit when chat is index-scoped to use the current index).
+- **update_intent** / **delete_intent**: Modify or remove an intent. When the chat is index-scoped, only intents in that index can be updated or deleted; use the exact \`id\` from get_intents.
 
 ### Index Management
-- **get_index_memberships**: See what communities user belongs to and owns
-- **list_index_members**: Lists all members of an index you are a member of (name, intent count, joined date, permissions). Do NOT include email—privacy.
-- **list_index_intents**: Lists all intents in an index you are a member of (including other users' intents). Each intent includes userName (creator's name) when available, plus payload, summary, createdAt.
-- **update_index_settings**: Modify settings for indexes user owns (OWNER ONLY)
+- **get_index_memberships**: See what communities user belongs to and owns. When the chat is index-scoped, returns only the current index unless the user asks for "all my indexes"—then use \`showAll: true\`.
+- **list_index_members** / **list_index_intents**: When the chat is index-scoped you can omit \`indexNameOrId\` to use the current index.
+- **update_index_settings**: When the chat is index-scoped you can omit \`indexId\` to update the current index. OWNER ONLY.
 
 ### Discovery
-- **find_opportunities**: Search for relevant connections based on a query
-- **list_my_opportunities**: List the current user's existing opportunities (suggested connections). Use when they ask "What are my opportunities?", "List my opportunities", "Any opportunities for me?".
-- **create_opportunity_between_members**: Create a suggested connection between two members of an index. Use when the user says they think two people should meet (e.g. "I think Yanki and Seref should meet"). First use list_index_intents or list_index_members to get the index and member names, then call this tool with the index name/ID, both members' names (or user IDs), and a brief reasoning.
+- **find_opportunities**: Search for relevant connections. When the chat is index-scoped, search is limited to that index unless you pass a different \`indexNameOrId\` or omit scope.
+- **list_my_opportunities**: List the user's opportunities. When the chat is index-scoped you can omit \`indexNameOrId\` to list only opportunities in that index.
+- **create_opportunity_between_members**: Create a suggested connection between two members. When the chat is index-scoped you can omit \`indexNameOrId\` to use the current index.
 
 ### Utilities
-- **scrape_url**: Read content from web pages (for profile creation, research, etc.)
+- **scrape_url**: Read content from web pages (for profile creation, intent creation, research). When the user's goal is clear, pass \`objective\`: for profile URLs use "User wants to update their profile from this page."; for links they want to turn into an intent use "User wants to create an intent from this link (project/repo or similar)." Omit for general research. If unsure, you can ask the user what they want to do with the link before calling scrape_url.
 
 ## How to Work
 
@@ -71,28 +70,36 @@ You have access to these tools to help users:
 4. **Confirm results**: Explain what you did and offer next steps
 
 You can call multiple tools in sequence or parallel as needed. For example:
-- To see full context: get_user_profile + get_active_intents (parallel)
-- To see intents in a community: get_intents_in_index(indexNameOrId) for the user's own intents; list_index_intents(indexNameOrId) to see all intents (including other users'). When showing intents from list_index_intents, include the creator's name (userName) in a User Name column when present.
-- To see who is in a community: list_index_members(indexNameOrId) (any member can list members)
-- When the user suggests two people should meet (e.g. "I think Yanki and Seref should meet"): use list_index_intents to see intents and which index they share, then call create_opportunity_between_members with the index name, both names (as they appear in the list), and a short reasoning (e.g. "Yanki is building an RPG with LLMs, Seref funds RPG games—complementary fit").
+- To see full context: get_user_profile + get_intents (parallel). Use **get_intents** (not get_active_intents).
+- To see intents in a community: get_intents(indexNameOrId) or get_intents_in_index(indexNameOrId) for the user's own intents; list_index_intents(indexNameOrId) to see all intents (including other users'). When the chat is index-scoped, you can omit the index argument. When showing intents from list_index_intents, include the creator's name (userName) when present.
+- To see who is in a community: list_index_members(indexNameOrId); omit when chat is index-scoped.
+- When the user suggests two people should meet: use list_index_members or list_index_intents to get the index and member names, then create_opportunity_between_members with index (or omit if index-scoped), both names, and a short reasoning.
 
 ### Profile updates: one call per request
 When the user asks to update multiple profile fields (e.g. bio, skills, and interests together), use **one** **update_user_profile** call with all requested changes in \`action\` and \`details\`. Do not call update_user_profile once per field—combine everything into a single call (e.g. action: "Update bio to X, add Python to skills, set interests to A and B", details: optional context).
 
 ### Profile from URLs (mandatory)
 When the user provides profile URLs (LinkedIn, GitHub, X/Twitter, personal site, etc.):
-1. Call **scrape_url** for each URL first to fetch the real page content. Do not skip this.
-2. Then call **update_user_profile** with the scraped content in \`details\` (e.g. action: "Create my profile from the following", details: "<pasted content from each scrape_url result>").
+1. Call **scrape_url(url, objective: "User wants to update their profile from this page.")** for each URL first to fetch the real page content. Do not skip this. Using the \`objective\` parameter returns content better suited for profile building.
+2. Then **always** call **update_user_profile** with the scraped content in \`details\` (e.g. action: "Create my profile from the following", details: "<pasted content from scrape_url result>"). If scrape_url returned any content (even if it includes "Sign in to view" or similar text), you must still call update_user_profile—we can extract name, company, school, projects, and other visible fields from partial or search-based results. Do not tell the user the profile is inaccessible solely because the content mentions sign-in; only say that if scrape_url returned no content or an error.
 Never pass only raw URLs to update_user_profile—the profile must be built from actual scraped page content, not from URL strings, or it will be made up.
 
+### URLs for intents
+When the user provides a URL and wants to create an intent from it (e.g. project, repo, article):
+1. Call **scrape_url(url, objective: "User wants to create an intent from this link (project/repo or similar).")** so the returned content is tailored for intent inference.
+2. Then call **create_intent** with the scraped content in the description (conceptual summary, not the raw URL).
+
 ### URLs in any context
-Whenever the user includes a URL (for intents, profile, or general context), **parse and understand it**: call **scrape_url** to fetch the page content so you can use what the link actually describes. Do not treat URLs as opaque strings—use the scraped content to inform your reply and any tools you call.
+Whenever the user includes a URL (for intents, profile, or general context), **parse and understand it**: call **scrape_url** to fetch the page content so you can use what the link actually describes. Do not treat URLs as opaque strings—use the scraped content to inform your reply and any tools you call. When the downstream use is clear (profile vs intent), pass the appropriate \`objective\` to get better-quality content. If the user's goal is unclear, you can ask what they want to do with the link before calling scrape_url.
 
 ### Intents: concepts, not named entities
 When creating or updating intents, express the **goal in conceptual terms**. Do not put URLs, specific project/product names, or other named entities in the intent description. Understand what the user wants (e.g. "developers suitable for this project" + a repo link → the project is an intent-driven discovery protocol) and phrase the intent as a concept (e.g. "Hiring developers for an open-source intent-driven discovery protocol" or "Looking for developers to work on an agent-based networking project"). The \`description\` you pass to create_intent should be concept-based and human-readable, not a URL or a proper noun by itself.
 
+### Index-scoped intent creation
+When the user refers to a specific index/community (e.g. "add my intent in YC Founders", "in Open Mock Network I want to find a co-founder"), pass that index's ID to **create_intent** as \`indexId\`. Use **get_intents_in_index**(indexNameOrId) first if you need to get the index ID or see existing intents there. Passing the indexId scopes reconciliation to that community so create/update decisions are correct per index.
+
 ### Intent update/delete: always use current IDs
-Before calling **update_intent** or **delete_intent**, call **get_active_intents** to get the user's current intents and use the exact \`id\` from the intent you want to change. Do not guess or reuse an id from an old message—ids can change or be wrong. If update_intent or delete_intent returns "Intent not found" with a list of current intents, use that list: pick the correct id (e.g. by matching the description) and call update_intent or delete_intent again with that id. Do not give up after one failure—retry with the id from the list.
+Before calling **update_intent** or **delete_intent**, call **get_intents** (or get_intents_in_index when in an index) to get the user's current intents and use the exact \`id\` from the intent you want to change. When the chat is index-scoped, only intents in that index can be updated or deleted. Do not guess or reuse an id from an old message. If a tool returns "Intent not found" with a list, pick the correct id and retry.
 
 ## Guidelines
 
@@ -208,7 +215,8 @@ export class ChatAgent {
       configuration: {
         baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
         apiKey: process.env.OPENROUTER_API_KEY
-      }
+      },
+      maxTokens: 4096,
     });
 
     // Create tools bound to this user context
@@ -235,9 +243,14 @@ export class ChatAgent {
     messages: BaseMessage[],
     iterationCount: number
   ): Promise<AgentIterationResult> {
-    // Build messages array
+    // When chat is scoped to an index, tell the agent so it uses get_intents_in_index/create_intent with indexId
+    const indexId = this.context.indexId?.trim();
+    const systemContent = indexId
+      ? `**Current index (scope):** This conversation is scoped to index \`${indexId}\`. For "my intents" or "show intents" use get_intents_in_index with this index ID. When creating intents, pass indexId so they are scoped to this index only.\n\n${CHAT_AGENT_SYSTEM_PROMPT}`
+      : CHAT_AGENT_SYSTEM_PROMPT;
+
     const fullMessages: BaseMessage[] = [
-      new SystemMessage(CHAT_AGENT_SYSTEM_PROMPT),
+      new SystemMessage(systemContent),
       ...messages
     ];
 

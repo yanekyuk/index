@@ -44,5 +44,5 @@ agents/intent/
 
 ## Related
 
-- **Intent graph**: `../graphs/intent/` — orchestrates these agents (prep → inference → verification → reconciler → executor).
-- **Chat tools**: `../graphs/chat/chat.tools.ts` — create_intent, update_intent, delete_intent invoke the intent graph.
+- **Intent graph**: [../../graphs/intent/README.md](../../graphs/intent/README.md) — orchestrates these agents (prep → inference → verification → reconciler → executor).
+- **Chat tools**: [../../graphs/chat/chat.tools.ts](../../graphs/chat/chat.tools.ts) — create_intent, update_intent, delete_intent invoke the intent graph (update/delete use confirmation flow).

@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import { extractTwitterUsername } from '../snowflake';
 import { IntegrationConfigType } from '../../schemas/database.schema';
 
+const logger = log.lib.from("lib/integrations/social-sync.ts");
+
 export interface SocialSyncResult {
   twitter: {
     usersProcessed: number;
@@ -51,12 +53,12 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
         )
       );
 
-    log.info('Starting Twitter sync', { userCount: twitterIntegrations.length, batchSize: BATCH_SIZE });
+    logger.info('Starting Twitter sync', { userCount: twitterIntegrations.length, batchSize: BATCH_SIZE });
 
     // Process integrations in batches
     for (let i = 0; i < twitterIntegrations.length; i += BATCH_SIZE) {
       const batch = twitterIntegrations.slice(i, i + BATCH_SIZE);
-      log.info(`Processing Twitter sync batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(twitterIntegrations.length / BATCH_SIZE)}`, {
+      logger.info(`Processing Twitter sync batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(twitterIntegrations.length / BATCH_SIZE)}`, {
         batchStart: i + 1,
         batchEnd: Math.min(i + BATCH_SIZE, twitterIntegrations.length),
         totalUsers: twitterIntegrations.length,
@@ -72,7 +74,7 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
         stats.errors += batchResult.errors;
       } catch (error) {
         stats.errors += batch.length;
-        log.error('Twitter sync batch error', {
+        logger.error('Twitter sync batch error', {
           batchStart: i + 1,
           batchSize: batch.length,
           error: (error as Error).message
@@ -80,10 +82,10 @@ export async function syncAllTwitterUsers(): Promise<SocialSyncResult['twitter']
       }
     }
 
-    log.info('Twitter sync complete', stats);
+    logger.info('Twitter sync complete', stats);
     return stats;
   } catch (error) {
-    log.error('Twitter sync batch error', { error: (error as Error).message });
+    logger.error('Twitter sync batch error', { error: (error as Error).message });
     return stats;
   }
 }
@@ -111,7 +113,7 @@ export async function enrichAllUsers(): Promise<SocialSyncResult['enrichment']> 
       user => user.socials?.linkedin || user.socials?.x
     );
 
-    log.info('Starting user enrichment', { userCount: eligibleUsers.length });
+    logger.info('Starting user enrichment', { userCount: eligibleUsers.length });
 
     for (const user of eligibleUsers) {
       try {
@@ -123,24 +125,24 @@ export async function enrichAllUsers(): Promise<SocialSyncResult['enrichment']> 
           if (result.locationUpdated) stats.locationUpdated++;
         } else {
           stats.errors++;
-          log.warn('User enrichment failed', { userId: user.id, error: result.error });
+          logger.warn('User enrichment failed', { userId: user.id, error: result.error });
         }
       } catch (error) {
         stats.errors++;
-        log.error('User enrichment error', { userId: user.id, error: (error as Error).message });
+        logger.error('User enrichment error', { userId: user.id, error: (error as Error).message });
       }
     }
 
-    log.info('User enrichment complete', stats);
+    logger.info('User enrichment complete', stats);
     return stats;
   } catch (error) {
-    log.error('User enrichment batch error', { error: (error as Error).message });
+    logger.error('User enrichment batch error', { error: (error as Error).message });
     return stats;
   }
 }
 
 export async function syncAllSocialMedia(): Promise<SocialSyncResult> {
-  log.info('Starting full social media sync');
+  logger.info('Starting full social media sync');
 
   const [twitter, enrichment] = await Promise.all([
     syncAllTwitterUsers(),
@@ -163,15 +165,15 @@ export async function triggerSocialSync(userId: string, socialType: 'twitter' | 
   setImmediate(async () => {
     try {
       if (socialType === 'twitter') {
-        log.info('Triggering Twitter sync (profile update)', { userId });
+        logger.info('Triggering Twitter sync (profile update)', { userId });
         // For profile update trigger, fetch all tweets (no timestamp filter)
         await syncTwitterUser(userId, null);
       } else if (socialType === 'enrichment') {
-        log.info('Triggering enrichment sync', { userId });
+        logger.info('Triggering enrichment sync', { userId });
         await enrichUserProfile(userId); // Includes intro generation and intent generation from biography
       }
     } catch (error) {
-      log.error('Social sync trigger error', { userId, socialType, error: (error as Error).message });
+      logger.error('Social sync trigger error', { userId, socialType, error: (error as Error).message });
     }
   });
 }
@@ -193,7 +195,7 @@ async function ensureTwitterIntegration(userId: string, twitterUrl: string): Pro
   try {
     const username = extractTwitterUsername(twitterUrl);
     if (!username) {
-      log.warn('Invalid Twitter URL format', { userId, twitterUrl });
+      logger.warn('Invalid Twitter URL format', { userId, twitterUrl });
       return null;
     }
 
@@ -226,7 +228,7 @@ async function ensureTwitterIntegration(userId: string, twitterUrl: string): Pro
         .where(eq(userIntegrations.id, existing[0].id))
         .returning();
 
-      log.info('Updated Twitter integration', { userId, integrationId: updated.id, username });
+      logger.info('Updated Twitter integration', { userId, integrationId: updated.id, username });
       return updated;
     } else {
       // Create new integration
@@ -240,11 +242,11 @@ async function ensureTwitterIntegration(userId: string, twitterUrl: string): Pro
         })
         .returning();
 
-      log.info('Created Twitter integration', { userId, integrationId: created.id, username });
+      logger.info('Created Twitter integration', { userId, integrationId: created.id, username });
       return created;
     }
   } catch (error) {
-    log.error('Failed to ensure Twitter integration', { userId, error: (error as Error).message });
+    logger.error('Failed to ensure Twitter integration', { userId, error: (error as Error).message });
     return null;
   }
 }
@@ -271,7 +273,7 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
         .limit(1);
 
       if (userRecords.length === 0) {
-        log.warn('User not found for enrichment check', { userId });
+        logger.warn('User not found for enrichment check', { userId });
         return;
       }
 
@@ -284,13 +286,13 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
         .limit(1);
 
       if (existingProfile.length > 0) {
-        log.info('User has a profile (onboarded), skipping enrichment', { userId });
+        logger.info('User has a profile (onboarded), skipping enrichment', { userId });
         return;
       }
 
       // Check if enrichment condition is met: name exists AND email exists
       if (!user.name || !user.email) {
-        log.info('Enrichment condition not met: missing name or email', { userId });
+        logger.info('Enrichment condition not met: missing name or email', { userId });
         return;
       }
 
@@ -301,7 +303,7 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
       const existingHash = onboarding.enrichmentHash;
       // Only enrich if we haven't enriched for this name+email combination before
       if (existingHash === currentHash) {
-        log.info('Enrichment already done for this name+email combination', { userId, hash: currentHash });
+        logger.info('Enrichment already done for this name+email combination', { userId, hash: currentHash });
         return;
       }
 
@@ -327,7 +329,7 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
         .limit(1);
       if (verifyRecords.length === 0) {
-        log.warn('User not found after hash update', { userId });
+        logger.warn('User not found after hash update', { userId });
         return;
       }
       const verifyUser = verifyRecords[0];
@@ -348,25 +350,25 @@ export async function checkAndTriggerEnrichment(userId: string): Promise<void> {
       const hashWasUpdated = verifyHash === currentHash && existingHash !== currentHash;
 
       if (hashWasUpdated && verifyProfile.length === 0 && verifyUser.name && verifyUser.email) {
-        log.info('Enrichment condition met, triggering enrichment', { userId, hash: currentHash });
+        logger.info('Enrichment condition met, triggering enrichment', { userId, hash: currentHash });
         await triggerSocialSync(userId, 'enrichment');
       } else {
         if (verifyHash !== currentHash) {
-          log.info('Enrichment hash was updated by another process, skipping enrichment', {
+          logger.info('Enrichment hash was updated by another process, skipping enrichment', {
             userId,
             expectedHash: currentHash,
             actualHash: verifyHash
           });
         } else if (!hashWasUpdated && existingHash === currentHash) {
-          log.info('Enrichment hash was already set before update, skipping enrichment', { userId, hash: currentHash });
+          logger.info('Enrichment hash was already set before update, skipping enrichment', { userId, hash: currentHash });
         } else if (verifyUser.intro) {
-          log.info('User customized intro during enrichment check, skipping enrichment', { userId });
+          logger.info('User customized intro during enrichment check, skipping enrichment', { userId });
         } else {
-          log.info('Enrichment condition no longer met, skipping enrichment', { userId });
+          logger.info('Enrichment condition no longer met, skipping enrichment', { userId });
         }
       }
     } catch (error) {
-      log.error('Enrichment check error', { userId, error: (error as Error).message });
+      logger.error('Enrichment check error', { userId, error: (error as Error).message });
     }
   });
 }
@@ -405,10 +407,10 @@ export function checkAndTriggerSocialSync(
               isNull(userIntegrations.deletedAt)
             )
           );
-        log.info('Soft-deleted Twitter integration', { userId });
+        logger.info('Soft-deleted Twitter integration', { userId });
       }
     } catch (error) {
-      log.error('Error managing Twitter integration', { userId, error: (error as Error).message });
+      logger.error('Error managing Twitter integration', { userId, error: (error as Error).message });
     }
   });
 
@@ -426,7 +428,7 @@ export async function migrateTwitterUsersToIntegrations(): Promise<{ migrated: n
   let errors = 0;
 
   try {
-    log.info('Starting Twitter users migration to integrations');
+    logger.info('Starting Twitter users migration to integrations');
 
     // Get all users with Twitter URL
     const allUsersWithTwitter = await db.select({
@@ -461,7 +463,7 @@ export async function migrateTwitterUsersToIntegrations(): Promise<{ migrated: n
       (row) => row.socials && (row.socials as any).x && !existingUserIds.has(row.id)
     );
 
-    log.info('Found users to migrate', { count: usersToMigrate.length });
+    logger.info('Found users to migrate', { count: usersToMigrate.length });
 
     for (const row of usersToMigrate) {
       try {
@@ -471,21 +473,21 @@ export async function migrateTwitterUsersToIntegrations(): Promise<{ migrated: n
         if (integration) {
           migrated++;
           if (migrated % 100 === 0) {
-            log.info('Migration progress', { migrated, total: usersToMigrate.length });
+            logger.info('Migration progress', { migrated, total: usersToMigrate.length });
           }
         } else {
           errors++;
         }
       } catch (error) {
         errors++;
-        log.error('Migration error for user', { userId: row.id, error: (error as Error).message });
+        logger.error('Migration error for user', { userId: row.id, error: (error as Error).message });
       }
     }
 
-    log.info('Twitter users migration complete', { migrated, errors, total: usersToMigrate.length });
+    logger.info('Twitter users migration complete', { migrated, errors, total: usersToMigrate.length });
     return { migrated, errors };
   } catch (error) {
-    log.error('Twitter users migration failed', { error: (error as Error).message });
+    logger.error('Twitter users migration failed', { error: (error as Error).message });
     return { migrated, errors };
   }
 }

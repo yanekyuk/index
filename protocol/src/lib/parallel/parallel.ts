@@ -1,5 +1,6 @@
 import Parallel from 'parallel-web';
 import { log } from '../log';
+const logger = log.lib.from("lib/parallel/parallel.ts");
 
 const PARALLEL_API_URL = 'https://api.parallel.ai/v1beta/search';
 const PARALLELS_API_KEY = process.env.PARALLELS_API_KEY || '';
@@ -80,23 +81,37 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
 }
 
 /**
+ * Options for URL content extraction (objective-aware scraping).
+ */
+export interface ExtractUrlContentOptions {
+  /**
+   * Optional natural-language objective (e.g. "create an intent from this project/repo",
+   * "update my profile from this page"). When provided, the extract API may tailor content.
+   */
+  objective?: string;
+}
+
+/**
  * Extracts content from a URL using Parallel.ai API.
  * @param url The URL to extract content from
+ * @param options Optional. Pass objective to get content tailored for intent or profile use.
  * @returns The extracted content as a string, or null if extraction failed
  */
-export async function extractUrlContent(url: string): Promise<string | null> {
+export async function extractUrlContent(url: string, options?: ExtractUrlContentOptions): Promise<string | null> {
   if (!PARALLELS_API_KEY) {
     throw new Error('PARALLELS_API_KEY not configured');
   }
 
+  const objective = options?.objective?.trim() || 'all';
+
   try {
-    log.info('Extracting URL content', { url });
+    logger.info('Extracting URL content', { url, hasObjective: !!options?.objective });
     
     const extract = await parallelClient.beta.extract({
       urls: [url],
       excerpts: true,
       full_content: true,
-      objective: 'all',
+      objective,
       fetch_policy: {
         disable_cache_fallback: false,
         max_age_seconds: 5184000, // 60 days
@@ -104,17 +119,17 @@ export async function extractUrlContent(url: string): Promise<string | null> {
       },
     });
     
-    log.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
+    logger.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
     
     if (extract.results && extract.results.length > 0) {
       const result = extract.results[0];
       // Access content from result - check common property names
       const content = (result as any).content || (result as any).excerpts?.[0] || (result as any).excerpt || (result as any).markdown || null;
-      log.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
+      logger.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
       return content;
     }
 
-    log.warn('No results in extract response', { url, extract });
+    logger.warn('No results in extract response', { url, extract });
     return null;
   } catch (error) {
     const errorDetails = error instanceof Error ? {
@@ -122,7 +137,7 @@ export async function extractUrlContent(url: string): Promise<string | null> {
       name: error.name,
       stack: error.stack,
     } : { error };
-    log.error('Failed to extract URL content', { url, error: errorDetails });
+    logger.error('Failed to extract URL content', { url, error: errorDetails });
     return null;
   }
 }

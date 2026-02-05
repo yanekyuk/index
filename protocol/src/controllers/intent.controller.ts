@@ -8,6 +8,9 @@ import { IntentDatabaseAdapter } from '../adapters/database.adapter';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { log } from '../lib/log';
+
+const logger = log.controller.from('intent');
 
 @Controller('/intents')
 export class IntentController {
@@ -30,6 +33,7 @@ export class IntentController {
   @Post('/process')
   @UseGuards(AuthGuard)
   async process(req: Request, user: AuthenticatedUser) {
+    logger.info('Intent process requested', { userId: user.id });
     // 1. Parse request body for content
     let content: string | undefined;
     try {

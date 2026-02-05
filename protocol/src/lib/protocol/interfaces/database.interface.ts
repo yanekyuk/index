@@ -732,6 +732,22 @@ export interface Database {
     data: UpdateIndexSettingsData
   ): Promise<OwnedIndex>;
 
+  /**
+   * Soft-delete an index (set deletedAt).
+   * Caller must ensure index is not personal and has no other members.
+   *
+   * @param indexId - The index to soft-delete
+   */
+  softDeleteIndex(indexId: string): Promise<void>;
+
+  /**
+   * Delete a user's profile (removes profile row).
+   * Used after confirmation in chat tools.
+   *
+   * @param userId - User whose profile to delete
+   */
+  deleteProfile(userId: string): Promise<void>;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // HyDE Document Operations (Opportunity Redesign)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -942,6 +958,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createOpportunity'
   | 'opportunityExistsBetweenActors'
   | 'getOpportunitiesForUser'
+  | 'updateOpportunityStatus'
   // HyDE graph (used by OpportunityGraph)
   | 'getHydeDocument'
   | 'getHydeDocumentsForSource'
@@ -964,6 +981,8 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getIndexIntentsForOwner'
   | 'getIndexIntentsForMember'
   | 'updateIndexSettings'
+  | 'softDeleteIndex'
+  | 'deleteProfile'
 >;
 
 /**
@@ -1027,11 +1046,12 @@ export type IntentExecutorDatabase = Pick<
 
 /**
  * Database interface narrowed for Intent Graph operations.
- * Provides state population (getActiveIntents) and action execution (create/update/archive).
+ * Provides state population (getActiveIntents or getIntentsInIndexForMember when index-scoped)
+ * and action execution (create/update/archive).
  */
 export type IntentGraphDatabase = Pick<
   Database,
-  'getActiveIntents' | 'createIntent' | 'updateIntent' | 'archiveIntent'
+  'getActiveIntents' | 'getIntentsInIndexForMember' | 'createIntent' | 'updateIntent' | 'archiveIntent'
 >;
 
 /**

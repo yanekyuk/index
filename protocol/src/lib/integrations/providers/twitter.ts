@@ -5,6 +5,8 @@ import db from '../../drizzle/drizzle';
 import { users, userIntegrations } from '../../../schemas/database.schema';
 import { eq, isNull, and, inArray } from 'drizzle-orm';
 
+const logger = log.lib.from("lib/integrations/providers/twitter.ts");
+
 export interface TwitterSyncResult {
   intentsGenerated: number;
   locationUpdated: boolean;
@@ -102,21 +104,21 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       // Profile update scenario - fetch all tweets
       fetchAllTweets = true;
       syncSince = undefined;
-      log.info('Syncing Twitter user (profile update, fetching all tweets)', { userId, username });
+      logger.info('Syncing Twitter user (profile update, fetching all tweets)', { userId, username });
     } else if (sinceTimestamp) {
       // Explicit timestamp provided
       syncSince = sinceTimestamp;
-      log.info('Syncing Twitter user', { userId, username, syncSince: syncSince.toISOString() });
+      logger.info('Syncing Twitter user', { userId, username, syncSince: syncSince.toISOString() });
     } else {
       // Worker mode: always use integration's lastSyncAt if available
       if (integration?.lastSyncAt) {
         syncSince = new Date(integration.lastSyncAt);
-        log.info('Syncing Twitter user (using lastSyncAt)', { userId, username, syncSince: syncSince.toISOString() });
+        logger.info('Syncing Twitter user (using lastSyncAt)', { userId, username, syncSince: syncSince.toISOString() });
       } else {
         // First sync: fetch all tweets
         fetchAllTweets = true;
         syncSince = undefined;
-        log.info('Syncing Twitter user (first sync, fetching all tweets)', { userId, username });
+        logger.info('Syncing Twitter user (first sync, fetching all tweets)', { userId, username });
       }
     }
 
@@ -126,7 +128,7 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       return { intentsGenerated: 0, locationUpdated: false, success: false, error: 'Profile not found in Snowflake' };
     }
 
-    log.info('Twitter profile fetched', { 
+    logger.info('Twitter profile fetched', { 
       username, 
       profileId: profile.ID,
       displayName: profile.DISPLAY_NAME,
@@ -141,7 +143,7 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
         .set({ location: profile.LOCATION, updatedAt: new Date() })
         .where(eq(users.id, userId));
       locationUpdated = true;
-      log.info('Updated user location from Twitter', { userId, location: profile.LOCATION });
+      logger.info('Updated user location from Twitter', { userId, location: profile.LOCATION });
     }
 
     // Fetch tweets
@@ -178,7 +180,7 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
         .where(eq(userIntegrations.id, integration.id));
     }
 
-    log.info('Twitter sync complete', { userId, username, tweetsProcessed: tweets.length, locationUpdated });
+    logger.info('Twitter sync complete', { userId, username, tweetsProcessed: tweets.length, locationUpdated });
 
     return {
       intentsGenerated: 1, // Job queued, actual count will be determined by processor
@@ -186,7 +188,7 @@ export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | nu
       success: true,
     };
   } catch (error) {
-    log.error('Twitter sync error', { userId, error: (error as Error).message });
+    logger.error('Twitter sync error', { userId, error: (error as Error).message });
     return {
       intentsGenerated: 0,
       locationUpdated: false,
@@ -224,7 +226,7 @@ export async function syncTwitterUsersBulk(
 
       if (!username) {
         stats.errors++;
-        log.warn('Twitter integration missing username in config', { userId: user.id, integrationId: integration.id });
+        logger.warn('Twitter integration missing username in config', { userId: user.id, integrationId: integration.id });
         continue;
       }
 
@@ -274,7 +276,7 @@ export async function syncTwitterUsersBulk(
       }
     }
 
-    log.info('Syncing Twitter users bulk', { 
+    logger.info('Syncing Twitter users bulk', { 
       userCount: usernames.length,
       incrementalSyncGroups: syncTimestampGroups.size,
       firstSyncCount: fetchAllUsernames.length
@@ -323,11 +325,11 @@ export async function syncTwitterUsersBulk(
         const profile = profilesMap.get(username);
         if (!profile) {
           stats.errors++;
-          log.warn('Twitter profile not found', { userId: user.id, username });
+          logger.warn('Twitter profile not found', { userId: user.id, username });
           continue;
         }
 
-        log.info('Processing Twitter user', { 
+        logger.info('Processing Twitter user', { 
           userId: user.id, 
           username,
           profileId: profile.ID,
@@ -339,7 +341,7 @@ export async function syncTwitterUsersBulk(
         if (profile.LOCATION && !user.location) {
           locationUpdates.push({ userId: user.id, location: profile.LOCATION });
           stats.locationUpdated++;
-          log.info('Queued location update', { userId: user.id, username, location: profile.LOCATION });
+          logger.info('Queued location update', { userId: user.id, username, location: profile.LOCATION });
         }
 
         // Get tweets for this user
@@ -349,11 +351,11 @@ export async function syncTwitterUsersBulk(
           // Update last sync time even if no new tweets
           integrationsToUpdate.push({ integrationId: integration.id });
           stats.usersProcessed++;
-          log.info('No new tweets found', { userId: user.id, username });
+          logger.info('No new tweets found', { userId: user.id, username });
           continue;
         }
 
-        log.info('Found new tweets', { 
+        logger.info('Found new tweets', { 
           userId: user.id, 
           username, 
           tweetCount: tweets.length 
@@ -371,10 +373,10 @@ export async function syncTwitterUsersBulk(
         intentJobs.push({ userId: user.id, tweetObjects });
         integrationsToUpdate.push({ integrationId: integration.id });
         stats.usersProcessed++;
-        log.info('Queued intent generation', { userId: user.id, username, tweetCount: tweets.length });
+        logger.info('Queued intent generation', { userId: user.id, username, tweetCount: tweets.length });
       } catch (error) {
         stats.errors++;
-        log.error('Error processing user in bulk sync', { 
+        logger.error('Error processing user in bulk sync', { 
           userId: user.id, 
           username, 
           error: (error as Error).message 
@@ -389,9 +391,9 @@ export async function syncTwitterUsersBulk(
           await db.update(users)
             .set({ location, updatedAt: new Date() })
             .where(eq(users.id, userId));
-          log.info('Updated user location', { userId, location });
+          logger.info('Updated user location', { userId, location });
         } catch (error) {
-          log.error('Failed to update location', { userId, error: (error as Error).message });
+          logger.error('Failed to update location', { userId, error: (error as Error).message });
         }
       }
     }
@@ -407,9 +409,9 @@ export async function syncTwitterUsersBulk(
           instruction: 'Generate intents from Twitter tweets',
         }, 6);
         stats.intentsGenerated++;
-        log.info('Queued intent generation job', { userId, tweetCount: tweetObjects.length });
+        logger.info('Queued intent generation job', { userId, tweetCount: tweetObjects.length });
       } catch (error) {
-        log.error('Failed to queue intent generation', { 
+        logger.error('Failed to queue intent generation', { 
           userId, 
           error: (error as Error).message 
         });
@@ -425,7 +427,7 @@ export async function syncTwitterUsersBulk(
             .set({ lastSyncAt: now })
             .where(eq(userIntegrations.id, integrationId));
         } catch (error) {
-          log.error('Failed to update integration lastSyncAt', { 
+          logger.error('Failed to update integration lastSyncAt', { 
             integrationId, 
             error: (error as Error).message 
           });
@@ -433,7 +435,7 @@ export async function syncTwitterUsersBulk(
       }
     }
 
-    log.info('Twitter bulk sync complete', { 
+    logger.info('Twitter bulk sync complete', { 
       usersProcessed: stats.usersProcessed,
       intentsGenerated: stats.intentsGenerated,
       locationUpdated: stats.locationUpdated,
@@ -442,7 +444,7 @@ export async function syncTwitterUsersBulk(
 
     return stats;
   } catch (error) {
-    log.error('Twitter bulk sync error', { error: (error as Error).message });
+    logger.error('Twitter bulk sync error', { error: (error as Error).message });
     return stats;
   }
 }

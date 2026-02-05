@@ -1,4 +1,6 @@
 import { log } from '../log';
+
+const logger = log.lib.from("lib/integrations/directory-sync.ts");
 import { getIntegrationById } from './integration-utils';
 import { resolveFileUser } from '../user-utils';
 import { DirectorySyncConfig, userIntegrations, indexMembers, indexes } from '../../schemas/database.schema';
@@ -95,7 +97,7 @@ export async function syncDirectoryMembers(
       };
     }
 
-    log.info('Starting directory sync', {
+    logger.info('Starting directory sync', {
       integrationId,
       indexId: integration.indexId,
       source: config.source,
@@ -106,7 +108,7 @@ export async function syncDirectoryMembers(
     const records = await provider.fetchRecords(integrationId, config);
     
     if (records.length === 0) {
-      log.info('No records found for directory sync', { integrationId, source: config.source });
+      logger.info('No records found for directory sync', { integrationId, source: config.source });
       return {
         success: true,
         membersAdded: 0,
@@ -116,7 +118,7 @@ export async function syncDirectoryMembers(
       };
     }
 
-    log.info('Fetched records for directory sync', {
+    logger.info('Fetched records for directory sync', {
       integrationId,
       recordCount: records.length,
       sampleColumns: records[0] ? Object.keys(records[0]).slice(0, 5) : []
@@ -135,7 +137,7 @@ export async function syncDirectoryMembers(
     const updatedMembers: string[] = [];
     const errors: Array<{ record: any; error: string }> = [];
     
-    log.info('Processing records', {
+    logger.info('Processing records', {
       integrationId,
       totalRecords: records.length
     });
@@ -247,7 +249,7 @@ export async function syncDirectoryMembers(
 
         // Log progress periodically (every 100 records)
         if ((i + 1) % 100 === 0 || i === records.length - 1) {
-          log.info('Directory sync progress', {
+          logger.info('Directory sync progress', {
             integrationId,
             processed: i + 1,
             total: records.length,
@@ -292,7 +294,7 @@ export async function syncDirectoryMembers(
         });
 
         if (!addResult.success) {
-          log.warn('Failed to add member to index', {
+          logger.warn('Failed to add member to index', {
             integrationId,
             indexId: integration.indexId,
             userId: user.id,
@@ -304,7 +306,7 @@ export async function syncDirectoryMembers(
 
         addedMembers.push(email);
       } catch (error) {
-        log.error('Error processing directory sync record', {
+        logger.error('Error processing directory sync record', {
           integrationId,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -340,7 +342,7 @@ export async function syncDirectoryMembers(
       } as any)
       .where(eq(userIntegrations.id, integrationId));
 
-    log.info('Directory sync completed', {
+    logger.info('Directory sync completed', {
       integrationId,
       indexId: integration.indexId,
       membersAdded: addedMembers.length,
@@ -359,7 +361,7 @@ export async function syncDirectoryMembers(
       status
     };
   } catch (error) {
-    log.error('Directory sync error', {
+    logger.error('Directory sync error', {
       integrationId,
       error: error instanceof Error ? error.message : String(error)
     });

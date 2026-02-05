@@ -12,7 +12,7 @@ The Intent graph extracts intents from raw content, verifies them with a semanti
 
 **Nodes:**
 
-1. **prep**: Load active intents for the user (for reconciler context).
+1. **prep**: Load active intents for the user (for reconciler context). When `indexId` is set, loads intents in that index via `getIntentsInIndexForMember`; otherwise uses `getActiveIntents` (global scope).
 2. **inference**: `ExplicitIntentInferrer` extracts intents from `inputContent` (and optional conversation context).
 3. **verification**: `SemanticVerifier` checks each intent (felicity conditions); invalid types are dropped.
 4. **reconciler**: `IntentReconciler` decides actions: create, update, expire.
@@ -26,7 +26,8 @@ The Intent graph extracts intents from raw content, verifies them with a semanti
 ## Dependencies
 
 - **database**: `IntentGraphDatabase` with:
-  - `getActiveIntents(userId)`
+  - `getActiveIntents(userId)` — global active intents (used when no index scope)
+  - `getIntentsInIndexForMember(userId, indexNameOrId)` — index-scoped active intents
   - `createIntent(...)`
   - `updateIntent(intentId, data)`
   - `archiveIntent(intentId)`
@@ -40,6 +41,7 @@ The Intent graph extracts intents from raw content, verifies them with a semanti
 | `inputContent` | string | No | Raw text to extract intents from (e.g. user message) |
 | `operationMode` | `'create' \| 'update' \| 'delete'` | No | Default `'create'` |
 | `targetIntentIds` | string[] | No | For update/delete: intent IDs to update or expire |
+| `indexId` | string | No | When set, prep loads active intents in that index (reconciliation is index-scoped); when absent, global scope |
 | `conversationContext` | `BaseMessage[]` | No | Recent messages for anaphoric resolution |
 
 ## Output

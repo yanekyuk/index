@@ -13,7 +13,7 @@ import {
 } from "../../../../../types/chat-streaming";
 import { log } from "../../../../log";
 
-const logger = log.graph.from("chat.streaming.ts");
+const logger = log.protocol.from("ChatGraphStreamingService");
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TOOL DESCRIPTIONS (for user-friendly display)
@@ -22,6 +22,7 @@ const logger = log.graph.from("chat.streaming.ts");
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   get_user_profile: "Checking your profile...",
   update_user_profile: "Updating your profile...",
+  get_intents: "Fetching your intents...",
   get_active_intents: "Fetching your intents...",
   get_intents_in_index: "Fetching intents in that index...",
   create_intent: "Creating new intent...",
@@ -68,16 +69,18 @@ export class ChatGraphStreamingService {
       message: string;
       sessionId: string;
       maxContextMessages?: number;
+      indexId?: string;
     },
     checkpointer?: MemorySaver | PostgresSaver
   ): AsyncGenerator<ChatStreamEvent> {
-    const { userId, message, sessionId, maxContextMessages = 20 } = input;
-
+    const { userId, message, sessionId, maxContextMessages = 20, indexId } = input;
     logger.info("Starting context-aware streaming", {
       userId,
       sessionId,
       maxContextMessages,
       hasCheckpointer: !!checkpointer,
+      hasIndexId: !!indexId,
+      indexId: indexId ?? undefined,
     });
 
     try {
@@ -94,7 +97,7 @@ export class ChatGraphStreamingService {
 
       // Stream with context using the optional checkpointer
       yield* this.streamChatEvents(
-        { userId, messages: allMessages },
+        { userId, messages: allMessages, indexId },
         sessionId,
         checkpointer
       );
@@ -120,19 +123,21 @@ export class ChatGraphStreamingService {
    * @yields ChatStreamEvent objects
    */
   public async *streamChatEvents(
-    input: { userId: string; messages: BaseMessage[] },
+    input: { userId: string; messages: BaseMessage[]; indexId?: string },
     sessionId: string,
     checkpointer?: MemorySaver | PostgresSaver
   ): AsyncGenerator<ChatStreamEvent> {
     const graph = this.createStreamingGraph(checkpointer);
 
     try {
-      // Stream events from the graph
+      // Stream events from the graph (include indexId in initial state when chat is index-scoped)
+      const initialState: { userId: string; messages: BaseMessage[]; indexId?: string } = {
+        userId: input.userId,
+        messages: input.messages,
+      };
+      if (input.indexId) initialState.indexId = input.indexId;
       const eventStream = graph.streamEvents(
-        {
-          userId: input.userId,
-          messages: input.messages
-        },
+        initialState,
         {
           version: "v2",
           configurable: { thread_id: sessionId }
@@ -148,12 +153,6 @@ export class ChatGraphStreamingService {
       yield createStatusEvent(sessionId, "Processing your message...");
 
       for await (const event of eventStream) {
-        // #region agent log
-        if (event.event === "on_chat_model_stream" || (event.event === "on_chain_end" && event.name === "agent_loop")) {
-          const chunkContent = event.event === "on_chat_model_stream" ? (event.data?.chunk?.content ?? "") : (typeof event.data?.output?.responseText === "string" ? event.data.output.responseText : "");
-          fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat.streaming.ts:event',message:'H3/H4: streamEvents token source',data:{event:event.event,eventName:event.name,isGeneratingResponse,contentPreview:String(chunkContent).substring(0,300),hasClassification:String(chunkContent).includes('"classification"')},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
-        }
-        // #endregion
         // ─────────────────────────────────────────────────────────────────────
         // TOOL EVENTS
         // ─────────────────────────────────────────────────────────────────────
@@ -261,19 +260,28 @@ export class ChatGraphStreamingService {
         // ─────────────────────────────────────────────────────────────────────
 
         if (event.event === "on_chain_end" && event.name === "agent_loop") {
-          const output = event.data?.output;
+          const output = event.data?.output as { responseText?: string; error?: string } | undefined;
           const responseText = typeof output?.responseText === "string" ? output.responseText : "";
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chat.streaming.ts:emit_token',message:'H4: Emitting token from on_chain_end',data:{responsePreview:responseText.substring(0,400),hasClassification:responseText.includes('"classification"'),willEmit:!!responseText},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
-          // #endregion
-          logger.debug("Agent loop output", { output, responseText });
+          const agentError = typeof output?.error === "string" ? output.error : undefined;
+          logger.debug("Agent loop output", { output, responseText, agentError });
+          if (agentError) {
+            logger.warn("Agent loop returned error", { agentError });
+            yield createErrorEvent(
+              sessionId,
+              agentError === "JSON error injected into SSE stream"
+                ? "The response could not be sent correctly. Please try again."
+                : agentError,
+              "AGENT_ERROR"
+            );
+          }
           if (responseText) {
             yield createTokenEvent(sessionId, responseText);
           }
           logger.info("Agent loop complete", {
             iterations: currentIteration,
             totalTools: toolsInCurrentIteration.length,
-            responseLength: responseText.length
+            responseLength: responseText.length,
+            hadError: !!agentError
           });
         }
       }

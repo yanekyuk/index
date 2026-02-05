@@ -5,6 +5,8 @@ import { z } from "zod";
 import { log } from "../../../log";
 import { IntentIndexerOutputSchema, type IntentIndexerOutput } from "./intent.indexer.types";
 
+const logger = log.lib.from("IntentIndexer");
+
 /**
  * Config
  */
@@ -100,7 +102,7 @@ export class IntentIndexer {
     memberPrompt: string | null,
     sourceName?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    log.info("[IntentIndexer.invoke] Evaluating intent");
+    logger.info("[IntentIndexer.invoke] Evaluating intent");
 
     const contextParts: string[] = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
@@ -126,13 +128,13 @@ export class IntentIndexer {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result) as IntentIndexerOutput;
 
-      log.info("[IntentIndexer.invoke] Evaluation complete", {
+      logger.info("[IntentIndexer.invoke] Evaluation complete", {
         indexScore: output.indexScore,
         memberScore: output.memberScore,
       });
       return output;
     } catch (error) {
-      log.error("[IntentIndexer] Error during execution", { error });
+      logger.error("[IntentIndexer] Error during execution", { error });
       return null;
     }
   }

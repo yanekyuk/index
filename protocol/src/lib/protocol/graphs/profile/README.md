@@ -20,7 +20,7 @@ The Profile graph loads or generates a user profile, embeds it, and optionally g
 ## When to use
 
 - **Profile API**: Get or create/update profile (e.g. GET/POST profile controller).
-- **Chat tools**: When the user asks to create or update their profile, the chat graph calls this graph via profile tools.
+- **Chat tools**: When the user asks to create or update their profile, the chat graph calls this graph via profile tools (update requires user confirmation via `confirm_action`).
 
 ## Dependencies
 

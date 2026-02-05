@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 
-// console.log('process.env', process.env);
+// logger.info('process.env', process.env);
 import { initializeBrokers } from './agents/context_brokers/connector';
 import { emailWorker } from './lib/email/queue/email.worker';
 import { initWeeklyNewsletterJob } from './jobs/newsletter.job';
@@ -47,6 +47,9 @@ import feedbackRoutes from './routes/feedback';
 import notificationRoutes from './routes/notifications';
 import chatRoutes from './routes/chat';
 import devRoutes from './routes/dev';
+import { log } from './lib/log';
+
+const logger = log.server.from("[DEPRECATED] index");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -146,7 +149,7 @@ app.get('/api/data/users', async (req, res) => {
 
     res.json(allUsers);
   } catch (error) {
-    console.error('Error fetching users for playground:', error);
+    logger.error('Error fetching users for playground:', { error });
     // Fallback to test users in case of DB error
     res.json(TEST_USERS);
   }
@@ -170,7 +173,7 @@ app.post('/api/run/:agentId', async (req, res) => {
     const result = await runAgent(agentId, input, options);
     res.json(result);
   } catch (error: any) {
-    console.error(`Error running agent ${agentId}:`, error);
+    logger.error(`Error running agent ${agentId}:`, error);
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 });
@@ -187,7 +190,7 @@ app.post('/api/embeddings', async (req, res) => {
     res.json({ vector });
     return;
   } catch (error: any) {
-    console.error('Error generating embedding:', error);
+    logger.error('Error generating embedding:', error);
     res.status(500).json({ error: error.message });
     return;
   }
@@ -202,7 +205,7 @@ Sentry.setupExpressErrorHandler(app);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  logger.error(err.stack);
   res.status(500).json({
     error: 'Something went wrong!',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
@@ -217,22 +220,22 @@ app.use('*', (req, res) => {
 (async () => {
   try {
     await initializeBrokers();
-    console.log('🟢 Context brokers initialized');
+    logger.info('🟢 Context brokers initialized');
 
     emailWorker.start();
 
     // Workers are auto-started upon import
-    console.log('🟢 Queue workers initialized');
+    logger.info('🟢 Queue workers initialized');
 
     initWeeklyNewsletterJob();
     initOpportunityFinderJob();
     initHydeJobs();
   } catch (err) {
-    console.error('🔴 Failed to initialize services:', err);
+    logger.error('🔴 Failed to initialize services:', { error: err });
   }
 
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    logger.info(`🚀 Server running on port ${PORT}`);
+    logger.info(`📊 Health check: http://localhost:${PORT}/health`);
   });
 })(); 

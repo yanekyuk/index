@@ -4,6 +4,8 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../../../../log";
 
+const logger = log.protocol.from("IntentReconciler");
+
 /**
  * Config
  */
@@ -130,7 +132,7 @@ export class IntentReconciler {
    * @param activeIntentsContext - Formatted string of active intents.
    */
   public async invoke(inferredIntentsFormatted: string, activeIntentsContext: string) {
-    log.info(`[IntentReconciler.invoke] Reconciling intents...`);
+    logger.info(`[IntentReconciler.invoke] Reconciling intents...`);
 
     const prompt = `
       # Active Intents
@@ -154,10 +156,10 @@ export class IntentReconciler {
     try {
       const output = await this.model.invoke(messages);
 
-      log.info(`[IntentReconciler.invoke] Decision: ${output.actions.length} actions.`);
+      logger.info(`[IntentReconciler.invoke] Decision: ${output.actions.length} actions.`);
       return output;
     } catch (error) {
-      log.error("[IntentReconciler] Error during invocation", { error });
+      logger.error("[IntentReconciler] Error during invocation", { error });
       return { actions: [] };
     }
   }

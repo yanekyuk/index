@@ -1,4 +1,6 @@
 import { log } from '../../log';
+
+const logger = log.lib.from("lib/integrations/providers/profile-enrich.ts");
 import { generateSummaryWithIntents, GenerateSummaryInput } from '../../parallels';
 import { IntentService } from '../../intent-service';
 import db from '../../drizzle/drizzle';
@@ -81,7 +83,7 @@ export async function enrichUserProfile(userId: string, generateIntents: boolean
             return { intentsGenerated: 0, introUpdated: false, locationUpdated: false, success: false, error: 'No valid input data available' };
         }
 
-        log.info('Generating profile enrichment data', { userId });
+        logger.info('Generating profile enrichment data', { userId });
 
         // Call generateSummaryWithIntents
         const result = await generateSummaryWithIntents(input);
@@ -146,7 +148,7 @@ export async function enrichUserProfile(userId: string, generateIntents: boolean
                 .where(eq(users.id, userId));
         }
 
-        log.info('Profile enrichment complete', { userId, intentsGenerated, introUpdated, locationUpdated });
+        logger.info('Profile enrichment complete', { userId, intentsGenerated, introUpdated, locationUpdated });
 
         return {
             intentsGenerated,
@@ -155,7 +157,7 @@ export async function enrichUserProfile(userId: string, generateIntents: boolean
             success: true,
         };
     } catch (error) {
-        log.error('Profile enrichment error', { userId, error: (error as Error).message });
+        logger.error('Profile enrichment error', { userId, error: (error as Error).message });
         return {
             intentsGenerated: 0,
             introUpdated: false,

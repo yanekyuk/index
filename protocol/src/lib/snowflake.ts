@@ -1,6 +1,7 @@
 import snowflake from 'snowflake-sdk';
 import { log } from './log';
 
+const logger = log.lib.from("lib/snowflake.ts");
 snowflake.configure({ logLevel: 'ERROR' });
 
 // Suppress Snowflake SDK info logs by overriding console methods temporarily
@@ -60,7 +61,7 @@ function createConnection(): Promise<SnowflakeConnection> {
 
     connection.connect((err: any, conn: any) => {
       if (err) {
-        log.error('Snowflake connection error', { error: err.message });
+        logger.error('Snowflake connection error', { error: err.message });
         reject(err);
         return;
       }
@@ -76,7 +77,7 @@ function executeQuery<T>(connection: SnowflakeConnection, sqlText: string, binds
       binds,
       complete: (err: any, stmt: any, rows: any) => {
         if (err) {
-          log.error('Snowflake query error', { error: err.message, sqlText });
+          logger.error('Snowflake query error', { error: err.message, sqlText });
           reject(err);
           return;
         }
@@ -171,12 +172,12 @@ export async function fetchTwitterProfile(username: string): Promise<TwitterProf
 
     return rows[0];
   } catch (error) {
-    log.error('Failed to fetch Twitter profile', { username, error: (error as Error).message });
+    logger.error('Failed to fetch Twitter profile', { username, error: (error as Error).message });
     return null;
   } finally {
     if (connection) {
       connection.destroy((err: any) => {
-        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+        if (err) logger.error('Error destroying Snowflake connection', { error: err.message });
       });
     }
   }
@@ -215,15 +216,15 @@ export async function fetchTwitterProfilesBulk(usernames: string[]): Promise<Map
       profileMap.set(profile.NAME, profile);
     }
 
-    log.info('Fetched Twitter profiles bulk', { requested: usernames.length, found: rows.length });
+    logger.info('Fetched Twitter profiles bulk', { requested: usernames.length, found: rows.length });
     return profileMap;
   } catch (error) {
-    log.error('Failed to fetch Twitter profiles bulk', { usernameCount: usernames.length, error: (error as Error).message });
+    logger.error('Failed to fetch Twitter profiles bulk', { usernameCount: usernames.length, error: (error as Error).message });
     return profileMap;
   } finally {
     if (connection) {
       connection.destroy((err: any) => {
-        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+        if (err) logger.error('Error destroying Snowflake connection', { error: err.message });
       });
     }
   }
@@ -274,12 +275,12 @@ export async function fetchTwitterTweets(
 
     return rows;
   } catch (error) {
-    log.error('Failed to fetch Twitter tweets', { posterId, error: (error as Error).message });
+    logger.error('Failed to fetch Twitter tweets', { posterId, error: (error as Error).message });
     return [];
   } finally {
     if (connection) {
       connection.destroy((err: any) => {
-        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+        if (err) logger.error('Error destroying Snowflake connection', { error: err.message });
       });
     }
   }
@@ -368,14 +369,14 @@ export async function fetchTwitterTweetsBulk(
       });
     }
 
-    log.info('Fetched Twitter tweets bulk', { 
+    logger.info('Fetched Twitter tweets bulk', { 
       requestedUsers: usernames.length, 
       usersWithTweets: tweetsMap.size,
       totalTweets: rows.length 
     });
     return tweetsMap;
   } catch (error) {
-    log.error('Failed to fetch Twitter tweets bulk', { 
+    logger.error('Failed to fetch Twitter tweets bulk', { 
       usernameCount: usernames.length, 
       error: (error as Error).message 
     });
@@ -383,7 +384,7 @@ export async function fetchTwitterTweetsBulk(
   } finally {
     if (connection) {
       connection.destroy((err: any) => {
-        if (err) log.error('Error destroying Snowflake connection', { error: err.message });
+        if (err) logger.error('Error destroying Snowflake connection', { error: err.message });
       });
     }
   }

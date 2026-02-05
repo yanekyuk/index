@@ -7,6 +7,7 @@ import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
 import { log } from '../lib/log';
 
+const logger = log.job.from("hyde");
 const database = new ChatDatabaseAdapter();
 const hydeDb = database as unknown as HydeGraphDatabase;
 
@@ -30,9 +31,9 @@ export interface HydeJobDeps {
  */
 export async function cleanupExpiredHyde(deps?: HydeJobDeps): Promise<number> {
   const db = deps?.database ?? database;
-  log.info('[HydeJob:Cleanup] Starting expired HyDE cleanup');
+  logger.info('[HydeJob:Cleanup] Starting expired HyDE cleanup');
   const deletedCount = await db.deleteExpiredHydeDocuments();
-  log.info(`[HydeJob:Cleanup] Deleted ${deletedCount} expired HyDE documents`);
+  logger.info(`[HydeJob:Cleanup] Deleted ${deletedCount} expired HyDE documents`);
   return deletedCount;
 }
 
@@ -43,10 +44,10 @@ export async function cleanupExpiredHyde(deps?: HydeJobDeps): Promise<number> {
  */
 export async function refreshStaleHyde(deps?: HydeJobDeps): Promise<number> {
   const db = deps?.database ?? database;
-  log.info('[HydeJob:Refresh] Starting stale HyDE refresh');
+  logger.info('[HydeJob:Refresh] Starting stale HyDE refresh');
   const staleThreshold = new Date(Date.now() - STALE_HYDE_DAYS_MS);
   const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
-  log.info(`[HydeJob:Refresh] Found ${staleDocuments.length} stale HyDE documents`);
+  logger.info(`[HydeJob:Refresh] Found ${staleDocuments.length} stale HyDE documents`);
 
   const embedder = new EmbedderAdapter();
   const cache = new RedisCacheAdapter();
@@ -75,7 +76,7 @@ export async function refreshStaleHyde(deps?: HydeJobDeps): Promise<number> {
       });
       refreshedCount++;
     } catch (error) {
-      log.error('[HydeJob:Refresh] Failed to refresh HyDE', {
+      logger.error('[HydeJob:Refresh] Failed to refresh HyDE', {
         sourceId: doc.sourceId,
         strategy: doc.strategy,
         error: error instanceof Error ? error.message : String(error),
@@ -83,7 +84,7 @@ export async function refreshStaleHyde(deps?: HydeJobDeps): Promise<number> {
     }
   }
 
-  log.info(`[HydeJob:Refresh] Refreshed ${refreshedCount} HyDE documents`);
+  logger.info(`[HydeJob:Refresh] Refreshed ${refreshedCount} HyDE documents`);
   return refreshedCount;
 }
 
@@ -93,15 +94,15 @@ export async function refreshStaleHyde(deps?: HydeJobDeps): Promise<number> {
 export function initHydeJobs(): void {
   cron.schedule('0 3 * * *', () => {
     cleanupExpiredHyde().catch((err) =>
-      log.error('[HydeJob:Cleanup] Cron failed', { error: err })
+      logger.error('[HydeJob:Cleanup] Cron failed', { error: err })
     );
   });
-  log.info('📅 [HydeJob] Cleanup scheduled (daily at 03:00)');
+  logger.info('📅 [HydeJob] Cleanup scheduled (daily at 03:00)');
 
   cron.schedule('0 4 * * 0', () => {
     refreshStaleHyde().catch((err) =>
-      log.error('[HydeJob:Refresh] Cron failed', { error: err })
+      logger.error('[HydeJob:Refresh] Cron failed', { error: err })
     );
   });
-  log.info('📅 [HydeJob] Refresh scheduled (weekly Sunday at 04:00)');
+  logger.info('📅 [HydeJob] Refresh scheduled (weekly Sunday at 04:00)');
 }

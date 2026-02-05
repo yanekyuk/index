@@ -83,6 +83,9 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
         memberCount: 0,
         intentCount: 0,
       }) as any,
+    softDeleteIndex: noop,
+    deleteProfile: noop,
+    updateOpportunityStatus: noopNull,
   } as unknown as ChatGraphCompositeDatabase;
 }
 

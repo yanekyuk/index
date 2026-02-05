@@ -4,6 +4,8 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../../../../log";
 
+const logger = log.protocol.from("SemanticVerifier");
+
 /**
  * Config
  */
@@ -126,7 +128,7 @@ export class SemanticVerifier {
    * @param context - The User Profile as a JSON string.
    */
   public async invoke(content: string, context: string) {
-    log.info(`[SemanticVerifier.invoke] Verifying: "${content.substring(0, 30)}..."`);
+    logger.info(`[SemanticVerifier.invoke] Verifying: "${content.substring(0, 30)}..."`);
 
     const prompt = `
       # User Profile (Context)
@@ -147,10 +149,10 @@ export class SemanticVerifier {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result);
 
-      log.info(`[SemanticVerifier.invoke] Verdict: ${output.classification} Entropy: ${output.semantic_entropy}`);
+      logger.info(`[SemanticVerifier.invoke] Verdict: ${output.classification} Entropy: ${output.semantic_entropy}`);
       return output;
     } catch (error) {
-      log.error("[SemanticVerifier] Error during invocation", { error });
+      logger.error("[SemanticVerifier] Error during invocation", { error });
       throw error;
     }
   }

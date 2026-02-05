@@ -10,6 +10,8 @@ import { Command } from 'commander';
 import { syncIntegration } from '../lib/sync';
 import { log, setLevel } from '../lib/log';
 import { INTEGRATIONS, type IntegrationName } from '../lib/integrations/config';
+
+const logger = log.queue.from("cli/integration-worker.ts");
 import db from '../lib/drizzle/drizzle';
 import { userIntegrations } from '../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
@@ -37,10 +39,10 @@ async function syncSingleIntegration(integrationId: string, integrationType: str
     const result = await syncIntegration(integrationId);
     
     if (!result.success) {
-      log.error(`Sync failed`, { integrationId, error: result.error });
+      logger.error(`Sync failed`, { integrationId, error: result.error });
     }
   } catch (error) {
-    log.error(`Sync error`, {
+    logger.error(`Sync error`, {
       integrationId,
       error: error instanceof Error ? error.message : String(error)
     });
@@ -77,21 +79,21 @@ async function main(): Promise<void> {
 
       if (opts.silent) setLevel('error');
 
-      log.info(`Starting integration worker`, { 
+      logger.info(`Starting integration worker`, { 
         integrationType, 
         syncDelayMs,
         enabled: config.enabled 
       });
 
       if (!config.enabled) {
-        log.warn(`Integration type ${integrationType} is disabled in config`);
+        logger.warn(`Integration type ${integrationType} is disabled in config`);
       }
 
       // Handle graceful shutdown
       const shutdown = () => {
         if (isShuttingDown) return;
         isShuttingDown = true;
-        log.info('Received shutdown signal, waiting for current syncs to complete...');
+        logger.info('Received shutdown signal, waiting for current syncs to complete...');
       };
 
       process.on('SIGTERM', shutdown);
@@ -108,23 +110,23 @@ async function main(): Promise<void> {
             const integrationIds = await getActiveIntegrations(integrationType);
             
             if (integrationIds.length === 0) {
-              log.debug(`No active ${integrationType} integrations, waiting...`);
+              logger.debug(`No active ${integrationType} integrations, waiting...`);
               await sleep(syncDelayMs);
               continue;
             }
 
-            log.info(`Syncing ${integrationIds.length} ${integrationType} integration(s)`);
+            logger.info(`Syncing ${integrationIds.length} ${integrationType} integration(s)`);
 
             await Promise.all(
               integrationIds.map(id => syncSingleIntegration(id, integrationType))
             );
 
             if (!isShuttingDown) {
-              log.info(`Cycle complete, next sync in ${syncDelayMs / 1000}s`);
+              logger.info(`Cycle complete, next sync in ${syncDelayMs / 1000}s`);
               await sleep(syncDelayMs);
             }
           } catch (error) {
-            log.error(`Worker error`, {
+            logger.error(`Worker error`, {
               integrationType,
               error: error instanceof Error ? error.message : String(error)
             });
@@ -138,7 +140,7 @@ async function main(): Promise<void> {
         resetSlackLogger();
       }
 
-      log.info('Integration worker shutting down gracefully');
+      logger.info('Integration worker shutting down gracefully');
       process.exit(0);
     });
 
@@ -197,7 +199,7 @@ async function runSlackIntegrationWorker(
     }
 
     if (integrationIds.length === 0) {
-      log.debug(`No active ${integrationType} integrations, waiting...`);
+      logger.debug(`No active ${integrationType} integrations, waiting...`);
       await sleep(syncDelayMs);
     } else {
       await sleep(pollInterval);
@@ -228,7 +230,7 @@ async function runSlackIntegrationWorker(
         await sleep(syncDelayMs);
       }
     })().catch(error => {
-      log.error('Integration loop error', {
+      logger.error('Integration loop error', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });

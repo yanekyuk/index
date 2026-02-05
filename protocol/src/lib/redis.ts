@@ -1,6 +1,7 @@
 import Redis, { RedisOptions } from 'ioredis';
 import { log } from './log';
 
+const logger = log.lib.from("lib/redis.ts");
 let redis: Redis | null = null;
 
 /**
@@ -29,11 +30,11 @@ export function getRedisClient(): Redis {
     }
 
     redis.on('error', (err: Error) => {
-      log.error('Redis error', { error: err.message });
+      logger.error('Redis error', { error: err.message });
     });
 
     redis.on('connect', () => {
-      log.info('Redis connected');
+      logger.info('Redis connected');
     });
   }
 
@@ -100,7 +101,7 @@ export class CacheClient {
     try {
       return await this.redis.get(key);
     } catch (error) {
-      log.error('Cache get error', { key, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache get error', { key, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -114,7 +115,7 @@ export class CacheClient {
       }
       return true;
     } catch (error) {
-      log.error('Cache set error', { key, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache set error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -124,7 +125,7 @@ export class CacheClient {
       await this.redis.del(key);
       return true;
     } catch (error) {
-      log.error('Cache delete error', { key, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache delete error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -134,7 +135,7 @@ export class CacheClient {
       const result = await this.redis.exists(key);
       return result === 1;
     } catch (error) {
-      log.error('Cache exists error', { key, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache exists error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -143,7 +144,7 @@ export class CacheClient {
     try {
       return await this.redis.hget(key, field);
     } catch (error) {
-      log.error('Cache hget error', { key, field, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache hget error', { key, field, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -153,7 +154,7 @@ export class CacheClient {
       await this.redis.hset(key, field, value);
       return true;
     } catch (error) {
-      log.error('Cache hset error', { key, field, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache hset error', { key, field, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -163,7 +164,7 @@ export class CacheClient {
       await this.redis.expire(key, ttl);
       return true;
     } catch (error) {
-      log.error('Cache expire error', { key, error: error instanceof Error ? error.message : String(error) });
+      logger.error('Cache expire error', { key, error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }

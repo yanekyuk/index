@@ -76,27 +76,28 @@ export class IntentEvents {
   }
 
   /**
-   * Triggered when an intent is updated
+   * Triggered when an intent is updated.
+   * Re-evaluate only against indexes the intent is already in (no new index assignments).
    */
   static async onUpdated(event: IntentEvent): Promise<void> {
     try {
-      // Get all eligible indexes for this user
-      const eligibleIndexes = await indexService.getEligibleIndexesForUser(event.userId);
+      // Only re-evaluate against indexes this intent is already assigned to (can unassign if no longer qualifies; never add to new indexes)
+      const existingIndexIds = await indexService.getIndexIdsForIntent(event.intentId);
 
-      // If no eligible indexes, trigger brokers immediately (via StakeService)
-      if (eligibleIndexes.length === 0) {
+      if (existingIndexIds.length === 0) {
         await stakeService.processIntent(event.intentId);
+        await addIntentJob('refresh_hyde', { intentId: event.intentId }, 6);
+        await onIntentUpdated(event.intentId, { userId: event.userId });
         return;
       }
 
-      // Queue individual intent-index pairs
-      // Priority 8: Updated intents - HIGHEST priority (user just modified intent)
+      // Queue index_intent only for existing indexes
       const indexingJobs = await Promise.all(
-        eligibleIndexes.map(({ id: indexId }) =>
+        existingIndexIds.map((indexId) =>
           intentQueue.add('index_intent', {
             intentId: event.intentId,
             indexId,
-            userId: event.userId, // Include userId for per-user queuing
+            userId: event.userId,
           }, { priority: 8 })
         )
       );

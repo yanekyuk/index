@@ -11,6 +11,8 @@ import { log } from '../lib/log';
 import { searchUser } from '../lib/parallel/parallel';
 import { NotificationPreferences, User, UserSocials, userNotificationSettings, userProfiles, users } from '../schemas/database.schema';
 
+const logger = log.service.from("ProfileService");
+
 export interface UpdateProfileDto {
   name?: string;
   intro?: string;
@@ -177,7 +179,7 @@ export class ProfileService {
     const hasNarrative = !!userProfile.narrative;
 
     if (!hasAttributes || !hasNarrative) {
-      log.info('[ProfileService] Profile incomplete, triggering repair via ProfileGenerator', { userId });
+      logger.info('[ProfileService] Profile incomplete, triggering repair via ProfileGenerator', { userId });
       const bioToUse = intro || userProfile.identity?.bio || '';
 
       if (bioToUse) {
@@ -211,7 +213,7 @@ export class ProfileService {
           };
 
         } catch (e) {
-          log.error('[ProfileService] Profile repair failed:', { error: e });
+          logger.error('[ProfileService] Profile repair failed:', { error: e });
         }
       }
     }
@@ -232,7 +234,7 @@ export class ProfileService {
   private async triggerBackgroundHydeGeneration(userId: string, profile: UserMemoryProfile) {
     (async () => {
       try {
-        log.info('[ProfileService] Generating HyDE description and embedding...');
+        logger.info('[ProfileService] Generating HyDE description and embedding...');
         const embedder = new IndexEmbedder();
         const hydeGenerator = new HydeGeneratorAgent(embedder);
 
@@ -247,7 +249,7 @@ export class ProfileService {
 
         if (hydeResult && hydeResult.description) {
           const description = hydeResult.description;
-          log.info(`[ProfileService] HyDE Description Length: ${description.length} chars. Preview: "${description.substring(0, 100)}..."`);
+          logger.info(`[ProfileService] HyDE Description Length: ${description.length} chars. Preview: "${description.substring(0, 100)}..."`);
 
           // Use returned embedding or generate new one
           const hydeEmbedding = (hydeResult.embedding || await embedder.generate(description)) as number[];
@@ -260,10 +262,10 @@ export class ProfileService {
             })
             .where(eq(userProfiles.userId, userId));
 
-          log.info('[ProfileService] ✅ HyDE profile updated.');
+          logger.info('[ProfileService] ✅ HyDE profile updated.');
         }
       } catch (error) {
-        log.error('[ProfileService] Failed to generate HyDE profile', { error });
+        logger.error('[ProfileService] Failed to generate HyDE profile', { error });
       }
     })();
   }
@@ -511,7 +513,7 @@ export class ProfileService {
         }
       });
     
-    log.info('[ProfileService] Created initial profile for user', { userId });
+    logger.info('[ProfileService] Created initial profile for user', { userId });
   }
 }
 

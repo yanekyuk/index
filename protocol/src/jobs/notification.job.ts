@@ -7,6 +7,8 @@ import { getRedisClient } from '../lib/redis';
 import { log } from '../lib/log';
 import type { NotificationJobData } from '../queues/notification.types';
 
+const logger = log.job.from("notification");
+
 const API_URL = process.env.API_URL || 'https://index.network';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://index.network';
 
@@ -31,7 +33,7 @@ export async function processOpportunityNotification(
   const { opportunityId, recipientId, priority } = data;
   const db = deps?.database ?? new ChatDatabaseAdapter();
 
-  log.info('[NotificationJob] Processing opportunity notification', {
+  logger.info('[NotificationJob] Processing opportunity notification', {
     opportunityId,
     recipientId,
     priority,
@@ -39,7 +41,7 @@ export async function processOpportunityNotification(
 
   const opportunity = await db.getOpportunity(opportunityId);
   if (!opportunity) {
-    log.warn('[NotificationJob] Opportunity not found, skipping', { opportunityId });
+    logger.warn('[NotificationJob] Opportunity not found, skipping', { opportunityId });
     return;
   }
 
@@ -50,7 +52,7 @@ export async function processOpportunityNotification(
   switch (priority) {
     case 'immediate': {
       emitOpportunityNotification({ opportunityId, recipientId });
-      log.info('[NotificationJob] Emitted opportunity notification (WebSocket)', {
+      logger.info('[NotificationJob] Emitted opportunity notification (WebSocket)', {
         opportunityId,
         recipientId,
       });
@@ -65,7 +67,7 @@ export async function processOpportunityNotification(
       break;
     }
     default: {
-      log.warn('[NotificationJob] Unknown priority, treating as low', { priority });
+      logger.warn('[NotificationJob] Unknown priority, treating as low', { priority });
       await addToDigest(recipientId, opportunityId);
     }
   }
@@ -78,19 +80,19 @@ async function sendHighPriorityEmail(
 ): Promise<void> {
   const recipient = await userService.getUserForNewsletter(recipientId);
   if (!recipient?.email) {
-    log.warn('[NotificationJob] Recipient not found or no email, skipping email', {
+    logger.warn('[NotificationJob] Recipient not found or no email, skipping email', {
       recipientId,
     });
     return;
   }
   if (!recipient.onboarding?.completedAt) {
-    log.info('[NotificationJob] Recipient has not completed onboarding, skipping email', {
+    logger.info('[NotificationJob] Recipient has not completed onboarding, skipping email', {
       recipientId,
     });
     return;
   }
   if (recipient.prefs?.connectionUpdates === false) {
-    log.info('[NotificationJob] Recipient has connection/opportunity updates disabled', {
+    logger.info('[NotificationJob] Recipient has connection/opportunity updates disabled', {
       recipientId,
     });
     return;
@@ -106,7 +108,7 @@ async function sendHighPriorityEmail(
   const emailDedupeKey = `${EMAIL_OPPORTUNITY_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
   const setResult = await redis.set(emailDedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
   if (setResult !== 'OK') {
-    log.info('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
+    logger.info('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
       recipientId,
       opportunityId,
     });
@@ -135,7 +137,7 @@ async function sendHighPriorityEmail(
     },
     { jobId: `opportunity-email:${recipientId}:${opportunityId}` }
   );
-  log.info('[NotificationJob] Enqueued high-priority opportunity email', {
+  logger.info('[NotificationJob] Enqueued high-priority opportunity email', {
     recipientId,
     opportunityId,
   });
@@ -147,7 +149,7 @@ async function addToDigest(recipientId: string, opportunityId: string): Promise<
     const dedupeKey = `${DIGEST_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
     const setResult = await redis.set(dedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
     if (setResult !== 'OK') {
-      log.info('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
+      logger.info('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
         recipientId,
         opportunityId,
       });
@@ -156,12 +158,12 @@ async function addToDigest(recipientId: string, opportunityId: string): Promise<
     const listKey = `${DIGEST_LIST_PREFIX}${recipientId}`;
     await redis.rpush(listKey, opportunityId);
     await redis.expire(listKey, DIGEST_TTL_SEC);
-    log.info('[NotificationJob] Added opportunity to weekly digest list', {
+    logger.info('[NotificationJob] Added opportunity to weekly digest list', {
       recipientId,
       opportunityId,
     });
   } catch (err) {
-    log.error('[NotificationJob] Failed to add to digest list', {
+    logger.error('[NotificationJob] Failed to add to digest list', {
       recipientId,
       opportunityId,
       error: err instanceof Error ? err.message : String(err),

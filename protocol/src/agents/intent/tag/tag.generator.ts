@@ -4,6 +4,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../lib/log";
 import { IntentTagGeneratorOutput } from "./tag.generator.types";
 
+const logger = log.agent.from("agents/intent/tag/tag.generator.ts");
+
 /**
  * Zod schema for the Intent Tag Generator output.
  */
@@ -41,7 +43,7 @@ export class IntentTagGenerator extends BaseLangChainAgent {
    * @param userPrompt - Optional user focus or specific request.
    */
   async run(intents: string[], userPrompt?: string): Promise<IntentTagGeneratorOutput | null> {
-    log.info(`[IntentTagGenerator] Generating tags for ${intents.length} intents...`);
+    logger.info(`[IntentTagGenerator] Generating tags for ${intents.length} intents...`);
 
     const intentList = intents.map(intent => `- ${intent}`).join('\n');
 
@@ -62,10 +64,10 @@ export class IntentTagGenerator extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as IntentTagGeneratorOutput;
 
-      log.info(`[IntentTagGenerator] Generated ${output.suggestions.length} tags.`);
+      logger.info(`[IntentTagGenerator] Generated ${output.suggestions.length} tags.`);
       return output;
     } catch (error) {
-      log.error("[IntentTagGenerator] Error during execution", { error });
+      logger.error("[IntentTagGenerator] Error during execution", { error });
       return null;
     }
   }

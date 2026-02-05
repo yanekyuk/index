@@ -4,7 +4,7 @@ LangGraph workflows in the Index Network protocol. Graphs are built with injecte
 
 | Graph | Purpose | README |
 |-------|---------|--------|
-| **Chat** | ReAct-style agent loop for user conversations; tools call intent, profile, index, opportunity graphs | [chat/README.md](./chat/README.md) |
+| **Chat** | ReAct-style agent loop for user conversations; tools call intent, profile, index, opportunity graphs; confirmation and clarification flows for update/delete and create | [chat/README.md](./chat/README.md) |
 | **HyDE** | Hypothetical document generation and embedding (cache-aware); used by opportunity discovery | [hyde/README.md](./hyde/README.md) |
 | **Index** | Intent–index assignment: evaluate intent vs index/member prompts, then assign or unassign | [index/README.md](./index/README.md) |
 | **Intent** | Extract intents from content, verify, reconcile (create/update/expire), execute against DB | [intent/README.md](./intent/README.md) |

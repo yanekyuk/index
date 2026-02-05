@@ -4,6 +4,8 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../../../../log";
 
+const logger = log.protocol.from("ExplicitIntentInferrer");
+
 /**
  * Config
  */
@@ -159,18 +161,18 @@ export class ExplicitIntentInferrer {
       conversationContext = undefined
     } = options;
     
-    log.info('[ExplicitIntentInferrer.invoke] Received input', {
+    logger.info("invoke: received input", {
       contentPreview: content?.substring(0, 50),
       allowProfileFallback,
       operationMode,
       hasConversationContext: !!conversationContext,
-      conversationMessageCount: conversationContext?.length || 0
+      conversationMessageCount: conversationContext?.length || 0,
     });
 
     // CRITICAL: Don't fallback to profile when explicitly disabled
     // This prevents auto-generation of intents from profile during query operations
     if (!content && !allowProfileFallback) {
-      log.info('[ExplicitIntentInferrer.invoke] No content and fallback disabled, returning empty');
+      logger.info("invoke: no content and fallback disabled, returning empty");
       return { intents: [] };
     }
 
@@ -204,14 +206,13 @@ export class ExplicitIntentInferrer {
       ${operationMode === 'delete' ? 'This should not execute - delete operations skip inference.' : ''}
     `;
     
-    // Log the actual prompt being sent to the LLM for debugging
-    log.info('[ExplicitIntentInferrer.invoke] Prompt details', {
+    logger.debug("invoke: prompt details", {
       hasConversationHistory: !!conversationSection,
       conversationHistoryLength: formattedHistory.length,
       conversationHistoryPreview: formattedHistory.substring(0, 300),
-      content,
+      contentLength: content?.length ?? 0,
       promptLength: prompt.length,
-      promptPreview: prompt.substring(0, 500)
+      promptPreview: prompt.substring(0, 500),
     });
 
     const messages = [
@@ -223,16 +224,17 @@ export class ExplicitIntentInferrer {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result);
 
-      log.info(`[ExplicitIntentInferrer.invoke] Found ${output.intents.length} intents.`, {
+      logger.info(`invoke: found ${output.intents.length} intents`, {
         operationMode,
         allowedFallback: allowProfileFallback,
-        usedFallback: !content && allowProfileFallback
+        usedFallback: !content && allowProfileFallback,
       });
       return output;
-    } catch (error: any) {
-      log.error("[ExplicitIntentInferrer] Error during invocation", {
-        message: error.message,
-        stack: error.stack
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      logger.error("invoke: error during invocation", {
+        message: err.message,
+        stack: err.stack,
       });
       return { intents: [] };
     }
@@ -251,16 +253,17 @@ export class ExplicitIntentInferrer {
       return `[${index + 1}] ${role}: ${truncated}`;
     }).join('\n');
     
-    // Log full conversation history for debugging anaphoric resolution issues
-    log.info('[ExplicitIntentInferrer.formatConversationHistory] Full conversation history', {
+    logger.debug("formatConversationHistory: full conversation history", {
       messageCount: messages.length,
-      fullHistory: messages.map((msg, index) => {
-        const role = msg._getType() === 'human' ? 'User' : 'Assistant';
-        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        return `[${index + 1}] ${role}: ${content}`;
-      }).join('\n')
+      fullHistory: messages
+        .map((msg, index) => {
+          const role = msg._getType() === "human" ? "User" : "Assistant";
+          const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+          return `[${index + 1}] ${role}: ${content}`;
+        })
+        .join("\n"),
     });
-    
+
     return formatted;
   }
 

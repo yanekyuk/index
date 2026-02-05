@@ -87,11 +87,23 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  /**
+   * Optional index scope (index ID). When set, prep loads active intents
+   * in that index for the user (getIntentsInIndexForMember); when absent,
+   * prep uses global active intents (getActiveIntents). Enables index-scoped
+   * reconciliation so create/update/expire decisions are per-index.
+   */
+  indexId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   // --- Populated by Graph (Prep Node) ---
 
   /**
    * The formatted string of currently active intents.
-   * Populated by prepNode from database.getActiveIntents().
+   * Populated by prepNode from getActiveIntents(userId) or, when indexId is set,
+   * from getIntentsInIndexForMember(userId, indexId).
    */
   activeIntents: Annotation<string>({
     reducer: (curr, next) => next,

@@ -5,13 +5,15 @@ import { log } from '../lib/log';
 import { opportunityService } from '../services/opportunity.service';
 import { runIntentOpportunityGraph } from '../jobs/opportunity.job';
 
+const logger = log.queue.from("OpportunityQueue");
+
 export const QUEUE_NAME = 'opportunity-processing-queue';
 
 /**
  * Job payload for the Opportunity Queue.
  * - process_opportunities: timestamp, force (legacy full cycle).
  * - process_intent_opportunities: intentId, userId (new graph per intent).
- */
+*/
 export interface OpportunityJobData extends Record<string, unknown> {
   timestamp?: number;
   force?: boolean;
@@ -43,10 +45,10 @@ async function opportunityProcessor(job: Job<OpportunityJobData>) {
     if (intentId && userId) {
       await runIntentOpportunityGraph(intentId, userId);
     } else {
-      log.warn('[OpportunityProcessor] process_intent_opportunities missing intentId or userId', job.data);
+      logger.warn('[OpportunityProcessor] process_intent_opportunities missing intentId or userId', job.data);
     }
   } else {
-    log.warn(`[OpportunityProcessor] Unknown job name: ${job.name}`);
+    logger.warn(`[OpportunityProcessor] Unknown job name: ${job.name}`);
   }
 }
 

@@ -18,6 +18,8 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { log } from "../../../log";
 
+const logger = log.protocol.from("ChatCheckpointer");
+
 let checkpointerInstance: PostgresSaver | null = null;
 let setupPromise: Promise<void> | null = null;
 
@@ -49,7 +51,7 @@ export async function getCheckpointer(): Promise<PostgresSaver> {
     );
   }
 
-  log.info("[getCheckpointer] Initializing PostgresSaver checkpointer");
+  logger.info("[getCheckpointer] Initializing PostgresSaver checkpointer");
 
   // Create checkpointer from connection string
   checkpointerInstance = PostgresSaver.fromConnString(connectionString);
@@ -57,9 +59,9 @@ export async function getCheckpointer(): Promise<PostgresSaver> {
   // Setup creates required tables if they don't exist
   // Store the promise so concurrent calls can await it
   setupPromise = checkpointerInstance.setup().then(() => {
-    log.info("[getCheckpointer] PostgresSaver setup complete");
+    logger.info("[getCheckpointer] PostgresSaver setup complete");
   }).catch((error) => {
-    log.error("[getCheckpointer] PostgresSaver setup failed", {
+    logger.error("[getCheckpointer] PostgresSaver setup failed", {
       error: error instanceof Error ? error.message : String(error),
     });
     // Reset instance on failure so next call retries
@@ -96,12 +98,12 @@ export async function createCheckpointer(
     );
   }
 
-  log.info("[createCheckpointer] Creating new PostgresSaver instance");
+  logger.info("[createCheckpointer] Creating new PostgresSaver instance");
 
   const checkpointer = PostgresSaver.fromConnString(connStr);
   await checkpointer.setup();
 
-  log.info("[createCheckpointer] PostgresSaver setup complete");
+  logger.info("[createCheckpointer] PostgresSaver setup complete");
   return checkpointer;
 }
 
@@ -113,7 +115,7 @@ export async function createCheckpointer(
  * Use with caution in production.
  */
 export function resetCheckpointer(): void {
-  log.info("[resetCheckpointer] Resetting checkpointer instance");
+  logger.info("[resetCheckpointer] Resetting checkpointer instance");
   checkpointerInstance = null;
   setupPromise = null;
 }

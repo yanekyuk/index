@@ -5,6 +5,8 @@ import { z } from "zod";
 import { log } from "../../../log";
 import type { HydeStrategy } from "../hyde/hyde.strategies";
 
+const logger = log.protocol.from("OpportunityEvaluator");
+
 /**
  * Config
  */
@@ -131,10 +133,10 @@ export class OpportunityEvaluator {
   ): Promise<Opportunity[]> {
     const minScore = options.minScore || 70;
 
-    log.info(`[OpportunityEvaluator.invoke] Analyzing ${candidates.length} candidates...`);
+    logger.info(`[OpportunityEvaluator.invoke] Analyzing ${candidates.length} candidates...`);
 
     if (candidates.length === 0) {
-      log.info('[OpportunityEvaluator] No candidates provided.');
+      logger.info('[OpportunityEvaluator] No candidates provided.');
       return [];
     }
 
@@ -156,7 +158,7 @@ export class OpportunityEvaluator {
 
     // Sort by score and take top 1
     const out = opportunities.sort((a, b) => b.score - a.score).slice(0, 1);
-    log.info('[OpportunityEvaluator.invoke] Done', { accepted: out.length });
+    logger.info('[OpportunityEvaluator.invoke] Done', { accepted: out.length });
     return out;
   }
 
@@ -206,7 +208,7 @@ export class OpportunityEvaluator {
 
       return mappedOpportunities;
     } catch (e: any) {
-      log.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message: e.message });
+      logger.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message: e.message });
       return [];
     }
   }
@@ -232,7 +234,7 @@ export class OpportunityEvaluator {
           try {
             candidates = JSON.parse(args.candidatesJson);
           } catch (e) {
-            log.error("Failed to parse candidates JSON");
+            logger.error("Failed to parse candidates JSON");
           }
         }
 

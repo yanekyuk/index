@@ -46,6 +46,7 @@ This replaces the previous 17-node conditional routing architecture with a flexi
 | `message` | string | User message (e.g. "Show my profile and create an intent to learn Rust") |
 | `sessionId` | string | Chat session ID for loading history |
 | `maxContextMessages?` | number | Max messages to load (default: 20) |
+| `indexId?` | string | Optional index (community) ID to scope the conversation; persisted on the session and used as default for index-aware tools (Phase 3). |
 
 **Output**: Async iterator of stream events: `tool_start`, `tool_end`, `agent_thinking`, `token`, `error`, `status`.
 
@@ -103,6 +104,7 @@ classDiagram
     class ChatTools {
         +get_user_profile()
         +update_user_profile()
+        +get_intents()
         +get_active_intents()
         +get_intents_in_index()
         +create_intent()
@@ -116,6 +118,8 @@ classDiagram
         +list_my_opportunities()
         +create_opportunity_between_members()
         +scrape_url()
+        +confirm_action()
+        +cancel_action()
     }
 
     ChatGraphFactory --> ChatAgent
@@ -167,7 +171,7 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 15 tools, organized by domain:
+The agent has access to 16 tools, organized by domain. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat)).
 
 ### Profile Tools
 
@@ -180,34 +184,47 @@ The agent has access to 15 tools, organized by domain:
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_active_intents` | List user's goals/wants | "What are my intents?", "Show my goals" |
-| `get_intents_in_index` | List intents in an index | "What intents are in this community?" |
-| `create_intent` | Create new intent | "I want to learn Rust", "Looking for a co-founder" |
-| `update_intent` | Modify existing intent | "Change that goal to...", "Update my coding intent" |
-| `delete_intent` | Remove an intent | "Delete that goal", "Remove my learning intent" |
+| `get_intents` | List user's intents (all or in an index). Prefer over `get_active_intents`. | "What are my intents?", "Show my goals". Optional `indexNameOrId`; when chat is index-scoped, omitting it uses the current index. |
+| `get_active_intents` | (Deprecated.) Same as `get_intents` with no index. | Use `get_intents` instead. |
+| `get_intents_in_index` | List intents in a specific index | "What intents are in this community?" Optional `indexNameOrId` when index-scoped. |
+| `create_intent` | Create new intent | "I want to learn Rust". Optional `indexId`; when index-scoped, omitting it uses the current index. |
+| `update_intent` / `delete_intent` | Modify or remove an intent | When index-scoped, only intents in that index can be updated/deleted. Use exact `id` from `get_intents`. |
 
 ### Index Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_index_memberships` | List communities | "What indexes am I in?", "Show my communities" |
-| `list_index_members` | List members of an index | "Who is in this index?" |
-| `list_index_intents` | List intents in an index | "What intents are in this index?" |
-| `update_index_settings` | Modify index (owner-only) | "Make my index private", "Update index description" |
+| `get_index_memberships` | List communities | When index-scoped, returns only the current index unless `showAll: true`. |
+| `list_index_members` / `list_index_intents` | List members or intents in an index | When index-scoped, omit `indexNameOrId` to use the current index. |
+| `update_index_settings` | Modify index (owner-only) | When index-scoped, omit `indexId` to update the current index. |
 
 ### Discovery Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `find_opportunities` | Search for connections | "Find people interested in AI", "Who can help with ML?" |
-| `list_my_opportunities` | List user's opportunities | "Show my opportunities", "What matches do I have?" |
-| `create_opportunity_between_members` | Create opportunity between two members | "Introduce me to X", "Create opportunity with Y" |
+| `find_opportunities` | Search for connections | When index-scoped, search is limited to that index unless a different index is passed. |
+| `list_my_opportunities` | List user's opportunities | When index-scoped, omit `indexNameOrId` to list only opportunities in that index. |
+| `create_opportunity_between_members` | Create opportunity between two members | When index-scoped, omit `indexNameOrId` to use the current index. |
+
+### Confirmation Tools
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `confirm_action` | Execute a pending update or delete after the user confirms | Called by the agent when the user confirms (e.g. "yes, delete it"). Requires `confirmationId` from the prior `needsConfirmation` response. |
+| `cancel_action` | Cancel a pending update or delete | Called when the user declines (e.g. "no, keep it"). Requires `confirmationId`. |
+
+Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index_settings`) do **not** perform the action immediately. They set a **pending confirmation** in state and return `needsConfirmation`; the agent asks the user, then calls `confirm_action` or `cancel_action`.
 
 ### Utility Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `scrape_url` | Extract web content | "Read my LinkedIn", "Check this GitHub profile" |
+| `scrape_url` | Extract web content (optionally objective-aware) | "Read my LinkedIn", "Check this GitHub profile", "Create an intent from this repo link" |
+
+**scrape_url** accepts an optional `objective` parameter. When the downstream use is known, pass it so the returned content is tailored:
+- For **profile** (LinkedIn, GitHub, etc.): `objective: "User wants to update their profile from this page."`
+- For **intent** (project/repo link to turn into an intent): `objective: "User wants to create an intent from this link (project/repo or similar)."`
+- Omit for general research. The agent is prompted to use the appropriate objective when the user's goal is clear (see chat-revision Phase 1).
 
 ### Tool Result Format
 
@@ -217,9 +234,31 @@ All tools return JSON with consistent structure:
 // Success
 { "success": true, "data": { ... } }
 
-// Failure  
+// Failure
 { "success": false, "error": "Error message" }
+
+// Confirmation required (update/delete tools)
+{ "success": true, "needsConfirmation": true, "confirmationId": "...", "action": "update" | "delete", "resource": "...", "summary": "..." }
+
+// Clarification required (create tools when required fields missing)
+{ "success": false, "needsClarification": true, "missingFields": [...], "message": "..." }
 ```
+
+### Index-Scoped Chat (Phase 3)
+
+When the chat is started with an optional **`indexId`** (e.g. from an index/community page), that index is:
+
+- Stored in **graph state** and passed to the agent as **tool context** (`context.indexId`).
+- **Persisted on the chat session** so reconnecting to the same session keeps the scope; the request body can override it.
+- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `get_intents`, `get_intents_in_index`, `list_index_intents`, `list_index_members`, `create_opportunity_between_members`, `find_opportunities`, `list_my_opportunities`, `update_index_settings`.
+
+**Tool behavior when index-scoped:**
+
+- **`get_index_memberships`**: Returns only the current index membership (with a note). Use `showAll: true` when the user asks for "all my indexes".
+- **`update_intent` / `delete_intent`**: Only intents that belong to the current index can be updated or deleted; otherwise the tool returns an error.
+- **`get_intents`**: Primary tool for listing intents; accepts optional `indexNameOrId`. When omitted and index-scoped, returns intents in the current index. **`get_active_intents`** is a deprecated alias.
+
+When no index is passed (and the session has none), behavior is unchanged (global scope).
 
 ---
 
@@ -233,22 +272,26 @@ The state is minimal compared to the previous architecture:
 classDiagram
     class ChatGraphState {
         +string userId
+        +string indexId
         +BaseMessage[] messages
         +number iterationCount
         +boolean shouldContinue
         +string responseText
         +string error
+        +PendingConfirmation pendingConfirmation
     }
 ```
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `userId` | string | Required for all operations |
+| `indexId` | string \| undefined | Optional index scope for this run; passed to tools as default (Phase 3). |
 | `messages` | BaseMessage[] | Conversation history including tool calls/results |
 | `iterationCount` | number | Tracks loop progress for limits |
 | `shouldContinue` | boolean | Control flag for loop exit |
 | `responseText` | string | Final response when complete |
 | `error` | string | Error message if something fails |
+| `pendingConfirmation` | PendingConfirmation \| undefined | When set by an update/delete tool, the agent asks the user and then calls `confirm_action` or `cancel_action`; no destructive action runs until confirmation. |
 
 ### Message Flow
 
@@ -263,7 +306,7 @@ sequenceDiagram
     G->>A: invoke(messages)
     A->>T: get_user_profile()
     T-->>A: ToolMessage(profile data)
-    A->>T: get_active_intents()
+    A->>T: get_intents()
     T-->>A: ToolMessage(intents data)
     A-->>G: AIMessage("Here's your profile...")
     G-->>U: Stream response
@@ -321,10 +364,10 @@ classDiagram
 [tool_start] get_user_profile {}
 [thinking] Checking your profile...
 [tool_end] get_user_profile success "Profile: John Doe"
-[tool_start] get_active_intents {}
+[tool_start] get_intents {}
 [thinking] Fetching your intents...
-[tool_end] get_active_intents success "3 intent(s) found"
-[agent_thinking] iteration=1, tools=["get_user_profile", "get_active_intents"]
+[tool_end] get_intents success "3 intent(s) found"
+[agent_thinking] iteration=1, tools=["get_user_profile", "get_intents"]
 [status] Generating response...
 [token] Here
 [token] 's
@@ -342,7 +385,7 @@ graphs/chat/
 ├── chat.graph.ts           # Factory class, single agent_loop node
 ├── chat.graph.state.ts     # Simplified state annotation
 ├── chat.agent.ts           # ChatAgent class with ReAct loop
-├── chat.tools.ts           # 15 tool definitions
+├── chat.tools.ts           # Tool definitions (incl. confirm_action, cancel_action)
 ├── chat.utils.ts           # Token counting & truncation
 ├── chat.checkpointer.ts    # PostgreSQL state persistence
 ├── README.md               # This file
@@ -485,9 +528,10 @@ Previous architecture had fast paths for simple queries (e.g., "show my profile"
 
 Safety is enforced at the **tool level**, not the graph level:
 
-- `update_index_settings` checks ownership before executing
-- `delete_intent` validates the intent exists
-- All tools return errors gracefully instead of throwing
+- **Confirmation**: Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index_settings`) do not perform the action immediately. They set `pendingConfirmation` and return `needsConfirmation`; the agent asks the user, then the user confirms via `confirm_action` or cancels via `cancel_action`.
+- **Clarification**: Create tools return `needsClarification` when required fields are missing so the agent can ask the user for the missing data.
+- `update_index_settings` (and other update/delete tools) validate ownership and resource existence before storing a pending confirmation; execution happens only in `confirm_action`.
+- All tools return errors gracefully instead of throwing.
 
 ---
 

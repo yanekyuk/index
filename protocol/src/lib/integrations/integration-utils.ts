@@ -2,8 +2,9 @@ import db from '../drizzle/drizzle';
 import { userIntegrations } from '../../schemas/database.schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { log } from '../log';
-
 import { IntegrationConfigType } from '../../schemas/database.schema';
+
+const logger = log.lib.from("lib/integrations/integration-utils.ts");
 
 export interface IntegrationDetails {
   id: string;
@@ -38,13 +39,13 @@ export async function getIntegrationById(integrationId: string): Promise<Integra
     .limit(1);
 
     if (integration.length === 0) {
-      log.warn('Integration not found or not connected', { integrationId });
+      logger.warn('Integration not found or not connected', { integrationId });
       return null;
     }
 
     return integration[0];
   } catch (error) {
-    log.error('Failed to get integration details', { 
+    logger.error('Failed to get integration details', { 
       integrationId, 
       error: error instanceof Error ? error.message : String(error) 
     });

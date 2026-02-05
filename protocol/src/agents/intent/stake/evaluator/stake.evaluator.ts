@@ -4,6 +4,8 @@ import { StakeEvaluatorOutput } from "./stake.evaluator.types";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { log } from "../../../../lib/log";
 
+const logger = log.agent.from("agents/intent/stake/evaluator/stake.evaluator.ts");
+
 export const SYSTEM_PROMPT = `
   You are a semantic relationship analyst. Determine if two intents have MUTUAL relevance.
 
@@ -80,7 +82,7 @@ export class StakeEvaluator extends BaseLangChainAgent {
     primaryIntent: { id: string; payload: string },
     candidates: Array<{ id: string; payload: string }>
   ): Promise<StakeEvaluatorOutput> {
-    log.info(`[StakeEvaluator] Running match for intent "${primaryIntent.id}" against ${candidates.length} candidates.`);
+    logger.info(`[StakeEvaluator] Running match for intent "${primaryIntent.id}" against ${candidates.length} candidates.`);
 
     if (candidates.length === 0) {
       return { matches: [] };
@@ -130,11 +132,11 @@ export class StakeEvaluator extends BaseLangChainAgent {
         }
       }
 
-      log.info(`[StakeEvaluator] Found ${finalMatches.length} mutual matches (Score >= 70).`);
+      logger.info(`[StakeEvaluator] Found ${finalMatches.length} mutual matches (Score >= 70).`);
       return { matches: finalMatches };
 
     } catch (error) {
-      log.error("[StakeEvaluator] Error in StakeEvaluator run:", { error });
+      logger.error("[StakeEvaluator] Error in StakeEvaluator run:", { error });
       return { matches: [] };
     }
   }

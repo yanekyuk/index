@@ -1,6 +1,8 @@
 import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
+
+const logger = log.lib.from("lib/integrations/providers/discord.ts");
 import { ensureIndexMembership } from '../membership-utils';
 import { addGenerateIntentsJob } from '../../queue/llm-queue';
 import { resolveIntegrationUser } from '../../user-utils';
@@ -32,21 +34,21 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return [];
     }
 
     if (!integration.indexId) {
-      log.warn('Discord integration requires an index', { integrationId });
+      logger.warn('Discord integration requires an index', { integrationId });
       return [];
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return [];
     }
 
-    log.info('Discord sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.info('Discord sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -57,14 +59,14 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
     // Find the specific connected account by ID
     const account = accounts?.items?.find((acc: any) => acc.id === connectedAccountId);
     if (!account) {
-      log.error('Connected account not found', { connectedAccountId, integrationId });
+      logger.error('Connected account not found', { connectedAccountId, integrationId });
       return [];
     }
 
     // Get guild information from the connected account data
     const guild = (account as any).data?.guild;
     if (!guild?.id) {
-      log.info('No guild found in connected account', { integrationId });
+      logger.info('No guild found in connected account', { integrationId });
       return [];
     }
 
@@ -86,7 +88,7 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
       }
     }
 
-    log.info('Discord channels', { count: channels.length });
+    logger.info('Discord channels', { count: channels.length });
     if (!channels.length) return [];
 
     const allMessages: any[] = [];
@@ -129,10 +131,10 @@ async function fetchDiscordMessages(integrationId: string, lastSyncAt?: Date): P
         }
       }
     }
-    log.info('Discord messages', { total: messagesTotal, filtered: allMessages.length });
+    logger.info('Discord messages', { total: messagesTotal, filtered: allMessages.length });
     return allMessages;
   } catch (error) {
-    log.error('Discord sync error', { integrationId, error: (error as Error).message });
+    logger.error('Discord sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }
@@ -199,7 +201,7 @@ export async function initDiscord(
     });
   }
   
-  log.info('Discord messages fetched', { integrationId, count: discordMessages.length });
+  logger.info('Discord messages fetched', { integrationId, count: discordMessages.length });
   
   if (discordMessages.length === 0) {
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -208,14 +210,14 @@ export async function initDiscord(
   // Get integration to access indexId
   const integration = await getIntegrationById(integrationId);
   if (!integration?.indexId) {
-    log.error('Integration or indexId not found', { integrationId });
+    logger.error('Integration or indexId not found', { integrationId });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
   
   // Process per user
   return await processMessagesPerUser(discordMessages, integrationId, integration.indexId);
   } catch (error) {
-    log.error('Discord sync error', { integrationId, error: (error as Error).message });
+    logger.error('Discord sync error', { integrationId, error: (error as Error).message });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }
@@ -260,7 +262,7 @@ async function processMessagesPerUser(
       });
       
       if (!resolvedUser) {
-        log.error('Failed to resolve user', { providerId, email: userInfo.email });
+        logger.error('Failed to resolve user', { providerId, email: userInfo.email });
         continue;
       }
       
@@ -272,7 +274,7 @@ async function processMessagesPerUser(
       
       resolvedUsers.set(providerId, resolvedUser);
     } catch (error) {
-      log.error('Failed to resolve user', {
+      logger.error('Failed to resolve user', {
         providerId,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -314,7 +316,7 @@ async function processMessagesPerUser(
       }, 6);
       intentsGenerated++;
     } catch (error) {
-      log.error('Failed to queue intent generation', {
+      logger.error('Failed to queue intent generation', {
         userId: user.id,
         error: error instanceof Error ? error.message : String(error)
       });

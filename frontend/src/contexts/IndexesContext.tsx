@@ -2,8 +2,8 @@
 
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { Index } from '@/lib/types';
-import { useIndexes as useIndexesService } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useIndexesV2 } from '@/services/v2/indexes.service';
 
 interface IndexesContextType {
   indexes: Index[];
@@ -21,20 +21,19 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const indexesService = useIndexesService();
+  const indexesV2 = useIndexesV2();
   const { isAuthenticated } = useAuthContext();
   const hasFetchedRef = useRef(false);
   const hasDataRef = useRef(false);
 
   const refreshIndexes = useCallback(async () => {
     try {
-      // Only set loading to true if we don't have data yet (first load)
       if (!hasDataRef.current) {
         setLoading(true);
       }
       setError(null);
-      const response = await indexesService.getIndexes(1, 100);
-      setIndexes(response.data || []);
+      const response = await indexesV2.getIndexes();
+      setIndexes(response.data ?? []);
       hasFetchedRef.current = true;
       hasDataRef.current = true;
     } catch (err) {
@@ -44,7 +43,7 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [indexesService]);
+  }, [indexesV2]);
 
   const addIndex = useCallback((index: Index) => {
     setIndexes(prev => [index, ...prev]);

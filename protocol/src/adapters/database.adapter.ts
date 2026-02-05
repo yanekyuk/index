@@ -3,7 +3,7 @@
  * Postgres implementations; no dependency on lib/protocol.
  */
 
-import { eq, and, isNull, isNotNull, sql, count, desc, lt, lte, ne } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray } from 'drizzle-orm';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User } from '../schemas/database.schema';
@@ -210,6 +210,73 @@ export class IntentDatabaseAdapter {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
+
+  async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let indexId: string | null = null;
+
+    if (uuidRegex.test(indexNameOrId.trim())) {
+      const membership = await db
+        .select({ indexId: schema.indexMembers.indexId })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            eq(schema.indexMembers.indexId, indexNameOrId.trim()),
+            isNull(schema.indexes.deletedAt)
+          )
+        )
+        .limit(1);
+      indexId = membership[0]?.indexId ?? null;
+    } else {
+      const memberships = await db
+        .select({
+          indexId: schema.indexMembers.indexId,
+          indexTitle: schema.indexes.title,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.userId, userId),
+            isNull(schema.indexes.deletedAt)
+          )
+        );
+      const needle = indexNameOrId.trim().toLowerCase();
+      const match = memberships.find(
+        (m) => (m.indexTitle ?? '').toLowerCase() === needle || (m.indexTitle ?? '').toLowerCase().includes(needle)
+      );
+      indexId = match?.indexId ?? null;
+    }
+
+    if (!indexId) {
+      return [];
+    }
+
+    try {
+      const result = await db
+        .select({
+          id: schema.intents.id,
+          payload: schema.intents.payload,
+          summary: schema.intents.summary,
+          createdAt: schema.intents.createdAt,
+        })
+        .from(schema.intents)
+        .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+        .where(
+          and(
+            eq(schema.intentIndexes.indexId, indexId),
+            eq(schema.intents.userId, userId),
+            isNull(schema.intents.archivedAt)
+          )
+        );
+      return result;
+    } catch (error: unknown) {
+      console.error('IntentDatabaseAdapter.getIntentsInIndexForMember error:', error);
+      return [];
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -304,7 +371,9 @@ export class ChatDatabaseAdapter {
       indexId = match?.indexId ?? null;
     }
 
-    if (!indexId) return [];
+    if (!indexId) {
+      return [];
+    }
 
     try {
       const result = await db
@@ -474,6 +543,94 @@ export class ChatDatabaseAdapter {
       .limit(1);
     const row = rows[0];
     return row ? { id: row.id, title: row.title } : null;
+  }
+
+  async getIndexesForUser(userId: string) {
+    const memberIndexIds = await db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+      .where(
+        and(
+          eq(schema.indexMembers.userId, userId),
+          isNull(schema.indexes.deletedAt)
+        )
+      );
+
+    const ids = [...new Set(memberIndexIds.map((r) => r.indexId))];
+    if (ids.length === 0) {
+      return {
+        indexes: [],
+        pagination: { current: 1, total: 0, count: 0, totalCount: 0 },
+      };
+    }
+
+    const rows = await db
+      .select({
+        id: schema.indexes.id,
+        title: schema.indexes.title,
+        prompt: schema.indexes.prompt,
+        permissions: schema.indexes.permissions,
+        isPersonal: schema.indexes.isPersonal,
+        createdAt: schema.indexes.createdAt,
+        updatedAt: schema.indexes.updatedAt,
+        ownerId: schema.indexMembers.userId,
+        userName: schema.users.name,
+        userAvatar: schema.users.avatar,
+      })
+      .from(schema.indexes)
+      .innerJoin(
+        schema.indexMembers,
+        and(
+          eq(schema.indexes.id, schema.indexMembers.indexId),
+          sql`'owner' = ANY(${schema.indexMembers.permissions})`
+        )
+      )
+      .innerJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+      .where(
+        and(
+          isNull(schema.indexes.deletedAt),
+          inArray(schema.indexes.id, ids)
+        )
+      )
+      .orderBy(desc(schema.indexes.isPersonal), desc(schema.indexes.createdAt));
+
+    const indexesWithCounts = await Promise.all(
+      rows.map(async (row) => {
+        const [memberCount] = await db
+          .select({ count: count() })
+          .from(schema.indexMembers)
+          .where(eq(schema.indexMembers.indexId, row.id));
+        return {
+          id: row.id,
+          title: row.title,
+          prompt: row.prompt,
+          permissions: row.permissions,
+          isPersonal: row.isPersonal,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+          user: {
+            id: row.ownerId,
+            name: row.userName,
+            avatar: row.userAvatar,
+          },
+          _count: {
+            members: Number(memberCount?.count ?? 0),
+          },
+        };
+      })
+    );
+
+    const totalCount = indexesWithCounts.length;
+    return {
+      indexes: indexesWithCounts,
+      pagination: {
+        current: 1,
+        total: totalCount > 0 ? 1 : 0,
+        count: totalCount,
+        totalCount,
+      },
+    };
   }
 
   async getUserIndexIds(userId: string): Promise<string[]> {
@@ -940,6 +1097,14 @@ export class ChatDatabaseAdapter {
       memberCount: Number(memberCountResult[0]?.count ?? 0),
       intentCount: Number(intentCountResult[0]?.count ?? 0),
     };
+  }
+
+  async softDeleteIndex(indexId: string): Promise<void> {
+    await db.update(indexes).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(indexes.id, indexId));
+  }
+
+  async deleteProfile(userId: string): Promise<void> {
+    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)

@@ -2,6 +2,9 @@ import db from '../../lib/drizzle/drizzle';
 import { agents } from '../../schemas/database.schema';
 import { eq, isNull } from 'drizzle-orm';
 import { SemanticRelevancyBroker } from './semantic_relevancy';
+import { log } from '../../lib/log';
+
+const logger = log.agent.from('[DEPRECATED] context_brokers/connector');
 
 // Context broker interface
 interface ContextBroker {
@@ -27,7 +30,7 @@ let CONTEXT_BROKERS: ContextBroker[] = [];
  * @deprecated
  */
 export async function initializeBrokers(): Promise<void> {
-  console.log('📥 Initializing context brokers from database...');
+  logger.info('📥 Initializing context brokers from database...');
   const activeAgents = await db.select()
     .from(agents)
     .where(isNull(agents.deletedAt));
@@ -43,7 +46,7 @@ export async function initializeBrokers(): Promise<void> {
     })
     .filter((broker): broker is ContextBroker => broker !== null);
 
-  console.log(`✅ Initialized ${CONTEXT_BROKERS.length} context brokers`);
+  logger.info(`✅ Initialized ${CONTEXT_BROKERS.length} context brokers`);
 }
 
 /**
@@ -51,20 +54,20 @@ export async function initializeBrokers(): Promise<void> {
  * @deprecated
  */
 export async function triggerBrokersOnIntentCreated(intentId: string): Promise<void> {
-  console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for new intent: ${intentId}`);
+  logger.info(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for new intent: ${intentId}`);
 
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
-      console.log(`🚀 Starting broker: ${broker.agentId} for intent: ${intentId}`);
+      logger.info(`🚀 Starting broker: ${broker.agentId} for intent: ${intentId}`);
       await broker.onIntentCreated(intentId);
-      console.log(`✅ Broker ${broker.agentId} completed for intent: ${intentId}`);
+      logger.info(`✅ Broker ${broker.agentId} completed for intent: ${intentId}`);
     } catch (error) {
-      console.error(`❌ Broker ${broker.agentId} failed for intent ${intentId}:`, error);
+      logger.error(`❌ Broker ${broker.agentId} failed for intent ${intentId}:`, { error });
     }
   });
 
   await Promise.allSettled(brokerPromises);
-  console.log(`🏁 All brokers finished processing intent: ${intentId}`);
+  logger.info(`🏁 All brokers finished processing intent: ${intentId}`);
 }
 
 /**
@@ -72,20 +75,20 @@ export async function triggerBrokersOnIntentCreated(intentId: string): Promise<v
  * @deprecated
  */
 export async function triggerBrokersOnIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {
-  console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for updated intent: ${intentId}`);
+  logger.info(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for updated intent: ${intentId}`);
 
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
-      console.log(`🔄 Starting broker: ${broker.agentId} for updated intent: ${intentId}`);
+      logger.info(`🔄 Starting broker: ${broker.agentId} for updated intent: ${intentId}`);
       await broker.onIntentUpdated(intentId, previousStatus);
-      console.log(`✅ Broker ${broker.agentId} completed for updated intent: ${intentId}`);
+      logger.info(`✅ Broker ${broker.agentId} completed for updated intent: ${intentId}`);
     } catch (error) {
-      console.error(`❌ Broker ${broker.agentId} failed for updated intent ${intentId}:`, error);
+      logger.error(`❌ Broker ${broker.agentId} failed for updated intent ${intentId}:`, { error });
     }
   });
 
   await Promise.allSettled(brokerPromises);
-  console.log(`🏁 All brokers finished processing updated intent: ${intentId}`);
+  logger.info(`🏁 All brokers finished processing updated intent: ${intentId}`);
 }
 
 /**
@@ -93,20 +96,20 @@ export async function triggerBrokersOnIntentUpdated(intentId: string, previousSt
  * @deprecated
  */
 export async function triggerBrokersOnIntentArchived(intentId: string): Promise<void> {
-  console.log(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for archived intent: ${intentId}`);
+  logger.info(`🎯 Triggering ${CONTEXT_BROKERS.length} context brokers for archived intent: ${intentId}`);
 
   const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
     try {
-      console.log(`📦 Starting broker: ${broker.agentId} for archived intent: ${intentId}`);
+      logger.info(`📦 Starting broker: ${broker.agentId} for archived intent: ${intentId}`);
       await broker.onIntentArchived(intentId);
-      console.log(`✅ Broker ${broker.agentId} completed for archived intent: ${intentId}`);
+      logger.info(`✅ Broker ${broker.agentId} completed for archived intent: ${intentId}`);
     } catch (error) {
-      console.error(`❌ Broker ${broker.agentId} failed for archived intent ${intentId}:`, error);
+      logger.error(`❌ Broker ${broker.agentId} failed for archived intent ${intentId}:`, { error });
     }
   });
 
   await Promise.allSettled(brokerPromises);
-  console.log(`🏁 All brokers finished processing archived intent: ${intentId}`);
+  logger.info(`🏁 All brokers finished processing archived intent: ${intentId}`);
 }
 
 /**
@@ -125,7 +128,7 @@ export async function registerContextBroker(broker: ContextBroker): Promise<void
   }
 
   CONTEXT_BROKERS.push(broker);
-  console.log(`📝 Registered new context broker: ${broker.agentId}`);
+  logger.info(`📝 Registered new context broker: ${broker.agentId}`);
 }
 
 /**

@@ -18,6 +18,7 @@ export interface NotionPage {
 import { getClient } from '../composio';
 import { log } from '../../log';
 
+const logger = log.lib.from("lib/integrations/providers/notion.ts");
 
 /**
  * Initialize Notion integration sync.
@@ -31,22 +32,22 @@ export async function initNotion(
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     // Index integration: skip intent generation (directory sync handles this)
     if (integration.indexId) {
-      log.info('Skipping intent generation for index integration', { integrationId });
+      logger.info('Skipping intent generation for index integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
     }
 
-    log.info('🚀 Notion sync starting', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.info('🚀 Notion sync starting', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -56,9 +57,9 @@ export async function initNotion(
     };
 
     if (lastSyncAt) {
-      log.info('🔄 Incremental sync - filtering client-side', { after: lastSyncAt.toISOString() });
+      logger.info('🔄 Incremental sync - filtering client-side', { after: lastSyncAt.toISOString() });
     } else {
-      log.info('🆕 First sync - fetching all pages');
+      logger.info('🆕 First sync - fetching all pages');
     }
 
     const search = await composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
@@ -71,7 +72,7 @@ export async function initNotion(
       (search as any)?.data?.response_data?.results ??
       (search as any)?.data?.results ??
       [];
-    log.info('Notion pages', { count: items.length });
+    logger.info('Notion pages', { count: items.length });
 
     const allPages: NotionPage[] = [];
     
@@ -81,7 +82,7 @@ export async function initNotion(
       if (lastSyncAt) {
         const lastModified = new Date(item.last_edited_time as any);
         if (isNaN(lastModified.getTime())) {
-          log.warn('Invalid last_edited_time for Notion page', { pageId: item.id, last_edited_time: item.last_edited_time });
+          logger.warn('Invalid last_edited_time for Notion page', { pageId: item.id, last_edited_time: item.last_edited_time });
           continue;
         }
         if (lastModified < lastSyncAt) {
@@ -116,11 +117,11 @@ export async function initNotion(
           }
         });
       } catch (error) {
-        log.error('❌ Error fetching Notion page blocks', { pageId: item.id, error: (error as Error).message });
+        logger.error('❌ Error fetching Notion page blocks', { pageId: item.id, error: (error as Error).message });
       }
     }
 
-    log.info('Notion pages fetched', { integrationId, count: allPages.length });
+    logger.info('Notion pages fetched', { integrationId, count: allPages.length });
     
     if (allPages.length === 0) {
       return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
@@ -147,7 +148,7 @@ export async function initNotion(
       newUsersCreated: 0
     };
   } catch (error) {
-    log.error('💥 Notion sync failed', { integrationId, error: (error as Error).message });
+    logger.error('💥 Notion sync failed', { integrationId, error: (error as Error).message });
     return { intentsGenerated: 0, usersProcessed: 0, newUsersCreated: 0 };
   }
 }

@@ -4,6 +4,8 @@ import { eq, and } from 'drizzle-orm';
 import { log } from '../log';
 import { addMemberToIndex } from '../index-members';
 
+const logger = log.lib.from("lib/integrations/membership-utils.ts");
+
 /**
  * Ensures a user is a member of the specified index.
  * If not already a member, adds them with basic permissions.
@@ -27,10 +29,10 @@ export async function ensureIndexMembership(userId: string, indexId: string): Pr
         role: 'member',
         autoAssign: true
       });
-      log.info('Added integration user as index member', { userId, indexId });
+      logger.info('Added integration user as index member', { userId, indexId });
     }
   } catch (error) {
-    log.error('Failed to add user as index member', { 
+    logger.error('Failed to add user as index member', { 
       userId, 
       indexId, 
       error: error instanceof Error ? error.message : String(error) 

@@ -4,6 +4,8 @@ import { log } from "../../../lib/log";
 import { z } from "zod";
 import { IntentSuggesterOutput } from "./intent.suggester.types";
 
+const logger = log.agent.from("agents/intent/suggester/intent.suggester.ts");
+
 /**
  * System prompt defining the IntentSuggester's behavior.
  * 
@@ -85,7 +87,7 @@ export class IntentSuggester extends BaseLangChainAgent {
    * @returns Structured suggestions or null if generation fails
    */
   async run(intentPayload: string): Promise<IntentSuggesterOutput | null> {
-    log.info(`[IntentSuggester] Generating suggestions for intent...`);
+    logger.info(`[IntentSuggester] Generating suggestions for intent...`);
 
     const prompt = `Generate refinement suggestions for this intent:
 
@@ -100,10 +102,10 @@ ${intentPayload}`;
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as IntentSuggesterOutput;
 
-      log.info(`[IntentSuggester] Generated ${output.suggestions.length} suggestions`);
+      logger.info(`[IntentSuggester] Generated ${output.suggestions.length} suggestions`);
       return output;
     } catch (error: any) {
-      log.error("[IntentSuggester] Error during execution", {
+      logger.error("[IntentSuggester] Error during execution", {
         error,
         message: error?.message,
         stack: error?.stack

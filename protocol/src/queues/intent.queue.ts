@@ -13,6 +13,8 @@ import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
 import { log } from '../lib/log';
 
+const logger = log.queue.from("IntentQueue");
+
 /** Persisted HyDE strategies to pre-generate on intent create/update. */
 const PERSISTED_HYDE_STRATEGIES = ['mirror', 'reciprocal'] as const;
 
@@ -79,7 +81,7 @@ export const intentQueue = QueueFactory.createQueue(QUEUE_NAME);
 
 // Processor Function
 async function intentProcessor(job: Job) {
-  log.info(`[IntentProcessor] Processing job ${job.id} (${job.name})`);
+  logger.info(`[IntentProcessor] Processing job ${job.id} (${job.name})`);
 
   switch (job.name) {
     case 'index_intent':
@@ -95,7 +97,7 @@ async function intentProcessor(job: Job) {
       await refreshHydeForIntent(job.data as HydeIntentJobData);
       break;
     default:
-      log.warn(`[IntentProcessor] Unknown job name: ${job.name}`);
+      logger.warn(`[IntentProcessor] Unknown job name: ${job.name}`);
   }
 }
 
@@ -134,7 +136,7 @@ async function generateIntents(data: GenerateIntentsJobData): Promise<void> {
   // 1. Get User Profile for Context
   const userProfile = await profileService.getProfile(userId);
   if (!userProfile) {
-    log.warn(`[IntentQueue] Missing profile for user ${userId}, skipping generation.`);
+    logger.warn(`[IntentQueue] Missing profile for user ${userId}, skipping generation.`);
     return;
   }
 
@@ -197,7 +199,7 @@ async function generateHydeForIntent(data: HydeIntentJobData): Promise<void> {
   const db = new ChatDatabaseAdapter();
   const intent = await db.getIntentForIndexing(intentId);
   if (!intent) {
-    log.warn(`[IntentProcessor:generate_hyde] Intent not found: ${intentId}`);
+    logger.warn(`[IntentProcessor:generate_hyde] Intent not found: ${intentId}`);
     return;
   }
   const embedder = new EmbedderAdapter();
@@ -216,7 +218,7 @@ async function generateHydeForIntent(data: HydeIntentJobData): Promise<void> {
     strategies: [...PERSISTED_HYDE_STRATEGIES],
     forceRegenerate: false,
   });
-  log.info(`[IntentProcessor:generate_hyde] Generated HyDE for intent ${intentId}`);
+  logger.info(`[IntentProcessor:generate_hyde] Generated HyDE for intent ${intentId}`);
 }
 
 /**
@@ -227,7 +229,7 @@ async function refreshHydeForIntent(data: HydeIntentJobData): Promise<void> {
   const db = new ChatDatabaseAdapter();
   const intent = await db.getIntentForIndexing(intentId);
   if (!intent) {
-    log.warn(`[IntentProcessor:refresh_hyde] Intent not found: ${intentId}`);
+    logger.warn(`[IntentProcessor:refresh_hyde] Intent not found: ${intentId}`);
     return;
   }
   const embedder = new EmbedderAdapter();
@@ -246,7 +248,7 @@ async function refreshHydeForIntent(data: HydeIntentJobData): Promise<void> {
     strategies: [...PERSISTED_HYDE_STRATEGIES],
     forceRegenerate: true,
   });
-  log.info(`[IntentProcessor:refresh_hyde] Refreshed HyDE for intent ${intentId}`);
+  logger.info(`[IntentProcessor:refresh_hyde] Refreshed HyDE for intent ${intentId}`);
 }
 
 export const intentWorker = QueueFactory.createWorker(QUEUE_NAME, intentProcessor);

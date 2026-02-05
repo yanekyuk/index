@@ -159,6 +159,6 @@ graphs/opportunity/
 
 ## Related
 
-- **HyDE graph**: Used to produce embeddings from `sourceText`; see `graphs/hyde/README.md`.
+- **HyDE graph**: Used to produce embeddings from `sourceText`; see [hyde/README.md](./hyde/README.md).
 - **OpportunityEvaluator**: `agents/opportunity/opportunity.evaluator.ts`
 - **Opportunity controller**: `src/controllers/opportunity.controller.ts` — POST `/opportunities/discover`

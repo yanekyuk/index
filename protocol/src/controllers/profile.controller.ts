@@ -8,6 +8,9 @@ import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+import { log } from '../lib/log';
+
+const logger = log.controller.from('profile');
 
 @Controller('/profiles')
 export class ProfileController {
@@ -30,6 +33,7 @@ export class ProfileController {
   @Post('/sync')
   @UseGuards(AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
+    logger.info('Profile sync requested', { userId: user.id });
     const graph = this.factory.createGraph();
 
     // Invoke the graph

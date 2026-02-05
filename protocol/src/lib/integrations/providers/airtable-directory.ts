@@ -1,6 +1,8 @@
 import { getClient } from '../composio';
 import { getIntegrationById } from '../integration-utils';
 import { log } from '../../log';
+
+const logger = log.lib.from("lib/integrations/providers/airtable-directory.ts");
 import type { DirectorySyncProvider, Source, Column, DirectoryRecord } from '../directory-sync';
 import type { DirectorySyncConfig } from '../../../schemas/database.schema';
 
@@ -57,7 +59,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
             arguments: offset ? { offset } : {}
           }) as AirtableApiResponse;
         } catch (error) {
-          log.error('Airtable LIST_BASES API call failed', {
+          logger.error('Airtable LIST_BASES API call failed', {
             integrationId,
             userId: integration.userId,
             connectedAccountId: integration.connectedAccountId,
@@ -68,7 +70,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
         // Check for API errors
         if (basesResp?.error) {
-          log.error('Airtable LIST_BASES returned error', {
+          logger.error('Airtable LIST_BASES returned error', {
             integrationId,
             error: basesResp.error,
             successful: basesResp.successful
@@ -78,7 +80,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
         // Log response structure for debugging
         if (!basesResp?.data) {
-          log.warn('Airtable LIST_BASES response missing data', {
+          logger.warn('Airtable LIST_BASES response missing data', {
             integrationId,
             hasData: !!basesResp?.data,
             hasError: !!basesResp?.error,
@@ -89,7 +91,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
         const responseData = basesResp?.data?.response_data;
         if (!responseData) {
-          log.warn('Airtable LIST_BASES response missing response_data', {
+          logger.warn('Airtable LIST_BASES response missing response_data', {
             integrationId,
             dataKeys: basesResp?.data ? Object.keys(basesResp.data) : [],
             hasBases: !!basesResp?.data?.bases,
@@ -106,7 +108,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
           bases.push(...responseData.bases);
           offset = responseData.offset;
         } else {
-          log.warn('Airtable LIST_BASES response_data missing bases', {
+          logger.warn('Airtable LIST_BASES response_data missing bases', {
             integrationId,
             responseDataKeys: Object.keys(responseData || {}),
             hasOffset: !!responseData?.offset
@@ -115,7 +117,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         }
       } while (offset);
 
-      log.info('Airtable bases fetched', { integrationId, baseCount: bases.length });
+      logger.info('Airtable bases fetched', { integrationId, baseCount: bases.length });
 
       // For each base, fetch tables to include in subSources
       const sources: Source[] = [];
@@ -129,7 +131,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
           // Log response structure for debugging
           if (!schemaResp?.data) {
-            log.warn('Airtable GET_BASE_SCHEMA response missing data', {
+            logger.warn('Airtable GET_BASE_SCHEMA response missing data', {
               integrationId,
               baseId: base.id,
               hasData: !!schemaResp?.data,
@@ -140,7 +142,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
           const schemaData = schemaResp?.data?.response_data;
           if (!schemaData) {
-            log.warn('Airtable GET_BASE_SCHEMA response missing response_data', {
+            logger.warn('Airtable GET_BASE_SCHEMA response missing response_data', {
               integrationId,
               baseId: base.id,
               dataKeys: schemaResp?.data ? Object.keys(schemaResp.data) : [],
@@ -159,7 +161,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
             });
           } else {
             const tables = schemaData?.tables || [];
-            log.info('Fetched tables for base', {
+            logger.info('Fetched tables for base', {
               integrationId,
               baseId: base.id,
               baseName: base.name,
@@ -175,7 +177,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
             });
           }
         } catch (error) {
-          log.warn('Failed to fetch tables for base', {
+          logger.warn('Failed to fetch tables for base', {
             integrationId,
             baseId: base.id,
             baseName: base.name,
@@ -189,7 +191,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         }
       }
 
-      log.info('Airtable sources list complete', {
+      logger.info('Airtable sources list complete', {
         integrationId,
         sourceCount: sources.length,
         baseCount: bases.length
@@ -197,7 +199,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
       return sources;
     } catch (error) {
-      log.error('Failed to list Airtable bases', {
+      logger.error('Failed to list Airtable bases', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -225,7 +227,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
           arguments: { baseId: sourceId }
         }) as AirtableApiResponse;
       } catch (error) {
-        log.error('Airtable GET_BASE_SCHEMA API call failed', {
+        logger.error('Airtable GET_BASE_SCHEMA API call failed', {
           integrationId,
           sourceId,
           error: error instanceof Error ? error.message : String(error)
@@ -235,7 +237,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
       // Check for API errors
       if (schemaResp?.error) {
-        log.error('Airtable GET_BASE_SCHEMA returned error', {
+        logger.error('Airtable GET_BASE_SCHEMA returned error', {
           integrationId,
           sourceId,
           error: schemaResp.error
@@ -251,7 +253,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         tables = schemaData.tables;
       } else if (schemaResp?.data?.tables) {
         tables = schemaResp.data.tables;
-        log.info('Using alternative response structure for GET_BASE_SCHEMA', {
+        logger.info('Using alternative response structure for GET_BASE_SCHEMA', {
           integrationId,
           sourceId,
           tableCount: tables.length
@@ -259,7 +261,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       }
 
       if (!tables || tables.length === 0) {
-        log.error('No tables found in base', {
+        logger.error('No tables found in base', {
           integrationId,
           sourceId,
           hasData: !!schemaResp?.data,
@@ -271,7 +273,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
       const table = tables.find((t: AirtableTable) => t.id === subSourceId);
       if (!table) {
-        log.error('Table not found in base', {
+        logger.error('Table not found in base', {
           integrationId,
           sourceId,
           subSourceId,
@@ -288,7 +290,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
       return columns;
     } catch (error) {
-      log.error('Failed to get Airtable table schema', {
+      logger.error('Failed to get Airtable table schema', {
         integrationId,
         sourceId,
         subSourceId,
@@ -300,7 +302,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
-      log.info('Fetching Airtable records', {
+      logger.info('Fetching Airtable records', {
         integrationId,
         baseId: config.source.id,
         tableId: config.source.subId
@@ -309,7 +311,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       const integration = await getIntegrationById(integrationId);
       
       if (!integration || !integration.connectedAccountId) {
-        log.error('Airtable integration not found or not connected', { integrationId });
+        logger.error('Airtable integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
@@ -317,7 +319,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
       const tableId = config.source.subId;
       
       if (!tableId) {
-        log.error('Airtable table ID missing', { integrationId, baseId });
+        logger.error('Airtable table ID missing', { integrationId, baseId });
         throw new Error('Table ID is required for Airtable directory sync');
       }
 
@@ -342,7 +344,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
             }
           }) as AirtableApiResponse;
         } catch (error) {
-          log.error('Airtable LIST_RECORDS API call failed', {
+          logger.error('Airtable LIST_RECORDS API call failed', {
             integrationId,
             baseId,
             tableId,
@@ -353,7 +355,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
         // Check for API errors
         if (recordsResp?.error) {
-          log.error('Airtable LIST_RECORDS returned error', {
+          logger.error('Airtable LIST_RECORDS returned error', {
             integrationId,
             baseId,
             tableId,
@@ -373,7 +375,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         } else if (recordsResp?.data?.records) {
           records = recordsResp.data.records;
           offset = recordsResp.data.offset;
-          log.debug('Using alternative response structure for LIST_RECORDS', {
+          logger.debug('Using alternative response structure for LIST_RECORDS', {
             integrationId,
             baseId,
             tableId,
@@ -405,7 +407,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
         recordOffset = offset;
       } while (recordOffset);
 
-      log.info('Fetched Airtable records for directory sync', {
+      logger.info('Fetched Airtable records for directory sync', {
         integrationId,
         baseId,
         tableId,
@@ -416,7 +418,7 @@ export const airtableDirectoryProvider: DirectorySyncProvider = {
 
       return allRecords;
     } catch (error) {
-      log.error('Failed to fetch Airtable records', {
+      logger.error('Failed to fetch Airtable records', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });

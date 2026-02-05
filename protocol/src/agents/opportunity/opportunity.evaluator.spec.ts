@@ -11,6 +11,8 @@ import { UserMemoryProfile } from '../intent/manager/intent.manager.types';
 import { log } from '../../lib/log';
 import { json2md } from '../../lib/json2md/json2md';
 
+const logger = log.service.from("opportunity");
+
 // Mock Embedder that uses MemorySearcher
 class MockMemoryEmbedder implements Embedder {
   async generate(text: string | string[], dimensions?: number): Promise<number[] | number[][]> {
@@ -177,7 +179,7 @@ const sourceProfileContext = json2md.keyValue({
 
 describe('Opportunity Evaluator Tests', () => {
   test('Basic Flow & Filtering (MinScore 0.5)', async () => {
-    log.info("--- Test: Basic Flow & Filtering (MinScore 0.5) ---");
+    logger.info("--- Test: Basic Flow & Filtering (MinScore 0.5) ---");
     const evaluator = await setupEvaluator();
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
@@ -192,7 +194,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Empty Candidates List', async () => {
-    log.info("--- Test: Empty Candidates List ---");
+    logger.info("--- Test: Empty Candidates List ---");
     const evaluator = await setupEvaluator();
 
     const opportunities = await evaluator.runDiscovery(sourceProfileContext, {
@@ -205,7 +207,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('High Threshold (MinScore 1.5 - Impossible)', async () => {
-    log.info("--- Test: High Threshold (MinScore 1.5 - Impossible) ---");
+    logger.info("--- Test: High Threshold (MinScore 1.5 - Impossible) ---");
     const evaluator = await setupEvaluator();
 
     // candidateB has score 1.0 (vector match). If we ask for 1.1, should find nothing.
@@ -221,7 +223,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Candidate Missing UserId (Graceful Fail)', async () => {
-    log.info("--- Test: Candidate Missing UserId (Graceful Fail) ---");
+    logger.info("--- Test: Candidate Missing UserId (Graceful Fail) ---");
     const evaluator = await setupEvaluator();
 
     const candidateNoId = { ...candidates[0], userId: undefined } as any;
@@ -239,7 +241,7 @@ describe('Opportunity Evaluator Tests', () => {
   });
 
   test('Deduplication Prompt Logic', async () => {
-    log.info("--- Test: Deduplication Prompt Logic ---");
+    logger.info("--- Test: Deduplication Prompt Logic ---");
     const evaluator = await setupEvaluator();
 
     const spyModel = {
@@ -276,7 +278,7 @@ describe('Opportunity Evaluator Tests', () => {
 
 
   test('Synthesized Opportunity (Best Single Option)', async () => {
-    log.info("--- Test: Synthesized Opportunity (Best Single Option) ---");
+    logger.info("--- Test: Synthesized Opportunity (Best Single Option) ---");
     const evaluator = await setupEvaluator();
 
     // Mock returning multiple distinct opportunities for a single candidate

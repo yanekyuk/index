@@ -257,7 +257,7 @@ const mockBridgeMatches: MockBridgeMatch[] = [
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
   const sessionIdFromUrl = sessionIdParam ?? null;
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle } = useAIChat();
+  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle, setScopeIndexId } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError } = useNotifications();
   const [input, setInput] = useState('');
@@ -309,7 +309,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setSelectedIndexIds([indexId]);
     }
   }, [setSelectedIndexIds]);
-  
+
+  // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
+  useEffect(() => {
+    setScopeIndexId(selectedIndexId);
+  }, [selectedIndexId, setScopeIndexId]);
+
   const handleSuggestionClick = useCallback((suggestion: { label: string; type: string; followupText?: string; prefill?: string }) => {
     if (suggestion.type === 'prompt' && suggestion.prefill) {
       setInput(suggestion.prefill);

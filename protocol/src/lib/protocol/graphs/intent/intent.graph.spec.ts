@@ -5,7 +5,7 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, expect, it, beforeAll } from "bun:test";
+import { describe, expect, it, beforeAll, beforeEach } from "bun:test";
 import { IntentGraphFactory } from "./intent.graph";
 import { IntentGraphState } from "./intent.graph.state";
 import type { IntentGraphDatabase, ActiveIntent, CreatedIntent, ArchiveResult } from "../../interfaces/database.interface";
@@ -20,6 +20,16 @@ const createMockDatabase = (): IntentGraphDatabase => {
 
   return {
     async getActiveIntents(userId: string): Promise<ActiveIntent[]> {
+      return intents
+        .filter(i => i.userId === userId)
+        .map(i => ({
+          id: i.id,
+          payload: i.payload,
+          summary: i.summary,
+          createdAt: i.createdAt
+        }));
+    },
+    async getIntentsInIndexForMember(userId: string, _indexNameOrId: string): Promise<ActiveIntent[]> {
       return intents
         .filter(i => i.userId === userId)
         .map(i => ({
@@ -204,5 +214,57 @@ describe('IntentGraph - Conditional Flow (Operation Modes)', () => {
     expect(result.inferredIntents).toBeDefined();
     expect(result.verifiedIntents).toBeDefined();
     expect(result.actions).toBeDefined();
+  }, 60000);
+});
+
+describe('IntentGraph - Index-scoped prep (Phase 2)', () => {
+  let graphRunner: any;
+  let mockDatabase: IntentGraphDatabase;
+  let getIntentsInIndexForMemberCalls: { userId: string; indexId: string }[];
+
+  beforeEach(() => {
+    getIntentsInIndexForMemberCalls = [];
+  });
+
+  beforeAll(() => {
+    mockDatabase = createMockDatabase();
+    const dbWithSpy = {
+      ...mockDatabase,
+      getIntentsInIndexForMember: async (userId: string, indexId: string) => {
+        getIntentsInIndexForMemberCalls.push({ userId, indexId });
+        return mockDatabase.getIntentsInIndexForMember(userId, indexId);
+      }
+    };
+    const factory = new IntentGraphFactory(dbWithSpy);
+    graphRunner = factory.createGraph();
+  });
+
+  it('should load index-scoped intents when indexId is set', async () => {
+    const result = await graphRunner.invoke({
+      userId: 'test-user-1',
+      userProfile: JSON.stringify({ identity: { name: 'Test' } }),
+      inputContent: 'I want to learn Rust',
+      operationMode: 'create',
+      indexId: 'idx-yc-founders'
+    });
+
+    expect(getIntentsInIndexForMemberCalls).toHaveLength(1);
+    expect(getIntentsInIndexForMemberCalls[0]).toEqual({ userId: 'test-user-1', indexId: 'idx-yc-founders' });
+    expect(result.activeIntents).toBeDefined();
+    expect(result.inferredIntents).toBeDefined();
+    expect(result.actions).toBeDefined();
+  }, 60000);
+
+  it('should use global active intents when indexId is not set', async () => {
+    const result = await graphRunner.invoke({
+      userId: 'test-user-1',
+      userProfile: JSON.stringify({ identity: { name: 'Test' } }),
+      inputContent: 'I want to contribute to open source',
+      operationMode: 'create'
+    });
+
+    expect(getIntentsInIndexForMemberCalls).toHaveLength(0);
+    expect(result.activeIntents).toBeDefined();
+    expect(result.inferredIntents).toBeDefined();
   }, 60000);
 });

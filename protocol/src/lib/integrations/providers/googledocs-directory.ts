@@ -4,6 +4,8 @@ import { log } from '../../log';
 import type { DirectorySyncProvider, Source, Column, DirectoryRecord } from '../directory-sync';
 import type { DirectorySyncConfig } from '../../../schemas/database.schema';
 
+const logger = log.lib.from("lib/integrations/providers/googledocs-directory.ts");
+
 interface GoogleSheetsSpreadsheet {
   id: string;
   name?: string;
@@ -43,11 +45,11 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
       
       // List spreadsheets (this would need a specific Composio action)
       // For now, return empty - this will be implemented when Google Docs directory sync is enabled
-      log.warn('Google Docs directory sync not yet implemented', { integrationId });
+      logger.warn('Google Docs directory sync not yet implemented', { integrationId });
       
       return [];
     } catch (error) {
-      log.error('Failed to list Google Sheets spreadsheets', {
+      logger.error('Failed to list Google Sheets spreadsheets', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -91,7 +93,7 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
 
       return columns;
     } catch (error) {
-      log.error('Failed to get Google Sheets schema', {
+      logger.error('Failed to get Google Sheets schema', {
         integrationId,
         sourceId,
         subSourceId,
@@ -103,7 +105,7 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
-      log.info('Fetching Google Sheets records', {
+      logger.info('Fetching Google Sheets records', {
         integrationId,
         spreadsheetId: config.source.id,
         sheetId: config.source.subId
@@ -111,14 +113,14 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
 
       const integration = await getIntegrationById(integrationId);
       if (!integration || !integration.connectedAccountId) {
-        log.error('Google Sheets integration not found or not connected', { integrationId });
+        logger.error('Google Sheets integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
       const spreadsheetId = config.source.id;
       const sheetId = config.source.subId;
       if (!sheetId) {
-        log.error('Google Sheets sheet ID missing', { integrationId, spreadsheetId });
+        logger.error('Google Sheets sheet ID missing', { integrationId, spreadsheetId });
         throw new Error('Sheet ID is required for Google Sheets directory sync');
       }
 
@@ -157,7 +159,7 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
         allRecords.push(record);
       }
 
-      log.info('Fetched Google Sheets records for directory sync', {
+      logger.info('Fetched Google Sheets records for directory sync', {
         integrationId,
         spreadsheetId,
         sheetId,
@@ -167,7 +169,7 @@ export const googledocsDirectoryProvider: DirectorySyncProvider = {
 
       return allRecords;
     } catch (error) {
-      log.error('Failed to fetch Google Sheets records', {
+      logger.error('Failed to fetch Google Sheets records', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });

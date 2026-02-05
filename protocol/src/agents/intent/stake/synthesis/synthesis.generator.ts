@@ -3,6 +3,8 @@ import { format } from 'timeago.js';
 import { z } from "zod";
 import { log } from "../../../../lib/log";
 import { SynthesisGeneratorInput, SynthesisGeneratorResult } from "./synthesis.generator.types";
+
+const logger = log.agent.from("agents/intent/stake/synthesis/synthesis.generator.ts");
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
 /**
@@ -127,7 +129,7 @@ export class SynthesisGenerator extends BaseLangChainAgent {
 
       return response;
     } catch (error) {
-      log.error("[SynthesisGenerator] Error generating vibe check", { error });
+      logger.error("[SynthesisGenerator] Error generating vibe check", { error });
       throw error;
     }
   }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 
@@ -36,6 +37,10 @@ interface AIChatContextType {
   sessionId: string | null;
   sessionTitle: string | null;
   setSessionId: (id: string | null) => void;
+  /** When the user has selected a single index (e.g. in chat dropdown), chat and create_intent are scoped to that index. */
+  scopeIndexId: string | null;
+  /** Set the current index scope (e.g. from the index filter dropdown in ChatContent). Call with null for "Everywhere". */
+  setScopeIndexId: (indexId: string | null) => void;
   isLoading: boolean;
   sendMessage: (message: string, fileIds?: string[], attachmentNames?: string[]) => Promise<void>;
   clearChat: () => void;
@@ -45,7 +50,19 @@ interface AIChatContextType {
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
 
+/** Extract index ID from pathname when on /index/[indexId] (fallback when no dropdown selection). */
+function getScopeIndexIdFromPathname(pathname: string | null): string | null {
+  if (!pathname) return null;
+  const match = pathname.match(/^\/index\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [scopeIndexIdOverride, setScopeIndexIdOverride] = useState<string | null>(null);
+  const scopeFromPath = getScopeIndexIdFromPathname(pathname);
+  const scopeIndexId = scopeIndexIdOverride ?? scopeFromPath;
+
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -86,17 +103,22 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     abortControllerRef.current = new AbortController();
 
     try {
+      const bodyPayload: Record<string, unknown> = {
+        message: message.trim() || (fileIds?.length ? 'Attached file(s).' : ''),
+        sessionId,
+        ...(fileIds?.length ? { fileIds } : {}),
+        ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
+      };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AIChatContext.tsx:sendMessage',message:'Request body keys (indexId for scope)',data:{bodyKeys:Object.keys(bodyPayload),hasIndexId:!!scopeIndexId,indexId:scopeIndexId??undefined},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1',runId:'post-fix'})}).catch(()=>{});
+      // #endregion
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL_V2}/v2/chat/stream`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: message.trim() || (fileIds?.length ? 'Attached file(s).' : ''),
-          sessionId,
-          ...(fileIds?.length ? { fileIds } : {}),
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: abortControllerRef.current.signal,
       });
 
@@ -192,7 +214,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [getAccessToken, sessionId, refetchSessions]);
+  }, [getAccessToken, sessionId, scopeIndexId, refetchSessions]);
 
   const clearChat = useCallback(() => {
     setMessages([]);
@@ -274,6 +296,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       sessionId,
       sessionTitle,
       setSessionId,
+      scopeIndexId,
+      setScopeIndexId: setScopeIndexIdOverride,
       isLoading,
       sendMessage,
       clearChat,

@@ -2,7 +2,7 @@ import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "./chat.graph.state";
-import { ChatAgent, HARD_ITERATION_LIMIT } from "./chat.agent";
+import { ChatAgent } from "./chat.agent";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
@@ -11,7 +11,7 @@ import { chatSessionService } from "../../../../services/chat-session.service";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./chat.utils";
 import { ChatGraphStreamingService } from "./streaming";
 
-const logger = log.graph.from("chat.graph.ts");
+const logger = log.protocol.from("ChatGraphFactory");
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT GRAPH FACTORY (Agent Loop Architecture)
@@ -133,6 +133,7 @@ export class ChatGraphFactory {
       message: string;
       sessionId: string;
       maxContextMessages?: number;
+      indexId?: string;
     },
     checkpointer?: MemorySaver | PostgresSaver
   ) {
@@ -176,12 +177,14 @@ export class ChatGraphFactory {
       });
 
       try {
-        // Create agent with current user context
+        // Create agent with current user context (include indexId when chat is index-scoped)
+        const indexId = state.indexId;
         const agent = new ChatAgent({
           userId: state.userId,
           database,
           embedder,
-          scraper
+          scraper,
+          indexId,
         });
 
         // Run the agent loop

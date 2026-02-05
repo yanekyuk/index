@@ -1,6 +1,7 @@
 import { Queue, Job, QueueEvents } from 'bullmq';
 import { getBullMQConnection } from '../../redis';
 import { log } from '../../log';
+const logger = log.lib.from("lib/email/queue/email.queue.ts");
 
 export const EMAIL_QUEUE_NAME = 'email-processing-queue';
 
@@ -63,6 +64,6 @@ export async function addEmailJob(
         priority: priority > 0 ? priority : undefined,
         jobId: options.jobId,
     });
-    log.debug(`[EmailQueue] Job added with ID: ${job.id}`, { priority, jobId: options.jobId });
+    logger.debug(`[EmailQueue] Job added with ID: ${job.id}`, { priority, jobId: options.jobId });
     return job;
 }

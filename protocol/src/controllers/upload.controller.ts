@@ -22,9 +22,10 @@ import { files } from '../schemas/database.schema';
 import { getUploadsPath } from '../lib/paths';
 import { log } from '../lib/log';
 
-const logger = log.controller.from('upload.controller.ts');
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
 import type { FileRecord } from '../types';
+
+const logger = log.controller.from("upload");
 
 type ParsedFile = { filename: string; mimeType: string; buffer: Buffer };
 

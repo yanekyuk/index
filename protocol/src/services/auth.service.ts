@@ -2,6 +2,9 @@ import db from '../lib/drizzle/drizzle';
 import { userNotificationSettings, OnboardingState } from '../schemas/database.schema';
 import { privyClient } from '../lib/privy';
 import { log } from '../lib/log';
+
+const logger = log.service.from("AuthService");
+
 /**
  * AuthService
  * 
@@ -20,7 +23,7 @@ export class AuthService {
      * @param userId - The internal DB UUID of the user.
      */
     async setupDefaultPreferences(userId: string) {
-        log.info('[AuthService] Setting up default preferences', { userId });
+        logger.info('[AuthService] Setting up default preferences', { userId });
         await db.insert(userNotificationSettings)
             .values({
                 userId: userId,
@@ -52,7 +55,7 @@ export class AuthService {
     }
 
     async getPrivyUser(privyId: string) {
-        log.info('[AuthService] Fetching privy user', { privyId });
+        logger.info('[AuthService] Fetching privy user', { privyId });
         return await privyClient.getUserById(privyId);
     }
 }

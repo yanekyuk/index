@@ -15,7 +15,7 @@ import type { EmbeddingGenerator } from '../../interfaces/embedder.interface';
 import type { HydeCache } from '../../interfaces/cache.interface';
 import { log } from '../../../log';
 
-const logger = log.graph.from('hyde.graph.ts');
+const logger = log.protocol.from("HyDEGraphFactory");
 
 /** Build cache key: hyde:sourceType:sourceKey:strategy. For query, sourceKey is hash of sourceText. */
 function cacheKey(

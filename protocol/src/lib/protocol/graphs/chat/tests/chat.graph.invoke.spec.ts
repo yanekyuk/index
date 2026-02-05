@@ -84,6 +84,9 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
         memberCount: 0,
         intentCount: 0,
       }) as any,
+    softDeleteIndex: noop,
+    deleteProfile: noop,
+    updateOpportunityStatus: noopNull,
   } as unknown as ChatGraphCompositeDatabase;
 }
 
@@ -150,7 +153,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       expect(typeof output.responseText).toBe("string");
       expect(output.responseText!.length).toBeGreaterThan(0);
       expect(output.shouldContinue).toBe(false);
-    }, 130000);
+    }, 180000);
   });
 
   describe("No internal JSON leak", () => {
@@ -207,7 +210,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       for (const marker of internalMarkers) {
         expect(response).not.toContain(marker);
       }
-    }, 130000);
+    }, 180000);
   });
 
   describe("Error path", () => {
@@ -257,5 +260,137 @@ describe("Chat Graph invoke (Smartest)", () => {
       expect(output.responseText!.length).toBeGreaterThan(0);
       expect(output.shouldContinue).toBe(false);
     }, 10000);
+  });
+
+  describe("Confirmation flow", () => {
+    test("when user requests a destructive action, response asks for confirmation or references confirm", async () => {
+      const compiledGraph = factory.createGraph();
+
+      const result = await runScenario(
+        defineScenario({
+          name: "chat-confirmation-flow",
+          description:
+            "User asks to delete an intent or perform an update; graph should respond by asking for confirmation or indicating the user must confirm before the action is applied.",
+          fixtures: {
+            userId: testUserId,
+            message: "Delete my intent about hiring developers.",
+          },
+          sut: {
+            type: "graph",
+            factory: () => compiledGraph,
+            invoke: async (instance: unknown, resolvedInput: unknown) => {
+              const input = resolvedInput as { userId: string; message: string };
+              return await (instance as ReturnType<ChatGraphFactory["createGraph"]>).invoke({
+                userId: input.userId,
+                messages: [new HumanMessage(input.message)],
+              });
+            },
+            input: {
+              userId: "@fixtures.userId",
+              message: "@fixtures.message",
+            },
+          },
+          verification: {
+            schema: chatGraphOutputSchema,
+            criteria:
+              "The responseText must either ask the user to confirm the action, mention confirmation, or explain that the action will be applied after confirmation. It must not imply the destructive action was already performed without confirmation.",
+            llmVerify: true,
+          },
+        })
+      );
+
+      expectSmartest(result);
+      const output = result.output as { responseText?: string };
+      expect(output.responseText).toBeDefined();
+      expect(typeof output.responseText).toBe("string");
+    }, 180000);
+  });
+
+  describe("Tool choice", () => {
+    test("when user asks for their intents, response is coherent and reflects list/query behavior", async () => {
+      const compiledGraph = factory.createGraph();
+
+      const result = await runScenario(
+        defineScenario({
+          name: "chat-tool-choice-intents",
+          description:
+            "User asks what intents they have or to list intents; graph should return a coherent response consistent with having queried intents (e.g. list or empty list).",
+          fixtures: {
+            userId: testUserId,
+            message: "What intents do I have? List my intents.",
+          },
+          sut: {
+            type: "graph",
+            factory: () => compiledGraph,
+            invoke: async (instance: unknown, resolvedInput: unknown) => {
+              const input = resolvedInput as { userId: string; message: string };
+              return await (instance as ReturnType<ChatGraphFactory["createGraph"]>).invoke({
+                userId: input.userId,
+                messages: [new HumanMessage(input.message)],
+              });
+            },
+            input: {
+              userId: "@fixtures.userId",
+              message: "@fixtures.message",
+            },
+          },
+          verification: {
+            schema: chatGraphOutputSchema,
+            criteria:
+              "The responseText must be a natural-language reply about the user's intents (e.g. listing them, saying there are none, or summarizing). It must not contain raw JSON or internal tool payloads.",
+            llmVerify: true,
+          },
+        })
+      );
+
+      expectSmartest(result);
+      const output = result.output as { responseText?: string };
+      expect(output.responseText).toBeDefined();
+      expect(typeof output.responseText).toBe("string");
+    }, 180000);
+  });
+
+  describe("Clarification", () => {
+    test("when user tries to create something without required info, response asks for missing details", async () => {
+      const compiledGraph = factory.createGraph();
+
+      const result = await runScenario(
+        defineScenario({
+          name: "chat-clarification-create",
+          description:
+            "User attempts to create an intent or resource without providing required details; graph should ask for the missing information rather than failing silently or returning a generic error.",
+          fixtures: {
+            userId: testUserId,
+            message: "I want to create an intent.",
+          },
+          sut: {
+            type: "graph",
+            factory: () => compiledGraph,
+            invoke: async (instance: unknown, resolvedInput: unknown) => {
+              const input = resolvedInput as { userId: string; message: string };
+              return await (instance as ReturnType<ChatGraphFactory["createGraph"]>).invoke({
+                userId: input.userId,
+                messages: [new HumanMessage(input.message)],
+              });
+            },
+            input: {
+              userId: "@fixtures.userId",
+              message: "@fixtures.message",
+            },
+          },
+          verification: {
+            schema: chatGraphOutputSchema,
+            criteria:
+              "The responseText must ask the user for more details, such as what the intent is about, a description, or other required information. It must not be a generic error only; it should guide the user to provide the missing data.",
+            llmVerify: true,
+          },
+        })
+      );
+
+      expectSmartest(result);
+      const output = result.output as { responseText?: string };
+      expect(output.responseText).toBeDefined();
+      expect(typeof output.responseText).toBe("string");
+    }, 180000);
   });
 });

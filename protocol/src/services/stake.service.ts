@@ -79,6 +79,8 @@ import { getConnectingStakes, stakeBuildPairs, stakeUserItems } from '../lib/sta
 import { cache } from '../lib/redis';
 import { log } from '../lib/log';
 
+const logger = log.service.from("[DEPRECATED] StakeService");
+
 /**
  * StakeService
  * 
@@ -106,7 +108,7 @@ export class StakeService {
    * @param intentId - The intent looking for matches.
    */
   async processIntent(intentId: string) {
-    log.info(`[StakeService] Processing intent ${intentId}`);
+    logger.info(`[StakeService] Processing intent ${intentId}`);
 
     // 1. Get Intent
     const currentIntent = await this.getIntent(intentId);
@@ -114,7 +116,7 @@ export class StakeService {
 
     // 2. Find Candidates
     const candidates = await this.findCandidates(intentId, 10);
-    log.info(`[StakeService] Found ${candidates.length} candidates`);
+    logger.info(`[StakeService] Found ${candidates.length} candidates`);
 
     if (candidates.length === 0) return;
 
@@ -125,7 +127,7 @@ export class StakeService {
       candidates.map(c => ({ id: c.id, payload: c.payload }))
     );
 
-    log.info(`[StakeService] Matcher found ${result.matches.length} matches`);
+    logger.info(`[StakeService] Matcher found ${result.matches.length} matches`);
 
     // 4. Save Matches
     for (const match of result.matches) {
@@ -302,7 +304,7 @@ export class StakeService {
     const targetIntentUser = await this.getIntentUser(targetIntentId);
 
     if (!newIntentUser || !targetIntentUser) {
-      log.error(`[StakeService] Missing user for intents ${newIntentId} or ${targetIntentUser}`);
+      logger.error(`[StakeService] Missing user for intents ${newIntentId} or ${targetIntentUser}`);
       return;
     }
 
@@ -449,7 +451,7 @@ export class StakeService {
       const { intentIds, indexIds, vibeOptions } = opts;
       const isThirdPerson = vibeOptions?.style === 'newsletter';
 
-      log.info(`[StakeService] Starting synthesis`, { contextUser: contextUser.id, targetUser: targetUser.id, isThirdPerson });
+      logger.info(`[StakeService] Starting synthesis`, { contextUser: contextUser.id, targetUser: targetUser.id, isThirdPerson });
 
       // 1. Get connecting stakes
       const stakes = await getConnectingStakes({
@@ -462,7 +464,7 @@ export class StakeService {
       });
 
       if (!stakes.length) {
-        log.info('[StakeService] No connecting stakes found');
+        logger.info('[StakeService] No connecting stakes found');
         return { synthesis: "", subject: "" };
       }
 
@@ -472,7 +474,7 @@ export class StakeService {
         .filter(p => p !== null);
 
       if (!intentPairs.length) {
-        log.info('[StakeService] No intent pairs built');
+        logger.info('[StakeService] No intent pairs built');
         return { synthesis: "", subject: "" };
       }
 
@@ -515,14 +517,14 @@ export class StakeService {
         try {
           const parsed = JSON.parse(cached);
           if (parsed && typeof parsed.synthesis === 'string') {
-            log.info('[StakeService] Returning cached synthesis');
+            logger.info('[StakeService] Returning cached synthesis');
             return parsed;
           }
         } catch { }
       }
 
       // 6. Generate
-      log.debug('[StakeService] Calling SynthesisGenerator agent', {
+      logger.debug('[StakeService] Calling SynthesisGenerator agent', {
         intentPairsCount: vibeData.intentPairs.length
       });
 
@@ -538,7 +540,7 @@ export class StakeService {
       return { synthesis: "", subject: "" };
 
     } catch (error) {
-      log.error('[StakeService] Error generating synthesis:', { error });
+      logger.error('[StakeService] Error generating synthesis:', { error });
       return { synthesis: "", subject: "" };
     }
   }
@@ -582,7 +584,7 @@ export class StakeService {
 
       return result.synthesis || "";
     } catch (error) {
-      log.error('[StakeService] Error generating intro:', { error });
+      logger.error('[StakeService] Error generating intro:', { error });
       return "";
     }
   }

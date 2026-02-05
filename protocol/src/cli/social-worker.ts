@@ -9,6 +9,8 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import { Command } from 'commander';
 import { log, setLevel } from '../lib/log';
 import { syncAllTwitterUsers, syncAllSocialMedia } from '../lib/integrations/social-sync';
+
+const logger = log.queue.from("cli/social-worker.ts");
 import { syncTwitterUser } from '../lib/integrations/providers/twitter';
 
 // Helper function to sleep
@@ -40,13 +42,13 @@ async function main(): Promise<void> {
 
       if (opts.silent) setLevel('error');
 
-      log.info('Starting social worker', { syncType, userId: opts.userId, runAll: opts.runAll });
+      logger.info('Starting social worker', { syncType, userId: opts.userId, runAll: opts.runAll });
 
       // Handle graceful shutdown
       const shutdown = () => {
         if (isShuttingDown) return;
         isShuttingDown = true;
-        log.info('Received shutdown signal, waiting for current syncs to complete...');
+        logger.info('Received shutdown signal, waiting for current syncs to complete...');
       };
 
       process.on('SIGTERM', shutdown);
@@ -55,7 +57,7 @@ async function main(): Promise<void> {
       // If userId is provided, sync once and exit
       if (opts.userId) {
         await syncSingleTwitterUser(opts.userId);
-        log.info('Single user sync complete');
+        logger.info('Single user sync complete');
         process.exit(0);
         return;
       }
@@ -63,7 +65,7 @@ async function main(): Promise<void> {
       // If --run-all is provided, run once for all users and exit
       if (opts.runAll) {
         await syncAllTwitterUsersOnce();
-        log.info('All users sync complete');
+        logger.info('All users sync complete');
         process.exit(0);
         return;
       }
@@ -71,7 +73,7 @@ async function main(): Promise<void> {
       // Otherwise, run continuous workers
       await runTwitterWorker();
 
-      log.info('Social worker shutting down gracefully');
+      logger.info('Social worker shutting down gracefully');
       process.exit(0);
     });
 
@@ -100,17 +102,17 @@ async function main(): Promise<void> {
 
 async function syncSingleTwitterUser(userId: string): Promise<void> {
   try {
-    log.info('Syncing single Twitter user', { userId });
+    logger.info('Syncing single Twitter user', { userId });
     // Pass undefined to use integration's lastSyncAt (worker mode behavior)
     const result = await syncTwitterUser(userId, undefined);
     if (result.success) {
-      log.info('Twitter sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
+      logger.info('Twitter sync successful', { userId, intentsGenerated: result.intentsGenerated, locationUpdated: result.locationUpdated });
     } else {
-      log.error('Twitter sync failed', { userId, error: result.error });
+      logger.error('Twitter sync failed', { userId, error: result.error });
       process.exit(1);
     }
   } catch (error) {
-    log.error('Twitter sync error', { userId, error: error instanceof Error ? error.message : String(error) });
+    logger.error('Twitter sync error', { userId, error: error instanceof Error ? error.message : String(error) });
     process.exit(1);
   }
 }
@@ -118,16 +120,16 @@ async function syncSingleTwitterUser(userId: string): Promise<void> {
 async function runTwitterWorker(): Promise<void> {
   while (!isShuttingDown) {
     try {
-      log.info('Starting Twitter sync cycle');
+      logger.info('Starting Twitter sync cycle');
       await syncAllTwitterUsers();
       
       if (!isShuttingDown) {
         const minutes = Math.floor(TWITTER_SYNC_DELAY_MS / 1000 / 60);
-        log.info(`Twitter cycle complete, next sync in ${minutes} minute${minutes !== 1 ? 's' : ''}`);
+        logger.info(`Twitter cycle complete, next sync in ${minutes} minute${minutes !== 1 ? 's' : ''}`);
         await sleep(TWITTER_SYNC_DELAY_MS);
       }
     } catch (error) {
-      log.error('Twitter worker error', {
+      logger.error('Twitter worker error', {
         error: error instanceof Error ? error.message : String(error)
       });
       await sleep(TWITTER_SYNC_DELAY_MS);
@@ -137,16 +139,16 @@ async function runTwitterWorker(): Promise<void> {
 
 async function syncAllTwitterUsersOnce(): Promise<void> {
   try {
-    log.info('Running Twitter sync for all users (once)');
+    logger.info('Running Twitter sync for all users (once)');
     const result = await syncAllTwitterUsers();
-    log.info('Twitter sync for all users complete', {
+    logger.info('Twitter sync for all users complete', {
       usersProcessed: result.usersProcessed,
       intentsGenerated: result.intentsGenerated,
       locationUpdated: result.locationUpdated,
       errors: result.errors
     });
   } catch (error) {
-    log.error('Twitter sync for all users error', {
+    logger.error('Twitter sync for all users error', {
       error: error instanceof Error ? error.message : String(error)
     });
     process.exit(1);

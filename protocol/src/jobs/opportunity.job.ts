@@ -14,6 +14,7 @@ import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
 import { log } from '../lib/log';
 
+const logger = log.job.from("opportunity");
 const database = new ChatDatabaseAdapter();
 
 export type OpportunityJobDeps = {
@@ -23,12 +24,12 @@ export type OpportunityJobDeps = {
 
 export async function runOpportunityFinderCycle(deps?: OpportunityJobDeps): Promise<void> {
   const enqueue = deps?.addJob ?? addJobDefault;
-  log.info('🔄 [OpportunityJob] Triggering Opportunity Finder Queue...');
+  logger.info('🔄 [OpportunityJob] Triggering Opportunity Finder Queue...');
   await enqueue('process_opportunities', {
     timestamp: Date.now(),
     force: false,
   });
-  log.info('✅ [OpportunityJob] Job enqueued.');
+  logger.info('✅ [OpportunityJob] Job enqueued.');
 }
 
 /**
@@ -36,9 +37,9 @@ export async function runOpportunityFinderCycle(deps?: OpportunityJobDeps): Prom
  */
 export async function expireStaleOpportunities(deps?: OpportunityJobDeps): Promise<number> {
   const db = deps?.database ?? database;
-  log.info('[OpportunityJob:Expire] Running expire-stale-opportunities');
+  logger.info('[OpportunityJob:Expire] Running expire-stale-opportunities');
   const count = await db.expireStaleOpportunities();
-  log.info(`[OpportunityJob:Expire] Expired ${count} opportunities`);
+  logger.info(`[OpportunityJob:Expire] Expired ${count} opportunities`);
   return count;
 }
 
@@ -71,7 +72,7 @@ export async function runIntentOpportunityGraph(
 
   const indexScope = await db.getIndexMemberships(userId).then((m) => m.map((x) => x.indexId));
   if (indexScope.length === 0) {
-    log.info('[OpportunityJob] runIntentOpportunityGraph: user has no index memberships, skipping', {
+    logger.info('[OpportunityJob] runIntentOpportunityGraph: user has no index memberships, skipping', {
       intentId,
       userId,
     });
@@ -81,7 +82,7 @@ export async function runIntentOpportunityGraph(
   const intent = await db.getIntentForIndexing(intentId);
   const sourceText = intent?.payload ?? '';
   if (!sourceText) {
-    log.warn('[OpportunityJob] runIntentOpportunityGraph: intent not found or empty payload', {
+    logger.warn('[OpportunityJob] runIntentOpportunityGraph: intent not found or empty payload', {
       intentId,
       userId,
     });
@@ -105,9 +106,9 @@ export async function runIntentOpportunityGraph(
       const priority = decideNotificationPriority({ confidence, category });
       await queueOpportunityNotification(opp.id, recipientId, priority);
     }
-    log.info('[OpportunityJob] runIntentOpportunityGraph completed', { intentId, userId, opportunitiesNotified: opportunities.length });
+    logger.info('[OpportunityJob] runIntentOpportunityGraph completed', { intentId, userId, opportunitiesNotified: opportunities.length });
   } catch (err) {
-    log.error('[OpportunityJob] runIntentOpportunityGraph failed', { intentId, userId, error: err });
+    logger.error('[OpportunityJob] runIntentOpportunityGraph failed', { intentId, userId, error: err });
     throw err;
   }
 }
@@ -146,12 +147,12 @@ export function initOpportunityFinderJob(): void {
   cron.schedule('58 14 * * *', () => {
     runOpportunityFinderCycle();
   });
-  log.info('📅 [OpportunityJob] Opportunity Finder job scheduled (Daily at 14:58)');
+  logger.info('📅 [OpportunityJob] Opportunity Finder job scheduled (Daily at 14:58)');
 
   cron.schedule('0 2 * * *', () => {
     expireStaleOpportunities().catch((err) =>
-      log.error('[OpportunityJob:Expire] Cron failed', { error: err })
+      logger.error('[OpportunityJob:Expire] Cron failed', { error: err })
     );
   });
-  log.info('📅 [OpportunityJob] Expire-stale-opportunities scheduled (Daily at 02:00)');
+  logger.info('📅 [OpportunityJob] Expire-stale-opportunities scheduled (Daily at 02:00)');
 }

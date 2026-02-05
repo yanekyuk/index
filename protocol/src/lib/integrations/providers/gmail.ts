@@ -3,6 +3,8 @@ import { getClient } from '../composio';
 import { log } from '../../log';
 import { getIntegrationById } from '../integration-utils';
 
+const logger = log.lib.from("lib/integrations/providers/gmail.ts");
+
 type GmailMessage = {
   id?: string;
   messageId?: string;
@@ -40,16 +42,16 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
   try {
     const integration = await getIntegrationById(integrationId);
     if (!integration) {
-      log.error('Integration not found', { integrationId });
+      logger.error('Integration not found', { integrationId });
       return [];
     }
 
     if (!integration.connectedAccountId) {
-      log.error('No connected account ID found for integration', { integrationId });
+      logger.error('No connected account ID found for integration', { integrationId });
       return [];
     }
 
-    log.info('Gmail sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.info('Gmail sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 
@@ -82,10 +84,10 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
       };
       if (!lastSyncAt || file.lastModified > lastSyncAt) files.push(file);
     }
-    log.info('Gmail sync done', { integrationId, files: files.length });
+    logger.info('Gmail sync done', { integrationId, files: files.length });
     return files;
   } catch (error) {
-    log.error('Gmail sync error', { integrationId, error: (error as Error).message });
+    logger.error('Gmail sync error', { integrationId, error: (error as Error).message });
     return [];
   }
 }

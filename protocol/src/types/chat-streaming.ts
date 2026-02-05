@@ -175,25 +175,25 @@ export type ChatStreamEvent =
   | AgentThinkingEvent;
 
 /**
- * Formats a chat stream event as an SSE message.
- * 
+ * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
+ * non-serializable value), returns a minimal error event so the stream stays valid.
+ *
  * @param event - The event to format
  * @returns SSE-formatted string with "data: " prefix and double newline
- * 
- * @example
- * ```ts
- * const event: TokenEvent = {
- *   type: 'token',
- *   sessionId: 'abc-123',
- *   timestamp: new Date().toISOString(),
- *   content: 'Hello'
- * };
- * res.write(formatSSEEvent(event));
- * // Output: "data: {"type":"token","sessionId":"abc-123","timestamp":"...","content":"Hello"}\n\n"
- * ```
  */
 export function formatSSEEvent(event: ChatStreamEvent): string {
-  return `data: ${JSON.stringify(event)}\n\n`;
+  try {
+    return `data: ${JSON.stringify(event)}\n\n`;
+  } catch (serializeError) {
+    const fallback: ErrorEvent = {
+      type: "error",
+      sessionId: typeof (event as ChatStreamEventBase).sessionId === "string" ? (event as ChatStreamEventBase).sessionId : "unknown",
+      timestamp: new Date().toISOString(),
+      message: "Response could not be serialized. Please try again.",
+      code: "SERIALIZATION_ERROR",
+    };
+    return `data: ${JSON.stringify(fallback)}\n\n`;
+  }
 }
 
 /**

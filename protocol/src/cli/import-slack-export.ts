@@ -10,6 +10,8 @@ import * as fs from 'fs';
 import type { SlackMessage } from '../lib/integrations/providers/slack';
 import { log, setLevel } from '../lib/log';
 import { getIntegrationById } from '../lib/integrations/integration-utils';
+
+const logger = log.cli.from("cli/import-slack-export.ts");
 import { analyzeObjects } from '../agents/core/intent_inferrer';
 import { intentService } from '../services/intent.service';
 import { resolveIntegrationUser } from '../lib/user-utils';
@@ -157,7 +159,7 @@ async function importSlackExport(filePath: string, integrationId: string, indexI
         try {
           return await processMessage(message, integrationId, indexId, userCache);
         } catch (error) {
-          log.error('Failed to process message', { error: (error as Error).message, ts: msg.ts });
+          logger.error('Failed to process message', { error: (error as Error).message, ts: msg.ts });
           return 0;
         }
       })
@@ -165,7 +167,7 @@ async function importSlackExport(filePath: string, integrationId: string, indexI
 
     totalIntents += results.reduce((sum, count) => sum + count, 0);
     processed += batch.length;
-    log.info('Progress', { processed, total: messages.length, intents: totalIntents, users: userCache.stats.totalUsers });
+    logger.info('Progress', { processed, total: messages.length, intents: totalIntents, users: userCache.stats.totalUsers });
   }
 
   return { processed, intents: totalIntents, ...userCache.stats };

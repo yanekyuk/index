@@ -245,6 +245,8 @@ export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   prompt: text('prompt'), // Defines what people can share in this index
+  /** Personal index = "My Own Private Index"; default write location; private; one per user. */
+  isPersonal: boolean('is_personal').default(false).notNull(),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: {
@@ -345,6 +347,7 @@ export const chatSessions = pgTable('chat_sessions', {
   id: text('id').primaryKey(), // UUID (externally provided)
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   title: text('title'), // Optional, can be derived from first message
+  indexId: uuid('index_id').references(() => indexes.id, { onDelete: 'set null' }), // Optional index scope for this conversation
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   metadata: jsonb('metadata'), // For any additional data

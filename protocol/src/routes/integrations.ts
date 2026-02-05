@@ -16,6 +16,7 @@ import { googledocsDirectoryProvider } from '../lib/integrations/providers/googl
 import { syncDirectoryMembers } from '../lib/integrations/directory-sync';
 import { DirectorySyncConfig, IntegrationResponse, AvailableIntegrationType, ConnectIntegrationRequest, ConnectIntegrationResponse, IntegrationStatusResponse } from '../types';
 
+const logger = log.route.from("routes/integrations.ts");
 const router = Router();
 
 // Use centralized integration config
@@ -102,7 +103,7 @@ router.get('/',
         availableTypes 
       });
     } catch (error) {
-      log.error('Get integrations error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Get integrations error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch integrations' });
     }
   }
@@ -232,7 +233,7 @@ router.post('/connect/:integrationType',
         integrationId: integrationRecord.id
       });
     } catch (error) {
-      log.error('Connect integration error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Connect integration error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to initiate connection' });
     }
   }
@@ -304,12 +305,12 @@ router.get('/:integrationId/status',
             try {
               const syncParams = { integrationId };
               runSync(integrationRecord.integrationType as any, userId, syncParams);
-              log.info('First sync triggered for new integration', { 
+              logger.info('First sync triggered for new integration', { 
                 integrationId,
                 integrationType: integrationRecord.integrationType
               });
             } catch (syncError) {
-              log.error('Failed to trigger first sync', { 
+              logger.error('Failed to trigger first sync', { 
                 integrationId,
                 integrationType: integrationRecord.integrationType,
                 error: syncError instanceof Error ? syncError.message : String(syncError)
@@ -322,13 +323,13 @@ router.get('/:integrationId/status',
             });
           }
         } catch (error) {
-          log.error('Error checking Composio connection', { error: error instanceof Error ? error.message : String(error) });
+          logger.error('Error checking Composio connection', { error: error instanceof Error ? error.message : String(error) });
         }
       }
 
       return res.json({ status: 'pending' });
     } catch (error) {
-      log.error('Integration status error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Integration status error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to check integration status' });
     }
   }
@@ -380,7 +381,7 @@ router.delete('/:integrationId',
         try {
           const composioClient = await getClient();
           await composioClient.connectedAccounts.delete(integrationRecord.connectedAccountId);
-          log.info('Disconnected from Composio', { 
+          logger.info('Disconnected from Composio', { 
             integrationId,
             integrationType: integrationRecord.integrationType,
             connectedAccountId: integrationRecord.connectedAccountId 
@@ -461,7 +462,7 @@ router.get('/:integrationId/directory/sources',
       const sources = await provider.listSources(integrationId);
       return res.json({ sources });
     } catch (error) {
-      log.error('Get directory sources error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Get directory sources error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch directory sources' });
     }
   }
@@ -525,7 +526,7 @@ router.get('/:integrationId/directory/sources/:sourceId/schema',
       const columns = await provider.getSourceSchema(integrationId, sourceId, subSourceId);
       return res.json({ columns });
     } catch (error) {
-      log.error('Get directory source schema error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Get directory source schema error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch source schema' });
     }
   }
@@ -568,7 +569,7 @@ router.get('/:integrationId/directory/config',
 
       return res.json({ config: integration.config?.directorySync || null });
     } catch (error) {
-      log.error('Get directory config error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Get directory config error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch directory config' });
     }
   }
@@ -641,7 +642,7 @@ router.post('/:integrationId/directory/config',
 
       return res.json({ success: true, config: updatedConfig.directorySync });
     } catch (error) {
-      log.error('Save directory config error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Save directory config error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to save directory config' });
     }
   }
@@ -713,7 +714,7 @@ router.post('/:integrationId/directory/sync',
         status: result.status
       });
     } catch (error) {
-      log.error('Directory sync error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Directory sync error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to sync directory' });
     }
   }
@@ -792,7 +793,7 @@ router.get('/:integrationId/slack/channels',
 
       return res.json({ channels, selectedChannels });
     } catch (error) {
-      log.error('Get Slack channels error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Get Slack channels error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch Slack channels' });
     }
   }
@@ -855,7 +856,7 @@ router.post('/:integrationId/slack/channels',
 
       return res.json({ success: true, config: updatedConfig.slack });
     } catch (error) {
-      log.error('Save Slack channels error', { error: error instanceof Error ? error.message : String(error) });
+      logger.error('Save Slack channels error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to save Slack channel configuration' });
     }
   }

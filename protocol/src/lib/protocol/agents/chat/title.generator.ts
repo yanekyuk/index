@@ -2,6 +2,8 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { log } from "../../../log";
 
+const logger = log.lib.from("ChatTitleGenerator");
+
 const SYSTEM_PROMPT = `You suggest a very short title for a chat conversation.
 
 Rules:
@@ -54,10 +56,10 @@ export class ChatTitleGenerator {
 
       const text = typeof response.content === "string" ? response.content : String(response.content ?? "").trim();
       const title = text.slice(0, 80).trim() || "New chat";
-      log.info("[ChatTitleGenerator.invoke] Title generated", { titleLength: title.length });
+      logger.info("[ChatTitleGenerator.invoke] Title generated", { titleLength: title.length });
       return title;
     } catch (error) {
-      log.warn("[ChatTitleGenerator.invoke] Failed to generate title", {
+      logger.warn("[ChatTitleGenerator.invoke] Failed to generate title", {
         error: error instanceof Error ? error.message : String(error),
       });
       return "New chat";

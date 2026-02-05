@@ -10,6 +10,8 @@ import {
 import { z } from 'zod';
 import { Embedder } from '../common/types';
 
+const logger = log.agent.from("agents/opportunity/opportunity.evaluator.ts");
+
 // ----------------
 
 // System prompt for the Opportunity Evaluator Agent (Analysis Stage)
@@ -113,10 +115,10 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
     const minScore = options.minScore || 70;
     // hydeDescription is NOT used here anymore.
 
-    log.info(`[OpportunityEvaluator] Analyzing ${candidates.length} candidates for opportunities...`);
+    logger.info(`[OpportunityEvaluator] Analyzing ${candidates.length} candidates for opportunities...`);
 
     if (candidates.length === 0) {
-      log.info('[OpportunityEvaluator] No candidates provided.');
+      logger.info('[OpportunityEvaluator] No candidates provided.');
       return [];
     }
 
@@ -152,10 +154,10 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
     sourceProfileContext: string,
     options: OpportunityEvaluatorOptions & { limit?: number, candidates?: CandidateProfile[], filter?: Record<string, unknown> } // candidates optional for MemorySearcher
   ): Promise<Opportunity[]> {
-    log.info('[OpportunityEvaluator] Starting Discovery run...');
+    logger.info('[OpportunityEvaluator] Starting Discovery run...');
 
     const foundCandidates = await this.findCandidates(options);
-    log.info(`[OpportunityEvaluator] Found ${foundCandidates.length} potential candidates from search.`);
+    logger.info(`[OpportunityEvaluator] Found ${foundCandidates.length} potential candidates from search.`);
 
     // 3. Evaluate Matches
     return this.evaluateOpportunities(sourceProfileContext, foundCandidates, options);
@@ -277,7 +279,7 @@ export class OpportunityEvaluator extends BaseLangChainAgent {
 
       return mappedOpportunities;
     } catch (e) {
-      log.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { error: e });
+      logger.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { error: e });
       return [];
     }
   }

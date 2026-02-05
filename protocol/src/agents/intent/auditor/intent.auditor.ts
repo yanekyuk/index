@@ -2,6 +2,8 @@ import { BaseLangChainAgent } from "../../../lib/langchain/langchain";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { log } from "../../../lib/log";
 import { IntentAuditorOutput } from "./intent.auditor.types";
+
+const logger = log.agent.from("agents/intent/auditor/intent.auditor.ts");
 import { z } from "zod";
 
 const IntentAuditorOutputSchema = z.object({
@@ -89,7 +91,7 @@ export class IntentAuditor extends BaseLangChainAgent {
    * @param context - The context string (created date, user intro, etc.).
    */
   async run(content: string, context: string): Promise<IntentAuditorOutput | null> {
-    log.info(`[IntentAuditor] Processing intent...`);
+    logger.info(`[IntentAuditor] Processing intent...`);
 
     const prompt = `
       # Context
@@ -110,10 +112,10 @@ export class IntentAuditor extends BaseLangChainAgent {
       const result = await this.model.invoke({ messages });
       const output = result.structuredResponse as IntentAuditorOutput;
 
-      log.info(`[IntentAuditor] Analysis complete. Expired: ${output.isExpired}, Confidence: ${output.confidenceScore}`);
+      logger.info(`[IntentAuditor] Analysis complete. Expired: ${output.isExpired}, Confidence: ${output.confidenceScore}`);
       return output;
     } catch (error) {
-      log.error("[IntentAuditor] Error during execution", { error });
+      logger.error("[IntentAuditor] Error during execution", { error });
       return null;
     }
   }

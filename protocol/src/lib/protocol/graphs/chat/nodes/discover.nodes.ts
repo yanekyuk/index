@@ -13,7 +13,7 @@ import type { ChatGraphCompositeDatabase } from "../../../interfaces/database.in
 import { selectStrategiesFromQuery } from "../chat.utils";
 import { log } from "../../../../log";
 
-const logger = log.graph?.from?.("discover.nodes") ?? console;
+const logger = log.protocol.from("DiscoverNodes");
 
 /** Compiled opportunity graph (from OpportunityGraph.compile()). */
 export type CompiledOpportunityGraph = ReturnType<
@@ -29,6 +29,16 @@ export interface DiscoverInput {
   query: string;
   indexScope: string[];
   limit?: number;
+}
+
+/** Max chars for bio and matchReason in chat tool results to keep context manageable. */
+const MAX_FIELD_CHARS = 100;
+
+function truncateForChat(s: string | undefined, max = MAX_FIELD_CHARS): string | undefined {
+  if (s == null || s === "") return undefined;
+  const trimmed = s.trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max) + "...";
 }
 
 /** One formatted opportunity for chat (candidate-facing). */
@@ -83,7 +93,7 @@ export async function runDiscoverFromQuery(
   }
 
   const strategies = selectStrategiesFromQuery(query);
-  logger.info?.("[Discover] Running discovery from query", {
+  logger.info("[Discover] Running discovery from query", {
     userId,
     queryPreview: query.substring(0, 50),
     strategies,
@@ -129,8 +139,8 @@ export async function runDiscoverFromQuery(
           opportunityId: opp.id,
           userId: candidateUserId,
           name: profile?.identity?.name ?? undefined,
-          bio: profile?.identity?.bio ?? undefined,
-          matchReason: opp.interpretation?.summary ?? "",
+          bio: truncateForChat(profile?.identity?.bio),
+          matchReason: truncateForChat(opp.interpretation?.summary ?? "") ?? "",
           score: confidence,
         };
       })
@@ -145,7 +155,7 @@ export async function runDiscoverFromQuery(
     const errMessage = err instanceof Error ? err.message : String(err);
     const errCause = err instanceof Error && err.cause ? String(err.cause) : undefined;
     const errStack = err instanceof Error ? err.stack : undefined;
-    logger.error?.("[Discover] Discovery failed", {
+    logger.error("[Discover] Discovery failed", {
       userId,
       error: err,
       message: errMessage,

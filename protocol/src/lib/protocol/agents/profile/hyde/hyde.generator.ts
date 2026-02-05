@@ -10,7 +10,7 @@ import { ProfileDocument } from "../profile.generator";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
-const logger = log.agent.from("hyde.generator.ts");
+const logger = log.protocol.from("HyDEGenerator");
 
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',

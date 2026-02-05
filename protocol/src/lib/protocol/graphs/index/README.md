@@ -12,7 +12,7 @@ The Index graph evaluates whether an intent belongs in a given index (community)
 
 ## When to use
 
-- **Intent queue**: After an intent is created or updated, the intent queue invokes this graph for each index the user is a member of (with autoAssign).
+- **Intent queue**: After an intent is **created**, the intent event queues this graph for each eligible index (user is member with autoAssign). After an intent is **updated**, the event only queues this graph for indexes the intent is already in (re-evaluation only; no new index assignments on update).
 - **Chat tools**: When the chat agent assigns an intent to an index via tools, it invokes this graph for that (intentId, indexId) pair.
 
 ## Dependencies

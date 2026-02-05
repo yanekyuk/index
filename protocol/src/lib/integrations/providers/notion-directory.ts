@@ -4,6 +4,8 @@ import { log } from '../../log';
 import type { DirectorySyncProvider, Source, Column, DirectoryRecord } from '../directory-sync';
 import type { DirectorySyncConfig } from '../../../schemas/database.schema';
 
+const logger = log.lib.from("lib/integrations/providers/notion-directory.ts");
+
 interface NotionDatabase {
   id: string;
   title?: Array<{ plain_text: string }>;
@@ -60,7 +62,7 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
 
       return sources;
     } catch (error) {
-      log.error('Failed to list Notion databases', {
+      logger.error('Failed to list Notion databases', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -96,7 +98,7 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
 
       return columns;
     } catch (error) {
-      log.error('Failed to get Notion database schema', {
+      logger.error('Failed to get Notion database schema', {
         integrationId,
         sourceId,
         error: error instanceof Error ? error.message : String(error)
@@ -107,14 +109,14 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
 
   async fetchRecords(integrationId: string, config: DirectorySyncConfig): Promise<DirectoryRecord[]> {
     try {
-      log.info('Fetching Notion records', {
+      logger.info('Fetching Notion records', {
         integrationId,
         databaseId: config.source.id
       });
 
       const integration = await getIntegrationById(integrationId);
       if (!integration || !integration.connectedAccountId) {
-        log.error('Notion integration not found or not connected', { integrationId });
+        logger.error('Notion integration not found or not connected', { integrationId });
         throw new Error('Integration not found or not connected');
       }
 
@@ -178,7 +180,7 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
         nextCursor = recordsData.next_cursor;
       } while (nextCursor);
 
-      log.info('Fetched Notion records for directory sync', {
+      logger.info('Fetched Notion records for directory sync', {
         integrationId,
         databaseId,
         recordCount: allRecords.length,
@@ -188,7 +190,7 @@ export const notionDirectoryProvider: DirectorySyncProvider = {
 
       return allRecords;
     } catch (error) {
-      log.error('Failed to fetch Notion records', {
+      logger.error('Failed to fetch Notion records', {
         integrationId,
         error: error instanceof Error ? error.message : String(error)
       });

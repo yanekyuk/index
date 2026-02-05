@@ -1,3 +1,6 @@
+import { log } from '../log';
+
+const logger = log.lib.from('RouteRegistry');
 
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -22,6 +25,7 @@ export class RouteRegistry {
 
   static registerController(target: Function, path: string) {
     this.controllers.set(target, { path, target });
+    logger.info('Controller registered', { controller: target.name, path });
   }
 
   static registerRoute(target: object, method: Method, path: string, methodName: string | symbol) {
@@ -31,6 +35,12 @@ export class RouteRegistry {
     }
     const routes = this.routes.get(constructor)!;
     routes.push({ path, method, methodName });
+    logger.debug('Route registered', {
+      controller: (constructor as Function).name,
+      method,
+      path: path || '/',
+      handler: String(methodName),
+    });
   }
 
   static registerGuard(target: object, methodName: string | symbol, guard: Guard) {
@@ -43,6 +53,11 @@ export class RouteRegistry {
       methodGuards.set(methodName, []);
     }
     methodGuards.get(methodName)!.push(guard);
+    logger.debug('Guard registered', {
+      controller: (constructor as Function).name,
+      method: String(methodName),
+      guard: guard.name || 'anonymous',
+    });
   }
 
   static getControllers() {

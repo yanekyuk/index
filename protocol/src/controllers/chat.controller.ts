@@ -24,7 +24,7 @@ import { ChatTitleGenerator } from '../lib/protocol/agents/chat/title.generator'
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 
-const logger = log.controller.from('chat.controller.ts');
+const logger = log.controller.from("chat");
 
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
@@ -131,9 +131,9 @@ export class ChatController {
   @UseGuards(AuthGuard)
   async messageStream(req: Request, user: AuthenticatedUser): Promise<Response> {
     // 1. Parse request body
-    let body: { message?: string; sessionId?: string; useCheckpointer?: boolean; fileIds?: string[] };
+    let body: { message?: string; sessionId?: string; useCheckpointer?: boolean; fileIds?: string[]; indexId?: string };
     try {
-      body = await req.json() as { message?: string; sessionId?: string; useCheckpointer?: boolean; fileIds?: string[] };
+      body = await req.json() as { message?: string; sessionId?: string; useCheckpointer?: boolean; fileIds?: string[]; indexId?: string };
     } catch {
       return Response.json(
         { error: 'Invalid request body. Expected { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[] }' },
@@ -159,29 +159,37 @@ export class ChatController {
     }
 
     // 2. Validate or create session
+    const requestIndexId =
+      typeof body.indexId === 'string' && body.indexId.trim() ? body.indexId.trim() : undefined;
+
     let currentSessionId = body.sessionId;
     if (!currentSessionId) {
-      currentSessionId = await chatSessionService.createSession(user.id);
+      currentSessionId = await chatSessionService.createSession(user.id, undefined, requestIndexId);
     } else {
       const session = await chatSessionService.getSession(currentSessionId, user.id);
       if (!session) {
         return Response.json({ error: 'Session not found' }, { status: 404 });
       }
+      if (requestIndexId !== undefined) {
+        await chatSessionService.updateSessionIndex(currentSessionId, user.id, requestIndexId);
+      }
     }
+
+    // Effective index for this run: request body overrides; otherwise use session's persisted index
+    const sessionForIndex = await chatSessionService.getSession(currentSessionId, user.id);
+    const effectiveIndexId = requestIndexId ?? sessionForIndex?.indexId ?? undefined;
 
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = this.factory;
     const useCheckpointer = body.useCheckpointer ?? false;
+    const indexIdForStream = effectiveIndexId;
 
-    // 3. Save user message
-    await chatSessionService.addMessage({
-      sessionId,
-      role: 'user',
-      content: messageContent,
-    });
+    // User message is persisted after the stream completes (with the assistant response) so that
+    // loadSessionContext during streaming does not include it and the current message is not
+    // duplicated in the conversation context (which caused "You've listed the same project twice!").
 
-    // 4. Get checkpointer if requested
+    // 3. Get checkpointer if requested
     let checkpointer: PostgresSaver | undefined;
     if (useCheckpointer) {
       try {
@@ -195,7 +203,7 @@ export class ChatController {
       }
     }
 
-    // 5. Create SSE stream
+    // 4. Create SSE stream
     const encoder = new TextEncoder();
     
     const stream = new ReadableStream({
@@ -218,6 +226,7 @@ export class ChatController {
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
+              indexId: indexIdForStream,
             },
             checkpointer
           )) {
@@ -235,7 +244,12 @@ export class ChatController {
             }
           }
 
-          // Save assistant response
+          // Persist user message and assistant response so loadSessionContext on the next turn sees them
+          await chatSessionService.addMessage({
+            sessionId,
+            role: 'user',
+            content: messageContent,
+          });
           await chatSessionService.addMessage({
             sessionId,
             role: 'assistant',

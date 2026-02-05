@@ -13,6 +13,8 @@ import { OpportunityService } from '../services/opportunity.service';
 import { OpportunityEvaluator } from '../agents/opportunity/opportunity.evaluator';
 import { CandidateProfile, Opportunity } from '../agents/opportunity/opportunity.evaluator.types';
 
+const logger = log.service.from("jobs/opportunity.job.spec.ts");
+
 describe('OpportunityJob', () => {
   describe('expireStaleOpportunities', () => {
     it('returns count of expired opportunities', async () => {
@@ -90,40 +92,40 @@ class MockOpportunityService extends OpportunityService {
   }
 
   async getProfilesMissingEmbeddings() {
-    log.info(`[MockService] getProfilesMissingEmbeddings called (returning ${this.profilesWithMissingEmbeddings.length})`);
+    logger.info(`[MockService] getProfilesMissingEmbeddings called (returning ${this.profilesWithMissingEmbeddings.length})`);
     return this.profilesWithMissingEmbeddings;
   }
 
   async updateProfileEmbedding(profileId: string, embedding: number[]) {
-    log.info(`[MockService] updateProfileEmbedding called for ${profileId} with embedding len ${embedding.length}`);
+    logger.info(`[MockService] updateProfileEmbedding called for ${profileId} with embedding len ${embedding.length}`);
   }
 
   async getAllProfilesWithEmbeddings() {
-    log.info(`[MockService] getAllProfilesWithEmbeddings called (returning ${this.allProfiles.length})`);
+    logger.info(`[MockService] getAllProfilesWithEmbeddings called (returning ${this.allProfiles.length})`);
     return this.allProfiles;
   }
 
   async updateProfileHyde(profileId: string, hydeDescription: string, hydeEmbedding: number[]) {
-    log.info(`[MockService] updateProfileHyde called for ${profileId}`);
+    logger.info(`[MockService] updateProfileHyde called for ${profileId}`);
   }
 
   async getProfile(userId: string) {
-    log.info(`[MockService] getProfile called for ${userId}`);
+    logger.info(`[MockService] getProfile called for ${userId}`);
     return this.allProfiles.find(p => p.userId === userId);
   }
 
   async getUserStakes(userId: string, limit: number = 20) {
-    log.info(`[MockService] getUserStakes called for ${userId}`);
+    logger.info(`[MockService] getUserStakes called for ${userId}`);
     return [];
   }
 
   async getUserIntentObjects(userId: string) {
-    log.info(`[MockService] getUserIntentObjects called for ${userId}`);
+    logger.info(`[MockService] getUserIntentObjects called for ${userId}`);
     return [];
   }
 
   async createIntent(options: any) {
-    log.info(`[MockService] createIntent called for ${options.userId}`);
+    logger.info(`[MockService] createIntent called for ${options.userId}`);
     return {
       id: 'mock-intent-id',
       payload: options.payload,
@@ -136,7 +138,7 @@ class MockOpportunityService extends OpportunityService {
   }
 
   async saveMatch(newIntentId: string, targetIntentId: string, score: number, reasoning: string, agentId: string) {
-    log.info(`[MockService] saveMatch called: ${newIntentId} <-> ${targetIntentId} (score: ${score})`);
+    logger.info(`[MockService] saveMatch called: ${newIntentId} <-> ${targetIntentId} (score: ${score})`);
   }
 }
 
@@ -150,7 +152,7 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
     candidates: CandidateProfile[],
     options: any = {}
   ): Promise<Opportunity[]> {
-    log.info(`[MockEvaluator] evaluateOpportunities called with context len ${sourceProfileContext.length} vs ${candidates.length} candidates`);
+    logger.info(`[MockEvaluator] evaluateOpportunities called with context len ${sourceProfileContext.length} vs ${candidates.length} candidates`);
     if (candidates.length > 0) {
       return [
         {
@@ -169,7 +171,7 @@ class MockOpportunityEvaluator extends OpportunityEvaluator {
 // --- TEST RUNNER ---
 
 async function runTests() {
-  log.info("🧪 Starting Opportunity Finder Job Tests (Standalone)...\n");
+  logger.info("🧪 Starting Opportunity Finder Job Tests (Standalone)...\n");
 
   const mockService = new MockOpportunityService();
   const mockEvaluator = new MockOpportunityEvaluator();
@@ -192,11 +194,11 @@ async function runTests() {
   console.log("1️⃣  Test: Standard Cycle (Backfill + Match)");
   try {
     await mockService.runOpportunityFinderCycle(mockEvaluator);
-    log.info("✅ Cycle completed successfully.");
+    logger.info("✅ Cycle completed successfully.");
   } catch (e) {
-    log.error("❌ Cycle failed:", { error: e });
+    logger.error("❌ Cycle failed:", { error: e });
     process.exit(1);
   }
 }
 
-runTests().catch((e) => log.error('Test runner failed', { error: e }));
+runTests().catch((e) => logger.error('Test runner failed', { error: e }));

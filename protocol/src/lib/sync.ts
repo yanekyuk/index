@@ -17,6 +17,8 @@ import { initDiscord } from './integrations/providers/discord';
 import { initNotion } from './integrations/providers/notion';
 import { initGoogleDocs } from './integrations/providers/googledocs';
 
+const logger = log.lib.from("lib/sync.ts");
+
 interface SyncResult {
   success: boolean;
   filesImported: number;
@@ -80,7 +82,7 @@ export async function syncIntegration(
         return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Directory sync provider not found' };
       }
 
-      log.info('Running directory sync', { integrationId, integrationType });
+      logger.info('Running directory sync', { integrationId, integrationType });
       const result = await syncDirectoryMembers(integrationId, provider);
 
       // Update sync timestamp
@@ -147,7 +149,7 @@ export async function syncIntegration(
     return finalResult;
 
   } catch (error) {
-    log.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });
+    logger.error('Integration sync error', { integrationId, error: error instanceof Error ? error.message : String(error) });
     return {
       success: false,
       filesImported: 0,

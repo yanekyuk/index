@@ -6,7 +6,7 @@ import { IntentReconciler } from "../../agents/intent/reconciler/intent.reconcil
 import { IntentGraphDatabase } from "../../interfaces/database.interface";
 import { log } from "../../../log";
 
-const logger = log.graph.from("intent.graph.ts");
+const logger = log.protocol.from("IntentGraphFactory");
 
 /**
  * Factory class to build and compile the Intent Processing Graph.
@@ -30,21 +30,25 @@ export class IntentGraphFactory {
       logger.info("Starting preparation phase", {
         operationMode: state.operationMode,
         hasContent: !!state.inputContent,
-        targetIntentIds: state.targetIntentIds
+        targetIntentIds: state.targetIntentIds,
+        indexId: state.indexId
       });
-      
-      const activeIntents = await this.database.getActiveIntents(state.userId);
-      
+
+      const activeIntents = state.indexId
+        ? await this.database.getIntentsInIndexForMember(state.userId, state.indexId)
+        : await this.database.getActiveIntents(state.userId);
+
       // Format for reconciler agent
       const formattedActiveIntents = activeIntents
         .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
         .join('\n') || "No active intents.";
-      
+
       logger.info("Fetched active intents", {
         count: activeIntents.length,
-        operationMode: state.operationMode
+        operationMode: state.operationMode,
+        scope: state.indexId ? "index" : "global"
       });
-      
+
       return { activeIntents: formattedActiveIntents };
     };
 
