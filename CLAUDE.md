@@ -384,7 +384,6 @@ NODE_ENV=development
 - `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` - LLM observability
 - `SENTRY_DSN` - Error tracking
 - `PARALLELS_API_KEY` - Web crawling and profile extraction
-- `SNOWFLAKE_*` - Social media data warehouse
 
 ### Frontend Environment Variables
 

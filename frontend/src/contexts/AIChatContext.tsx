@@ -109,8 +109,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         ...(fileIds?.length ? { fileIds } : {}),
         ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AIChatContext.tsx:sendMessage',message:'Request body keys (indexId for scope)',data:{bodyKeys:Object.keys(bodyPayload),hasIndexId:!!scopeIndexId,indexId:scopeIndexId??undefined},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1',runId:'post-fix'})}).catch(()=>{});
+      
       // #endregion
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL_V2}/v2/chat/stream`, {
         method: 'POST',

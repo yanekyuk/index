@@ -68,7 +68,6 @@
     "postgres": "^3.4.7",
     "react-mentions": "^4.4.10",
     "resend": "^4.0.1",
-    "snowflake-sdk": "^2.3.3",
     "stream-chat": "^9.28.0",
     "timeago.js": "^4.0.2",
     "unstructured-client": "^0.27.0",
