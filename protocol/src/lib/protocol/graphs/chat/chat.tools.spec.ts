@@ -70,6 +70,7 @@ const mockEmbedder = {
 /** Stub scraper for tool creation (not invoked by get_intents_in_index). */
 const mockScraper = {
   scrape: async () => "",
+  extractUrlContent: async (_url: string, _options?: { objective?: string }) => "",
 } as unknown as Scraper;
 
 describe("createChatTools", () => {
@@ -272,5 +273,86 @@ describe("list_index_intents tool", () => {
     expect(capturedOptions).toBeDefined();
     expect(capturedOptions?.limit).toBe(10);
     expect(capturedOptions?.offset).toBe(5);
+  });
+});
+
+describe("scrape_url tool", () => {
+  test("returns a tool named scrape_url", () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "scrape_url");
+    expect(tool).toBeDefined();
+    expect(tool!.name).toBe("scrape_url");
+  });
+
+  test("invoke calls scraper.extractUrlContent with url and no objective when objective omitted", async () => {
+    let capturedUrl: string | null = null;
+    let capturedOptions: { objective?: string } | undefined = undefined;
+    const scraperWithSpy = {
+      scrape: async () => "",
+      extractUrlContent: async (url: string, options?: { objective?: string }) => {
+        capturedUrl = url;
+        capturedOptions = options;
+        return "Some scraped content";
+      },
+    } as unknown as Scraper;
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
+    await tool.invoke({ url: "https://example.com/page" });
+    expect(capturedUrl as unknown as string).toBe("https://example.com/page");
+    expect((capturedOptions as { objective?: string } | undefined)?.objective).toBeUndefined();
+  });
+
+  test("invoke calls scraper.extractUrlContent with url and objective when provided", async () => {
+    let capturedUrl: string | null = null;
+    let capturedOptions: { objective?: string } | undefined = undefined;
+    const scraperWithSpy = {
+      scrape: async () => "",
+      extractUrlContent: async (url: string, options?: { objective?: string }) => {
+        capturedUrl = url;
+        capturedOptions = options;
+        return "Intent-focused content";
+      },
+    } as unknown as Scraper;
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
+    const objective = "User wants to create an intent from this link (project/repo or similar).";
+    await tool.invoke({ url: "https://github.com/org/repo", objective });
+    expect(capturedUrl as unknown as string).toBe("https://github.com/org/repo");
+    expect((capturedOptions as { objective?: string } | undefined)?.objective).toBe(objective);
+  });
+
+  test("invoke returns success with content when scraper returns content", async () => {
+    const scraperReturningContent = {
+      scrape: async () => "",
+      extractUrlContent: async () => "Scraped page text for example.com",
+    } as unknown as Scraper;
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperReturningContent };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
+    const result = await tool.invoke({ url: "https://example.com" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.url).toBe("https://example.com");
+    expect(parsed.data.content).toBe("Scraped page text for example.com");
+    expect(parsed.data.contentLength).toBe("Scraped page text for example.com".length);
+  });
+
+  test("invoke returns error for invalid URL", async () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string }) => Promise<string> };
+    const result = await tool.invoke({ url: "not-a-valid-url" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toBeDefined();
+    expect(parsed.error).toContain("Invalid URL");
   });
 });
