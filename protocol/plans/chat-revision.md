@@ -291,31 +291,31 @@ Allow callers to **initialize a chat run with an optional index** (e.g. when the
 
 #### Step 1: State and streaming
 
-- [ ] **3.1** Add optional `indexId?: string` (or `indexNameOrId`) to `ChatGraphState` in `chat.graph.state.ts`.
-- [ ] **3.1b** Add optional `index_id` column to `chat_sessions` table (see Addendum A.7).
-- [ ] **3.1c** When creating/updating a session with an index, persist `indexId` to session.
-- [ ] **3.1d** When loading session context, use `session.indexId` as default if request doesn't override.
-- [ ] **3.2** In `chat.streaming.ts`, extend `streamChatEventsWithContext` and `streamChatEvents` input with optional `indexId?`; pass it into the graph invoke state when provided.
+- [x] **3.1** Add optional `indexId?: string` (or `indexNameOrId`) to `ChatGraphState` in `chat.graph.state.ts`.
+- [x] **3.1b** Add optional `index_id` column to `chat_sessions` table (see Addendum A.7).
+- [x] **3.1c** When creating/updating a session with an index, persist `indexId` to session.
+- [x] **3.1d** When loading session context, use `session.indexId` as default if request doesn't override.
+- [x] **3.2** In `chat.streaming.ts`, extend `streamChatEventsWithContext` and `streamChatEvents` input with optional `indexId?`; pass it into the graph invoke state when provided.
 
 #### Step 2: Agent and tool context
 
-- [ ] **3.3** In `chat.graph.ts` agent loop node, pass `state.indexId` into `ChatAgent` constructor.
-- [ ] **3.4** Extend **ToolContext** type (e.g. in `chat.tools.ts`) with optional `indexId?: string`.
-- [ ] **3.5** When `context.indexId` is set, **scope** `get_index_memberships` to return only the current index membership (with a note explaining the scope). Add optional `showAll?: boolean` flag for edge cases (see Addendum A.6).
+- [x] **3.3** In `chat.graph.ts` agent loop node, pass `state.indexId` into `ChatAgent` constructor.
+- [x] **3.4** Extend **ToolContext** type (e.g. in `chat.tools.ts`) with optional `indexId?: string`.
+- [x] **3.5** When `context.indexId` is set, **scope** `get_index_memberships` to return only the current index membership (with a note explaining the scope). Add optional `showAll?: boolean` flag for edge cases (see Addendum A.6).
 
 #### Step 3: Tool behavior (default index and optional index)
 
-- [ ] **3.6** **create_intent**, **get_intents_in_index**, **list_index_intents**, **list_index_members**, **create_opportunity_between_members**: when the tool’s index argument is omitted and `context.indexId` is set, use `context.indexId` as default.
-- [ ] **3.7** **find_opportunities**: Add optional `indexNameOrId?`; when provided or defaulted from `context.indexId`, use that index as `indexScope` (single-index scope) instead of all memberships.
-- [ ] **3.8** **list_my_opportunities**: Add optional `indexNameOrId?`; when provided or defaulted from `context.indexId`, filter results to opportunities in that index (backend support as needed).
-- [ ] **3.9** **update_intent** and **delete_intent**: Pass optional index into intent graph when `context.indexId` is set (or when agent passes index), so update/delete is scoped to intents in that index (intent graph prep loads index-scoped intents for update/delete flows as in Phase 2).
-- [ ] **3.10** **get_active_intents** → **get_intents**: Rename tool; add optional `indexNameOrId?`. When omitted return all active intents; when set (or defaulted from context) return user’s intents in that index only. Update agent prompt and any references.
-- [ ] **3.11** **update_index_settings**: When `context.indexId` is set, use it as default for the index parameter when the agent omits it; otherwise LLM must pass index (current behavior).
+- [x] **3.6** **create_intent**, **get_intents_in_index**, **list_index_intents**, **list_index_members**, **create_opportunity_between_members**: when the tool’s index argument is omitted and `context.indexId` is set, use `context.indexId` as default.
+- [x] **3.7** **find_opportunities**: Add optional `indexNameOrId?`; when provided or defaulted from `context.indexId`, use that index as `indexScope` (single-index scope) instead of all memberships.
+- [x] **3.8** **list_my_opportunities**: Add optional `indexNameOrId?`; when provided or defaulted from `context.indexId`, filter results to opportunities in that index (backend support as needed).
+- [x] **3.9** **update_intent** and **delete_intent**: When `context.indexId` is set, validate intent is in that index before allowing update/delete (chat-tool validation).
+- [x] **3.10** **get_active_intents** → **get_intents**: Rename tool; add optional `indexNameOrId?`. When omitted return all active intents; when set (or defaulted from context) return user’s intents in that index only. Update agent prompt and any references.
+- [x] **3.11** **update_index_settings**: When `context.indexId` is set, use it as default for the index parameter when the agent omits it; otherwise LLM must pass index (current behavior).
 
 #### Step 4: API and docs
 
-- [ ] **3.12** In the chat controller (or route) that handles the stream endpoint, accept optional `indexId` in the request and pass it to `streamChatEventsWithContext` (or equivalent).
-- [ ] **3.13** Update `protocol/plans/chat-revision.md` and `protocol/src/lib/protocol/graphs/chat/README.md` to document optional index-scoped chat, default index behavior, tool renames, and conditional tool visibility.
+- [x] **3.12** In the chat controller (or route) that handles the stream endpoint, accept optional `indexId` in the request and pass it to `streamChatEventsWithContext` (or equivalent).
+- [x] **3.13** Update `protocol/plans/chat-revision.md` and `protocol/src/lib/protocol/graphs/chat/README.md` to document optional index-scoped chat, default index behavior, tool renames, and conditional tool visibility.
 
 ### Success Criteria (Phase 3)
 

@@ -46,6 +46,7 @@ This replaces the previous 17-node conditional routing architecture with a flexi
 | `message` | string | User message (e.g. "Show my profile and create an intent to learn Rust") |
 | `sessionId` | string | Chat session ID for loading history |
 | `maxContextMessages?` | number | Max messages to load (default: 20) |
+| `indexId?` | string | Optional index (community) ID to scope the conversation; persisted on the session and used as default for index-aware tools (Phase 3). |
 
 **Output**: Async iterator of stream events: `tool_start`, `tool_end`, `agent_thinking`, `token`, `error`, `status`.
 
@@ -103,6 +104,7 @@ classDiagram
     class ChatTools {
         +get_user_profile()
         +update_user_profile()
+        +get_intents()
         +get_active_intents()
         +get_intents_in_index()
         +create_intent()
@@ -167,7 +169,7 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 15 tools, organized by domain:
+The agent has access to 16 tools, organized by domain. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat)).
 
 ### Profile Tools
 
@@ -180,28 +182,27 @@ The agent has access to 15 tools, organized by domain:
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_active_intents` | List user's goals/wants | "What are my intents?", "Show my goals" |
-| `get_intents_in_index` | List intents in an index | "What intents are in this community?" |
-| `create_intent` | Create new intent | "I want to learn Rust", "Looking for a co-founder". Optional `indexId`: when the user is acting in a specific index (e.g. "add my intent in YC Founders"), pass the index ID so reconciliation is index-scoped (Phase 2). |
-| `update_intent` | Modify existing intent | "Change that goal to...", "Update my coding intent" |
-| `delete_intent` | Remove an intent | "Delete that goal", "Remove my learning intent" |
+| `get_intents` | List user's intents (all or in an index). Prefer over `get_active_intents`. | "What are my intents?", "Show my goals". Optional `indexNameOrId`; when chat is index-scoped, omitting it uses the current index. |
+| `get_active_intents` | (Deprecated.) Same as `get_intents` with no index. | Use `get_intents` instead. |
+| `get_intents_in_index` | List intents in a specific index | "What intents are in this community?" Optional `indexNameOrId` when index-scoped. |
+| `create_intent` | Create new intent | "I want to learn Rust". Optional `indexId`; when index-scoped, omitting it uses the current index. |
+| `update_intent` / `delete_intent` | Modify or remove an intent | When index-scoped, only intents in that index can be updated/deleted. Use exact `id` from `get_intents`. |
 
 ### Index Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_index_memberships` | List communities | "What indexes am I in?", "Show my communities" |
-| `list_index_members` | List members of an index | "Who is in this index?" |
-| `list_index_intents` | List intents in an index | "What intents are in this index?" |
-| `update_index_settings` | Modify index (owner-only) | "Make my index private", "Update index description" |
+| `get_index_memberships` | List communities | When index-scoped, returns only the current index unless `showAll: true`. |
+| `list_index_members` / `list_index_intents` | List members or intents in an index | When index-scoped, omit `indexNameOrId` to use the current index. |
+| `update_index_settings` | Modify index (owner-only) | When index-scoped, omit `indexId` to update the current index. |
 
 ### Discovery Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `find_opportunities` | Search for connections | "Find people interested in AI", "Who can help with ML?" |
-| `list_my_opportunities` | List user's opportunities | "Show my opportunities", "What matches do I have?" |
-| `create_opportunity_between_members` | Create opportunity between two members | "Introduce me to X", "Create opportunity with Y" |
+| `find_opportunities` | Search for connections | When index-scoped, search is limited to that index unless a different index is passed. |
+| `list_my_opportunities` | List user's opportunities | When index-scoped, omit `indexNameOrId` to list only opportunities in that index. |
+| `create_opportunity_between_members` | Create opportunity between two members | When index-scoped, omit `indexNameOrId` to use the current index. |
 
 ### Utility Tools
 
@@ -226,6 +227,22 @@ All tools return JSON with consistent structure:
 { "success": false, "error": "Error message" }
 ```
 
+### Index-Scoped Chat (Phase 3)
+
+When the chat is started with an optional **`indexId`** (e.g. from an index/community page), that index is:
+
+- Stored in **graph state** and passed to the agent as **tool context** (`context.indexId`).
+- **Persisted on the chat session** so reconnecting to the same session keeps the scope; the request body can override it.
+- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `get_intents`, `get_intents_in_index`, `list_index_intents`, `list_index_members`, `create_opportunity_between_members`, `find_opportunities`, `list_my_opportunities`, `update_index_settings`.
+
+**Tool behavior when index-scoped:**
+
+- **`get_index_memberships`**: Returns only the current index membership (with a note). Use `showAll: true` when the user asks for "all my indexes".
+- **`update_intent` / `delete_intent`**: Only intents that belong to the current index can be updated or deleted; otherwise the tool returns an error.
+- **`get_intents`**: Primary tool for listing intents; accepts optional `indexNameOrId`. When omitted and index-scoped, returns intents in the current index. **`get_active_intents`** is a deprecated alias.
+
+When no index is passed (and the session has none), behavior is unchanged (global scope).
+
 ---
 
 ## State Management
@@ -238,6 +255,7 @@ The state is minimal compared to the previous architecture:
 classDiagram
     class ChatGraphState {
         +string userId
+        +string indexId
         +BaseMessage[] messages
         +number iterationCount
         +boolean shouldContinue
@@ -249,6 +267,7 @@ classDiagram
 | Field | Type | Purpose |
 |-------|------|---------|
 | `userId` | string | Required for all operations |
+| `indexId` | string \| undefined | Optional index scope for this run; passed to tools as default (Phase 3). |
 | `messages` | BaseMessage[] | Conversation history including tool calls/results |
 | `iterationCount` | number | Tracks loop progress for limits |
 | `shouldContinue` | boolean | Control flag for loop exit |
