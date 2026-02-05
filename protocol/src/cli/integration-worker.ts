@@ -7,13 +7,13 @@ const envFile = `.env.${process.env.NODE_ENV || 'development'}`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import { Command } from 'commander';
-import { syncIntegration } from '../lib/sync';
-import { log, setLevel } from '../lib/log';
-import { INTEGRATIONS, type IntegrationName } from '../lib/integrations/config';
-import db from '../lib/drizzle/drizzle';
-import { userIntegrations } from '../schemas/database.schema';
+import { syncIntegration } from '../lib/sync.js';
+import { log, setLevel } from '../lib/log.js';
+import { INTEGRATIONS, type IntegrationName } from '../lib/integrations/config.js';
+import db from '../lib/drizzle/drizzle.js';
+import { userIntegrations } from '../schemas/database.schema.js';
 import { eq, and, isNull } from 'drizzle-orm';
-import { getSlackLogger, resetSlackLogger } from '../lib/integrations/providers/slack-logger';
+import { getSlackLogger, resetSlackLogger } from '../lib/integrations/providers/slack-logger.js';
 
 // Helper function to sleep
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
