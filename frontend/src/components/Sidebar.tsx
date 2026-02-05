@@ -14,12 +14,9 @@ import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { Index as IndexType } from '@/lib/types';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import PreferencesModal from '@/components/modals/PreferencesModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
-import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
-import IndexOwnerModal from '@/components/modals/IndexOwnerModal';
 import { fetchMyOpportunities, getOtherPartyIds, type V2Opportunity } from '@/services/opportunities';
 
 interface ChatSession {
@@ -48,8 +45,6 @@ export default function Sidebar() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
-  const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
-  const [ownerModalIndex, setOwnerModalIndex] = useState<IndexType | null>(null);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [opportunities, setOpportunities] = useState<V2Opportunity[]>([]);
   const [loadingOpportunities, setLoadingOpportunities] = useState(false);
@@ -464,24 +459,6 @@ export default function Sidebar() {
         onOpenChange={setCreateIndexModalOpen}
         onSubmit={handleCreateIndex}
       />
-
-      {/* Member Settings Modal */}
-      {memberSettingsIndex && (
-        <MemberSettingsModal
-          open={!!memberSettingsIndex}
-          onOpenChange={(open) => !open && setMemberSettingsIndex(null)}
-          index={memberSettingsIndex}
-        />
-      )}
-
-      {/* Index Owner Modal */}
-      {ownerModalIndex && (
-        <IndexOwnerModal
-          open={!!ownerModalIndex}
-          onOpenChange={(open) => !open && setOwnerModalIndex(null)}
-          index={ownerModalIndex}
-        />
-      )}
     </div>
   );
 }
