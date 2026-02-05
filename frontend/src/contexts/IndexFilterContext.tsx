@@ -33,5 +33,3 @@ export function useIndexFilter() {
   }
   return context;
 }
-
-
