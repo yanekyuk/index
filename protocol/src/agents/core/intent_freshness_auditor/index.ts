@@ -10,7 +10,6 @@ import { intents, users } from '../../../schemas/database.schema';
 import { isNull, eq } from 'drizzle-orm';
 import { traceableStructuredLlm } from '../../../lib/agents';
 import { z } from 'zod';
-import { Events } from '../../../lib/events';
 import { format } from 'timeago.js';
 
 // OpenRouter preset: intent-freshness-auditor

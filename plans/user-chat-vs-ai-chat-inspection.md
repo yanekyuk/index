@@ -1,5 +1,7 @@
 # User-to-User Chat vs AI Chat: Implementation Inspection
 
+**Status:** Inspection / reference. Describes current implementation differences.
+
 ## Overview
 
 User-to-user chat and AI chat are implemented differently in terms of:

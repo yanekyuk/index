@@ -29,8 +29,9 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
-**Technical Implementation**: Index-based access control with two permission levels:
+**Technical Implementation**: Index-based access control with three permission levels:
 - `owner`: Full access (manage members, settings, read/write intents, run vibe checks)
+- `admin`: Can manage members (except owners) and settings
 - `member`: Standard access (read/write intents, run vibe checks)
 
 ### 3. Agent-Mediated Context
@@ -192,15 +193,9 @@ analyzeFolder(folderPath: string, fileIds: string[])
   → InferredIntent[] // high-confidence intent suggestions
 ```
 
-**Intent Enhancer**: Uses context from index files to expand and enrich user-created intents
-```typescript
-processIntent(intentPayload: string, indexId: string) 
-  → EnhancedIntent // Contextually enriched version by reading files
-```
-
 **Intent Summarizer**: Creates concise summaries for storage and display
 ```typescript
-sumarizeIntent(text: string, maxLength: number) 
+summarizeIntent(text: string, maxLength: number) 
   → Summary // Condensed version maintaining key meaning
 ```
 
@@ -350,9 +345,6 @@ POST /api/indexes/{id}/members
 // Upload files for intent generation
 POST /api/files
 // FormData with file attachment
-
-// Get AI-generated intent suggestions
-GET /api/indexes/{indexId}/suggested_intents
 ```
 
 **Discovery and Connections**:
@@ -362,61 +354,6 @@ GET /api/opportunities?status=PENDING
 
 // Get discovery results for shared index
 GET /api/discover/{indexCode}
-```
-
-### Reusable Components
-
-The protocol provides a library of React components that enable developers to quickly integrate discovery functionality:
-
-**Installation**:
-```bash
-npm install @index/react
-```
-
-**Core Components**:
-
-**IntentForm**: Create and submit new intents with validation
-```typescript
-import { IntentForm } from '@index/react';
-
-<IntentForm 
-  session={session}
-  indexId="index-abc"
-  onSubmit={(intent) => handleIntentSubmit(intent)}
-/>
-```
-
-**VibeCheck**: Analyze compatibility between users, intents, or content ([Demo](http://index.network/vibecheck/607e6bce-d292-41b3-9fa2-167a5fed1bd2))
-```typescript
-import { VibeCheck } from '@index/react';
-
-<VibeCheck 
-  session={session}
-  indexId="index-abc"
-  onResult={(result) => console.log('Vibe result:', result)}
-/>
-```
-
-**MatchList**: Display and manage intent matches with filtering
-```typescript
-import { MatchList } from '@index/react';
-
-<MatchList 
-  session={session}
-  indexId="index-abc"
-  limit={10}
-  sort="recency"
-/>
-```
-
-**Radar**: Interactive exploration of connections and patterns ([Demo](https://x.com/indexnetwork_/status/1828847341001924833))
-```typescript
-import { Radar } from '@index/react';
-
-<Radar 
-  session={session}
-  indexId="index-abc"
-/>
 ```
 
 **Conversational Agents**: Index also supports conversational integrations for platforms like Slack, Discord, and other chat environments, enabling intent inference and matchmaking within existing communication workflows.
@@ -457,15 +394,4 @@ WHERE o1.status = 'PENDING';
 
 ### Agent Processing Architecture
 
-**Asynchronous Opportunity Processing**: The Opportunity Graph processes candidate evaluations asynchronously, preventing any single evaluation from blocking the pipeline:
-
-```typescript
-// OpportunityGraph orchestrates the discovery flow
-const graph = new OpportunityGraph(database, embedder);
-
-// Each candidate is evaluated in parallel
-const opportunities = await graph.invoke({
-  sourceUserId: userId,
-  options: { hydeDescription, minScore: 70 }
-});
-```
+**Asynchronous Opportunity Processing**: The Opportunity Graph processes candidate evaluations asynchronously, preventing any single evaluation from blocking the pipeline. The graph is instantiated with database, embedder, cache, and a compiled HyDE graph; you call `compile()` to get the runnable, then `invoke(initialState)` with state that includes `sourceUserId`, optional `indexScope`, and options. See `protocol/src/lib/protocol/graphs/opportunity/README.md` for the full API.

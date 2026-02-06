@@ -8,7 +8,7 @@
   - Clean test data (will create/cleanup test records)
 
   Usage:
-    DATABASE_URL=postgres://... TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./tests/discovery.test.ts
+    DATABASE_URL=postgres://... bun test tests/discovery.test.ts
 */
 
 import dotenv from 'dotenv';

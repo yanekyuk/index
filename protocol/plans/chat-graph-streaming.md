@@ -1,5 +1,7 @@
 # Chat Graph Streaming Architecture Plan
 
+**Status:** Implementation plan (streaming may be partial or in progress; see chat graph and controller for current behavior).
+
 ## Overview
 
 This document outlines the architecture for implementing SSE (Server-Sent Events) streaming for the Chat Graph, enabling realtime AI messaging with conversation persistence and message memory. The implementation integrates with the frontend's existing SSE streaming pattern.

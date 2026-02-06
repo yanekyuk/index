@@ -9,6 +9,8 @@ All API requests should be made to:
 https://index.network/api
 ```
 
+For local development, use the protocol server base URL (e.g. `http://localhost:3001/api` when running `bun run dev` from the `protocol/` directory).
+
 ## Authentication
 
 All endpoints require authentication using Privy access tokens. Include the token in the `Authorization` header:

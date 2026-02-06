@@ -1,5 +1,7 @@
 # Intent Graph Database Integration Design
 
+**Status:** Design specification. See `src/lib/protocol/graphs/intent/` for current implementation.
+
 ## Overview
 
 This document specifies how database operations should be integrated into the Intent Graph (`src/lib/protocol/graphs/intent/intent.graph.ts`). The design follows the established pattern from Profile Graph while addressing the specific needs of intent lifecycle management.

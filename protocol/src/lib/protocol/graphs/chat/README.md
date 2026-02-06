@@ -90,15 +90,17 @@ classDiagram
         -embedder: Embedder
         -scraper: Scraper
         +createGraph()
-        +createStreamingGraph()
-        +streamChatEvents()
+        +createStreamingGraph(checkpointer?)
+        +loadSessionContext(sessionId, maxMessages?)
+        +streamChatEventsWithContext(input, checkpointer?)
+        +streamChatEvents(input, sessionId, checkpointer?)
     }
 
     class ChatAgent {
         -model: ChatOpenAI
         -tools: ChatTools
-        +runIteration()
-        +run()
+        +runIteration(messages, iterationCount)
+        +run(initialMessages)
     }
 
     class ChatTools {
@@ -398,6 +400,11 @@ graphs/chat/
 ├── tests/                  # Factory, invoke, streaming specs
 └── REFACTORING_SUMMARY.md  # Migration notes
 ```
+
+### Source files: chat.graph.ts and chat.agent.ts
+
+- **chat.graph.ts** — `ChatGraphFactory`: builds and compiles the chat graph. Constructor takes `ChatGraphCompositeDatabase`, `Embedder`, and `Scraper`. Public API: `createGraph()`, `createStreamingGraph(checkpointer?)`, `loadSessionContext(sessionId, maxMessages?)`, `streamChatEventsWithContext(input, checkpointer?)`, `streamChatEvents(input, sessionId, checkpointer?)`. The graph is a single path: START → `agent_loop` → END. The `agent_loop` node instantiates `ChatAgent` with the current state (`userId`, `indexId`, database, embedder, scraper), calls `agent.run(state.messages)`, and returns updated messages, `responseText`, and `iterationCount`.
+- **chat.agent.ts** — `ChatAgent`: ReAct-style LLM agent with tool calling. Constructor takes `ToolContext` (userId, database, embedder, scraper, optional indexId). Uses `ChatOpenAI` (model: `google/gemini-2.5-flash` via OpenRouter) bound to tools from `createChatTools(context)`. Public API: `runIteration(messages, iterationCount)` returns `AgentIterationResult` (shouldContinue, toolCalls, toolResults, responseText, messages); `run(initialMessages)` runs the loop until the agent responds or `HARD_ITERATION_LIMIT` (12). Constants: `SOFT_ITERATION_LIMIT` (8), `HARD_ITERATION_LIMIT` (12), `CHAT_AGENT_SYSTEM_PROMPT`, `ITERATION_NUDGE`. Tool execution is internal (`executeToolCalls`); tools are defined in `chat.tools.ts`.
 
 ---
 

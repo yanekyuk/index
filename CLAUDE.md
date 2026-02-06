@@ -78,10 +78,7 @@ bun install
 ```
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
-├── frontend/          # Next.js 15 App with React 19
-├── contracts/         # Smart contracts (blockchain)
-├── redis/            # Redis configuration
-└── txt/              # Documentation/knowledge base
+└── frontend/          # Next.js 15 App with React 19
 ```
 
 ### Protocol Architecture

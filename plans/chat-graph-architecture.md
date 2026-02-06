@@ -1,5 +1,7 @@
 # Chat Graph Architecture
 
+**Status:** Design / reference. Describes the Chat Graph in `protocol/src/lib/protocol/graphs/chat/`.
+
 This document describes the architecture for implementing the Chat Graph in [`chat.graph.ts`](protocol/src/lib/protocol/graphs/chat/chat.graph.ts). The Chat Graph is a LangGraph implementation that orchestrates conversational AI interactions and coordinates subgraphs for Intent, Profile, and Opportunity processing.
 
 ---

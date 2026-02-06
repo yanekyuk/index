@@ -66,7 +66,6 @@
     "openai": "^4.103.0",
     "parallel-web": "^0.2.4",
     "postgres": "^3.4.7",
-    "react-mentions": "^4.4.10",
     "resend": "^4.0.1",
     "stream-chat": "^9.28.0",
     "timeago.js": "^4.0.2",
@@ -89,8 +88,6 @@
     "@typescript-eslint/parser": "^6.15.0",
     "drizzle-kit": "^0.31.8",
     "eslint": "^8.56.0",
-    "nodemon": "^3.0.2",
-    "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
     "vitest": "^4.0.15"
   },

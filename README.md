@@ -87,7 +87,7 @@ cd index
 
 ```bash
 # Install all workspace dependencies
-yarn install
+bun install
 ```
 
 3. **Set up environment variables**
@@ -104,8 +104,8 @@ cp frontend/.env.example frontend/.env
 
 ```bash
 cd protocol
-yarn drizzle:generate
-yarn drizzle:migrate
+bun run db:generate
+bun run db:migrate
 ```
 
 5. **Start the development servers**
@@ -113,11 +113,11 @@ yarn drizzle:migrate
 ```bash
 # Terminal 1: Start the protocol server
 cd protocol
-yarn dev
+bun run dev
 
 # Terminal 2: Start the frontend
-cd frontend  
-yarn dev
+cd frontend
+bun run dev
 ```
 
 Visit `http://localhost:3000` to see the application.
@@ -144,22 +144,27 @@ The `protocol/` directory contains the core agent infrastructure:
 
 ### Development Commands
 
+For the full list of protocol commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
+
 ```bash
 cd protocol
 
-# Start development server with hot reload
-yarn dev
+# Start development server with hot reload (Express, default port)
+bun run dev
+
+# Start V2 server (Bun.serve, port 3003)
+bun run dev:v2
 
 # Build for production
-yarn build
+bun run build
 
 # Database operations
-yarn drizzle:generate    # Generate Drizzle client
-yarn drizzle:migrate     # Run database migrations  
-yarn drizzle:studio      # Open database GUI
+bun run db:generate    # Generate migrations after schema changes
+bun run db:migrate     # Run database migrations
+bun run db:studio      # Open Drizzle Studio (DB GUI)
 
 # Code quality
-yarn lint               # Run ESLint
+bun run lint           # Run ESLint
 ```
 
 ## Contributing
@@ -182,7 +187,7 @@ git clone https://github.com/YOUR_USERNAME/index.git
 git checkout -b feature/your-feature-name
 
 # Make changes and test
-yarn test
+bun test
 
 # Submit PR
 git push origin feature/your-feature-name

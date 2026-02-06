@@ -1,5 +1,7 @@
 # Interface Narrowing Design for Graph System
 
+**Status:** Design doc. References current interfaces; implementation may vary.
+
 This document defines a pattern for narrowing the `Database` interface using TypeScript's `Pick` utility type, ensuring each graph and controller only depends on the methods it actually uses.
 
 ## Table of Contents

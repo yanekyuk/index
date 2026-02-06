@@ -1,5 +1,7 @@
 # Database Interface: Intent Graph Support
 
+**Status:** Design / specification. See `src/lib/protocol/interfaces/database.interface.ts` for current interface.
+
 ## Overview
 
 This specification defines the updated `src/lib/protocol/interfaces/database.interface.ts` to support the Intent Graph pipeline. The interface additions enable:

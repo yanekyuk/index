@@ -2,7 +2,7 @@ import db from './drizzle/drizzle';
 import { intents, intentIndexes, intentStakes, intentStakeItems } from '../schemas/database.schema';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { generateEmbedding } from './embeddings';
-import { Events } from './events';
+import { IntentEvents } from '../events/intent.event';
 import { eq } from 'drizzle-orm';
 import { INTENT_INFERRER_AGENT_ID } from './agent-ids';
 
@@ -173,7 +173,7 @@ export class IntentService {
       }
 
       // Trigger centralized intent created event
-      Events.Intent.onCreated({
+      IntentEvents.onCreated({
         intentId: createdIntent.id,
         userId: createdIntent.userId,
         payload: createdIntent.payload
