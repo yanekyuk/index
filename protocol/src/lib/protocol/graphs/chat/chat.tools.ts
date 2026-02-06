@@ -98,6 +98,9 @@ function needsClarification(params: {
 /** Matches http/https URLs in text; captures full URL. */
 const URL_IN_TEXT_REGEX = /https?:\/\/[^\s"'<>)\]]+/gi;
 
+/** UUID v4 format: 8-4-4-4-12 hex chars (e.g. c2505011-2e45-426e-81dd-b9abb9b72023) */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Extract unique, valid URLs from a string (e.g. user message or details).
  */
@@ -159,7 +162,7 @@ export function createChatTools(context: ToolContext) {
       logger.info("Tool: read_user_profiles", { userId });
 
       try {
-        const profile = await database.getProfile(userId);
+        const profile = await database.getProfileByUserId(userId);
 
         if (!profile) {
           return success({
@@ -171,6 +174,7 @@ export function createChatTools(context: ToolContext) {
         return success({
           hasProfile: true,
           profile: {
+            id: profile.id,
             name: profile.identity.name,
             bio: profile.identity.bio,
             location: profile.identity.location,
@@ -185,7 +189,7 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "read_user_profiles",
-      description: "Fetches the user's profile including name, bio, skills, interests, and location. Returns profile data or indicates if no profile exists.",
+      description: "Fetches the user's profile including id, name, bio, skills, interests, and location. Returns profile data (with id field for use in update_user_profile) or indicates if no profile exists.",
       schema: z.object({}),
     }
   );
@@ -295,12 +299,10 @@ export function createChatTools(context: ToolContext) {
   // INTENT TOOLS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const INDEX_UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   const readIntents = tool(
     async (args: { indexId?: string; userId?: string }) => {
       const indexId = args.indexId?.trim() || context.indexId?.trim() || undefined;
-      if (indexId && !INDEX_UUID_REGEX.test(indexId)) {
+      if (indexId && !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       const effectiveUserId = args.userId?.trim() || userId;
@@ -348,26 +350,32 @@ export function createChatTools(context: ToolContext) {
               description: i.payload,
               summary: i.summary,
               createdAt: i.createdAt,
-            })),
-          });
-        }
-        const intents = await database.getActiveIntents(effectiveUserId);
-        if (intents.length === 0) {
-          return success({
-            count: 0,
-            intents: [],
-            message: "You don't have any active intents yet. Share your goals or what you're looking for.",
-          });
-        }
-        return success({
-          count: intents.length,
-          intents: intents.map((i) => ({
-            id: i.id,
-            description: i.payload,
-            summary: i.summary,
-            createdAt: i.createdAt,
           })),
         });
+      }
+      
+      // Global (no-index) path: restrict to session user only
+      if (effectiveUserId !== userId) {
+        return error("Not authorized to view other users' global intents. You can only view your own intents when no index is specified.");
+      }
+      
+      const intents = await database.getActiveIntents(effectiveUserId);
+      if (intents.length === 0) {
+        return success({
+          count: 0,
+          intents: [],
+          message: "You don't have any active intents yet. Share your goals or what you're looking for.",
+        });
+      }
+      return success({
+        count: intents.length,
+        intents: intents.map((i) => ({
+          id: i.id,
+          description: i.payload,
+          summary: i.summary,
+          createdAt: i.createdAt,
+        })),
+      });
       } catch (err) {
         logger.error("read_intents failed", { error: err });
         return error("Failed to fetch intents. Please try again.");
@@ -499,9 +507,6 @@ export function createChatTools(context: ToolContext) {
       })
     }
   );
-
-  // UUID v4 format: 8-4-4-4-12 hex chars (e.g. c2505011-2e45-426e-81dd-b9abb9b72023)
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const updateIntent = tool(
     async (args: { intentId: string; newDescription: string }) => {
@@ -698,7 +703,7 @@ export function createChatTools(context: ToolContext) {
   const readUsers = tool(
     async (args: { indexId: string }) => {
       const indexId = args.indexId?.trim();
-      if (!indexId || !INDEX_UUID_REGEX.test(indexId)) {
+      if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       logger.info("Tool: read_users", { userId, indexId });
@@ -736,7 +741,7 @@ export function createChatTools(context: ToolContext) {
       if (!effectiveIndexId) {
         return error("Index required. Pass index UUID or open chat from an index you own.");
       }
-      if (!INDEX_UUID_REGEX.test(effectiveIndexId)) {
+      if (!UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       logger.info("Tool: update_index", { userId, indexId: effectiveIndexId });
@@ -870,7 +875,7 @@ export function createChatTools(context: ToolContext) {
   const deleteIndex = tool(
     async (args: { indexId: string }) => {
       const indexId = args.indexId?.trim();
-      if (!indexId || !INDEX_UUID_REGEX.test(indexId)) {
+      if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       logger.info("Tool: delete_index", { userId, indexId });
@@ -914,7 +919,7 @@ export function createChatTools(context: ToolContext) {
     async (args: { userId: string; indexId: string }) => {
       const indexId = args.indexId?.trim();
       const targetUserId = args.userId?.trim();
-      if (!indexId || !INDEX_UUID_REGEX.test(indexId)) {
+      if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       if (!targetUserId) {
@@ -970,7 +975,7 @@ export function createChatTools(context: ToolContext) {
       try {
         let indexScope: string[];
         if (effectiveIndexId) {
-          if (!INDEX_UUID_REGEX.test(effectiveIndexId)) {
+          if (!UUID_REGEX.test(effectiveIndexId)) {
             return error("Invalid index ID format. Use the exact UUID from read_indexes.");
           }
           const isMember = await database.isIndexMember(effectiveIndexId, userId);
@@ -1028,7 +1033,7 @@ export function createChatTools(context: ToolContext) {
       try {
         let indexIdFilter: string | undefined;
         if (effectiveIndexId) {
-          if (!INDEX_UUID_REGEX.test(effectiveIndexId)) {
+          if (!UUID_REGEX.test(effectiveIndexId)) {
             return error("Invalid index ID format. Use the exact UUID from read_indexes.");
           }
           const isMember = await database.isIndexMember(effectiveIndexId, userId);
@@ -1103,9 +1108,6 @@ export function createChatTools(context: ToolContext) {
     }
   );
 
-  // UUID v4 for user IDs
-  const USER_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
   const createOpportunityBetweenMembers = tool(
     async (args: {
       indexId?: string;
@@ -1117,7 +1119,7 @@ export function createChatTools(context: ToolContext) {
       if (!effectiveIndexId) {
         return error("Index required. Pass index UUID from read_indexes, or open chat from an index.");
       }
-      if (!INDEX_UUID_REGEX.test(effectiveIndexId)) {
+      if (!UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       logger.info("Tool: create_opportunity_between_members", {
@@ -1137,7 +1139,7 @@ export function createChatTools(context: ToolContext) {
 
         const resolveRef = (ref: string): string | null => {
           const trimmed = ref.trim();
-          if (USER_ID_REGEX.test(trimmed)) {
+          if (UUID_REGEX.test(trimmed)) {
             const found = members.find((m) => m.userId === trimmed);
             return found ? trimmed : null;
           }
