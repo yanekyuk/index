@@ -711,7 +711,7 @@ export function createChatTools(context: ToolContext) {
         return success({
           indexId,
           count: members.length,
-          members: members.map((m) => ({ name: m.name, avatar: m.avatar, permissions: m.permissions, intentCount: m.intentCount, joinedAt: m.joinedAt })),
+          members: members.map((m) => ({ userId: m.userId, name: m.name, avatar: m.avatar, permissions: m.permissions, intentCount: m.intentCount, joinedAt: m.joinedAt })),
         });
       } catch (err) {
         logger.error("read_users failed", { error: err });
@@ -723,7 +723,7 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "read_users",
-      description: "Lists all members of an index. Requires indexId (UUID from read_indexes). You must be a member of the index.",
+      description: "Lists all members of an index with their userId, name, avatar, permissions, intentCount, and joinedAt. Requires indexId (UUID from read_indexes). You must be a member of the index. Use the returned userId values to unambiguously reference members in other tools like create_opportunity_between_members.",
       schema: z.object({
         indexId: z.string().describe("Index UUID from read_indexes."),
       }),
@@ -1184,11 +1184,11 @@ export function createChatTools(context: ToolContext) {
     {
       name: "create_opportunity_between_members",
       description:
-        "Creates an opportunity (suggested connection) between two members of an index. Use read_users to get member names, then pass indexId (UUID from read_indexes), firstMemberRef, secondMemberRef (names or user IDs), and reasoning.",
+        "Creates an opportunity (suggested connection) between two members of an index. Use read_users to get member userId and name, then pass indexId (UUID from read_indexes), firstMemberRef, secondMemberRef (prefer userId from read_users for unambiguous matching; display names also work), and reasoning.",
       schema: z.object({
         indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
-        firstMemberRef: z.string().describe("First person: display name (e.g. Yanki) or user ID"),
-        secondMemberRef: z.string().describe("Second person: display name (e.g. Seref) or user ID"),
+        firstMemberRef: z.string().describe("First person: userId from read_users (preferred) or display name"),
+        secondMemberRef: z.string().describe("Second person: userId from read_users (preferred) or display name"),
         reasoning: z.string().describe("Brief reason why these two should connect (e.g. complementary intents)"),
       }),
     }

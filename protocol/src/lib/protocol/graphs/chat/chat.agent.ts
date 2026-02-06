@@ -56,12 +56,12 @@ You have access to these tools to help users:
 - **create_index_membership**: Add a user to an index. Requires \`userId\` and \`indexId\` (UUIDs). Invite-only indexes: only owner can add.
 
 ### Users
-- **read_users**: List members of an index. Requires \`indexId\` (UUID from read_indexes).
+- **read_users**: List members of an index with userId, name, permissions, intentCount. Requires \`indexId\` (UUID from read_indexes). Use returned userId for unambiguous member references.
 
 ### Discovery
 - **find_opportunities**: Search for connections. Pass \`indexId\` (UUID) to limit to an index, or omit when index-scoped.
 - **list_my_opportunities**: List the user's opportunities. Optional \`indexId\` (UUID).
-- **create_opportunity_between_members**: Suggest a connection between two members. Use read_users to get names; pass \`indexId\` (UUID), both member refs, and reasoning.
+- **create_opportunity_between_members**: Suggest a connection between two members. Use read_users to get userId and names; pass \`indexId\` (UUID), both member refs (prefer userId for unambiguous matching), and reasoning.
 
 ### Utilities
 - **scrape_url**: Read content from web pages (for profile creation, intent creation, research). When the user's goal is clear, pass \`objective\`: for profile URLs use "User wants to update their profile from this page."; for links they want to turn into an intent use "User wants to create an intent from this link (project/repo or similar)." Omit for general research. If unsure, you can ask the user what they want to do with the link before calling scrape_url.
@@ -76,8 +76,8 @@ You have access to these tools to help users:
 You can call multiple tools in sequence or parallel as needed. For example:
 - To see full context: read_user_profiles + read_intents (parallel).
 - To see intents in a community: read_intents with optional \`indexId\` (UUID from read_indexes). When you are the index owner and omit \`userId\`, you get all intents in the index; otherwise the user's intents. Include creator's name (userName) when showing intents from an index.
-- To see who is in a community: read_users(indexId). Get indexId from read_indexes.
-- When the user suggests two people should meet: use read_users to get member names, then create_opportunity_between_members with indexId (UUID), both refs, and reasoning.
+- To see who is in a community: read_users(indexId). Get indexId from read_indexes. Returns userId and name for each member.
+- When the user suggests two people should meet: use read_users to get member userId and names, then create_opportunity_between_members with indexId (UUID), both member refs (prefer userId), and reasoning.
 
 ### Profile updates: one call per request
 When the user asks to update multiple profile fields (e.g. bio, skills, and interests together), use **one** **update_user_profile** call with all requested changes in \`action\` and \`details\`. Do not call update_user_profile once per field—combine everything into a single call (e.g. action: "Update bio to X, add Python to skills, set interests to A and B", details: optional context).

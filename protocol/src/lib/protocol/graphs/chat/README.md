@@ -201,7 +201,7 @@ The agent has access to 19 tools, organized by domain using CRUD naming. All ind
 | `update_index` | Modify index settings (owner-only, confirmation required) | "Rename my community" |
 | `delete_index` | Soft-delete an index (owner-only, confirmation required) | "Delete my community" |
 | `create_index_membership` | Join an index or add a user to an index | "Join this community". Respects join policy. |
-| `read_users` | List members of an index (requires `indexId` UUID) | "Who's in this community?" |
+| `read_users` | List members of an index with userId, name, permissions, intentCount (requires `indexId` UUID) | "Who's in this community?" Returns userId for use in create_opportunity_between_members. |
 
 ### Discovery Tools
 
