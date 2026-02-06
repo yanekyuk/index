@@ -26,6 +26,17 @@ export class ChatController {
   }
 
   /**
+   * Get pending message requests for the authenticated user (receiver).
+   * Returns channels where the latest connection event is REQUEST.
+   */
+  @Get('/requests')
+  @UseGuards(AuthGuard)
+  async getRequests(_req: Request, user: AuthenticatedUser) {
+    const requests = await chatSessionService.getPendingRequests(user.id);
+    return Response.json({ requests });
+  }
+
+  /**
    * Send a message to the chat graph for processing.
    * The graph routes to appropriate subgraphs based on intent analysis.
    *

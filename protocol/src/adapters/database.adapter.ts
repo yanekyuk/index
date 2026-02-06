@@ -3,10 +3,10 @@
  * Postgres implementations; no dependency on lib/protocol.
  */
 
-import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray } from 'drizzle-orm';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray, ilike, notInArray } from 'drizzle-orm';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
-import type { User } from '../schemas/database.schema';
+import type { User, NotificationPreferences } from '../schemas/database.schema';
 import { log } from '../lib/log';
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
@@ -46,6 +46,17 @@ interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
+interface IntentListRow {
+  id: string;
+  payload: string;
+  summary: string | null;
+  isIncognito: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+  sourceType: string | null;
+  sourceId: string | null;
+}
 // Shapes matching schemas/database.schema userProfiles columns (no lib/protocol import)
 interface ProfileIdentity {
   name: string;
@@ -77,7 +88,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, chatSessions, chatMessages, userNotificationSettings, userProfiles, userConnectionEvents, files } = schema;
+const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, chatSessions, chatMessages, userNotificationSettings, userProfiles, userConnectionEvents, files, links } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -277,6 +288,74 @@ export class IntentDatabaseAdapter {
       console.error('IntentDatabaseAdapter.getIntentsInIndexForMember error:', error);
       return [];
     }
+  }
+
+  async listIntents(userId: string, options: {
+    page: number;
+    limit: number;
+    archived: boolean;
+    sourceType?: string;
+  }): Promise<{ rows: IntentListRow[]; total: number }> {
+    const offset = (options.page - 1) * options.limit;
+    const conditions = [eq(schema.intents.userId, userId)];
+    if (options.archived) {
+      conditions.push(isNotNull(schema.intents.archivedAt));
+    } else {
+      conditions.push(isNull(schema.intents.archivedAt));
+    }
+    if (options.sourceType) {
+      conditions.push(eq(schema.intents.sourceType, options.sourceType as any));
+    }
+    const where = and(...conditions);
+
+    const [rows, totalResult] = await Promise.all([
+      db.select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        isIncognito: schema.intents.isIncognito,
+        createdAt: schema.intents.createdAt,
+        updatedAt: schema.intents.updatedAt,
+        archivedAt: schema.intents.archivedAt,
+        sourceType: schema.intents.sourceType,
+        sourceId: schema.intents.sourceId,
+      })
+        .from(schema.intents)
+        .where(where)
+        .orderBy(desc(schema.intents.createdAt))
+        .offset(offset)
+        .limit(options.limit),
+      db.select({ count: count() }).from(schema.intents).where(where),
+    ]);
+
+    return { rows, total: Number(totalResult[0]?.count ?? 0) };
+  }
+
+  async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
+    const row = await db.select({
+      id: schema.intents.id,
+      payload: schema.intents.payload,
+      summary: schema.intents.summary,
+      isIncognito: schema.intents.isIncognito,
+      createdAt: schema.intents.createdAt,
+      updatedAt: schema.intents.updatedAt,
+      archivedAt: schema.intents.archivedAt,
+      sourceType: schema.intents.sourceType,
+      sourceId: schema.intents.sourceId,
+    })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+
+    return row[0] ?? null;
+  }
+
+  async isOwnedByUser(intentId: string, userId: string): Promise<boolean> {
+    const row = await db.select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    return row.length > 0;
   }
 }
 
@@ -1242,7 +1321,7 @@ export class ChatDatabaseAdapter {
       const currentPerms = (existing.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
       updateData.permissions = {
         joinPolicy: data.joinPolicy ?? currentPerms.joinPolicy ?? 'invite_only',
-        invitationLink: currentPerms.invitationLink ?? null,
+        invitationLink: currentPerms.invitationLink ?? { code: crypto.randomUUID() },
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
       };
     }
@@ -1374,6 +1453,219 @@ export class ChatDatabaseAdapter {
 
   async deleteProfile(userId: string): Promise<void> {
     await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Detail & Member Management (with access control)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get a single index with owner info and member count.
+   * Checks that the requesting user is a member; throws "Access denied" if not.
+   */
+  async getIndexDetail(indexId: string, requestingUserId: string) {
+    const rows = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+        isPersonal: indexes.isPersonal,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) {
+      throw new Error('Access denied: Not a member of this index');
+    }
+
+    const memberCount = await this.getIndexMemberCount(indexId);
+
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      permissions: row.permissions,
+      isPersonal: row.isPersonal,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+      _count: { members: memberCount },
+    };
+  }
+
+  /**
+   * Search users within the caller's personal index members by name or email,
+   * optionally excluding existing members of a target index.
+   */
+  async searchPersonalIndexMembers(userId: string, query: string, excludeIndexId?: string) {
+    if (!query || query.trim().length === 0) return [];
+
+    // Find the user's personal index
+    const [personalIndex] = await db
+      .select({ indexId: indexMembers.indexId })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(
+          eq(indexMembers.userId, userId),
+          eq(indexes.isPersonal, true),
+          isNull(indexes.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!personalIndex) return [];
+
+    // Members of the personal index
+    const personalMemberIds = db
+      .select({ userId: indexMembers.userId })
+      .from(indexMembers)
+      .where(eq(indexMembers.indexId, personalIndex.indexId));
+
+    const pattern = `%${query.trim()}%`;
+    const conditions = [
+      isNull(users.deletedAt),
+      inArray(users.id, personalMemberIds),
+      or(ilike(users.name, pattern), ilike(users.email, pattern)),
+    ];
+
+    if (excludeIndexId) {
+      const existingMembers = db
+        .select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(eq(indexMembers.indexId, excludeIndexId));
+      conditions.push(notInArray(users.id, existingMembers));
+    }
+
+    return db
+      .select({ id: users.id, name: users.name, email: users.email, avatar: users.avatar })
+      .from(users)
+      .where(and(...conditions))
+      .limit(20);
+  }
+
+  /**
+   * Add a member to an index. Checks that the requesting user has owner or admin permissions.
+   * Throws "Access denied" if not authorized.
+   */
+  async addMemberForOwnerOrAdmin(
+    indexId: string,
+    userId: string,
+    requestingUserId: string,
+    role: 'admin' | 'member' = 'member'
+  ) {
+    const [membership] = await db
+      .select({ permissions: indexMembers.permissions })
+      .from(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, requestingUserId)))
+      .limit(1);
+
+    if (!membership || (!membership.permissions?.includes('owner') && !membership.permissions?.includes('admin'))) {
+      throw new Error('Access denied: Only owners or admins can add members');
+    }
+
+    const result = await this.addMemberToIndex(indexId, userId, role);
+    const user = await this.getUser(userId);
+
+    return {
+      member: user
+        ? { id: user.id, name: user.name, email: user.email, avatar: user.avatar, permissions: role === 'admin' ? ['admin', 'member'] : ['member'] }
+        : null,
+      alreadyMember: result.alreadyMember,
+    };
+  }
+
+  /**
+   * Remove a member from an index. Owner-only.
+   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   * Prevents self-removal. Throws "Member not found" if member doesn't exist.
+   */
+  async removeMemberForOwner(indexId: string, memberUserId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this index');
+    }
+
+    if (memberUserId === requestingUserId) {
+      throw new Error('Cannot remove yourself from the index');
+    }
+
+    const deleted = await db
+      .delete(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, memberUserId)))
+      .returning({ userId: indexMembers.userId });
+
+    if (deleted.length === 0) {
+      throw new Error('Member not found');
+    }
+  }
+
+  /**
+   * Soft-delete an index. Owner-only.
+   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   */
+  async deleteIndexForOwner(indexId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this index');
+    }
+
+    await this.softDeleteIndex(indexId);
+  }
+
+  /**
+   * Get pending connection requests where the user is the receiver.
+   * Returns the latest event per (initiator, receiver) pair where eventType is REQUEST.
+   */
+  async getPendingConnectionRequests(userId: string) {
+    const latestEvents = db
+      .select({
+        initiatorUserId: userConnectionEvents.initiatorUserId,
+        receiverUserId: userConnectionEvents.receiverUserId,
+        maxCreatedAt: sql<Date>`max(${userConnectionEvents.createdAt})`.as('max_created_at'),
+      })
+      .from(userConnectionEvents)
+      .where(eq(userConnectionEvents.receiverUserId, userId))
+      .groupBy(userConnectionEvents.initiatorUserId, userConnectionEvents.receiverUserId)
+      .as('latest');
+
+    return db
+      .select({
+        id: userConnectionEvents.id,
+        initiatorUserId: userConnectionEvents.initiatorUserId,
+        eventType: userConnectionEvents.eventType,
+        createdAt: userConnectionEvents.createdAt,
+        initiatorName: users.name,
+        initiatorAvatar: users.avatar,
+      })
+      .from(userConnectionEvents)
+      .innerJoin(latestEvents, and(
+        eq(userConnectionEvents.initiatorUserId, latestEvents.initiatorUserId),
+        eq(userConnectionEvents.receiverUserId, latestEvents.receiverUserId),
+        eq(userConnectionEvents.createdAt, latestEvents.maxCreatedAt),
+      ))
+      .leftJoin(users, eq(userConnectionEvents.initiatorUserId, users.id))
+      .where(eq(userConnectionEvents.eventType, 'REQUEST'))
+      .orderBy(desc(userConnectionEvents.createdAt));
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
@@ -2115,6 +2407,21 @@ export class UserDatabaseAdapter {
   }
 
   /**
+   * Upsert notification preferences for a user
+   */
+  async updateNotificationPreferences(userId: string, preferences: NotificationPreferences): Promise<void> {
+    const existing = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId)).limit(1);
+    if (existing.length > 0) {
+      await db.update(userNotificationSettings)
+        .set({ preferences, updatedAt: new Date() })
+        .where(eq(userNotificationSettings.userId, userId));
+    } else {
+      await db.insert(userNotificationSettings)
+        .values({ userId, preferences });
+    }
+  }
+
+  /**
    * Check if connection event exists between two users
    */
   async checkConnectionEvent(user1Id: string, user2Id: string): Promise<boolean> {
@@ -2287,9 +2594,78 @@ export class FileDatabaseAdapter {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Link Database Adapter
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface LinkRow {
+  id: string;
+  url: string;
+  createdAt: Date;
+  lastSyncAt: Date | null;
+  lastStatus: string | null;
+  lastError: string | null;
+}
+
+/**
+ * LinkDatabaseAdapter
+ *
+ * Wraps all database operations for the links table.
+ */
+export class LinkDatabaseAdapter {
+  async listLinks(userId: string): Promise<LinkRow[]> {
+    return db.select({
+      id: links.id,
+      url: links.url,
+      createdAt: links.createdAt,
+      lastSyncAt: links.lastSyncAt,
+      lastStatus: links.lastStatus,
+      lastError: links.lastError,
+    })
+      .from(links)
+      .where(eq(links.userId, userId));
+  }
+
+  async createLink(userId: string, url: string): Promise<LinkRow> {
+    const [inserted] = await db.insert(links)
+      .values({ userId, url })
+      .returning({
+        id: links.id,
+        url: links.url,
+        createdAt: links.createdAt,
+        lastSyncAt: links.lastSyncAt,
+        lastStatus: links.lastStatus,
+        lastError: links.lastError,
+      });
+    return inserted;
+  }
+
+  async deleteLink(linkId: string, userId: string): Promise<boolean> {
+    const result = await db.delete(links)
+      .where(and(eq(links.id, linkId), eq(links.userId, userId)))
+      .returning({ id: links.id });
+    return result.length > 0;
+  }
+
+  async getLinkContent(linkId: string, userId: string): Promise<{ id: string; url: string; lastSyncAt: Date | null; lastStatus: string | null } | null> {
+    const rows = await db.select({
+      id: links.id,
+      url: links.url,
+      lastSyncAt: links.lastSyncAt,
+      lastStatus: links.lastStatus,
+    })
+      .from(links)
+      .where(and(eq(links.id, linkId), eq(links.userId, userId)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Singleton Exports
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export const chatDatabaseAdapter = new ChatDatabaseAdapter();
 export const userDatabaseAdapter = new UserDatabaseAdapter();
 export const fileDatabaseAdapter = new FileDatabaseAdapter();
+export const linkDatabaseAdapter = new LinkDatabaseAdapter();
+export const intentDatabaseAdapter = new IntentDatabaseAdapter();

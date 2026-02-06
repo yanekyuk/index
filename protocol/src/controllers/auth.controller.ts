@@ -2,9 +2,6 @@ import { Controller, Get, Patch, UseGuards } from '../lib/router/router.decorato
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
-import db from '../lib/drizzle/drizzle';
-import { userNotificationSettings } from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
@@ -46,15 +43,7 @@ export class AuthController {
       await userService.update(user.id, userFields);
     }
     if (notificationPreferences) {
-      const existing = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, user.id)).limit(1);
-      if (existing.length > 0) {
-        await db.update(userNotificationSettings)
-          .set({ preferences: notificationPreferences, updatedAt: new Date() })
-          .where(eq(userNotificationSettings.userId, user.id));
-      } else {
-        await db.insert(userNotificationSettings)
-          .values({ userId: user.id, preferences: notificationPreferences });
-      }
+      await userService.updateNotificationPreferences(user.id, notificationPreferences);
     }
 
     const fullUser = await userService.findWithGraph(user.id);

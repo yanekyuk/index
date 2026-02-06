@@ -75,6 +75,13 @@ export class UserService {
     }
 
     /**
+     * Update notification preferences for a user (upsert)
+     */
+    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean; weeklyNewsletter?: boolean }) {
+        return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
+    }
+
+    /**
      * Check if there is an existing connection event between two users
      */
     async checkConnectionEvent(user1Id: string, user2Id: string) {

@@ -11,21 +11,83 @@ const logger = log.service.from("IndexService");
  * 
  * RESPONSIBILITIES:
  * - List indexes for users
+ * - Get single index details
  * - Manage index memberships
  */
 export class IndexService {
-  constructor(private db = new ChatDatabaseAdapter()) {}
+  constructor(private adapter = new ChatDatabaseAdapter()) {}
 
   /**
    * Get all indexes that a user is a member of, including their personal index.
-   * 
-   * @param userId - The user ID
-   * @returns Indexes with pagination metadata
    */
   async getIndexesForUser(userId: string) {
     logger.info('[IndexService] Getting indexes for user', { userId });
-    
-    return this.db.getIndexesForUser(userId);
+    return this.adapter.getIndexesForUser(userId);
+  }
+
+  /**
+   * Get a single index by ID with owner info and member count.
+   * Only members of the index can view it.
+   */
+  async getIndexById(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting index by id', { indexId });
+    return this.adapter.getIndexDetail(indexId, userId);
+  }
+
+  /**
+   * Update index permissions. Owner-only.
+   */
+  async updatePermissions(indexId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    logger.info('[IndexService] Updating permissions', { indexId, userId });
+    return this.adapter.updateIndexSettings(indexId, userId, data);
+  }
+
+  /**
+   * Search users within the caller's personal index members,
+   * optionally excluding existing members of a target index.
+   */
+  async searchPersonalIndexMembers(userId: string, q: string, excludeIndexId?: string) {
+    return this.adapter.searchPersonalIndexMembers(userId, q, excludeIndexId);
+  }
+
+  /**
+   * Add a member to an index. Only owners/admins can add members.
+   */
+  async addMember(indexId: string, userId: string, requestingUserId: string, role: 'admin' | 'member' = 'member') {
+    logger.info('[IndexService] Adding member', { indexId, userId, role });
+    return this.adapter.addMemberForOwnerOrAdmin(indexId, userId, requestingUserId, role);
+  }
+
+  /**
+   * Remove a member from an index. Owner-only.
+   */
+  async removeMember(indexId: string, memberId: string, userId: string) {
+    logger.info('[IndexService] Removing member', { indexId, memberId, userId });
+    return this.adapter.removeMemberForOwner(indexId, memberId, userId);
+  }
+
+  /**
+   * Soft-delete an index. Owner-only.
+   */
+  async deleteIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Deleting index', { indexId, userId });
+    return this.adapter.deleteIndexForOwner(indexId, userId);
+  }
+
+  /**
+   * Get members of an index. Only owners can call this.
+   */
+  async getMembersForOwner(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting members for owner', { indexId, userId });
+    const raw = await this.adapter.getIndexMembersForOwner(indexId, userId);
+    return raw.map(m => ({
+      id: m.userId,
+      name: m.name,
+      email: m.email,
+      avatar: m.avatar,
+      permissions: m.permissions,
+      createdAt: m.joinedAt,
+    }));
   }
 }
 

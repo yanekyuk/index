@@ -1,9 +1,7 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import db from '../lib/drizzle/drizzle';
-import { links } from '../schemas/database.schema';
-import { eq, and } from 'drizzle-orm';
+import { linkService } from '../services/link.service';
 
 const logger = log.controller.from('link');
 
@@ -15,16 +13,7 @@ export class LinkController {
   @Get('')
   @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
-    const rows = await db.select({
-      id: links.id,
-      url: links.url,
-      createdAt: links.createdAt,
-      lastSyncAt: links.lastSyncAt,
-      lastStatus: links.lastStatus,
-      lastError: links.lastError,
-    })
-      .from(links)
-      .where(eq(links.userId, user.id));
+    const rows = await linkService.listLinks(user.id);
 
     return Response.json({
       links: rows.map(r => ({
@@ -46,16 +35,7 @@ export class LinkController {
       return Response.json({ error: 'url is required' }, { status: 400 });
     }
 
-    const [inserted] = await db.insert(links)
-      .values({ userId: user.id, url: body.url })
-      .returning({
-        id: links.id,
-        url: links.url,
-        createdAt: links.createdAt,
-        lastSyncAt: links.lastSyncAt,
-        lastStatus: links.lastStatus,
-        lastError: links.lastError,
-      });
+    const inserted = await linkService.createLink(user.id, body.url);
 
     logger.info('Link created', { userId: user.id, linkId: inserted.id });
 
@@ -74,11 +54,9 @@ export class LinkController {
   @Delete('/:id')
   @UseGuards(AuthGuard)
   async delete(_req: Request, user: AuthenticatedUser, params: { id: string }) {
-    const result = await db.delete(links)
-      .where(and(eq(links.id, params.id), eq(links.userId, user.id)))
-      .returning({ id: links.id });
+    const deleted = await linkService.deleteLink(params.id, user.id);
 
-    if (!result.length) {
+    if (!deleted) {
       return Response.json({ error: 'Link not found' }, { status: 404 });
     }
 
@@ -91,21 +69,12 @@ export class LinkController {
   @Get('/:id/content')
   @UseGuards(AuthGuard)
   async getContent(_req: Request, user: AuthenticatedUser, params: { id: string }) {
-    const rows = await db.select({
-      id: links.id,
-      url: links.url,
-      lastSyncAt: links.lastSyncAt,
-      lastStatus: links.lastStatus,
-    })
-      .from(links)
-      .where(and(eq(links.id, params.id), eq(links.userId, user.id)))
-      .limit(1);
+    const link = await linkService.getLinkContent(params.id, user.id);
 
-    if (!rows[0]) {
+    if (!link) {
       return Response.json({ error: 'Link not found' }, { status: 404 });
     }
 
-    const link = rows[0];
     return Response.json({
       url: link.url,
       lastSyncAt: link.lastSyncAt?.toISOString() ?? null,

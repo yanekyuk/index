@@ -267,6 +267,23 @@ export class ChatSessionService {
   }
 
   /**
+   * Get pending connection requests for a user (where they are the receiver).
+   */
+  async getPendingRequests(userId: string) {
+    const rows = await this.db.getPendingConnectionRequests(userId);
+    return rows.map(r => ({
+      channelId: `messaging:${[userId, r.initiatorUserId].sort().join('_')}`,
+      requester: {
+        id: r.initiatorUserId,
+        name: r.initiatorName ?? 'Unknown',
+        avatar: r.initiatorAvatar ?? undefined,
+      },
+      firstMessage: null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  /**
    * Auto-generate a session title based on conversation history.
    * 
    * @param sessionId - The session ID
