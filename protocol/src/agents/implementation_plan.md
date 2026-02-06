@@ -1,5 +1,7 @@
 # Intent Inferring & Opportunity Finding: Implementation Plan
 
+**Status:** Partially implemented. Profile generation, intent inference, and opportunity finding exist in the current codebase; see `src/agents/`, `src/lib/protocol/agents/`, and `src/lib/protocol/graphs/` for the live implementation. Some items (e.g. Parallel.ai integration shape, bootstrap flow) may differ from this plan.
+
 ## Goal Description
 Build a system that not only understands what a single user wants (Intent Inference) but actively creates value by connecting users with mutual interests and goals (Opportunity Finding). 
 
