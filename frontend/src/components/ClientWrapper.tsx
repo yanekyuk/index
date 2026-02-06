@@ -16,7 +16,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const { isAuthenticated } = useAuthContext();
 
   const appRoutes = ['/', '/d', '/i', '/u', '/admin', '/library', '/networks'];
-  const publicRoutes = ['/onboarding', '/l', '/index', '/blog'];
+  const publicRoutes = ['/l', '/index', '/blog'];
 
   const isAppRoute = useMemo(() => {
     if (!isAuthenticated) return false;

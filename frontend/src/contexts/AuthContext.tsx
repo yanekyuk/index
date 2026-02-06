@@ -49,7 +49,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     setUserFetchAttempted(true);
     setError(null);
     try {
-      const response = await api.get<APIResponse<User>>('/auth/me');
+      const response = await api.get<APIResponse<User>>('/v2/auth/me');
       if (response.user) {
         setUser(response.user);
 
@@ -110,8 +110,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     console.log('pathname', pathname);
 
     const isHomePage = pathname === '/';
-    // DISABLED: Onboarding page check
-    // const isOnboardingPage = pathname === '/onboarding';
+
     const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog');
     const isProtectedPage = pathname.startsWith('/i/');
     // DISABLED: Removed isOnboardingPage from isProtectedPage

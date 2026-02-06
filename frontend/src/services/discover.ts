@@ -103,7 +103,7 @@ export const createDiscoverService = (api: ReturnType<typeof import('../lib/api'
       throw new Error('No access token available');
     }
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL_V2!;
     const response = await fetch(`${API_BASE_URL}/discover/new`, {
       method: 'POST',
       headers: {

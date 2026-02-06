@@ -236,7 +236,6 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
   - `/l/[code]` - Link redirect (e.g. by code)
   - `/library` - Library
   - `/networks` - Networks
-  - `/onboarding` - User onboarding flows
   - `/blog` - Blog listing; `/blog/[slug]` - Markdown-based blog posts
   - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
   - `/api/blog`, `/api/subscribe` - API routes for blog and subscription

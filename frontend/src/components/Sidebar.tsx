@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, Handshake, History } from 'lucide-react';
+import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -17,7 +17,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import PreferencesModal from '@/components/modals/PreferencesModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
-import { fetchMyOpportunities, getOtherPartyIds, type V2Opportunity } from '@/services/opportunities';
+
 
 interface ChatSession {
   id: string;
@@ -46,8 +46,6 @@ export default function Sidebar() {
   const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [opportunities, setOpportunities] = useState<V2Opportunity[]>([]);
-  const [loadingOpportunities, setLoadingOpportunities] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -143,24 +141,6 @@ export default function Sidebar() {
     fetchSessions();
   }, [sessionsVersion, getAccessToken]);
 
-  // Fetch opportunities for the current user (v2)
-  useEffect(() => {
-    if (!user?.id) return;
-    const load = async () => {
-      try {
-        setLoadingOpportunities(true);
-        const token = await getAccessToken();
-        if (!token) return;
-        const list = await fetchMyOpportunities(token, { status: 'pending', limit: 10 });
-        setOpportunities(list);
-      } catch (e) {
-        console.error('Failed to fetch opportunities:', e);
-      } finally {
-        setLoadingOpportunities(false);
-      }
-    };
-    load();
-  }, [user?.id, getAccessToken]);
 
   // Track unread message count
   useEffect(() => {
@@ -303,43 +283,6 @@ export default function Sidebar() {
           )}
         </div>
       </nav>
-
-      {/* Opportunities */}
-      {user?.id && (
-        <div className="flex-shrink-0 mt-6 px-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Opportunities
-          </h3>
-          {loadingOpportunities ? (
-            <div className="text-sm text-gray-400">Loading...</div>
-          ) : opportunities.length === 0 ? (
-            <div className="text-sm text-gray-400">No pending opportunities</div>
-          ) : (
-            <div className="space-y-2">
-              {opportunities.slice(0, 5).map((opp) => {
-                const otherIds = getOtherPartyIds(opp, user.id);
-                const firstOtherId = otherIds[0];
-                const summary = opp.interpretation?.summary ?? 'Suggested connection';
-                return (
-                  <div key={opp.id} className="rounded-md border border-gray-200 bg-gray-50/50 px-2 py-2">
-                    <p className="text-xs text-gray-700 line-clamp-2">{summary}</p>
-                    {firstOtherId && (
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/u/${firstOtherId}/chat`)}
-                        className="mt-2 flex items-center gap-1 text-xs font-medium text-black hover:underline"
-                      >
-                        <Handshake className="w-3.5 h-3.5" />
-                        Chat
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Spacer */}
       <div className="flex-1" />

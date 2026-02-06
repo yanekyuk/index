@@ -75,7 +75,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
 
         // User is authenticated, fetch user data
         try {
-          const response = await api.get<APIResponse<User>>('/auth/me');
+          const response = await api.get<APIResponse<User>>('/v2/auth/me');
           if (response.user) {
             setState(prev => ({ ...prev, user: response.user || null }));
 
@@ -100,13 +100,6 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
               return;
             }
 
-            // DISABLED: Onboarding check
-            // const hasCompletedOnboarding = response.user.onboarding?.completedAt;
-            // if (!hasCompletedOnboarding) {
-            //   router.push('/onboarding');
-            //   return;
-            // }
-            
             // User is authenticated and member - go to root
             router.push('/');
           }

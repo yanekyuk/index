@@ -78,7 +78,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
 
         // User is authenticated, fetch user data
         try {
-          const response = await api.get<APIResponse<User>>('/auth/me');
+          const response = await api.get<APIResponse<User>>('/v2/auth/me');
           if (response.user) {
             setState(prev => ({ ...prev, user: response.user || null }));
 
@@ -103,21 +103,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
               return;
             }
 
-            // DISABLED: Onboarding flow
-            // Store invitation code in onboarding state for reference
-            // await authService.updateOnboardingState({ 
-            //   flow: 3,
-            //   invitationCode: resolvedParams.code
-            // });
 
-            // DISABLED: Onboarding check
-            // const hasCompletedOnboarding = response.user.onboarding?.completedAt;
-            // if (!hasCompletedOnboarding) {
-            //   // Refetch user to ensure onboarding state is updated before redirecting
-            //   await refetchUser();
-            //   router.push('/onboarding');
-            //   return;
-            // }
             
             // User is authenticated and member - go to root
             router.push('/');

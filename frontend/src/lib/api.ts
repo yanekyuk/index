@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL_V2!;
 
 // Error types
 export class APIError extends Error {
