@@ -533,6 +533,11 @@ export interface Database {
   getIndex(indexId: string): Promise<{ id: string; title: string } | null>;
 
   /**
+   * Get index by ID with permissions (e.g. joinPolicy). Used by chat tools for create_index_membership.
+   */
+  getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
+
+  /**
    * Associates an intent with one or more indexes.
    * Creates entries in the intentIndexes join table.
    *
@@ -747,6 +752,53 @@ export interface Database {
    * @param userId - User whose profile to delete
    */
   deleteProfile(userId: string): Promise<void>;
+
+  /**
+   * Get a user's profile including its row id (for update_user_profile validation).
+   *
+   * @param userId - The user whose profile to fetch
+   * @returns Profile with id, or null if not found
+   */
+  getProfileByUserId(userId: string): Promise<(ProfileDocument & { id: string }) | null>;
+
+  /**
+   * Create a new index and return its record.
+   *
+   * @param data - Title, optional prompt, optional joinPolicy
+   * @returns The created index with id, title, prompt, permissions
+   */
+  createIndex(data: {
+    title: string;
+    prompt?: string | null;
+    joinPolicy?: 'anyone' | 'invite_only';
+  }): Promise<{
+    id: string;
+    title: string;
+    prompt: string | null;
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+  }>;
+
+  /**
+   * Count members in an index (for delete guard).
+   *
+   * @param indexId - The index to count
+   * @returns Number of members
+   */
+  getIndexMemberCount(indexId: string): Promise<number>;
+
+  /**
+   * Add a user as a member of an index (replaces deprecated lib/index-members.ts).
+   *
+   * @param indexId - The index to add to
+   * @param userId - The user to add
+   * @param role - owner | admin | member
+   * @returns success and optionally alreadyMember if they were already in the index
+   */
+  addMemberToIndex(
+    indexId: string,
+    userId: string,
+    role: 'owner' | 'admin' | 'member'
+  ): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // HyDE Document Operations (Opportunity Redesign)
@@ -968,6 +1020,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserIndexIds'
   | 'getIndexMemberships'
   | 'getIndex'
+  | 'getIndexWithPermissions'
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'
@@ -976,6 +1029,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // Index Ownership Operations (owner-only)
   | 'getOwnedIndexes'
   | 'isIndexOwner'
+  | 'isIndexMember'
   | 'getIndexMembersForOwner'
   | 'getIndexMembersForMember'
   | 'getIndexIntentsForOwner'
@@ -983,6 +1037,10 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'updateIndexSettings'
   | 'softDeleteIndex'
   | 'deleteProfile'
+  | 'getProfileByUserId'
+  | 'createIndex'
+  | 'getIndexMemberCount'
+  | 'addMemberToIndex'
 >;
 
 /**

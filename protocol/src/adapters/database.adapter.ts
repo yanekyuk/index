@@ -7,6 +7,7 @@ import { eq, and, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray } fr
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User } from '../schemas/database.schema';
+import { log } from '../lib/log';
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
@@ -543,6 +544,22 @@ export class ChatDatabaseAdapter {
       .limit(1);
     const row = rows[0];
     return row ? { id: row.id, title: row.title } : null;
+  }
+
+  async getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
+    const rows = await db
+      .select({ id: indexes.id, title: indexes.title, permissions: indexes.permissions })
+      .from(indexes)
+      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const perms = (row.permissions as { joinPolicy?: string }) ?? {};
+    return {
+      id: row.id,
+      title: row.title,
+      permissions: { joinPolicy: (perms.joinPolicy === 'anyone' ? 'anyone' : 'invite_only') as 'anyone' | 'invite_only' },
+    };
   }
 
   async getIndexesForUser(userId: string) {
@@ -1101,6 +1118,114 @@ export class ChatDatabaseAdapter {
 
   async softDeleteIndex(indexId: string): Promise<void> {
     await db.update(indexes).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(indexes.id, indexId));
+  }
+
+  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+    const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  async createIndex(data: {
+    title: string;
+    prompt?: string | null;
+    joinPolicy?: 'anyone' | 'invite_only';
+  }): Promise<{
+    id: string;
+    title: string;
+    prompt: string | null;
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+  }> {
+    const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
+    const permissions = {
+      joinPolicy: finalJoinPolicy,
+      invitationLink: { code: crypto.randomUUID() },
+      allowGuestVibeCheck: false,
+    };
+    const [row] = await db
+      .insert(indexes)
+      .values({
+        title: data.title,
+        prompt: data.prompt ?? null,
+        permissions,
+      })
+      .returning({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+      });
+    if (!row) throw new Error('Failed to create index');
+    const perms = (row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      permissions: {
+        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
+        invitationLink: perms.invitationLink ?? null,
+        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
+      },
+    };
+  }
+
+  async getIndexMemberCount(indexId: string): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(indexMembers).where(eq(indexMembers.indexId, indexId));
+    return Number(r?.count ?? 0);
+  }
+
+  async addMemberToIndex(
+    indexId: string,
+    userId: string,
+    role: 'owner' | 'admin' | 'member'
+  ): Promise<{ success: boolean; alreadyMember?: boolean }> {
+    const logger = log.lib.from('database.adapter');
+    const existing = await db
+      .select()
+      .from(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+      .limit(1);
+    if (existing.length > 0) {
+      return { success: true, alreadyMember: true };
+    }
+    let memberPrompt: string | null = null;
+    const [indexRow] = await db.select({ prompt: indexes.prompt }).from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    if (indexRow) memberPrompt = indexRow.prompt;
+
+    const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
+    await db.insert(indexMembers).values({
+      indexId,
+      userId,
+      permissions: finalPermissions,
+      prompt: memberPrompt,
+      autoAssign: true,
+    });
+
+    // Dynamic import to avoid circular dependency (user.event → intentService → ... → ChatDatabaseAdapter)
+    import('../events/user.event').then(({ MemberEvents }) =>
+      MemberEvents.onSettingsUpdated({
+        userId,
+        indexId,
+        promptChanged: false,
+        autoAssignChanged: true,
+      })
+    ).catch((err) => {
+      logger.error('Failed to trigger member indexing', {
+        userId,
+        indexId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
+    return { success: true, alreadyMember: false };
   }
 
   async deleteProfile(userId: string): Promise<void> {

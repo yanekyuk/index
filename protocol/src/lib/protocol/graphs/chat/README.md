@@ -104,18 +104,19 @@ classDiagram
     }
 
     class ChatTools {
-        +get_user_profile()
+        +read_user_profiles()
+        +create_user_profile()
         +update_user_profile()
-        +get_intents()
-        +get_active_intents()
-        +get_intents_in_index()
+        +read_intents()
         +create_intent()
         +update_intent()
         +delete_intent()
-        +get_index_memberships()
-        +list_index_members()
-        +list_index_intents()
-        +update_index_settings()
+        +read_indexes()
+        +create_index()
+        +update_index()
+        +delete_index()
+        +create_index_membership()
+        +read_users()
         +find_opportunities()
         +list_my_opportunities()
         +create_opportunity_between_members()
@@ -173,40 +174,42 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 16 tools, organized by domain. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat)).
+The agent has access to 19 tools, organized by domain using CRUD naming. All index parameters use **`indexId` (UUID only)** — no name resolution. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat)).
 
 ### Profile Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_user_profile` | Fetch user's profile | "Show my profile", "What skills do I have?" |
-| `update_user_profile` | Create/update profile | "Add Python to my skills", "Create my profile" |
+| `read_user_profiles` | Fetch user's profile | "Show my profile", "What skills do I have?" |
+| `create_user_profile` | Create a new profile (fails if one exists) | "Create my profile" |
+| `update_user_profile` | Update an existing profile (requires `profileId` from `read_user_profiles`) | "Add Python to my skills" |
 
 ### Intent Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_intents` | List user's intents (all or in an index). Prefer over `get_active_intents`. | "What are my intents?", "Show my goals". Optional `indexNameOrId`; when chat is index-scoped, omitting it uses the current index. |
-| `get_active_intents` | (Deprecated.) Same as `get_intents` with no index. | Use `get_intents` instead. |
-| `get_intents_in_index` | List intents in a specific index | "What intents are in this community?" Optional `indexNameOrId` when index-scoped. |
+| `read_intents` | List intents. Optional `indexId` (UUID) and `userId`. | "What are my intents?", "Show intents in this community". When index-scoped, omitting `indexId` uses the current index. |
 | `create_intent` | Create new intent | "I want to learn Rust". Optional `indexId`; when index-scoped, omitting it uses the current index. |
-| `update_intent` / `delete_intent` | Modify or remove an intent | When index-scoped, only intents in that index can be updated/deleted. Use exact `id` from `get_intents`. |
+| `update_intent` / `delete_intent` | Modify or remove an intent | When index-scoped, only intents in that index can be updated/deleted. Use exact `id` from `read_intents`. |
 
 ### Index Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `get_index_memberships` | List communities | When index-scoped, returns only the current index unless `showAll: true`. |
-| `list_index_members` / `list_index_intents` | List members or intents in an index | When index-scoped, omit `indexNameOrId` to use the current index. |
-| `update_index_settings` | Modify index (owner-only) | When index-scoped, omit `indexId` to update the current index. |
+| `read_indexes` | List the user's index memberships and owned indexes | When index-scoped, returns only the current index unless `showAll: true`. |
+| `create_index` | Create a new index (community) | "Create a community for ML researchers" |
+| `update_index` | Modify index settings (owner-only, confirmation required) | "Rename my community" |
+| `delete_index` | Soft-delete an index (owner-only, confirmation required) | "Delete my community" |
+| `create_index_membership` | Join an index or add a user to an index | "Join this community". Respects join policy. |
+| `read_users` | List members of an index (requires `indexId` UUID) | "Who's in this community?" |
 
 ### Discovery Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `find_opportunities` | Search for connections | When index-scoped, search is limited to that index unless a different index is passed. |
-| `list_my_opportunities` | List user's opportunities | When index-scoped, omit `indexNameOrId` to list only opportunities in that index. |
-| `create_opportunity_between_members` | Create opportunity between two members | When index-scoped, omit `indexNameOrId` to use the current index. |
+| `find_opportunities` | Search for connections | When index-scoped, search is limited to that index. Requires `indexId` (UUID). |
+| `list_my_opportunities` | List user's opportunities | When index-scoped, omit `indexId` to list only opportunities in that index. |
+| `create_opportunity_between_members` | Create opportunity between two members | Requires `indexId` (UUID). |
 
 ### Confirmation Tools
 
@@ -215,7 +218,7 @@ The agent has access to 16 tools, organized by domain. When the chat is **index-
 | `confirm_action` | Execute a pending update or delete after the user confirms | Called by the agent when the user confirms (e.g. "yes, delete it"). Requires `confirmationId` from the prior `needsConfirmation` response. |
 | `cancel_action` | Cancel a pending update or delete | Called when the user declines (e.g. "no, keep it"). Requires `confirmationId`. |
 
-Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index_settings`) do **not** perform the action immediately. They set a **pending confirmation** in state and return `needsConfirmation`; the agent asks the user, then calls `confirm_action` or `cancel_action`.
+Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index`, `delete_index`) do **not** perform the action immediately. They set a **pending confirmation** in state and return `needsConfirmation`; the agent asks the user, then calls `confirm_action` or `cancel_action`.
 
 ### Utility Tools
 
@@ -252,13 +255,13 @@ When the chat is started with an optional **`indexId`** (e.g. from an index/comm
 
 - Stored in **graph state** and passed to the agent as **tool context** (`context.indexId`).
 - **Persisted on the chat session** so reconnecting to the same session keeps the scope; the request body can override it.
-- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `get_intents`, `get_intents_in_index`, `list_index_intents`, `list_index_members`, `create_opportunity_between_members`, `find_opportunities`, `list_my_opportunities`, `update_index_settings`.
+- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `read_intents`, `create_opportunity_between_members`, `find_opportunities`, `list_my_opportunities`, `update_index`, `delete_index`.
 
 **Tool behavior when index-scoped:**
 
-- **`get_index_memberships`**: Returns only the current index membership (with a note). Use `showAll: true` when the user asks for "all my indexes".
+- **`read_indexes`**: Returns only the current index membership (with a note). Use `showAll: true` when the user asks for "all my indexes".
 - **`update_intent` / `delete_intent`**: Only intents that belong to the current index can be updated or deleted; otherwise the tool returns an error.
-- **`get_intents`**: Primary tool for listing intents; accepts optional `indexNameOrId`. When omitted and index-scoped, returns intents in the current index. **`get_active_intents`** is a deprecated alias.
+- **`read_intents`**: Primary tool for listing intents; accepts optional `indexId` (UUID). When omitted and index-scoped, returns intents in the current index.
 
 When no index is passed (and the session has none), behavior is unchanged (global scope).
 
@@ -306,9 +309,9 @@ sequenceDiagram
 
     U->>G: HumanMessage("Show my profile and intents")
     G->>A: invoke(messages)
-    A->>T: get_user_profile()
+    A->>T: read_user_profiles()
     T-->>A: ToolMessage(profile data)
-    A->>T: get_intents()
+    A->>T: read_intents()
     T-->>A: ToolMessage(intents data)
     A-->>G: AIMessage("Here's your profile...")
     G-->>U: Stream response
@@ -363,13 +366,13 @@ classDiagram
 
 ```
 [status] Processing your message...
-[tool_start] get_user_profile {}
+[tool_start] read_user_profiles {}
 [thinking] Checking your profile...
-[tool_end] get_user_profile success "Profile: John Doe"
-[tool_start] get_intents {}
+[tool_end] read_user_profiles success "Profile: John Doe"
+[tool_start] read_intents {}
 [thinking] Fetching your intents...
-[tool_end] get_intents success "3 intent(s) found"
-[agent_thinking] iteration=1, tools=["get_user_profile", "get_intents"]
+[tool_end] read_intents success "3 intent(s) found"
+[agent_thinking] iteration=1, tools=["read_user_profiles", "read_intents"]
 [status] Generating response...
 [token] Here
 [token] 's
@@ -535,9 +538,9 @@ Previous architecture had fast paths for simple queries (e.g., "show my profile"
 
 Safety is enforced at the **tool level**, not the graph level:
 
-- **Confirmation**: Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index_settings`) do not perform the action immediately. They set `pendingConfirmation` and return `needsConfirmation`; the agent asks the user, then the user confirms via `confirm_action` or cancels via `cancel_action`.
+- **Confirmation**: Update and delete tools (`update_intent`, `delete_intent`, `update_user_profile`, `update_index`, `delete_index`) do not perform the action immediately. They set `pendingConfirmation` and return `needsConfirmation`; the agent asks the user, then the user confirms via `confirm_action` or cancels via `cancel_action`.
 - **Clarification**: Create tools return `needsClarification` when required fields are missing so the agent can ask the user for the missing data.
-- `update_index_settings` (and other update/delete tools) validate ownership and resource existence before storing a pending confirmation; execution happens only in `confirm_action`.
+- `update_index` (and other update/delete tools) validate ownership and resource existence before storing a pending confirmation; execution happens only in `confirm_action`.
 - All tools return errors gracefully instead of throwing.
 
 ---

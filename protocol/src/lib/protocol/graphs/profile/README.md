@@ -147,7 +147,7 @@ graphs/profile/
 
 ## Related
 
-- **Chat tools**: `graphs/chat/chat.tools.ts` — get_user_profile, update_user_profile call this graph.
+- **Chat tools**: `graphs/chat/chat.tools.ts` — read_user_profiles, create_user_profile, update_user_profile call this graph.
 - **Profile controller**: `src/controllers/profile.controller.ts`
 - **ProfileGenerator**: `agents/profile/profile.generator.ts`
 - **HydeGenerator** (profile): `agents/profile/hyde/hyde.generator.ts`

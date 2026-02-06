@@ -20,20 +20,23 @@ const logger = log.protocol.from("ChatGraphStreamingService");
 // ══════════════════════════════════════════════════════════════════════════════
 
 const TOOL_DESCRIPTIONS: Record<string, string> = {
-  get_user_profile: "Checking your profile...",
+  read_user_profiles: "Checking your profile...",
+  create_user_profile: "Creating profile...",
   update_user_profile: "Updating your profile...",
-  get_intents: "Fetching your intents...",
-  get_active_intents: "Fetching your intents...",
-  get_intents_in_index: "Fetching intents in that index...",
+  read_intents: "Fetching intents...",
   create_intent: "Creating new intent...",
   update_intent: "Updating intent...",
   delete_intent: "Removing intent...",
-  get_index_memberships: "Checking your indexes...",
-  update_index_settings: "Updating index settings...",
+  read_indexes: "Checking your indexes...",
+  create_index: "Creating index...",
+  update_index: "Updating index...",
+  delete_index: "Deleting index...",
+  create_index_membership: "Adding member...",
+  read_users: "Fetching members...",
   find_opportunities: "Searching for opportunities...",
   list_my_opportunities: "Listing your opportunities...",
   create_opportunity_between_members: "Creating suggested connection...",
-  scrape_url: "Reading web content..."
+  scrape_url: "Reading web content...",
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
