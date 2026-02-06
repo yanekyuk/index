@@ -26,6 +26,19 @@ export class IndexService {
   }
 
   /**
+   * Create a new index with the requesting user as owner.
+   */
+  async createIndex(userId: string, data: { title: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    logger.info('[IndexService] Creating index', { userId, title: data.title });
+    const index = await this.adapter.createIndex(data);
+    // Add the creating user as the owner
+    await this.adapter.addMemberToIndex(index.id, userId, 'owner');
+    // Fetch the full index details with user and member count
+    const fullIndex = await this.adapter.getIndexDetail(index.id, userId);
+    return fullIndex;
+  }
+
+  /**
    * Get a single index by ID with owner info and member count.
    * Only members of the index can view it.
    */

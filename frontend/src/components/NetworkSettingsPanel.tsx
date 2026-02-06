@@ -84,7 +84,6 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
     setOriginalTitle(currentIndex.title);
     setOriginalPrompt(currentIndex.prompt || '');
     setAnyoneCanJoin(currentIndex.permissions?.joinPolicy === 'anyone');
-    setActiveTab('settings');
     setDeleteConfirmationText('');
     setIsDangerZoneExpanded(false);
     if (currentIndex.permissions?.invitationLink?.code && currentIndex.permissions.joinPolicy === 'invite_only') {

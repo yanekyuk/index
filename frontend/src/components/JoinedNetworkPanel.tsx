@@ -63,13 +63,15 @@ export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanel
               </div>
             )}
 
-            <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
-              <User className="h-4 w-4 text-gray-400" />
-              <div>
-                <p className="text-sm font-medium text-black">Owner</p>
-                <p className="text-xs text-gray-500">{index.user.name}</p>
+            {index.user && (
+              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
+                <User className="h-4 w-4 text-gray-400" />
+                <div>
+                  <p className="text-sm font-medium text-black">Owner</p>
+                  <p className="text-xs text-gray-500">{index.user.name}</p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

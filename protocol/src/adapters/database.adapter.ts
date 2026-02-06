@@ -1328,7 +1328,30 @@ export class ChatDatabaseAdapter {
 
     await db.update(indexes).set(updateData).where(eq(indexes.id, indexId));
 
-    const [updatedRow] = await db.select().from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    const [updatedRow] = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(eq(indexes.id, indexId))
+      .limit(1);
+
     if (!updatedRow) {
       throw new Error('Index not found after update');
     }
@@ -1347,8 +1370,16 @@ export class ChatDatabaseAdapter {
         invitationLink: perms.invitationLink ?? null,
       },
       createdAt: updatedRow.createdAt,
-      memberCount: Number(memberCountResult[0]?.count ?? 0),
-      intentCount: Number(intentCountResult[0]?.count ?? 0),
+      updatedAt: updatedRow.updatedAt,
+      user: {
+        id: updatedRow.ownerId,
+        name: updatedRow.userName,
+        avatar: updatedRow.userAvatar,
+      },
+      _count: {
+        members: Number(memberCountResult[0]?.count ?? 0),
+        intents: Number(intentCountResult[0]?.count ?? 0),
+      },
     };
   }
 

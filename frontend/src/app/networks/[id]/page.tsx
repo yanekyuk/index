@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import ClientLayout from '@/components/ClientLayout';
@@ -23,19 +23,37 @@ export default function NetworkDetailPage() {
   const [network, setNetwork] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const isCheckingOwnership = useRef(false);
+
+  // Memoized function to check ownership
+  const checkOwnership = useCallback(async (indexId: string, indexData?: Index) => {
+    try {
+      const memberSettings = await indexesService.getCurrentUserMemberSettings(indexId);
+      return memberSettings.isOwner;
+    } catch (err) {
+      console.error('Error loading member settings:', err);
+      // Fallback to checking user.id if available
+      return indexData?.user ? user?.id === indexData.user.id : false;
+    }
+  }, [indexesService, user?.id]);
 
   useEffect(() => {
     const loadNetwork = async () => {
       const existingNetwork = indexes?.find(idx => idx.id === networkId);
       if (existingNetwork) {
+        const ownerStatus = await checkOwnership(networkId, existingNetwork);
         setNetwork(existingNetwork);
+        setIsOwner(ownerStatus);
         setLoading(false);
         return;
       }
 
       try {
         const fetchedNetwork = await indexesService.getIndex(networkId);
+        const ownerStatus = await checkOwnership(networkId, fetchedNetwork);
         setNetwork(fetchedNetwork);
+        setIsOwner(ownerStatus);
       } catch (err) {
         console.error('Error loading network:', err);
         setNotFound(true);
@@ -47,20 +65,40 @@ export default function NetworkDetailPage() {
     if (networkId) {
       loadNetwork();
     }
-  }, [networkId, indexes, indexesService]);
+  }, [networkId, indexes, indexesService, checkOwnership]);
 
   useEffect(() => {
-    if (network && indexes) {
-      const updated = indexes.find(idx => idx.id === network.id);
-      if (updated) {
-        setNetwork(updated);
+    const updateNetworkFromContext = async () => {
+      if (network && indexes && !isCheckingOwnership.current) {
+        const updated = indexes.find(idx => idx.id === network.id);
+        if (updated && JSON.stringify(updated) !== JSON.stringify(network)) {
+          isCheckingOwnership.current = true;
+          try {
+            // First check if we can determine ownership from the data itself
+            let ownerStatus = isOwner; // Default to current state
+            
+            if (updated.user && user?.id) {
+              // If we have user data, use it directly
+              ownerStatus = user.id === updated.user.id;
+            } else {
+              // Otherwise, make API call
+              ownerStatus = await checkOwnership(network.id, updated);
+            }
+            
+            setNetwork(updated);
+            setIsOwner(ownerStatus);
+          } finally {
+            isCheckingOwnership.current = false;
+          }
+        }
       }
-    }
-  }, [indexes, network?.id]);
+    };
+    
+    updateNetworkFromContext();
+  }, [indexes, network, checkOwnership, user?.id, isOwner]);
 
   const handleDeleted = () => router.push('/networks');
   const handleLeft = () => router.push('/networks');
-  const isOwner = network && user ? user.id === network.user.id : false;
 
   return (
     <ClientLayout>

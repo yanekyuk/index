@@ -19,6 +19,36 @@ export class IndexController {
   }
 
   /**
+   * Create a new index. Authenticated users only.
+   */
+  @Post('')
+  @UseGuards(AuthGuard)
+  async create(req: Request, user: AuthenticatedUser) {
+    const body = await req.json().catch(() => ({})) as {
+      title?: string;
+      prompt?: string;
+      joinPolicy?: 'anyone' | 'invite_only';
+      allowGuestVibeCheck?: boolean;
+    };
+    
+    if (!body.title) {
+      return new Response(JSON.stringify({ error: 'title is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const result = await indexService.createIndex(user.id, {
+      title: body.title,
+      prompt: body.prompt,
+      joinPolicy: body.joinPolicy,
+      allowGuestVibeCheck: body.allowGuestVibeCheck,
+    });
+    logger.info('Index created', { indexId: result.id, userId: user.id });
+    return Response.json({ index: result });
+  }
+
+  /**
    * Search users by name/email, optionally excluding existing members of an index.
    */
   @Get('/search-users')
