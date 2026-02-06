@@ -6,6 +6,7 @@ import { log } from './log';
 
 const logger = log.lib.from("lib/index-members.ts");
 
+/** @deprecated This interface is deprecated and will be removed in a future version. */
 export interface AddMemberOptions {
   indexId: string;
   userId: string;
@@ -15,6 +16,7 @@ export interface AddMemberOptions {
   metadata?: Record<string, any> | null;
 }
 
+/** @deprecated This interface is deprecated and will be removed in a future version. */
 export interface AddMemberResult {
   success: boolean;
   member?: any;
@@ -25,6 +27,7 @@ export interface AddMemberResult {
 /**
  * Centralized function to add a member to an index.
  * Handles checking for existing membership, inserting the record, and triggering events.
+ * @deprecated This function is deprecated and will be removed in a future version.
  */
 export async function addMemberToIndex(options: AddMemberOptions): Promise<AddMemberResult> {
   const { indexId, userId, role, prompt, autoAssign = true, metadata } = options;
