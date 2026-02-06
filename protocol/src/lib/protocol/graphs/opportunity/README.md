@@ -157,6 +157,21 @@ graphs/opportunity/
 └── README.md              # This file
 ```
 
+### Source file: opportunity.graph.ts
+
+**opportunity.graph.ts** contains the full graph implementation:
+
+- **OpportunityGraph** class: constructor injects `database` (`OpportunityGraphDatabase`), `embedder` (`Embedder`), `cache` (`HydeCache`), and `compiledHydeGraph` (return type of `HydeGraphFactory.createGraph()`). Public method: `compile()` — builds a `StateGraph<OpportunityGraphState>` and returns the compiled runnable.
+- **Nodes** (all implemented as private methods on the class):
+  - `resolve_source_profile` → `resolveSourceProfileNode`: fills `sourceProfileContext` from DB when missing and `sourceUserId` is set.
+  - `invoke_hyde` → `invokeHydeNode`: runs the compiled HyDE graph with `sourceText` / `options.hydeDescription` and selected strategies; writes `hydeEmbeddings`.
+  - `search_candidates` → `searchCandidatesNode`: calls `embedder.searchWithHydeEmbeddings()` with `indexScope`, excludes `sourceUserId`; writes `candidates`.
+  - `deduplicate` → `deduplicateNode`: filters out candidates that already have an opportunity with the source (via `database.opportunityExistsBetweenActors`).
+  - `evaluate_candidates` → `evaluateCandidatesNode`: builds `CandidateProfile[]` from candidates, runs `OpportunityEvaluator`, maps results to `EvaluatedOpportunityForPersist` (sourceUserId, candidateUserId, indexId, score, summary, sourceRole, candidateRole, intentId); writes `opportunities` and updated `candidates`.
+  - `persist_opportunities` → `persistOpportunitiesNode`: creates opportunity records via `database.createOpportunity` (detection, actors, interpretation, context).
+- **Edges**: START → `resolve_source_profile`; conditional from `resolve_source_profile`: if `candidates` are already provided → `evaluate_candidates`; else if `sourceText` and `indexScope.length` → `invoke_hyde`; else → END. Then: `invoke_hyde` → `search_candidates` → `deduplicate` → `evaluate_candidates` → `persist_opportunities` → END.
+- **Exports**: `OpportunityGraph`, `OpportunityGraphDependencies`, `CompiledHydeGraph`, `EvaluatedOpportunityForPersist`.
+
 ## Related
 
 - **HyDE graph**: Used to produce embeddings from `sourceText`; see [hyde/README.md](./hyde/README.md).
