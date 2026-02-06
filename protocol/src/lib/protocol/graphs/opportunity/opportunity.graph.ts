@@ -9,7 +9,7 @@
 
 import { StateGraph, END, START } from '@langchain/langgraph';
 import type { Id } from '../../../../types/common';
-import { OpportunityGraphState, createInitialState } from './opportunity.state';
+import { OpportunityGraphState } from './opportunity.state';
 import { OpportunityEvaluator, type CandidateProfile } from '../../agents/opportunity/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../../interfaces/database.interface';
 import type { Embedder, HydeCandidate, HydeStrategy } from '../../interfaces/embedder.interface';
@@ -18,7 +18,7 @@ import type { CreateOpportunityData, Opportunity } from '../../interfaces/databa
 import { selectStrategies, deriveRolesFromStrategy } from './opportunity.utils';
 import { log } from '../../../log';
 
-const logger = log.graph?.from?.('opportunity.graph') ?? log;
+const logger = log.protocol.from('OpportunityGraph');
 
 /** Intermediate shape produced by evaluate_candidates and consumed by persist_opportunities. */
 export interface EvaluatedOpportunityForPersist {

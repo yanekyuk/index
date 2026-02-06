@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 
 // Integration test suite for ProfileController using actual DB
 describe("ProfileController Integration", () => {
-  let controller: ProfileController;
+  const controller = new ProfileController();
   let testUserId: string;
 
   beforeAll(async () => {
@@ -39,9 +39,6 @@ describe("ProfileController Integration", () => {
 
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
-
-    // Initialize controller
-    controller = new ProfileController();
   });
 
   afterAll(async () => {

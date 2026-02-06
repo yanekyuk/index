@@ -157,7 +157,7 @@ describe("IntentDatabaseAdapter Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("IntentController Integration", () => {
-  let controller: IntentController;
+  const controller = new IntentController();
   let testUserId: string;
   const testEmail = `test-intent-controller-${Date.now()}@example.com`;
 
@@ -209,8 +209,6 @@ describe("IntentController Integration", () => {
         skills: ["Python", "TypeScript", "Go"],
       },
     });
-
-    controller = new IntentController();
   });
 
   afterAll(async () => {
@@ -290,7 +288,7 @@ describe("IntentController Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("IntentController Edge Cases", () => {
-  let controller: IntentController;
+  const controller = new IntentController();
   let testUserIdNoProfile: string;
   const testEmailNoProfile = `test-intent-no-profile-${Date.now()}@example.com`;
 
@@ -316,8 +314,6 @@ describe("IntentController Edge Cases", () => {
 
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
-
-    controller = new IntentController();
   });
 
   afterAll(async () => {

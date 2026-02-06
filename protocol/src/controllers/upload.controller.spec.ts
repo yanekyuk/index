@@ -16,7 +16,7 @@ import { getUploadsPath } from '../lib/paths';
 import * as fs from 'fs';
 
 describe("UploadController Integration", () => {
-  let controller: UploadController;
+  const controller = new UploadController();
   let testUserId: string;
   let emptyListUserId: string;
   const testEmail = `test-upload-controller-${Date.now()}@example.com`;
@@ -52,7 +52,6 @@ describe("UploadController Integration", () => {
     }).returning();
 
     emptyListUserId = emptyUser.id;
-    controller = new UploadController();
   });
 
   afterAll(async () => {

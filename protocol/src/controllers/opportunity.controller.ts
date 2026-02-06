@@ -1,21 +1,4 @@
-import type { Id } from '../types/common';
-import type {
-  OpportunityControllerDatabase,
-  OpportunityGraphDatabase,
-  HydeGraphDatabase,
-  CreateOpportunityData,
-  OpportunityActor,
-} from '../lib/protocol/interfaces/database.interface';
-import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
-import { OpportunityGraph } from '../lib/protocol/graphs/opportunity/opportunity.graph';
-import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
-import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
-import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { presentOpportunity, type UserInfo } from '../lib/protocol/opportunity/opportunity.presentation';
-
+import { opportunityService } from '../services/opportunity.service';
 import { Controller, Get, Post, Patch, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
@@ -29,36 +12,10 @@ type RouteParams = Record<string, string>;
 
 /**
  * OpportunityController: REST API for opportunities.
- * Constructor injects OpportunityControllerDatabase; discover builds graph from same adapter.
+ * Uses OpportunityService for all business logic and graph operations.
  */
 @Controller('/opportunities')
 export class OpportunityController {
-  private db: OpportunityControllerDatabase;
-  private graph: ReturnType<OpportunityGraph['compile']> | null = null;
-
-  constructor(database?: OpportunityControllerDatabase) {
-    this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
-    // Lazy-build graph for discover when adapter supports it
-    if (this.db && 'getHydeDocument' in this.db) {
-      const embedder: Embedder = new EmbedderAdapter();
-      const cache: HydeCache = new RedisCacheAdapter();
-      const generator = new HydeGenerator();
-      const compiledHydeGraph = new HydeGraphFactory(
-        this.db as unknown as HydeGraphDatabase,
-        embedder,
-        cache,
-        generator
-      ).createGraph();
-      const opportunityGraph = new OpportunityGraph(
-        this.db as unknown as OpportunityGraphDatabase,
-        embedder,
-        cache,
-        compiledHydeGraph
-      );
-      this.graph = opportunityGraph.compile();
-    }
-  }
-
   /**
    * GET /opportunities — list opportunities for the authenticated user.
    */
@@ -76,7 +33,7 @@ export class OpportunityController {
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     };
-    const list = await this.db.getOpportunitiesForUser(user.id, options);
+    const list = await opportunityService.getOpportunitiesForUser(user.id, options);
     logger.info('Opportunities listed', { userId: user.id, count: list.length });
     return Response.json({ opportunities: list });
   }
@@ -95,69 +52,26 @@ export class OpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const opp = await this.db.getOpportunity(id);
-    if (!opp) {
+
+    const result = await opportunityService.getOpportunityWithPresentation(id, user.id);
+    
+    if (!result) {
       logger.info('Opportunity not found', { userId: user.id, opportunityId: id });
       return new Response(JSON.stringify({ error: 'Opportunity not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const isActor = opp.actors.some((a) => a.identityId === user.id);
-    if (!isActor) {
-      logger.warn('Get opportunity not authorized', { userId: user.id, opportunityId: id });
-      return new Response(JSON.stringify({ error: 'Not authorized to view this opportunity' }), {
-        status: 403,
+
+    if ('error' in result) {
+      logger.warn('Get opportunity error', { userId: user.id, opportunityId: id, error: result.error });
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status as number,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const myActor = opp.actors.find((a) => a.identityId === user.id)!;
-    const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerId = introducer?.identityId;
-    const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.identityId !== user.id);
-    const otherPartyIds = nonIntroducerActors.map((a) => a.identityId);
 
-    const [indexRecord, ...userRecords] = await Promise.all([
-      this.db.getIndex(opp.indexId),
-      ...otherPartyIds.map((uid) => this.db.getUser(uid)),
-    ]);
-    const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
-    const introducerInfo: UserInfo | null = introducerRecord
-      ? { id: introducerRecord.id, name: introducerRecord.name ?? 'Unknown', avatar: introducerRecord.avatar ?? null }
-      : null;
-
-    const userMap = new Map<string | null, UserInfo>();
-    otherPartyIds.forEach((uid, i) => {
-      const u = userRecords[i];
-      userMap.set(uid, u ? { id: u.id, name: u.name ?? 'Unknown', avatar: u.avatar ?? null } : { id: uid, name: 'Unknown', avatar: null });
-    });
-
-    // For multiple other parties we use the first for presentation title; all are in otherParties (excludes introducer).
-    const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
-    const presentation = presentOpportunity(opp, user.id, otherPartyInfo, introducerInfo, 'card');
-
-    const otherParties = nonIntroducerActors.map((a) => {
-      const info = userMap.get(a.identityId) ?? { id: a.identityId, name: 'Unknown', avatar: null as string | null };
-      return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
-    });
-
-    const confidenceNum = typeof opp.interpretation.confidence === 'number'
-      ? opp.interpretation.confidence
-      : parseFloat(opp.confidence ?? opp.interpretation.confidence as unknown as string) || 0;
-
-    return Response.json({
-      id: opp.id,
-      presentation,
-      myRole: myActor.role,
-      otherParties,
-      introducedBy: introducerInfo ?? undefined,
-      category: opp.interpretation.category,
-      confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : { id: opp.indexId, title: '' },
-      status: opp.status,
-      createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
-      expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
-    });
+    return Response.json(result);
   }
 
   /**
@@ -173,6 +87,7 @@ export class OpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    
     let body: { status?: string };
     try {
       body = (await req.json()) as { status?: string };
@@ -182,6 +97,7 @@ export class OpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    
     const status = body.status as 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined;
     const allowed = ['pending', 'viewed', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
@@ -190,36 +106,25 @@ export class OpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const opp = await this.db.getOpportunity(id);
-    if (!opp) {
-      return new Response(JSON.stringify({ error: 'Opportunity not found' }), {
-        status: 404,
+
+    const result = await opportunityService.updateOpportunityStatus(id, status, user.id);
+    
+    if (result && 'error' in result) {
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status as number,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const isActor = opp.actors.some((a) => a.identityId === user.id);
-    if (!isActor) {
-      return new Response(JSON.stringify({ error: 'Not authorized to update this opportunity' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    const updated = await this.db.updateOpportunityStatus(id, status);
-    return Response.json(updated);
+
+    return Response.json(result);
   }
 
   /**
-   * POST /opportunities/discover — discover opportunities via HyDE graph (unchanged).
+   * POST /opportunities/discover — discover opportunities via HyDE graph.
    */
   @Post('/discover')
   @UseGuards(AuthGuard)
   async discover(req: Request, user: AuthenticatedUser) {
-    if (!this.graph) {
-      return new Response(
-        JSON.stringify({ error: 'Discovery not available; graph dependencies not configured' }),
-        { status: 503, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
     const body = (await req.json()) as { query?: string; limit?: number };
     const { query, limit = 5 } = body ?? {};
 
@@ -230,24 +135,14 @@ export class OpportunityController {
       );
     }
 
-    const memberships = await this.db.getIndexMemberships(user.id);
-    const indexScope = memberships.map((m) => m.indexId);
-    if (indexScope.length === 0) {
-      return Response.json({
-        sourceUserId: user.id as Id<'users'>,
-        options: { hydeDescription: query, limit },
-        indexScope: [],
-        candidates: [],
-        opportunities: [],
+    const result = await opportunityService.discoverOpportunities(user.id, query, limit);
+    
+    if ('error' in result) {
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status as number,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    const result = await this.graph.invoke({
-      sourceUserId: user.id as Id<'users'>,
-      sourceText: query,
-      indexScope: indexScope as Id<'indexes'>[],
-      options: { hydeDescription: query, limit },
-    });
 
     return Response.json(result);
   }
@@ -259,7 +154,6 @@ export class OpportunityController {
  */
 @Controller('/indexes')
 export class IndexOpportunityController {
-  constructor(private db: OpportunityControllerDatabase) {}
 
   /**
    * GET /indexes/:indexId/opportunities — list opportunities for an index (owner or member).
@@ -274,24 +168,26 @@ export class IndexOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    const isOwner = await this.db.isIndexOwner(indexId, user.id);
-    const isMember = await this.db.isIndexMember(indexId, user.id);
-    if (!isOwner && !isMember) {
-      return new Response(JSON.stringify({ error: 'Not a member of this index' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const status = url.searchParams.get('status') ?? undefined;
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
-    const list = await this.db.getOpportunitiesForIndex(indexId, {
+    
+    const result = await opportunityService.getOpportunitiesForIndex(indexId, user.id, {
       status: status as 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     });
-    return Response.json({ opportunities: list });
+
+    if ('error' in result) {
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return Response.json({ opportunities: result });
   }
 
   /**
@@ -307,6 +203,7 @@ export class IndexOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    
     let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
     try {
       body = (await req.json()) as typeof body;
@@ -316,6 +213,7 @@ export class IndexOpportunityController {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    
     const { parties, reasoning, category, confidence } = body ?? {};
     if (!parties || !Array.isArray(parties) || parties.length < 2 || !reasoning || typeof reasoning !== 'string') {
       return new Response(
@@ -324,76 +222,29 @@ export class IndexOpportunityController {
       );
     }
 
-    const permission = await this.checkCreatePermission(user.id, parties, indexId);
-    if (!permission.allowed) {
-      return new Response(JSON.stringify({ error: 'Not authorized to create opportunities in this index' }), {
-        status: 403,
+    const result = await opportunityService.createManualOpportunity(indexId, user.id, {
+      parties,
+      reasoning,
+      category,
+      confidence,
+    });
+
+    if ('error' in result) {
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: result.status,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    const partyIds = parties.map((p) => p.userId);
-    const exists = await this.db.opportunityExistsBetweenActors(partyIds, indexId);
-    if (exists) {
-      return new Response(JSON.stringify({ error: 'Opportunity already exists between these parties' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const actors: OpportunityActor[] = parties.map((p) => ({
-      role: 'party',
-      identityId: p.userId,
-      intents: p.intentId ? [p.intentId] : [],
-      profile: true,
-    }));
-    actors.push({ role: 'introducer', identityId: user.id, intents: [], profile: false });
-
-    const conf = confidence ?? 0.8;
-    const data: CreateOpportunityData = {
-      detection: {
-        source: 'manual',
-        createdBy: user.id,
-        timestamp: new Date().toISOString(),
-      },
-      actors,
-      interpretation: {
-        category: category ?? 'collaboration',
-        summary: reasoning,
-        confidence: conf,
-        signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual match by curator' }],
-      },
-      context: { indexId },
-      indexId,
-      confidence: String(conf),
-      status: 'pending',
-    };
-
-    const opportunity = await this.db.createOpportunity(data);
-    const recipientIds = data.actors
-      .filter((a) => a.role !== 'introducer')
-      .map((a) => a.identityId);
+    // Queue notifications for non-introducer parties
+    const recipientIds = parties.map((p) => p.userId).filter((id) => id !== user.id);
     for (const recipientId of recipientIds) {
-      if (recipientId === user.id) continue;
-      await queueOpportunityNotification(opportunity.id, recipientId, 'high');
+      await queueOpportunityNotification(result.id, recipientId, 'high');
     }
-    return new Response(JSON.stringify(opportunity), {
+
+    return new Response(JSON.stringify(result), {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
     });
-  }
-
-  private async checkCreatePermission(
-    creatorId: string,
-    parties: Array<{ userId: string }>,
-    indexId: string
-  ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isIndexOwner(indexId, creatorId);
-    const isSelfIncluded = parties.some((p) => p.userId === creatorId);
-    if (isOwner) return { allowed: true };
-    const isMember = await this.db.isIndexMember(indexId, creatorId);
-    if (!isMember) return { allowed: false };
-    if (isSelfIncluded) return { allowed: true };
-    return { allowed: true };
   }
 }

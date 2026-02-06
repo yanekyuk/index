@@ -42,8 +42,8 @@ controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
 const opportunityDb: OpportunityControllerDatabase = new ChatDatabaseAdapter() as OpportunityControllerDatabase;
-controllerInstances.set(OpportunityController, new OpportunityController(opportunityDb));
-controllerInstances.set(IndexOpportunityController, new IndexOpportunityController(opportunityDb));
+controllerInstances.set(OpportunityController, new OpportunityController());
+controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });

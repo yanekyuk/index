@@ -24,6 +24,10 @@ graph TB
         C[Controller Class]
     end
     
+    subgraph Service Layer
+        S[Service Classes]
+    end
+    
     subgraph Adapters
         DA[Database Adapter]
         SA[Scraper Adapter]
@@ -47,10 +51,12 @@ graph TB
         G[LangGraph Graph]
     end
     
-    C --> DA
-    C --> SA
-    C --> EA
+    C --> S
     C --> GF
+    S --> DB
+    GF --> DA
+    GF --> SA
+    GF --> EA
     
     DA -.implements.-> DI
     SA -.implements.-> SI
@@ -65,10 +71,55 @@ graph TB
 
 ### Key Architectural Principles
 
-1. **Interface-based Dependencies**: Controllers depend on interfaces, not concrete implementations
-2. **Adapter Pattern**: Concrete implementations are wrapped in adapters that implement interfaces
-3. **Factory Pattern**: Graph creation is delegated to factory classes
-4. **Decorator-based Routing**: Routes and guards are defined via TypeScript decorators
+1. **Separation of Concerns**: Controllers handle HTTP, Services handle business logic, Adapters connect to Protocol layer
+2. **No Direct Database Access in Controllers**: Controllers MUST use Services or Adapters, never import `db` directly
+3. **Adapter Pattern**: Concrete implementations wrapped in adapters that implement protocol interfaces (used by graphs/agents)
+4. **Service Pattern**: Business logic layer that uses Drizzle directly for data operations (used by controllers)
+5. **Factory Pattern**: Graph creation is delegated to factory classes
+6. **Decorator-based Routing**: Routes and guards are defined via TypeScript decorators
+
+### When to Use Adapters vs Services
+
+**Use Adapters when:**
+- The controller needs to pass dependencies to a Protocol Layer graph or agent
+- Implementing a protocol interface from `src/lib/protocol/interfaces/`
+- The graph/agent needs database operations
+
+**Use Services when:**
+- The controller needs data operations (CRUD, queries)
+- Business logic that doesn't involve protocol graphs
+- File operations, user management, session management
+- Any direct database access outside of protocol layer
+
+**Example:**
+```typescript
+// Controller using both patterns
+export class ChatController {
+  private db: ChatGraphCompositeDatabase;  // Adapter for graph
+  private embedder: Embedder;              // Adapter for graph
+  private factory: ChatGraphFactory;       // Graph factory
+
+  constructor() {
+    // Adapters for protocol layer
+    this.db = new ChatDatabaseAdapter();
+    this.embedder = new EmbedderAdapter();
+    this.factory = new ChatGraphFactory(this.db, this.embedder);
+  }
+
+  async getSessions(req: Request, user: AuthenticatedUser) {
+    // Use service for simple data operations
+    const sessions = await chatSessionService.getUserSessions(user.id);
+    return Response.json({ sessions });
+  }
+
+  async processMessage(req: Request, user: AuthenticatedUser) {
+    // Use graph factory with adapters for complex AI operations
+    const graph = this.factory.createGraph();
+    const result = await graph.invoke({ userId: user.id });
+    return Response.json(result);
+  }
+}
+```
 
 ---
 
@@ -85,129 +136,147 @@ Controller files follow the pattern: `{feature}.controller.ts`
 ### Internal File Organization
 
 ```typescript
-// 1. External imports (drizzle, libraries)
-import { eq } from 'drizzle-orm';
-import * as schema from '../schemas/database.schema';
-import db from '../lib/drizzle/drizzle';
-
-// 2. Protocol imports (interfaces, factories, types)
+// 1. Protocol imports (interfaces, factories, types)
 import { Database } from '../lib/protocol/interfaces/database.interface';
 import { Scraper } from '../lib/protocol/interfaces/scraper.interface';
 import { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import { SomeGraphFactory } from '../lib/protocol/graphs/some/some.graph';
 
-// 3. --- Adapters Section ---
-// Adapter implementations go here (before controller)
+// 2. Service imports (for business logic)
+import { userService } from '../services/user.service';
+import { fileService } from '../services/file.service';
 
-export class SomeDatabaseAdapter implements Database {
-  // ...implementation
-}
+// 3. Adapter imports (for protocol layer)
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
-export class SomeExternalAdapter implements Scraper {
-  // ...implementation
-}
-
-// 4. --- Controller Section ---
-// Decorator imports
+// 4. Decorator imports
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 
-// Controller class
+// 5. Logging
+import { log } from '../lib/log';
+const logger = log.controller.from('feature');
+
+// 6. Controller class
 @Controller('/resource-path')
 export class SomeController {
-  // ...implementation
+  private db: Database;
+  private embedder: Embedder;
+  private factory: SomeGraphFactory;
+
+  constructor() {
+    // Initialize adapters for protocol layer
+    this.db = new ChatDatabaseAdapter();
+    this.embedder = new EmbedderAdapter();
+    this.factory = new SomeGraphFactory(this.db, this.embedder);
+  }
+
+  @Get('/:id')
+  @UseGuards(AuthGuard)
+  async getData(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    // Use services for data operations
+    const data = await userService.findById(params?.id);
+    return Response.json(data);
+  }
+
+  @Post('/process')
+  @UseGuards(AuthGuard)
+  async process(req: Request, user: AuthenticatedUser) {
+    // Use graph factory for protocol operations
+    const graph = this.factory.createGraph();
+    const result = await graph.invoke({ userId: user.id });
+    return Response.json(result);
+  }
 }
 ```
+
+### CRITICAL RULES
+
+**Controllers MUST NOT:**
+- Import `db` from `../lib/drizzle/drizzle`
+- Import Drizzle operators (`eq`, `and`, `desc`, etc.)
+- Import schema directly (`../schemas/database.schema`)
+- Perform direct database queries
+
+**Controllers MUST:**
+- Use services for all data operations (CRUD, queries, business logic)
+- Use adapters only for passing to protocol graphs/factories
+- Handle HTTP concerns (parsing, validation, response formatting)
+- Delegate all business logic to services
 
 ---
 
 ## Adapter Pattern Guidelines
 
-Adapters bridge the gap between external dependencies and protocol interfaces. They should be defined in the same controller file, above the controller class.
+Adapters bridge the gap between external dependencies and protocol interfaces. They are defined in `src/adapters/` and imported by controllers when needed for protocol graphs.
 
-### Database Adapter Example
+### When to Create New Adapters
+
+Create adapters in `src/adapters/` when:
+- A new protocol interface needs implementation
+- A graph requires a different database interface subset
+- Integrating a new external service (scraper, embedder, cache)
+
+### Using Existing Adapters
+
+Controllers should import pre-built adapters from `src/adapters/`:
 
 ```typescript
-import { Database } from '../lib/protocol/interfaces/database.interface';
-
-export class DrizzleDatabaseAdapter implements Database {
-  
-  async getProfile(userId: string): Promise<ProfileDocument | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
-
-    return (result[0] as unknown as ProfileDocument) || null;
-  }
-
-  async saveProfile(userId: string, profile: ProfileDocument): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      embedding: Array.isArray(profile.embedding[0]) 
-        ? (profile.embedding as number[][])[0] 
-        : (profile.embedding as number[]),
-      updatedAt: new Date()
-    };
-
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data
-      });
-  }
-
-  async getUser(userId: string): Promise<User | null> {
-    const result = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    return result[0] || null;
-  }
-}
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { RedisCacheAdapter } from '../adapters/cache.adapter';
 ```
 
-### External Service Adapter Example
+### Available Adapters
+
+| Adapter | Interface | Purpose |
+|---------|-----------|---------|
+| `ChatDatabaseAdapter` | `ChatGraphCompositeDatabase` | Chat graph database operations |
+| `IntentDatabaseAdapter` | `IntentGraphDatabase` | Intent graph database operations |
+| `EmbedderAdapter` | `Embedder` | Vector embeddings generation and search |
+| `ScraperAdapter` | `Scraper` | Web scraping and data extraction |
+| `RedisCacheAdapter` | `HydeCache` | Redis-backed caching for HyDE |
+
+### Adapter Usage Pattern
 
 ```typescript
-import { Scraper } from '../lib/protocol/interfaces/scraper.interface';
-import { searchUser } from '../lib/parallel/parallel';
+@Controller('/profiles')
+export class ProfileController {
+  private db: ProfileGraphDatabase;
+  private embedder: Embedder;
+  private scraper: Scraper;
+  private factory: ProfileGraphFactory;
 
-export class ParallelScraperAdapter implements Scraper {
-  async scrape(objective: string): Promise<string> {
-    try {
-      const response = await searchUser({ objective });
+  constructor() {
+    // Import and instantiate adapters
+    this.db = new ChatDatabaseAdapter() as ProfileGraphDatabase;
+    this.embedder = new EmbedderAdapter();
+    this.scraper = new ScraperAdapter();
+    
+    // Pass adapters to graph factory
+    this.factory = new ProfileGraphFactory(this.db, this.embedder, this.scraper);
+  }
 
-      const formattedResults = response.results.map(r => {
-        return `Title: ${r.title}\nURL: ${r.url}\nExcerpts:\n${r.excerpts.join('\n')}`;
-      }).join('\n\n');
-
-      if (!formattedResults) {
-        return `No information found for objective: ${objective}`;
-      }
-
-      return `Objective: ${objective}\n\nSearch Results:\n${formattedResults}`;
-    } catch (error: any) {
-      console.error("ParallelScraperAdapter error:", error);
-      // Graceful degradation - return partial info so flow continues
-      return `Objective: ${objective}\n\n(Search failed: ${error.message})`;
-    }
+  @Post('/sync')
+  @UseGuards(AuthGuard)
+  async sync(req: Request, user: AuthenticatedUser) {
+    // Use factory to create and invoke graph
+    const graph = this.factory.createGraph();
+    const result = await graph.invoke({ userId: user.id });
+    return Response.json(result);
   }
 }
 ```
 
 ### Adapter Best Practices
 
-1. **Error Handling**: Always wrap external calls in try-catch and provide graceful fallbacks
-2. **Type Safety**: Use type assertions carefully, preferring explicit type guards when possible
-3. **Single Responsibility**: Each adapter should wrap one external dependency
-4. **Export Adapters**: Export adapters for potential reuse or testing
+1. **Reuse Existing Adapters**: Check `src/adapters/` before creating new ones
+2. **Type Narrowing**: Use type assertions when an adapter implements multiple interfaces
+3. **No Controller-Local Adapters**: Don't define adapters inside controller files
+4. **Testing**: Adapters can be mocked in tests for faster, isolated controller testing
 
 ---
 
@@ -651,23 +720,25 @@ return Response.json(result);
 ### Minimal Controller Template
 
 ```typescript
-import { eq } from 'drizzle-orm';
-import * as schema from '../schemas/database.schema';
-import db from '../lib/drizzle/drizzle';
-import { Database } from '../lib/protocol/interfaces/database.interface';
+// Protocol imports
+import type { Database } from '../lib/protocol/interfaces/database.interface';
 import { SomeGraphFactory } from '../lib/protocol/graphs/some/some.graph';
 
-// --- Adapters ---
+// Adapter imports
+import { SomeDatabaseAdapter } from '../adapters/database.adapter';
 
-export class DrizzleDatabaseAdapter implements Database {
-  // Implement interface methods
-}
+// Service imports
+import { userService } from '../services/user.service';
+import { featureService } from '../services/feature.service';
 
-// --- Controller ---
-
-import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
+// Routing imports
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
+
+// Logging
+import { log } from '../lib/log';
+const logger = log.controller.from('feature');
 
 @Controller('/features')
 export class FeatureController {
@@ -675,13 +746,31 @@ export class FeatureController {
   private factory: SomeGraphFactory;
 
   constructor() {
-    this.db = new DrizzleDatabaseAdapter();
+    // Initialize adapters for protocol graphs
+    this.db = new SomeDatabaseAdapter();
     this.factory = new SomeGraphFactory(this.db);
   }
 
-  @Post('/action')
+  /**
+   * Simple data retrieval - use service
+   */
+  @Get('/:id')
   @UseGuards(AuthGuard)
-  async action(req: Request, user: AuthenticatedUser) {
+  async get(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const feature = await featureService.getById(params?.id);
+    if (!feature) {
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+    }
+    return Response.json(feature);
+  }
+
+  /**
+   * Complex processing - use graph via factory
+   */
+  @Post('/process')
+  @UseGuards(AuthGuard)
+  async process(req: Request, user: AuthenticatedUser) {
+    logger.info('Processing feature', { userId: user.id });
     const graph = this.factory.createGraph();
     const result = await graph.invoke({ userId: user.id });
     return Response.json(result);

@@ -1,7 +1,16 @@
-import db from '../lib/drizzle/drizzle';
-import { chatSessions, chatMessages } from '../schemas/database.schema';
-import { eq, desc } from 'drizzle-orm';
 import { log } from '../lib/log';
+import { chatDatabaseAdapter } from '../adapters/chat.adapter';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { ChatGraphFactory } from '../lib/protocol/graphs/chat/chat.graph';
+import { getCheckpointer } from '../lib/protocol/graphs/chat/chat.checkpointer';
+import { ChatTitleGenerator } from '../lib/protocol/agents/chat/title.generator';
+import { HumanMessage } from '@langchain/core/messages';
+import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
+import type { ChatGraphCompositeDatabase } from '../lib/protocol/interfaces/database.interface';
+import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
+import type { Scraper } from '../lib/protocol/interfaces/scraper.interface';
 
 const logger = log.service.from("ChatSessionService");
 
@@ -20,14 +29,29 @@ function generateSnowflakeId(): string {
 /**
  * ChatSessionService
  * 
- * Manages chat sessions and messages for the Chat Graph streaming infrastructure.
+ * Manages chat sessions, messages, and chat graph invocation.
+ * Uses ChatDatabaseAdapter for database operations.
+ * Uses protocol adapters for graph invocation.
  * 
  * CONTEXT:
  * - Chat sessions are persistent conversations between a user and the system
  * - Each session contains multiple messages with role-based attribution
  * - Messages can store routing decisions and subgraph results for debugging
+ * - Graph processing for AI-powered chat responses
  */
 export class ChatSessionService {
+  private graphDb: ChatGraphCompositeDatabase;
+  private embedder: Embedder;
+  private scraper: Scraper;
+  private factory: ChatGraphFactory;
+
+  constructor(private db = chatDatabaseAdapter) {
+    // Initialize protocol adapters for graph processing
+    this.graphDb = new ChatDatabaseAdapter();
+    this.embedder = new EmbedderAdapter();
+    this.scraper = new ScraperAdapter();
+    this.factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper);
+  }
   /**
    * Create a new chat session for a user.
    *
@@ -40,14 +64,7 @@ export class ChatSessionService {
     logger.info('Creating new session', { userId, title, indexId: indexId ?? undefined });
 
     const id = crypto.randomUUID();
-    await db.insert(chatSessions).values({
-      id,
-      userId,
-      title,
-      indexId: indexId?.trim() || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    await this.db.createSession({ id, userId, title, indexId });
 
     return id;
   }
@@ -66,10 +83,7 @@ export class ChatSessionService {
       return false;
     }
 
-    await db
-      .update(chatSessions)
-      .set({ indexId: indexId?.trim() || null, updatedAt: new Date() })
-      .where(eq(chatSessions.id, sessionId));
+    await this.db.updateSessionIndex(sessionId, indexId?.trim() || null);
 
     logger.info('Session index updated', { sessionId, indexId: indexId ?? null });
     return true;
@@ -85,10 +99,7 @@ export class ChatSessionService {
   async getSession(sessionId: string, userId: string) {
     logger.info('Getting session', { sessionId, userId });
     
-    const [session] = await db.select()
-      .from(chatSessions)
-      .where(eq(chatSessions.id, sessionId))
-      .limit(1);
+    const session = await this.db.getSession(sessionId);
     
     if (!session || session.userId !== userId) {
       logger.warn('Session not found or unauthorized', { sessionId, userId });
@@ -108,11 +119,7 @@ export class ChatSessionService {
   async getUserSessions(userId: string, limit = 20) {
     logger.info('Getting user sessions', { userId, limit });
     
-    return db.select()
-      .from(chatSessions)
-      .where(eq(chatSessions.userId, userId))
-      .orderBy(desc(chatSessions.updatedAt))
-      .limit(limit);
+    return this.db.getUserSessions(userId, limit);
   }
 
   /**
@@ -137,7 +144,7 @@ export class ChatSessionService {
     
     const id = generateSnowflakeId();
     
-    await db.insert(chatMessages).values({
+    await this.db.createMessage({
       id,
       sessionId: params.sessionId,
       role: params.role,
@@ -145,13 +152,10 @@ export class ChatSessionService {
       routingDecision: params.routingDecision,
       subgraphResults: params.subgraphResults,
       tokenCount: params.tokenCount,
-      createdAt: new Date(),
     });
     
     // Update session timestamp
-    await db.update(chatSessions)
-      .set({ updatedAt: new Date() })
-      .where(eq(chatSessions.id, params.sessionId));
+    await this.db.updateSessionTimestamp(params.sessionId);
     
     return id;
   }
@@ -166,11 +170,7 @@ export class ChatSessionService {
   async getSessionMessages(sessionId: string, limit = 50) {
     logger.info('Getting session messages', { sessionId, limit });
     
-    return db.select()
-      .from(chatMessages)
-      .where(eq(chatMessages.sessionId, sessionId))
-      .orderBy(chatMessages.createdAt)
-      .limit(limit);
+    return this.db.getSessionMessages(sessionId, limit);
   }
 
   /**
@@ -189,8 +189,7 @@ export class ChatSessionService {
       return false;
     }
     
-    await db.delete(chatSessions)
-      .where(eq(chatSessions.id, sessionId));
+    await this.db.deleteSession(sessionId);
     
     logger.info('Session deleted', { sessionId });
     return true;
@@ -212,11 +211,107 @@ export class ChatSessionService {
       return false;
     }
     
-    await db.update(chatSessions)
-      .set({ title, updatedAt: new Date() })
-      .where(eq(chatSessions.id, sessionId));
+    await this.db.updateSessionTitle(sessionId, title);
     
     return true;
+  }
+
+  /**
+   * Process a message through the chat graph (non-streaming).
+   * 
+   * @param userId - The user ID
+   * @param messageContent - The message content
+   * @returns Graph execution result with response text
+   */
+  async processMessage(userId: string, messageContent: string): Promise<{
+    responseText: string;
+    error?: string;
+  }> {
+    logger.info('Processing message', { userId });
+
+    const graph = this.factory.createGraph();
+    const result = await graph.invoke({
+      userId,
+      messages: [new HumanMessage(messageContent)]
+    });
+
+    return {
+      responseText: result.responseText || '',
+      error: result.error
+    };
+  }
+
+  /**
+   * Get checkpointer for streaming (if needed).
+   * 
+   * @returns PostgresSaver checkpointer or undefined
+   */
+  async getCheckpointer(): Promise<PostgresSaver | undefined> {
+    try {
+      return await getCheckpointer();
+    } catch (error) {
+      logger.warn('Failed to initialize checkpointer', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Get the chat graph factory for streaming operations.
+   * This is used by controllers that need to stream chat events.
+   * 
+   * @returns The ChatGraphFactory instance
+   */
+  getGraphFactory(): ChatGraphFactory {
+    return this.factory;
+  }
+
+  /**
+   * Auto-generate a session title based on conversation history.
+   * 
+   * @param sessionId - The session ID
+   * @param userId - The user ID
+   * @returns The generated title or undefined if generation fails
+   */
+  async generateSessionTitle(sessionId: string, userId: string): Promise<string | undefined> {
+    logger.info('Generating session title', { sessionId });
+
+    const session = await this.getSession(sessionId, userId);
+    if (!session) {
+      return undefined;
+    }
+
+    // Only generate if there's no title yet
+    if (session.title?.trim()) {
+      return session.title;
+    }
+
+    const messages = await this.getSessionMessages(sessionId, 10);
+    const hasUser = messages.some((m) => m.role === 'user');
+    const hasAssistant = messages.some((m) => m.role === 'assistant');
+
+    if (!hasUser || !hasAssistant) {
+      return undefined;
+    }
+
+    try {
+      const titleGenerator = new ChatTitleGenerator();
+      const title = await titleGenerator.invoke({
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      });
+
+      await this.updateSessionTitle(sessionId, userId, title);
+      logger.info('Session title generated', { sessionId, title });
+
+      return title;
+    } catch (err) {
+      logger.warn('Failed to generate session title', {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return undefined;
+    }
   }
 }
 

@@ -102,7 +102,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Integration", () => {
-  let controller: OpportunityController;
+  const controller = new OpportunityController();
   let testUserId: string;
   let candidateUserId: string;
   const testEmail = `test-opportunity-ctrl-${Date.now()}@example.com`;
@@ -189,8 +189,6 @@ describe("OpportunityController Integration", () => {
       // Add embedding so candidate can be found in vector search
       embedding: Array(2000).fill(0.15),
     });
-
-    controller = new OpportunityController();
   });
 
   afterAll(async () => {
@@ -355,7 +353,7 @@ describe("OpportunityController Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Edge Cases", () => {
-  let controller: OpportunityController;
+  const controller = new OpportunityController();
   let testUserIdNoProfile: string;
   const testEmailNoProfile = `test-opp-no-profile-${Date.now()}@example.com`;
 
@@ -379,8 +377,6 @@ describe("OpportunityController Edge Cases", () => {
 
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
-
-    controller = new OpportunityController();
   });
 
   afterAll(async () => {

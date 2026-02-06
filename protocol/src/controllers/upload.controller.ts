@@ -1,26 +1,13 @@
-/**
- * Upload controller (v2).
- * Library file upload and list only — no automatic intent creation.
- * Files are stored in the same DB and paths as the legacy /api/files routes,
- * so they appear in the Library when listing via GET /api/files or GET /v2/uploads.
- *
- * Uses busboy for multipart/form-data parsing (recommended for server environments
- * instead of Request.formData()).
- */
-
 import * as fs from 'fs';
-import path from 'path';
-import { Readable } from 'stream';
 import busboy from 'busboy';
-import { v4 as uuidv4 } from 'uuid';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
-import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
-import type { AuthenticatedUser } from '../guards/auth.guard';
-import db from '../lib/drizzle/drizzle';
-import { files } from '../schemas/database.schema';
-import { getUploadsPath } from '../lib/paths';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
+import { fileService } from '../services/file.service';
 import { log } from '../lib/log';
+import { getUploadsPath } from '../lib/paths';
+import path from 'path';
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { Readable } from 'stream';
+import { v4 as uuidv4 } from 'uuid';
 
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
 import type { FileRecord } from '../types';
@@ -140,23 +127,13 @@ export class UploadController {
       return Response.json({ error: 'Failed to save file' }, { status: 500 });
     }
 
-    const [inserted] = await db
-      .insert(files)
-      .values({
-        id: fileId,
-        name: filename,
-        size: BigInt(size),
-        type: mimeType,
-        userId: user.id,
-      })
-      .returning({
-        id: files.id,
-        name: files.name,
-        size: files.size,
-        type: files.type,
-        createdAt: files.createdAt,
-        userId: files.userId,
-      });
+    const inserted = await fileService.createFile({
+      id: fileId,
+      name: filename,
+      size: BigInt(size),
+      type: mimeType,
+      userId: user.id,
+    });
 
     const fileRecord: FileRecord = {
       id: inserted.id,
@@ -190,29 +167,10 @@ export class UploadController {
     const url = new URL(req.url);
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '100', 10)));
-    const skip = (page - 1) * limit;
 
-    const where = and(isNull(files.deletedAt), eq(files.userId, user.id));
-
-    const [rows, totalResult] = await Promise.all([
-      db
-        .select({
-          id: files.id,
-          name: files.name,
-          size: files.size,
-          type: files.type,
-          createdAt: files.createdAt,
-        })
-        .from(files)
-        .where(where)
-        .orderBy(desc(files.createdAt))
-        .offset(skip)
-        .limit(limit),
-      db.select({ count: count() }).from(files).where(where),
-    ]);
-
-    const total = totalResult[0]?.count ?? 0;
-    const data: FileRecord[] = rows.map((f) => ({
+    const result = await fileService.listFiles(user.id, { page, limit });
+    
+    const data: FileRecord[] = result.files.map((f) => ({
       id: f.id,
       name: f.name,
       size: f.size.toString(),
@@ -223,12 +181,7 @@ export class UploadController {
 
     return {
       files: data,
-      pagination: {
-        current: page,
-        total: Math.ceil(Number(total) / limit),
-        count: data.length,
-        totalCount: Number(total),
-      },
+      pagination: result.pagination,
     };
   }
 
