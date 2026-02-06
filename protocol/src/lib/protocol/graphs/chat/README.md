@@ -174,13 +174,13 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 19 tools, organized by domain using CRUD naming. All index parameters use **`indexId` (UUID only)** — no name resolution. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat)).
+The agent has access to 19 tools, organized by domain using CRUD naming. All index parameters use **`indexId` (UUID only)** — no name resolution. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat-phase-3)).
 
 ### Profile Tools
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `read_user_profiles` | Fetch user's profile | "Show my profile", "What skills do I have?" |
+| `read_user_profiles` | Fetch user's profile (includes `id` field) | "Show my profile", "What skills do I have?" |
 | `create_user_profile` | Create a new profile (fails if one exists) | "Create my profile" |
 | `update_user_profile` | Update an existing profile (requires `profileId` from `read_user_profiles`) | "Add Python to my skills" |
 
