@@ -2,8 +2,7 @@ import { useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import type { Index } from '@/types';
 import type { PaginatedResponse } from '@/types';
-
-const V2_BASE = process.env.NEXT_PUBLIC_API_URL_V2 ?? '';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 /** Response shape from GET /indexes (member + personal indexes; "Everywhere" is static in UI). */
 export interface IndexListV2Response {
@@ -16,7 +15,7 @@ async function v2Fetch(
   options: RequestInit & { accessToken: string }
 ): Promise<Response> {
   const { accessToken, ...init } = options;
-  const url = `${V2_BASE}${path}`;
+  const url = `${API_BASE_URL}${path}`;
   return fetch(url, {
     ...init,
     headers: {

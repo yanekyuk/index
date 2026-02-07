@@ -2,14 +2,14 @@ import { useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { FileRecord } from '../../types';
 
-const V2_BASE = process.env.NEXT_PUBLIC_API_URL_V2 ?? '';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 async function v2Fetch(
   path: string,
   options: RequestInit & { accessToken: string }
 ): Promise<Response> {
   const { accessToken, ...init } = options;
-  const url = `${V2_BASE}${path}`;
+  const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...init,
     headers: {

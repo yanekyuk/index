@@ -67,7 +67,7 @@ export default function FeedbackWidget() {
         throw new Error('Authentication required');
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL_V2 || 'http://localhost:3001/api';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
       const response = await fetch(`${apiUrl}/feedback`, {
         method: 'POST',
         headers: {

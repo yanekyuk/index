@@ -125,7 +125,7 @@ export default function Sidebar() {
         const token = await getAccessToken();
         if (!token) return;
         
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL_V2}/chat/sessions`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/sessions`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error('Failed to fetch sessions');
