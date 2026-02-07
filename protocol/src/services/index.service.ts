@@ -150,6 +150,14 @@ export class IndexService {
     }
     return settings;
   }
+
+  /**
+   * Get current user's intents in an index. Members only.
+   */
+  async getMyIntentsInIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting my intents in index', { indexId, userId });
+    return this.adapter.getIndexIntentsForMember(indexId, userId);
+  }
 }
 
 export const indexService = new IndexService();

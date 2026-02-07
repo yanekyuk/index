@@ -1,26 +1,49 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { LogOut, Users, Globe, Lock, User } from 'lucide-react';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import IntentList from '@/components/IntentList';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
+import { useIndexes } from '@/contexts/APIContext';
 
-interface JoinedNetworkPanelProps {
+interface NetworkOverviewPanelProps {
   index: Index;
+  isOwner: boolean;
   onLeft?: () => void;
 }
 
-export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanelProps) {
+export default function NetworkOverviewPanel({ index, isOwner, onLeft }: NetworkOverviewPanelProps) {
   const { removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
+  const indexesService = useIndexes();
 
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  
+  // Intents state
+  const [intents, setIntents] = useState<any[]>([]);
+  const [intentsLoading, setIntentsLoading] = useState(true);
+
+  // Load intents when component mounts
+  useEffect(() => {
+    const loadIntents = async () => {
+      try {
+        const myIntents = await indexesService.getMyIndexIntents(index.id);
+        setIntents(myIntents);
+      } catch (err) {
+        console.error('Error loading intents:', err);
+      } finally {
+        setIntentsLoading(false);
+      }
+    };
+    loadIntents();
+  }, [index.id, indexesService]);
 
   const handleLeaveNetwork = async () => {
     try {
@@ -43,6 +66,7 @@ export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanel
   return (
     <>
       <div className="space-y-6">
+        {/* Network Information */}
         <div>
           <h3 className="text-sm font-medium text-gray-900 mb-3">Network Information</h3>
           <div className="space-y-2">
@@ -54,7 +78,8 @@ export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanel
               </div>
             </div>
 
-            {index._count?.members !== undefined && (
+            {/* Show member count only for public networks */}
+            {isPublic && index._count?.members !== undefined && (
               <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
                 <Users className="h-4 w-4 text-gray-400" />
                 <div>
@@ -62,30 +87,36 @@ export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanel
                 </div>
               </div>
             )}
-
-            {index.user && (
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
-                <User className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium text-black">Owner</p>
-                  <p className="text-xs text-gray-500">{index.user.name}</p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        <div className="pt-6 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Membership</h3>
-          <div className="flex items-center justify-between p-3 border border-gray-200 rounded-sm">
-            <div>
-              <p className="text-sm font-medium text-black">Leave this network</p>
-              <p className="text-xs text-gray-500">You can rejoin later if the network is public</p>
+        {/* Leave Network (members only) - moved above intents */}
+        {!isOwner && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-900 mb-3">Membership</h3>
+            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-sm">
+              <div>
+                <p className="text-sm font-medium text-black">Leave this network</p>
+                <p className="text-xs text-gray-500">You can rejoin later if the network is public</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowLeaveConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-50">
+                <LogOut className="h-4 w-4 mr-1" /> Leave
+              </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setShowLeaveConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-50">
-              <LogOut className="h-4 w-4 mr-1" /> Leave
-            </Button>
           </div>
+        )}
+
+        {/* My Intents */}
+        <div className="pt-6 border-t border-gray-200">
+          <h3 className="text-sm font-medium text-gray-900 mb-1">My Intents in this Network</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            {intents.length} of your intent{intents.length !== 1 ? 's' : ''} in this network
+          </p>
+          <IntentList
+            intents={intents}
+            isLoading={intentsLoading}
+            emptyMessage="You haven't shared any intents in this network yet"
+          />
         </div>
       </div>
 

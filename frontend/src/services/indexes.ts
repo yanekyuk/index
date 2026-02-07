@@ -252,33 +252,27 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Member Intents Management
-  // Get member intents for an index
-  getMemberIntents: async (indexId: string): Promise<Array<{
+  // Get current user's intents in an index
+  getMyIndexIntents: async (indexId: string): Promise<Array<{
     id: string;
     payload: string;
     summary?: string | null;
     createdAt: string;
-    sourceType: 'file' | 'link' | 'integration';
-    sourceId: string;
-    sourceName: string;
-    sourceValue: string | null;
-    sourceMeta: string | null;
+    userId: string;
+    userName: string;
   }>> => {
     const response = await api.get<{ intents: Array<{
       id: string;
       payload: string;
       summary?: string | null;
       createdAt: string;
-      sourceType: 'file' | 'link' | 'integration';
-      sourceId: string;
-      sourceName: string;
-      sourceValue: string | null;
-      sourceMeta: string | null;
-    }> }>(`/indexes/${indexId}/member-intents`);
+      userId: string;
+      userName: string;
+    }> }>(`/indexes/${indexId}/my-intents`);
     return response.intents || [];
   },
 
-  // Remove member intent from index
+  // Remove member intent from index (deprecated - kept for backwards compatibility)
   removeMemberIntent: async (indexId: string, intentId: string): Promise<void> => {
     await api.delete(`/indexes/${indexId}/member-intents/${intentId}`);
   }
