@@ -1,48 +1,61 @@
 # Opportunity Graph
 
-The Opportunity graph finds and persists **opportunities** (matches between a source user and candidates) using HyDE-based search and an LLM evaluator. It can run from an intent (intent payload + index scope) or from an ad-hoc query.
+The Opportunity graph finds and persists **opportunities** (matches between a source user and candidates) using HyDE-based semantic search and an LLM evaluator. It follows a linear multi-step workflow similar to the Intent Graph.
 
-**API note:** This graph uses the `OpportunityGraph` class with `compile()` (not a factory with `createGraph()`). You instantiate `OpportunityGraph` with dependencies, then call `compile()` to get the runnable graph.
+**API:** The graph is built via **OpportunityGraphFactory**. Constructor injects `database`, `embedder`, and `hydeGenerator`. Public method: `createGraph()` returns the compiled runnable.
 
 ## Overview
 
-**Flow:** `resolve_source_profile` → (conditional) `invoke_hyde` → `search_candidates` → `deduplicate` → `evaluate_candidates` → `persist_opportunities` → END.
+**Flow:** Prep → Scope → Discovery → Evaluation → Ranking → Persist → END, with conditional early exit after Prep (no index memberships or no intents) and after Scope (no target indexes).
 
-- **resolve_source_profile**: If `sourceProfileContext` is missing and `sourceUserId` is set, load profile from DB and build context string.
-- **invoke_hyde**: When `sourceText` and `indexScope` are set and candidates are not provided, invoke the compiled HyDE graph to get embeddings.
-- **search_candidates**: Search profiles/intents with HyDE embeddings, scoped to `indexScope`, excluding `sourceUserId`.
-- **deduplicate**: Remove candidates that already have an opportunity with the source.
-- **evaluate_candidates**: Run `OpportunityEvaluator` to score and summarize matches (minScore from options).
-- **persist_opportunities**: Create opportunity records in the DB (detection, actors, interpretation, context).
+```mermaid
+flowchart LR
+  START([START]) --> Prep[Prep]
+  Prep --> CheckPrep{Has indexes and intents?}
+  CheckPrep -->|No| EndEmpty([END])
+  CheckPrep -->|Yes| Scope[Scope]
+  Scope --> CheckScope{Target indexes?}
+  CheckScope -->|No| EndEmpty
+  CheckScope -->|Yes| Discovery[Discovery]
+  Discovery --> Evaluation[Evaluation]
+  Evaluation --> Ranking[Ranking]
+  Ranking --> Persist[Persist]
+  Persist --> END([END])
+```
 
-If **candidates** are provided in the initial state, the graph skips HyDE and search and goes straight to evaluate → persist.
+**Node responsibilities:**
 
-## When to use
+1. **Prep** – Fetches user's index memberships (`getUserIndexIds`) and active intents (`getActiveIntents`). If the user has no index memberships or no active intents, returns an error and the graph ends early (no HyDE or search).
+2. **Scope** – Determines which indexes to search. If `indexId` is provided and the user is a member, searches only that index; otherwise searches all of the user's indexes. Builds `targetIndexes` with title and member count.
+3. **Discovery** – Generates HyDE embeddings from the search query (via `hydeGenerator.invoke`), then runs `embedder.searchWithHydeEmbeddings` within the target index scope. Only **intent** matches (not profile-only) are kept. Results become `candidates` (CandidateMatch[]).
+4. **Evaluation** – For each candidate, fetches source and candidate profiles, then runs **OpportunityEvaluator** to score and summarize matches. Output is `evaluatedCandidates` (score, descriptions, valency role).
+5. **Ranking** – Sorts by score descending, applies `options.limit`, and deduplicates by (sourceUser, candidateUser, index).
+6. **Persist** – Creates opportunity records via `database.createOpportunity` with `status` from `options.initialStatus` (default `'pending'`; use `'latent'` for draft opportunities). No notifications are sent at creation time.
 
-- **Discovery API**: POST `/opportunities/discover` with a query and optional limit (uses sourceUserId, indexScope from user memberships).
-- **Intent-triggered**: When a user has an intent and you want to find matching people (sourceText = intent payload, intentId set).
-- **Pre-filled candidates**: When you already have a list of candidate profiles to evaluate (e.g. from another pipeline).
+## Index-scoped search and HyDE
+
+Opportunities are only found between intents that **share the same index**. Non-indexed intents cannot participate. Discovery uses **HyDE** (Hypothetical Document Embeddings) for semantic search: the user's search query is turned into embeddings, and the embedder finds similar intents within the target indexes. Both the source and candidate sides rely on intent (and hyde) data; the graph does not accept pre-filled candidates as input—it always runs prep → scope → discovery → evaluation → ranking → persist.
+
+For the latent opportunity lifecycle (draft → send → pending), see [Latent Opportunity Lifecycle](../docs/Latent%20Opportunity%20Lifecycle.md).
 
 ## Dependencies
 
-- **database**: `OpportunityGraphDatabase` (getProfile, createOpportunity, opportunityExistsBetweenActors, etc.)
-- **embedder**: `Embedder` with `searchWithHydeEmbeddings(map, options)`
-- **cache**: `HydeCache` (passed in; HyDE graph uses it)
-- **compiledHydeGraph**: Compiled graph from `HydeGraphFactory.createGraph()`
+- **database**: `OpportunityGraphDatabase` — `getUserIndexIds`, `getActiveIntents`, `getIndex`, `getIndexMemberCount`, `getProfile`, `createOpportunity`, `opportunityExistsBetweenActors`
+- **embedder**: `Embedder` with `searchWithHydeEmbeddings(embeddingsMap, options)` (options include `strategies`, `indexScope`, `excludeUserId`, `limit`, `minScore`)
+- **hydeGenerator**: Object with `invoke(input: { sourceType: 'query', sourceText, strategies, context? })` returning `Promise<{ hydeEmbeddings: Record<string, number[]> }>`
 
 ## Input
 
-Initial state passed to `invoke` (see `OpportunityGraphState` and `createInitialState()`):
+Invoke the compiled graph with (see `OpportunityGraphState` in `opportunity.graph.state.ts`):
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `sourceUserId` | string | Yes | User to find opportunities for |
-| `sourceProfileContext` | string | No | Pre-built profile text; if empty and sourceUserId set, graph resolves it |
-| `sourceText` | string | No | Intent payload or ad-hoc query for HyDE (used when candidates not provided) |
-| `intentId` | string | No | Intent ID when run from intent (for detection.triggeredBy and context) |
-| `indexScope` | string[] | Yes* | Index IDs to restrict search (*can be empty; then no HyDE/search) |
-| `options` | object | No | `limit`, `minScore`, `hydeDescription`, etc. |
-| `candidates` | `HydeCandidate[]` or `CandidateProfile[]` | No | If provided, skip HyDE and search and go to evaluate |
+| `userId` | string | Yes | User to find opportunities for |
+| `searchQuery` | string | No | Ad-hoc query for HyDE and discovery (e.g. "Find a React developer") |
+| `indexId` | string | No | If set, search only this index (user must be a member) |
+| `options` | object | No | `initialStatus`, `limit`, `minScore`, `strategies`, `hydeDescription` |
+
+If `indexId` is omitted, the graph searches all indexes the user belongs to (from Prep).
 
 ## Output
 
@@ -50,130 +63,82 @@ State after `invoke` (same shape with channels updated):
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `opportunities` | `Opportunity[]` | Persisted opportunities (detection, actors, interpretation, context) |
-| `candidates` | array | Candidates after dedupe (HyDE search results or input candidates) |
-| `sourceProfileContext` | string | Resolved profile context when it was missing |
+| `opportunities` | `Opportunity[]` | Persisted opportunities (detection, actors, interpretation, context, status) |
+| `error` | string | Set if prep/scope/discovery/evaluation/persist fails or early-exits |
+| `candidates` | `CandidateMatch[]` | Candidates from discovery (intent matches) |
+| `evaluatedCandidates` | `EvaluatedCandidate[]` | After evaluation node |
+| `targetIndexes` | `TargetIndex[]` | After scope node |
+| `userIndexes` | `Id<'indexes'>[]` | After prep node |
 
-Each **Opportunity** includes `actors` (source + candidate with roles), `interpretation` (summary, confidence, signals), `context` (indexId, triggeringIntentId), `detection` (source, triggeredBy, timestamp).
+Each **Opportunity** includes `actors` (source + candidate with roles), `interpretation` (summary, confidence, signals), `context` (indexId, triggeringIntentId), `detection` (source, createdBy, triggeredBy, timestamp), and `status` (e.g. `latent`, `pending`).
 
-## Code samples
+## Usage examples
 
-### Discover from ad-hoc query (API style)
+### Discovery from chat (latent drafts)
 
 ```typescript
-import { OpportunityGraph } from './opportunity.graph';
+import { OpportunityGraphFactory } from './opportunity.graph';
 import { HydeGraphFactory } from '../hyde/hyde.graph';
 
-const compiledHydeGraph = new HydeGraphFactory(hydeDb, embedder, cache, generator).createGraph();
-const opportunityGraph = new OpportunityGraph(database, embedder, cache, compiledHydeGraph);
-const graph = opportunityGraph.compile();
-
-const indexScope = await database.getIndexMemberships(userId).then(ms => ms.map(m => m.indexId));
+const compiledHydeGraph = new HydeGraphFactory(hydeDb, embedder, hydeCache, hydeGenerator).createGraph();
+const factory = new OpportunityGraphFactory(database, embedder, compiledHydeGraph);
+const graph = factory.createGraph();
 
 const result = await graph.invoke({
-  sourceUserId: userId,
-  sourceText: 'Looking for AI/ML engineers',
-  indexScope,
-  options: { limit: 5, hydeDescription: 'Looking for AI/ML engineers' },
+  userId: currentUserId,
+  searchQuery: 'Looking for AI/ML engineers',
+  indexId: optionalIndexId,
+  options: { initialStatus: 'latent', limit: 5 },
 });
 
-// result.opportunities → Opportunity[]
-// result.candidates → HydeCandidate[] from search
+// result.opportunities → Opportunity[] (drafts)
+// result.error → set if no indexes/intents or failure
 ```
 
-### From intent (intent-triggered)
+### Scoped to one index
 
 ```typescript
 const result = await graph.invoke({
-  sourceUserId: user.id,
-  sourceText: intent.payload,
-  intentId: intent.id,
-  indexScope: [indexId],
-  options: { limit: 10 },
+  userId: user.id,
+  searchQuery: 'Find a technical co-founder',
+  indexId: 'index-uuid-here',
+  options: { limit: 10, initialStatus: 'latent' },
 });
 ```
 
-### Pre-filled candidates (skip HyDE and search)
+### All user indexes (omit indexId)
 
 ```typescript
 const result = await graph.invoke({
-  sourceUserId: 'user-source',
-  sourceProfileContext: 'Seeking mentor.',
-  indexScope: ['idx-1'],
-  candidates: [
-    { userId: 'user-bob', identity: {...}, attributes: {...}, narrative: {...}, score: 0.9 }
-  ],
-  options: { minScore: 70 },
-});
-```
-
-### Example input (discover)
-
-```typescript
-{
-  sourceUserId: 'user-abc',
-  sourceText: 'Looking for a React developer for a seed-stage startup.',
-  indexScope: ['index-1', 'index-2'],
+  userId: user.id,
+  searchQuery: 'Who needs help with fundraising?',
   options: { limit: 5 },
-}
-```
-
-### Example output (relevant fields)
-
-```json
-{
-  "opportunities": [
-    {
-      "id": "...",
-      "actors": [
-        { "role": "agent", "identityId": "user-abc", "intents": ["intent-123"], "profile": true },
-        { "role": "patient", "identityId": "user-xyz", "intents": [], "profile": true }
-      ],
-      "interpretation": {
-        "category": "collaboration",
-        "summary": "React developer match for seed-stage.",
-        "confidence": 0.85,
-        "signals": [{ "type": "intent_match", "weight": 0.85, "detail": "..." }]
-      },
-      "context": { "indexId": "index-1", "triggeringIntentId": "intent-123" },
-      "detection": { "source": "opportunity_graph", "triggeredBy": "intent-123", "timestamp": "..." }
-    }
-  ],
-  "candidates": [...],
-  "sourceProfileContext": "Name: ...\nBio: ...\n..."
-}
+});
 ```
 
 ## File structure
 
 ```
 graphs/opportunity/
-├── opportunity.graph.ts   # OpportunityGraph class, compile(), node implementations
-├── opportunity.state.ts   # OpportunityGraphState, createInitialState()
-├── opportunity.utils.ts   # selectStrategies, deriveRolesFromStrategy
+├── opportunity.graph.ts        # OpportunityGraphFactory, createGraph(), six nodes
+├── opportunity.graph.state.ts  # OpportunityGraphState annotation, types
+├── opportunity.utils.ts        # selectStrategies, deriveRolesFromStrategy
 ├── opportunity.utils.spec.ts
 ├── opportunity.graph.spec.ts
+├── opportunity.state.ts        # Legacy state (other consumers)
 ├── OPPORTUNITY-GRAPH-LLM-AGENTS.md
-└── README.md              # This file
+└── README.md                   # This file
 ```
 
-### Source file: opportunity.graph.ts
+### opportunity.graph.ts
 
-**opportunity.graph.ts** contains the full graph implementation:
-
-- **OpportunityGraph** class: constructor injects `database` (`OpportunityGraphDatabase`), `embedder` (`Embedder`), `cache` (`HydeCache`), and `compiledHydeGraph` (return type of `HydeGraphFactory.createGraph()`). Public method: `compile()` — builds a `StateGraph<OpportunityGraphState>` and returns the compiled runnable.
-- **Nodes** (all implemented as private methods on the class):
-  - `resolve_source_profile` → `resolveSourceProfileNode`: fills `sourceProfileContext` from DB when missing and `sourceUserId` is set.
-  - `invoke_hyde` → `invokeHydeNode`: runs the compiled HyDE graph with `sourceText` / `options.hydeDescription` and selected strategies; writes `hydeEmbeddings`.
-  - `search_candidates` → `searchCandidatesNode`: calls `embedder.searchWithHydeEmbeddings()` with `indexScope`, excludes `sourceUserId`; writes `candidates`.
-  - `deduplicate` → `deduplicateNode`: filters out candidates that already have an opportunity with the source (via `database.opportunityExistsBetweenActors`).
-  - `evaluate_candidates` → `evaluateCandidatesNode`: builds `CandidateProfile[]` from candidates, runs `OpportunityEvaluator`, maps results to `EvaluatedOpportunityForPersist` (sourceUserId, candidateUserId, indexId, score, summary, sourceRole, candidateRole, intentId); writes `opportunities` and updated `candidates`.
-  - `persist_opportunities` → `persistOpportunitiesNode`: creates opportunity records via `database.createOpportunity` (detection, actors, interpretation, context).
-- **Edges**: START → `resolve_source_profile`; conditional from `resolve_source_profile`: if `candidates` are already provided → `evaluate_candidates`; else if `sourceText` and `indexScope.length` → `invoke_hyde`; else → END. Then: `invoke_hyde` → `search_candidates` → `deduplicate` → `evaluate_candidates` → `persist_opportunities` → END.
-- **Exports**: `OpportunityGraph`, `OpportunityGraphDependencies`, `CompiledHydeGraph`, `EvaluatedOpportunityForPersist`.
+- **OpportunityGraphFactory**: constructor(database, embedder, hydeGenerator, optionalEvaluator?). Public method: `createGraph()` — builds a `StateGraph` with six nodes and conditional edges, returns the compiled graph.
+- **Nodes**: `prep`, `scope`, `discovery`, `evaluation`, `ranking`, `persist`.
+- **Conditional routing**: After `prep`, if `error` or no `indexedIntents` → END. After `scope`, if `error` or no `targetIndexes` → END. Otherwise linear: discovery → evaluation → ranking → persist → END.
 
 ## Related
 
-- **HyDE graph**: Used to produce embeddings from `sourceText`; see [hyde/README.md](./hyde/README.md).
+- [Latent Opportunity Lifecycle](../docs/Latent%20Opportunity%20Lifecycle.md) — lifecycle (latent → pending), constraints, chat tools
+- **HyDE graph**: Used to produce query embeddings; see [hyde/README.md](../hyde/README.md).
 - **OpportunityEvaluator**: `agents/opportunity/opportunity.evaluator.ts`
-- **Opportunity controller**: `src/controllers/opportunity.controller.ts` — POST `/opportunities/discover`
+- **Opportunity controller**: `src/controllers/opportunity.controller.ts`
