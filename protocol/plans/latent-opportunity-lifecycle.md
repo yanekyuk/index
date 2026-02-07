@@ -399,11 +399,11 @@ Also add `sendOpportunity` to the returned tools array in `createChatTools`.
   - [x] Kept `discover.nodes.ts` as thin wrapper (CRUD principle)
 - [x] Step 5: `send_opportunity` chat tool implemented *(completed)*
 - [x] Step 6: Remove `create_opportunity_between_members` tool (unified approach) *(completed)*
-- [ ] Step 7: System prompt guidance for complex request handling
-  - [ ] Update `chat.agent.ts` with comprehensive guidelines
-  - [ ] Add index-scoped search constraints explanation
-  - [ ] Add complex query handling examples
-  - [ ] Update streaming labels in `chat.streaming.ts`
+- [x] Step 7: System prompt guidance for complex request handling *(completed)*
+  - [x] Update `chat.agent.ts` with comprehensive guidelines
+  - [x] Add index-scoped search constraints explanation
+  - [x] Add complex query handling examples
+  - [x] Update streaming labels in `chat.streaming.ts`
 - [ ] Step 8: Tests and documentation
   - [ ] Create `opportunity.graph.spec.ts` with node tests
   - [ ] Update `opportunity/README.md` with new architecture
