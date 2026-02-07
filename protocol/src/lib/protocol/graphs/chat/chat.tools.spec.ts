@@ -1,9 +1,15 @@
 /**
- * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, etc.).
+ * Unit tests for chat tools (createChatTools, read_intents, read_indexes, read_users, create_opportunities, send_opportunity, etc.).
  */
 /** Config */
 import { config } from "dotenv";
 config({ path: '.env.test' });
+
+import { mock } from "bun:test";
+mock.module("../../../../queues/notification.queue", () => ({
+  queueOpportunityNotification: async () =>
+    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../queues/notification.queue").queueOpportunityNotification>>),
+}));
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { createChatTools, type ToolContext } from "./chat.tools";
@@ -16,7 +22,7 @@ const testUserId = "test-user-id-for-tools";
 
 type MockOverrides = Partial<Pick<
   ChatGraphCompositeDatabase,
-  "getUser" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexIntentsForMember" | "getIndexWithPermissions"
+  "getUser" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexIntentsForMember" | "getIndexWithPermissions" | "getOpportunity" | "updateOpportunityStatus"
 >>;
 
 /**
@@ -75,6 +81,7 @@ function createMockDatabase(
     getIndexMemberCount: async () => 0,
     createIndex: async () => ({ id: "", title: "", prompt: null, permissions: { joinPolicy: "invite_only" as const, invitationLink: null, allowGuestVibeCheck: false } }),
     addMemberToIndex: async () => ({ success: true }),
+    getOpportunity: noopNull,
     updateOpportunityStatus: noopNull,
   };
   return { ...base, ...overrides } as unknown as ChatGraphCompositeDatabase;
@@ -604,5 +611,142 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
     expect(parsed.error).toContain("not in the current index");
+  });
+});
+
+describe("create_opportunities tool", () => {
+  test("returns a tool named create_opportunities with schema containing searchQuery and optional indexId", () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities");
+    expect(tool).toBeDefined();
+    const schema = (tool as { schema?: { shape?: Record<string, unknown> } }).schema;
+    const shape = schema?.shape ?? (tool as { schema?: { schema?: { shape?: Record<string, unknown> } } }).schema?.schema?.shape;
+    expect(shape?.searchQuery).toBeDefined();
+    expect(shape?.indexId).toBeDefined();
+  });
+
+  test("when user has no index memberships (getIndexMemberships returns []), returns found false with message about joining an index", async () => {
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as { invoke: (args: { searchQuery: string; indexId?: string }) => Promise<string> };
+    const result = await tool.invoke({ searchQuery: "Find a co-founder" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(false);
+    expect(parsed.data.message).toMatch(/join|index|community/i);
+  });
+});
+
+describe("send_opportunity tool", () => {
+  const opportunityId = "opp-123";
+
+  test("when opportunity is latent and user is actor, promotes to pending and returns sent true", async () => {
+    const latentOpportunity = {
+      id: opportunityId,
+      status: "latent" as const,
+      actors: [
+        { role: "party" as const, identityId: testUserId, intents: [], profile: true },
+        { role: "party" as const, identityId: "other-user-id", intents: [], profile: true },
+      ],
+      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+      interpretation: { category: "collaboration", summary: "Match", confidence: 0.8 },
+      context: { indexId: "idx-1" },
+      indexId: "idx-1",
+      confidence: "0.8",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+    const updateStatusSpy = mock(async () => null);
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunity: async () => latentOpportunity,
+      updateOpportunityStatus: updateStatusSpy,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "send_opportunity") as { invoke: (args: { opportunityId: string }) => Promise<string> };
+    const result = await tool.invoke({ opportunityId });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.sent).toBe(true);
+    expect(parsed.data.opportunityId).toBe(opportunityId);
+    expect(parsed.data.notified).toContain("other-user-id");
+    expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, "pending");
+  });
+
+  test("when opportunity not found, returns error", async () => {
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunity: async () => null,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "send_opportunity") as { invoke: (args: { opportunityId: string }) => Promise<string> };
+    const result = await tool.invoke({ opportunityId: "non-existent" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain("Opportunity not found");
+  });
+
+  test("when opportunity status is not latent, returns error", async () => {
+    const pendingOpportunity = {
+      id: opportunityId,
+      status: "pending" as const,
+      actors: [
+        { role: "party" as const, identityId: testUserId, intents: [], profile: true },
+        { role: "party" as const, identityId: "other-user-id", intents: [], profile: true },
+      ],
+      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+      interpretation: { category: "collaboration", summary: "Match", confidence: 0.8 },
+      context: { indexId: "idx-1" },
+      indexId: "idx-1",
+      confidence: "0.8",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunity: async () => pendingOpportunity,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "send_opportunity") as { invoke: (args: { opportunityId: string }) => Promise<string> };
+    const result = await tool.invoke({ opportunityId });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/already|draft|latent/i);
+  });
+
+  test("when user is not part of the opportunity, returns error", async () => {
+    const opportunityWithoutUser = {
+      id: opportunityId,
+      status: "latent" as const,
+      actors: [
+        { role: "party" as const, identityId: "user-a", intents: [], profile: true },
+        { role: "party" as const, identityId: "user-b", intents: [], profile: true },
+      ],
+      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+      interpretation: { category: "collaboration", summary: "Match", confidence: 0.8 },
+      context: { indexId: "idx-1" },
+      indexId: "idx-1",
+      confidence: "0.8",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunity: async () => opportunityWithoutUser,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "send_opportunity") as { invoke: (args: { opportunityId: string }) => Promise<string> };
+    const result = await tool.invoke({ opportunityId });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain("not part of this opportunity");
   });
 });
