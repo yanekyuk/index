@@ -258,6 +258,28 @@ export class IndexController {
   }
 
   /**
+   * Get current user's member settings (permissions and ownership status).
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/:id/member-settings')
+  @UseGuards(AuthGuard)
+  async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      const settings = await indexService.getMemberSettings(params.id, user.id);
+      logger.info('Member settings retrieved', { indexId: params.id, userId: user.id });
+      return Response.json(settings);
+    } catch (err: any) {
+      if (err?.message?.includes('Not a member')) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Leave an index. Members (non-owners) can leave.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */

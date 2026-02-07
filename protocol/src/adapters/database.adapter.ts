@@ -1343,6 +1343,28 @@ export class ChatDatabaseAdapter {
     return rows.length > 0;
   }
 
+  async getMemberSettings(indexId: string, userId: string): Promise<{ permissions: string[]; isOwner: boolean } | null> {
+    const rows = await db
+      .select({ permissions: indexMembers.permissions })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(
+          eq(indexMembers.indexId, indexId),
+          eq(indexMembers.userId, userId),
+          isNull(indexes.deletedAt)
+        )
+      )
+      .limit(1);
+    
+    if (rows.length === 0) return null;
+    
+    const permissions = rows[0]?.permissions || [];
+    const isOwner = permissions.includes('owner');
+    
+    return { permissions, isOwner };
+  }
+
   async getIndexIntentsForMember(
     indexId: string,
     requestingUserId: string,

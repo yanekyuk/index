@@ -138,6 +138,18 @@ export class IndexService {
     logger.info('[IndexService] Leaving index', { indexId, userId });
     await this.adapter.leaveIndex(indexId, userId);
   }
+
+  /**
+   * Get current user's member settings (permissions and ownership status).
+   */
+  async getMemberSettings(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting member settings', { indexId, userId });
+    const settings = await this.adapter.getMemberSettings(indexId, userId);
+    if (!settings) {
+      throw new Error('Not a member of this index');
+    }
+    return settings;
+  }
 }
 
 export const indexService = new IndexService();
