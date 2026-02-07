@@ -81,7 +81,7 @@ Bun.serve({
     }
 
     // Health check endpoint
-    if (url.pathname === '/health' && method === 'GET') {
+    if (url.pathname === '/health') {
       return Response.json(
         {
           status: 'ok',
