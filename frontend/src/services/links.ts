@@ -1,6 +1,3 @@
-import { useAuthenticatedAPI } from '../lib/api';
-import { useMemo } from 'react';
-
 export interface LinkRecord {
   id: string;
   url: string;
@@ -19,7 +16,7 @@ export interface LinkContentResponse {
   lastSyncAt?: string | null;
 }
 
-export const createLinksService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
+export const createLinksService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all links
   getLinks: async (): Promise<LinkRecord[]> => {
     const res = await api.get<{ links: LinkRecord[] }>('/links');
@@ -42,9 +39,3 @@ export const createLinksService = (api: ReturnType<typeof useAuthenticatedAPI>) 
     return await api.get<LinkContentResponse>(`/links/${linkId}/content`);
   }
 });
-
-export function useLinksService() {
-  const api = useAuthenticatedAPI();
-  return useMemo(() => createLinksService(api), [api]);
-}
-

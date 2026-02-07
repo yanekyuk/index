@@ -27,8 +27,3 @@ export const createAdminService = (api: ReturnType<typeof import('../lib/api').u
     return await api.post<OpportunityDiscoveryResponse>(`/admin/${indexId}/opportunities`, request);
   }
 });
-
-// Hook for using admin service
-export function useAdminService() {
-  return createAdminService;
-}

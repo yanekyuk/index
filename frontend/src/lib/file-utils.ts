@@ -29,24 +29,4 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
   // Relative path (e.g., "avatars/userId/file.jpg") - prepend /storage/
   const cleanPath = avatar.startsWith('/') ? avatar.slice(1) : avatar;
   return `/storage/${cleanPath}`;
-};
-
-
-/**
- * Extract file extension from filename
- * @param filename - The filename
- * @returns File extension including the dot (e.g., ".pdf")
- */
-export const getFileExtension = (filename: string): string => {
-  const lastDot = filename.lastIndexOf('.');
-  return lastDot !== -1 ? filename.slice(lastDot) : '';
-};
-
-/**
- * Check if a URL is external (starts with http/https)
- * @param url - URL to check
- * @returns True if external URL
- */
-export const isExternalUrl = (url: string): boolean => {
-  return url.startsWith('http://') || url.startsWith('https://');
 }; 

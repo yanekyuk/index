@@ -7,9 +7,4 @@ export const createSynthesisService = (api: ReturnType<typeof import('../lib/api
     const response = await api.post<SynthesisResponse>('/synthesis/vibecheck', request);
     return response;
   }
-});
-
-// Hook for using synthesis service
-export function useSynthesisService() {
-  return createSynthesisService;
-} 
+}); 
