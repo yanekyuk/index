@@ -80,6 +80,18 @@ Bun.serve({
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
+    // Health check endpoint
+    if (url.pathname === '/health' && method === 'GET') {
+      return Response.json(
+        {
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          service: 'protocol-v2',
+        },
+        { headers: corsHeaders }
+      );
+    }
+
     // Iterate over controllers and routes to find a match.
     // Optimization: could pre-compile regular expressions or a router map.
     // For now, simple iteration is fine for small number of routes.
