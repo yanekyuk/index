@@ -51,9 +51,9 @@ async function createUser(account: TestAccount): Promise<{ id: string }> {
   const privyId = await ensurePrivyIdentity(account.email);
 
   const socials = {
-    linkedin: account.linkedin,
-    github: account.github,
-    x: account.x,
+    linkedin: account.linkedin ?? undefined,
+    github: account.github ?? undefined,
+    x: account.x ?? undefined,
     websites: account.website ? [account.website] : [],
   };
 
