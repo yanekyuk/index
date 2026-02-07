@@ -7,9 +7,9 @@ import {
 } from "./index.graph.state";
 import { IntentIndexer } from "../../agents/index/intent.indexer";
 import { IndexGraphDatabase } from "../../interfaces/database.interface";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 
-const logger = log.protocol.from("IndexGraphFactory");
+const logger = protocolLogger("IndexGraphFactory");
 const QUALIFICATION_THRESHOLD = 0.7;
 
 /**
