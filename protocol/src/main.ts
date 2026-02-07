@@ -35,7 +35,7 @@ function matchPath(pattern: string, pathname: string): Record<string, string> | 
   return params;
 }
 
-logger.info('Initializing V2 Server...');
+logger.info('Initializing Server...');
 
 // Manually instantiate controllers if needed, or just let strict import handle registration (depends on how decorator works vs instantiation).
 // The decorators run when the class is defined (imported).
@@ -182,4 +182,4 @@ Bun.serve({
   },
 });
 
-logger.info('V2 Server running', { port: PORT });
+logger.info('Server running', { port: PORT });

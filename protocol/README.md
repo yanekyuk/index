@@ -8,10 +8,7 @@ Backend API and agent engine for Index Network: Bun runtime, Express.js, Drizzle
 # Install dependencies (from repo root)
 bun install
 
-# Development: Express server with hot reload (default)
-bun run dev
-
-# Development: V2 server (Bun.serve, port 3001)
+# Development: Bun server (Bun.serve, port 3001)
 bun run dev
 
 # Database
