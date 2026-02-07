@@ -111,7 +111,6 @@ export class ChatGraphFactory {
         originalCount: messages.length,
         truncatedCount: truncatedMessages.length,
       });
-
       return truncatedMessages;
     } catch (error) {
       logger.error("Failed to load context", {
@@ -207,7 +206,6 @@ export class ChatGraphFactory {
           iterations: result.iterationCount,
           responseLength: result.responseText.length
         });
-
         return {
           messages: result.messages,
           responseText: result.responseText,

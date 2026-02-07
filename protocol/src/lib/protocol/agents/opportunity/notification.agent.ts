@@ -26,18 +26,18 @@ export function decideNotificationPriority(input: NotificationPriorityInput): No
   const { confidence, category } = input;
   const normalizedCategory = (category ?? 'collaboration').toLowerCase();
 
+  let result: NotificationPriority;
   if (confidence >= HIGH_CONFIDENCE_THRESHOLD) {
-    return 'immediate';
+    result = 'immediate';
+  } else {
+    const highSignalCategories = ['hiring', 'investment', 'mentorship'];
+    if (highSignalCategories.some((c) => normalizedCategory.includes(c)) && confidence >= EMAIL_THRESHOLD) {
+      result = 'high';
+    } else if (confidence >= EMAIL_THRESHOLD) {
+      result = 'high';
+    } else {
+      result = 'low';
+    }
   }
-
-  const highSignalCategories = ['hiring', 'investment', 'mentorship'];
-  if (highSignalCategories.some((c) => normalizedCategory.includes(c)) && confidence >= EMAIL_THRESHOLD) {
-    return 'high';
-  }
-
-  if (confidence >= EMAIL_THRESHOLD) {
-    return 'high';
-  }
-
-  return 'low';
+  return result;
 }

@@ -102,7 +102,6 @@ export async function createCheckpointer(
 
   const checkpointer = PostgresSaver.fromConnString(connStr);
   await checkpointer.setup();
-
   logger.info("[createCheckpointer] PostgresSaver setup complete");
   return checkpointer;
 }

@@ -166,7 +166,6 @@ export class ChatGraphStreamingService {
         if (event.event === "on_tool_start") {
           const toolName = event.name || "unknown_tool";
           const toolArgs = event.data?.input || {};
-
           logger.info("Tool starting", { toolName, args: toolArgs });
 
           // Emit tool start event
