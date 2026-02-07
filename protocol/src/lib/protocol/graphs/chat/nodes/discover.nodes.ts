@@ -5,7 +5,7 @@
  * graph with the query as sourceText and those strategies, then returns
  * formatted candidates (enriched with profile name/bio) for chat display.
  *
- * Used by the find_opportunities chat tool.
+ * Used by the create_opportunities chat tool.
  */
 
 import type { Opportunity } from "../../../interfaces/database.interface";
@@ -108,6 +108,7 @@ export async function runDiscoverFromQuery(
         hydeDescription: query,
         strategies,
         limit,
+        initialStatus: 'latent',
       },
     });
 

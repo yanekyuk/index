@@ -36,7 +36,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   delete_index: "Deleting index...",
   create_index_membership: "Adding member...",
   read_users: "Fetching members...",
-  find_opportunities: "Searching for opportunities...",
+  create_opportunities: "Creating draft opportunities...",
   list_my_opportunities: "Listing your opportunities...",
   create_opportunity_between_members: "Creating suggested connection...",
   scrape_url: "Reading web content...",

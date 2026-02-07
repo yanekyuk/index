@@ -1166,10 +1166,10 @@ export function createChatTools(context: ToolContext) {
   // DISCOVERY TOOLS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const findOpportunities = tool(
+  const createOpportunities = tool(
     async (args: { searchQuery: string; indexId?: string }) => {
       const effectiveIndexId = (args.indexId?.trim() || context.indexId?.trim()) ?? null;
-      logger.info("Tool: find_opportunities", { userId, query: args.searchQuery.substring(0, 50), indexScope: effectiveIndexId ?? "all" });
+      logger.info("Tool: create_opportunities", { userId, query: args.searchQuery.substring(0, 50), indexScope: effectiveIndexId ?? "all" });
 
       try {
         let indexScope: string[];
@@ -1210,14 +1210,14 @@ export function createChatTools(context: ToolContext) {
           opportunities: result.opportunities ?? [],
         });
       } catch (err) {
-        logger.error("find_opportunities failed", { error: err });
+        logger.error("create_opportunities failed", { error: err });
         return error("Failed to search for opportunities. Please try again.");
       }
     },
     {
-      name: "find_opportunities",
+      name: "create_opportunities",
       description:
-        "Searches for relevant connections and opportunities. Returns concise summaries (name, short bio, match reason, score). For full details use list_my_opportunities. When the chat is scoped to an index, search is limited to that index unless you pass a different index or omit index scope.",
+        "Creates draft (latent) opportunities by searching for relevant connections. Pass searchQuery and optional indexId (UUID). Returns concise summaries (name, short bio, match reason, score). Results are saved as drafts; use send_opportunity to notify the other person when ready. For full details use list_my_opportunities. When the chat is scoped to an index, search is limited to that index unless you pass a different index or omit index scope.",
       schema: z.object({
         searchQuery: z.string().describe("What kind of connections or opportunities to search for"),
         indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
@@ -1248,7 +1248,7 @@ export function createChatTools(context: ToolContext) {
         if (list.length === 0) {
           return success({
             count: 0,
-            message: "You have no opportunities yet. Use find_opportunities to search for connections, or ask someone to suggest a connection for you.",
+            message: "You have no opportunities yet. Use create_opportunities to search for connections, or ask someone to suggest a connection for you.",
             opportunities: [],
           });
         }
@@ -1600,7 +1600,7 @@ export function createChatTools(context: ToolContext) {
     deleteIndex,
     createIndexMembership,
     readUsers,
-    findOpportunities,
+    createOpportunities,
     listMyOpportunities,
     createOpportunityBetweenMembers,
     scrapeUrl,
