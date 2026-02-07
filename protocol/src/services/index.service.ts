@@ -35,6 +35,9 @@ export class IndexService {
     await this.adapter.addMemberToIndex(index.id, userId, 'owner');
     // Fetch the full index details with user and member count
     const fullIndex = await this.adapter.getIndexDetail(index.id, userId);
+    if (!fullIndex) {
+      throw new Error('Failed to create index');
+    }
     return fullIndex;
   }
 
@@ -109,6 +112,31 @@ export class IndexService {
       permissions: m.permissions,
       createdAt: m.joinedAt,
     }));
+  }
+
+  /**
+   * Get public indexes that the user has not joined (for discovery).
+   */
+  async getPublicIndexes(userId: string) {
+    logger.info('[IndexService] Getting public indexes for user', { userId });
+    return this.adapter.getPublicIndexesNotJoined(userId);
+  }
+
+  /**
+   * Join a public index.
+   */
+  async joinPublicIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Joining public index', { indexId, userId });
+    await this.adapter.joinPublicIndex(indexId, userId);
+    return this.adapter.getIndexDetail(indexId, userId);
+  }
+
+  /**
+   * Leave an index. Members (non-owners) can leave.
+   */
+  async leaveIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Leaving index', { indexId, userId });
+    await this.adapter.leaveIndex(indexId, userId);
   }
 }
 

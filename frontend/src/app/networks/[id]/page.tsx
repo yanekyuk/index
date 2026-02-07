@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2 } from 'lucide-react';
+import * as Tabs from '@radix-ui/react-tabs';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import JoinedNetworkPanel from '@/components/JoinedNetworkPanel';
@@ -24,6 +25,7 @@ export default function NetworkDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [activeTab, setActiveTab] = useState<'settings' | 'access' | 'integrations'>('settings');
   const isCheckingOwnership = useRef(false);
 
   // Memoized function to check ownership
@@ -131,7 +133,40 @@ export default function NetworkDetailPage() {
             </div>
           ) : network ? (
             isOwner ? (
-              <NetworkSettingsPanel index={network} onDeleted={handleDeleted} />
+              <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+                <Tabs.List className="flex border-b border-gray-200 mb-6">
+                  <Tabs.Trigger 
+                    value="settings" 
+                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+                  >
+                    Settings
+                  </Tabs.Trigger>
+                  <Tabs.Trigger 
+                    value="access" 
+                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+                  >
+                    Access
+                  </Tabs.Trigger>
+                  <Tabs.Trigger 
+                    value="integrations" 
+                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+                  >
+                    Integrations
+                  </Tabs.Trigger>
+                </Tabs.List>
+
+                <Tabs.Content value="settings">
+                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="settings" />
+                </Tabs.Content>
+
+                <Tabs.Content value="access">
+                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="access" />
+                </Tabs.Content>
+
+                <Tabs.Content value="integrations">
+                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="integrations" />
+                </Tabs.Content>
+              </Tabs.Root>
             ) : (
               <JoinedNetworkPanel index={network} onLeft={handleLeft} />
             )

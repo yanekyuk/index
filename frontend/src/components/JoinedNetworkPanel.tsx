@@ -75,13 +75,6 @@ export default function JoinedNetworkPanel({ index, onLeft }: JoinedNetworkPanel
           </div>
         </div>
 
-        {index.prompt && (
-          <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Description</h3>
-            <p className="text-sm text-gray-600 p-3 border border-gray-200 rounded-sm bg-gray-50">{index.prompt}</p>
-          </div>
-        )}
-
         <div className="pt-6 border-t border-gray-200">
           <h3 className="text-sm font-medium text-gray-900 mb-3">Membership</h3>
           <div className="flex items-center justify-between p-3 border border-gray-200 rounded-sm">

@@ -55,6 +55,63 @@ export function createIndexesServiceV2(getAccessToken: () => Promise<string | nu
         pagination: data.pagination ?? { current: 1, total: 0, count: 0, totalCount: 0 },
       };
     },
+
+    /**
+     * Get public indexes that the user has not joined (for discovery).
+     * GET /indexes/discovery/public
+     */
+    getPublicIndexes: async (): Promise<PaginatedResponse<Index>> => {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const res = await v2Fetch('/indexes/discovery/public', { method: 'GET', accessToken: token });
+
+      if (!res.ok) {
+        let message = res.statusText;
+        try {
+          const data = (await res.json()) as { error?: string };
+          message = data.error ?? message;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+
+      const data = (await res.json()) as IndexListV2Response;
+      return {
+        data: data.indexes ?? [],
+        pagination: data.pagination ?? { current: 1, total: 0, count: 0, totalCount: 0 },
+      };
+    },
+
+    /**
+     * Join a public index.
+     * POST /indexes/:id/join
+     */
+    joinPublicIndex: async (indexId: string): Promise<Index> => {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Not authenticated');
+
+      const res = await v2Fetch(`/indexes/${indexId}/join`, { 
+        method: 'POST', 
+        accessToken: token,
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!res.ok) {
+        let message = res.statusText;
+        try {
+          const data = (await res.json()) as { error?: string };
+          message = data.error ?? message;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+
+      const data = (await res.json()) as { index: Index };
+      return data.index;
+    },
   };
 }
 

@@ -5,10 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useUsers, useDiscover } from "@/contexts/APIContext";
+import { useUsers } from "@/contexts/APIContext";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { User } from "@/lib/types";
-import { DiscoverStake } from "@/services/discover";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 
@@ -23,10 +22,8 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
-  const discoverService = useDiscover();
 
   const [profileData, setProfileData] = useState<User | null>(null);
-  const [mutualIntents, setMutualIntents] = useState<DiscoverStake[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +34,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     }
   }, [authLoading, isAuthenticated, router]);
 
-  // Fetch user profile and mutual intents
+  // Fetch user profile
   useEffect(() => {
     const fetchData = async () => {
       if (!isAuthenticated || authLoading) return;
@@ -46,21 +43,8 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
         setIsLoading(true);
         setError(null);
 
-        // Fetch profile and intents in parallel
-        const [profile, discoverData] = await Promise.all([
-          usersService.getUserProfile(resolvedParams.id),
-          discoverService.discoverUsers({
-            userIds: [resolvedParams.id],
-            excludeDiscovered: false,
-            limit: 50
-          })
-        ]);
-
+        const profile = await usersService.getUserProfile(resolvedParams.id);
         setProfileData(profile);
-
-        // Extract intents from discover results
-        const userResult = discoverData.results?.find(r => r.user.id === resolvedParams.id);
-        setMutualIntents(userResult?.intents || []);
 
       } catch (err) {
         console.error('Failed to fetch profile:', err);
@@ -71,7 +55,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
     };
 
     fetchData();
-  }, [resolvedParams.id, isAuthenticated, authLoading, usersService, discoverService]);
+  }, [resolvedParams.id, isAuthenticated, authLoading, usersService]);
 
   // Loading state
   if (authLoading || isLoading) {
@@ -213,26 +197,6 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 <p className="text-sm text-gray-700 leading-relaxed font-ibm-plex-mono whitespace-pre-wrap">
                   {profileData.intro}
                 </p>
-              </div>
-            )}
-
-            {/* Mutual Intents Section */}
-            {mutualIntents.length > 0 && (
-              <div>
-                <h3 className="text-base font-bold text-gray-900 mb-3 font-ibm-plex-mono">
-                  Mutual Intents
-                </h3>
-                <div className="flex flex-wrap gap-2">
-                  {mutualIntents.map((stake) => (
-                    <button
-                      key={stake.intent.id}
-                      onClick={() => router.push(`/i/${stake.intent.id}`)}
-                      className="px-3 py-1.5 bg-[#E3F2FD] hover:bg-[#BBDEFB] transition-colors rounded-sm text-[#1976D2] text-sm font-ibm-plex-mono"
-                    >
-                      {stake.intent.summary || stake.intent.payload}
-                    </button>
-                  ))}
-                </div>
               </div>
             )}
         </ContentContainer>

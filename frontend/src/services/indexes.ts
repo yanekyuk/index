@@ -55,7 +55,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Discover public indexes (indexes that anyone can join)
   discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index & { isMember?: boolean }>> => {
-    const response = await api.get<APIResponse<Index & { isMember?: boolean }>>(`/indexes/discover/public?page=${page}&limit=${limit}`);
+    const response = await api.get<APIResponse<Index & { isMember?: boolean }>>(`/indexes/discovery/public?page=${page}&limit=${limit}`);
     return {
       data: response.indexes || [],
       pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }

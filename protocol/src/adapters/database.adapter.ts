@@ -886,6 +886,90 @@ export class ChatDatabaseAdapter {
     };
   }
 
+  /**
+   * Get public indexes that the user has not joined (for discovery).
+   */
+  async getPublicIndexesNotJoined(userId: string) {
+    const userIndexIds = await db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .where(eq(schema.indexMembers.userId, userId));
+    
+    const excludeIds = userIndexIds.map(r => r.indexId);
+    
+    const whereConditions = [
+      isNull(schema.indexes.deletedAt),
+      eq(schema.indexes.isPersonal, false)
+    ];
+    
+    if (excludeIds.length > 0) {
+      whereConditions.push(notInArray(schema.indexes.id, excludeIds));
+    }
+
+    const publicIndexes = await db
+      .select({
+        id: schema.indexes.id,
+        title: schema.indexes.title,
+        prompt: schema.indexes.prompt,
+        createdAt: schema.indexes.createdAt,
+        permissions: schema.indexes.permissions,
+      })
+      .from(schema.indexes)
+      .where(and(...whereConditions))
+      .orderBy(desc(schema.indexes.createdAt));
+
+    const result = [];
+    for (const row of publicIndexes) {
+      const perms = (row.permissions as { joinPolicy?: string } | null);
+      if (perms?.joinPolicy !== 'anyone') continue;
+
+      const [ownerMember] = await db
+        .select({
+          userId: schema.indexMembers.userId,
+          userName: schema.users.name,
+          userAvatar: schema.users.avatar,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+        .where(
+          and(
+            eq(schema.indexMembers.indexId, row.id),
+            sql`'owner' = ANY(${schema.indexMembers.permissions})`
+          )
+        )
+        .limit(1);
+
+      const [countResult] = await db
+        .select({ count: count() })
+        .from(schema.indexMembers)
+        .where(eq(schema.indexMembers.indexId, row.id));
+
+      result.push({
+        id: row.id,
+        title: row.title,
+        prompt: row.prompt,
+        createdAt: row.createdAt,
+        permissions: row.permissions,
+        memberCount: Number(countResult?.count ?? 0),
+        user: ownerMember ? {
+          id: ownerMember.userId,
+          name: ownerMember.userName,
+          avatar: ownerMember.userAvatar,
+        } : null,
+      });
+    }
+
+    return {
+      indexes: result,
+      pagination: {
+        current: 1,
+        total: result.length > 0 ? 1 : 0,
+        count: result.length,
+        totalCount: result.length,
+      },
+    };
+  }
+
   async getUserIndexIds(userId: string): Promise<string[]> {
     try {
       const result = await db
@@ -1647,6 +1731,48 @@ export class ChatDatabaseAdapter {
 
     if (deleted.length === 0) {
       throw new Error('Member not found');
+    }
+  }
+
+  /**
+   * Join a public index (anyone can join if joinPolicy is 'anyone').
+   */
+  async joinPublicIndex(indexId: string, userId: string) {
+    const [index] = await db
+      .select({ permissions: indexes.permissions, deletedAt: indexes.deletedAt })
+      .from(indexes)
+      .where(eq(indexes.id, indexId))
+      .limit(1);
+
+    if (!index || index.deletedAt) {
+      throw new Error('Index not found');
+    }
+
+    const perms = (index.permissions as { joinPolicy?: string } | null);
+    if (perms?.joinPolicy !== 'anyone') {
+      throw new Error('This index is not public');
+    }
+
+    return await this.addMemberToIndex(indexId, userId, 'member');
+  }
+
+  /**
+   * Leave an index. Members (non-owners) can leave an index.
+   * Owners cannot leave their own index.
+   */
+  async leaveIndex(indexId: string, userId: string) {
+    const isOwner = await this.isIndexOwner(indexId, userId);
+    if (isOwner) {
+      throw new Error('Cannot leave an index you own. Delete the index instead.');
+    }
+
+    const deleted = await db
+      .delete(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+      .returning({ userId: indexMembers.userId });
+
+    if (deleted.length === 0) {
+      throw new Error('You are not a member of this index');
     }
   }
 

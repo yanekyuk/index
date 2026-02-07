@@ -197,6 +197,18 @@ export class IndexController {
   }
 
   /**
+   * Get public indexes that the user has not joined (discovery).
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/discovery/public')
+  @UseGuards(AuthGuard)
+  async getPublicIndexes(_req: Request, user: AuthenticatedUser) {
+    const result = await indexService.getPublicIndexes(user.id);
+    logger.info('Public indexes listed for user', { userId: user.id, count: result.indexes.length });
+    return Response.json(result);
+  }
+
+  /**
    * Delete (soft-delete) an index. Owner-only.
    */
   @Delete('/:id')
@@ -218,7 +230,64 @@ export class IndexController {
   }
 
   /**
+   * Join a public index.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Post('/:id/join')
+  @UseGuards(AuthGuard)
+  async joinPublicIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      const index = await indexService.joinPublicIndex(params.id, user.id);
+      logger.info('User joined public index', { indexId: params.id, userId: user.id });
+      return Response.json({ index });
+    } catch (err: any) {
+      if (err?.message?.includes('not found')) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (err?.message?.includes('not public')) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Leave an index. Members (non-owners) can leave.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Post('/:id/leave')
+  @UseGuards(AuthGuard)
+  async leaveIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await indexService.leaveIndex(params.id, user.id);
+      logger.info('User left index', { indexId: params.id, userId: user.id });
+      return Response.json({ success: true });
+    } catch (err: any) {
+      if (err?.message?.includes('not found') || err?.message?.includes('not a member')) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (err?.message?.includes('Cannot leave')) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Get a single index by ID with owner info and member count. Members-only.
+   * IMPORTANT: This must come AFTER specific routes like /discovery/public and /:id/join.
    */
   @Get('/:id')
   @UseGuards(AuthGuard)

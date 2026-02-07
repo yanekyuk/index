@@ -4,6 +4,7 @@ import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { chatSessionService } from '../services/chat.service';
 import { fileService } from '../services/file.service';
+import { userService } from '../services/user.service';
 import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming';
 
 const logger = log.controller.from("chat");
@@ -23,6 +24,35 @@ export class ChatController {
   async token(_req: Request, user: AuthenticatedUser) {
     const token = streamServerClient.createToken(user.id);
     return Response.json({ token });
+  }
+
+  /**
+   * Check if the authenticated user can send a message to another user.
+   * Returns true if there's an existing connection event between the users.
+   *
+   * @param req - The HTTP request object with URL containing userId path parameter
+   * @param user - The authenticated user from AuthGuard
+   * @returns JSON response with canMessage boolean
+   */
+  @Get('/can-message/:userId')
+  @UseGuards(AuthGuard)
+  async canMessage(req: Request, user: AuthenticatedUser) {
+    // Extract userId from URL path
+    const url = new URL(req.url);
+    const pathSegments = url.pathname.split('/');
+    const targetUserId = pathSegments[pathSegments.length - 1];
+
+    if (!targetUserId) {
+      return Response.json(
+        { error: 'Target user ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Check if connection exists between authenticated user and target user
+    const hasConnection = await userService.checkConnectionEvent(user.id, targetUserId);
+
+    return Response.json({ canMessage: hasConnection });
   }
 
   /**
