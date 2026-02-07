@@ -15,7 +15,7 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 // Opportunity redesign: lifecycle status (message-first: accepted = B replied, rejected = B skipped)
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['pending', 'viewed', 'accepted', 'rejected', 'expired']);
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'pending', 'viewed', 'accepted', 'rejected', 'expired']);
 // Onboarding state type
 export interface OnboardingState {
   completedAt?: string;  // ISO timestamp when completed

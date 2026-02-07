@@ -65,6 +65,7 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
     isIntentAssignedToIndex: noopBool,
     assignIntentToIndex: noop,
     unassignIntentFromIndex: noop,
+    getIndexIdsForIntent: noopArray,
     getOwnedIndexes: noopArray,
     isIndexOwner: noopBool,
     getIndexMembersForOwner: noopArray,

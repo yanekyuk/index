@@ -171,7 +171,7 @@ export class ChatController {
     // Capture for closure
     const sessionId = currentSessionId;
     const factory = chatSessionService.getGraphFactory();
-    const useCheckpointer = body.useCheckpointer ?? false;
+    const useCheckpointer = body.useCheckpointer ?? true;
     const indexIdForStream = effectiveIndexId;
 
     // User message is persisted after the stream completes (with the assistant response) so that

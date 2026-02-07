@@ -1106,6 +1106,14 @@ export class ChatDatabaseAdapter {
       );
   }
 
+  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+    const rows = await db
+      .select({ indexId: intentIndexes.indexId })
+      .from(intentIndexes)
+      .where(eq(intentIndexes.intentId, intentId));
+    return rows.map((r) => r.indexId);
+  }
+
   // HyDE document operations (delegate to HydeDatabaseAdapter)
   async getHydeDocument(
     sourceType: 'intent' | 'profile' | 'query',
@@ -1867,7 +1875,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
@@ -2003,7 +2011,7 @@ interface OpportunityRow {
   context: schema.OpportunityContext;
   indexId: string;
   confidence: string;
-  status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -2017,7 +2025,7 @@ interface CreateOpportunityInput {
   context: schema.OpportunityContext;
   indexId: string;
   confidence: string;
-  status?: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status?: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
 }
 
@@ -2120,7 +2128,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     const [row] = await db
       .update(opportunities)
@@ -2275,6 +2283,14 @@ export class IndexGraphDatabaseAdapter {
           eq(intentIndexes.indexId, indexId)
         )
       );
+  }
+
+  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+    const rows = await db
+      .select({ indexId: intentIndexes.indexId })
+      .from(intentIndexes)
+      .where(eq(intentIndexes.intentId, intentId));
+    return rows.map((r) => r.indexId);
   }
 
   /**

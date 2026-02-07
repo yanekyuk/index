@@ -1,88 +1,60 @@
 /**
- * Opportunity Graph: spec-driven tests with Smartest.
- * The graph finds opportunities (matches between a source user and candidates) via
- * HyDE-based search, deduplication, evaluation, and persistence.
- *
- * Scenarios use Smartest to generate input data (source profile, query) and to
- * validate output shape and semantics (opportunities with detection, actors, interpretation).
+ * Opportunity Graph: tests for the refactored linear workflow.
+ * Flow: Prep → Scope → Discovery → Evaluation → Ranking → Persist.
+ * Invoke API: { userId, searchQuery?, indexId?, options }.
  */
 /** Config */
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, test, expect, spyOn, beforeAll } from 'bun:test';
-import { z } from 'zod';
-import { runScenario, defineScenario, expectSmartest } from '../../../smartest';
-import { OpportunityGraph, type CompiledHydeGraph } from './opportunity.graph';
+import { describe, test, expect, spyOn } from 'bun:test';
+import { OpportunityGraphFactory, type OpportunityEvaluatorLike } from './opportunity.graph';
 import type { Id } from '../../../../types/common.types';
 import type {
   OpportunityGraphDatabase,
   OpportunityActor,
 } from '../../interfaces/database.interface';
 import type { Embedder } from '../../interfaces/embedder.interface';
-import type { HydeCache } from '../../interfaces/cache.interface';
 import type { CandidateProfile } from '../../agents/opportunity/opportunity.evaluator';
-import type { OpportunityGraphState } from './opportunity.state';
 
-// ─── Output schema for verification ─────────────────────────────────────────
-
-const opportunityOutputItemSchema = z.object({
-  id: z.string(),
-  detection: z.object({
-    source: z.string(),
-    timestamp: z.string().optional(),
-    triggeredBy: z.string().optional(),
-  }),
-  actors: z.array(
-    z.object({
-      role: z.string(),
-      identityId: z.string(),
-      intents: z.array(z.string()).optional(),
-      profile: z.boolean().optional(),
-    })
-  ),
-  interpretation: z.object({
-    category: z.string(),
-    summary: z.string(),
-    confidence: z.union([z.number(), z.string()]),
-    signals: z.array(z.unknown()).optional(),
-  }),
-  context: z.object({
-    indexId: z.string(),
-    triggeringIntentId: z.string().optional(),
-  }),
-  indexId: z.string(),
-  status: z.string(),
-});
-
-const opportunityGraphOutputSchema = z.object({
-  opportunities: z.array(opportunityOutputItemSchema),
-  candidates: z.array(z.unknown()),
-  sourceProfileContext: z.string().optional(),
-  sourceUserId: z.string().optional(),
-});
-
-// ─── Mock graph factory (shared by scenarios) ──────────────────────────────
+type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
+type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
-const defaultCandidates: CandidateProfile[] = [
+
+const defaultMockEvaluatorResult = [
   {
-    userId: 'user-bob',
-    identity: { name: 'Bob', bio: 'Looking for a Rust mentor' },
-    narrative: { context: 'I want to learn systems programming.' },
-    score: 0.9,
-  },
-  {
-    userId: 'user-alice',
-    identity: { name: 'Alice', bio: 'React Dev' },
-    narrative: { context: 'Building frontend apps.' },
-    score: 0.8,
+    sourceId: 'user-source',
+    candidateId: 'user-bob',
+    score: 88,
+    sourceDescription: 'Match.',
+    candidateDescription: 'Match.',
+    valencyRole: 'Agent' as const,
   },
 ];
 
+function createMockEvaluator(
+  result: Array<{
+    sourceId: string;
+    candidateId: string;
+    score: number;
+    sourceDescription: string;
+    candidateDescription: string;
+    valencyRole: 'Agent' | 'Patient' | 'Peer';
+  }> = defaultMockEvaluatorResult
+): OpportunityEvaluatorLike {
+  return {
+    invoke: async () => result,
+  };
+}
+
 function createMockGraph(deps?: {
-  opportunityExistsBetweenActors?: boolean;
+  getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+  getActiveIntents?: () => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
+  getIndex?: (id: string) => Promise<{ id: string; title: string } | null>;
+  getIndexMemberCount?: (id: string) => Promise<number>;
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+  evaluatorResult?: Array<{ sourceId: string; candidateId: string; score: number; sourceDescription: string; candidateDescription: string; valencyRole: 'Agent' | 'Patient' | 'Peer' }>;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     getProfile: () => Promise.resolve(deps?.getProfile ?? null),
@@ -100,34 +72,40 @@ function createMockGraph(deps?: {
         updatedAt: new Date(),
         expiresAt: null,
       }),
-    opportunityExistsBetweenActors: () =>
-      Promise.resolve(deps?.opportunityExistsBetweenActors ?? false),
+    opportunityExistsBetweenActors: () => Promise.resolve(false),
+    getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
+    getActiveIntents:
+      deps?.getActiveIntents ??
+      (() =>
+        Promise.resolve([
+          {
+            id: 'intent-1' as Id<'intents'>,
+            payload: 'Looking for a technical co-founder',
+            summary: 'Co-founder',
+            createdAt: new Date(),
+          },
+        ])),
+    getIndex: deps?.getIndex ?? (() => Promise.resolve({ id: 'idx-1', title: 'Test Index' })),
+    getIndexMemberCount: deps?.getIndexMemberCount ?? (() => Promise.resolve(2)),
   };
 
   const mockEmbedder: Embedder = {
     generate: () => Promise.resolve(dummyEmbedding),
-    search: () => Promise.resolve(defaultCandidates.map((c) => ({ item: c, score: 0.9 }))),
+    search: () => Promise.resolve([]),
     searchWithHydeEmbeddings: () =>
       Promise.resolve([
         {
-          type: 'profile' as const,
-          id: 'user-bob',
+          type: 'intent' as const,
+          id: 'intent-bob' as Id<'intents'>,
           userId: 'user-bob',
-          score: 0.95,
+          score: 0.9,
           matchedVia: 'mirror' as const,
           indexId: 'idx-1',
         },
       ]),
   } as unknown as Embedder;
 
-  const mockCache: HydeCache = {
-    get: () => Promise.resolve(null),
-    set: () => Promise.resolve(),
-    delete: () => Promise.resolve(true),
-    exists: () => Promise.resolve(false),
-  };
-
-  const mockCompiledHydeGraph = {
+  const mockHydeGenerator = {
     invoke: () =>
       Promise.resolve({
         hydeEmbeddings: {
@@ -137,384 +115,118 @@ function createMockGraph(deps?: {
       }),
   };
 
-  const graph = new OpportunityGraph(
-    mockDb,
-    mockEmbedder,
-    mockCache,
-    mockCompiledHydeGraph as unknown as CompiledHydeGraph
-  );
-  const compiledGraph = graph.compile();
-  return { graph, compiledGraph, mockDb, mockEmbedder, mockCompiledHydeGraph };
+  const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
+  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator);
+  const compiledGraph = factory.createGraph();
+  return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator };
 }
 
-// ─── Smartest scenarios ─────────────────────────────────────────────────────
-
 describe('Opportunity Graph', () => {
-  describe('Smartest: direct candidates → opportunities', () => {
-    test('given source profile and candidates, graph returns persisted opportunities with correct shape', async () => {
-      const { graph, compiledGraph } = createMockGraph();
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 95,
-          sourceDescription: 'Meet Bob for mentorship.',
-          candidateDescription: 'Meet source for Rust guidance.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-direct-candidates',
-          description:
-            'Graph with direct candidates (no HyDE/search): source profile and candidate list in; persisted opportunities out with detection, actors, interpretation.',
-          fixtures: {
-            sourceProfileContext:
-              'User is an experienced Rust developer building a decentralized exchange.',
-            sourceUserId: 'user-source' as Id<'users'>,
-            candidates: defaultCandidates,
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as {
-                sourceProfileContext: string;
-                sourceUserId: string;
-                candidates: CandidateProfile[];
-              };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: input.sourceProfileContext,
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                candidates: input.candidates,
-                indexScope: [],
-                options: { minScore: 50 },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceProfileContext: '@fixtures.sourceProfileContext',
-              sourceUserId: '@fixtures.sourceUserId',
-              candidates: '@fixtures.candidates',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria:
-              'Output must have at least one opportunity. Each opportunity must have detection.source "opportunity_graph", exactly two actors (source and candidate), and interpretation.summary non-empty. The candidate (second actor) should match the fixture candidate (e.g. user-bob).',
-            llmVerify: false,
-          },
-        })
-      );
-
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(output.opportunities.length).toBeGreaterThanOrEqual(1);
-      const opp = output.opportunities[0];
-      expect(opp.actors.some((a: OpportunityActor) => a.identityId === 'user-bob')).toBe(true);
-      expect(opp.detection.source).toBe('opportunity_graph');
-    });
-  });
-
-  describe('Smartest: HyDE discovery path', () => {
-    test('given discovery query and source profile, graph output satisfies schema and semantics', async () => {
-      const { graph, compiledGraph, mockCompiledHydeGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockCompiledHydeGraph, 'invoke').mockResolvedValue({
-        hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
+  describe('Prep node', () => {
+    test('when user has no index memberships, returns error and no opportunities', async () => {
+      const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve([]),
       });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'profile' as const,
-          id: 'user-bob',
-          userId: 'user-bob',
-          score: 0.95,
-          matchedVia: 'mirror' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 92,
-          sourceDescription: 'Strong match for your goal.',
-          candidateDescription: 'Relevant opportunity.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-hyde-discovery',
-          description:
-            'Graph with HyDE path: discovery query and source profile in; output has opportunities from search and evaluation with correct shape.',
-          fixtures: {
-            sourceProfileContext:
-              'Experienced backend engineer looking for a technical co-founder.',
-            discoveryQuery: 'Find me a technical co-founder for an early-stage startup.',
-            sourceUserId: 'user-source' as Id<'users'>,
-            indexScope: ['idx-1'] as Id<'indexes'>[],
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as {
-                sourceProfileContext: string;
-                discoveryQuery: string;
-                sourceUserId: string;
-                indexScope: string[];
-              };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: input.sourceProfileContext,
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                sourceText: input.discoveryQuery,
-                indexScope: input.indexScope as Id<'indexes'>[],
-                candidates: [],
-                options: { hydeDescription: input.discoveryQuery, limit: 5, minScore: 70 },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceProfileContext: '@fixtures.sourceProfileContext',
-              discoveryQuery: '@fixtures.discoveryQuery',
-              sourceUserId: '@fixtures.sourceUserId',
-              indexScope: '@fixtures.indexScope',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria:
-              'Output must contain opportunities array. Each opportunity must have detection.source "opportunity_graph", two actors (identityIds), interpretation.summary and interpretation.confidence. Candidates may be empty or populated after search.',
-            llmVerify: false,
-          },
-        })
-      );
-
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(Array.isArray(output.opportunities)).toBe(true);
-      if (output.opportunities.length > 0) {
-        expect(output.opportunities[0].detection.source).toBe('opportunity_graph');
-        expect(output.opportunities[0].actors.length).toBe(2);
-      }
-    });
-  });
-
-  describe('Smartest: deduplication', () => {
-    test('when opportunity already exists between actors, graph returns no new opportunities', async () => {
-      const { graph, compiledGraph, mockDb, mockCompiledHydeGraph, mockEmbedder } =
-        createMockGraph({ opportunityExistsBetweenActors: true });
-      spyOn(mockCompiledHydeGraph, 'invoke').mockResolvedValue({
-        hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
-      });
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'profile' as const,
-          id: 'user-bob',
-          userId: 'user-bob',
-          score: 0.95,
-          matchedVia: 'mirror' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([]);
-
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-deduplication',
-          description:
-            'When DB reports an opportunity already exists between source and candidate, deduplicate node filters them out; final opportunities are empty.',
-          fixtures: {
-            sourceProfileContext: 'Rust developer seeking mentor.',
-            sourceUserId: 'user-source' as Id<'users'>,
-            sourceText: 'Find Rust mentors',
-            indexScope: ['idx-1'] as Id<'indexes'>[],
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as {
-                sourceProfileContext: string;
-                sourceUserId: string;
-                sourceText: string;
-                indexScope: string[];
-              };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: input.sourceProfileContext,
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                sourceText: input.sourceText,
-                indexScope: input.indexScope as Id<'indexes'>[],
-                candidates: [],
-                options: { hydeDescription: input.sourceText },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceProfileContext: '@fixtures.sourceProfileContext',
-              sourceUserId: '@fixtures.sourceUserId',
-              sourceText: '@fixtures.sourceText',
-              indexScope: '@fixtures.indexScope',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria:
-              'opportunities array must be empty (deduplication removed the candidate). candidates may be empty after deduplicate node.',
-            llmVerify: false,
-          },
-        })
-      );
-
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(output.opportunities.length).toBe(0);
-      expect(output.candidates.length).toBe(0);
-    });
-  });
-
-  describe('Smartest: resolve source profile', () => {
-    test('when sourceProfileContext is empty but sourceUserId given, graph resolves profile from DB and produces opportunities', async () => {
-      const resolvedProfile = {
-        identity: { name: 'Resolved User', bio: 'AI Engineer' },
-        attributes: { skills: ['Python', 'LangChain'] },
-        narrative: { context: 'Building agents.' },
-      };
-      const { graph, compiledGraph, mockDb } = createMockGraph({
-        getProfile: resolvedProfile as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>,
-      });
-      const getProfileSpy = spyOn(mockDb, 'getProfile').mockResolvedValue(
-        resolvedProfile as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>
-      );
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source-resolved',
-          candidateId: 'user-bob',
-          score: 88,
-          sourceDescription: 'Good match.',
-          candidateDescription: 'Relevant.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-resolve-profile',
-          description:
-            'Empty sourceProfileContext with sourceUserId: graph resolves profile from DB, then evaluates candidates and persists opportunities.',
-          fixtures: {
-            sourceUserId: 'user-source-resolved' as Id<'users'>,
-            candidates: defaultCandidates,
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as { sourceUserId: string; candidates: CandidateProfile[] };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: '',
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                candidates: input.candidates,
-                indexScope: [],
-                options: { minScore: 50 },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceUserId: '@fixtures.sourceUserId',
-              candidates: '@fixtures.candidates',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria:
-              'sourceProfileContext must be non-empty (resolved from DB). opportunities must have at least one item with two actors.',
-            llmVerify: false,
-          },
-        })
-      );
-
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(getProfileSpy).toHaveBeenCalledWith('user-source-resolved');
-      expect(output.sourceProfileContext).toContain('Resolved User');
-      expect(output.sourceProfileContext).toContain('AI Engineer');
-      expect(output.opportunities.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe('Smartest: early exit when no sourceText and no indexScope', () => {
-    test('graph ends without invoking HyDE or search when sourceText and indexScope are missing', async () => {
-      const { compiledGraph, mockCompiledHydeGraph, mockEmbedder } = createMockGraph();
-      const hydeSpy = spyOn(mockCompiledHydeGraph, 'invoke');
+      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
       const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
 
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-early-exit',
-          description:
-            'No sourceText and no indexScope: graph exits after resolve_source_profile without calling HyDE or search.',
-          fixtures: {
-            sourceUserId: 'user-source' as Id<'users'>,
-            sourceProfileContext: 'Some profile',
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as { sourceUserId: string; sourceProfileContext: string };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: input.sourceProfileContext,
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                sourceText: undefined,
-                indexScope: [],
-                candidates: [],
-                options: {},
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceUserId: '@fixtures.sourceUserId',
-              sourceProfileContext: '@fixtures.sourceProfileContext',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria: 'opportunities must be empty. No HyDE or search should have been invoked.',
-            llmVerify: false,
-          },
-        })
-      );
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find a co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expectSmartest(result);
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('join');
+      expect(result.opportunities).toEqual([]);
       expect(hydeSpy).not.toHaveBeenCalled();
       expect(searchSpy).not.toHaveBeenCalled();
-      const output = result.output as OpportunityGraphState;
-      expect(output.opportunities.length).toBe(0);
+    });
+
+    test('when user has no active intents, returns error and early exit', async () => {
+      const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
+        getActiveIntents: () => Promise.resolve([]),
+      });
+      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find a co-founder',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('intents');
+      expect(result.opportunities).toEqual([]);
+      expect(hydeSpy).not.toHaveBeenCalled();
+      expect(searchSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe('Smartest: intent-triggered flow', () => {
-    test('when intentId is provided, persisted opportunity has detection.triggeredBy and context.triggeringIntentId', async () => {
-      const intentId = 'intent-abc123';
-      const { graph, compiledGraph, mockCompiledHydeGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockCompiledHydeGraph, 'invoke').mockResolvedValue({
-        hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
+  describe('Scope node', () => {
+    test('when indexId provided and user is member, targetIndexes contains only that index', async () => {
+      const { compiledGraph, mockDb } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'indexes'>[]),
       });
+      const getIndexSpy = spyOn(mockDb, 'getIndex');
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        indexId: 'idx-1' as Id<'indexes'>,
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
+    });
+
+    test('when indexId omitted, scope uses all user indexes', async () => {
+      const { compiledGraph, mockDb } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'indexes'>[]),
+      });
+      const getIndexSpy = spyOn(mockDb, 'getIndex');
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: { limit: 5 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(getIndexSpy).toHaveBeenCalledWith('idx-1');
+      expect(getIndexSpy).toHaveBeenCalledWith('idx-2');
+    });
+  });
+
+  describe('Discovery node', () => {
+    test('performs vector search with index scope and excludeUserId', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.92,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find a React developer',
+        options: { limit: 5 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(searchSpy).toHaveBeenCalled();
+      const call = searchSpy.mock.calls[0];
+      expect(call?.[1]?.indexScope).toContain('idx-1');
+      expect(call?.[1]?.excludeUserId).toBe('user-source');
+      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    test('when search returns only profile type (no intent), candidates remain empty', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
           type: 'profile' as const,
@@ -525,500 +237,228 @@ describe('Opportunity Graph', () => {
           indexId: 'idx-1',
         },
       ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 85,
-          sourceDescription: 'Match.',
-          candidateDescription: 'Match.',
-          valencyRole: 'Agent',
-        },
-      ]);
 
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-intent-triggered',
-          description:
-            'Intent-triggered flow: intentId and sourceText set; output opportunity has detection.triggeredBy and context.triggeringIntentId.',
-          fixtures: {
-            sourceUserId: 'user-source' as Id<'users'>,
-            sourceText: 'Looking for a React developer',
-            intentId: intentId as Id<'intents'>,
-            indexScope: ['idx-1'] as Id<'indexes'>[],
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as {
-                sourceUserId: string;
-                sourceText: string;
-                intentId: string;
-                indexScope: string[];
-              };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: 'Product lead.',
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                sourceText: input.sourceText,
-                intentId: input.intentId as Id<'intents'> | undefined,
-                indexScope: input.indexScope as Id<'indexes'>[],
-                candidates: [],
-                options: { hydeDescription: input.sourceText },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceUserId: '@fixtures.sourceUserId',
-              sourceText: '@fixtures.sourceText',
-              intentId: '@fixtures.intentId',
-              indexScope: '@fixtures.indexScope',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria:
-              'At least one opportunity must have detection.triggeredBy equal to the intent ID and context.triggeringIntentId equal to the intent ID. detection.source must be opportunity_graph.',
-            llmVerify: false,
-          },
-        })
-      );
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(output.opportunities.length).toBeGreaterThanOrEqual(1);
-      expect(output.opportunities[0].detection.source).toBe('opportunity_graph');
-      expect(output.opportunities[0].detection.triggeredBy).toBe(intentId);
-      expect(output.opportunities[0].context.triggeringIntentId).toBe(intentId);
-      expect(output.opportunities[0].actors[0].intents).toEqual([intentId]);
+      expect(result.candidates).toEqual([]);
+      expect(result.opportunities).toEqual([]);
     });
   });
 
-  describe('Smartest: roles derived from strategy', () => {
-    test('candidate matched via mirror → source role patient, candidate role agent', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
+  describe('Evaluation and Persist', () => {
+    test('when discovery returns intent candidates and evaluator returns one, opportunity is created', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
-          type: 'profile' as const,
-          id: 'user-bob',
+          type: 'intent' as const,
+          id: 'intent-bob',
           userId: 'user-bob',
-          score: 0.95,
+          score: 0.9,
           matchedVia: 'mirror' as const,
           indexId: 'idx-1',
         },
       ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 90,
-          sourceDescription: 'Bob can help.',
-          candidateDescription: 'You can help source.',
-          valencyRole: 'Agent',
-        },
-      ]);
 
       const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Seeking mentor.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'Find a mentor',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'Find a mentor' },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
-      const [sourceActor, candidateActor] = result.opportunities[0].actors;
-      expect(sourceActor.role).toBe('patient');
-      expect(candidateActor.role).toBe('agent');
-      expect(candidateActor.identityId).toBe('user-bob');
-    });
-
-    test('candidate matched via reciprocal → source role agent, candidate role patient', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-xyz',
-          userId: 'user-bob',
-          score: 0.88,
-          matchedVia: 'reciprocal' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 82,
-          sourceDescription: 'Bob needs what you offer.',
-          candidateDescription: 'Source has what you need.',
-          valencyRole: 'Patient',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Offering dev services.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'Who needs a developer',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'Who needs a developer' },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.opportunities.length).toBe(1);
-      const [sourceActor, candidateActor] = result.opportunities[0].actors;
-      expect(sourceActor.role).toBe('agent');
-      expect(candidateActor.role).toBe('patient');
-    });
-
-    test('candidate matched via collaborator → both roles peer', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-2',
-          userId: 'user-carol',
-          score: 0.85,
-          matchedVia: 'collaborator' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-carol',
-          score: 80,
-          sourceDescription: 'Collaboration fit.',
-          candidateDescription: 'Peer collaboration.',
-          valencyRole: 'Peer',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Looking for co-founder.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'Find co-founder',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'Find co-founder' },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.opportunities.length).toBe(1);
-      const [sourceActor, candidateActor] = result.opportunities[0].actors;
-      expect(sourceActor.role).toBe('peer');
-      expect(candidateActor.role).toBe('peer');
-    });
-
-    test('candidate matched via hiree → source role agent, candidate role patient', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'intent' as const,
-          id: 'intent-job',
-          userId: 'user-dave',
-          score: 0.9,
-          matchedVia: 'hiree' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-dave',
-          score: 88,
-          sourceDescription: 'Dave is looking for this role.',
-          candidateDescription: 'Source is hiring.',
-          valencyRole: 'Patient',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Hiring a designer.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'We are hiring a designer',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'We are hiring a designer' },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.opportunities.length).toBe(1);
-      const [sourceActor, candidateActor] = result.opportunities[0].actors;
-      expect(sourceActor.role).toBe('agent');
-      expect(candidateActor.role).toBe('patient');
+      expect(result.opportunities[0].detection.source).toBe('opportunity_graph');
+      expect(result.opportunities[0].actors.length).toBe(2);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-bob')).toBe(true);
     });
   });
 
-  describe('Smartest: search returns empty', () => {
-    test('when searchWithHydeEmbeddings returns empty, opportunities remain empty', async () => {
-      const { graph, compiledGraph, mockCompiledHydeGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockCompiledHydeGraph, 'invoke').mockResolvedValue({
-        hydeEmbeddings: { mirror: dummyEmbedding, reciprocal: dummyEmbedding },
+  describe('Ranking node', () => {
+    test('sorts by score and applies limit', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          { sourceId: 'user-source', candidateId: 'user-bob', score: 85, sourceDescription: 'A', candidateDescription: 'B', valencyRole: 'Agent' },
+          { sourceId: 'user-source', candidateId: 'user-alice', score: 92, sourceDescription: 'C', candidateDescription: 'D', valencyRole: 'Peer' },
+        ],
       });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.8, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+        { type: 'intent' as const, id: 'intent-alice', userId: 'user-alice', score: 0.9, matchedVia: 'reciprocal' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find partners',
+        options: { limit: 1, minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-alice')).toBe(true);
+    });
+  });
+
+  describe('Persist node: initialStatus', () => {
+    test('when options.initialStatus is "latent", opportunities are created with status latent', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: { initialStatus: 'latent', minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].status).toBe('latent');
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'latent' }));
+    });
+
+    test('when options.initialStatus is omitted, createOpportunity is called with status pending', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
+    });
+  });
+
+  describe('Conditional routing: early exit', () => {
+    test('when no index memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
+      const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve([]),
+      });
+      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find someone',
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(hydeSpy).not.toHaveBeenCalled();
+      expect(searchSpy).not.toHaveBeenCalled();
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test('when no active intents, full invoke does not call HyDE or search or createOpportunity', async () => {
+      const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
+        getActiveIntents: () => Promise.resolve([]),
+      });
+      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
+      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find someone',
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(hydeSpy).not.toHaveBeenCalled();
+      expect(searchSpy).not.toHaveBeenCalled();
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Full flow with new API', () => {
+    test('invoke with userId, searchQuery, options returns opportunities with correct shape', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find a technical co-founder',
+        options: { initialStatus: 'latent', limit: 5, minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities).toBeDefined();
+      expect(Array.isArray(result.opportunities)).toBe(true);
+      if (result.opportunities.length > 0) {
+        const opp = result.opportunities[0];
+        expect(opp.detection.source).toBe('opportunity_graph');
+        expect(opp.detection.createdBy).toBe('agent-opportunity-finder');
+        expect(opp.interpretation.summary).toBeDefined();
+        expect(opp.context.indexId).toBeDefined();
+        expect(opp.status).toBe('latent');
+      }
+    });
+
+    test('when search returns empty, opportunities remain empty', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph();
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([]);
 
-      const result = await runScenario(
-        defineScenario({
-          name: 'opportunity-search-empty',
-          description: 'HyDE runs, search returns no candidates; evaluate and persist produce empty opportunities.',
-          fixtures: {
-            sourceProfileContext: 'Backend engineer.',
-            sourceUserId: 'user-source' as Id<'users'>,
-            sourceText: 'Find ML engineers',
-            indexScope: ['idx-1'] as Id<'indexes'>[],
-          },
-          sut: {
-            type: 'graph',
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as {
-                sourceProfileContext: string;
-                sourceUserId: string;
-                sourceText: string;
-                indexScope: string[];
-              };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
-                sourceProfileContext: input.sourceProfileContext,
-                sourceUserId: input.sourceUserId as Id<'users'>,
-                sourceText: input.sourceText,
-                indexScope: input.indexScope as Id<'indexes'>[],
-                candidates: [],
-                options: { hydeDescription: input.sourceText },
-                opportunities: [],
-              });
-            },
-            input: {
-              sourceProfileContext: '@fixtures.sourceProfileContext',
-              sourceUserId: '@fixtures.sourceUserId',
-              sourceText: '@fixtures.sourceText',
-              indexScope: '@fixtures.indexScope',
-            },
-          },
-          verification: {
-            schema: opportunityGraphOutputSchema,
-            criteria: 'opportunities must be empty when no candidates are returned from search.',
-            llmVerify: false,
-          },
-        })
-      );
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find unicorns',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expectSmartest(result);
-      const output = result.output as OpportunityGraphState;
-      expect(output.opportunities.length).toBe(0);
-      expect(output.candidates.length).toBe(0);
+      expect(result.opportunities).toEqual([]);
+      expect(result.candidates).toEqual([]);
     });
-  });
 
-  describe('Smartest: evaluator returns empty', () => {
-    test('when evaluator returns no opportunities (all below minScore), persisted opportunities are empty', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
+    test('when evaluator returns empty (below minScore), opportunities remain empty', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [],
+      });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
         {
-          type: 'profile' as const,
-          id: 'user-bob',
+          type: 'intent' as const,
+          id: 'intent-bob',
           userId: 'user-bob',
           score: 0.6,
           matchedVia: 'mirror' as const,
           indexId: 'idx-1',
         },
       ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([]);
 
       const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Rust developer.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'Find Rust devs',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'Find Rust devs', minScore: 80 },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: { minScore: 80 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
-      expect(result.opportunities.length).toBe(0);
-    });
-  });
-
-  describe('Smartest: detection and context shape', () => {
-    test('persisted opportunity has detection.source, detection.createdBy, interpretation.signals', async () => {
-      const { graph, compiledGraph } = createMockGraph();
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 91,
-          sourceDescription: 'Strong match.',
-          candidateDescription: 'Strong match.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Profile.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        candidates: defaultCandidates,
-        indexScope: [],
-        options: { minScore: 50 },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.opportunities.length).toBe(1);
-      const opp = result.opportunities[0];
-      expect(opp.detection.source).toBe('opportunity_graph');
-      expect(opp.detection.createdBy).toBe('agent-opportunity-finder');
-      expect(opp.detection.timestamp).toBeDefined();
-      expect(opp.interpretation.category).toBe('collaboration');
-      expect(opp.interpretation.summary).toBe('Strong match.');
-      expect(opp.interpretation.confidence).toBeDefined();
-      expect(Array.isArray(opp.interpretation.signals)).toBe(true);
-      expect(opp.interpretation.signals!.length).toBeGreaterThanOrEqual(1);
-      expect(opp.context.indexId).toBeDefined();
-      expect(opp.status).toBe('pending');
-    });
-  });
-
-  describe('Smartest: resolve profile when getProfile returns null', () => {
-    test('when getProfile returns null, sourceProfileContext stays empty but graph still runs', async () => {
-      const { graph, compiledGraph, mockDb } = createMockGraph();
-      spyOn(mockDb, 'getProfile').mockResolvedValue(null);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 70,
-          sourceDescription: 'Match.',
-          candidateDescription: 'Match.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: '',
-        sourceUserId: 'user-source' as Id<'users'>,
-        candidates: defaultCandidates,
-        indexScope: [],
-        options: { minScore: 50 },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.sourceProfileContext).toBe('');
-      expect(result.opportunities.length).toBe(1);
-    });
-  });
-
-  describe('Smartest: direct candidates with valencyRole Patient', () => {
-    test('when candidates are direct (no matchedVia), roles derived from evaluator valencyRole', async () => {
-      const { graph, compiledGraph } = createMockGraph();
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 78,
-          sourceDescription: 'You can help Bob.',
-          candidateDescription: 'Source can help you.',
-          valencyRole: 'Patient',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Mentor.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        candidates: defaultCandidates,
-        indexScope: [],
-        options: { minScore: 70 },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.opportunities.length).toBe(1);
-      const [sourceActor, candidateActor] = result.opportunities[0].actors;
-      expect(sourceActor.role).toBe('agent');
-      expect(candidateActor.role).toBe('patient');
-    });
-  });
-
-  describe('Smartest: multiple candidates from search, evaluator returns one', () => {
-    test('two candidates from search, evaluator returns one opportunity → one persisted', async () => {
-      const { graph, compiledGraph, mockEmbedder } = createMockGraph();
-      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
-        {
-          type: 'profile' as const,
-          id: 'user-bob',
-          userId: 'user-bob',
-          score: 0.9,
-          matchedVia: 'mirror' as const,
-          indexId: 'idx-1',
-        },
-        {
-          type: 'profile' as const,
-          id: 'user-alice',
-          userId: 'user-alice',
-          score: 0.75,
-          matchedVia: 'reciprocal' as const,
-          indexId: 'idx-1',
-        },
-      ]);
-      spyOn(
-        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
-        'invoke'
-      ).mockResolvedValue([
-        {
-          sourceId: 'user-source',
-          candidateId: 'user-bob',
-          score: 92,
-          sourceDescription: 'Bob is the best match.',
-          candidateDescription: 'Relevant.',
-          valencyRole: 'Agent',
-        },
-      ]);
-
-      const result = (await compiledGraph.invoke({
-        sourceProfileContext: 'Seeking help.',
-        sourceUserId: 'user-source' as Id<'users'>,
-        sourceText: 'Find experts',
-        indexScope: ['idx-1'] as Id<'indexes'>[],
-        candidates: [],
-        options: { hydeDescription: 'Find experts', minScore: 70 },
-        opportunities: [],
-      })) as unknown as OpportunityGraphState;
-
-      expect(result.candidates.length).toBe(2);
-      expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-bob')).toBe(true);
+      expect(result.opportunities).toEqual([]);
     });
   });
 });

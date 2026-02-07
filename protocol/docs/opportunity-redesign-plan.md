@@ -3247,7 +3247,7 @@ GET /api/opportunities?role=agent
   - [x] Invoke HyDE graph with ad-hoc query
   - [x] Search with generated embeddings
   - [x] Return formatted candidates
-- [x] Update chat graph to route discovery queries to discover node (find_opportunities tool uses runDiscoverFromQuery)
+- [x] Update chat graph to route discovery queries to discover node (create_opportunities tool uses runDiscoverFromQuery)
 - [x] Add discovery results formatting in response generator (enriched candidates in discover.nodes + agent table/list rules)
 
 **Test**:

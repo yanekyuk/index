@@ -133,5 +133,24 @@ describe("discover.nodes", () => {
       expect(result.count).toBe(0);
       expect(result.message).toContain("Failed");
     });
+
+    test("invokes opportunity graph with options.initialStatus: 'latent'", async () => {
+      let capturedInvokeArg: Record<string, unknown> = {};
+      const mockGraph = {
+        invoke: async (arg: Record<string, unknown>) => {
+          capturedInvokeArg = arg;
+          return { opportunities: [] };
+        },
+      };
+      await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as any,
+        database: mockDatabase,
+        userId: "u1",
+        query: "find me a mentor",
+        indexScope: ["idx1"],
+      });
+      expect(capturedInvokeArg.options).toBeDefined();
+      expect((capturedInvokeArg.options as { initialStatus?: string }).initialStatus).toBe("latent");
+    });
   });
 });

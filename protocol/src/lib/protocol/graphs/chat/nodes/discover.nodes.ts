@@ -5,19 +5,20 @@
  * graph with the query as sourceText and those strategies, then returns
  * formatted candidates (enriched with profile name/bio) for chat display.
  *
- * Used by the find_opportunities chat tool.
+ * Used by the create_opportunities chat tool.
  */
 
 import type { Opportunity } from "../../../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../../../interfaces/database.interface";
+import type { OpportunityGraphOptions } from "../../opportunity/opportunity.graph.state";
 import { selectStrategiesFromQuery } from "../chat.utils";
 import { log } from "../../../../log";
 
 const logger = log.protocol.from("DiscoverNodes");
 
-/** Compiled opportunity graph (from OpportunityGraph.compile()). */
+/** Compiled opportunity graph (from OpportunityGraphFactory.createGraph()). */
 export type CompiledOpportunityGraph = ReturnType<
-  import("../../opportunity/opportunity.graph").OpportunityGraph["compile"]
+  import("../../opportunity/opportunity.graph").OpportunityGraphFactory["createGraph"]
 >;
 
 export interface DiscoverInput {
@@ -75,14 +76,6 @@ export async function runDiscoverFromQuery(
     limit = 5,
   } = input;
 
-  if (!query?.trim()) {
-    return {
-      found: false,
-      count: 0,
-      message: "Please provide a search query (e.g. what kind of connections you're looking for).",
-    };
-  }
-
   if (indexScope.length === 0) {
     return {
       found: false,
@@ -92,29 +85,33 @@ export async function runDiscoverFromQuery(
     };
   }
 
-  const strategies = selectStrategiesFromQuery(query);
-  logger.info("[Discover] Running discovery from query", {
+  // When query is empty, the opportunity graph uses the user's intents in scope (indexedIntents[0].payload) and derives strategies from that
+  const queryOrEmpty = query?.trim() ?? "";
+  const options: OpportunityGraphOptions = {
+    limit,
+    initialStatus: 'latent',
+  };
+  if (queryOrEmpty) {
+    options.strategies = selectStrategiesFromQuery(queryOrEmpty);
+  }
+  logger.info("[Discover] Running discovery", {
     userId,
-    queryPreview: query.substring(0, 50),
-    strategies,
+    queryPreview: queryOrEmpty ? queryOrEmpty.substring(0, 50) : "(using user intents in scope)",
+    indexScope: indexScope.length,
   });
 
   try {
+    // When searchQuery is empty/undefined, graph uses user's indexed intents (prep loads them; discovery uses first intent payload and derives strategies)
     const result = await opportunityGraph.invoke({
-      sourceUserId: userId,
-      sourceText: query,
-      indexScope,
-      options: {
-        hydeDescription: query,
-        strategies,
-        limit,
-      },
+      userId,
+      searchQuery: queryOrEmpty || undefined,
+      indexId: indexScope.length > 0 ? indexScope[0] : undefined,
+      options,
     });
 
     const opportunities: Opportunity[] = Array.isArray(result.opportunities)
       ? result.opportunities
       : [];
-
     if (opportunities.length === 0) {
       return {
         found: false,

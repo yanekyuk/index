@@ -111,13 +111,16 @@ classDiagram
         +create_intent()
         +update_intent()
         +delete_intent()
+        +create_intent_index()
+        +read_intent_indexes()
+        +delete_intent_index()
         +read_indexes()
         +create_index()
         +update_index()
         +delete_index()
         +create_index_membership()
         +read_users()
-        +find_opportunities()
+        +create_opportunities()
         +list_my_opportunities()
         +create_opportunity_between_members()
         +scrape_url()
@@ -174,7 +177,7 @@ The agent receives a comprehensive system prompt that includes:
 
 ## Tools
 
-The agent has access to 19 tools, organized by domain using CRUD naming. All index parameters use **`indexId` (UUID only)** — no name resolution. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat-phase-3)).
+The agent has access to 21 tools, organized by domain using CRUD naming. All index parameters use **`indexId` (UUID only)** — no name resolution. When the chat is **index-scoped** (initialized with `indexId` or loaded from a session with an index), index-aware tools use that index as the default when the agent omits the index argument (see [Index-Scoped Chat](#index-scoped-chat-phase-3)).
 
 ### Profile Tools
 
@@ -188,9 +191,19 @@ The agent has access to 19 tools, organized by domain using CRUD naming. All ind
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `read_intents` | List intents. Optional `indexId` (UUID) and `userId`. | "What are my intents?", "Show intents in this community". When index-scoped, omitting `indexId` uses the current index. |
+| `read_intents` | List intents. Optional `indexId` (UUID) and `userId`. | "What are my intents?", "Show intents in this community". When user asks for "my intents" or "owner's intents", MUST pass `userId` (current user's id). When user asks for "all intents", omit `userId` (owner only). When index-scoped, omitting `indexId` uses the current index. Use for display (names, descriptions). |
 | `create_intent` | Create new intent | "I want to learn Rust". Optional `indexId`; when index-scoped, omitting it uses the current index. |
 | `update_intent` / `delete_intent` | Modify or remove an intent | When index-scoped, only intents in that index can be updated/deleted. Use exact `id` from `read_intents`. |
+
+### Intent–Index Tools
+
+These tools manage the intent–index junction (which intents are in which index). They work with IDs only; use `read_intents` and `read_indexes` to show intent and index names/descriptions. They respect index-scoped and user context.
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `create_intent_index` | Save (link) an intent to an index | "Add this intent to Open Mock Network". Requires `intentId` from `read_intents` and `indexId` from `read_indexes`. |
+| `read_intent_indexes` | List intent–index links in three modes | **(1) By index**: pass `indexId` (optional when index-scoped). Index **owner**: to list "my intents" or "owner's intents", MUST pass `userId` (current user); to list "all intents in the index", omit `userId`. **Member**: lists that user's intents in the index. **(2) By intent**: pass `intentId` to list all indexes that intent is in (caller must own the intent). **(3)** Index scope: when chat is index-scoped, `indexId` defaults to the current index. Use `read_indexes` and `read_intents` to display. |
+| `delete_intent_index` | Remove an intent from an index | "Remove this intent from that community". Requires `intentId` and `indexId`. Does not delete the intent. |
 
 ### Index Tools
 
@@ -207,7 +220,7 @@ The agent has access to 19 tools, organized by domain using CRUD naming. All ind
 
 | Tool | Purpose | When to Use |
 |------|---------|-------------|
-| `find_opportunities` | Search for connections | When index-scoped, search is limited to that index. Requires `indexId` (UUID). |
+| `create_opportunities` | Create draft opportunities by searching for connections | Results saved as drafts (latent); use send_opportunity to notify. When index-scoped, search is limited to that index. Optional `indexId` (UUID). |
 | `list_my_opportunities` | List user's opportunities | When index-scoped, omit `indexId` to list only opportunities in that index. |
 | `create_opportunity_between_members` | Create opportunity between two members | Requires `indexId` (UUID). |
 
@@ -255,13 +268,13 @@ When the chat is started with an optional **`indexId`** (e.g. from an index/comm
 
 - Stored in **graph state** and passed to the agent as **tool context** (`context.indexId`).
 - **Persisted on the chat session** so reconnecting to the same session keeps the scope; the request body can override it.
-- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `read_intents`, `create_opportunity_between_members`, `find_opportunities`, `list_my_opportunities`, `update_index`, `delete_index`.
+- Used as the **default** for index-aware tools when the agent omits the index argument: `create_intent`, `read_intents`, `create_opportunity_between_members`, `create_opportunities`, `list_my_opportunities`, `update_index`, `delete_index`.
 
 **Tool behavior when index-scoped:**
 
 - **`read_indexes`**: Returns only the current index membership (with a note). Use `showAll: true` when the user asks for "all my indexes".
 - **`update_intent` / `delete_intent`**: Only intents that belong to the current index can be updated or deleted; otherwise the tool returns an error.
-- **`read_intents`**: Primary tool for listing intents; accepts optional `indexId` (UUID). When omitted and index-scoped, returns intents in the current index.
+- **`read_intents`**: Primary tool for listing intents; accepts optional `indexId` (UUID). When user asks for "my intents" or "owner's intents", MUST pass `userId` with current user's id. When user asks for "all intents in the index", omit `userId` (owner only). When omitted and index-scoped, returns intents in the current index.
 
 When no index is passed (and the session has none), behavior is unchanged (global scope).
 

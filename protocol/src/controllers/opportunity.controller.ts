@@ -98,8 +98,8 @@ export class OpportunityController {
       });
     }
     
-    const status = body.status as 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['pending', 'viewed', 'accepted', 'rejected', 'expired'];
+    const status = body.status as 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['latent', 'pending', 'viewed', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return new Response(JSON.stringify({ error: 'Invalid status; use one of: ' + allowed.join(', ') }), {
         status: 400,
@@ -137,9 +137,9 @@ export class OpportunityController {
 
     const result = await opportunityService.discoverOpportunities(user.id, query, limit);
     
-    if ('error' in result) {
+    if (result.error) {
       return new Response(JSON.stringify({ error: result.error }), {
-        status: result.status as number,
+        status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }

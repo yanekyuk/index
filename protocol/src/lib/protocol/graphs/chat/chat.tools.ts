@@ -5,18 +5,21 @@ import type {
   HydeGraphDatabase,
   CreateOpportunityData,
   OpportunityActor,
+  ProfileGraphDatabase,
+  UpdateIndexSettingsData,
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
 import type { HydeCache } from "../../interfaces/cache.interface";
 import { IntentGraphFactory } from "../intent/intent.graph";
 import { ProfileGraphFactory } from "../profile/profile.graph";
-import { OpportunityGraph } from "../opportunity/opportunity.graph";
+import { OpportunityGraphFactory } from "../opportunity/opportunity.graph";
 import { HydeGraphFactory } from "../hyde/hyde.graph";
 import { HydeGenerator } from "../../agents/hyde/hyde.generator";
 import { IndexGraphFactory } from "../index/index.graph";
 import { RedisCacheAdapter } from "../../../../adapters/cache.adapter";
 import { runDiscoverFromQuery } from "./nodes/discover.nodes";
+import type { ExecutionResult } from "../intent/intent.graph.state";
 import { queueOpportunityNotification } from "../../../../queues/notification.queue";
 import { log } from "../../../log";
 import type { PendingConfirmation, ConfirmationPayload } from "./chat.graph.state";
@@ -146,12 +149,11 @@ export function createChatTools(context: ToolContext) {
     hydeCache,
     hydeGenerator
   ).createGraph();
-  const opportunityGraph = new OpportunityGraph(
+  const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
-    hydeCache,
     compiledHydeGraph
-  ).compile();
+  ).createGraph();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PROFILE TOOLS
@@ -208,7 +210,11 @@ export function createChatTools(context: ToolContext) {
         if (existing) {
           return error("You already have a profile. Use update_user_profile to change it.");
         }
-        const profileGraphInstance = new ProfileGraphFactory(database as any, embedder, scraper).createGraph();
+          const profileGraphInstance = new ProfileGraphFactory(
+            database as unknown as ProfileGraphDatabase,
+            embedder,
+            scraper
+          ).createGraph();
         await profileGraphInstance.invoke({
           userId,
           operationMode: "write",
@@ -305,7 +311,15 @@ export function createChatTools(context: ToolContext) {
       if (indexId && !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
-      const effectiveUserId = args.userId?.trim() || userId;
+      // In index-scoped chat, always use the session user for the member path so "my intents" returns the current user's intents. The agent often passes a wrong or unrelated userId (non-UUID or another user's UUID), which causes getIntentsInIndexForMember to return empty.
+      const isIndexScoped = !!(context.indexId?.trim());
+      const rawArgUserId = args.userId?.trim();
+      const effectiveUserId =
+        isIndexScoped
+          ? userId
+          : rawArgUserId && UUID_REGEX.test(rawArgUserId)
+            ? rawArgUserId
+            : userId;
       logger.info("Tool: read_intents", { userId, indexId, effectiveUserId });
 
       try {
@@ -342,6 +356,9 @@ export function createChatTools(context: ToolContext) {
               indexId,
             });
           }
+          // Include userId and userName for consistency with getIndexIntentsForOwner (so owner viewing a member's intents sees whose they are)
+          const user = await database.getUser(effectiveUserId);
+          const userName = user?.name ?? null;
           return success({
             count: intents.length,
             indexId,
@@ -350,8 +367,10 @@ export function createChatTools(context: ToolContext) {
               description: i.payload,
               summary: i.summary,
               createdAt: i.createdAt,
-          })),
-        });
+              userId: effectiveUserId,
+              userName,
+            })),
+          });
       }
       
       // Global (no-index) path: restrict to session user only
@@ -384,10 +403,10 @@ export function createChatTools(context: ToolContext) {
     {
       name: "read_intents",
       description:
-        "Fetches intents (goals, wants, needs). With no indexId: returns the user's active intents. With indexId: if you are the index owner and omit userId, returns all intents in that index; otherwise returns intents for the given user (or yourself) in that index. indexId must be a UUID from read_indexes.",
+        `Fetches intents (goals, wants, needs). With no indexId: returns the user's active intents. With indexId: if you are the index owner and omit userId, returns all intents in that index (all members); if you pass userId (e.g. the current user's id when they ask 'my intents' or 'owner's intents'), returns only that user's intents in the index. indexId must be a UUID from read_indexes.`,
       schema: z.object({
         indexId: z.string().optional().describe("Index UUID; optional when chat is index-scoped (uses current index)."),
-        userId: z.string().optional().describe("When index-scoped and you are owner, limit to this user's intents; omit to list all intents in the index."),
+        userId: z.string().optional().describe("When index-scoped: pass the current user's id when they ask for their own intents so only their intents are returned; omit to return all intents in the index (owner only). Pass another member's id to return that member's intents."),
       }),
     }
   );
@@ -443,18 +462,19 @@ export function createChatTools(context: ToolContext) {
 
         // Process execution results
         const created = (result.executionResults || [])
-          .filter((r: any) => r.actionType === 'create' && r.success)
-          .map((r: any) => ({
+          .filter((r: ExecutionResult): r is ExecutionResult & { intentId: string } => r.actionType === 'create' && r.success && !!r.intentId)
+          .map((r) => ({
             id: r.intentId,
-            description: r.payload || args.description
+            description: (r.payload ?? args.description) ?? ''
           }));
 
-        // Assign created intents to indexes. When the user explicitly chose one index (effectiveIndexId), force-assign
-        // so the intent always appears in that index. When no index is set, run the index graph so the LLM decides
-        // which of the user's indexes each intent qualifies for.
+        // Link created intents to indexes via intent_indexes (intents table has no indexId; association is many-to-many).
+        // When the user chose one index or chat is index-scoped, assign so the intent appears in that index.
+        const contextIndexId = context.indexId?.trim() || undefined;
+        const indexForAssignment = effectiveIndexId || contextIndexId;
         if (created.length > 0) {
-          const scopeIndexIds = effectiveIndexId
-            ? [effectiveIndexId]
+          const scopeIndexIds = indexForAssignment
+            ? [indexForAssignment]
             : await database.getUserIndexIds(userId);
           if (scopeIndexIds.length > 0) {
             const forceAssignSingleIndex = scopeIndexIds.length === 1;
@@ -500,14 +520,14 @@ export function createChatTools(context: ToolContext) {
     },
     {
       name: "create_intent",
-      description: "Creates a new intent (goal, want, or need) for the user. Pass a concept-based description. When the user is clearly acting in a specific index, pass indexId (UUID from read_indexes). If the user includes URLs, include them in the description—the tool will scrape for context.",
+      description: "Creates a new intent (goal, want, or need) for the user. Pass a concept-based description. Intents are linked to indexes via intent_indexes (intents have no indexId column). When chat is index-scoped, pass that indexId so the tool creates the intent and adds an intent_indexes row linking it to the active index; if omitted but chat is index-scoped, the link is still created. When the user includes URLs, include them in the description—the tool will scrape for context.",
       schema: z.object({
         description: z.string().describe("The intent/goal in conceptual terms; may include URLs—they will be scraped for context"),
-        indexId: z.string().optional().describe("Optional index UUID from read_indexes when creating in a specific index."),
+        indexId: z.string().optional().describe("Index UUID from read_indexes or the system message. When chat is index-scoped, pass this so the intent is linked to the active index (via intent_indexes)."),
       })
     }
   );
-
+  // TODO: Prevent users from updating intents that are not theirs.
   const updateIntent = tool(
     async (args: { intentId: string; newDescription: string }) => {
       const intentId = args.intentId?.trim() ?? "";
@@ -579,7 +599,7 @@ export function createChatTools(context: ToolContext) {
       })
     }
   );
-
+  // TODO: Prevent users from deleting intents that are not theirs, as long as they are not the owner of the index.
   const deleteIntent = tool(
     async (args: { intentId: string }) => {
       const intentId = args.intentId?.trim() ?? "";
@@ -642,6 +662,199 @@ export function createChatTools(context: ToolContext) {
       description: "Deletes (archives) an existing intent. Requires the intent ID from read_intents. When the chat is index-scoped, only intents in that index can be deleted.",
       schema: z.object({
         intentId: z.string().describe("The ID of the intent to delete")
+      })
+    }
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // INTENT–INDEX TOOLS (intent_indexes junction: save / list / remove intent in index)
+  // To show intent and index names/descriptions, use read_intents and read_indexes.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const createIntentIndex = tool(
+    async (args: { intentId: string; indexId: string }) => {
+      const intentId = args.intentId?.trim() ?? "";
+      const indexId = args.indexId?.trim() ?? "";
+      logger.info("Tool: create_intent_index", { userId, intentId, indexId });
+
+      if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {
+        return error(
+          "Invalid ID format. intentId and indexId must be UUIDs from read_intents and read_indexes."
+        );
+      }
+
+      try {
+        const intent = await database.getIntent(intentId);
+        if (!intent) {
+          return error("Intent not found. Use read_intents to get the exact intent id.");
+        }
+        if (intent.userId !== userId) {
+          return error("You can only add your own intents to an index.");
+        }
+        const isMember = await database.isIndexMember(indexId, userId);
+        if (!isMember) {
+          return error("You are not a member of that index. Use read_indexes to list indexes you belong to.");
+        }
+        const index = await database.getIndex(indexId);
+        if (!index) {
+          return error("Index not found. Use read_indexes to get valid index ids.");
+        }
+        const alreadyAssigned = await database.isIntentAssignedToIndex(intentId, indexId);
+        if (alreadyAssigned) {
+          return success({ created: true, message: "That intent is already in this index." });
+        }
+        await database.assignIntentToIndex(intentId, indexId);
+        return success({ created: true, message: "Intent saved to the index." });
+      } catch (err) {
+        logger.error("create_intent_index failed", { error: err });
+        return error("Failed to save intent to index. Please try again.");
+      }
+    },
+    {
+      name: "create_intent_index",
+      description: "Saves (links) an intent to an index. Use when the user wants to add one of their intents to a specific index. Requires intentId from read_intents and indexId from read_indexes. Intent_indexes store only id matches; use read_intents and read_indexes to show intent and index names/descriptions.",
+      schema: z.object({
+        intentId: z.string().describe("The ID of the intent (from read_intents)"),
+        indexId: z.string().describe("The ID of the index (from read_indexes)")
+      })
+    }
+  );
+
+  const readIntentIndexes = tool(
+    async (args: { intentId?: string; indexId?: string; userId?: string }) => {
+      const intentId = args.intentId?.trim() || undefined;
+      const indexId = args.indexId?.trim() || context.indexId?.trim() || undefined;
+      const effectiveUserId = args.userId?.trim() || userId;
+      logger.info("Tool: read_intent_indexes", { userId, intentId, indexId, effectiveUserId, contextIndexId: context.indexId });
+
+      try {
+        // Mode 2: Intent owner lists all indexes the intent is registered to
+        if (intentId) {
+          if (!UUID_REGEX.test(intentId)) {
+            return error("Invalid intent ID format. Use the exact UUID from read_intents.");
+          }
+          const intent = await database.getIntent(intentId);
+          if (!intent) {
+            return error("Intent not found. Use read_intents to get the exact intent id.");
+          }
+          if (intent.userId !== userId) {
+            return error("You can only list indexes for your own intents.");
+          }
+          const indexIds = await database.getIndexIdsForIntent(intentId);
+          return success({
+            intentId,
+            count: indexIds.length,
+            indexIds,
+            mode: "indexes_for_intent",
+            note: "To show index titles, use read_indexes (with these indexIds or showAll: true).",
+          });
+        }
+
+        // Mode 1 & 3: By index – list intents in that index (owner can list all or filter by userId; member lists that user's intents)
+        if (!indexId) {
+          return error("Provide indexId (to list intents in an index) or intentId (to list indexes for an intent). When chat is index-scoped, indexId defaults to the current index.");
+        }
+        if (!UUID_REGEX.test(indexId)) {
+          return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+        }
+
+        const isOwner = await database.isIndexOwner(indexId, userId);
+        const isMember = await database.isIndexMember(indexId, userId);
+        if (!isMember) {
+          return error("Index not found or you are not a member. Use read_indexes to see your indexes.");
+        }
+
+        // Index owner: omit userId → all intents in index; pass userId → that user's intents in this index (e.g. "my intents in this index" when userId=self)
+        if (isOwner && !args.userId) {
+          const intents = await database.getIndexIntentsForOwner(indexId, userId, { limit: 50, offset: 0 });
+          return success({
+            indexId,
+            count: intents.length,
+            intents: intents.map((i) => ({
+              id: i.id,
+              description: i.payload,
+              summary: i.summary,
+              createdAt: i.createdAt,
+              userId: i.userId,
+              userName: i.userName,
+            })),
+            mode: "intents_in_index",
+            note: "To show index title and full intent details, use read_indexes and read_intents.",
+          });
+        }
+
+        // Owner with userId filter, or member: intents for effectiveUserId in this index
+        const intents = await database.getIntentsInIndexForMember(effectiveUserId, indexId);
+        return success({
+          indexId,
+          count: intents.length,
+          intents: intents.map((i) => ({
+            id: i.id,
+            description: i.payload,
+            summary: i.summary,
+            createdAt: i.createdAt,
+          })),
+          mode: "intents_in_index",
+          note: "To show index title and full intent details, use read_indexes and read_intents.",
+        });
+      } catch (err) {
+        logger.error("read_intent_indexes failed", { error: err });
+        return error("Failed to fetch intent-index links. Please try again.");
+      }
+    },
+    {
+      name: "read_intent_indexes",
+      description:
+        "Three modes. (1) By index: pass indexId (or omit when index-scoped) to list intents in that index. As index owner, omit userId to see all intents, or pass userId to see that user's intents (e.g. your own). As member, returns that user's intents in the index. (2) By intent: pass intentId to list all indexes that intent is in (you must own the intent). (3) Works with user and index scope: indexId defaults to context when chat is index-scoped. Use read_indexes and read_intents to show names/descriptions.",
+      schema: z.object({
+        intentId: z.string().optional().describe("Intent UUID from read_intents. When set, returns all indexIds the intent is registered to (owner only)."),
+        indexId: z.string().optional().describe("Index UUID from read_indexes. When set, returns intents in that index. Optional when chat is index-scoped."),
+        userId: z.string().optional().describe("When listing by index: as owner, limit to this user's intents (e.g. yourself); omit to list all intents in the index."),
+      }),
+    }
+  );
+
+  const deleteIntentIndex = tool(
+    async (args: { intentId: string; indexId: string }) => {
+      const intentId = args.intentId?.trim() ?? "";
+      const indexId = args.indexId?.trim() ?? "";
+      logger.info("Tool: delete_intent_index", { userId, intentId, indexId });
+
+      if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {
+        return error(
+          "Invalid ID format. intentId and indexId must be UUIDs from read_intents and read_indexes."
+        );
+      }
+
+      try {
+        const intent = await database.getIntent(intentId);
+        if (!intent) {
+          return error("Intent not found. Use read_intents to get the exact intent id.");
+        }
+        if (intent.userId !== userId) {
+          return error("You can only remove your own intents from an index.");
+        }
+        const isMember = await database.isIndexMember(indexId, userId);
+        if (!isMember) {
+          return error("You are not a member of that index. Use read_indexes to list indexes you belong to.");
+        }
+        const assigned = await database.isIntentAssignedToIndex(intentId, indexId);
+        if (!assigned) {
+          return success({ deleted: true, message: "That intent is not in this index." });
+        }
+        await database.unassignIntentFromIndex(intentId, indexId);
+        return success({ deleted: true, message: "Intent removed from the index." });
+      } catch (err) {
+        logger.error("delete_intent_index failed", { error: err });
+        return error("Failed to remove intent from index. Please try again.");
+      }
+    },
+    {
+      name: "delete_intent_index",
+      description: "Removes an intent from a specific index. Use when the user wants to take one of their intents out of an index. Requires intentId from read_intents and indexId from read_indexes. Does not delete the intent itself—use delete_intent for that.",
+      schema: z.object({
+        intentId: z.string().describe("The ID of the intent to remove (from read_intents)"),
+        indexId: z.string().describe("The ID of the index (from read_indexes)")
       })
     }
   );
@@ -967,10 +1180,11 @@ export function createChatTools(context: ToolContext) {
   // DISCOVERY TOOLS
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const findOpportunities = tool(
-    async (args: { searchQuery: string; indexId?: string }) => {
+  const createOpportunities = tool(
+    async (args: { searchQuery?: string; indexId?: string }) => {
       const effectiveIndexId = (args.indexId?.trim() || context.indexId?.trim()) ?? null;
-      logger.info("Tool: find_opportunities", { userId, query: args.searchQuery.substring(0, 50), indexScope: effectiveIndexId ?? "all" });
+      const query = args.searchQuery?.trim() ?? "";
+      logger.info("Tool: create_opportunities", { userId, queryPreview: query ? query.substring(0, 50) : "intent-based", indexScope: effectiveIndexId ?? "all" });
 
       try {
         let indexScope: string[];
@@ -992,7 +1206,7 @@ export function createChatTools(context: ToolContext) {
           opportunityGraph,
           database,
           userId,
-          query: args.searchQuery,
+          query,
           indexScope,
           limit: 5,
         });
@@ -1011,16 +1225,16 @@ export function createChatTools(context: ToolContext) {
           opportunities: result.opportunities ?? [],
         });
       } catch (err) {
-        logger.error("find_opportunities failed", { error: err });
+        logger.error("create_opportunities failed", { error: err });
         return error("Failed to search for opportunities. Please try again.");
       }
     },
     {
-      name: "find_opportunities",
+      name: "create_opportunities",
       description:
-        "Searches for relevant connections and opportunities. Returns concise summaries (name, short bio, match reason, score). For full details use list_my_opportunities. When the chat is scoped to an index, search is limited to that index unless you pass a different index or omit index scope.",
+        "REQUIRED when user asks to find opportunities, find connections, who can help with X, find a mentor, or similar discovery requests—call this tool; do not answer with text only. Creates draft (latent) opportunities. searchQuery is optional: when omitted or empty, discovery uses the user's existing intents in the current scope (index if chat is index-scoped, otherwise all their indexes). When the user does not specify what they want, do NOT ask—call with no searchQuery so their intents drive the search. Pass indexId when chat is index-scoped or user names an index. Returns concise summaries (name, short bio, match reason, score). Results are saved as drafts; use send_opportunity when ready.",
       schema: z.object({
-        searchQuery: z.string().describe("What kind of connections or opportunities to search for"),
+        searchQuery: z.string().optional().describe("Optional. What kind of connections to search for; when omitted, uses the user's intents in scope (index or all indexes)."),
         indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
       }),
     }
@@ -1049,7 +1263,7 @@ export function createChatTools(context: ToolContext) {
         if (list.length === 0) {
           return success({
             count: 0,
-            message: "You have no opportunities yet. Use find_opportunities to search for connections, or ask someone to suggest a connection for you.",
+            message: "You have no opportunities yet. Use create_opportunities to search for connections, or ask someone to suggest a connection for you.",
             opportunities: [],
           });
         }
@@ -1108,125 +1322,56 @@ export function createChatTools(context: ToolContext) {
     }
   );
 
-  const createOpportunityBetweenMembers = tool(
-    async (args: {
-      indexId?: string;
-      firstMemberRef: string;
-      secondMemberRef: string;
-      reasoning: string;
-    }) => {
-      const effectiveIndexId = (args.indexId?.trim() || context.indexId?.trim()) ?? null;
-      if (!effectiveIndexId) {
-        return error("Index required. Pass index UUID from read_indexes, or open chat from an index.");
-      }
-      if (!UUID_REGEX.test(effectiveIndexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
-      }
-      logger.info("Tool: create_opportunity_between_members", {
-        userId,
-        indexId: effectiveIndexId,
-        first: args.firstMemberRef.substring(0, 30),
-        second: args.secondMemberRef.substring(0, 30),
-      });
+  const sendOpportunity = tool(
+    async (args: { opportunityId: string }) => {
+      logger.info("Tool: send_opportunity", { userId, opportunityId: args.opportunityId });
 
       try {
-        const isMember = await database.isIndexMember(effectiveIndexId, userId);
-        if (!isMember) {
-          return error("Index not found or you are not a member. Use read_indexes to see indexes you belong to.");
+        const opportunity = await database.getOpportunity(args.opportunityId);
+        if (!opportunity) {
+          return error("Opportunity not found.");
         }
-
-        const members = await database.getIndexMembersForMember(effectiveIndexId, userId);
-
-        const resolveRef = (ref: string): string | null => {
-          const trimmed = ref.trim();
-          if (UUID_REGEX.test(trimmed)) {
-            const found = members.find((m) => m.userId === trimmed);
-            return found ? trimmed : null;
-          }
-          const needle = trimmed.toLowerCase();
-          const found = members.find(
-            (m) =>
-              (m.name ?? "").toLowerCase() === needle ||
-              (m.name ?? "").toLowerCase().includes(needle) ||
-              needle.includes((m.name ?? "").toLowerCase())
-          );
-          return found?.userId ?? null;
-        };
-
-        const firstUserId = resolveRef(args.firstMemberRef);
-        const secondUserId = resolveRef(args.secondMemberRef);
-
-        if (!firstUserId || !secondUserId) {
+        if (opportunity.status !== "latent") {
           return error(
-            "Could not resolve one or both members. Use read_users to see names and ensure both people are in that index. firstMemberRef and secondMemberRef can be display names or user IDs."
+            `Opportunity is already ${opportunity.status}; only draft (latent) opportunities can be sent.`
           );
         }
-        if (firstUserId === secondUserId) {
-          return error("The two members must be different people.");
+        const isActor = opportunity.actors.some((a: OpportunityActor) => a.identityId === userId);
+        if (!isActor) {
+          return error("You are not part of this opportunity.");
         }
 
-        const partyIds = [firstUserId, secondUserId];
-        const exists = await database.opportunityExistsBetweenActors(partyIds, effectiveIndexId);
-        if (exists) {
-          return success({
-            created: false,
-            message: "An opportunity already exists between these two members in this index.",
-          });
+        await database.updateOpportunityStatus(args.opportunityId, "pending");
+
+        const recipients = opportunity.actors.filter(
+          (a: OpportunityActor) => a.identityId !== userId
+        );
+        for (const recipient of recipients) {
+          await queueOpportunityNotification(opportunity.id, recipient.identityId, "high");
         }
 
-        const actors: OpportunityActor[] = [
-          { role: "party", identityId: firstUserId, intents: [], profile: true },
-          { role: "party", identityId: secondUserId, intents: [], profile: true },
-          { role: "introducer", identityId: userId, intents: [], profile: false },
-        ];
-
-        const data: CreateOpportunityData = {
-          detection: {
-            source: "chat",
-            createdBy: userId,
-            timestamp: new Date().toISOString(),
-          },
-          actors,
-          interpretation: {
-            category: "collaboration",
-            summary: args.reasoning.trim() || "Suggested connection by a community member.",
-            confidence: 0.8,
-            signals: [{ type: "curator_judgment", weight: 1, detail: "Suggested via chat" }],
-          },
-          context: { indexId: effectiveIndexId },
-          indexId: effectiveIndexId,
-          confidence: "0.8",
-          status: "pending",
-        };
-
-        const opportunity = await database.createOpportunity(data);
-        const recipientIds = actors.filter((a) => a.role !== "introducer").map((a) => a.identityId);
-        for (const recipientId of recipientIds) {
-          if (recipientId === userId) continue;
-          await queueOpportunityNotification(opportunity.id, recipientId, "high");
-        }
+        const recipientIds = recipients.map((a: OpportunityActor) => a.identityId);
         return success({
-          created: true,
+          sent: true,
           opportunityId: opportunity.id,
-          message: "Opportunity created. Both members can see it in their opportunities list.",
+          notified: recipientIds,
+          message: "Opportunity sent. The other person has been notified.",
         });
       } catch (err) {
-        logger.error("create_opportunity_between_members failed", { error: err });
-        if (err instanceof Error && err.message === "Access denied: Not a member of this index") {
-          return error("You must be a member of that index to suggest a connection. Use read_indexes to see your indexes.");
-        }
-        return error("Failed to create opportunity. Please try again.");
+        logger.error("send_opportunity failed", { error: err });
+        return error("Failed to send opportunity. Please try again.");
       }
     },
     {
-      name: "create_opportunity_between_members",
+      name: "send_opportunity",
       description:
-        "Creates an opportunity (suggested connection) between two members of an index. Use read_users to get member userId and name, then pass indexId (UUID from read_indexes), firstMemberRef, secondMemberRef (prefer userId from read_users for unambiguous matching; display names also work), and reasoning.",
+        "Sends a draft (latent) opportunity to the other person, promoting it to pending and triggering a notification. Use after create_opportunities or when listing draft opportunities (list_my_opportunities) when the user wants to send the intro.",
       schema: z.object({
-        indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
-        firstMemberRef: z.string().describe("First person: userId from read_users (preferred) or display name"),
-        secondMemberRef: z.string().describe("Second person: userId from read_users (preferred) or display name"),
-        reasoning: z.string().describe("Brief reason why these two should connect (e.g. complementary intents)"),
+        opportunityId: z
+          .string()
+          .describe(
+            "The opportunity ID to send (from create_opportunities or list_my_opportunities)"
+          ),
       }),
     }
   );
@@ -1310,7 +1455,11 @@ export function createChatTools(context: ToolContext) {
         } else if (payload.resource === "intent" && payload.action === "delete") {
           await database.archiveIntent(payload.intentId);
         } else if (payload.resource === "profile" && payload.action === "update") {
-          const profileGraphInstance = new ProfileGraphFactory(database as any, embedder, scraper).createGraph();
+          const profileGraphInstance = new ProfileGraphFactory(
+            database as unknown as ProfileGraphDatabase,
+            embedder,
+            scraper
+          ).createGraph();
           const profileInput = (payload.updates as { input?: string }).input ?? JSON.stringify(payload.updates);
           await profileGraphInstance.invoke({
             userId,
@@ -1321,7 +1470,11 @@ export function createChatTools(context: ToolContext) {
         } else if (payload.resource === "profile" && payload.action === "delete") {
           await database.deleteProfile(userId);
         } else if (payload.resource === "index" && payload.action === "update") {
-          await database.updateIndexSettings(payload.indexId, userId, payload.updates as any);
+          await database.updateIndexSettings(
+            payload.indexId,
+            userId,
+            payload.updates as UpdateIndexSettingsData
+          );
         } else if (payload.resource === "index" && payload.action === "delete") {
           await database.softDeleteIndex(payload.indexId);
         } else if (payload.resource === "opportunity" && payload.action === "update") {
@@ -1383,8 +1536,13 @@ export function createChatTools(context: ToolContext) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   return [
+    // Tools
+    sendOpportunity,
+    scrapeUrl,
+    // Confirmation Tools
     confirmAction,
     cancelAction,
+    // CRUDS
     readUserProfiles,
     createUserProfile,
     updateUserProfile,
@@ -1392,16 +1550,17 @@ export function createChatTools(context: ToolContext) {
     createIntent,
     updateIntent,
     deleteIntent,
+    createIntentIndex,
+    readIntentIndexes,
+    deleteIntentIndex,
     readIndexes,
     createIndex,
     updateIndex,
     deleteIndex,
     createIndexMembership,
     readUsers,
-    findOpportunities,
+    createOpportunities,
     listMyOpportunities,
-    createOpportunityBetweenMembers,
-    scrapeUrl,
   ];
 }
 

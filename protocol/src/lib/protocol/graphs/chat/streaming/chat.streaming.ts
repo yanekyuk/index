@@ -27,15 +27,18 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   create_intent: "Creating new intent...",
   update_intent: "Updating intent...",
   delete_intent: "Removing intent...",
+  create_intent_index: "Saving intent to index...",
+  read_intent_indexes: "Fetching intents in index...",
+  delete_intent_index: "Removing intent from index...",
   read_indexes: "Checking your indexes...",
   create_index: "Creating index...",
   update_index: "Updating index...",
   delete_index: "Deleting index...",
   create_index_membership: "Adding member...",
   read_users: "Fetching members...",
-  find_opportunities: "Searching for opportunities...",
+  create_opportunities: "Creating draft opportunities...",
   list_my_opportunities: "Listing your opportunities...",
-  create_opportunity_between_members: "Creating suggested connection...",
+  send_opportunity: "Sending opportunity...",
   scrape_url: "Reading web content...",
 };
 
@@ -163,7 +166,6 @@ export class ChatGraphStreamingService {
         if (event.event === "on_tool_start") {
           const toolName = event.name || "unknown_tool";
           const toolArgs = event.data?.input || {};
-
           logger.info("Tool starting", { toolName, args: toolArgs });
 
           // Emit tool start event
