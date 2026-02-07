@@ -971,6 +971,72 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('initialStatus option', () => {
+    test('when options.initialStatus is "latent", createOpportunity is called with status "latent"', async () => {
+      const { graph, compiledGraph, mockDb } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(
+        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
+        'invoke'
+      ).mockResolvedValue([
+        {
+          sourceId: 'user-source',
+          candidateId: 'user-bob',
+          score: 88,
+          sourceDescription: 'Match.',
+          candidateDescription: 'Match.',
+          valencyRole: 'Agent',
+        },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        sourceProfileContext: 'Profile.',
+        sourceUserId: 'user-source' as Id<'users'>,
+        candidates: defaultCandidates,
+        indexScope: [],
+        options: { minScore: 50, initialStatus: 'latent' },
+        opportunities: [],
+      })) as unknown as OpportunityGraphState;
+
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].status).toBe('latent');
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'latent' })
+      );
+    });
+
+    test('when options.initialStatus is omitted, createOpportunity is called with status "pending"', async () => {
+      const { graph, compiledGraph, mockDb } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(
+        (graph as unknown as { evaluatorAgent: { invoke: (a: string, b: CandidateProfile[], c: unknown) => Promise<unknown> } }).evaluatorAgent,
+        'invoke'
+      ).mockResolvedValue([
+        {
+          sourceId: 'user-source',
+          candidateId: 'user-bob',
+          score: 88,
+          sourceDescription: 'Match.',
+          candidateDescription: 'Match.',
+          valencyRole: 'Agent',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        sourceProfileContext: 'Profile.',
+        sourceUserId: 'user-source' as Id<'users'>,
+        candidates: defaultCandidates,
+        indexScope: [],
+        options: { minScore: 50 },
+        opportunities: [],
+      });
+
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'pending' })
+      );
+    });
+  });
+
   describe('Smartest: multiple candidates from search, evaluator returns one', () => {
     test('two candidates from search, evaluator returns one opportunity → one persisted', async () => {
       const { graph, compiledGraph, mockEmbedder } = createMockGraph();
