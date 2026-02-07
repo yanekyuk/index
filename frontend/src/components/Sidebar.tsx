@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessageCircle, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
+import { Compass, MessagesSquare, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -230,7 +230,7 @@ export default function Sidebar() {
               : 'text-black font-medium hover:bg-gray-50'
           } ${navigatingToChat ? 'opacity-50 cursor-wait' : ''}`}
         >
-          <MessageCircle className="w-5 h-5" />
+          <MessagesSquare className="w-5 h-5" />
           <span className="flex-1 text-left">Chat</span>
           {totalUnreadCount > 0 && (
             <span className="bg-black text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
