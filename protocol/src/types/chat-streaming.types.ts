@@ -1,12 +1,12 @@
 /**
  * SSE Event types for Chat Graph streaming.
- * 
+ *
  * These types define the structure of events sent during streaming chat responses.
  * Events are sent as Server-Sent Events (SSE) with JSON payloads.
  */
 
 // Event type discriminator
-export type ChatStreamEventType = 
+export type ChatStreamEventType =
   | 'status'
   | 'routing'
   | 'thinking'
@@ -160,7 +160,7 @@ export interface AgentThinkingEvent extends ChatStreamEventBase {
 /**
  * Union type of all chat stream events.
  */
-export type ChatStreamEvent = 
+export type ChatStreamEvent =
   | StatusEvent
   | RoutingEvent
   | ThinkingEvent
@@ -198,12 +198,12 @@ export function formatSSEEvent(event: ChatStreamEvent): string {
 
 /**
  * Creates a chat stream event with common fields populated.
- * 
+ *
  * @param type - Event type
  * @param sessionId - Session ID
  * @param data - Event-specific data (excluding type, sessionId, timestamp)
  * @returns Complete event object
- * 
+ *
  * @example
  * ```ts
  * const statusEvent = createStreamEvent<StatusEvent>('status', 'session-123', {
@@ -259,8 +259,8 @@ export function createSubgraphStartEvent(sessionId: string, subgraph: string): S
  * Creates a formatted subgraph result event.
  */
 export function createSubgraphResultEvent(
-  sessionId: string, 
-  subgraph: string, 
+  sessionId: string,
+  subgraph: string,
   data: Record<string, unknown>
 ): SubgraphResultEvent {
   return createStreamEvent<SubgraphResultEvent>('subgraph_result', sessionId, { subgraph, data });
@@ -283,9 +283,9 @@ export function createDoneEvent(
   subgraphResults?: Record<string, unknown>,
   title?: string
 ): DoneEvent {
-  return createStreamEvent<DoneEvent>('done', sessionId, { 
-    response, 
-    routingDecision, 
+  return createStreamEvent<DoneEvent>('done', sessionId, {
+    response,
+    routingDecision,
     subgraphResults,
     title
   });

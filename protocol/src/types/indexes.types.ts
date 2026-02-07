@@ -1,6 +1,6 @@
-import { ISODateString, UUID } from './common';
-import { UserSummary } from './users';
-import { FileRecord } from './files';
+import { ISODateString, UUID } from './common.types';
+import { UserSummary } from './users.types';
+import { FileRecord } from './files.types';
 
 export type IndexJoinPolicy = 'anyone' | 'invite_only';
 

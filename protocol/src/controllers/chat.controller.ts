@@ -5,7 +5,7 @@ import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorator
 import { chatSessionService } from '../services/chat.service';
 import { fileService } from '../services/file.service';
 import { userService } from '../services/user.service';
-import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming';
+import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming.types';
 
 const logger = log.controller.from("chat");
 

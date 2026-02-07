@@ -14,7 +14,7 @@ import { describe, test, expect, spyOn, beforeAll } from 'bun:test';
 import { z } from 'zod';
 import { runScenario, defineScenario, expectSmartest } from '../../../smartest';
 import { OpportunityGraph, type CompiledHydeGraph } from './opportunity.graph';
-import type { Id } from '../../../../types/common';
+import type { Id } from '../../../../types/common.types';
 import type {
   OpportunityGraphDatabase,
   OpportunityActor,

@@ -1,4 +1,4 @@
-import { ISODateString, UUID } from './common';
+import { ISODateString, UUID } from './common.types';
 
 export interface DirectorySyncConfig {
   enabled: boolean;

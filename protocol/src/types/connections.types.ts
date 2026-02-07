@@ -1,5 +1,5 @@
-import { ISODateString, UUID } from './common';
-import { UserSummary } from './users';
+import { ISODateString, UUID } from './common.types';
+import { UserSummary } from './users.types';
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 

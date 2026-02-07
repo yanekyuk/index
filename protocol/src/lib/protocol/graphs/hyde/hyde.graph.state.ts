@@ -4,7 +4,7 @@
  */
 
 import { Annotation } from '@langchain/langgraph';
-import type { Id } from '../../../../types/common';
+import type { Id } from '../../../../types/common.types';
 import type {
   HydeStrategy,
   HydeTargetCorpus,

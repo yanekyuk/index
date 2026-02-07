@@ -8,7 +8,7 @@
  */
 
 import { StateGraph, END, START } from '@langchain/langgraph';
-import type { Id } from '../../../../types/common';
+import type { Id } from '../../../../types/common.types';
 import { OpportunityGraphState } from './opportunity.state';
 import { OpportunityEvaluator, type CandidateProfile } from '../../agents/opportunity/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../../interfaces/database.interface';

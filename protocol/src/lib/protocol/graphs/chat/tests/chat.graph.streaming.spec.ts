@@ -15,7 +15,7 @@ import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../../inte
 import type { Embedder } from "../../../interfaces/embedder.interface";
 import type { Scraper } from "../../../interfaces/scraper.interface";
 import { chatSessionService } from "../../../../../services/chat.service";
-import type { ChatStreamEvent } from "../../../../../types/chat-streaming";
+import type { ChatStreamEvent } from "../../../../../types/chat-streaming.types";
 
 const testUserId = "test-chat-stream-user";
 const testSessionId = "test-session-stream";

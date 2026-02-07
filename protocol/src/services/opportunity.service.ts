@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import type { Id } from '../types/common';
+import type { Id } from '../types/common.types';
 import type {
   OpportunityControllerDatabase,
   OpportunityGraphDatabase,

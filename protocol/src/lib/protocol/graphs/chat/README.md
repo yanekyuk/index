@@ -549,4 +549,4 @@ Safety is enforced at the **tool level**, not the graph level:
 
 - [Intent Graph Architecture](../intent/README.md)
 - [Profile Graph Architecture](../profile/README.md)
-- [Chat Streaming Types](../../../../types/chat-streaming.ts)
+- [Chat Streaming Types](../../../../types/chat-streaming.types.ts)

@@ -1,7 +1,7 @@
 import { MemorySaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
-import type { ChatStreamEvent, ToolStartEvent, ToolEndEvent, AgentThinkingEvent } from "../../../../../types/chat-streaming";
+import type { ChatStreamEvent, ToolStartEvent, ToolEndEvent, AgentThinkingEvent } from "../../../../../types/chat-streaming.types";
 import {
   createStatusEvent,
   createThinkingEvent,
@@ -10,7 +10,7 @@ import {
   createToolStartEvent,
   createToolEndEvent,
   createAgentThinkingEvent,
-} from "../../../../../types/chat-streaming";
+} from "../../../../../types/chat-streaming.types";
 import { log } from "../../../../log";
 
 const logger = log.protocol.from("ChatGraphStreamingService");

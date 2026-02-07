@@ -1,4 +1,4 @@
-import type { Id } from '../../../../types/common';
+import type { Id } from '../../../../types/common.types';
 import type { CandidateProfile, OpportunityEvaluatorOptions } from '../../agents/opportunity/opportunity.evaluator';
 import type { HydeCandidate } from '../../interfaces/embedder.interface';
 import type { Opportunity } from '../../interfaces/database.interface';

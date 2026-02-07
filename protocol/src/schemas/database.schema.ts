@@ -1,7 +1,7 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { Id } from '../types/common';
+import type { Id } from '../types/common.types';
 
 // Enums
 export const connectionAction = pgEnum('connection_action', [
