@@ -1,6 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { AIMessage, BaseMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
-import type { LoggerWithSource } from "../../../../log";
+import type { LoggerWithSource } from "../../../protocol.log";
 import type { ChatGraphState, SubgraphResults, RoutingDecision } from "../chat.graph.state";
 
 /** Interface for response generator used by the response node (getSystemPrompt, buildUserPrompt, getSuggestedActions). */

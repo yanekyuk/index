@@ -11,9 +11,9 @@ import {
   createToolEndEvent,
   createAgentThinkingEvent,
 } from "../../../../../types/chat-streaming.types";
-import { log } from "../../../../log";
+import { protocolLogger } from "../../../protocol.log";
 
-const logger = log.protocol.from("ChatGraphStreamingService");
+const logger = protocolLogger("ChatGraphStreamingService");
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TOOL DESCRIPTIONS (for user-friendly display)

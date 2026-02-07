@@ -16,9 +16,9 @@
  */
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 
-const logger = log.protocol.from("ChatCheckpointer");
+const logger = protocolLogger("ChatCheckpointer");
 
 let checkpointerInstance: PostgresSaver | null = null;
 let setupPromise: Promise<void> | null = null;

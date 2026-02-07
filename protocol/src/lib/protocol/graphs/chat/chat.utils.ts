@@ -17,6 +17,9 @@
 
 import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from "@langchain/core/messages";
 import type { HydeStrategy } from "../../agents/hyde/hyde.strategies";
+import { protocolLogger } from "../../protocol.log";
+
+const logger = protocolLogger("ChatUtils");
 
 /**
  * Default maximum tokens to allow for context.
@@ -163,9 +166,11 @@ export function prepareContextWindow(
   if (truncationStrategy === "summarize") {
     // TODO: Implement summarization strategy
     // For now, fall back to oldest_first
-    console.warn(
-      "[token-utils] 'summarize' strategy not yet implemented, using 'oldest_first'"
-    );
+    logger.warn("prepareContextWindow: 'summarize' strategy not yet implemented, using 'oldest_first'", {
+      truncationStrategy,
+      maxTokens,
+      reserveTokens,
+    });
   }
 
   const effectiveMax = maxTokens - reserveTokens;

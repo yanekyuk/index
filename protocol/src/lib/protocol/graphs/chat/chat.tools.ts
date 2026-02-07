@@ -21,10 +21,10 @@ import { RedisCacheAdapter } from "../../../../adapters/cache.adapter";
 import { runDiscoverFromQuery } from "./nodes/discover.nodes";
 import type { ExecutionResult } from "../intent/intent.graph.state";
 import { queueOpportunityNotification } from "../../../../queues/notification.queue";
-import { log } from "../../../log";
+import { protocolLogger, withCallLogging } from "../../protocol.log";
 import type { PendingConfirmation, ConfirmationPayload } from "./chat.graph.state";
 
-const logger = log.protocol.from("ChatTools");
+const logger = protocolLogger("ChatTools");
 
 /** Five minutes in ms for confirmation expiry. */
 const CONFIRMATION_EXPIRY_MS = 5 * 60 * 1000;
@@ -160,35 +160,33 @@ export function createChatTools(context: ToolContext) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   const readUserProfiles = tool(
-    async () => {
-      logger.info("Tool: read_user_profiles", { userId });
-
-      try {
-        const profile = await database.getProfileByUserId(userId);
-
-        if (!profile) {
+    async () =>
+      withCallLogging(
+        logger,
+        "read_user_profiles",
+        { userId },
+        async () => {
+          const profile = await database.getProfileByUserId(userId);
+          if (!profile) {
+            return success({
+              hasProfile: false,
+              message: "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself.",
+            });
+          }
           return success({
-            hasProfile: false,
-            message: "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself.",
+            hasProfile: true,
+            profile: {
+              id: profile.id,
+              name: profile.identity.name,
+              bio: profile.identity.bio,
+              location: profile.identity.location,
+              skills: profile.attributes.skills,
+              interests: profile.attributes.interests,
+            },
           });
-        }
-
-        return success({
-          hasProfile: true,
-          profile: {
-            id: profile.id,
-            name: profile.identity.name,
-            bio: profile.identity.bio,
-            location: profile.identity.location,
-            skills: profile.attributes.skills,
-            interests: profile.attributes.interests,
-          },
-        });
-      } catch (err) {
-        logger.error("read_user_profiles failed", { error: err });
-        return error("Failed to fetch profile. Please try again.");
-      }
-    },
+        },
+        { context: { userId } }
+      ).catch(() => error("Failed to fetch profile. Please try again.")),
     {
       name: "read_user_profiles",
       description: "Fetches the user's profile including id, name, bio, skills, interests, and location. Returns profile data (with id field for use in update_user_profile) or indicates if no profile exists.",
@@ -198,46 +196,44 @@ export function createChatTools(context: ToolContext) {
 
   const createUserProfile = tool(
     async (args: { action: string; details?: string }) => {
-      logger.info("Tool: create_user_profile", { userId, action: args.action });
-
       const inputForProfile = [args.action, args.details].filter(Boolean).join("\n") || (args.details ?? args.action);
       if (!inputForProfile.trim()) {
         return error("Please specify what to put in the profile (e.g. action: 'Create my profile from the following', details: pasted content).");
       }
-
-      try {
-        const existing = await database.getProfile(userId);
-        if (existing) {
-          return error("You already have a profile. Use update_user_profile to change it.");
-        }
+      return withCallLogging(
+        logger,
+        "create_user_profile",
+        { userId, action: args.action, hasDetails: !!args.details },
+        async () => {
+          const existing = await database.getProfile(userId);
+          if (existing) return error("You already have a profile. Use update_user_profile to change it.");
           const profileGraphInstance = new ProfileGraphFactory(
             database as unknown as ProfileGraphDatabase,
             embedder,
             scraper
           ).createGraph();
-        await profileGraphInstance.invoke({
-          userId,
-          operationMode: "write",
-          input: inputForProfile,
-          forceUpdate: true,
-        });
-        const profile = await database.getProfile(userId);
-        if (!profile) return error("Profile creation failed.");
-        return success({
-          created: true,
-          message: "Profile created.",
-          profile: {
-            name: profile.identity.name,
-            bio: profile.identity.bio,
-            location: profile.identity.location,
-            skills: profile.attributes.skills,
-            interests: profile.attributes.interests,
-          },
-        });
-      } catch (err) {
-        logger.error("create_user_profile failed", { error: err });
-        return error("Failed to create profile. Please try again.");
-      }
+          await profileGraphInstance.invoke({
+            userId,
+            operationMode: "write",
+            input: inputForProfile,
+            forceUpdate: true,
+          });
+          const profile = await database.getProfile(userId);
+          if (!profile) return error("Profile creation failed.");
+          return success({
+            created: true,
+            message: "Profile created.",
+            profile: {
+              name: profile.identity.name,
+              bio: profile.identity.bio,
+              location: profile.identity.location,
+              skills: profile.attributes.skills,
+              interests: profile.attributes.interests,
+            },
+          });
+        },
+        { context: { userId } }
+      ).catch(() => error("Failed to create profile. Please try again."));
     },
     {
       name: "create_user_profile",
@@ -311,7 +307,6 @@ export function createChatTools(context: ToolContext) {
       if (indexId && !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
-      // In index-scoped chat, always use the session user for the member path so "my intents" returns the current user's intents. The agent often passes a wrong or unrelated userId (non-UUID or another user's UUID), which causes getIntentsInIndexForMember to return empty.
       const isIndexScoped = !!(context.indexId?.trim());
       const rawArgUserId = args.userId?.trim();
       const effectiveUserId =
@@ -320,20 +315,47 @@ export function createChatTools(context: ToolContext) {
           : rawArgUserId && UUID_REGEX.test(rawArgUserId)
             ? rawArgUserId
             : userId;
-      logger.info("Tool: read_intents", { userId, indexId, effectiveUserId });
 
-      try {
-        if (indexId) {
-          const isOwner = await database.isIndexOwner(indexId, userId);
-          const isMember = await database.isIndexMember(indexId, userId);
-          if (!isMember) {
-            return error("Index not found or you are not a member. Use read_indexes to see your indexes.");
-          }
-          if (isOwner && !args.userId) {
-            const intents = await database.getIndexIntentsForOwner(indexId, userId, { limit: 50, offset: 0 });
-            if (intents.length === 0) {
-              return success({ count: 0, intents: [], message: "No intents in this index yet.", indexId });
+      return withCallLogging(
+        logger,
+        "read_intents",
+        { userId, indexId, effectiveUserId, isIndexScoped },
+        async () => {
+          if (indexId) {
+            const isMember = await database.isIndexMember(indexId, userId);
+            if (!isMember) {
+              return error("Index not found or you are not a member. Use read_indexes to see your indexes.");
             }
+            // In a shared network, any member can see all intents in the index when userId is omitted.
+            if (!args.userId) {
+              const intents = await database.getIndexIntentsForMember(indexId, userId, { limit: 50, offset: 0 });
+              if (intents.length === 0) {
+                return success({ count: 0, intents: [], message: "No intents in this index yet.", indexId });
+              }
+              return success({
+                count: intents.length,
+                indexId,
+                intents: intents.map((i) => ({
+                  id: i.id,
+                  description: i.payload,
+                  summary: i.summary,
+                  createdAt: i.createdAt,
+                  userId: i.userId,
+                  userName: i.userName,
+                })),
+              });
+            }
+            const intents = await database.getIntentsInIndexForMember(effectiveUserId, indexId);
+            if (intents.length === 0) {
+              return success({
+                count: 0,
+                intents: [],
+                message: effectiveUserId === userId ? "You don't have any intents in this index yet." : "No intents for that user in this index.",
+                indexId,
+              });
+            }
+            const user = await database.getUser(effectiveUserId);
+            const userName = user?.name ?? null;
             return success({
               count: intents.length,
               indexId,
@@ -342,71 +364,43 @@ export function createChatTools(context: ToolContext) {
                 description: i.payload,
                 summary: i.summary,
                 createdAt: i.createdAt,
-                userId: i.userId,
-                userName: i.userName,
+                userId: effectiveUserId,
+                userName,
               })),
             });
           }
-          const intents = await database.getIntentsInIndexForMember(effectiveUserId, indexId);
+          const requestedOtherUser = rawArgUserId?.trim() && rawArgUserId.trim() !== userId;
+          if (requestedOtherUser || effectiveUserId !== userId) {
+            return error("Not authorized to view other users' global intents. You can only view your own intents when no index is specified.");
+          }
+          const intents = await database.getActiveIntents(effectiveUserId);
           if (intents.length === 0) {
             return success({
               count: 0,
               intents: [],
-              message: effectiveUserId === userId ? "You don't have any intents in this index yet." : "No intents for that user in this index.",
-              indexId,
+              message: "You don't have any active intents yet. Share your goals or what you're looking for.",
             });
           }
-          // Include userId and userName for consistency with getIndexIntentsForOwner (so owner viewing a member's intents sees whose they are)
-          const user = await database.getUser(effectiveUserId);
-          const userName = user?.name ?? null;
           return success({
             count: intents.length,
-            indexId,
             intents: intents.map((i) => ({
               id: i.id,
               description: i.payload,
               summary: i.summary,
               createdAt: i.createdAt,
-              userId: effectiveUserId,
-              userName,
             })),
           });
-      }
-      
-      // Global (no-index) path: restrict to session user only
-      if (effectiveUserId !== userId) {
-        return error("Not authorized to view other users' global intents. You can only view your own intents when no index is specified.");
-      }
-      
-      const intents = await database.getActiveIntents(effectiveUserId);
-      if (intents.length === 0) {
-        return success({
-          count: 0,
-          intents: [],
-          message: "You don't have any active intents yet. Share your goals or what you're looking for.",
-        });
-      }
-      return success({
-        count: intents.length,
-        intents: intents.map((i) => ({
-          id: i.id,
-          description: i.payload,
-          summary: i.summary,
-          createdAt: i.createdAt,
-        })),
-      });
-      } catch (err) {
-        logger.error("read_intents failed", { error: err });
-        return error("Failed to fetch intents. Please try again.");
-      }
+        },
+        { context: { userId } }
+      ).catch(() => error("Failed to fetch intents. Please try again."));
     },
     {
       name: "read_intents",
       description:
-        `Fetches intents (goals, wants, needs). With no indexId: returns the user's active intents. With indexId: if you are the index owner and omit userId, returns all intents in that index (all members); if you pass userId (e.g. the current user's id when they ask 'my intents' or 'owner's intents'), returns only that user's intents in the index. indexId must be a UUID from read_indexes.`,
+        `Fetches intents (goals, wants, needs). With no indexId: returns the user's active intents. With indexId: omit userId to return all intents in that index (all members—any member can see everyone's intents in a shared network); pass userId (e.g. the current user's id when they ask 'my intents') to return only that user's intents in the index. indexId must be a UUID from read_indexes.`,
       schema: z.object({
         indexId: z.string().optional().describe("Index UUID; optional when chat is index-scoped (uses current index)."),
-        userId: z.string().optional().describe("When index-scoped: pass the current user's id when they ask for their own intents so only their intents are returned; omit to return all intents in the index (owner only). Pass another member's id to return that member's intents."),
+        userId: z.string().optional().describe("When index-scoped: pass the current user's id when they ask for their own intents only; omit to return all intents in the index (any member can see everyone's intents in a shared network)."),
       }),
     }
   );
@@ -419,9 +413,11 @@ export function createChatTools(context: ToolContext) {
           message: "Please provide a description of what you're looking for (e.g. your goal, want, or need).",
         });
       }
-      logger.info("Tool: create_intent", { userId, description: args.description.substring(0, 50), indexId: args.indexId });
-
-      try {
+      return withCallLogging(
+        logger,
+        "create_intent",
+        { userId, descriptionPreview: args.description.substring(0, 50), indexId: args.indexId },
+        async () => {
         let inputContent = args.description;
         const urls = extractUrls(args.description);
         if (urls.length > 0) {
@@ -513,10 +509,9 @@ export function createChatTools(context: ToolContext) {
         }
 
         return error("Couldn't extract a clear intent from that. Could you be more specific about what you're looking for?");
-      } catch (err) {
-        logger.error("create_intent failed", { error: err });
-        return error("Failed to create intent. Please try again.");
-      }
+        },
+        { context: { userId } }
+      ).catch(() => error("Failed to create intent. Please try again."));
     },
     {
       name: "create_intent",
@@ -758,15 +753,14 @@ export function createChatTools(context: ToolContext) {
           return error("Invalid index ID format. Use the exact UUID from read_indexes.");
         }
 
-        const isOwner = await database.isIndexOwner(indexId, userId);
         const isMember = await database.isIndexMember(indexId, userId);
         if (!isMember) {
           return error("Index not found or you are not a member. Use read_indexes to see your indexes.");
         }
 
-        // Index owner: omit userId → all intents in index; pass userId → that user's intents in this index (e.g. "my intents in this index" when userId=self)
-        if (isOwner && !args.userId) {
-          const intents = await database.getIndexIntentsForOwner(indexId, userId, { limit: 50, offset: 0 });
+        // In a shared network, any member can see all intents in the index when userId is omitted.
+        if (!args.userId) {
+          const intents = await database.getIndexIntentsForMember(indexId, userId, { limit: 50, offset: 0 });
           return success({
             indexId,
             count: intents.length,
@@ -783,7 +777,7 @@ export function createChatTools(context: ToolContext) {
           });
         }
 
-        // Owner with userId filter, or member: intents for effectiveUserId in this index
+        // Pass userId to limit to that user's intents in this index (e.g. "my intents" when userId=self).
         const intents = await database.getIntentsInIndexForMember(effectiveUserId, indexId);
         return success({
           indexId,
@@ -805,11 +799,11 @@ export function createChatTools(context: ToolContext) {
     {
       name: "read_intent_indexes",
       description:
-        "Three modes. (1) By index: pass indexId (or omit when index-scoped) to list intents in that index. As index owner, omit userId to see all intents, or pass userId to see that user's intents (e.g. your own). As member, returns that user's intents in the index. (2) By intent: pass intentId to list all indexes that intent is in (you must own the intent). (3) Works with user and index scope: indexId defaults to context when chat is index-scoped. Use read_indexes and read_intents to show names/descriptions.",
+        "Three modes. (1) By index: pass indexId (or omit when index-scoped) to list intents in that index. Omit userId to see all intents in the index (any member in a shared network); pass userId to see that user's intents only (e.g. your own). (2) By intent: pass intentId to list all indexes that intent is in (you must own the intent). (3) Works with user and index scope: indexId defaults to context when chat is index-scoped. Use read_indexes and read_intents to show names/descriptions.",
       schema: z.object({
         intentId: z.string().optional().describe("Intent UUID from read_intents. When set, returns all indexIds the intent is registered to (owner only)."),
         indexId: z.string().optional().describe("Index UUID from read_indexes. When set, returns intents in that index. Optional when chat is index-scoped."),
-        userId: z.string().optional().describe("When listing by index: as owner, limit to this user's intents (e.g. yourself); omit to list all intents in the index."),
+        userId: z.string().optional().describe("When listing by index: omit to list all intents in the index (any member); pass to limit to that user's intents (e.g. yourself)."),
       }),
     }
   );

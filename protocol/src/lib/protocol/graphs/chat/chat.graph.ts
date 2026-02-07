@@ -6,12 +6,12 @@ import { ChatAgent } from "./chat.agent";
 import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 import { chatSessionService } from "../../../../services/chat.service";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./chat.utils";
 import { ChatGraphStreamingService } from "./streaming";
 
-const logger = log.protocol.from("ChatGraphFactory");
+const logger = protocolLogger("ChatGraphFactory");
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT GRAPH FACTORY (Agent Loop Architecture)

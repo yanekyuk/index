@@ -12,9 +12,9 @@ import type { Opportunity } from "../../../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../../../interfaces/database.interface";
 import type { OpportunityGraphOptions } from "../../opportunity/opportunity.graph.state";
 import { selectStrategiesFromQuery } from "../chat.utils";
-import { log } from "../../../../log";
+import { protocolLogger, withCallLogging } from "../../../protocol.log";
 
-const logger = log.protocol.from("DiscoverNodes");
+const logger = protocolLogger("DiscoverNodes");
 
 /** Compiled opportunity graph (from OpportunityGraphFactory.createGraph()). */
 export type CompiledOpportunityGraph = ReturnType<
@@ -94,76 +94,71 @@ export async function runDiscoverFromQuery(
   if (queryOrEmpty) {
     options.strategies = selectStrategiesFromQuery(queryOrEmpty);
   }
-  logger.info("[Discover] Running discovery", {
-    userId,
-    queryPreview: queryOrEmpty ? queryOrEmpty.substring(0, 50) : "(using user intents in scope)",
-    indexScope: indexScope.length,
-  });
 
-  try {
-    // When searchQuery is empty/undefined, graph uses user's indexed intents (prep loads them; discovery uses first intent payload and derives strategies)
-    const result = await opportunityGraph.invoke({
+  return withCallLogging(
+    logger,
+    "runDiscoverFromQuery",
+    {
       userId,
-      searchQuery: queryOrEmpty || undefined,
-      indexId: indexScope.length > 0 ? indexScope[0] : undefined,
-      options,
-    });
+      queryPreview: queryOrEmpty ? queryOrEmpty.substring(0, 50) : "(using user intents in scope)",
+      indexScopeCount: indexScope.length,
+      limit,
+    },
+    async () => {
+      // When searchQuery is empty/undefined, graph uses user's indexed intents (prep loads them; discovery uses first intent payload and derives strategies)
+      const result = await opportunityGraph.invoke({
+        userId,
+        searchQuery: queryOrEmpty || undefined,
+        indexId: indexScope.length > 0 ? indexScope[0] : undefined,
+        options,
+      });
 
-    const opportunities: Opportunity[] = Array.isArray(result.opportunities)
-      ? result.opportunities
-      : [];
-    if (opportunities.length === 0) {
-      return {
-        found: false,
-        count: 0,
-        message:
-          "No matching opportunities found. Try a different search or create intents to improve matching.",
-      };
-    }
-
-    const enriched = await Promise.all(
-      opportunities.map(async (opp) => {
-        const candidateActor = opp.actors.find((a) => a.identityId !== userId);
-        const candidateUserId = candidateActor?.identityId ?? "";
-        const profile = candidateUserId
-          ? await database.getProfile(candidateUserId)
-          : null;
-        const confidence =
-          typeof opp.interpretation?.confidence === "number"
-            ? opp.interpretation.confidence
-            : parseFloat(String(opp.interpretation?.confidence ?? 0)) || 0;
+      const opportunities: Opportunity[] = Array.isArray(result.opportunities)
+        ? result.opportunities
+        : [];
+      if (opportunities.length === 0) {
         return {
-          opportunityId: opp.id,
-          userId: candidateUserId,
-          name: profile?.identity?.name ?? undefined,
-          bio: truncateForChat(profile?.identity?.bio),
-          matchReason: truncateForChat(opp.interpretation?.summary ?? "") ?? "",
-          score: confidence,
+          found: false,
+          count: 0,
+          message:
+            "No matching opportunities found. Try a different search or create intents to improve matching.",
         };
-      })
-    );
+      }
 
-    return {
-      found: true,
-      count: enriched.length,
-      opportunities: enriched,
-    };
-  } catch (err) {
-    const errMessage = err instanceof Error ? err.message : String(err);
-    const errCause = err instanceof Error && err.cause ? String(err.cause) : undefined;
-    const errStack = err instanceof Error ? err.stack : undefined;
-    logger.error("[Discover] Discovery failed", {
-      userId,
-      error: err,
-      message: errMessage,
-      cause: errCause,
-      stack: errStack,
-      serialized: JSON.stringify(err, Object.getOwnPropertyNames(err instanceof Error ? err : Object(err))),
-    });
+      const enriched = await Promise.all(
+        opportunities.map(async (opp) => {
+          const candidateActor = opp.actors.find((a) => a.identityId !== userId);
+          const candidateUserId = candidateActor?.identityId ?? "";
+          const profile = candidateUserId
+            ? await database.getProfile(candidateUserId)
+            : null;
+          const confidence =
+            typeof opp.interpretation?.confidence === "number"
+              ? opp.interpretation.confidence
+              : parseFloat(String(opp.interpretation?.confidence ?? 0)) || 0;
+          return {
+            opportunityId: opp.id,
+            userId: candidateUserId,
+            name: profile?.identity?.name ?? undefined,
+            bio: truncateForChat(profile?.identity?.bio),
+            matchReason: truncateForChat(opp.interpretation?.summary ?? "") ?? "",
+            score: confidence,
+          };
+        })
+      );
+
+      return {
+        found: true,
+        count: enriched.length,
+        opportunities: enriched,
+      };
+    },
+    { context: { userId }, logOutput: true }
+  ).catch(() => {
     return {
       found: false,
       count: 0,
       message: "Failed to search for opportunities. Please try again.",
     };
-  }
+  });
 }

@@ -1,4 +1,4 @@
-import type { LoggerWithSource } from "../../../../log";
+import type { LoggerWithSource } from "../../../protocol.log";
 import type { ChatGraphCompositeDatabase } from "../../../interfaces/database.interface";
 import type { ChatGraphState, SubgraphResults } from "../chat.graph.state";
 
