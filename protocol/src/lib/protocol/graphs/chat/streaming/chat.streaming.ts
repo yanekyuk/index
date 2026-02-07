@@ -38,7 +38,7 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   read_users: "Fetching members...",
   create_opportunities: "Creating draft opportunities...",
   list_my_opportunities: "Listing your opportunities...",
-  create_opportunity_between_members: "Creating suggested connection...",
+  send_opportunity: "Sending opportunity...",
   scrape_url: "Reading web content...",
 };
 
