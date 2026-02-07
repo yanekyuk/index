@@ -3,11 +3,11 @@ import type { Runnable } from "@langchain/core/runnables";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 import type { HydeStrategy } from "../hyde/hyde.strategies";
 import type { OpportunityStatus } from "../../interfaces/database.interface";
 
-const logger = log.protocol.from("OpportunityEvaluator");
+const logger = protocolLogger("OpportunityEvaluator");
 
 /**
  * Config

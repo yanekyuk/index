@@ -46,9 +46,9 @@ import type {
   ActiveIntent,
 } from '../../interfaces/database.interface';
 import { selectStrategies, deriveRolesFromStrategy } from './opportunity.utils';
-import { log } from '../../../log';
+import { protocolLogger, withCallLogging } from '../../protocol.log';
 
-const logger = log.protocol.from('OpportunityGraph');
+const logger = protocolLogger('OpportunityGraph');
 
 /** Input shape for the HyDE generator invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {
@@ -85,60 +85,50 @@ export class OpportunityGraphFactory {
      * Fetches user's index memberships and validates requirements.
      * Returns empty if user has no index memberships (requirement).
      */
-    const prepNode = async (state: typeof OpportunityGraphState.State) => {
-      logger.info('[Graph:Prep] Starting preparation', {
-        userId: state.userId,
-        hasSearchQuery: !!state.searchQuery,
-        requestedIndexId: state.indexId,
-      });
-
-      try {
-        // Fetch user's index memberships (returns index IDs)
-        const userIndexIds = await this.database.getUserIndexIds(state.userId);
-        
-        if (userIndexIds.length === 0) {
-          logger.info('[Graph:Prep] User has no index memberships - cannot find opportunities');
-          return {
-            userIndexes: [],
-            error: 'You need to join at least one index to find opportunities.',
-          };
-        }
-
-        // Fetch user's active intents to verify they have some
-        const intents = await this.database.getActiveIntents(state.userId);
-        
-        if (intents.length === 0) {
-          logger.info('[Graph:Prep] User has no active intents');
+    const prepNode = async (state: typeof OpportunityGraphState.State) =>
+      withCallLogging(
+        logger,
+        '[Graph:Prep] prepNode',
+        {
+          userId: state.userId,
+          hasSearchQuery: !!state.searchQuery,
+          requestedIndexId: state.indexId ?? undefined,
+        },
+        async () => {
+          const userIndexIds = await this.database.getUserIndexIds(state.userId);
+          if (userIndexIds.length === 0) {
+            logger.info('[Graph:Prep] User has no index memberships - cannot find opportunities');
+            return {
+              userIndexes: [] as Id<'indexes'>[],
+              error: 'You need to join at least one index to find opportunities.',
+            };
+          }
+          const intents = await this.database.getActiveIntents(state.userId);
+          if (intents.length === 0) {
+            logger.info('[Graph:Prep] User has no active intents');
+            return {
+              userIndexes: userIndexIds,
+              error: 'You need to add some intents before finding opportunities.',
+            };
+          }
+          const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
+            intentId: intent.id,
+            payload: intent.payload,
+            summary: intent.summary ?? undefined,
+            indexes: [],
+          }));
           return {
             userIndexes: userIndexIds,
-            error: 'You need to add some intents before finding opportunities.',
+            indexedIntents,
           };
-        }
-
-        // Note: We don't filter for indexed intents here - the search will handle scope
-        // Hyde documents are generated automatically for all intents
-        const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
-          intentId: intent.id,
-          payload: intent.payload,
-          summary: intent.summary ?? undefined,
-          indexes: [], // Will be populated by search
-        }));
-
-        logger.info('[Graph:Prep] Preparation complete', {
-          userIndexesCount: userIndexIds.length,
-          intentsCount: intents.length,
-        });
-        return {
-          userIndexes: userIndexIds,
-          indexedIntents,
-        };
-      } catch (error) {
+        },
+        { context: { userId: state.userId }, logOutput: true }
+      ).catch((error) => {
         logger.error('[Graph:Prep] Failed', { error });
         return {
           error: 'Failed to prepare opportunity search. Please try again.',
         };
-      }
-    };
+      });
 
     /**
      * Node 1: Scope
