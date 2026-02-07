@@ -397,7 +397,7 @@ Also add `sendOpportunity` to the returned tools array in `createChatTools`.
   - [x] Updated to invoke refactored graph with new signature
   - [x] Updated tool instantiation to use factory pattern
   - [x] Kept `discover.nodes.ts` as thin wrapper (CRUD principle)
-- [ ] Step 5: `send_opportunity` chat tool implemented
+- [x] Step 5: `send_opportunity` chat tool implemented *(completed)*
 - [x] Step 6: Remove `create_opportunity_between_members` tool (unified approach) *(completed)*
 - [ ] Step 7: System prompt guidance for complex request handling
   - [ ] Update `chat.agent.ts` with comprehensive guidelines
