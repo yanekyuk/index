@@ -5,9 +5,9 @@ import { HydeGenerator } from "../../agents/profile/hyde/hyde.generator";
 import { ProfileGraphDatabase } from "../../interfaces/database.interface";
 import { Embedder } from "../../interfaces/embedder.interface";
 import { Scraper } from "../../interfaces/scraper.interface";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 
-const logger = log.protocol.from("ProfileGraphFactory");
+const logger = protocolLogger("ProfileGraphFactory");
 
 /** Minimum length for input to be considered meaningful (e.g. not just "Yes") */
 const MIN_MEANINGFUL_INPUT_LENGTH = 20;

@@ -13,9 +13,9 @@ import { HydeGenerator } from '../../agents/hyde/hyde.generator';
 import type { HydeGraphDatabase } from '../../interfaces/database.interface';
 import type { EmbeddingGenerator } from '../../interfaces/embedder.interface';
 import type { HydeCache } from '../../interfaces/cache.interface';
-import { log } from '../../../log';
+import { protocolLogger } from '../../protocol.log';
 
-const logger = log.protocol.from("HyDEGraphFactory");
+const logger = protocolLogger("HyDEGraphFactory");
 
 /** Build cache key: hyde:sourceType:sourceKey:strategy. For query, sourceKey is hash of sourceText. */
 function cacheKey(

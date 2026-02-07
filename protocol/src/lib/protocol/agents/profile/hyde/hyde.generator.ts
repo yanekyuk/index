@@ -2,7 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
-import { log } from "../../../../log";
+import { protocolLogger } from "../../../protocol.log";
 import { ProfileDocument } from "../profile.generator";
 /**
  * Config
@@ -10,7 +10,7 @@ import { ProfileDocument } from "../profile.generator";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
-const logger = log.protocol.from("HyDEGenerator");
+const logger = protocolLogger("HyDEGenerator");
 
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',

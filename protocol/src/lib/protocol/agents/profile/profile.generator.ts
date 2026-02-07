@@ -2,12 +2,12 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
-import { log } from "../../../log";
+import { protocolLogger } from "../../protocol.log";
 import { config } from "dotenv";
 
 config({ path: '.env.development', override: true });
 
-const logger = log.protocol.from("ProfileGenerator");
+const logger = protocolLogger("ProfileGenerator");
 
 const model = new ChatOpenAI({
   model: 'google/gemini-2.5-flash',
