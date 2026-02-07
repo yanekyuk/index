@@ -5,6 +5,8 @@ import type {
   HydeGraphDatabase,
   CreateOpportunityData,
   OpportunityActor,
+  ProfileGraphDatabase,
+  UpdateIndexSettingsData,
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
@@ -17,6 +19,7 @@ import { HydeGenerator } from "../../agents/hyde/hyde.generator";
 import { IndexGraphFactory } from "../index/index.graph";
 import { RedisCacheAdapter } from "../../../../adapters/cache.adapter";
 import { runDiscoverFromQuery } from "./nodes/discover.nodes";
+import type { ExecutionResult } from "../intent/intent.graph.state";
 import { queueOpportunityNotification } from "../../../../queues/notification.queue";
 import { log } from "../../../log";
 import type { PendingConfirmation, ConfirmationPayload } from "./chat.graph.state";
@@ -207,7 +210,11 @@ export function createChatTools(context: ToolContext) {
         if (existing) {
           return error("You already have a profile. Use update_user_profile to change it.");
         }
-        const profileGraphInstance = new ProfileGraphFactory(database as any, embedder, scraper).createGraph();
+          const profileGraphInstance = new ProfileGraphFactory(
+            database as unknown as ProfileGraphDatabase,
+            embedder,
+            scraper
+          ).createGraph();
         await profileGraphInstance.invoke({
           userId,
           operationMode: "write",
@@ -447,10 +454,10 @@ export function createChatTools(context: ToolContext) {
 
         // Process execution results
         const created = (result.executionResults || [])
-          .filter((r: any) => r.actionType === 'create' && r.success)
-          .map((r: any) => ({
+          .filter((r: ExecutionResult): r is ExecutionResult & { intentId: string } => r.actionType === 'create' && r.success && !!r.intentId)
+          .map((r) => ({
             id: r.intentId,
-            description: r.payload || args.description
+            description: (r.payload ?? args.description) ?? ''
           }));
 
         // Link created intents to indexes via intent_indexes (intents table has no indexId; association is many-to-many).
@@ -1306,6 +1313,60 @@ export function createChatTools(context: ToolContext) {
     }
   );
 
+  const sendOpportunity = tool(
+    async (args: { opportunityId: string }) => {
+      logger.info("Tool: send_opportunity", { userId, opportunityId: args.opportunityId });
+
+      try {
+        const opportunity = await database.getOpportunity(args.opportunityId);
+        if (!opportunity) {
+          return error("Opportunity not found.");
+        }
+        if (opportunity.status !== "latent") {
+          return error(
+            `Opportunity is already ${opportunity.status}; only draft (latent) opportunities can be sent.`
+          );
+        }
+        const isActor = opportunity.actors.some((a: OpportunityActor) => a.identityId === userId);
+        if (!isActor) {
+          return error("You are not part of this opportunity.");
+        }
+
+        await database.updateOpportunityStatus(args.opportunityId, "pending");
+
+        const recipients = opportunity.actors.filter(
+          (a: OpportunityActor) => a.identityId !== userId
+        );
+        for (const recipient of recipients) {
+          await queueOpportunityNotification(opportunity.id, recipient.identityId, "high");
+        }
+
+        const recipientIds = recipients.map((a: OpportunityActor) => a.identityId);
+        return success({
+          sent: true,
+          opportunityId: opportunity.id,
+          notified: recipientIds,
+          message: "Opportunity sent. The other person has been notified.",
+        });
+      } catch (err) {
+        logger.error("send_opportunity failed", { error: err });
+        return error("Failed to send opportunity. Please try again.");
+      }
+    },
+    {
+      name: "send_opportunity",
+      description:
+        "Sends a draft (latent) opportunity to the other person, promoting it to pending and triggering a notification. Use after create_opportunities or when listing draft opportunities (list_my_opportunities) when the user wants to send the intro.",
+      schema: z.object({
+        opportunityId: z
+          .string()
+          .describe(
+            "The opportunity ID to send (from create_opportunities or list_my_opportunities)"
+          ),
+      }),
+    }
+  );
+
   // ─────────────────────────────────────────────────────────────────────────────
   // UTILITY TOOLS
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1385,7 +1446,11 @@ export function createChatTools(context: ToolContext) {
         } else if (payload.resource === "intent" && payload.action === "delete") {
           await database.archiveIntent(payload.intentId);
         } else if (payload.resource === "profile" && payload.action === "update") {
-          const profileGraphInstance = new ProfileGraphFactory(database as any, embedder, scraper).createGraph();
+          const profileGraphInstance = new ProfileGraphFactory(
+            database as unknown as ProfileGraphDatabase,
+            embedder,
+            scraper
+          ).createGraph();
           const profileInput = (payload.updates as { input?: string }).input ?? JSON.stringify(payload.updates);
           await profileGraphInstance.invoke({
             userId,
@@ -1396,7 +1461,11 @@ export function createChatTools(context: ToolContext) {
         } else if (payload.resource === "profile" && payload.action === "delete") {
           await database.deleteProfile(userId);
         } else if (payload.resource === "index" && payload.action === "update") {
-          await database.updateIndexSettings(payload.indexId, userId, payload.updates as any);
+          await database.updateIndexSettings(
+            payload.indexId,
+            userId,
+            payload.updates as UpdateIndexSettingsData
+          );
         } else if (payload.resource === "index" && payload.action === "delete") {
           await database.softDeleteIndex(payload.indexId);
         } else if (payload.resource === "opportunity" && payload.action === "update") {
@@ -1458,8 +1527,13 @@ export function createChatTools(context: ToolContext) {
   // ─────────────────────────────────────────────────────────────────────────────
 
   return [
+    // Tools
+    sendOpportunity,
+    scrapeUrl,
+    // Confirmation Tools
     confirmAction,
     cancelAction,
+    // CRUDS
     readUserProfiles,
     createUserProfile,
     updateUserProfile,
@@ -1478,7 +1552,6 @@ export function createChatTools(context: ToolContext) {
     readUsers,
     createOpportunities,
     listMyOpportunities,
-    scrapeUrl,
   ];
 }
 

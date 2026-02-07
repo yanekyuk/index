@@ -13,7 +13,7 @@ config({ path: '.env.test' });
 import { describe, test, expect, spyOn, beforeAll } from 'bun:test';
 import { z } from 'zod';
 import { runScenario, defineScenario, expectSmartest } from '../../../smartest';
-import { OpportunityGraph, type CompiledHydeGraph } from './opportunity.graph';
+import { OpportunityGraphFactory } from './opportunity.graph';
 import type { Id } from '../../../../types/common.types';
 import type {
   OpportunityGraphDatabase,
@@ -62,7 +62,10 @@ const opportunityGraphOutputSchema = z.object({
   sourceUserId: z.string().optional(),
 });
 
-// ─── Mock graph factory (shared by scenarios) ──────────────────────────────
+// ─── Graph invoke input type (specs use legacy state shape; cast via unknown) ───
+type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
+
+// ─── Mock graph factory (shared by scenarios) ───
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 const defaultCandidates: CandidateProfile[] = [
@@ -102,6 +105,18 @@ function createMockGraph(deps?: {
       }),
     opportunityExistsBetweenActors: () =>
       Promise.resolve(deps?.opportunityExistsBetweenActors ?? false),
+    getUserIndexIds: () => Promise.resolve(['idx-1']),
+    getActiveIntents: () =>
+      Promise.resolve([
+        {
+          id: 'intent-1' as Id<'intents'>,
+          payload: 'Looking for a technical co-founder',
+          summary: 'Co-founder',
+          createdAt: new Date(),
+        },
+      ]),
+    getIndex: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+    getIndexMemberCount: () => Promise.resolve(2),
   };
 
   const mockEmbedder: Embedder = {
@@ -137,14 +152,13 @@ function createMockGraph(deps?: {
       }),
   };
 
-  const graph = new OpportunityGraph(
+  const factory = new OpportunityGraphFactory(
     mockDb,
     mockEmbedder,
-    mockCache,
-    mockCompiledHydeGraph as unknown as CompiledHydeGraph
+    mockCompiledHydeGraph
   );
-  const compiledGraph = graph.compile();
-  return { graph, compiledGraph, mockDb, mockEmbedder, mockCompiledHydeGraph };
+  const compiledGraph = factory.createGraph();
+  return { graph: compiledGraph, compiledGraph, mockDb, mockEmbedder, mockCompiledHydeGraph };
 }
 
 // ─── Smartest scenarios ─────────────────────────────────────────────────────
@@ -187,14 +201,14 @@ describe('Opportunity Graph', () => {
                 sourceUserId: string;
                 candidates: CandidateProfile[];
               };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: input.sourceProfileContext,
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 candidates: input.candidates,
                 indexScope: [],
                 options: { minScore: 50 },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceProfileContext: '@fixtures.sourceProfileContext',
@@ -272,7 +286,7 @@ describe('Opportunity Graph', () => {
                 sourceUserId: string;
                 indexScope: string[];
               };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: input.sourceProfileContext,
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 sourceText: input.discoveryQuery,
@@ -280,7 +294,7 @@ describe('Opportunity Graph', () => {
                 candidates: [],
                 options: { hydeDescription: input.discoveryQuery, limit: 5, minScore: 70 },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceProfileContext: '@fixtures.sourceProfileContext',
@@ -351,7 +365,7 @@ describe('Opportunity Graph', () => {
                 sourceText: string;
                 indexScope: string[];
               };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: input.sourceProfileContext,
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 sourceText: input.sourceText,
@@ -359,7 +373,7 @@ describe('Opportunity Graph', () => {
                 candidates: [],
                 options: { hydeDescription: input.sourceText },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceProfileContext: '@fixtures.sourceProfileContext',
@@ -425,14 +439,14 @@ describe('Opportunity Graph', () => {
             factory: () => compiledGraph,
             invoke: async (instance: unknown, resolvedInput: unknown) => {
               const input = resolvedInput as { sourceUserId: string; candidates: CandidateProfile[] };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: '',
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 candidates: input.candidates,
                 indexScope: [],
                 options: { minScore: 50 },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceUserId: '@fixtures.sourceUserId',
@@ -477,7 +491,7 @@ describe('Opportunity Graph', () => {
             factory: () => compiledGraph,
             invoke: async (instance: unknown, resolvedInput: unknown) => {
               const input = resolvedInput as { sourceUserId: string; sourceProfileContext: string };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: input.sourceProfileContext,
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 sourceText: undefined,
@@ -485,7 +499,7 @@ describe('Opportunity Graph', () => {
                 candidates: [],
                 options: {},
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceUserId: '@fixtures.sourceUserId',
@@ -560,7 +574,7 @@ describe('Opportunity Graph', () => {
                 intentId: string;
                 indexScope: string[];
               };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: 'Product lead.',
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 sourceText: input.sourceText,
@@ -569,7 +583,7 @@ describe('Opportunity Graph', () => {
                 candidates: [],
                 options: { hydeDescription: input.sourceText },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceUserId: '@fixtures.sourceUserId',
@@ -632,7 +646,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'Find a mentor' },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const [sourceActor, candidateActor] = result.opportunities[0].actors;
@@ -675,7 +689,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'Who needs a developer' },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const [sourceActor, candidateActor] = result.opportunities[0].actors;
@@ -717,7 +731,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'Find co-founder' },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const [sourceActor, candidateActor] = result.opportunities[0].actors;
@@ -759,7 +773,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'We are hiring a designer' },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const [sourceActor, candidateActor] = result.opportunities[0].actors;
@@ -800,7 +814,7 @@ describe('Opportunity Graph', () => {
                 sourceText: string;
                 indexScope: string[];
               };
-              return await (instance as ReturnType<OpportunityGraph['compile']>).invoke({
+              return await (instance as ReturnType<OpportunityGraphFactory['createGraph']>).invoke({
                 sourceProfileContext: input.sourceProfileContext,
                 sourceUserId: input.sourceUserId as Id<'users'>,
                 sourceText: input.sourceText,
@@ -808,7 +822,7 @@ describe('Opportunity Graph', () => {
                 candidates: [],
                 options: { hydeDescription: input.sourceText },
                 opportunities: [],
-              });
+              } as unknown as OpportunityGraphInvokeInput);
             },
             input: {
               sourceProfileContext: '@fixtures.sourceProfileContext',
@@ -858,7 +872,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'Find Rust devs', minScore: 80 },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
       expect(result.opportunities.length).toBe(0);
@@ -889,7 +903,7 @@ describe('Opportunity Graph', () => {
         indexScope: [],
         options: { minScore: 50 },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const opp = result.opportunities[0];
@@ -931,7 +945,7 @@ describe('Opportunity Graph', () => {
         indexScope: [],
         options: { minScore: 50 },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.sourceProfileContext).toBe('');
       expect(result.opportunities.length).toBe(1);
@@ -962,7 +976,7 @@ describe('Opportunity Graph', () => {
         indexScope: [],
         options: { minScore: 70 },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       const [sourceActor, candidateActor] = result.opportunities[0].actors;
@@ -996,7 +1010,7 @@ describe('Opportunity Graph', () => {
         indexScope: [],
         options: { minScore: 50, initialStatus: 'latent' },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.opportunities.length).toBe(1);
       expect(result.opportunities[0].status).toBe('latent');
@@ -1029,7 +1043,7 @@ describe('Opportunity Graph', () => {
         indexScope: [],
         options: { minScore: 50 },
         opportunities: [],
-      });
+      } as unknown as OpportunityGraphInvokeInput);
 
       expect(createSpy).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'pending' })
@@ -1080,7 +1094,7 @@ describe('Opportunity Graph', () => {
         candidates: [],
         options: { hydeDescription: 'Find experts', minScore: 70 },
         opportunities: [],
-      })) as unknown as OpportunityGraphState;
+      } as unknown as OpportunityGraphInvokeInput)) as unknown as OpportunityGraphState;
 
       expect(result.candidates.length).toBe(2);
       expect(result.opportunities.length).toBe(1);

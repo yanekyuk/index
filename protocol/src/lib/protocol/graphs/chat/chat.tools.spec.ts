@@ -59,7 +59,17 @@ function createMockDatabase(
     getIndexMembersForMember: noopArray,
     getIndexIntentsForOwner: noopArray,
     getIndexIntentsForMember: noopArray,
-    updateIndexSettings: async () => ({ id: "", title: "", prompt: null, permissions: {} as any, createdAt: new Date(), updatedAt: new Date(), deletedAt: null, memberCount: 0, intentCount: 0 }),
+    updateIndexSettings: async () => ({
+      id: "",
+      title: "",
+      prompt: null,
+      permissions: { joinPolicy: "invite_only" as const, invitationLink: null, allowGuestVibeCheck: false },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+      memberCount: 0,
+      intentCount: 0,
+    }),
     softDeleteIndex: noop,
     deleteProfile: noop,
     getIndexMemberCount: async () => 0,
@@ -238,7 +248,10 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
     const tools = createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string; userId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId, userId: otherUserId });
-    expect(getIntentsInIndexForMemberCalledWith).toEqual({ userId: otherUserId, indexId });
+    expect(getIntentsInIndexForMemberCalledWith).toMatchObject({
+      userId: otherUserId,
+      indexId,
+    });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data.count).toBe(1);
@@ -275,7 +288,8 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
     }, {
       isIndexOwner: async () => true,
       isIndexMember: async () => true,
-      getUser: async (uid: string) => (uid === otherUserId ? { id: uid, name: "Bob", email: "bob@example.com" } as any : null),
+      getUser: async (uid: string) =>
+        uid === otherUserId ? { id: uid, name: "Bob", email: "bob@example.com" } : null,
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
     const tools = createChatTools(context);

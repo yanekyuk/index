@@ -10,7 +10,7 @@ import type {
 } from '../lib/protocol/interfaces/database.interface';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
-import { OpportunityGraph } from '../lib/protocol/graphs/opportunity/opportunity.graph';
+import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity/opportunity.graph';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
@@ -36,11 +36,11 @@ const logger = log.service.from("OpportunityService");
  */
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
-  private graph: ReturnType<OpportunityGraph['compile']> | null = null;
+  private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
 
   constructor(database?: OpportunityControllerDatabase) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
-    
+
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
       const embedder: Embedder = new EmbedderAdapter();
@@ -52,13 +52,12 @@ export class OpportunityService {
         cache,
         generator
       ).createGraph();
-      const opportunityGraph = new OpportunityGraph(
+      const factory = new OpportunityGraphFactory(
         this.db as unknown as OpportunityGraphDatabase,
         embedder,
-        cache,
         compiledHydeGraph
       );
-      this.graph = opportunityGraph.compile();
+      this.graph = factory.createGraph();
     }
   }
 
@@ -200,19 +199,17 @@ export class OpportunityService {
     
     if (indexScope.length === 0) {
       return {
-        sourceUserId: userId as Id<'users'>,
-        options: { hydeDescription: query, limit },
-        indexScope: [],
-        candidates: [],
+        userId: userId as Id<'users'>,
+        searchQuery: query,
+        options: { limit, initialStatus: 'latent' as const },
         opportunities: [],
       };
     }
 
-    const result = await this.graph.invoke({
-      sourceUserId: userId as Id<'users'>,
-      sourceText: query,
-      indexScope: indexScope as Id<'indexes'>[],
-      options: { hydeDescription: query, limit },
+    const result = await this.graph!.invoke({
+      userId: userId as Id<'users'>,
+      searchQuery: query,
+      options: { limit, initialStatus: 'latent' as const },
     });
 
     return result;

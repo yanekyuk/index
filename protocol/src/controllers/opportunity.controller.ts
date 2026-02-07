@@ -137,9 +137,9 @@ export class OpportunityController {
 
     const result = await opportunityService.discoverOpportunities(user.id, query, limit);
     
-    if ('error' in result) {
+    if (result.error) {
       return new Response(JSON.stringify({ error: result.error }), {
-        status: result.status as number,
+        status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }

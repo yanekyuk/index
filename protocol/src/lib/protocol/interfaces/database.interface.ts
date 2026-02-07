@@ -4,7 +4,19 @@ import type {
   OpportunityActor,
   OpportunityInterpretation,
   OpportunityContext,
+  UserSocials,
 } from '../../../schemas/database.schema';
+
+/** User record returned by getUser (minimal fields plus optional profile fields). */
+export interface UserRecord {
+  id: string;
+  name: string;
+  email: string;
+  intro?: string | null;
+  avatar?: string | null;
+  location?: string | null;
+  socials?: UserSocials | null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTENT TYPES
@@ -356,7 +368,7 @@ export interface Database {
    * @param userId - The unique identifier of the user
    * @returns The user record or null if not found
    */
-  getUser(userId: string): Promise<any | null>;
+  getUser(userId: string): Promise<UserRecord | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Pre-Graph Operations (State Population)
@@ -1013,6 +1025,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'archiveIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
+  | 'getOpportunity'
   | 'opportunityExistsBetweenActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
@@ -1050,12 +1063,18 @@ export type ChatGraphCompositeDatabase = Pick<
 >;
 
 /**
- * Database interface narrowed for Opportunity Graph operations.
- * Profile lookup plus opportunity create and deduplication check.
+ * Database interface for Opportunity Graph operations.
+ * Includes prep/scope (index membership, intents, index details) and persist (create, dedupe).
  */
 export type OpportunityGraphDatabase = Pick<
   Database,
-  'getProfile' | 'createOpportunity' | 'opportunityExistsBetweenActors'
+  | 'getProfile'
+  | 'createOpportunity'
+  | 'opportunityExistsBetweenActors'
+  | 'getUserIndexIds'
+  | 'getActiveIntents'
+  | 'getIndex'
+  | 'getIndexMemberCount'
 >;
 
 /**

@@ -24,11 +24,24 @@ import {
 import { OpportunityEvaluator, type CandidateProfile } from '../../agents/opportunity/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../../interfaces/database.interface';
 import type { Embedder, HydeStrategy } from '../../interfaces/embedder.interface';
-import type { CreateOpportunityData, Opportunity } from '../../interfaces/database.interface';
+import type {
+  CreateOpportunityData,
+  Opportunity,
+  ActiveIntent,
+} from '../../interfaces/database.interface';
 import { selectStrategies, deriveRolesFromStrategy } from './opportunity.utils';
 import { log } from '../../../log';
 
 const logger = log.protocol.from('OpportunityGraph');
+
+/** Input shape for the HyDE generator invoke call (query-based embedding). */
+export interface HydeGeneratorInvokeInput {
+  sourceType: 'query';
+  sourceText: string;
+  strategies: HydeStrategy[];
+  context?: { indexId: string };
+  forceRegenerate?: boolean;
+}
 
 /**
  * Factory class to build and compile the Opportunity Graph.
@@ -38,7 +51,9 @@ export class OpportunityGraphFactory {
   constructor(
     private database: OpportunityGraphDatabase,
     private embedder: Embedder,
-    private hydeGenerator: { invoke: (input: any) => Promise<{ hydeEmbeddings: Record<string, number[]> }> }
+    private hydeGenerator: {
+      invoke: (input: HydeGeneratorInvokeInput) => Promise<{ hydeEmbeddings: Record<string, number[]> }>;
+    }
   ) {}
 
   public createGraph() {
@@ -86,7 +101,7 @@ export class OpportunityGraphFactory {
 
         // Note: We don't filter for indexed intents here - the search will handle scope
         // Hyde documents are generated automatically for all intents
-        const indexedIntents: IndexedIntent[] = intents.map((intent) => ({
+        const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
           intentId: intent.id,
           payload: intent.payload,
           summary: intent.summary ?? undefined,
@@ -329,29 +344,30 @@ export class OpportunityGraphFactory {
           { minScore }
         );
 
-        // Map evaluator results to evaluated candidates
-        const evaluatedCandidates: EvaluatedCandidate[] = evaluatorResults
-          .map((result) => {
-            const candidate = state.candidates.find(c => c.candidateUserId === result.candidateId);
-            if (!candidate) return null;
+        // Map evaluator results to evaluated candidates (filter out nulls from missing candidates)
+        const withNulls = evaluatorResults.map((result) => {
+          const candidate = state.candidates.find(c => c.candidateUserId === result.candidateId);
+          if (!candidate) return null;
 
-            // Derive roles from strategy
-            const roles = deriveRolesFromStrategy(candidate.strategy);
-
-            return {
-              sourceUserId: state.userId,
-              candidateUserId: result.candidateId as Id<'users'>,
-              sourceIntentId: state.indexedIntents[0]?.intentId, // Primary intent
-              candidateIntentId: candidate.candidateIntentId,
-              indexId: candidate.indexId,
-              score: result.score,
-              sourceDescription: result.sourceDescription ?? '',
-              candidateDescription: result.candidateDescription ?? '',
-              valencyRole: result.valencyRole,
-              strategy: candidate.strategy,
-            };
-          })
-          .filter((c): c is EvaluatedCandidate => c !== null);
+          const base: EvaluatedCandidate = {
+            sourceUserId: state.userId,
+            candidateUserId: result.candidateId as Id<'users'>,
+            candidateIntentId: candidate.candidateIntentId,
+            indexId: candidate.indexId,
+            score: result.score,
+            sourceDescription: result.sourceDescription ?? '',
+            candidateDescription: result.candidateDescription ?? '',
+            valencyRole: result.valencyRole,
+            strategy: candidate.strategy,
+          };
+          if (state.indexedIntents[0]?.intentId != null) {
+            base.sourceIntentId = state.indexedIntents[0].intentId;
+          }
+          return base;
+        });
+        const evaluatedCandidates: EvaluatedCandidate[] = withNulls.filter(
+          (c): c is EvaluatedCandidate => c !== null
+        );
 
         logger.info('[Graph:Evaluation] Evaluation complete', {
           evaluatedCount: evaluatedCandidates.length,

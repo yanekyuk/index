@@ -1,4 +1,5 @@
 import { ChatOpenAI } from "@langchain/openai";
+import type { Runnable } from "@langchain/core/runnables";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
@@ -112,7 +113,7 @@ export interface OpportunityEvaluatorOptions {
 // ──────────────────────────────────────────────────────────────
 
 export class OpportunityEvaluator {
-  private model: any;
+  private model: Runnable;
 
   constructor() {
     this.model = model.withStructuredOutput(responseFormat, {
@@ -201,16 +202,16 @@ export class OpportunityEvaluator {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result);
 
-      const mappedOpportunities = output.opportunities.map((op: any) => ({
+      const mappedOpportunities = output.opportunities.map((op: Opportunity) => ({
         ...op,
         candidateId: candidateUserId,
-        // Ensure candidateDescription exists (fallback provided by Zod schema but good to be safe)
         candidateDescription: op.candidateDescription
       }));
 
       return mappedOpportunities;
-    } catch (e: any) {
-      logger.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message: e.message });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      logger.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
       return [];
     }
   }
