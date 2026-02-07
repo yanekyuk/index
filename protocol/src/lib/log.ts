@@ -19,6 +19,50 @@ const order: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 
 
 const RESET = '\x1b[0m';
 
+/** Valid context names for LOG_FILTER. */
+const LOG_CONTEXT_NAMES = new Set<string>([
+  'controller', 'service', 'agent', 'cli', 'graph', 'job', 'queue',
+  'protocol', 'route', 'router', 'server', 'lib',
+]);
+
+/**
+ * Parse LOG_FILTER env var. Comma-separated list of context names; only those loggers will emit.
+ * Example: LOG_FILTER=graph or LOG_FILTER=graph,protocol
+ * If unset or empty, all contexts are allowed.
+ */
+function envContextFilter(): Set<LogContext> | null {
+  const raw = (process.env.LOG_FILTER || '').trim();
+  if (!raw) return null;
+  const names = raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (names.length === 0) return null;
+  const allowed = new Set<LogContext>();
+  for (const name of names) {
+    if (LOG_CONTEXT_NAMES.has(name)) allowed.add(name as LogContext);
+  }
+  return allowed.size > 0 ? allowed : null;
+}
+
+let contextFilter: Set<LogContext> | null = envContextFilter();
+
+export function setContextFilter(filter: string | null) {
+  if (filter === null || !filter.trim()) {
+    contextFilter = null;
+    return;
+  }
+  const names = filter.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const allowed = new Set<LogContext>();
+  for (const name of names) {
+    if (LOG_CONTEXT_NAMES.has(name)) allowed.add(name as LogContext);
+  }
+  contextFilter = allowed.size > 0 ? allowed : null;
+}
+
+function shouldLogByContext(context: LogContext | undefined): boolean {
+  if (contextFilter === null) return true;
+  if (context === undefined) return false;
+  return contextFilter.has(context);
+}
+
 /** Whether to use ANSI color (TTY or FORCE_COLOR). */
 function useColor(): boolean {
   if (process.env.FORCE_COLOR === '1' || process.env.FORCE_COLOR === 'true') return true;
@@ -86,12 +130,16 @@ function isNumberArray(value: unknown): value is number[] {
   );
 }
 
+/** Indent for pretty-printed JSON in logs (2 spaces). */
+const JSON_INDENT = 2;
+
 /** Recursively redact embedding/vector arrays so they are never logged. */
 function fmt(message: string, meta?: Record<string, unknown>) {
   if (!meta) return message;
   try {
     const sanitized = sanitizeForLogInternal(meta) as Record<string, unknown>;
-    return `${message} ${JSON.stringify(sanitized)}`;
+    const json = JSON.stringify(sanitized, null, JSON_INDENT);
+    return `${message}\n${json}`;
   } catch {
     return message;
   }
@@ -159,25 +207,25 @@ function createLogger(
 ): LoggerWithSource {
   return {
     debug(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLog('debug')) return;
+      if (!shouldLogByContext(context) || !shouldLog('debug')) return;
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.debug(start + line + end);
     },
     info(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLog('info')) return;
+      if (!shouldLogByContext(context) || !shouldLog('info')) return;
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.info(start + line + end);
     },
     warn(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLog('warn')) return;
+      if (!shouldLogByContext(context) || !shouldLog('warn')) return;
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line);
       console.warn(start + line + end);
     },
     error(message: string, meta?: Record<string, unknown>) {
-      if (!shouldLog('error')) return;
+      if (!shouldLogByContext(context) || !shouldLog('error')) return;
       const line = fmt(message, meta);
       const { start, end } = wrapWithContext(context, source, line, 'error');
       console.error(start + line + end);
