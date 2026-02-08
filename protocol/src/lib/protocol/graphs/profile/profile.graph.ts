@@ -615,7 +615,22 @@ export class ProfileGraphFactory {
 
         await this.database.saveHydeProfile(state.userId, state.hydeDescription, flatHydeEmbedding);
 
-        logger.info("✅ HyDE saved successfully");
+        // Also persist to hyde_documents table for consistency
+        try {
+          await this.database.saveHydeDocument({
+            sourceType: 'profile',
+            sourceId: state.userId,
+            strategy: 'mirror',
+            targetCorpus: 'profiles',
+            hydeText: state.hydeDescription,
+            hydeEmbedding: flatHydeEmbedding,
+          });
+          logger.info("HyDE saved to both userProfiles and hyde_documents");
+        } catch (hydeDocErr) {
+          logger.warn("Failed to save HyDE to hyde_documents (profile HyDE still saved on userProfiles)", {
+            error: hydeDocErr instanceof Error ? hydeDocErr.message : String(hydeDocErr),
+          });
+        }
 
         return {
           operationsPerformed: { embeddedHyde: true }

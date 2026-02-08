@@ -198,7 +198,7 @@ export async function runDiscoverFromQuery(
       };
     },
     { context: { userId }, logOutput: true }
-  ).catch(() => {
+  ).catch((err) => {
     return {
       found: false,
       count: 0,

@@ -1001,7 +1001,7 @@ export interface Database {
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'saveHydeProfile' | 'getProfileByUserId'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'saveHydeProfile' | 'getProfileByUserId' | 'saveHydeDocument'
 >;
 
 /**

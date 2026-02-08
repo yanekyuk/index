@@ -50,7 +50,8 @@ describe('ProfileGraph', () => {
         location: data.location ?? null,
       })),
       saveProfile: mock(async () => {}),
-      saveHydeProfile: mock(async () => {})
+      saveHydeProfile: mock(async () => {}),
+      saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
     } as any;
 
     // Mock embedder

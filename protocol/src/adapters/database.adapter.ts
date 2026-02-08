@@ -2155,6 +2155,22 @@ export class ProfileDatabaseAdapter {
       embedding: profile.embedding,
     };
   }
+
+  private hydeAdapter = new HydeDatabaseAdapter();
+
+  async saveHydeDocument(data: {
+    sourceType: 'intent' | 'profile' | 'query';
+    sourceId?: string | null;
+    sourceText?: string | null;
+    strategy: string;
+    targetCorpus: string;
+    hydeText: string;
+    hydeEmbedding: number[];
+    context?: Record<string, unknown> | null;
+    expiresAt?: Date | null;
+  }) {
+    return this.hydeAdapter.saveHydeDocument(data);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
