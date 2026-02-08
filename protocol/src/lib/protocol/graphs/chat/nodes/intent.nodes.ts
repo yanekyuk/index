@@ -153,7 +153,7 @@ export function createIntentWriteNode(
                      'prep → inference → verification → reconciliation → execution'
       });
       
-      // When index-scoped, fetch intents and pass so the graph does not load from DB
+      // When index-scoped, fetch intents in this index and pass so the graph does not load from DB.
       let activeIntentsPreFetched: Array<{ id: string; payload: string; summary: string | null; createdAt: Date }> | undefined;
       if (state.indexId) {
         activeIntentsPreFetched = await database.getIntentsInIndexForMember(state.userId, state.indexId);
