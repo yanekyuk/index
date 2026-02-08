@@ -9,7 +9,7 @@ import type { Scraper } from "../../interfaces/scraper.interface";
 import { protocolLogger } from "../../protocol.log";
 import { chatSessionService } from "../../../../services/chat.service";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "./chat.utils";
-import { ChatGraphStreamingService } from "./streaming";
+import { ChatStreamer } from "./streamers";
 
 const logger = protocolLogger("ChatGraphFactory");
 
@@ -33,14 +33,14 @@ const logger = protocolLogger("ChatGraphFactory");
  * reasoning and self-correction.
  */
 export class ChatGraphFactory {
-  private streamingService: ChatGraphStreamingService;
+  private streamingService: ChatStreamer;
 
   constructor(
     private database: ChatGraphCompositeDatabase,
     private embedder: Embedder,
     private scraper: Scraper
   ) {
-    this.streamingService = new ChatGraphStreamingService(
+    this.streamingService = new ChatStreamer(
       (sessionId, maxMessages) => this.loadSessionContext(sessionId, maxMessages),
       (checkpointer) => this.createStreamingGraph(checkpointer)
     );
