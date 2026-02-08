@@ -12,28 +12,73 @@ import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 import { TESTABLE_TEST_ACCOUNTS } from './test-data';
 
-type SeedType = 'open' | 'restricted' | 'both';
+// ── Index definitions ───────────────────────────────────────────────────────
 
-const OPEN_INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c';
-const RESTRICTED_INDEX_ID = '99999999-d64e-4ef9-8bcf-6c89815f771c';
+type IndexDef = {
+  id: string;
+  title: string;
+  prompt: string | null;
+  joinPolicy: 'anyone' | 'invite_only';
+};
+
+const SEED_INDEXES: IndexDef[] = [
+  // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
+  {
+    id: '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c',
+    title: 'Open Mock Network',
+    prompt: null,
+    joinPolicy: 'anyone',
+  },
+  {
+    id: '99999999-d64e-4ef9-8bcf-6c89815f771c',
+    title: 'Private Mock Network',
+    prompt: null,
+    joinPolicy: 'invite_only',
+  },
+
+  // Categorical indexes (prompts trigger LLM evaluation for intent filtering)
+  {
+    id: 'aaaaaaaa-0001-4000-8000-000000000001',
+    title: 'Coding & Development',
+    prompt: 'Software engineering, programming, coding projects, developer tools, and technical implementation',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0002-4000-8000-000000000002',
+    title: 'AI & Machine Learning',
+    prompt: 'Artificial intelligence, machine learning, deep learning, LLMs, neural networks, and data science',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0003-4000-8000-000000000003',
+    title: 'Design & Creative',
+    prompt: 'UI/UX design, graphic design, creative projects, branding, and visual communication',
+    joinPolicy: 'invite_only',
+  },
+  {
+    id: 'aaaaaaaa-0004-4000-8000-000000000004',
+    title: 'Startup & Business',
+    prompt: 'Startups, entrepreneurship, business strategy, fundraising, and go-to-market',
+    joinPolicy: 'anyone',
+  },
+];
+
+// ── CLI flags ───────────────────────────────────────────────────────────────
 
 type GlobalOpts = {
   silent?: boolean;
   confirm?: boolean;
-  type?: SeedType;
 };
 
 function parseArgs(): GlobalOpts {
   const args = process.argv.slice(2);
-  const typeIdx = args.indexOf('--type');
-  const typeArg = typeIdx >= 0 ? args[typeIdx + 1] : undefined;
-  const type = typeArg && ['open', 'restricted', 'both'].includes(typeArg) ? (typeArg as SeedType) : 'both';
   return {
     silent: args.includes('--silent'),
     confirm: args.includes('--confirm'),
-    type,
   };
 }
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function ensurePrivyIdentity(email: string): Promise<string> {
   let privyUser = await privyClient.getUserByEmail(email);
@@ -76,21 +121,24 @@ async function createUser(account: TestAccount): Promise<{ id: string }> {
   }
 }
 
-async function seedDatabase(type: SeedType): Promise<{ ok: boolean; error?: string }> {
+// ── Seed logic ──────────────────────────────────────────────────────────────
+
+async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
+  const silent = parseArgs().silent;
+
   try {
-    if (!parseArgs().silent) {
-      console.log(`Generating minimal mock data (type: ${type})...`);
-    }
+    if (!silent) console.log('Seeding indexes and users...');
 
-    if (type === 'open' || type === 'both') {
+    // Create all indexes
+    for (const idx of SEED_INDEXES) {
       try {
         await db.insert(indexes).values({
-          id: OPEN_INDEX_ID,
-          title: 'Open Mock Network',
-          prompt: 'Share collaboration opportunities',
+          id: idx.id,
+          title: idx.title,
+          prompt: idx.prompt,
           isPersonal: false,
           permissions: {
-            joinPolicy: 'anyone',
+            joinPolicy: idx.joinPolicy,
             invitationLink: null,
             allowGuestVibeCheck: false,
           },
@@ -100,51 +148,22 @@ async function seedDatabase(type: SeedType): Promise<{ ok: boolean; error?: stri
       }
     }
 
-    if (type === 'restricted' || type === 'both') {
-      try {
-        await db.insert(indexes).values({
-          id: RESTRICTED_INDEX_ID,
-          title: 'Private Mock Network',
-          prompt: 'Exclusive members only',
-          isPersonal: false,
-          permissions: {
-            joinPolicy: 'invite_only',
-            invitationLink: null,
-            allowGuestVibeCheck: false,
-          },
-        });
-      } catch {
-        /* already exists */
-      }
-    }
+    if (!silent) console.log(`  ${SEED_INDEXES.length} indexes ready`);
 
+    // Create users and add them to every index
     const createdUsers: { id: string }[] = [];
 
     for (const [i, account] of TESTABLE_TEST_ACCOUNTS.entries()) {
       const user = await createUser(account);
       createdUsers.push(user);
 
-      if (type === 'open' || type === 'both') {
+      for (const idx of SEED_INDEXES) {
         try {
           await db.insert(indexMembers).values({
-            indexId: OPEN_INDEX_ID,
+            indexId: idx.id,
             userId: user.id,
             permissions: i === 0 ? ['owner'] : ['member'],
-            prompt: 'everything',
-            autoAssign: true,
-          });
-        } catch {
-          /* already exists */
-        }
-      }
-
-      if (type === 'restricted' || type === 'both') {
-        try {
-          await db.insert(indexMembers).values({
-            indexId: RESTRICTED_INDEX_ID,
-            userId: user.id,
-            permissions: i === 0 ? ['owner'] : ['member'],
-            prompt: 'exclusive stuff',
+            prompt: null,       // rely on index-level prompt only
             autoAssign: true,
           });
         } catch {
@@ -153,12 +172,17 @@ async function seedDatabase(type: SeedType): Promise<{ ok: boolean; error?: stri
       }
     }
 
-    if (!parseArgs().silent) {
-      console.log(`✅ Created ${createdUsers.length} users with profiles`);
+    if (!silent) {
+      console.log(`  ${createdUsers.length} users ready`);
       console.log('\nLogin credentials:');
       TESTABLE_TEST_ACCOUNTS.forEach(
-        (acc) => console.log(`${acc.name}: ${acc.email} | ${acc.phoneNumber} | OTP: ${acc.otpCode}`)
+        (acc) => console.log(`  ${acc.name}: ${acc.email} | ${acc.phoneNumber} | OTP: ${acc.otpCode}`)
       );
+      console.log('\nIndexes:');
+      for (const idx of SEED_INDEXES) {
+        const label = idx.prompt ? `prompt: "${idx.prompt}"` : 'no prompt (auto-assign)';
+        console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
+      }
     }
 
     return { ok: true };
@@ -167,28 +191,30 @@ async function seedDatabase(type: SeedType): Promise<{ ok: boolean; error?: stri
   }
 }
 
+// ── Entry point ─────────────────────────────────────────────────────────────
+
 async function main(): Promise<void> {
   const opts = parseArgs();
 
   if (opts.silent) setLevel('error');
 
   if (process.env.NODE_ENV === 'production') {
-    console.error('❌ db:seed cannot be run in production environment');
+    console.error('db:seed cannot be run in production environment');
     await closeDb();
     process.exit(1);
   }
 
   if (!opts.confirm) {
-    console.log('⚠️  This will add mock data to the database.');
+    console.log('This will add mock data to the database.');
     console.log('Use --confirm to skip this warning.');
     await closeDb();
     process.exit(1);
   }
 
-  const result = await seedDatabase(opts.type ?? 'both');
+  const result = await seedDatabase();
 
   if (!result.ok) {
-    console.error('❌ Seed failed:', result.error);
+    console.error('Seed failed:', result.error);
     await closeDb();
     process.exit(1);
   }
