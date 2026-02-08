@@ -3,8 +3,8 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
-import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
-import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
+import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { log } from '../lib/log';
 
 const logger = log.job.from("hyde");

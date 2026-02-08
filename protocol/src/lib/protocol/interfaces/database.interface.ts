@@ -1,4 +1,4 @@
-import { ProfileDocument } from '../agents/profile/profile.generator';
+import { ProfileDocument } from '../agents/profile.generator';
 import type {
   OpportunityDetection,
   OpportunityActor,

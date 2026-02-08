@@ -1,0 +1,98 @@
+import { ChatOpenAI } from "@langchain/openai";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod/v4";
+import { protocolLogger } from "../support/protocol.logger";
+import { config } from "dotenv";
+
+config({ path: '.env.development', override: true });
+
+const logger = protocolLogger("ProfileGenerator");
+
+const model = new ChatOpenAI({
+  model: 'google/gemini-2.5-flash',
+  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
+});
+
+const systemPrompt = `
+    You are an expert profiler. Your task is to synthesize a structured User Profile from raw data or user requests.
+
+    When given EXISTING PROFILE + USER REQUEST: Apply the request to the existing profile. Add, update, or remove skills and interests as the user asks. Preserve everything else. Output the full updated profile.
+
+    When given raw data only: Infer name, bio, location, narrative.context, and extract skills and interests.
+`;
+
+const responseFormat = z.object({
+  identity: z.object({
+    name: z.string().describe("The user's full name"),
+    bio: z.string().describe("A professional summary (2-3 sentences)"),
+    location: z.string().describe("Inferred location (City, Country) or 'Remote'"),
+  }),
+  narrative: z.object({
+    context: z.string().describe("A rich, detailed narrative about the user's current situation, background, and what they are currently working on. Use raw, natural language."),
+  }),
+  attributes: z.object({
+    interests: z.array(z.string()).describe("Inferred or explicit interests"),
+    skills: z.array(z.string()).describe("Professional skills"),
+  }),
+});
+
+type Profile = z.infer<typeof responseFormat>;
+export type ProfileDocument = Profile & { userId: string, embedding: number[] | number[][] | null };
+
+export class ProfileGenerator {
+  private model: any;
+  constructor() {
+    this.model = model.withStructuredOutput(responseFormat, {
+      name: "profile_generator"
+    });
+  }
+
+  private toString(profile: Profile): string {
+    const textToEmbed = [
+      '# Identity',
+      '## Name', profile.identity.name,
+      '## Bio', profile.identity.bio,
+      '## Location', profile.identity.location,
+      '# Narrative',
+      '## Context', profile.narrative.context,
+      '# Attributes',
+      '## Interests', profile.attributes.interests.join(', '),
+      '## Skills', profile.attributes.skills.join(', ')
+    ].join('\n');
+
+    return textToEmbed;
+  }
+
+  public async invoke(input: string) {
+    logger.info("Received input", { inputLength: input?.length });
+    const messages = [
+      new SystemMessage(systemPrompt),
+      new HumanMessage(`Here is the raw data:\n${input}`)
+    ];
+    const result = await this.model.invoke(messages);
+    const output = responseFormat.parse(result);
+    const textToEmbed = this.toString(output);
+    logger.info("Generated profile", {
+      skillsCount: output.attributes.skills.length,
+      interestsCount: output.attributes.interests.length
+    });
+    return { output, textToEmbed };
+  }
+
+  public static asTool() {
+    return tool(
+      async (args: { input: string }) => {
+        const profileGenerator = new ProfileGenerator();
+        return await profileGenerator.invoke(args.input);
+      },
+      {
+        name: 'profileGenerator',
+        description: 'Profile Generator',
+        schema: z.object({
+          input: z.string().describe('Raw data scraped from the web (via Parallel.ai)'),
+        })
+      }
+    );
+  }
+}
