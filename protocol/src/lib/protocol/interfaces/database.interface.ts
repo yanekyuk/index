@@ -370,6 +370,18 @@ export interface Database {
    */
   getUser(userId: string): Promise<UserRecord | null>;
 
+  /**
+   * Updates user account fields (name, location, socials).
+   * Merges socials with existing values (does not overwrite the whole object).
+   * Used by create_user_profile tool to persist user-provided info before
+   * invoking the Profile Graph in generate mode.
+   *
+   * @param userId - The unique identifier of the user
+   * @param data - Partial user fields to update
+   * @returns The updated user record or null if not found
+   */
+  updateUser(userId: string, data: { name?: string; location?: string; socials?: UserSocials }): Promise<UserRecord | null>;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Pre-Graph Operations (State Population)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -985,11 +997,11 @@ export interface Database {
 
 /**
  * Database interface narrowed for Profile Graph operations.
- * Provides full profile lifecycle: read, write, and HyDE management.
+ * Provides full profile lifecycle: read, write, HyDE management, and query mode.
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'saveProfile' | 'saveHydeProfile'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'saveHydeProfile' | 'getProfileByUserId'
 >;
 
 /**
@@ -1017,6 +1029,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getIntentsInIndexForMember'
   // ProfileGraph subgraph requirements
   | 'getUser'
+  | 'updateUser'
   | 'saveProfile'
   | 'saveHydeProfile'
   // IntentGraph subgraph requirements (getActiveIntents already included)
@@ -1064,7 +1077,8 @@ export type ChatGraphCompositeDatabase = Pick<
 
 /**
  * Database interface for Opportunity Graph operations.
- * Includes prep/scope (index membership, intents, index details) and persist (create, dedupe).
+ * Includes prep/scope (index membership, intents, index details), persist (create, dedupe),
+ * and CRUD operations (read, update status, send).
  */
 export type OpportunityGraphDatabase = Pick<
   Database,
@@ -1075,6 +1089,12 @@ export type OpportunityGraphDatabase = Pick<
   | 'getActiveIntents'
   | 'getIndex'
   | 'getIndexMemberCount'
+  // Read/update/send modes
+  | 'getOpportunity'
+  | 'getOpportunitiesForUser'
+  | 'updateOpportunityStatus'
+  | 'isIndexMember'
+  | 'getUser'
 >;
 
 /**
@@ -1129,25 +1149,70 @@ export type IntentExecutorDatabase = Pick<
 
 /**
  * Database interface narrowed for Intent Graph operations.
- * Provides state population (getActiveIntents or getIntentsInIndexForMember when index-scoped)
- * and action execution (create/update/archive).
+ * Provides state population (getActiveIntents or getIntentsInIndexForMember when index-scoped),
+ * action execution (create/update/archive), and read operations (query intents).
  */
 export type IntentGraphDatabase = Pick<
   Database,
-  'getActiveIntents' | 'getIntentsInIndexForMember' | 'createIntent' | 'updateIntent' | 'archiveIntent'
+  | 'getActiveIntents'
+  | 'getIntentsInIndexForMember'
+  | 'createIntent'
+  | 'updateIntent'
+  | 'archiveIntent'
+  // Read mode (queryNode) requirements
+  | 'isIndexMember'
+  | 'getIndexIntentsForMember'
+  | 'getUser'
 >;
 
 /**
- * Database interface narrowed for Index Graph operations.
- * Provides intent/index context and assignment for intent–index evaluation.
+ * Database interface narrowed for Index Graph CRUD operations.
+ * Handles create, read, update, delete of indexes (communities).
  */
 export type IndexGraphDatabase = Pick<
+  Database,
+  | 'getIndexMemberships'
+  | 'getOwnedIndexes'
+  | 'isIndexOwner'
+  | 'isIndexMember'
+  | 'getIndex'
+  | 'createIndex'
+  | 'addMemberToIndex'
+  | 'updateIndexSettings'
+  | 'softDeleteIndex'
+  | 'getIndexMemberCount'
+>;
+
+/**
+ * Database interface narrowed for Intent Index Graph operations.
+ * Provides intent/index context and assignment for intent–index evaluation.
+ * (Migrated from the old IndexGraphDatabase.)
+ */
+export type IntentIndexGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToIndex'
   | 'unassignIntentFromIndex'
+  | 'getIntent'
+  | 'isIndexMember'
+  | 'getIndexIdsForIntent'
+  | 'getIndexIntentsForMember'
+  | 'getIntentsInIndexForMember'
+>;
+
+/**
+ * Database interface narrowed for Index Membership Graph operations.
+ * Handles CRUD for index memberships (add, list, remove members).
+ */
+export type IndexMembershipGraphDatabase = Pick<
+  Database,
+  | 'isIndexMember'
+  | 'isIndexOwner'
+  | 'getIndexWithPermissions'
+  | 'addMemberToIndex'
+  | 'getIndexMembersForMember'
 >;
 
 /**
