@@ -219,31 +219,37 @@ export class EvalController {
   @UseGuards(AuthGuard)
   async generateScenarios(req: Request, user: AuthenticatedUser) {
     try {
-      const body = (await req.json()) as { scenarioCount?: number };
-      logger.info("[eval/generate-scenarios] Generating scenarios", { userId: user.id, config: body });
+      logger.info("[eval/generate-scenarios] Loading pre-generated scenarios", { userId: user.id });
 
-      const generator = new ChatScenarioGenerator();
+      // Import the fast pregenerated loader
+      const { loadPregeneratedScenarios, CHAT_AGENT_USER_NEEDS, USER_PERSONAS } = await import('../lib/protocol/graphs/chat/chat.scenarios');
       
-      const scenarioCount = body.scenarioCount ?? 10;
-      const scenarios = await generator.generateBatch(scenarioCount);
+      const simpleScenarios = loadPregeneratedScenarios();
+
+      // Convert to GeneratedScenario format for the service
+      const { ChatScenarioGenerator } = await import('../lib/protocol/graphs/chat/chat.evaluator');
+      const scenarios = simpleScenarios.map((s) => ({
+        id: s.id,
+        need: CHAT_AGENT_USER_NEEDS[s.needId as keyof typeof CHAT_AGENT_USER_NEEDS],
+        persona: USER_PERSONAS[s.personaId as keyof typeof USER_PERSONAS],
+        generatedMessage: s.message,
+        evaluationCriteria: {
+          successSignals: [] as readonly string[], // Will be generated dynamically during evaluation
+          failureSignals: [] as readonly string[],
+          qualityFactors: ["clear communication", "appropriate tone", "efficient interaction", "meets user expectations"] as readonly string[],
+        },
+      }));
 
       // Create and store chat agent for the authenticated user
       logger.info("[eval/generate-scenarios] Creating chat agent", { userId: user.id });
-      const chatAgent = await createChatAgent(user.id); // Use real user's data
+      const chatAgent = await createChatAgent(user.id);
       logger.info("[eval/generate-scenarios] Chat agent ready");
       
       // Store in service for later individual runs
-      this.evaluationService.setScenarios(scenarios, chatAgent, user.id); // Pass user ID
+      this.evaluationService.setScenarios(scenarios, chatAgent, user.id);
 
-      // Map to simpler format for frontend
-      const simplifiedScenarios = scenarios.map((s) => ({
-        id: s.id,
-        need: s.need.id,
-        persona: s.persona.id,
-        message: s.generatedMessage,
-      }));
-
-      return Response.json({ scenarios: simplifiedScenarios });
+      // Return simple format for frontend
+      return Response.json({ scenarios: simpleScenarios });
     } catch (error) {
       logger.error("[eval/generate-scenarios] Failed", { 
         userId: user.id, 

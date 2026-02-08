@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import { Play, Square, RotateCcw, CheckCircle2, XCircle, AlertCircle, Loader2, Circle } from "lucide-react";
+import { Play, Square, RotateCcw, CheckCircle2, XCircle, AlertCircle, Loader2, Circle, Download } from "lucide-react";
 
 interface Scenario {
   id: string;
@@ -49,7 +49,6 @@ export default function EvalDashboardPage() {
     avgQualityScore: 0,
   });
   const [globalStatus, setGlobalStatus] = useState<"idle" | "loading" | "running" | "completed">("idle");
-  const [scenarioCount, setScenarioCount] = useState(10);
 
   const selectedScenario = scenarios.find((s) => s.id === selectedScenarioId);
 
@@ -230,7 +229,6 @@ export default function EvalDashboardPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ scenarioCount }),
         }
       );
 
@@ -239,8 +237,8 @@ export default function EvalDashboardPage() {
       const data = await response.json();
       const loadedScenarios: Scenario[] = (data.scenarios || []).map((s: any) => ({
         id: s.id,
-        need: s.need,
-        persona: s.persona,
+        need: s.needId,
+        persona: s.personaId,
         message: s.message,
         status: "pending",
       }));
@@ -344,6 +342,48 @@ export default function EvalDashboardPage() {
     setGlobalStatus("idle");
   };
 
+  const exportConversations = () => {
+    const completedScenarios = scenarios.filter((s) => s.status === "completed");
+    
+    if (completedScenarios.length === 0) {
+      alert("No completed scenarios to export");
+      return;
+    }
+
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      summary: {
+        total: metrics.total,
+        completed: metrics.completed,
+        success: metrics.success,
+        partial: metrics.partial,
+        failure: metrics.failure,
+        blocked: metrics.blocked,
+        avgFulfillmentScore: metrics.avgFulfillmentScore,
+        avgQualityScore: metrics.avgQualityScore,
+        successRate: metrics.completed > 0 ? (metrics.success / metrics.completed) * 100 : 0,
+      },
+      scenarios: completedScenarios.map((s) => ({
+        id: s.id,
+        need: s.need,
+        persona: s.persona,
+        initialMessage: s.message,
+        conversation: s.conversation,
+        result: s.result,
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `eval-results-${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "pending":
@@ -388,34 +428,23 @@ export default function EvalDashboardPage() {
 
           <div className="flex items-center gap-3">
             {scenarios.length === 0 && (
-              <>
-                <input
-                  type="number"
-                  value={scenarioCount}
-                  onChange={(e) => setScenarioCount(parseInt(e.target.value) || 50)}
-                  className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  placeholder="Count"
-                  min="1"
-                  max="100"
-                />
-                <button
-                  onClick={loadScenarios}
-                  disabled={globalStatus === "loading"}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                >
-                  {globalStatus === "loading" ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4" />
-                      Load Scenarios
-                    </>
-                  )}
-                </button>
-              </>
+              <button
+                onClick={loadScenarios}
+                disabled={globalStatus === "loading"}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {globalStatus === "loading" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Load Scenarios
+                  </>
+                )}
+              </button>
             )}
 
             {scenarios.length > 0 && (
@@ -435,6 +464,15 @@ export default function EvalDashboardPage() {
                 >
                   <Square className="w-4 h-4" />
                   Stop All
+                </button>
+                <button
+                  onClick={exportConversations}
+                  disabled={scenarios.filter((s) => s.status === "completed").length === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium"
+                  title="Export all completed conversations as JSON"
+                >
+                  <Download className="w-4 h-4" />
+                  Export
                 </button>
                 <button
                   onClick={restartAll}

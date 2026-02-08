@@ -14,15 +14,13 @@ import { HumanMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import {
   CHAT_AGENT_USER_NEEDS,
   USER_PERSONAS,
-  USER_CONTEXTS,
   type UserPersona,
-  type UserContext,
   type UserNeed,
 } from "./chat.scenarios";
 
 // Re-export for backward compatibility
-export { USER_PERSONAS, USER_CONTEXTS, CHAT_AGENT_USER_NEEDS as USER_NEEDS };
-export type { UserPersona, UserContext, UserNeed };
+export { USER_PERSONAS, CHAT_AGENT_USER_NEEDS as USER_NEEDS };
+export type { UserPersona, UserNeed };
 
 // Type helpers
 type UserNeedId = keyof typeof CHAT_AGENT_USER_NEEDS;
@@ -42,27 +40,20 @@ export interface GeneratedScenario {
   id: string;
   need: typeof CHAT_AGENT_USER_NEEDS[UserNeedId];
   persona: typeof USER_PERSONAS[UserPersonaId];
-  context: UserContext;
   generatedMessage: string;
   evaluationCriteria: EvaluationCriteria;
 }
 
 /**
- * Dynamically generate evaluation criteria based on need and context using LLM
+ * Dynamically generate evaluation criteria based on need using LLM
  */
 async function generateEvaluationCriteria(
   need: typeof CHAT_AGENT_USER_NEEDS[UserNeedId],
-  context: UserContext,
   model: ChatOpenAI
 ): Promise<EvaluationCriteria> {
-  const prompt = `Given this user need and context, generate evaluation criteria.
+  const prompt = `Given this user need, generate evaluation criteria.
 
 User Need: ${need.description}
-User Context:
-- Has profile: ${context.hasProfile}
-- Has intents: ${context.hasIntents}
-- Is index owner: ${context.isIndexOwner}
-- Index memberships: ${context.indexMembershipCount}
 
 Generate:
 1. Success signals: 3-5 indicators that the need was fulfilled
@@ -160,21 +151,18 @@ Respond with ONLY the user message, nothing else.`;
    */
   async generateScenario(
     needId: UserNeedId,
-    personaId: UserPersonaId,
-    contextKey: keyof typeof USER_CONTEXTS
+    personaId: UserPersonaId
   ): Promise<GeneratedScenario> {
     const need = CHAT_AGENT_USER_NEEDS[needId];
     const persona = USER_PERSONAS[personaId];
-    const context = USER_CONTEXTS[contextKey];
 
     const generatedMessage = await this.generateMessage(need, persona);
-    const evaluationCriteria = await generateEvaluationCriteria(need, context, this.model);
+    const evaluationCriteria = await generateEvaluationCriteria(need, this.model);
 
     return {
-      id: `${needId}-${personaId}-${contextKey}`,
+      id: `${needId}-${personaId}`,
       need,
       persona,
-      context,
       generatedMessage,
       evaluationCriteria,
     };
@@ -187,14 +175,12 @@ Respond with ONLY the user message, nothing else.`;
     const scenarios: GeneratedScenario[] = [];
     const needIds = Object.keys(CHAT_AGENT_USER_NEEDS) as UserNeedId[];
     const personaIds = Object.keys(USER_PERSONAS) as UserPersonaId[];
-    const contextKeys = Object.keys(USER_CONTEXTS) as Array<keyof typeof USER_CONTEXTS>;
 
     for (let i = 0; i < count; i++) {
       const needId = needIds[i % needIds.length];
       const personaId = personaIds[Math.floor((i / needIds.length)) % personaIds.length];
-      const contextKey = contextKeys[Math.floor(i / (needIds.length * personaIds.length)) % contextKeys.length];
 
-      scenarios.push(await this.generateScenario(needId, personaId, contextKey));
+      scenarios.push(await this.generateScenario(needId, personaId));
     }
 
     return scenarios;
@@ -386,12 +372,6 @@ ${scenario.generatedMessage}
 ## User Persona
 ${scenario.persona.description}
 Style: ${scenario.persona.communicationStyle}
-
-## User Context
-- Has profile: ${scenario.context.hasProfile}
-- Has intents: ${scenario.context.hasIntents}
-- Is index owner: ${scenario.context.isIndexOwner}
-- Index memberships: ${scenario.context.indexMembershipCount}
 
 ## Conversation
 ${conversationText}
