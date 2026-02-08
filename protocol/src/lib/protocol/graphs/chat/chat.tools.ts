@@ -193,7 +193,7 @@ export async function createChatTools(deps: ToolContext) {
   }
 
   // Pre-compile all 6 domain subgraphs
-  const intentGraph = new IntentGraphFactory(database).createGraph();
+  const intentGraph = new IntentGraphFactory(database, embedder).createGraph();
   const profileGraph = new ProfileGraphFactory(database, embedder, scraper).createGraph();
   const hydeCache: HydeCache = new RedisCacheAdapter();
   const hydeGenerator = new HydeGenerator();
