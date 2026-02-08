@@ -1,6 +1,6 @@
 import { log } from '../lib/log';
 import type { IntentGraphDatabase } from '../lib/protocol/interfaces/database.interface';
-import { IntentGraphFactory } from '../lib/protocol/graphs/intent/intent.graph';
+import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 
 const logger = log.service.from("IntentService");

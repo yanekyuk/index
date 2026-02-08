@@ -10,13 +10,13 @@ import type {
 } from '../lib/protocol/interfaces/database.interface';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
-import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity/opportunity.graph';
-import { HydeGraphFactory } from '../lib/protocol/graphs/hyde/hyde.graph';
-import { HydeGenerator } from '../lib/protocol/agents/hyde/hyde.generator';
+import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
+import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
-import { presentOpportunity, type UserInfo } from '../lib/protocol/opportunity/opportunity.presentation';
+import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 
 const logger = log.service.from("OpportunityService");
 
