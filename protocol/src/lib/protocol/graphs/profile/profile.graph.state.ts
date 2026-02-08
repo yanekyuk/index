@@ -17,8 +17,9 @@ export const ProfileGraphState = Annotation.Root({
    * Operation mode controls graph flow:
    * - 'query': Fast path - only retrieve existing profile (no generation)
    * - 'write': Full pipeline - generate/update profile and hyde as needed
+   * - 'generate': Auto-generate profile from user table data via Parallels searchUser API
    */
-  operationMode: Annotation<'query' | 'write'>({
+  operationMode: Annotation<'query' | 'write' | 'generate'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'write',
   }),
@@ -133,5 +134,24 @@ export const ProfileGraphState = Annotation.Root({
   }>({
     reducer: (curr, next) => ({ ...curr, ...next }),
     default: () => ({}),
+  }),
+
+  /**
+   * Output for query mode: structured result for the tool to read.
+   */
+  readResult: Annotation<{
+    hasProfile: boolean;
+    profile?: {
+      id?: string;
+      name: string;
+      bio: string;
+      location: string;
+      skills: string[];
+      interests: string[];
+    };
+    message?: string;
+  } | undefined>({
+    reducer: (curr, next) => next,
+    default: () => undefined,
   }),
 });

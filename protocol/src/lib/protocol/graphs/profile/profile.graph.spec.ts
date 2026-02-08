@@ -42,6 +42,13 @@ describe('ProfileGraph', () => {
         email: 'test@example.com',
         socials: {}
       })),
+      updateUser: mock(async (userId: string, data: any) => ({
+        id: userId,
+        name: data.name ?? 'Test User',
+        email: 'test@example.com',
+        socials: data.socials ?? {},
+        location: data.location ?? null,
+      })),
       saveProfile: mock(async () => {}),
       saveHydeProfile: mock(async () => {})
     } as any;

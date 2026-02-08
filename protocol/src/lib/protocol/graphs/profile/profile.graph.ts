@@ -5,6 +5,7 @@ import { HydeGenerator } from "../../agents/profile/hyde/hyde.generator";
 import { ProfileGraphDatabase } from "../../interfaces/database.interface";
 import { Embedder } from "../../interfaces/embedder.interface";
 import { Scraper } from "../../interfaces/scraper.interface";
+import { searchUser } from "../../../../lib/parallel/parallel";
 import { protocolLogger } from "../../protocol.log";
 
 const logger = protocolLogger("ProfileGraphFactory");
@@ -95,8 +96,26 @@ export class ProfileGraphFactory {
           logger.info("🚀 Query mode - returning existing profile (fast path)", {
             hasProfile: !!profile
           });
+          const profileWithId = profile ? await this.database.getProfileByUserId(state.userId) : null;
           return {
-            profile: profile || undefined
+            profile: profile || undefined,
+            readResult: profile
+              ? {
+                  hasProfile: true,
+                  profile: {
+                    id: profileWithId?.id,
+                    name: profile.identity.name,
+                    bio: profile.identity.bio,
+                    location: profile.identity.location,
+                    skills: profile.attributes.skills,
+                    interests: profile.attributes.interests,
+                  },
+                }
+              : {
+                  hasProfile: false,
+                  message:
+                    "You don't have a profile yet. Would you like to create one? You can share your LinkedIn, GitHub, or X/Twitter profile, or just tell me about yourself.",
+                },
           };
         }
 
@@ -300,6 +319,112 @@ export class ProfileGraphFactory {
         return {
           error: "Web scrape failed"
         };
+      }
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // NODE: Auto-Generate (Parallels searchUser)
+    // Calls Parallels API with structured user data (name, email,
+    // socials, websites) to auto-generate profile input.
+    // Used in 'generate' mode only.
+    // ─────────────────────────────────────────────────────────
+    const autoGenerateNode = async (state: typeof ProfileGraphState.State) => {
+      logger.info("Starting auto-generate via Parallels searchUser", {
+        userId: state.userId,
+      });
+
+      try {
+        // Load user from DB
+        const user = await this.database.getUser(state.userId);
+        if (!user) {
+          logger.error("User not found for auto-generate", { userId: state.userId });
+          return { error: `User not found: ${state.userId}` };
+        }
+
+        // Build structured request for searchUser
+        const request: {
+          name?: string;
+          email?: string;
+          linkedin?: string;
+          twitter?: string;
+          github?: string;
+          websites?: string[];
+        } = {};
+
+        if (user.name) request.name = user.name;
+        if (user.email) request.email = user.email;
+        if (user.socials?.linkedin) request.linkedin = user.socials.linkedin;
+        if (user.socials?.x) request.twitter = user.socials.x;
+        if (user.socials?.github) request.github = user.socials.github;
+        if (user.socials?.websites && user.socials.websites.length > 0) {
+          request.websites = user.socials.websites;
+        }
+
+        // Check minimum info
+        const hasSocials = !!(request.linkedin || request.twitter || request.github || (request.websites && request.websites.length > 0));
+        const hasMeaningfulName = request.name && request.name.trim() !== '' && !request.name.includes('@') && request.name.split(/\s+/).filter(Boolean).length >= 2;
+
+        if (!hasSocials && !hasMeaningfulName) {
+          logger.info("Insufficient user info for auto-generate", { userId: state.userId });
+          return {
+            needsUserInfo: true,
+            missingUserInfo: [
+              ...(hasSocials ? [] : ['social_urls']),
+              ...(hasMeaningfulName ? [] : ['full_name']),
+            ],
+          };
+        }
+
+        logger.info("Calling Parallels searchUser", {
+          hasName: !!request.name,
+          hasEmail: !!request.email,
+          hasSocials,
+        });
+
+        const searchResult = await searchUser(request);
+
+        // Combine excerpts into input text for profile generation
+        const inputParts: string[] = [];
+        if (searchResult.results && searchResult.results.length > 0) {
+          for (const r of searchResult.results) {
+            if (r.excerpts && r.excerpts.length > 0) {
+              inputParts.push(`Source: ${r.title || r.url}\n${r.excerpts.join('\n')}`);
+            }
+          }
+        }
+
+        if (inputParts.length === 0) {
+          logger.warn("Parallels searchUser returned no usable content", { userId: state.userId });
+          // Fall back to basic user info
+          const basicInfo = [
+            user.name ? `Name: ${user.name}` : '',
+            user.email ? `Email: ${user.email}` : '',
+            user.location ? `Location: ${user.location}` : '',
+            user.intro ? `Bio: ${user.intro}` : '',
+          ].filter(Boolean).join('\n');
+          return {
+            input: basicInfo || "No information available",
+            needsProfileGeneration: true,
+            operationsPerformed: { scraped: true },
+          };
+        }
+
+        const combinedInput = inputParts.join('\n\n');
+        logger.info("Auto-generate input ready", {
+          sourceCount: inputParts.length,
+          inputLength: combinedInput.length,
+        });
+
+        return {
+          input: combinedInput,
+          needsProfileGeneration: true,
+          operationsPerformed: { scraped: true },
+        };
+      } catch (err) {
+        logger.error("Auto-generate via Parallels failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return { error: "Auto-generate failed. Please try again or provide your information manually." };
       }
     };
 
@@ -520,6 +645,12 @@ export class ProfileGraphFactory {
         return END;
       }
 
+      // Generate mode: use Parallels searchUser to auto-generate
+      if (state.operationMode === 'generate') {
+        logger.info("Generate mode - routing to auto_generate");
+        return "auto_generate";
+      }
+
       // Check if user information is insufficient for scraping
       // Return early so chat graph can request the missing information
       if (state.needsUserInfo) {
@@ -603,6 +734,7 @@ export class ProfileGraphFactory {
       // Add all nodes
       .addNode("check_state", checkStateNode)
       .addNode("scrape", scrapeNode)
+      .addNode("auto_generate", autoGenerateNode)
       .addNode("generate_profile", generateProfileNode)
       .addNode("embed_save_profile", embedSaveProfileNode)
       .addNode("generate_hyde", generateHydeNode)
@@ -616,6 +748,7 @@ export class ProfileGraphFactory {
         "check_state",
         checkStateCondition,
         {
+          auto_generate: "auto_generate",       // Generate mode -> Parallels searchUser
           scrape: "scrape",                     // Need profile, no input -> scrape first
           generate_profile: "generate_profile", // Need profile, have input -> generate
           embed_save_profile: "embed_save_profile", // Have profile, need embedding
@@ -624,6 +757,9 @@ export class ProfileGraphFactory {
           [END]: END                            // Query mode or everything exists
         }
       )
+
+      // Auto-generate feeds into profile generation
+      .addEdge("auto_generate", "generate_profile")
 
       // Scrape -> Generate profile (linear)
       .addEdge("scrape", "generate_profile")
