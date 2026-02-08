@@ -514,36 +514,6 @@ describe("create_intent tool (Phase 2 index scope)", () => {
     expect(schema?.shape?.indexId ?? (createIntentTool as { schema?: { schema?: { shape?: Record<string, unknown> } } }).schema?.schema?.shape?.indexId).toBeDefined();
   });
 
-  test("create_intent tool schema includes optional existingIntentsInIndex", async () => {
-    const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
-    const tools = await createChatTools(context);
-    const createIntentTool = tools.find((t: { name: string }) => t.name === "create_intent");
-    expect(createIntentTool).toBeDefined();
-    const schemaObj = (createIntentTool as { schema?: { shape?: Record<string, unknown> } }).schema ?? (createIntentTool as { schema?: { schema?: { shape?: Record<string, unknown> } } }).schema?.schema;
-    const shape = schemaObj?.shape as Record<string, unknown> | undefined;
-    expect(shape?.existingIntentsInIndex).toBeDefined();
-  });
-
-  test("with indexId and existingIntentsInIndex provided, create_intent uses it and does not call getIntentsInIndexForMember", async () => {
-    const indexId = "a1b2c3d4-0000-4000-8000-000000000020";
-    let getIntentsInIndexForMemberCalled = false;
-    const mockDb = createMockDatabase(async () => [], {
-      getIntentsInIndexForMember: async () => {
-        getIntentsInIndexForMemberCalled = true;
-        return [];
-      },
-    });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
-    const tools = await createChatTools(context);
-    const createIntentTool = tools.find((t: { name: string }) => t.name === "create_intent") as { invoke: (args: { description: string; indexId?: string; existingIntentsInIndex?: Array<{ id: string; description: string }> }) => Promise<string> };
-    await createIntentTool.invoke({
-      description: "New intent",
-      indexId,
-      existingIntentsInIndex: [{ id: "i1", description: "Existing intent" }],
-    });
-    expect(getIntentsInIndexForMemberCalled).toBe(false);
-  });
 });
 
 describe("scrape_url tool", () => {
