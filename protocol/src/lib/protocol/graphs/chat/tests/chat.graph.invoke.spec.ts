@@ -444,7 +444,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       );
 
       expectSmartest(result);
-      const output = result.output as { responseText?: string };
+      const output = result.output as { responseText?: string; shouldContinue?: boolean };
       expect(output.responseText).toBeDefined();
     }, 180000);
   });
@@ -487,7 +487,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       );
 
       expectSmartest(result);
-      const output = result.output as { responseText?: string };
+      const output = result.output as { responseText?: string; shouldContinue?: boolean };
       expect(output.responseText).toBeDefined();
     }, 180000);
   });
@@ -534,7 +534,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       );
 
       expectSmartest(result);
-      const output = result.output as { responseText?: string };
+      const output = result.output as { responseText?: string; shouldContinue?: boolean };
       expect(output.responseText).toBeDefined();
     }, 180000);
   });
@@ -577,7 +577,7 @@ describe("Chat Graph invoke (Smartest)", () => {
       );
 
       expectSmartest(result);
-      const output = result.output as { responseText?: string };
+      const output = result.output as { responseText?: string; shouldContinue?: boolean };
       expect(output.responseText).toBeDefined();
     }, 180000);
   });
