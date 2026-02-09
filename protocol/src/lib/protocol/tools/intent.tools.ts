@@ -48,6 +48,10 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       });
 
       if (result.readResult) {
+        // When the graph returns a "not a member" message, propagate as an error
+        if (result.readResult.count === 0 && result.readResult.message && /not a member|Index not found/i.test(result.readResult.message)) {
+          return error(result.readResult.message);
+        }
         return success(result.readResult);
       }
       return error("Failed to fetch intents.");

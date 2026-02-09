@@ -12,13 +12,96 @@ mock.module("../../../../queues/notification.queue", () => ({
 }));
 mock.module("../../graphs/intent.graph", () => ({
   IntentGraphFactory: class {
+    private database: ChatGraphCompositeDatabase;
+    constructor(database: ChatGraphCompositeDatabase) {
+      this.database = database;
+    }
     createGraph() {
+      const db = this.database;
       return {
-        invoke: async () => ({
-          executionResults: [],
-          actions: [],
-          inferredIntents: [],
-        }),
+        invoke: async (input: {
+          userId: string;
+          operationMode: string;
+          indexId?: string;
+          queryUserId?: string;
+          allUserIntents?: boolean;
+        }) => {
+          // For read operations, replicate the real queryNode logic using the database
+          if (input.operationMode === "read") {
+            const effectiveIndexId = input.allUserIntents ? undefined : input.indexId;
+
+            if (effectiveIndexId) {
+              const isMember = await db.isIndexMember(effectiveIndexId, input.userId);
+              if (!isMember) {
+                return {
+                  readResult: {
+                    count: 0,
+                    intents: [],
+                    message: "Index not found or you are not a member.",
+                  },
+                };
+              }
+
+              if (!input.queryUserId) {
+                const intents = await db.getIndexIntentsForMember(effectiveIndexId, input.userId);
+                return {
+                  readResult: {
+                    count: intents.length,
+                    indexId: effectiveIndexId,
+                    intents: intents.map((i: any) => ({
+                      id: i.id,
+                      description: i.payload,
+                      summary: i.summary,
+                      createdAt: i.createdAt,
+                      userId: i.userId,
+                      userName: i.userName,
+                    })),
+                    ...(intents.length === 0 && { message: "No intents in this index yet." }),
+                  },
+                };
+              }
+
+              const intents = await db.getIntentsInIndexForMember(input.queryUserId, effectiveIndexId);
+              const user = await db.getUser(input.queryUserId);
+              const userName = user?.name ?? null;
+              return {
+                readResult: {
+                  count: intents.length,
+                  indexId: effectiveIndexId,
+                  intents: intents.map((i: any) => ({
+                    id: i.id,
+                    description: i.payload,
+                    summary: i.summary,
+                    createdAt: i.createdAt,
+                    userId: input.queryUserId,
+                    userName,
+                  })),
+                },
+              };
+            }
+
+            // No index scope: return user's own active intents
+            const intents = await db.getActiveIntents(input.userId);
+            return {
+              readResult: {
+                count: intents.length,
+                intents: intents.map((i: any) => ({
+                  id: i.id,
+                  description: i.payload,
+                  summary: i.summary,
+                  createdAt: i.createdAt,
+                })),
+              },
+            };
+          }
+
+          // For non-read operations, return default empty results
+          return {
+            executionResults: [],
+            actions: [],
+            inferredIntents: [],
+          };
+        },
       };
     }
   },
