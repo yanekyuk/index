@@ -119,7 +119,7 @@ export const CHAT_AGENT_USER_NEEDS = {
       "Add Python to my skills",
       "Change my location to Austin",
     ],
-    expectedTools: ["read_user_profiles", "update_user_profile", "confirm_action"],
+    expectedTools: ["read_user_profiles", "update_user_profile"],
     messages: {
       direct_requester: "Add Python and Rust to my skills",
       exploratory_seeker: "I'd like to update my profile with some new skills... can you help?",
@@ -192,7 +192,7 @@ export const CHAT_AGENT_USER_NEEDS = {
       "Change my co-founder intent",
       "Edit that intent to be more specific",
     ],
-    expectedTools: ["read_intents", "update_intent", "confirm_action"],
+    expectedTools: ["read_intents", "update_intent"],
     messages: {
       direct_requester: "Update my hiring intent to focus on senior engineers only",
       exploratory_seeker: "Can I change that intent to be more specific?",
@@ -209,7 +209,7 @@ export const CHAT_AGENT_USER_NEEDS = {
       "Remove that intent",
       "I don't need the co-founder goal anymore",
     ],
-    expectedTools: ["read_intents", "delete_intent", "confirm_action"],
+    expectedTools: ["read_intents", "delete_intent"],
     messages: {
       direct_requester: "Delete my co-founder intent",
       exploratory_seeker: "I don't need that intent anymore... can you remove it?",
@@ -264,7 +264,7 @@ export const CHAT_AGENT_USER_NEEDS = {
       "Change the AI Founders index to be invite-only",
       "Edit the community title",
     ],
-    expectedTools: ["read_indexes", "update_index", "confirm_action"],
+    expectedTools: ["read_indexes", "update_index"],
     messages: {
       direct_requester: "Make AI Founders index invite-only",
       exploratory_seeker: "Can I change my community settings to be more private?",
@@ -281,7 +281,7 @@ export const CHAT_AGENT_USER_NEEDS = {
       "Remove the Product Managers community",
       "Get rid of that empty index",
     ],
-    expectedTools: ["read_indexes", "delete_index", "confirm_action"],
+    expectedTools: ["read_indexes", "delete_index"],
     messages: {
       direct_requester: "Delete my Test Community index",
       exploratory_seeker: "I don't need that community anymore... can you delete it?",
@@ -470,44 +470,6 @@ export const CHAT_AGENT_USER_NEEDS = {
       exploratory_seeker: "Can you tell me what's on this page? https://example.com/article",
       technical_precise: "Extract and summarize content from https://example.com/article",
       vague_requester: "What's this? https://example.com/article",
-    },
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════════
-  // CONFIRMATION FLOW (Tools: confirm_action, cancel_action)
-  // ═══════════════════════════════════════════════════════════════════════════════
-
-  CONFIRMATION_ACCEPT: {
-    id: "confirmation_accept" as const,
-    description: "User confirms a pending destructive action",
-    examples: [
-      "Yes, update it",
-      "Confirm",
-      "Go ahead and delete it",
-    ],
-    expectedTools: ["confirm_action"],
-    messages: {
-      direct_requester: "Yes, confirm",
-      exploratory_seeker: "Yes, that looks good",
-      technical_precise: "Confirmed, execute the pending action",
-      vague_requester: "OK",
-    },
-  },
-
-  CONFIRMATION_CANCEL: {
-    id: "confirmation_cancel" as const,
-    description: "User cancels a pending action",
-    examples: [
-      "No, cancel that",
-      "Never mind",
-      "Don't delete it",
-    ],
-    expectedTools: ["cancel_action"],
-    messages: {
-      direct_requester: "Cancel",
-      exploratory_seeker: "Actually, never mind",
-      technical_precise: "Cancel the pending confirmation",
-      vague_requester: "No",
     },
   },
 

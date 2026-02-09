@@ -40,7 +40,6 @@ async function createChatAgent(userId: string): Promise<ChatAgentInterface> {
         const result = await graph.invoke({
           userId: options?.userId || userId, // Use the real user ID
           messages: [new HumanMessage(message)],
-          sessionId: options?.sessionId || sessionId,
           indexId: options?.indexId,
         });
 

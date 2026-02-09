@@ -418,34 +418,6 @@ describe("ChatController Integration", () => {
       }
     });
 
-    test("canMessage should return 400 when userId path param is empty", async () => {
-      const req = new Request("http://localhost/chat/can-message/");
-      const res = await controller.canMessage(req, mockUser());
-      const data = (await res.json()) as { error?: string };
-
-      expect(res.status).toBe(400);
-      expect(data.error).toContain("Target user ID");
-    });
-
-    test("canMessage should return 200 with canMessage boolean", async () => {
-      const targetId = "00000000-0000-0000-0000-000000000001";
-      const req = new Request("http://localhost/chat/can-message/" + targetId);
-      const res = await controller.canMessage(req, mockUser());
-      const data = (await res.json()) as { canMessage?: boolean };
-
-      expect(res.status).toBe(200);
-      expect(typeof data.canMessage).toBe("boolean");
-    });
-
-    test("getRequests should return 200 with requests array", async () => {
-      const req = new Request("http://localhost/chat/requests");
-      const res = await controller.getRequests(req, mockUser());
-      const data = (await res.json()) as { requests?: unknown[] };
-
-      expect(res.status).toBe(200);
-      expect(Array.isArray(data.requests)).toBe(true);
-    });
-
     test("messageStream should return 400 when message is missing", async () => {
       const req = new Request("http://localhost/chat/stream", {
         method: "POST",

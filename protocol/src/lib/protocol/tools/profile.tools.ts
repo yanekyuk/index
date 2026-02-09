@@ -1,13 +1,12 @@
 import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
-import { success, error, needsConfirmation, needsClarification, UUID_REGEX } from "./tool.helpers";
-import type { ConfirmationPayload } from "../states/chat.state";
+import { success, error, needsClarification, UUID_REGEX } from "./tool.helpers";
 import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatTools:Profile");
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, graphs, getPendingConfirmation, setPendingConfirmation } = deps;
+  const { database, graphs } = deps;
 
   const readUserProfiles = defineTool({
     name: "read_user_profiles",
@@ -178,10 +177,6 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       details: z.string().optional().describe("Additional context or pasted content"),
     }),
     handler: async ({ context, query }) => {
-      if (!setPendingConfirmation || !getPendingConfirmation) {
-        return error("Confirmation is not available in this context.");
-      }
-
       // Use profileGraph query mode to validate profile existence
       const queryResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
@@ -197,22 +192,14 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Please specify what to update (e.g. action: 'update bio to X').");
       }
 
-      const confirmationId = crypto.randomUUID();
-      const summary = `Update your profile: ${query.action.slice(0, 80)}${query.action.length > 80 ? "…" : ""}`;
-      const payload: ConfirmationPayload = {
-        resource: "profile",
-        action: "update",
-        updates: { input: inputForProfile },
-      };
-      setPendingConfirmation({
-        id: confirmationId,
-        action: "update",
-        resource: "profile",
-        summary,
-        payload,
-        createdAt: Date.now(),
+      // Execute update directly
+      await graphs.profile.invoke({
+        userId: context.userId,
+        operationMode: "write",
+        input: inputForProfile,
+        forceUpdate: true,
       });
-      return needsConfirmation({ confirmationId, action: "update", resource: "profile", summary });
+      return success({ message: "Profile updated." });
     },
   });
 

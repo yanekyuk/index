@@ -274,50 +274,6 @@ describe("Chat Graph invoke (Smartest)", () => {
     }, 10000);
   });
 
-  describe("Confirmation flow", () => {
-    test("when user requests a destructive action, response asks for confirmation or references confirm", async () => {
-      const compiledGraph = factory.createGraph();
-
-      const result = await runScenario(
-        defineScenario({
-          name: "chat-confirmation-flow",
-          description:
-            "User asks to delete an intent or perform an update; graph should respond by asking for confirmation or indicating the user must confirm before the action is applied.",
-          fixtures: {
-            userId: testUserId,
-            message: "Delete my intent about hiring developers.",
-          },
-          sut: {
-            type: "graph",
-            factory: () => compiledGraph,
-            invoke: async (instance: unknown, resolvedInput: unknown) => {
-              const input = resolvedInput as { userId: string; message: string };
-              return await (instance as ReturnType<ChatGraphFactory["createGraph"]>).invoke({
-                userId: input.userId,
-                messages: [new HumanMessage(input.message)],
-              });
-            },
-            input: {
-              userId: "@fixtures.userId",
-              message: "@fixtures.message",
-            },
-          },
-          verification: {
-            schema: chatGraphOutputSchema,
-            criteria:
-              "The responseText must either ask the user to confirm the action, mention confirmation, or explain that the action will be applied after confirmation. It must not imply the destructive action was already performed without confirmation.",
-            llmVerify: true,
-          },
-        })
-      );
-
-      expectSmartest(result);
-      const output = result.output as { responseText?: string };
-      expect(output.responseText).toBeDefined();
-      expect(typeof output.responseText).toBe("string");
-    }, 180000);
-  });
-
   describe("Tool choice", () => {
     test("when user asks for their intents, response is coherent and reflects list/query behavior", async () => {
       const compiledGraph = factory.createGraph();

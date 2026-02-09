@@ -37,7 +37,7 @@ const logger = protocolLogger("ChatTools");
  * Tools are created fresh for each user session to ensure proper isolation.
  */
 export async function createChatTools(deps: ToolContext) {
-  const { database, embedder, scraper, getPendingConfirmation, setPendingConfirmation } = deps;
+  const { database, embedder, scraper } = deps;
 
   // ─── Resolve context from DB ───────────────────────────────────────────────
   const user = await database.getUser(deps.userId);
@@ -116,8 +116,6 @@ export async function createChatTools(deps: ToolContext) {
       intentIndex: intentIndexGraph,
       opportunity: opportunityGraph,
     },
-    getPendingConfirmation,
-    setPendingConfirmation,
   };
 
   // ─── Create domain tools ──────────────────────────────────────────────────

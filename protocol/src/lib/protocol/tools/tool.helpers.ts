@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
-import type { PendingConfirmation } from "../states/chat.state";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPILED GRAPH TYPE
@@ -32,7 +31,7 @@ export interface ResolvedToolContext {
 
 /**
  * Dependencies passed when creating tools for a user session.
- * Includes DB adapters, embedder, scraper, and confirmation helpers.
+ * Includes DB adapters, embedder, and scraper.
  */
 export interface ToolContext {
   userId: string;
@@ -41,10 +40,6 @@ export interface ToolContext {
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   indexId?: string;
-  /** Read pending confirmation (for confirm_action / cancel_action). */
-  getPendingConfirmation?: () => PendingConfirmation | undefined;
-  /** Set pending confirmation (for tools that require user confirm before update/delete). */
-  setPendingConfirmation?: (p: PendingConfirmation | undefined) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -83,8 +78,6 @@ export interface ToolDeps {
     intentIndex: CompiledGraph;
     opportunity: CompiledGraph;
   };
-  getPendingConfirmation?: () => PendingConfirmation | undefined;
-  setPendingConfirmation?: (p: PendingConfirmation | undefined) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -97,20 +90,6 @@ export function success<T>(data: T): string {
 
 export function error(message: string): string {
   return JSON.stringify({ success: false, error: message });
-}
-
-/** Return needsConfirmation so the agent asks the user before calling confirm_action. */
-export function needsConfirmation(params: {
-  confirmationId: string;
-  action: string;
-  resource: string;
-  summary: string;
-}): string {
-  return JSON.stringify({
-    success: false,
-    needsConfirmation: true,
-    ...params,
-  });
 }
 
 /** Return needsClarification for missing required fields. */
@@ -128,9 +107,6 @@ export function needsClarification(params: {
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONSTANTS & UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
-
-/** Five minutes in ms for confirmation expiry. */
-export const CONFIRMATION_EXPIRY_MS = 5 * 60 * 1000;
 
 /** Matches http/https URLs in text; captures full URL. */
 const URL_IN_TEXT_REGEX = /https?:\/\/[^\s"'<>)\]]+/gi;

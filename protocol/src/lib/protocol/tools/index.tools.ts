@@ -1,10 +1,9 @@
 import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
-import { success, error, needsConfirmation, UUID_REGEX } from "./tool.helpers";
-import type { ConfirmationPayload } from "../states/chat.state";
+import { success, error, UUID_REGEX } from "./tool.helpers";
 
 export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { graphs, getPendingConfirmation, setPendingConfirmation } = deps;
+  const { graphs } = deps;
 
   const readIndexes = defineTool({
     name: "read_indexes",
@@ -79,10 +78,6 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
 
-      if (!setPendingConfirmation || !getPendingConfirmation) {
-        return error("Confirmation is not available in this context.");
-      }
-
       const readResult = await graphs.index.invoke({
         userId: context.userId,
         indexId: effectiveIndexId,
@@ -101,24 +96,17 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       if ("private" in query.settings && query.settings.private) settingsData.joinPolicy = "invite_only";
       if ("public" in query.settings && query.settings.public) settingsData.joinPolicy = "anyone";
 
-      const title = (owned.title ?? "this index").slice(0, 60);
-      const confirmationId = crypto.randomUUID();
-      const summary = `Update index "${title}" settings: ${Object.keys(settingsData).join(", ")}`;
-      const payload: ConfirmationPayload = {
-        resource: "index",
-        action: "update",
+      // Execute update directly
+      const result = await graphs.index.invoke({
+        userId: context.userId,
         indexId: effectiveIndexId,
-        updates: settingsData,
-      };
-      setPendingConfirmation({
-        id: confirmationId,
-        action: "update",
-        resource: "index",
-        summary,
-        payload,
-        createdAt: Date.now(),
+        operationMode: 'update' as const,
+        updateInput: settingsData as { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean },
       });
-      return needsConfirmation({ confirmationId, action: "update", resource: "index", summary });
+      if (result.mutationResult && !result.mutationResult.success) {
+        return error(result.mutationResult.error || "Failed to update index.");
+      }
+      return success({ message: "Index updated.", settings: Object.keys(settingsData) });
     },
   });
 
@@ -172,10 +160,6 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
 
-      if (!setPendingConfirmation || !getPendingConfirmation) {
-        return error("Confirmation is not available in this context.");
-      }
-
       const readResult = await graphs.index.invoke({
         userId: context.userId,
         indexId,
@@ -188,12 +172,18 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       if (owned.memberCount > 1) {
         return error("Cannot delete index with other members. Remove members first or transfer ownership.");
       }
+
+      // Execute delete directly
+      const result = await graphs.index.invoke({
+        userId: context.userId,
+        indexId,
+        operationMode: 'delete' as const,
+      });
+      if (result.mutationResult && !result.mutationResult.success) {
+        return error(result.mutationResult.error || "Failed to delete index.");
+      }
       const title = (owned.title ?? "this index").slice(0, 60);
-      const confirmationId = crypto.randomUUID();
-      const summary = `Delete index "${title}"`;
-      const payload: ConfirmationPayload = { resource: "index", action: "delete", indexId };
-      setPendingConfirmation({ id: confirmationId, action: "delete", resource: "index", summary, payload, createdAt: Date.now() });
-      return needsConfirmation({ confirmationId, action: "delete", resource: "index", summary });
+      return success({ message: `Index "${title}" deleted.` });
     },
   });
 

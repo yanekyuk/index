@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
-import { success, error, needsConfirmation, needsClarification, UUID_REGEX, extractUrls, resolveIndexNames } from "./tool.helpers";
-import type { ConfirmationPayload } from "../states/chat.state";
+import { success, error, needsClarification, UUID_REGEX, extractUrls, resolveIndexNames } from "./tool.helpers";
 import type { ExecutionResult } from "../states/intent.state";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { protocolLogger } from "../support/protocol.logger";
@@ -9,7 +8,7 @@ import { protocolLogger } from "../support/protocol.logger";
 const logger = protocolLogger("ChatTools:Intent");
 
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, scraper, graphs, getPendingConfirmation, setPendingConfirmation } = deps;
+  const { database, scraper, graphs } = deps;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // INTENT CRUD
@@ -290,10 +289,6 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      if (!setPendingConfirmation || !getPendingConfirmation) {
-        return error("Confirmation is not available in this context.");
-      }
-
       const readResult = await graphs.intent.invoke({
         userId: context.userId,
         userProfile: "",
@@ -312,24 +307,23 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const confirmationId = crypto.randomUUID();
-      const intentText = (intent as { summary?: string; description?: string }).summary || (intent as { description?: string }).description || "";
-      const summary = `Update intent from "${intentText.slice(0, 80)}${intentText.length > 80 ? "…" : ""}" to "${query.newDescription.slice(0, 80)}${query.newDescription.length > 80 ? "…" : ""}"`;
-      const payload: ConfirmationPayload = {
-        resource: "intent",
-        action: "update",
-        intentId,
-        newDescription: query.newDescription,
-      };
-      setPendingConfirmation({
-        id: confirmationId,
-        action: "update",
-        resource: "intent",
-        summary,
-        payload,
-        createdAt: Date.now(),
+      // Execute update directly
+      const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const result = await graphs.intent.invoke({
+        userId: context.userId,
+        userProfile,
+        operationMode: 'update' as const,
+        inputContent: query.newDescription,
+        targetIntentIds: [intentId],
       });
-      return needsConfirmation({ confirmationId, action: "update", resource: "intent", summary });
+      if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
+        return error("Failed to update intent through graph.");
+      }
+      // Look up which indexes this intent belongs to so the LLM can mention them
+      const indexIds = await database.getIndexIdsForIntent(intentId);
+      const indexedIn = await resolveIndexNames(database, indexIds);
+      return success({ message: "Intent updated.", ...(indexedIn.length > 0 && { indexedIn }) });
     },
   });
 
@@ -362,10 +356,6 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         }
       }
 
-      if (!setPendingConfirmation || !getPendingConfirmation) {
-        return error("Confirmation is not available in this context.");
-      }
-
       const readResult = await graphs.intent.invoke({
         userId: context.userId,
         userProfile: "",
@@ -384,19 +374,23 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
-      const confirmationId = crypto.randomUUID();
-      const intentText = (intent as { summary?: string; description?: string }).summary || (intent as { description?: string }).description || "";
-      const summary = `Delete intent: "${intentText.slice(0, 100)}${intentText.length > 100 ? "…" : ""}"`;
-      const payload: ConfirmationPayload = { resource: "intent", action: "delete", intentId };
-      setPendingConfirmation({
-        id: confirmationId,
-        action: "delete",
-        resource: "intent",
-        summary,
-        payload,
-        createdAt: Date.now(),
+      // Capture which indexes the intent is in *before* archival
+      const indexIds = await database.getIndexIdsForIntent(intentId);
+      const deIndexedFrom = await resolveIndexNames(database, indexIds);
+
+      // Execute delete directly
+      const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+      const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
+      const result = await graphs.intent.invoke({
+        userId: context.userId,
+        userProfile,
+        operationMode: 'delete' as const,
+        targetIntentIds: [intentId],
       });
-      return needsConfirmation({ confirmationId, action: "delete", resource: "intent", summary });
+      if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
+        return error("Failed to delete intent through graph.");
+      }
+      return success({ message: "Intent deleted.", ...(deIndexedFrom.length > 0 && { deIndexedFrom }) });
     },
   });
 

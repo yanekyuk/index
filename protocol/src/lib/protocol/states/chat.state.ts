@@ -44,27 +44,6 @@ export interface SubgraphResults {
   scrape?: unknown;
 }
 
-/** Frozen payload for re-execution on confirm. */
-export type ConfirmationPayload =
-  | { resource: 'intent'; action: 'update'; intentId: string; newDescription: string }
-  | { resource: 'intent'; action: 'delete'; intentId: string }
-  | { resource: 'profile'; action: 'update'; updates: Record<string, unknown> }
-  | { resource: 'profile'; action: 'delete' }
-  | { resource: 'index'; action: 'update'; indexId: string; updates: Record<string, unknown> }
-  | { resource: 'index'; action: 'delete'; indexId: string }
-  | { resource: 'opportunity'; action: 'update'; opportunityId: string; updates: Record<string, unknown> }
-  | { resource: 'opportunity'; action: 'delete'; opportunityId: string };
-
-/** Pending confirmation record for update/delete actions. */
-export interface PendingConfirmation {
-  id: string;
-  action: 'update' | 'delete';
-  resource: 'intent' | 'profile' | 'index' | 'opportunity';
-  summary: string;
-  payload: ConfirmationPayload;
-  createdAt: number;
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT GRAPH STATE (Agent Loop Architecture)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -170,15 +149,6 @@ export const ChatGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /**
-   * Pending confirmation for a destructive action (update/delete).
-   * When set, the agent must ask the user and then call confirm_action or cancel_action.
-   * Expires after 5 minutes (cleared on next turn if stale).
-   */
-  pendingConfirmation: Annotation<PendingConfirmation | undefined>({
-    reducer: (curr, next) => next,
-    default: () => undefined,
-  }),
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

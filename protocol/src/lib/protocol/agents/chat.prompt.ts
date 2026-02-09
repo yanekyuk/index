@@ -122,7 +122,6 @@ function buildNoIndexScopePrompt(): string {
 
 ### Utilities
 - **scrape_url**: Fetch text from a URL. Pass \`objective\` for context-aware scraping.
-- **confirm_action** / **cancel_action**: Confirm or cancel pending destructive actions (update/delete).
 
 ## Discovery Rules — Intent First
 
@@ -211,7 +210,6 @@ ${ownerTools}
 
 ### Utilities
 - **scrape_url**: Fetch text from a URL. Pass \`objective\` for context-aware scraping.
-- **confirm_action** / **cancel_action**: Confirm or cancel pending destructive actions.
 
 ## Index-Scoped Intent Creation
 
