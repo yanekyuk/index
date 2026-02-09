@@ -1,4 +1,4 @@
-import { ProfileDocument } from '../agents/profile/profile.generator';
+import { ProfileDocument } from '../agents/profile.generator';
 import type {
   OpportunityDetection,
   OpportunityActor,
@@ -1149,8 +1149,8 @@ export type IntentExecutorDatabase = Pick<
 
 /**
  * Database interface narrowed for Intent Graph operations.
- * Provides state population (getActiveIntents or getIntentsInIndexForMember when index-scoped),
- * action execution (create/update/archive), and read operations (query intents).
+ * Provides state population (getActiveIntents), action execution (create/update/archive),
+ * and read operations (query intents; getIntentsInIndexForMember for index-scoped reads).
  */
 export type IntentGraphDatabase = Pick<
   Database,
