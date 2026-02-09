@@ -137,8 +137,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
           : autoAssignIndexIds;
         if (scopeIndexIds.length > 0) {
           const forceAssignSingleIndex = scopeIndexIds.length === 1;
-          for (const intent of created) {
-            for (const idxId of scopeIndexIds) {
+          const assignmentPromises = created.flatMap((intent: { id: string; description: string }) =>
+            scopeIndexIds.map(async (idxId) => {
               try {
                 const assignResult = await graphs.intentIndex.invoke({
                   userId: context.userId,
@@ -153,8 +153,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
               } catch (e) {
                 logger.warn("Index assignment failed", { intentId: intent.id, indexId: idxId });
               }
-            }
-          }
+            })
+          );
+          await Promise.all(assignmentPromises);
         }
       }
       // When creating in index scope, also link updated intents to the active index.
