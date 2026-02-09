@@ -1,7 +1,8 @@
 import { log } from '../lib/log';
 import type { IntentGraphDatabase } from '../lib/protocol/interfaces/database.interface';
-import { IntentGraphFactory } from '../lib/protocol/graphs/intent/intent.graph';
+import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
 
 const logger = log.service.from("IntentService");
 
@@ -21,11 +22,13 @@ export class IntentService {
   private db: IntentGraphDatabase;
   private factory: IntentGraphFactory;
   private adapter: IntentDatabaseAdapter;
+  private embedder: EmbedderAdapter;
 
   constructor() {
     this.adapter = intentDatabaseAdapter;
     this.db = this.adapter;
-    this.factory = new IntentGraphFactory(this.db);
+    this.embedder = new EmbedderAdapter();
+    this.factory = new IntentGraphFactory(this.db, this.embedder);
   }
 
   /**

@@ -364,6 +364,103 @@ export class IntentDatabaseAdapter {
   async deleteByUserId(userId: string): Promise<void> {
     await db.delete(schema.intents).where(eq(schema.intents.userId, userId));
   }
+
+  // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
+
+  async getProfile(userId: string): Promise<ProfileRow | null> {
+    const result = await db.select()
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, userId))
+      .limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---
+
+  async getUser(userId: string) {
+    const result = await db.select()
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    const user = result[0];
+    if (!user) return null;
+    return {
+      id: user.id,
+      name: user.name ?? '',
+      email: user.email ?? '',
+      intro: user.intro ?? null,
+      avatar: user.avatar ?? null,
+      location: user.location ?? null,
+      socials: user.socials ?? null,
+    };
+  }
+
+  async isIndexMember(indexId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+      .where(
+        and(
+          eq(schema.indexMembers.indexId, indexId),
+          eq(schema.indexMembers.userId, userId),
+          isNull(schema.indexes.deletedAt)
+        )
+      )
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getIndexIntentsForMember(
+    indexId: string,
+    requestingUserId: string,
+    options?: { limit?: number; offset?: number }
+  ) {
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) throw new Error('Access denied: Not a member of this index');
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+
+    const result = await db
+      .select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        userId: schema.intents.userId,
+        userName: schema.users.name,
+        createdAt: schema.intents.createdAt,
+      })
+      .from(schema.intents)
+      .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+      .leftJoin(schema.users, eq(schema.intents.userId, schema.users.id))
+      .where(
+        and(
+          eq(schema.intentIndexes.indexId, indexId),
+          isNull(schema.intents.archivedAt)
+        )
+      )
+      .orderBy(desc(schema.intents.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return result.map((r) => ({
+      id: r.id,
+      payload: r.payload,
+      summary: r.summary,
+      userId: r.userId,
+      userName: r.userName ?? 'Unknown',
+      createdAt: r.createdAt,
+    }));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -649,6 +746,15 @@ export class ChatDatabaseAdapter {
       .where(eq(schema.users.id, userId))
       .limit(1);
     return result[0] ?? null;
+  }
+
+  async updateUser(
+    userId: string,
+    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } }
+  ) {
+    // Delegate to ProfileDatabaseAdapter which has the merge logic
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.updateUser(userId, data);
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -1957,6 +2063,53 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
+   * Update user account fields (name, location, socials).
+   * Merges socials with existing values so callers can set individual social
+   * fields (e.g. only linkedin) without overwriting the rest.
+   */
+  async updateUser(
+    userId: string,
+    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } | null } | null> {
+    // Load current user to merge socials
+    const current = await this.getUser(userId);
+    if (!current) return null;
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.location !== undefined) updateFields.location = data.location;
+
+    if (data.socials) {
+      // Merge with existing socials instead of overwriting
+      const existingSocials = (current as any).socials ?? {};
+      const merged = { ...existingSocials };
+      if (data.socials.x !== undefined) merged.x = data.socials.x;
+      if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
+      if (data.socials.github !== undefined) merged.github = data.socials.github;
+      if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
+      updateFields.socials = merged;
+    }
+
+    const result = await db.update(schema.users)
+      .set(updateFields)
+      .where(eq(schema.users.id, userId))
+      .returning();
+
+    const updated = result[0];
+    if (!updated) return null;
+    return {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      intro: updated.intro,
+      avatar: updated.avatar,
+      location: updated.location,
+      socials: updated.socials as { x?: string; linkedin?: string; github?: string; websites?: string[] } | null,
+    };
+  }
+
+  /**
    * Delete profile by userId (for test teardown).
    */
   async deleteProfile(userId: string): Promise<void> {
@@ -1995,6 +2148,46 @@ export class ProfileDatabaseAdapter {
       hydeDescription: row.hydeDescription,
       hydeEmbedding: row.hydeEmbedding as number[] | null,
     };
+  }
+
+  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+    const result = await db.select({
+      id: schema.userProfiles.id,
+      userId: schema.userProfiles.userId,
+      identity: schema.userProfiles.identity,
+      narrative: schema.userProfiles.narrative,
+      attributes: schema.userProfiles.attributes,
+      embedding: schema.userProfiles.embedding,
+    })
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, userId))
+      .limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  private hydeAdapter = new HydeDatabaseAdapter();
+
+  async saveHydeDocument(data: {
+    sourceType: 'intent' | 'profile' | 'query';
+    sourceId?: string | null;
+    sourceText?: string | null;
+    strategy: string;
+    targetCorpus: string;
+    hydeText: string;
+    hydeEmbedding: number[];
+    context?: Record<string, unknown> | null;
+    expiresAt?: Date | null;
+  }) {
+    return this.hydeAdapter.saveHydeDocument(data);
   }
 }
 

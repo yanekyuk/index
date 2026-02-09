@@ -14,7 +14,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService } from '@/services/integrations';
 import { DirectorySyncConfig } from '@/lib/types';
 import { Member } from '@/services/indexes';
-import { INTEGRATIONS } from '@/config/integrations';
+import { INTEGRATIONS, getIndexIntegrations } from '@/config/integrations';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
 
@@ -26,12 +26,6 @@ interface IntegrationItem {
   connectedAt?: string | null;
   lastSyncAt?: string | null;
 }
-
-const SUPPORTED_INTEGRATIONS = [
-  { type: 'slack', name: 'Slack' },
-  { type: 'notion', name: 'Notion' },
-  { type: 'airtable', name: 'Airtable' },
-];
 
 interface NetworkSettingsPanelProps {
   index: Index;
@@ -103,7 +97,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   useEffect(() => {
     if (activeTab === 'access') loadMembers();
-  }, [activeTab, loadMembers]);
+  }, [activeTab]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -131,11 +125,12 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     try {
       const integrationsService = createIntegrationsService(api);
       const response = await integrationsService.getIntegrations(index.id);
+      const indexIntegrations = getIndexIntegrations();
       const filtered = response.integrations.filter(int =>
-        SUPPORTED_INTEGRATIONS.some(s => s.type === int.type.toLowerCase())
+        indexIntegrations.some(s => s.type === int.type.toLowerCase())
       );
       const integrationsMap = new Map(filtered.map(int => [int.type.toLowerCase(), int]));
-      const formattedIntegrations: IntegrationItem[] = SUPPORTED_INTEGRATIONS.map(({ type, name }) => {
+      const formattedIntegrations: IntegrationItem[] = indexIntegrations.map(({ type, name }) => {
         const existing = integrationsMap.get(type);
         return {
           id: existing?.id || null,
