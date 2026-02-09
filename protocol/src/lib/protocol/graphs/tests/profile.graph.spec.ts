@@ -36,6 +36,7 @@ describe('ProfileGraph', () => {
     // Mock database
     mockDatabase = {
       getProfile: mock(async (userId: string) => null),
+      getProfileByUserId: mock(async (userId: string) => null),
       getUser: mock(async (userId: string) => ({
         id: userId,
         name: 'Test User',

@@ -184,6 +184,13 @@ export function createChatGraphMockDb(
         Array.isArray(f) ? f : []
       ),
     getUser: async (userId: string) => Promise.resolve(getUser(userId)),
+    updateUser: async (userId: string, data: any) => ({
+      id: userId,
+      name: data?.name ?? 'Test User',
+      email: 'test@example.com',
+      socials: data?.socials ?? null,
+      location: data?.location ?? null,
+    }),
     saveProfile: noop,
     saveHydeProfile: noop,
     createIntent: async (data: CreateIntentData) => ({
