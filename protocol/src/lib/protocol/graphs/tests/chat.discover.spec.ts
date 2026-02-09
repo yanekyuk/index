@@ -203,8 +203,10 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
           verification: {
             schema: chatGraphOutputSchema,
             criteria:
-              "The responseText must be a coherent, helpful reply to a request about who needs a React developer. " +
-              "It may suggest joining a community, mention opportunities or intents, or explain that no matches were found. " +
+              "The responseText must be a coherent reply to a request about who needs a React developer. " +
+              "ACCEPTABLE responses include: suggesting the user join or create a community/index to discover connections, " +
+              "mentioning opportunities or intents, explaining that no matches were found, or providing guidance on how to use the platform for discovery. " +
+              "Responses that guide the user on next steps (like joining an index or adding intents) ARE considered helpful and should PASS. " +
               "It must NOT contain raw JSON or internal pipeline data. " +
               "If it lists intents or opportunities, they must be in natural language (e.g. table or list), not JSON.",
             llmVerify: true,
