@@ -8,12 +8,12 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { EvaluationService, type EvaluationEvent, type EvaluationRunConfig } from '../services/evaluation.service';
-import { ChatGraphFactory } from '../lib/protocol/graphs/chat/chat.graph';
+import { ChatGraphFactory } from '../lib/protocol/graphs/chat.graph';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
-import type { ChatAgentInterface } from '../lib/protocol/graphs/chat/chat.evaluator';
-import { ChatScenarioGenerator } from '../lib/protocol/graphs/chat/chat.evaluator';
+import type { ChatAgentInterface } from '../lib/protocol/graphs/chat.evaluator';
+import { ChatScenarioGenerator } from '../lib/protocol/graphs/chat.evaluator';
 import type { BaseMessage } from "@langchain/core/messages";
 import { HumanMessage } from "@langchain/core/messages";
 
@@ -222,12 +222,12 @@ export class EvalController {
       logger.info("[eval/generate-scenarios] Loading pre-generated scenarios", { userId: user.id });
 
       // Import the fast pregenerated loader
-      const { loadPregeneratedScenarios, CHAT_AGENT_USER_NEEDS, USER_PERSONAS } = await import('../lib/protocol/graphs/chat/chat.scenarios');
+      const { loadPregeneratedScenarios, CHAT_AGENT_USER_NEEDS, USER_PERSONAS } = await import('../lib/protocol/graphs/chat.scenarios');
       
       const simpleScenarios = loadPregeneratedScenarios();
 
       // Convert to GeneratedScenario format for the service
-      const { ChatScenarioGenerator } = await import('../lib/protocol/graphs/chat/chat.evaluator');
+      const { ChatScenarioGenerator } = await import('../lib/protocol/graphs/chat.evaluator');
       const scenarios = simpleScenarios.map((s) => ({
         id: s.id,
         need: CHAT_AGENT_USER_NEEDS[s.needId as keyof typeof CHAT_AGENT_USER_NEEDS],

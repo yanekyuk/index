@@ -9,8 +9,8 @@ import { log } from "../lib/log";
 import type {
   GeneratedScenario,
   ChatEvaluationResult,
-} from "../lib/protocol/graphs/chat/chat.evaluator";
-import { runChatEvaluationSuite, ScenarioGenerator, type ChatAgentInterface } from "../lib/protocol/graphs/chat/chat.evaluator";
+} from "../lib/protocol/graphs/chat.evaluator";
+import { runChatEvaluationSuite, ScenarioGenerator, type ChatAgentInterface } from "../lib/protocol/graphs/chat.evaluator";
 
 const logger = log.service.from("evaluation");
 
@@ -101,7 +101,7 @@ export class EvaluationService extends EventEmitter {
       throw new Error("Scenario not found");
     }
 
-    const { runChatEvaluation } = await import("../lib/protocol/graphs/chat/chat.evaluator");
+    const { runChatEvaluation } = await import("../lib/protocol/graphs/chat.evaluator");
 
     const result = await runChatEvaluation(scenario, this.chatAgent, {
       verbose: false,
