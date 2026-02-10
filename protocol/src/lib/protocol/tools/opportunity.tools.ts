@@ -2,9 +2,11 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
+import { OpportunityPresenter, gatherPresenterContext } from "../agents/opportunity.presenter";
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, graphs } = deps;
+  const presenter = new OpportunityPresenter();
 
   const createOpportunities = defineTool({
     name: "create_opportunities",
@@ -48,6 +50,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query: searchQuery,
         indexScope,
         limit: 5,
+        presenter,
       });
 
       if (!result.found) {
@@ -85,10 +88,47 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'read' as const,
       });
 
-      if (result.readResult) {
+      if (!result.readResult) {
+        return error("Failed to list opportunities.");
+      }
+
+      type ReadResultItem = (typeof result.readResult.opportunities)[number];
+      const opps: ReadResultItem[] = result.readResult.opportunities;
+      if (opps.length === 0) {
         return success(result.readResult);
       }
-      return error("Failed to list opportunities.");
+
+      const fullOpps = await Promise.all(
+        opps.map((o: ReadResultItem) => database.getOpportunity(o.id))
+      );
+      const indicesWithFull: number[] = [];
+      const contexts = [];
+      for (let i = 0; i < fullOpps.length; i++) {
+        const full = fullOpps[i];
+        if (full) {
+          indicesWithFull.push(i);
+          contexts.push(
+            await gatherPresenterContext(database, full, context.userId)
+          );
+        }
+      }
+      const presentations =
+        contexts.length > 0
+          ? await presenter.presentBatch(contexts, { concurrency: 5 })
+          : [];
+      const presentationByIndex = new Map<number, (typeof presentations)[0]>();
+      indicesWithFull.forEach((idx, j) =>
+        presentationByIndex.set(idx, presentations[j])
+      );
+      const enriched = opps.map((item: ReadResultItem, i: number) => ({
+        ...item,
+        presentation: presentationByIndex.get(i),
+      }));
+
+      return success({
+        ...result.readResult,
+        opportunities: enriched,
+      });
     },
   });
 
@@ -108,11 +148,31 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
+          const opportunityId = result.mutationResult.opportunityId;
+          let presentation: Awaited<
+            ReturnType<OpportunityPresenter["present"]>
+          > | undefined;
+          if (opportunityId) {
+            const opp = await database.getOpportunity(opportunityId);
+            if (opp) {
+              try {
+                const ctx = await gatherPresenterContext(
+                  database,
+                  opp,
+                  context.userId
+                );
+                presentation = await presenter.present(ctx);
+              } catch {
+                // non-fatal: return without presentation
+              }
+            }
+          }
           return success({
             sent: true,
             opportunityId: result.mutationResult.opportunityId,
             notified: result.mutationResult.notified,
             message: result.mutationResult.message,
+            ...(presentation && { presentation }),
           });
         }
         return error(result.mutationResult.error || "Failed to send opportunity.");
