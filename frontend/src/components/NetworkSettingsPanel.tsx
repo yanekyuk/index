@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import * as Tabs from '@radix-ui/react-tabs';
 import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown } from 'lucide-react';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -15,7 +14,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService } from '@/services/integrations';
 import { DirectorySyncConfig } from '@/lib/types';
 import { Member } from '@/services/indexes';
-import { INTEGRATIONS } from '@/config/integrations';
+import { INTEGRATIONS, getIndexIntegrations } from '@/config/integrations';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
 
@@ -28,18 +27,13 @@ interface IntegrationItem {
   lastSyncAt?: string | null;
 }
 
-const SUPPORTED_INTEGRATIONS = [
-  { type: 'slack', name: 'Slack' },
-  { type: 'notion', name: 'Notion' },
-  { type: 'airtable', name: 'Airtable' },
-];
-
 interface NetworkSettingsPanelProps {
   index: Index;
   onDeleted?: () => void;
+  activeTab: 'settings' | 'access' | 'integrations';
 }
 
-export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettingsPanelProps) {
+export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
   const indexesService = useIndexes();
   const { indexes, updateIndex, removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
@@ -47,7 +41,6 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
 
   const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
 
-  const [activeTab, setActiveTab] = useState<'settings' | 'access' | 'integrations'>('settings');
   const [title, setTitle] = useState(currentIndex.title || '');
   const [prompt, setPrompt] = useState(currentIndex.prompt || '');
   const [originalTitle, setOriginalTitle] = useState(currentIndex.title || '');
@@ -84,7 +77,6 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
     setOriginalTitle(currentIndex.title);
     setOriginalPrompt(currentIndex.prompt || '');
     setAnyoneCanJoin(currentIndex.permissions?.joinPolicy === 'anyone');
-    setActiveTab('settings');
     setDeleteConfirmationText('');
     setIsDangerZoneExpanded(false);
     if (currentIndex.permissions?.invitationLink?.code && currentIndex.permissions.joinPolicy === 'invite_only') {
@@ -105,7 +97,7 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
 
   useEffect(() => {
     if (activeTab === 'access') loadMembers();
-  }, [activeTab, loadMembers]);
+  }, [activeTab]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -133,11 +125,12 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
     try {
       const integrationsService = createIntegrationsService(api);
       const response = await integrationsService.getIntegrations(index.id);
+      const indexIntegrations = getIndexIntegrations();
       const filtered = response.integrations.filter(int =>
-        SUPPORTED_INTEGRATIONS.some(s => s.type === int.type.toLowerCase())
+        indexIntegrations.some(s => s.type === int.type.toLowerCase())
       );
       const integrationsMap = new Map(filtered.map(int => [int.type.toLowerCase(), int]));
-      const formattedIntegrations: IntegrationItem[] = SUPPORTED_INTEGRATIONS.map(({ type, name }) => {
+      const formattedIntegrations: IntegrationItem[] = indexIntegrations.map(({ type, name }) => {
         const existing = integrationsMap.get(type);
         return {
           id: existing?.id || null,
@@ -321,27 +314,14 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
 
   return (
     <>
-      <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-        <Tabs.List className="flex border-b border-gray-200 mb-6">
-          <Tabs.Trigger value="settings" className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold">
-            Settings
-          </Tabs.Trigger>
-          <Tabs.Trigger value="access" className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold">
-            Access
-          </Tabs.Trigger>
-          <Tabs.Trigger value="integrations" className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold">
-            Integrations
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        {/* Settings Tab */}
-        <Tabs.Content value="settings" className="space-y-6">
+      {activeTab === 'settings' && (
+        <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-900 mb-2">Title</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">Description</label>
+            <label className="block text-sm font-medium text-gray-900 mb-2">Prompt</label>
             <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
             <p className="text-xs text-gray-500 mt-1">Guides what kind of intents people can share.</p>
           </div>
@@ -374,10 +354,11 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
               </div>
             )}
           </div>
-        </Tabs.Content>
+        </div>
+      )}
 
-        {/* Access Tab */}
-        <Tabs.Content value="access" className="space-y-6">
+      {activeTab === 'access' && (
+        <div className="space-y-6">
           <div>
             <h3 className="text-sm font-medium text-gray-900 mb-3">Who can join</h3>
             <div className="space-y-2">
@@ -466,10 +447,11 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
               )}
             </div>
           </div>
-        </Tabs.Content>
+        </div>
+      )}
 
-        {/* Integrations Tab */}
-        <Tabs.Content value="integrations" className="space-y-4">
+      {activeTab === 'integrations' && (
+        <div className="space-y-4">
           <p className="text-sm text-gray-600 mb-4">Connect external services to sync data with your network.</p>
           <div className="space-y-2">
             {integrations.map((it) => {
@@ -532,8 +514,8 @@ export default function NetworkSettingsPanel({ index, onDeleted }: NetworkSettin
               );
             })}
           </div>
-        </Tabs.Content>
-      </Tabs.Root>
+        </div>
+      )}
 
       {selectedIntegrationForConfig?.id && (
         <DirectoryConfigModal

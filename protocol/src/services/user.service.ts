@@ -1,7 +1,6 @@
-import db from '../lib/drizzle/drizzle';
-import { users, userNotificationSettings, userProfiles, User, userConnectionEvents } from '../schemas/database.schema';
-import { eq, inArray, or, and } from 'drizzle-orm';
 import { log } from '../lib/log';
+import { userDatabaseAdapter } from '../adapters/database.adapter';
+import type { User } from '../schemas/database.schema';
 
 const logger = log.service.from("UserService");
 
@@ -9,16 +8,17 @@ const logger = log.service.from("UserService");
  * UserService
  * 
  * Manages basic CRUD operations for User entities.
+ * Uses UserDatabaseAdapter for all database operations.
  * 
  * ROLE:
  * - Data access layer for the `users` table.
  * - Graph resolution: `findWithGraph` joins User + Profile + Settings.
  */
 export class UserService {
+  constructor(private db = userDatabaseAdapter) {}
     async findById(userId: string) {
         logger.info('[UserService] Finding user by ID', { userId });
-        const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-        return result[0] || null;
+        return this.db.findById(userId);
     }
 
     /**
@@ -32,51 +32,17 @@ export class UserService {
      * @returns User object merged with Profile and Settings, or null.
      */
     async findWithGraph(userId: string) {
-        const userResult = await db.select({
-            user: users,
-            settings: userNotificationSettings,
-            profile: userProfiles
-        })
-            .from(users)
-            .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-            .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
-            .where(eq(users.id, userId))
-            .limit(1);
-
-        if (userResult.length === 0) {
-            return null;
-        }
-
-        const { user, settings, profile } = userResult[0];
-
-        return {
-            ...user,
-            profile,
-            notificationPreferences: settings?.preferences || {
-                connectionUpdates: true,
-                weeklyNewsletter: true,
-            }
-        };
+        return this.db.findWithGraph(userId);
     }
 
     async update(userId: string, data: Partial<User>) {
         logger.info('[UserService] Updating user', { userId, fields: Object.keys(data) });
-        const result = await db.update(users)
-            .set({
-                ...data,
-                updatedAt: new Date()
-            })
-            .where(eq(users.id, userId))
-            .returning();
-
-        return result[0] || null;
+        return this.db.update(userId, data);
     }
 
     async softDelete(userId: string) {
         logger.info('[UserService] Soft deleting user', { userId });
-        await db.update(users)
-            .set({ deletedAt: new Date() })
-            .where(eq(users.id, userId));
+        await this.db.softDelete(userId);
         return true;
     }
 
@@ -84,94 +50,37 @@ export class UserService {
      * Get user details for newsletter (including settings and onboarding)
      */
     async getUserForNewsletter(userId: string) {
-        const userRes = await db.select({
-            id: users.id,
-            email: users.email,
-            name: users.name,
-            intro: users.intro,
-            timezone: users.timezone,
-            lastSent: users.lastWeeklyEmailSentAt,
-            prefs: userNotificationSettings.preferences,
-            unsubscribeToken: userNotificationSettings.unsubscribeToken,
-            onboarding: users.onboarding
-        })
-            .from(users)
-            .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
-            .where(eq(users.id, userId))
-            .limit(1);
-
-        return userRes[0] || null;
+        return this.db.getUserForNewsletter(userId);
     }
 
     /**
      * Get basic user info for multiple users (for partner lookup)
      */
     async getUsersBasicInfo(userIds: string[]) {
-        if (userIds.length === 0) return [];
-        return db.select({
-            id: users.id,
-            name: users.name,
-            intro: users.intro
-        })
-            .from(users)
-            .where(inArray(users.id, userIds));
+        return this.db.getUsersBasicInfo(userIds);
     }
 
     /**
      * Update the last time a weekly email was sent
      */
     async updateLastWeeklyEmailSent(userId: string) {
-        await db.update(users)
-            .set({ lastWeeklyEmailSentAt: new Date() })
-            .where(eq(users.id, userId));
+        await this.db.updateLastWeeklyEmailSent(userId);
     }
 
     /**
      * Ensure notification settings exist for a user
      */
     async ensureNotificationSettings(userId: string) {
-        const [upsertedSettings] = await db.insert(userNotificationSettings)
-            .values({
-                userId,
-                preferences: {
-                    connectionUpdates: true,
-                    weeklyNewsletter: true,
-                }
-            })
-            .onConflictDoUpdate({
-                target: userNotificationSettings.userId,
-                set: {
-                    updatedAt: new Date()
-                }
-            })
-            .returning({
-                unsubscribeToken: userNotificationSettings.unsubscribeToken
-            });
-
-        return upsertedSettings;
+        return this.db.ensureNotificationSettings(userId);
     }
+
     /**
-     * Check if there is an existing connection event between two users
+     * Update notification preferences for a user (upsert)
      */
-    async checkConnectionEvent(user1Id: string, user2Id: string) {
-        const events = await db.select({ id: userConnectionEvents.id })
-            .from(userConnectionEvents)
-            .where(
-                or(
-                    and(
-                        eq(userConnectionEvents.initiatorUserId, user1Id),
-                        eq(userConnectionEvents.receiverUserId, user2Id)
-                    ),
-                    and(
-                        eq(userConnectionEvents.initiatorUserId, user2Id),
-                        eq(userConnectionEvents.receiverUserId, user1Id)
-                    )
-                )
-            )
-            .limit(1);
-
-        return events.length > 0;
+    async updateNotificationPreferences(userId: string, preferences: { connectionUpdates?: boolean; weeklyNewsletter?: boolean }) {
+        return this.db.updateNotificationPreferences(userId, preferences as import('../schemas/database.schema').NotificationPreferences);
     }
+
 }
 
 export const userService = new UserService();

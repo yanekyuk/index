@@ -1,47 +1,28 @@
-import { eq, and, inArray, isNull } from 'drizzle-orm';
-import * as schema from '../schemas/database.schema';
-import db from '../lib/drizzle/drizzle';
-import path from 'path';
-import { getUploadsPath } from '../lib/paths';
-import { loadFileContent } from '../lib/uploads';
-import { HumanMessage } from '@langchain/core/messages';
-import { EmbedderAdapter } from '../adapters/embedder.adapter';
-import { ChatGraphFactory } from '../lib/protocol/graphs/chat/chat.graph';
-import { getCheckpointer } from '../lib/protocol/graphs/chat/chat.checkpointer';
-import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
-import type { ChatGraphCompositeDatabase } from '../lib/protocol/interfaces/database.interface';
-import type { Scraper } from '../lib/protocol/interfaces/scraper.interface';
-import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
-import { chatSessionService } from '../services/chat-session.service';
-import {
-  formatSSEEvent,
-  createStatusEvent,
-  createDoneEvent,
-  createErrorEvent,
-} from '../types/chat-streaming';
+import { StreamChat } from 'stream-chat';
+import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
-import { ChatTitleGenerator } from '../lib/protocol/agents/chat/title.generator';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { ScraperAdapter } from '../adapters/scraper.adapter';
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
+import { chatSessionService } from '../services/chat.service';
+import { fileService } from '../services/file.service';
+import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming.types';
 
 const logger = log.controller.from("chat");
 
-import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
-import { AuthGuard } from '../guards/auth.guard';
-import type { AuthenticatedUser } from '../guards/auth.guard';
+const streamServerClient = StreamChat.getInstance(
+  process.env.STREAM_API_KEY!,
+  process.env.STREAM_SECRET!,
+);
 
 @Controller('/chat')
 export class ChatController {
-  private db: ChatGraphCompositeDatabase;
-  private embedder: Embedder;
-  private scraper: Scraper;
-  private factory: ChatGraphFactory;
-
-  constructor() {
-    this.db = new ChatDatabaseAdapter();
-    this.embedder = new EmbedderAdapter();
-    this.scraper = new ScraperAdapter();
-    this.factory = new ChatGraphFactory(this.db, this.embedder, this.scraper);
+  /**
+   * Generate a Stream Chat token for the authenticated user.
+   */
+  @Post('/token')
+  @UseGuards(AuthGuard)
+  async token(_req: Request, user: AuthenticatedUser) {
+    const token = streamServerClient.createToken(user.id);
+    return Response.json({ token });
   }
 
   /**
@@ -75,49 +56,16 @@ export class ChatController {
       );
     }
 
-    // 2. Create graph and invoke with state
-    const graph = this.factory.createGraph();
-    const result = await graph.invoke({
-      userId: user.id,
-      messages: [new HumanMessage(messageContent)]
-    });
+    // 2. Process message through service
+    const result = await chatSessionService.processMessage(user.id, messageContent);
 
-    // 3. Return response with responseText from graph state (agent loop architecture)
+    // 3. Return response
     return Response.json({
-      response: result.responseText || '',
+      response: result.responseText,
       error: result.error
     });
   }
 
-  /**
-   * Load file content from user uploads by fileIds.
-   * Returns concatenated content from supported files, or empty string if none.
-   */
-  private async loadAttachedFileContent(userId: string, fileIds: string[]): Promise<string> {
-    if (!fileIds?.length) return '';
-    const rows = await db
-      .select({ id: schema.files.id, name: schema.files.name })
-      .from(schema.files)
-      .where(
-        and(
-          eq(schema.files.userId, userId),
-          inArray(schema.files.id, fileIds),
-          isNull(schema.files.deletedAt)
-        )
-      );
-    if (rows.length === 0) return '';
-    const targetDir = getUploadsPath('files', userId);
-    const parts: string[] = [];
-    for (const row of rows) {
-      const ext = path.extname(row.name);
-      const filePath = path.join(targetDir, row.id + ext);
-      const result = await loadFileContent(filePath);
-      if (result.content?.trim()) {
-        parts.push(`=== ${row.name} ===\n${result.content.substring(0, 10000)}`);
-      }
-    }
-    return parts.length ? parts.join('\n\n') : '';
-  }
 
   /**
    * SSE streaming endpoint for chat messages with context support.
@@ -144,7 +92,7 @@ export class ChatController {
     let messageContent = body.message?.trim() || '';
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds : [];
     if (fileIds.length > 0) {
-      const fileContent = await this.loadAttachedFileContent(user.id, fileIds);
+      const fileContent = await fileService.loadAttachedFileContent(user.id, fileIds);
       if (fileContent) {
         messageContent = messageContent
           ? `${messageContent}\n\n[Attached files]\n${fileContent}`
@@ -181,8 +129,8 @@ export class ChatController {
 
     // Capture for closure
     const sessionId = currentSessionId;
-    const factory = this.factory;
-    const useCheckpointer = body.useCheckpointer ?? false;
+    const factory = chatSessionService.getGraphFactory();
+    const useCheckpointer = body.useCheckpointer ?? true;
     const indexIdForStream = effectiveIndexId;
 
     // User message is persisted after the stream completes (with the assistant response) so that
@@ -190,17 +138,9 @@ export class ChatController {
     // duplicated in the conversation context (which caused "You've listed the same project twice!").
 
     // 3. Get checkpointer if requested
-    let checkpointer: PostgresSaver | undefined;
-    if (useCheckpointer) {
-      try {
-        checkpointer = await getCheckpointer();
-        logger.info('PostgresSaver checkpointer initialized', { sessionId });
-      } catch (error) {
-        logger.warn('Failed to initialize checkpointer, proceeding without', {
-          sessionId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+    const checkpointer = useCheckpointer ? await chatSessionService.getCheckpointer() : undefined;
+    if (useCheckpointer && checkpointer) {
+      logger.info('PostgresSaver checkpointer initialized', { sessionId });
     }
 
     // 4. Create SSE stream
@@ -258,31 +198,8 @@ export class ChatController {
             subgraphResults,
           });
 
-          // Auto-name session with LLM when there is enough context (at least one user + one assistant message)
-          let sessionTitle: string | undefined;
-          const sessionForTitle = await chatSessionService.getSession(sessionId, user.id);
-          if (sessionForTitle && !sessionForTitle.title?.trim()) {
-            const messagesForTitle = await chatSessionService.getSessionMessages(sessionId, 10);
-            const hasUser = messagesForTitle.some((m) => m.role === 'user');
-            const hasAssistant = messagesForTitle.some((m) => m.role === 'assistant');
-            if (hasUser && hasAssistant) {
-              try {
-                const titleGenerator = new ChatTitleGenerator();
-                sessionTitle = await titleGenerator.invoke({
-                  messages: messagesForTitle.map((m) => ({ role: m.role, content: m.content })),
-                });
-                await chatSessionService.updateSessionTitle(sessionId, user.id, sessionTitle);
-                logger.info('Session title set', { sessionId, title: sessionTitle });
-              } catch (err) {
-                logger.warn('Failed to set session title', {
-                  sessionId,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
-            }
-          } else if (sessionForTitle?.title) {
-            sessionTitle = sessionForTitle.title;
-          }
+          // Auto-generate session title
+          const sessionTitle = await chatSessionService.generateSessionTitle(sessionId, user.id);
 
           // Send done event with title
           controller.enqueue(encoder.encode(

@@ -1,12 +1,9 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { Id } from '../types/common';
+import type { Id } from '../types/common.types';
 
 // Enums
-export const connectionAction = pgEnum('connection_action', [
-  'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
-]);
 // Polymorphic source type for intents
 export const sourceType = pgEnum('source_type', ['file', 'integration', 'link', 'discovery_form', 'enrichment']);
 
@@ -15,9 +12,7 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 // Opportunity redesign: lifecycle status (message-first: accepted = B replied, rejected = B skipped)
-export const opportunityStatusEnum = pgEnum('opportunity_status', ['pending', 'viewed', 'accepted', 'rejected', 'expired']);
-export const elaborationRequestStatusEnum = pgEnum('elaboration_request_status', ['OPEN', 'RESOLVED', 'ABANDONED']);
-
+export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'pending', 'viewed', 'accepted', 'rejected', 'expired']);
 // Onboarding state type
 export interface OnboardingState {
   completedAt?: string;  // ISO timestamp when completed
@@ -294,21 +289,6 @@ export const intentIndexes = pgTable('intent_indexes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const userConnectionEvents = pgTable('user_connection_events', {
-  id: uuid('id').primaryKey().defaultRandom(),
-
-  initiatorUserId: uuid('initiator_user_id').notNull().references(() => users.id),
-  receiverUserId: uuid('receiver_user_id').notNull().references(() => users.id),
-
-  eventType: connectionAction('connection_action').notNull(),
-
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-}, (table) => ({
-  initiatorIdx: index('user_connection_events_initiator_idx').on(table.initiatorUserId),
-  receiverIdx: index('user_connection_events_receiver_idx').on(table.receiverUserId),
-  // Compound index for optimizing fetch-latest-event query
-  initiatorReceiverCreatedIdx: index('initiator_receiver_created_idx').on(table.initiatorUserId, table.receiverUserId, table.createdAt),
-}));
 
 export const userIntegrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -324,19 +304,6 @@ export const userIntegrations = pgTable('integrations', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at')
-});
-
-// 5. Elaboration Cycle (Interactive Intent Refinement)
-// When an intent is too VAGUE (High Entropy), the system creates a request to ask the user for clarification.
-export const elaborationRequests = pgTable('elaboration_requests', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  originalUtterance: text('original_utterance').notNull(),
-  missingDimensions: text('missing_dimensions').array(),
-  systemPrompt: text('system_prompt').notNull(),
-  status: elaborationRequestStatusEnum('status').default('OPEN'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 // Chat role enum for message roles
@@ -374,8 +341,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
   indexes: many(indexes),
   memberOf: many(indexMembers),
-  initiatedConnections: many(userConnectionEvents, { relationName: 'initiatedConnections' }),
-  receivedConnections: many(userConnectionEvents, { relationName: 'receivedConnections' }),
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
     references: [userNotificationSettings.userId],
@@ -463,47 +428,6 @@ export const intentIndexesRelations = relations(intentIndexes, ({ one }) => ({
   }),
 }));
 
-export const agents = pgTable('agents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  description: text('description').notNull(),
-  avatar: text('avatar').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at'),
-});
-
-export const intentStakes = pgTable('intent_stakes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  intents: uuid('intents').array().notNull(), // Array of intent IDs
-  stake: bigint('stake', { mode: 'bigint' }).notNull(),
-  reasoning: text('reasoning').notNull(),
-  agentId: uuid('agent_id').notNull().references(() => agents.id),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-// Join table for fast stake lookups by user/intent (created by migration)
-export const intentStakeItems = pgTable('intent_stake_items', {
-  stakeId: uuid('stake_id').notNull(),
-  intentId: uuid('intent_id').notNull(),
-  userId: uuid('user_id').notNull(),
-}, (table) => ({
-  stakeIdx: index('intent_stake_items_stake_idx').on(table.stakeId),
-  userIdx: index('intent_stake_items_user_idx').on(table.userId),
-}));
-
-export const agentsRelations = relations(agents, ({ many }) => ({
-  stakes: many(intentStakes),
-}));
-
-export const intentStakesRelations = relations(intentStakes, ({ one }) => ({
-  agent: one(agents, {
-    fields: [intentStakes.agentId],
-    references: [agents.id],
-  }),
-}));
-
 // Links: manage crawlable URLs per user (optionally associated with an index)
 const linksTable = pgTable('links', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -522,19 +446,6 @@ export const links = linksTable;
 // Integration Items mapping (dedupe across integrations; provider='web' for crawled pages)
 export type IndexLink = typeof linksTable.$inferSelect;
 export type NewIndexLink = typeof linksTable.$inferInsert;
-
-export const userConnectionEventsRelations = relations(userConnectionEvents, ({ one }) => ({
-  initiatorUser: one(users, {
-    fields: [userConnectionEvents.initiatorUserId],
-    references: [users.id],
-    relationName: 'initiatedConnections',
-  }),
-  receiverUser: one(users, {
-    fields: [userConnectionEvents.receiverUserId],
-    references: [users.id],
-    relationName: 'receivedConnections',
-  }),
-}));
 
 export const userIntegrationsRelations = relations(userIntegrations, ({ one }) => ({
   user: one(users, {
@@ -569,8 +480,6 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type NewUserProfile = typeof userProfiles.$inferInsert;
-export type Agent = typeof agents.$inferSelect;
-export type NewAgent = typeof agents.$inferInsert;
 export type Intent = typeof intents.$inferSelect;
 export type NewIntent = typeof intents.$inferInsert;
 export type Index = typeof indexes.$inferSelect;
@@ -579,16 +488,10 @@ export type IndexMember = typeof indexMembers.$inferSelect;
 export type NewIndexMember = typeof indexMembers.$inferInsert;
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
-export type IntentStake = typeof intentStakes.$inferSelect;
-export type NewIntentStake = typeof intentStakes.$inferInsert;
-export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
-export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;
 export type UserIntegration = typeof userIntegrations.$inferSelect;
 export type NewUserIntegration = typeof userIntegrations.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
-export type ElaborationRequest = typeof elaborationRequests.$inferSelect;
-export type NewElaborationRequest = typeof elaborationRequests.$inferInsert;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type NewChatSession = typeof chatSessions.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;

@@ -1,10 +1,22 @@
-import { ProfileDocument } from '../agents/profile/profile.generator';
+import { ProfileDocument } from '../agents/profile.generator';
 import type {
   OpportunityDetection,
   OpportunityActor,
   OpportunityInterpretation,
   OpportunityContext,
+  UserSocials,
 } from '../../../schemas/database.schema';
+
+/** User record returned by getUser (minimal fields plus optional profile fields). */
+export interface UserRecord {
+  id: string;
+  name: string;
+  email: string;
+  intro?: string | null;
+  avatar?: string | null;
+  location?: string | null;
+  socials?: UserSocials | null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // INTENT TYPES
@@ -281,7 +293,7 @@ export type {
   OpportunitySignal,
 } from '../../../schemas/database.schema';
 
-export type OpportunityStatus = 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+export type OpportunityStatus = 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
 
 export interface Opportunity {
   id: string;
@@ -356,7 +368,19 @@ export interface Database {
    * @param userId - The unique identifier of the user
    * @returns The user record or null if not found
    */
-  getUser(userId: string): Promise<any | null>;
+  getUser(userId: string): Promise<UserRecord | null>;
+
+  /**
+   * Updates user account fields (name, location, socials).
+   * Merges socials with existing values (does not overwrite the whole object).
+   * Used by create_user_profile tool to persist user-provided info before
+   * invoking the Profile Graph in generate mode.
+   *
+   * @param userId - The unique identifier of the user
+   * @param data - Partial user fields to update
+   * @returns The updated user record or null if not found
+   */
+  updateUser(userId: string, data: { name?: string; location?: string; socials?: UserSocials }): Promise<UserRecord | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Pre-Graph Operations (State Population)
@@ -533,6 +557,11 @@ export interface Database {
   getIndex(indexId: string): Promise<{ id: string; title: string } | null>;
 
   /**
+   * Get index by ID with permissions (e.g. joinPolicy). Used by chat tools for create_index_membership.
+   */
+  getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
+
+  /**
    * Associates an intent with one or more indexes.
    * Creates entries in the intentIndexes join table.
    *
@@ -623,6 +652,11 @@ export interface Database {
    * Removes an intent from an index (deletes intent_indexes row).
    */
   unassignIntentFromIndex(intentId: string, indexId: string): Promise<void>;
+
+  /**
+   * Returns all index IDs that an intent is registered to.
+   */
+  getIndexIdsForIntent(intentId: string): Promise<string[]>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Index Ownership Operations (Owner-Only)
@@ -747,6 +781,53 @@ export interface Database {
    * @param userId - User whose profile to delete
    */
   deleteProfile(userId: string): Promise<void>;
+
+  /**
+   * Get a user's profile including its row id (for update_user_profile validation).
+   *
+   * @param userId - The user whose profile to fetch
+   * @returns Profile with id, or null if not found
+   */
+  getProfileByUserId(userId: string): Promise<(ProfileDocument & { id: string }) | null>;
+
+  /**
+   * Create a new index and return its record.
+   *
+   * @param data - Title, optional prompt, optional joinPolicy
+   * @returns The created index with id, title, prompt, permissions
+   */
+  createIndex(data: {
+    title: string;
+    prompt?: string | null;
+    joinPolicy?: 'anyone' | 'invite_only';
+  }): Promise<{
+    id: string;
+    title: string;
+    prompt: string | null;
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+  }>;
+
+  /**
+   * Count members in an index (for delete guard).
+   *
+   * @param indexId - The index to count
+   * @returns Number of members
+   */
+  getIndexMemberCount(indexId: string): Promise<number>;
+
+  /**
+   * Add a user as a member of an index (replaces deprecated lib/index-members.ts).
+   *
+   * @param indexId - The index to add to
+   * @param userId - The user to add
+   * @param role - owner | admin | member
+   * @returns success and optionally alreadyMember if they were already in the index
+   */
+  addMemberToIndex(
+    indexId: string,
+    userId: string,
+    role: 'owner' | 'admin' | 'member'
+  ): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // HyDE Document Operations (Opportunity Redesign)
@@ -916,11 +997,11 @@ export interface Database {
 
 /**
  * Database interface narrowed for Profile Graph operations.
- * Provides full profile lifecycle: read, write, and HyDE management.
+ * Provides full profile lifecycle: read, write, HyDE management, and query mode.
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'saveProfile' | 'saveHydeProfile'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'saveHydeProfile' | 'getProfileByUserId' | 'saveHydeDocument'
 >;
 
 /**
@@ -948,6 +1029,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getIntentsInIndexForMember'
   // ProfileGraph subgraph requirements
   | 'getUser'
+  | 'updateUser'
   | 'saveProfile'
   | 'saveHydeProfile'
   // IntentGraph subgraph requirements (getActiveIntents already included)
@@ -956,6 +1038,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'archiveIntent'
   // OpportunityGraph subgraph requirements (getProfile already included)
   | 'createOpportunity'
+  | 'getOpportunity'
   | 'opportunityExistsBetweenActors'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
@@ -968,14 +1051,17 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'getUserIndexIds'
   | 'getIndexMemberships'
   | 'getIndex'
+  | 'getIndexWithPermissions'
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToIndex'
   | 'unassignIntentFromIndex'
+  | 'getIndexIdsForIntent'
   // Index Ownership Operations (owner-only)
   | 'getOwnedIndexes'
   | 'isIndexOwner'
+  | 'isIndexMember'
   | 'getIndexMembersForOwner'
   | 'getIndexMembersForMember'
   | 'getIndexIntentsForOwner'
@@ -983,15 +1069,32 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'updateIndexSettings'
   | 'softDeleteIndex'
   | 'deleteProfile'
+  | 'getProfileByUserId'
+  | 'createIndex'
+  | 'getIndexMemberCount'
+  | 'addMemberToIndex'
 >;
 
 /**
- * Database interface narrowed for Opportunity Graph operations.
- * Profile lookup plus opportunity create and deduplication check.
+ * Database interface for Opportunity Graph operations.
+ * Includes prep/scope (index membership, intents, index details), persist (create, dedupe),
+ * and CRUD operations (read, update status, send).
  */
 export type OpportunityGraphDatabase = Pick<
   Database,
-  'getProfile' | 'createOpportunity' | 'opportunityExistsBetweenActors'
+  | 'getProfile'
+  | 'createOpportunity'
+  | 'opportunityExistsBetweenActors'
+  | 'getUserIndexIds'
+  | 'getActiveIntents'
+  | 'getIndex'
+  | 'getIndexMemberCount'
+  // Read/update/send modes
+  | 'getOpportunity'
+  | 'getOpportunitiesForUser'
+  | 'updateOpportunityStatus'
+  | 'isIndexMember'
+  | 'getUser'
 >;
 
 /**
@@ -1046,25 +1149,72 @@ export type IntentExecutorDatabase = Pick<
 
 /**
  * Database interface narrowed for Intent Graph operations.
- * Provides state population (getActiveIntents or getIntentsInIndexForMember when index-scoped)
- * and action execution (create/update/archive).
+ * Provides state population (getActiveIntents), action execution (create/update/archive),
+ * and read operations (query intents; getIntentsInIndexForMember for index-scoped reads).
  */
 export type IntentGraphDatabase = Pick<
   Database,
-  'getActiveIntents' | 'getIntentsInIndexForMember' | 'createIntent' | 'updateIntent' | 'archiveIntent'
+  | 'getActiveIntents'
+  | 'getIntentsInIndexForMember'
+  | 'createIntent'
+  | 'updateIntent'
+  | 'archiveIntent'
+  // Read mode (queryNode) requirements
+  | 'isIndexMember'
+  | 'getIndexIntentsForMember'
+  | 'getUser'
+  // Profile check (prepNode gate for write operations)
+  | 'getProfile'
 >;
 
 /**
- * Database interface narrowed for Index Graph operations.
- * Provides intent/index context and assignment for intent–index evaluation.
+ * Database interface narrowed for Index Graph CRUD operations.
+ * Handles create, read, update, delete of indexes (communities).
  */
 export type IndexGraphDatabase = Pick<
+  Database,
+  | 'getIndexMemberships'
+  | 'getOwnedIndexes'
+  | 'isIndexOwner'
+  | 'isIndexMember'
+  | 'getIndex'
+  | 'createIndex'
+  | 'addMemberToIndex'
+  | 'updateIndexSettings'
+  | 'softDeleteIndex'
+  | 'getIndexMemberCount'
+>;
+
+/**
+ * Database interface narrowed for Intent Index Graph operations.
+ * Provides intent/index context and assignment for intent–index evaluation.
+ * (Migrated from the old IndexGraphDatabase.)
+ */
+export type IntentIndexGraphDatabase = Pick<
   Database,
   | 'getIntentForIndexing'
   | 'getIndexMemberContext'
   | 'isIntentAssignedToIndex'
   | 'assignIntentToIndex'
   | 'unassignIntentFromIndex'
+  | 'getIntent'
+  | 'isIndexMember'
+  | 'getIndexIdsForIntent'
+  | 'getIndexIntentsForMember'
+  | 'getIntentsInIndexForMember'
+>;
+
+/**
+ * Database interface narrowed for Index Membership Graph operations.
+ * Handles CRUD for index memberships (add, list, remove members).
+ */
+export type IndexMembershipGraphDatabase = Pick<
+  Database,
+  | 'isIndexMember'
+  | 'isIndexOwner'
+  | 'getIndexWithPermissions'
+  | 'addMemberToIndex'
+  | 'getIndexMembersForMember'
 >;
 
 /**

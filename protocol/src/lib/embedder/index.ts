@@ -1,4 +1,4 @@
-import { Embedder, EmbeddingGenerator, VectorSearchResult, VectorStoreOption } from '../../agents/common/types';
+import { Embedder, EmbeddingGenerator, VectorSearchResult, VectorStoreOption } from './embedder.types';
 import { OpenRouterGenerator } from './embedder.generator';
 
 export interface IndexEmbedderOptions {

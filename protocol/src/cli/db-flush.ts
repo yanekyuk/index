@@ -2,13 +2,9 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load environment-specific .env file
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-console.log(process.env.DATABASE_URL);
-
-import { Command } from 'commander';
 import { sql } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { setLevel } from '../lib/log';
@@ -18,7 +14,15 @@ type GlobalOpts = {
   confirm?: boolean;
 };
 
-function printResult(result: any, opts: GlobalOpts) {
+function parseArgs(): GlobalOpts {
+  const args = process.argv.slice(2);
+  return {
+    silent: args.includes('--silent'),
+    confirm: args.includes('--confirm'),
+  };
+}
+
+function printResult(result: { ok: boolean; error?: string }, opts: GlobalOpts) {
   if (!opts.silent) {
     if (result.ok) {
       console.log('✅ Database flushed successfully');
@@ -31,16 +35,20 @@ function printResult(result: any, opts: GlobalOpts) {
 async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
   try {
     const tables = [
-      'intent_stakes',
-      'intent_indexes', 
+      'intent_indexes',
+      'chat_messages',
+      'chat_sessions',
+      'opportunities',
+      'user_notification_settings',
+      'user_profiles',
+      'hyde_documents',
       'intents',
       'files',
       'links',
-      'user_connection_events',
-      'integrations',
       'index_members',
       'indexes',
-      'users'
+      'integrations',
+      'users',
     ];
 
     for (const table of tables) {
@@ -49,54 +57,44 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
 
     return { ok: true };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
 async function main(): Promise<void> {
-  const program = new Command();
+  const opts = parseArgs();
 
-  program
-    .name('db-flush')
-    .description('Flush all data from database tables')
-    .option('--silent', 'Suppress non-error output')
-    .option('--confirm', 'Skip confirmation prompt')
-    .action(async (opts: GlobalOpts) => {
-      if (opts.silent) setLevel('error');
+  if (opts.silent) setLevel('error');
 
-      // Prevent seeding in production
-      if (process.env.NODE_ENV === 'production') {
-        console.error('❌ db:seed cannot be run in production environment');
-        process.exit(1);
-      }
-      if (!opts.confirm) {
-        console.log('⚠️  This will permanently delete ALL data from the database.');
-        console.log('Use --confirm to skip this warning.');
-        process.exit(1);
-      }
-
-      const result = await flushDatabase();
-      printResult(result, opts);
-      
-      if (!result.ok) {
-        process.exit(1);
-      }
-    });
-
-  program.addHelpText(
-    'after',
-    '\nExamples:\n  yarn db:flush --confirm\n  yarn db:flush --silent --confirm\n'
-  );
-
-  try {
-    await program.parseAsync(process.argv);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : `${e}`;
-    console.error('db-flush error:', msg);
-    process.exit(1);
-  } finally {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ db:flush cannot be run in production environment');
     await closeDb();
+    process.exit(1);
+  }
+  if (!opts.confirm) {
+    console.log('⚠️  This will permanently delete ALL data from the database.');
+    console.log('Use --confirm to skip this warning.');
+    await closeDb();
+    process.exit(1);
+  }
+
+  const result = await flushDatabase();
+  printResult(result, opts);
+
+  if (!result.ok) {
+    await closeDb();
+    process.exit(1);
   }
 }
 
-main();
+main()
+  .then(() => closeDb())
+  .catch(async (e: unknown) => {
+    const msg = e instanceof Error ? e.message : `${e}`;
+    console.error('db-flush error:', msg);
+    await closeDb();
+    process.exit(1);
+  });

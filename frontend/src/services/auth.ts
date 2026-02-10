@@ -18,14 +18,7 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
     return response.user;
   },
 
-  // Update onboarding state
-  updateOnboardingState: async (data: Partial<OnboardingState>): Promise<User> => {
-    const response = await api.patch<APIResponse<User>>('/auth/onboarding-state', data);
-    if (!response.user) {
-      throw new Error('Failed to update onboarding state');
-    }
-    return response.user;
-  }
+
 });
 
 export function useAuthService() {

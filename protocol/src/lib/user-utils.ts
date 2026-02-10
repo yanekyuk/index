@@ -85,13 +85,8 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
       provider: extractedUser.provider 
     });
 
-    // Ensure personal index ("My Own Private Index") exists for new user
-    try {
-      const { indexService } = await import('../services/index.service');
-      await indexService.ensurePersonalIndex(user.id);
-    } catch (err) {
-      logger.error('Failed to ensure personal index for new user', { userId: user.id, error: err });
-    }
+    // TODO: Ensure personal index ("My Own Private Index") exists for new user
+    // index.service has been removed - need to implement alternative mechanism
     
     return {
       id: user.id,

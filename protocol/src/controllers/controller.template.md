@@ -24,16 +24,14 @@ graph TB
         C[Controller Class]
     end
     
+    subgraph Service Layer
+        S[Service Classes]
+    end
+    
     subgraph Adapters
         DA[Database Adapter]
         SA[Scraper Adapter]
         EA[Embedder Adapter]
-    end
-    
-    subgraph Interfaces
-        DI[Database Interface]
-        SI[Scraper Interface]
-        EI[Embedder Interface]
     end
     
     subgraph Infrastructure
@@ -47,28 +45,57 @@ graph TB
         G[LangGraph Graph]
     end
     
-    C --> DA
-    C --> SA
-    C --> EA
-    C --> GF
-    
-    DA -.implements.-> DI
-    SA -.implements.-> SI
-    EA -.implements.-> EI
+    C --> S
+    S --> DA
+    S --> SA
+    S --> EA
+    S --> GF
+    GF --> G
     
     DA --> DB
     SA --> API
     EA --> EMB
-    
-    GF --> G
 ```
 
 ### Key Architectural Principles
 
-1. **Interface-based Dependencies**: Controllers depend on interfaces, not concrete implementations
-2. **Adapter Pattern**: Concrete implementations are wrapped in adapters that implement interfaces
-3. **Factory Pattern**: Graph creation is delegated to factory classes
-4. **Decorator-based Routing**: Routes and guards are defined via TypeScript decorators
+1. **Controllers use services only**: Controllers MUST use services for all data and orchestration; they MUST NOT import adapters or `db`/schema.
+2. **Services use adapters**: Services are the only layer that import and use adapters (and thus access the database or external APIs via adapters).
+3. **Tests use services only**: Controller spec files MUST use services for setup, teardown, and assertions; they MUST NOT import adapters or `db`/schema.
+4. **Adapter pattern**: Adapters live in `src/adapters/`, implement protocol interfaces, and are used only inside services (and optionally passed through to graph factories by services).
+5. **No direct DB in controllers or tests**: Neither controllers nor their tests import `db`, schema, or Drizzle operators.
+6. **Decorator-based routing**: Routes and guards are defined via TypeScript decorators.
+
+### Layering Summary
+
+| Layer        | Imports / uses                    | Must NOT import        |
+|-------------|------------------------------------|-------------------------|
+| Controllers | Services, decorators, guards, log | Adapters, `db`, schema  |
+| Services    | Adapters, protocol factories       | (nothing forbidden)     |
+| Tests       | Services, controller under test   | Adapters, `db`, schema  |
+
+**Example (controller using only services):**
+```typescript
+// Controller uses only services (no adapter imports)
+export class ChatController {
+  constructor() {
+    // No adapters here; services are used directly
+  }
+
+  async getSessions(req: Request, user: AuthenticatedUser) {
+    const sessions = await chatSessionService.getUserSessions(user.id);
+    return Response.json({ sessions });
+  }
+
+  async processMessage(req: Request, user: AuthenticatedUser) {
+    // Service runs the graph internally (service uses adapters + factory)
+    const result = await chatService.processMessage(user.id, body);
+    return Response.json(result);
+  }
+}
+```
+
+Services internally instantiate adapters and graph factories and perform all DB/external access.
 
 ---
 
@@ -85,129 +112,115 @@ Controller files follow the pattern: `{feature}.controller.ts`
 ### Internal File Organization
 
 ```typescript
-// 1. External imports (drizzle, libraries)
-import { eq } from 'drizzle-orm';
-import * as schema from '../schemas/database.schema';
-import db from '../lib/drizzle/drizzle';
+// 1. Service imports (controllers use only services)
+import { userService } from '../services/user.service';
+import { fileService } from '../services/file.service';
+import { someFeatureService } from '../services/some-feature.service';
 
-// 2. Protocol imports (interfaces, factories, types)
-import { Database } from '../lib/protocol/interfaces/database.interface';
-import { Scraper } from '../lib/protocol/interfaces/scraper.interface';
-import { Embedder } from '../lib/protocol/interfaces/embedder.interface';
-import { SomeGraphFactory } from '../lib/protocol/graphs/some/some.graph';
-
-// 3. --- Adapters Section ---
-// Adapter implementations go here (before controller)
-
-export class SomeDatabaseAdapter implements Database {
-  // ...implementation
-}
-
-export class SomeExternalAdapter implements Scraper {
-  // ...implementation
-}
-
-// 4. --- Controller Section ---
-// Decorator imports
+// 2. Decorator imports
 import { Controller, Post, Get, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 
-// Controller class
+// 3. Logging
+import { log } from '../lib/log';
+const logger = log.controller.from('feature');
+
+// 4. Controller class (no adapter or db/schema imports)
 @Controller('/resource-path')
 export class SomeController {
-  // ...implementation
+  @Get('/:id')
+  @UseGuards(AuthGuard)
+  async getData(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const data = await userService.findById(params?.id);
+    return Response.json(data);
+  }
+
+  @Post('/process')
+  @UseGuards(AuthGuard)
+  async process(req: Request, user: AuthenticatedUser) {
+    const result = await someFeatureService.process(user.id, body);
+    return Response.json(result);
+  }
 }
 ```
+
+### CRITICAL RULES
+
+**Controllers MUST NOT:**
+- Import `db` from `../lib/drizzle/drizzle`
+- Import adapters from `../adapters/`
+- Import Drizzle operators (`eq`, `and`, `desc`, etc.)
+- Import schema directly (`../schemas/database.schema`)
+- Perform direct database queries
+
+**Controllers MUST:**
+- Use **services** for all data operations and for any logic that involves graphs/adapters
+- Handle HTTP concerns (parsing, validation, response formatting)
+- Delegate all business logic to services
+
+**Controller spec files** must follow the same principle: use **services** for setup, teardown, and assertions (not adapters or `db`/schema). See [Testing Guidelines](#testing-guidelines).
+
+**Services** are the only layer that import and use adapters (and thus access the database or external systems).
+
+If some controllers or specs still import adapters directly, treat that as technical debt: the target state is controllers and tests using services only, with adapters confined to services.
 
 ---
 
-## Adapter Pattern Guidelines
+## Adapter Pattern Guidelines (for Services)
 
-Adapters bridge the gap between external dependencies and protocol interfaces. They should be defined in the same controller file, above the controller class.
+Adapters bridge the gap between external dependencies and protocol interfaces. They are defined in `src/adapters/` and are **imported and used only by services** (never by controllers or by controller tests).
 
-### Database Adapter Example
+### Who Uses Adapters
+
+- **Services** import adapters, instantiate them, and use them for all database and external API access. Services may also pass adapters to graph factories when orchestrating protocol-layer flows.
+- **Controllers** do not import or use adapters; they call services only.
+- **Controller tests** do not import or use adapters; they use services for setup, teardown, and assertions.
+
+### When to Create New Adapters
+
+Create adapters in `src/adapters/` when:
+- A new protocol interface needs implementation
+- A graph requires a different database interface subset
+- Integrating a new external service (scraper, embedder, cache)
+
+### Using Adapters in Services
+
+Services import and use adapters; controllers do not:
 
 ```typescript
-import { Database } from '../lib/protocol/interfaces/database.interface';
+// In a service (e.g. profile.service.ts)
+import { UserDatabaseAdapter, ProfileDatabaseAdapter } from '../adapters/database.adapter';
+import { ProfileGraphFactory } from '../lib/protocol/graphs/profile/profile.graph';
 
-export class DrizzleDatabaseAdapter implements Database {
-  
-  async getProfile(userId: string): Promise<ProfileDocument | null> {
-    const result = await db.select()
-      .from(schema.userProfiles)
-      .where(eq(schema.userProfiles.userId, userId))
-      .limit(1);
+const userAdapter = new UserDatabaseAdapter();
+const profileAdapter = new ProfileDatabaseAdapter();
 
-    return (result[0] as unknown as ProfileDocument) || null;
-  }
-
-  async saveProfile(userId: string, profile: ProfileDocument): Promise<void> {
-    const data = {
-      userId,
-      identity: profile.identity,
-      narrative: profile.narrative,
-      attributes: profile.attributes,
-      embedding: Array.isArray(profile.embedding[0]) 
-        ? (profile.embedding as number[][])[0] 
-        : (profile.embedding as number[]),
-      updatedAt: new Date()
-    };
-
-    await db.insert(schema.userProfiles)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.userProfiles.userId,
-        set: data
-      });
-  }
-
-  async getUser(userId: string): Promise<User | null> {
-    const result = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-
-    return result[0] || null;
-  }
+export async function syncProfile(userId: string) {
+  const factory = new ProfileGraphFactory(profileAdapter, embedderAdapter, scraperAdapter);
+  const graph = factory.createGraph();
+  return graph.invoke({ userId });
 }
 ```
 
-### External Service Adapter Example
+### Available Adapters
 
-```typescript
-import { Scraper } from '../lib/protocol/interfaces/scraper.interface';
-import { searchUser } from '../lib/parallel/parallel';
-
-export class ParallelScraperAdapter implements Scraper {
-  async scrape(objective: string): Promise<string> {
-    try {
-      const response = await searchUser({ objective });
-
-      const formattedResults = response.results.map(r => {
-        return `Title: ${r.title}\nURL: ${r.url}\nExcerpts:\n${r.excerpts.join('\n')}`;
-      }).join('\n\n');
-
-      if (!formattedResults) {
-        return `No information found for objective: ${objective}`;
-      }
-
-      return `Objective: ${objective}\n\nSearch Results:\n${formattedResults}`;
-    } catch (error: any) {
-      console.error("ParallelScraperAdapter error:", error);
-      // Graceful degradation - return partial info so flow continues
-      return `Objective: ${objective}\n\n(Search failed: ${error.message})`;
-    }
-  }
-}
-```
+| Adapter | Interface | Purpose |
+|---------|-----------|---------|
+| `ChatDatabaseAdapter` | `ChatGraphCompositeDatabase` | Chat graph database operations |
+| `IntentDatabaseAdapter` | `IntentGraphDatabase` | Intent graph database operations |
+| `UserDatabaseAdapter` | — | User CRUD, findByEmail, create, deleteById |
+| `ProfileDatabaseAdapter` | — | Profile CRUD, getProfileRow |
+| `FileDatabaseAdapter` | — | File CRUD, deleteByUserId, getByIdUnscoped |
+| `EmbedderAdapter` | `Embedder` | Vector embeddings generation and search |
+| `ScraperAdapter` | `Scraper` | Web scraping and data extraction |
+| `RedisCacheAdapter` | `HydeCache` | Redis-backed caching for HyDE |
 
 ### Adapter Best Practices
 
-1. **Error Handling**: Always wrap external calls in try-catch and provide graceful fallbacks
-2. **Type Safety**: Use type assertions carefully, preferring explicit type guards when possible
-3. **Single Responsibility**: Each adapter should wrap one external dependency
-4. **Export Adapters**: Export adapters for potential reuse or testing
+1. **Only services import adapters**: Controllers and tests depend on services, not adapters.
+2. **Reuse existing adapters**: Check `src/adapters/` before creating new ones.
+3. **Services expose what tests need**: For controller tests to use services only, services must expose the operations needed for setup/teardown/assertions (e.g. create user, delete by email, get profile row).
 
 ---
 
@@ -339,27 +352,16 @@ export class HydeGraphFactory {
 }
 ```
 
-#### Controller Adapter Implementation
+#### Adapter Implementation (used by services)
 
-Controllers implement only the methods required by their graph factories:
+Adapters in `src/adapters/` implement protocol interfaces. Services instantiate and use them; controllers do not.
 
 ```typescript
-// Controller adapter - implements what the graph needs
-export class DrizzleDatabaseAdapter implements Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'> {
-  
-  async getProfile(userId: string): Promise<ProfileDocument | null> {
-    // Implementation
-  }
-
-  async saveProfile(userId: string, profile: ProfileDocument): Promise<void> {
-    // Implementation
-  }
-
-  async getUser(userId: string): Promise<User | null> {
-    // Implementation
-  }
-  
-  // Note: saveHydeProfile is NOT implemented here because this graph doesn't need it
+// In src/adapters/database.adapter.ts - implements what the graph needs
+export class ProfileDatabaseAdapter implements Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'> {
+  async getProfile(userId: string): Promise<ProfileDocument | null> { /* ... */ }
+  async saveProfile(userId: string, profile: ProfileDocument): Promise<void> { /* ... */ }
+  async getUser(userId: string): Promise<User | null> { /* ... */ }
 }
 ```
 
@@ -369,26 +371,28 @@ export class DrizzleDatabaseAdapter implements Pick<Database, 'getProfile' | 'sa
 |----------|----------|
 | `Database` full interface | Shared utility classes that need all methods |
 | `Pick<Database, 'method1' \| 'method2'>` | Graph factories with specific needs |
-| Adapter implementing `Pick<...>` | Controllers providing minimal implementation |
+| Adapter implementing `Pick<...>` | Used by services; never imported by controllers |
 
-### Constructor Injection Pattern
+### Controller Uses Services Only
+
+Controllers do not inject or instantiate adapters. They call services, which own adapter and factory usage:
 
 ```typescript
 export class ProfileController {
-  private db: Pick<Database, 'getProfile' | 'saveProfile' | 'getUser'>;
-  private embedder: Embedder;
-  private scraper: Scraper;
-  private factory: ProfileGraphFactory;
-
-  constructor() {
-    // Instantiate concrete adapters implementing only required methods
-    this.db = new DrizzleDatabaseAdapter();
-    this.embedder = new IndexEmbedder();
-    this.scraper = new ParallelScraperAdapter();
-    
-    // Pass dependencies to factory
-    this.factory = new ProfileGraphFactory(this.db, this.embedder, this.scraper);
+  @Post('/sync')
+  @UseGuards(AuthGuard)
+  async sync(req: Request, user: AuthenticatedUser) {
+    const result = await profileService.sync(user.id);
+    return Response.json(result);
   }
+}
+
+// profile.service.ts (not the controller) instantiates adapters and factory
+export async function sync(userId: string) {
+  const db = new ProfileDatabaseAdapter();
+  const factory = new ProfileGraphFactory(db, embedder, scraper);
+  const graph = factory.createGraph();
+  return graph.invoke({ userId });
 }
 ```
 
@@ -406,7 +410,22 @@ const result = await graph.invoke({ userId: user.id });
 
 ## Testing Guidelines
 
-Test files follow the pattern: `{feature}.controller.spec.ts`
+Test files follow the pattern: `{feature}.controller.spec.ts`.
+
+### CRITICAL: Specs Use Services Only
+
+**Controller spec files MUST NOT:**
+- Import `db` from `../lib/drizzle/drizzle`
+- Import `schema` from `../schemas/database.schema`
+- Import **adapters** from `../adapters/`
+- Import Drizzle operators (`eq`, `and`, `desc`, etc.)
+- Call `closeDb()` in `afterAll` (multiple spec files run in the same process and share the connection)
+
+**Controller spec files MUST:**
+- Use **services** for all setup, teardown, and assertions (same as controllers: no direct adapter or db access)
+- Rely on service APIs that expose the operations tests need (e.g. create test user, delete by email, get profile for assertion)
+
+**Services** are the only layer that import adapters; they must expose whatever controller tests need for test data and assertions (e.g. `userService.findByEmail`, `userService.createTestUser`, `profileService.getProfileRow`, cleanup helpers). This keeps controllers and their tests aligned: both use only services.
 
 ### Test File Structure
 
@@ -414,82 +433,71 @@ Test files follow the pattern: `{feature}.controller.spec.ts`
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 
 import { config } from "dotenv";
-config({ path: '.env.development', override: true });
+config({ path: '.env.test' });
 
 import { SomeController } from "./some.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+import { userService } from "../services/user.service";
+import { profileService } from "../services/profile.service";
 
 describe("SomeController Integration", () => {
   let controller: SomeController;
   let testUserId: string;
 
   beforeAll(async () => {
-    // Setup: Create test data
+    // Setup via services (see pattern below)
   });
 
   afterAll(async () => {
-    // Cleanup: Remove test data
-    await closeDb();
+    // Cleanup via services; do NOT call closeDb()
   });
 
   test("should do something", async () => {
     // Test implementation
-  }, 60000); // Timeout for long-running tests
+  }, 60000);
 });
 ```
 
-### Setup and Teardown Pattern
+### Setup and Teardown Pattern (Services)
+
+Services must expose the operations tests need (e.g. for test users and profiles). Then specs use only those services:
 
 ```typescript
 beforeAll(async () => {
-  // 1. Define unique test identifiers
   const email = "test-controller@example.com";
 
-  // 2. Clean up any existing test data (idempotent setup)
-  const existingUser = await db.select()
-    .from(schema.users)
-    .where(eq(schema.users.email, email))
-    .limit(1);
-
-  if (existingUser.length > 0) {
-    await db.delete(schema.users)
-      .where(eq(schema.users.email, email));
+  const existingUser = await userService.findByEmail(email);
+  if (existingUser) {
+    await profileService.deleteByUserId(existingUser.id);
+    await userService.deleteByEmail(email);
   }
 
-  // 3. Create fresh test data
-  const [user] = await db.insert(schema.users).values({
-    email: email,
+  const user = await userService.createTestUser({
+    email,
     name: "Test User",
-    privyId: `privy:${Date.now()}`, // Unique ID
+    privyId: `privy:${Date.now()}`,
     intro: "Test intro",
     location: "Test Location",
-    socials: { x: "https://x.com/test" }
-  }).returning();
-
+    socials: { x: "https://x.com/test" },
+  });
   testUserId = user.id;
 
-  // 4. Initialize controller
   controller = new SomeController();
 });
 
 afterAll(async () => {
-  // Clean up test data
   if (testUserId) {
-    await db.delete(schema.users)
-      .where(eq(schema.users.id, testUserId));
+    await profileService.deleteByUserId(testUserId);
+    await userService.deleteById(testUserId);
   }
-  await closeDb();
+  // Do not close db: other integration specs may run in the same process.
 });
 ```
 
-### Test Case Pattern
+### Test Case Pattern (Assert via Services)
 
 ```typescript
 test("sync should generate a profile for a new user", async () => {
-  // 1. Arrange - Create mock request and user
   const mockRequest = {} as Request;
   const mockUser: AuthenticatedUser = {
     id: testUserId,
@@ -498,42 +506,31 @@ test("sync should generate a profile for a new user", async () => {
     name: "Test User"
   };
 
-  // 2. Act - Execute controller method
   const result = await controller.sync(mockRequest, mockUser);
 
-  // 3. Assert - Verify database state
-  const profile = await db.select()
-    .from(schema.userProfiles)
-    .where(eq(schema.userProfiles.userId, testUserId));
-
-  expect(profile.length).toBe(1);
-  expect(profile[0].identity?.name).toBeDefined();
-  expect(profile[0].embedding).not.toBeNull();
-}, 120000); // Extended timeout for LLM/external calls
+  const profile = await profileService.getProfileRow(testUserId);
+  expect(profile).not.toBeNull();
+  expect(profile!.identity?.name).toBeDefined();
+  expect(profile!.embedding).not.toBeNull();
+  expect(profile!.hydeDescription).not.toBeNull();
+}, 120000);
 ```
+
+### Services Used in Specs
+
+Tests call the same services the controller uses, plus any helpers services expose for test data (e.g. `createTestUser`, `findByEmail`, `deleteByEmail`, `getProfileRow`, `deleteByUserId`). Those helpers are implemented inside the service using adapters. Controllers and specs never import adapters.
 
 ### Testing Idempotency
 
 ```typescript
 test("sync should be idempotent (second run should just verify)", async () => {
-  const mockRequest = {} as Request;
-  const mockUser: AuthenticatedUser = {
-    id: testUserId,
-    privyId: `privy:${Date.now()}`,
-    email: "test@example.com",
-    name: "Test User"
-  };
+  const mockUser: AuthenticatedUser = { id: testUserId, privyId: `privy:${Date.now()}`, email: "test@example.com", name: "Test User" };
 
-  const start = Date.now();
-  await controller.sync(mockRequest, mockUser);
-  const duration = Date.now() - start;
+  await controller.sync({} as Request, mockUser);
+  await controller.sync({} as Request, mockUser);
 
-  // Verify state remains consistent
-  const profile = await db.select()
-    .from(schema.userProfiles)
-    .where(eq(schema.userProfiles.userId, testUserId));
-  
-  expect(profile.length).toBe(1);
+  const profile = await profileService.getProfileRow(testUserId);
+  expect(profile).not.toBeNull();
 }, 60000);
 ```
 
@@ -640,51 +637,49 @@ return Response.json(result);
 ## Quick Reference: Creating a New Controller
 
 1. **Create file**: `src/controllers/{feature}.controller.ts`
-2. **Define adapters** for each external dependency
-3. **Import interfaces** from `src/lib/protocol/interfaces/`
+2. **Use services only** in the controller (no adapter or `db`/schema imports)
+3. **Ensure services** for this feature exist and import/use adapters internally
 4. **Create controller class** with `@Controller` decorator
-5. **Define methods** with route decorators and guards
-6. **Initialize factory** in constructor with adapters
-7. **Create test file**: `src/controllers/{feature}.controller.spec.ts`
-8. **Write integration tests** with proper setup/teardown
+5. **Define methods** with route decorators and guards; call services for all logic
+6. **Create test file**: `src/controllers/{feature}.controller.spec.ts`
+7. **Write integration tests** using **services only** (no adapters, no `db`/schema); services must expose any helpers tests need for setup, teardown, and assertions
 
 ### Minimal Controller Template
 
 ```typescript
-import { eq } from 'drizzle-orm';
-import * as schema from '../schemas/database.schema';
-import db from '../lib/drizzle/drizzle';
-import { Database } from '../lib/protocol/interfaces/database.interface';
-import { SomeGraphFactory } from '../lib/protocol/graphs/some/some.graph';
+// Service imports only (no adapters, no db/schema)
+import { userService } from '../services/user.service';
+import { featureService } from '../services/feature.service';
 
-// --- Adapters ---
-
-export class DrizzleDatabaseAdapter implements Database {
-  // Implement interface methods
-}
-
-// --- Controller ---
-
-import { Controller, Post, UseGuards } from '../lib/router/router.decorators';
+// Routing imports
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 
+// Logging
+import { log } from '../lib/log';
+const logger = log.controller.from('feature');
+
 @Controller('/features')
 export class FeatureController {
-  private db: Database;
-  private factory: SomeGraphFactory;
-
-  constructor() {
-    this.db = new DrizzleDatabaseAdapter();
-    this.factory = new SomeGraphFactory(this.db);
+  @Get('/:id')
+  @UseGuards(AuthGuard)
+  async get(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const feature = await featureService.getById(params?.id);
+    if (!feature) {
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+    }
+    return Response.json(feature);
   }
 
-  @Post('/action')
+  @Post('/process')
   @UseGuards(AuthGuard)
-  async action(req: Request, user: AuthenticatedUser) {
-    const graph = this.factory.createGraph();
-    const result = await graph.invoke({ userId: user.id });
+  async process(req: Request, user: AuthenticatedUser) {
+    logger.info('Processing feature', { userId: user.id });
+    const result = await featureService.process(user.id, body);
     return Response.json(result);
   }
 }
 ```
+
+The corresponding **service** (e.g. `feature.service.ts`) imports adapters and graph factories and implements `getById`, `process`, etc.

@@ -3,10 +3,11 @@
  * Postgres implementations; no dependency on lib/protocol.
  */
 
-import { eq, and, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray } from 'drizzle-orm';
+import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray, ilike, notInArray } from 'drizzle-orm';
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
-import type { User } from '../schemas/database.schema';
+import type { User, NotificationPreferences } from '../schemas/database.schema';
+import { log } from '../lib/log';
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
@@ -45,6 +46,17 @@ interface ArchiveResultShape {
   success: boolean;
   error?: string;
 }
+interface IntentListRow {
+  id: string;
+  payload: string;
+  summary: string | null;
+  isIncognito: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+  sourceType: string | null;
+  sourceId: string | null;
+}
 // Shapes matching schemas/database.schema userProfiles columns (no lib/protocol import)
 interface ProfileIdentity {
   name: string;
@@ -76,7 +88,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities } = schema;
+const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, chatSessions, chatMessages, userNotificationSettings, userProfiles, files, links } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -277,11 +289,221 @@ export class IntentDatabaseAdapter {
       return [];
     }
   }
+
+  async listIntents(userId: string, options: {
+    page: number;
+    limit: number;
+    archived: boolean;
+    sourceType?: string;
+  }): Promise<{ rows: IntentListRow[]; total: number }> {
+    const offset = (options.page - 1) * options.limit;
+    const conditions = [eq(schema.intents.userId, userId)];
+    if (options.archived) {
+      conditions.push(isNotNull(schema.intents.archivedAt));
+    } else {
+      conditions.push(isNull(schema.intents.archivedAt));
+    }
+    if (options.sourceType) {
+      conditions.push(eq(schema.intents.sourceType, options.sourceType as any));
+    }
+    const where = and(...conditions);
+
+    const [rows, totalResult] = await Promise.all([
+      db.select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        isIncognito: schema.intents.isIncognito,
+        createdAt: schema.intents.createdAt,
+        updatedAt: schema.intents.updatedAt,
+        archivedAt: schema.intents.archivedAt,
+        sourceType: schema.intents.sourceType,
+        sourceId: schema.intents.sourceId,
+      })
+        .from(schema.intents)
+        .where(where)
+        .orderBy(desc(schema.intents.createdAt))
+        .offset(offset)
+        .limit(options.limit),
+      db.select({ count: count() }).from(schema.intents).where(where),
+    ]);
+
+    return { rows, total: Number(totalResult[0]?.count ?? 0) };
+  }
+
+  async getIntentById(intentId: string, userId: string): Promise<IntentListRow | null> {
+    const row = await db.select({
+      id: schema.intents.id,
+      payload: schema.intents.payload,
+      summary: schema.intents.summary,
+      isIncognito: schema.intents.isIncognito,
+      createdAt: schema.intents.createdAt,
+      updatedAt: schema.intents.updatedAt,
+      archivedAt: schema.intents.archivedAt,
+      sourceType: schema.intents.sourceType,
+      sourceId: schema.intents.sourceId,
+    })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+
+    return row[0] ?? null;
+  }
+
+  async isOwnedByUser(intentId: string, userId: string): Promise<boolean> {
+    const row = await db.select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(eq(schema.intents.id, intentId), eq(schema.intents.userId, userId)))
+      .limit(1);
+    return row.length > 0;
+  }
+
+  /**
+   * Delete all intents for a user (for test teardown).
+   */
+  async deleteByUserId(userId: string): Promise<void> {
+    await db.delete(schema.intents).where(eq(schema.intents.userId, userId));
+  }
+
+  // --- Profile check (required by IntentGraphDatabase for prepNode gate) ---
+
+  async getProfile(userId: string): Promise<ProfileRow | null> {
+    const result = await db.select()
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, userId))
+      .limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  // --- Read mode methods (required by IntentGraphDatabase for queryNode) ---
+
+  async getUser(userId: string) {
+    const result = await db.select()
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    const user = result[0];
+    if (!user) return null;
+    return {
+      id: user.id,
+      name: user.name ?? '',
+      email: user.email ?? '',
+      intro: user.intro ?? null,
+      avatar: user.avatar ?? null,
+      location: user.location ?? null,
+      socials: user.socials ?? null,
+    };
+  }
+
+  async isIndexMember(indexId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+      .where(
+        and(
+          eq(schema.indexMembers.indexId, indexId),
+          eq(schema.indexMembers.userId, userId),
+          isNull(schema.indexes.deletedAt)
+        )
+      )
+      .limit(1);
+    return result.length > 0;
+  }
+
+  async getIndexIntentsForMember(
+    indexId: string,
+    requestingUserId: string,
+    options?: { limit?: number; offset?: number }
+  ) {
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) throw new Error('Access denied: Not a member of this index');
+
+    const limit = options?.limit ?? 50;
+    const offset = options?.offset ?? 0;
+
+    const result = await db
+      .select({
+        id: schema.intents.id,
+        payload: schema.intents.payload,
+        summary: schema.intents.summary,
+        userId: schema.intents.userId,
+        userName: schema.users.name,
+        createdAt: schema.intents.createdAt,
+      })
+      .from(schema.intents)
+      .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+      .leftJoin(schema.users, eq(schema.intents.userId, schema.users.id))
+      .where(
+        and(
+          eq(schema.intentIndexes.indexId, indexId),
+          isNull(schema.intents.archivedAt)
+        )
+      )
+      .orderBy(desc(schema.intents.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return result.map((r) => ({
+      id: r.id,
+      payload: r.payload,
+      summary: r.summary,
+      userId: r.userId,
+      userName: r.userName ?? 'Unknown',
+      createdAt: r.createdAt,
+    }));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Chat Graph Database Adapter
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// Chat Session and Message interfaces
+export interface ChatSession {
+  id: string;
+  userId: string;
+  title: string | null;
+  indexId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatMessage {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  routingDecision: Record<string, unknown> | null;
+  subgraphResults: Record<string, unknown> | null;
+  tokenCount: number | null;
+  createdAt: Date;
+}
+
+export interface CreateSessionInput {
+  id: string;
+  userId: string;
+  title?: string;
+  indexId?: string;
+}
+
+export interface CreateMessageInput {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  routingDecision?: Record<string, unknown>;
+  subgraphResults?: Record<string, unknown>;
+  tokenCount?: number;
+}
 
 /**
  * Database adapter for Chat Graph and its subgraphs.
@@ -293,6 +515,125 @@ export class ChatDatabaseAdapter {
     if (!this._opportunityAdapter) this._opportunityAdapter = new OpportunityDatabaseAdapter();
     return this._opportunityAdapter;
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Chat Session Methods
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new chat session
+   */
+  async createSession(data: CreateSessionInput): Promise<void> {
+    await db.insert(schema.chatSessions).values({
+      id: data.id,
+      userId: data.userId,
+      title: data.title || null,
+      indexId: data.indexId?.trim() || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  /**
+   * Get session by ID
+   */
+  async getSession(sessionId: string): Promise<ChatSession | null> {
+    const [session] = await db.select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, sessionId))
+      .limit(1);
+    
+    return session || null;
+  }
+
+  /**
+   * Get all sessions for a user
+   */
+  async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> {
+    return db.select()
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.userId, userId))
+      .orderBy(desc(schema.chatSessions.updatedAt))
+      .limit(limit);
+  }
+
+  /**
+   * Update session index
+   */
+  async updateSessionIndex(sessionId: string, indexId: string | null): Promise<void> {
+    await db
+      .update(schema.chatSessions)
+      .set({ indexId, updatedAt: new Date() })
+      .where(eq(schema.chatSessions.id, sessionId));
+  }
+
+  /**
+   * Update session title
+   */
+  async updateSessionTitle(sessionId: string, title: string): Promise<void> {
+    await db.update(schema.chatSessions)
+      .set({ title, updatedAt: new Date() })
+      .where(eq(schema.chatSessions.id, sessionId));
+  }
+
+  /**
+   * Update session timestamp
+   */
+  async updateSessionTimestamp(sessionId: string): Promise<void> {
+    await db.update(schema.chatSessions)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.chatSessions.id, sessionId));
+  }
+
+  /**
+   * Delete a session
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await db.delete(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, sessionId));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Chat Message Methods
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a message
+   */
+  async createMessage(data: CreateMessageInput): Promise<void> {
+    await db.insert(schema.chatMessages).values({
+      id: data.id,
+      sessionId: data.sessionId,
+      role: data.role,
+      content: data.content,
+      routingDecision: data.routingDecision || null,
+      subgraphResults: data.subgraphResults || null,
+      tokenCount: data.tokenCount || null,
+      createdAt: new Date(),
+    });
+  }
+
+  /**
+   * Get messages for a session
+   */
+  async getSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
+    const messages = await db.select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.sessionId, sessionId))
+      .orderBy(schema.chatMessages.createdAt)
+      .limit(limit);
+    
+    // Cast unknown fields to proper types
+    return messages.map(msg => ({
+      ...msg,
+      routingDecision: msg.routingDecision as Record<string, unknown> | null,
+      subgraphResults: msg.subgraphResults as Record<string, unknown> | null,
+    }));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Chat Graph Methods (Profiles, Intents, Indexes)
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async getProfile(userId: string): Promise<ProfileRow | null> {
     const result = await db.select()
@@ -405,6 +746,15 @@ export class ChatDatabaseAdapter {
       .where(eq(schema.users.id, userId))
       .limit(1);
     return result[0] ?? null;
+  }
+
+  async updateUser(
+    userId: string,
+    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } }
+  ) {
+    // Delegate to ProfileDatabaseAdapter which has the merge logic
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.updateUser(userId, data);
   }
 
   async saveProfile(userId: string, profile: ProfileRow): Promise<void> {
@@ -545,6 +895,22 @@ export class ChatDatabaseAdapter {
     return row ? { id: row.id, title: row.title } : null;
   }
 
+  async getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
+    const rows = await db
+      .select({ id: indexes.id, title: indexes.title, permissions: indexes.permissions })
+      .from(indexes)
+      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    const perms = (row.permissions as { joinPolicy?: string }) ?? {};
+    return {
+      id: row.id,
+      title: row.title,
+      permissions: { joinPolicy: (perms.joinPolicy === 'anyone' ? 'anyone' : 'invite_only') as 'anyone' | 'invite_only' },
+    };
+  }
+
   async getIndexesForUser(userId: string) {
     const memberIndexIds = await db
       .select({ indexId: schema.indexMembers.indexId })
@@ -629,6 +995,90 @@ export class ChatDatabaseAdapter {
         total: totalCount > 0 ? 1 : 0,
         count: totalCount,
         totalCount,
+      },
+    };
+  }
+
+  /**
+   * Get public indexes that the user has not joined (for discovery).
+   */
+  async getPublicIndexesNotJoined(userId: string) {
+    const userIndexIds = await db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .where(eq(schema.indexMembers.userId, userId));
+    
+    const excludeIds = userIndexIds.map(r => r.indexId);
+    
+    const whereConditions = [
+      isNull(schema.indexes.deletedAt),
+      eq(schema.indexes.isPersonal, false)
+    ];
+    
+    if (excludeIds.length > 0) {
+      whereConditions.push(notInArray(schema.indexes.id, excludeIds));
+    }
+
+    const publicIndexes = await db
+      .select({
+        id: schema.indexes.id,
+        title: schema.indexes.title,
+        prompt: schema.indexes.prompt,
+        createdAt: schema.indexes.createdAt,
+        permissions: schema.indexes.permissions,
+      })
+      .from(schema.indexes)
+      .where(and(...whereConditions))
+      .orderBy(desc(schema.indexes.createdAt));
+
+    const result = [];
+    for (const row of publicIndexes) {
+      const perms = (row.permissions as { joinPolicy?: string } | null);
+      if (perms?.joinPolicy !== 'anyone') continue;
+
+      const [ownerMember] = await db
+        .select({
+          userId: schema.indexMembers.userId,
+          userName: schema.users.name,
+          userAvatar: schema.users.avatar,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+        .where(
+          and(
+            eq(schema.indexMembers.indexId, row.id),
+            sql`'owner' = ANY(${schema.indexMembers.permissions})`
+          )
+        )
+        .limit(1);
+
+      const [countResult] = await db
+        .select({ count: count() })
+        .from(schema.indexMembers)
+        .where(eq(schema.indexMembers.indexId, row.id));
+
+      result.push({
+        id: row.id,
+        title: row.title,
+        prompt: row.prompt,
+        createdAt: row.createdAt,
+        permissions: row.permissions,
+        memberCount: Number(countResult?.count ?? 0),
+        user: ownerMember ? {
+          id: ownerMember.userId,
+          name: ownerMember.userName,
+          avatar: ownerMember.userAvatar,
+        } : null,
+      });
+    }
+
+    return {
+      indexes: result,
+      pagination: {
+        current: 1,
+        total: result.length > 0 ? 1 : 0,
+        count: result.length,
+        totalCount: result.length,
       },
     };
   }
@@ -760,6 +1210,14 @@ export class ChatDatabaseAdapter {
           eq(intentIndexes.indexId, indexId)
         )
       );
+  }
+
+  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+    const rows = await db
+      .select({ indexId: intentIndexes.indexId })
+      .from(intentIndexes)
+      .where(eq(intentIndexes.intentId, intentId));
+    return rows.map((r) => r.indexId);
   }
 
   // HyDE document operations (delegate to HydeDatabaseAdapter)
@@ -1006,6 +1464,28 @@ export class ChatDatabaseAdapter {
     return rows.length > 0;
   }
 
+  async getMemberSettings(indexId: string, userId: string): Promise<{ permissions: string[]; isOwner: boolean } | null> {
+    const rows = await db
+      .select({ permissions: indexMembers.permissions })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(
+          eq(indexMembers.indexId, indexId),
+          eq(indexMembers.userId, userId),
+          isNull(indexes.deletedAt)
+        )
+      )
+      .limit(1);
+    
+    if (rows.length === 0) return null;
+    
+    const permissions = rows[0]?.permissions || [];
+    const isOwner = permissions.includes('owner');
+    
+    return { permissions, isOwner };
+  }
+
   async getIndexIntentsForMember(
     indexId: string,
     requestingUserId: string,
@@ -1068,14 +1548,37 @@ export class ChatDatabaseAdapter {
       const currentPerms = (existing.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
       updateData.permissions = {
         joinPolicy: data.joinPolicy ?? currentPerms.joinPolicy ?? 'invite_only',
-        invitationLink: currentPerms.invitationLink ?? null,
+        invitationLink: currentPerms.invitationLink ?? { code: crypto.randomUUID() },
         allowGuestVibeCheck: data.allowGuestVibeCheck ?? currentPerms.allowGuestVibeCheck ?? false,
       };
     }
 
     await db.update(indexes).set(updateData).where(eq(indexes.id, indexId));
 
-    const [updatedRow] = await db.select().from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    const [updatedRow] = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(eq(indexes.id, indexId))
+      .limit(1);
+
     if (!updatedRow) {
       throw new Error('Index not found after update');
     }
@@ -1103,8 +1606,322 @@ export class ChatDatabaseAdapter {
     await db.update(indexes).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(indexes.id, indexId));
   }
 
+  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+    const result = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, userId)).limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  async createIndex(data: {
+    title: string;
+    prompt?: string | null;
+    joinPolicy?: 'anyone' | 'invite_only';
+  }): Promise<{
+    id: string;
+    title: string;
+    prompt: string | null;
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+  }> {
+    const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
+    const permissions = {
+      joinPolicy: finalJoinPolicy,
+      invitationLink: { code: crypto.randomUUID() },
+      allowGuestVibeCheck: false,
+    };
+    const [row] = await db
+      .insert(indexes)
+      .values({
+        title: data.title,
+        prompt: data.prompt ?? null,
+        permissions,
+      })
+      .returning({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+      });
+    if (!row) throw new Error('Failed to create index');
+    const perms = (row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      permissions: {
+        joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
+        invitationLink: perms.invitationLink ?? null,
+        allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
+      },
+    };
+  }
+
+  async getIndexMemberCount(indexId: string): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(indexMembers).where(eq(indexMembers.indexId, indexId));
+    return Number(r?.count ?? 0);
+  }
+
+  async addMemberToIndex(
+    indexId: string,
+    userId: string,
+    role: 'owner' | 'admin' | 'member'
+  ): Promise<{ success: boolean; alreadyMember?: boolean }> {
+    const logger = log.lib.from('database.adapter');
+    const existing = await db
+      .select()
+      .from(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+      .limit(1);
+    if (existing.length > 0) {
+      return { success: true, alreadyMember: true };
+    }
+    let memberPrompt: string | null = null;
+    const [indexRow] = await db.select({ prompt: indexes.prompt }).from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    if (indexRow) memberPrompt = indexRow.prompt;
+
+    const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
+    await db.insert(indexMembers).values({
+      indexId,
+      userId,
+      permissions: finalPermissions,
+      prompt: memberPrompt,
+      autoAssign: true,
+    });
+
+    // TODO: Events system removed - need to implement alternative notification mechanism
+    // for triggering member indexing when settings are updated
+
+    return { success: true, alreadyMember: false };
+  }
+
   async deleteProfile(userId: string): Promise<void> {
     await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Detail & Member Management (with access control)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get a single index with owner info and member count.
+   * Checks that the requesting user is a member; throws "Access denied" if not.
+   */
+  async getIndexDetail(indexId: string, requestingUserId: string) {
+    const rows = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+        isPersonal: indexes.isPersonal,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    if (!isMember) {
+      throw new Error('Access denied: Not a member of this index');
+    }
+
+    const memberCount = await this.getIndexMemberCount(indexId);
+
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      permissions: row.permissions,
+      isPersonal: row.isPersonal,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+      _count: { members: memberCount },
+    };
+  }
+
+  /**
+   * Search users within the caller's personal index members by name or email,
+   * optionally excluding existing members of a target index.
+   */
+  async searchPersonalIndexMembers(userId: string, query: string, excludeIndexId?: string) {
+    if (!query || query.trim().length === 0) return [];
+
+    // Find the user's personal index
+    const [personalIndex] = await db
+      .select({ indexId: indexMembers.indexId })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(
+          eq(indexMembers.userId, userId),
+          eq(indexes.isPersonal, true),
+          isNull(indexes.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!personalIndex) return [];
+
+    // Members of the personal index
+    const personalMemberIds = db
+      .select({ userId: indexMembers.userId })
+      .from(indexMembers)
+      .where(eq(indexMembers.indexId, personalIndex.indexId));
+
+    const pattern = `%${query.trim()}%`;
+    const conditions = [
+      isNull(users.deletedAt),
+      inArray(users.id, personalMemberIds),
+      or(ilike(users.name, pattern), ilike(users.email, pattern)),
+    ];
+
+    if (excludeIndexId) {
+      const existingMembers = db
+        .select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(eq(indexMembers.indexId, excludeIndexId));
+      conditions.push(notInArray(users.id, existingMembers));
+    }
+
+    return db
+      .select({ id: users.id, name: users.name, email: users.email, avatar: users.avatar })
+      .from(users)
+      .where(and(...conditions))
+      .limit(20);
+  }
+
+  /**
+   * Add a member to an index. Checks that the requesting user has owner or admin permissions.
+   * Throws "Access denied" if not authorized.
+   */
+  async addMemberForOwnerOrAdmin(
+    indexId: string,
+    userId: string,
+    requestingUserId: string,
+    role: 'admin' | 'member' = 'member'
+  ) {
+    const [membership] = await db
+      .select({ permissions: indexMembers.permissions })
+      .from(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, requestingUserId)))
+      .limit(1);
+
+    if (!membership || (!membership.permissions?.includes('owner') && !membership.permissions?.includes('admin'))) {
+      throw new Error('Access denied: Only owners or admins can add members');
+    }
+
+    const result = await this.addMemberToIndex(indexId, userId, role);
+    const user = await this.getUser(userId);
+
+    return {
+      member: user
+        ? { id: user.id, name: user.name, email: user.email, avatar: user.avatar, permissions: role === 'admin' ? ['admin', 'member'] : ['member'] }
+        : null,
+      alreadyMember: result.alreadyMember,
+    };
+  }
+
+  /**
+   * Remove a member from an index. Owner-only.
+   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   * Prevents self-removal. Throws "Member not found" if member doesn't exist.
+   */
+  async removeMemberForOwner(indexId: string, memberUserId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this index');
+    }
+
+    if (memberUserId === requestingUserId) {
+      throw new Error('Cannot remove yourself from the index');
+    }
+
+    const deleted = await db
+      .delete(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, memberUserId)))
+      .returning({ userId: indexMembers.userId });
+
+    if (deleted.length === 0) {
+      throw new Error('Member not found');
+    }
+  }
+
+  /**
+   * Join a public index (anyone can join if joinPolicy is 'anyone').
+   */
+  async joinPublicIndex(indexId: string, userId: string) {
+    const [index] = await db
+      .select({ permissions: indexes.permissions, deletedAt: indexes.deletedAt })
+      .from(indexes)
+      .where(eq(indexes.id, indexId))
+      .limit(1);
+
+    if (!index || index.deletedAt) {
+      throw new Error('Index not found');
+    }
+
+    const perms = (index.permissions as { joinPolicy?: string } | null);
+    if (perms?.joinPolicy !== 'anyone') {
+      throw new Error('This index is not public');
+    }
+
+    return await this.addMemberToIndex(indexId, userId, 'member');
+  }
+
+  /**
+   * Leave an index. Members (non-owners) can leave an index.
+   * Owners cannot leave their own index.
+   */
+  async leaveIndex(indexId: string, userId: string) {
+    const isOwner = await this.isIndexOwner(indexId, userId);
+    if (isOwner) {
+      throw new Error('Cannot leave an index you own. Delete the index instead.');
+    }
+
+    const deleted = await db
+      .delete(indexMembers)
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+      .returning({ userId: indexMembers.userId });
+
+    if (deleted.length === 0) {
+      throw new Error('You are not a member of this index');
+    }
+  }
+
+  /**
+   * Soft-delete an index. Owner-only.
+   * Checks isIndexOwner internally; throws "Access denied" if not owner.
+   */
+  async deleteIndexForOwner(indexId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    if (!isOwner) {
+      throw new Error('Access denied: Not an owner of this index');
+    }
+
+    await this.softDeleteIndex(indexId);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
@@ -1128,7 +1945,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
@@ -1208,6 +2025,134 @@ export class ProfileDatabaseAdapter {
       .limit(1);
     return result[0] ?? null;
   }
+
+  /**
+   * Update user account fields (name, location, socials).
+   * Merges socials with existing values so callers can set individual social
+   * fields (e.g. only linkedin) without overwriting the rest.
+   */
+  async updateUser(
+    userId: string,
+    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } }
+  ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } | null } | null> {
+    // Load current user to merge socials
+    const current = await this.getUser(userId);
+    if (!current) return null;
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (data.name !== undefined) updateFields.name = data.name;
+    if (data.location !== undefined) updateFields.location = data.location;
+
+    if (data.socials) {
+      // Merge with existing socials instead of overwriting
+      const existingSocials = (current as any).socials ?? {};
+      const merged = { ...existingSocials };
+      if (data.socials.x !== undefined) merged.x = data.socials.x;
+      if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
+      if (data.socials.github !== undefined) merged.github = data.socials.github;
+      if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
+      updateFields.socials = merged;
+    }
+
+    const result = await db.update(schema.users)
+      .set(updateFields)
+      .where(eq(schema.users.id, userId))
+      .returning();
+
+    const updated = result[0];
+    if (!updated) return null;
+    return {
+      id: updated.id,
+      name: updated.name,
+      email: updated.email,
+      intro: updated.intro,
+      avatar: updated.avatar,
+      location: updated.location,
+      socials: updated.socials as { x?: string; linkedin?: string; github?: string; websites?: string[] } | null,
+    };
+  }
+
+  /**
+   * Delete profile by userId (for test teardown).
+   */
+  async deleteProfile(userId: string): Promise<void> {
+    await db.delete(schema.userProfiles).where(eq(schema.userProfiles.userId, userId));
+  }
+
+  /**
+   * Get full profile row by userId (for test assertions, includes hydeDescription, hydeEmbedding).
+   */
+  async getProfileRow(userId: string): Promise<{
+    identity: ProfileIdentity;
+    narrative: ProfileNarrative;
+    attributes: ProfileAttributes;
+    embedding: number[] | number[][] | null;
+    hydeDescription: string | null;
+    hydeEmbedding: number[] | null;
+  } | null> {
+    const result = await db.select({
+      identity: schema.userProfiles.identity,
+      narrative: schema.userProfiles.narrative,
+      attributes: schema.userProfiles.attributes,
+      embedding: schema.userProfiles.embedding,
+      hydeDescription: schema.userProfiles.hydeDescription,
+      hydeEmbedding: schema.userProfiles.hydeEmbedding,
+    })
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, userId))
+      .limit(1);
+    const row = result[0];
+    if (!row) return null;
+    return {
+      identity: row.identity as ProfileIdentity,
+      narrative: row.narrative as ProfileNarrative,
+      attributes: row.attributes as ProfileAttributes,
+      embedding: row.embedding,
+      hydeDescription: row.hydeDescription,
+      hydeEmbedding: row.hydeEmbedding as number[] | null,
+    };
+  }
+
+  async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
+    const result = await db.select({
+      id: schema.userProfiles.id,
+      userId: schema.userProfiles.userId,
+      identity: schema.userProfiles.identity,
+      narrative: schema.userProfiles.narrative,
+      attributes: schema.userProfiles.attributes,
+      embedding: schema.userProfiles.embedding,
+    })
+      .from(schema.userProfiles)
+      .where(eq(schema.userProfiles.userId, userId))
+      .limit(1);
+    const profile = result[0];
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      userId: profile.userId,
+      identity: profile.identity as ProfileIdentity,
+      narrative: profile.narrative as ProfileNarrative,
+      attributes: profile.attributes as ProfileAttributes,
+      embedding: profile.embedding,
+    };
+  }
+
+  private hydeAdapter = new HydeDatabaseAdapter();
+
+  async saveHydeDocument(data: {
+    sourceType: 'intent' | 'profile' | 'query';
+    sourceId?: string | null;
+    sourceText?: string | null;
+    strategy: string;
+    targetCorpus: string;
+    hydeText: string;
+    hydeEmbedding: number[];
+    context?: Record<string, unknown> | null;
+    expiresAt?: Date | null;
+  }) {
+    return this.hydeAdapter.saveHydeDocument(data);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1223,7 +2168,7 @@ interface OpportunityRow {
   context: schema.OpportunityContext;
   indexId: string;
   confidence: string;
-  status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -1237,7 +2182,7 @@ interface CreateOpportunityInput {
   context: schema.OpportunityContext;
   indexId: string;
   confidence: string;
-  status?: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+  status?: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
 }
 
@@ -1340,7 +2285,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     const [row] = await db
       .update(opportunities)
@@ -1496,6 +2441,30 @@ export class IndexGraphDatabaseAdapter {
         )
       );
   }
+
+  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+    const rows = await db
+      .select({ indexId: intentIndexes.indexId })
+      .from(intentIndexes)
+      .where(eq(intentIndexes.intentId, intentId));
+    return rows.map((r) => r.indexId);
+  }
+
+  /**
+   * Delete only index_members for an index (releases user FK for teardown).
+   */
+  async deleteMembersForIndex(indexId: string): Promise<void> {
+    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
+  }
+
+  /**
+   * Delete an index and its members/intent-index links (for test teardown).
+   */
+  async deleteIndexAndMembers(indexId: string): Promise<void> {
+    await db.delete(intentIndexes).where(eq(intentIndexes.indexId, indexId));
+    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
+    await db.delete(indexes).where(eq(indexes.id, indexId));
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1629,3 +2598,536 @@ export class HydeDatabaseAdapter {
     return rows.map(toHydeDocument);
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// User Database Adapter
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface UserWithGraph {
+  id: string;
+  email: string | null;
+  name: string | null;
+  privyId: string;
+  intro: string | null;
+  location: string | null;
+  socials: unknown;
+  onboarding: unknown;
+  avatar: string | null;
+  timezone: string | null;
+  lastWeeklyEmailSentAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  profile: typeof userProfiles.$inferSelect | null;
+  notificationPreferences: {
+    connectionUpdates: boolean;
+    weeklyNewsletter: boolean;
+  };
+}
+
+export interface NewsletterUserData {
+  id: string;
+  email: string | null;
+  name: string | null;
+  intro: string | null;
+  timezone: string | null;
+  lastSent: Date | null;
+  prefs: {
+    connectionUpdates?: boolean;
+    weeklyNewsletter?: boolean;
+  } | null;
+  unsubscribeToken: string | null;
+  onboarding: {
+    completedAt?: string;
+    flow?: 1 | 2 | 3;
+    currentStep?: string;
+  } | null;
+}
+
+export interface BasicUserInfo {
+  id: string;
+  name: string | null;
+  intro: string | null;
+}
+
+/**
+ * UserDatabaseAdapter
+ * 
+ * Wraps all database operations for users table and related tables.
+ */
+export class UserDatabaseAdapter {
+  /**
+   * Find user by ID
+   */
+  async findById(userId: string): Promise<typeof users.$inferSelect | null> {
+    const result = await db.select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    return result[0] || null;
+  }
+
+  /**
+   * Find user by email (for test setup/teardown).
+   */
+  async findByEmail(email: string): Promise<typeof users.$inferSelect | null> {
+    const result = await db.select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    return result[0] ?? null;
+  }
+
+  /**
+   * Create a user (for test setup).
+   */
+  async create(data: {
+    email: string;
+    name?: string;
+    privyId: string;
+    intro?: string;
+    location?: string;
+    socials?: Record<string, string>;
+  }): Promise<typeof users.$inferSelect> {
+    const [row] = await db.insert(users)
+      .values({
+        email: data.email,
+        name: data.name ?? data.email.split('@')[0],
+        privyId: data.privyId,
+        intro: data.intro ?? null,
+        location: data.location ?? null,
+        socials: data.socials ?? null,
+      })
+      .returning();
+    if (!row) throw new Error('User insert did not return a row');
+    return row;
+  }
+
+  /**
+   * Delete user by ID (for test teardown). Does not delete related rows; call other adapters first if needed.
+   */
+  async deleteById(userId: string): Promise<void> {
+    await db.delete(users).where(eq(users.id, userId));
+  }
+
+  /**
+   * Delete user by email (for test teardown). Finds by email then deletes.
+   */
+  async deleteByEmail(email: string): Promise<void> {
+    const u = await this.findByEmail(email);
+    if (u) await this.deleteById(u.id);
+  }
+
+  /**
+   * Find user with joined profile and notification settings
+   */
+  async findWithGraph(userId: string): Promise<UserWithGraph | null> {
+    const userResult = await db.select({
+      user: users,
+      settings: userNotificationSettings,
+      profile: userProfiles
+    })
+      .from(users)
+      .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
+      .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (userResult.length === 0) {
+      return null;
+    }
+
+    const { user, settings, profile } = userResult[0];
+
+    return {
+      ...user,
+      profile,
+      notificationPreferences: settings?.preferences as {
+        connectionUpdates: boolean;
+        weeklyNewsletter: boolean;
+      } || {
+        connectionUpdates: true,
+        weeklyNewsletter: true,
+      }
+    };
+  }
+
+  /**
+   * Update user
+   */
+  async update(userId: string, data: Partial<User>): Promise<typeof users.$inferSelect | null> {
+    const result = await db.update(users)
+      .set({
+        ...data,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return result[0] || null;
+  }
+
+  /**
+   * Soft delete user
+   */
+  async softDelete(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ deletedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  /**
+   * Get user details for newsletter
+   */
+  async getUserForNewsletter(userId: string): Promise<NewsletterUserData | null> {
+    const userRes = await db.select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      intro: users.intro,
+      timezone: users.timezone,
+      lastSent: users.lastWeeklyEmailSentAt,
+      prefs: userNotificationSettings.preferences,
+      unsubscribeToken: userNotificationSettings.unsubscribeToken,
+      onboarding: users.onboarding
+    })
+      .from(users)
+      .leftJoin(userNotificationSettings, eq(users.id, userNotificationSettings.userId))
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    return userRes[0] || null;
+  }
+
+  /**
+   * Get basic info for multiple users
+   */
+  async getUsersBasicInfo(userIds: string[]): Promise<BasicUserInfo[]> {
+    if (userIds.length === 0) return [];
+    
+    return db.select({
+      id: users.id,
+      name: users.name,
+      intro: users.intro
+    })
+      .from(users)
+      .where(inArray(users.id, userIds));
+  }
+
+  /**
+   * Update last weekly email sent timestamp
+   */
+  async updateLastWeeklyEmailSent(userId: string): Promise<void> {
+    await db.update(users)
+      .set({ lastWeeklyEmailSentAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  /**
+   * Initialize default notification settings for a new user.
+   * Idempotent - safe to call multiple times (does nothing if settings exist).
+   */
+  async setupDefaultNotificationSettings(userId: string): Promise<void> {
+    await db.insert(userNotificationSettings)
+      .values({
+        userId,
+        preferences: {
+          connectionUpdates: true,
+          weeklyNewsletter: true,
+        }
+      })
+      .onConflictDoNothing();
+  }
+
+  /**
+   * Ensure notification settings exist for a user
+   */
+  async ensureNotificationSettings(userId: string): Promise<{ unsubscribeToken: string | null }> {
+    const [upsertedSettings] = await db.insert(userNotificationSettings)
+      .values({
+        userId,
+        preferences: {
+          connectionUpdates: true,
+          weeklyNewsletter: true,
+        }
+      })
+      .onConflictDoUpdate({
+        target: userNotificationSettings.userId,
+        set: {
+          updatedAt: new Date()
+        }
+      })
+      .returning({
+        unsubscribeToken: userNotificationSettings.unsubscribeToken
+      });
+
+    return upsertedSettings;
+  }
+
+  /**
+   * Upsert notification preferences for a user
+   */
+  async updateNotificationPreferences(userId: string, preferences: NotificationPreferences): Promise<void> {
+    const existing = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId)).limit(1);
+    if (existing.length > 0) {
+      await db.update(userNotificationSettings)
+        .set({ preferences, updatedAt: new Date() })
+        .where(eq(userNotificationSettings.userId, userId));
+    } else {
+      await db.insert(userNotificationSettings)
+        .values({ userId, preferences });
+    }
+  }
+
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// File Database Adapter
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface FileRow {
+  id: string;
+  name: string;
+  type: string;
+  size: bigint;
+  createdAt: Date;
+  userId: string | null;
+}
+
+export interface FileMetadata {
+  id: string;
+  name: string;
+  type: string;
+  size: bigint;
+}
+
+export interface CreateFileInput {
+  id: string;
+  name: string;
+  size: bigint;
+  type: string;
+  userId: string;
+}
+
+export interface FileListResult {
+  files: FileRow[];
+  total: number;
+}
+
+/**
+ * FileDatabaseAdapter
+ * 
+ * Wraps all database operations for files table.
+ */
+export class FileDatabaseAdapter {
+  /**
+   * Get files by IDs for a specific user
+   */
+  async getFilesByIds(userId: string, fileIds: string[]): Promise<FileMetadata[]> {
+    if (!fileIds?.length) return [];
+    
+    return db.select({
+      id: files.id,
+      name: files.name,
+      type: files.type,
+      size: files.size,
+    })
+      .from(files)
+      .where(
+        and(
+          eq(files.userId, userId),
+          inArray(files.id, fileIds),
+          isNull(files.deletedAt)
+        )
+      );
+  }
+
+  /**
+   * Get a single file by ID
+   */
+  async getById(fileId: string, userId: string): Promise<FileRow | null> {
+    const result = await db.select()
+      .from(files)
+      .where(
+        and(
+          eq(files.id, fileId),
+          eq(files.userId, userId),
+          isNull(files.deletedAt)
+        )
+      )
+      .limit(1);
+    
+    return result[0] || null;
+  }
+
+  /**
+   * List files for a user with pagination
+   */
+  async listFiles(
+    userId: string, 
+    options: { skip: number; limit: number }
+  ): Promise<FileListResult> {
+    const where = and(isNull(files.deletedAt), eq(files.userId, userId));
+    
+    const [rows, totalResult] = await Promise.all([
+      db.select({
+        id: files.id,
+        name: files.name,
+        size: files.size,
+        type: files.type,
+        createdAt: files.createdAt,
+        userId: files.userId,
+      })
+        .from(files)
+        .where(where)
+        .orderBy(desc(files.createdAt))
+        .offset(options.skip)
+        .limit(options.limit),
+      db.select({ count: count() }).from(files).where(where),
+    ]);
+    
+    return {
+      files: rows,
+      total: Number(totalResult[0]?.count ?? 0),
+    };
+  }
+
+  /**
+   * Create a new file record
+   */
+  async createFile(data: CreateFileInput): Promise<FileRow> {
+    const [inserted] = await db.insert(files)
+      .values(data)
+      .returning({
+        id: files.id,
+        name: files.name,
+        size: files.size,
+        type: files.type,
+        createdAt: files.createdAt,
+        userId: files.userId,
+      });
+    
+    return inserted;
+  }
+
+  /**
+   * Soft delete a file
+   */
+  async softDelete(fileId: string, userId: string): Promise<boolean> {
+    const result = await db.update(files)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(files.id, fileId),
+          eq(files.userId, userId),
+          isNull(files.deletedAt)
+        )
+      )
+      .returning({ id: files.id });
+
+    return result.length > 0;
+  }
+
+  /**
+   * Delete all file records for a user (for test teardown). Does not remove files from disk.
+   */
+  async deleteByUserId(userId: string): Promise<void> {
+    await db.delete(files).where(eq(files.userId, userId));
+  }
+
+  /**
+   * Get a file by ID only (for test assertions when userId is known in test).
+   */
+  async getByIdUnscoped(fileId: string): Promise<FileRow | null> {
+    const result = await db.select({
+      id: files.id,
+      name: files.name,
+      type: files.type,
+      size: files.size,
+      createdAt: files.createdAt,
+      userId: files.userId,
+    })
+      .from(files)
+      .where(eq(files.id, fileId))
+      .limit(1);
+    return result[0] ?? null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Link Database Adapter
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export interface LinkRow {
+  id: string;
+  url: string;
+  createdAt: Date;
+  lastSyncAt: Date | null;
+  lastStatus: string | null;
+  lastError: string | null;
+}
+
+/**
+ * LinkDatabaseAdapter
+ *
+ * Wraps all database operations for the links table.
+ */
+export class LinkDatabaseAdapter {
+  async listLinks(userId: string): Promise<LinkRow[]> {
+    return db.select({
+      id: links.id,
+      url: links.url,
+      createdAt: links.createdAt,
+      lastSyncAt: links.lastSyncAt,
+      lastStatus: links.lastStatus,
+      lastError: links.lastError,
+    })
+      .from(links)
+      .where(eq(links.userId, userId));
+  }
+
+  async createLink(userId: string, url: string): Promise<LinkRow> {
+    const [inserted] = await db.insert(links)
+      .values({ userId, url })
+      .returning({
+        id: links.id,
+        url: links.url,
+        createdAt: links.createdAt,
+        lastSyncAt: links.lastSyncAt,
+        lastStatus: links.lastStatus,
+        lastError: links.lastError,
+      });
+    return inserted;
+  }
+
+  async deleteLink(linkId: string, userId: string): Promise<boolean> {
+    const result = await db.delete(links)
+      .where(and(eq(links.id, linkId), eq(links.userId, userId)))
+      .returning({ id: links.id });
+    return result.length > 0;
+  }
+
+  async getLinkContent(linkId: string, userId: string): Promise<{ id: string; url: string; lastSyncAt: Date | null; lastStatus: string | null } | null> {
+    const rows = await db.select({
+      id: links.id,
+      url: links.url,
+      lastSyncAt: links.lastSyncAt,
+      lastStatus: links.lastStatus,
+    })
+      .from(links)
+      .where(and(eq(links.id, linkId), eq(links.userId, userId)))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Singleton Exports
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const chatDatabaseAdapter = new ChatDatabaseAdapter();
+export const userDatabaseAdapter = new UserDatabaseAdapter();
+export const fileDatabaseAdapter = new FileDatabaseAdapter();
+export const linkDatabaseAdapter = new LinkDatabaseAdapter();
+export const intentDatabaseAdapter = new IntentDatabaseAdapter();

@@ -1,143 +1,162 @@
-import db from '../lib/drizzle/drizzle';
-import { addMemberToIndex } from '../lib/index-members';
 import { log } from '../lib/log';
-import { indexes, indexMembers, intents, intentIndexes } from '../schemas/database.schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
 const logger = log.service.from("IndexService");
 
-const PERSONAL_INDEX_TITLE = 'My Own Private Index';
-
-/** Default permissions for personal index: private, no invitation link. */
-const PERSONAL_INDEX_PERMISSIONS = {
-  joinPolicy: 'invite_only' as const,
-  invitationLink: null as { code: string } | null,
-  allowGuestVibeCheck: false,
-};
-
 /**
  * IndexService
- *
- * Manages "Indexes" (Communities/Groups) and member relationships.
- *
- * CONTEXT:
- * An "Index" is a grouping of users and their intents.
- * Members of an Index allow their intents to be "seen" by other members of that same index (privacy scope).
+ * 
+ * Manages index/community operations.
+ * Uses ChatDatabaseAdapter for database operations.
+ * 
+ * RESPONSIBILITIES:
+ * - List indexes for users
+ * - Get single index details
+ * - Manage index memberships
  */
 export class IndexService {
+  constructor(private adapter = new ChatDatabaseAdapter()) {}
+
   /**
-   * Get eligible indexes for a user where autoAssign is true.
-   * 
-   * USED BY:
-   * - `IntentService.processIntentForIndex` (to determine potential targets).
-   * 
-   * @param userId - The user to find indexes for.
-   * @returns List of Index IDs.
+   * Get all indexes that a user is a member of, including their personal index.
    */
-  async getEligibleIndexesForUser(userId: string) {
-    logger.info('[IndexService] Getting eligible indexes for user', { userId });
-    return await db
-      .select({ id: indexes.id })
-      .from(indexes)
-      .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
-      .where(and(
-        eq(indexMembers.userId, userId),
-        eq(indexMembers.autoAssign, true),
-        isNull(indexes.deletedAt)
-      ));
+  async getIndexesForUser(userId: string) {
+    logger.info('[IndexService] Getting indexes for user', { userId });
+    return this.adapter.getIndexesForUser(userId);
   }
 
   /**
-   * Get intents for all members of an index where autoAssign is true.
-   * 
-   * USED BY:
-   * - Legacy matchmaking logic (potentially deprecated).
-   * 
-   * @param indexId - The index to query.
-   * @returns List of { intentId, userId }.
+   * Create a new index with the requesting user as owner.
    */
-  async getIntentsForIndexMembers(indexId: string) {
-    logger.info('[IndexService] Getting intents for index members', { indexId });
-    return await db
-      .select({ intentId: intents.id, userId: intents.userId })
-      .from(intents)
-      .innerJoin(indexMembers, eq(intents.userId, indexMembers.userId))
-      .where(and(
-        eq(indexMembers.indexId, indexId),
-        eq(indexMembers.autoAssign, true),
-        isNull(intents.archivedAt)
-      ));
-  }
-
-  /**
-   * Get index IDs that an intent is currently assigned to.
-   * Used on intent update to re-evaluate only against existing indexes (no new assignments).
-   */
-  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
-    const rows = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
-      .where(eq(intentIndexes.intentId, intentId));
-    return rows.map((r) => r.indexId);
-  }
-
-  /**
-   * Ensures the user has a personal index ("My Own Private Index"). Creates one if missing.
-   * Personal index is the default write location for intents; private by design.
-   * @returns The personal index id (existing or newly created)
-   */
-  async ensurePersonalIndex(userId: string): Promise<string> {
-    const existing = await db
-      .select({ id: indexes.id })
-      .from(indexes)
-      .innerJoin(indexMembers, and(eq(indexMembers.indexId, indexes.id), eq(indexMembers.userId, userId)))
-      .where(eq(indexes.isPersonal, true))
-      .limit(1);
-
-    if (existing.length > 0) {
-      return existing[0].id;
+  async createIndex(userId: string, data: { title: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    logger.info('[IndexService] Creating index', { userId, title: data.title });
+    const index = await this.adapter.createIndex(data);
+    // Add the creating user as the owner
+    await this.adapter.addMemberToIndex(index.id, userId, 'owner');
+    // Fetch the full index details with user and member count
+    const fullIndex = await this.adapter.getIndexDetail(index.id, userId);
+    if (!fullIndex) {
+      throw new Error('Failed to create index');
     }
-
-    const [newIndex] = await db
-      .insert(indexes)
-      .values({
-        title: PERSONAL_INDEX_TITLE,
-        isPersonal: true,
-        permissions: PERSONAL_INDEX_PERMISSIONS,
-      })
-      .returning({ id: indexes.id });
-
-    if (!newIndex) {
-      throw new Error('Failed to create personal index');
-    }
-
-    const result = await addMemberToIndex({
-      indexId: newIndex.id,
-      userId,
-      role: 'owner',
-      autoAssign: true,
-    });
-
-    if (!result.success) {
-      logger.error('Failed to add owner to personal index', { userId, indexId: newIndex.id, error: result.error });
-      throw new Error(result.error ?? 'Failed to add owner to personal index');
-    }
-
-    logger.info('Created personal index for user', { userId, indexId: newIndex.id });
-    return newIndex.id;
+    return fullIndex;
   }
 
   /**
-   * Returns the user's personal index id if it exists, otherwise null.
+   * Get a single index by ID with owner info and member count.
+   * Only members of the index can view it.
    */
-  async getPersonalIndexId(userId: string): Promise<string | null> {
-    const rows = await db
-      .select({ id: indexes.id })
-      .from(indexes)
-      .innerJoin(indexMembers, and(eq(indexMembers.indexId, indexes.id), eq(indexMembers.userId, userId)))
-      .where(eq(indexes.isPersonal, true))
-      .limit(1);
-    return rows[0]?.id ?? null;
+  async getIndexById(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting index by id', { indexId });
+    return this.adapter.getIndexDetail(indexId, userId);
+  }
+
+  /**
+   * Update index settings (title, prompt, permissions). Owner-only.
+   */
+  async updateIndex(indexId: string, userId: string, data: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    logger.info('[IndexService] Updating index', { indexId, userId });
+    return this.adapter.updateIndexSettings(indexId, userId, data);
+  }
+
+  /**
+   * Update index permissions. Owner-only.
+   */
+  async updatePermissions(indexId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    logger.info('[IndexService] Updating permissions', { indexId, userId });
+    return this.adapter.updateIndexSettings(indexId, userId, data);
+  }
+
+  /**
+   * Search users within the caller's personal index members,
+   * optionally excluding existing members of a target index.
+   */
+  async searchPersonalIndexMembers(userId: string, q: string, excludeIndexId?: string) {
+    return this.adapter.searchPersonalIndexMembers(userId, q, excludeIndexId);
+  }
+
+  /**
+   * Add a member to an index. Only owners/admins can add members.
+   */
+  async addMember(indexId: string, userId: string, requestingUserId: string, role: 'admin' | 'member' = 'member') {
+    logger.info('[IndexService] Adding member', { indexId, userId, role });
+    return this.adapter.addMemberForOwnerOrAdmin(indexId, userId, requestingUserId, role);
+  }
+
+  /**
+   * Remove a member from an index. Owner-only.
+   */
+  async removeMember(indexId: string, memberId: string, userId: string) {
+    logger.info('[IndexService] Removing member', { indexId, memberId, userId });
+    return this.adapter.removeMemberForOwner(indexId, memberId, userId);
+  }
+
+  /**
+   * Soft-delete an index. Owner-only.
+   */
+  async deleteIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Deleting index', { indexId, userId });
+    return this.adapter.deleteIndexForOwner(indexId, userId);
+  }
+
+  /**
+   * Get members of an index. Only owners can call this.
+   */
+  async getMembersForOwner(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting members for owner', { indexId, userId });
+    const raw = await this.adapter.getIndexMembersForOwner(indexId, userId);
+    return raw.map(m => ({
+      id: m.userId,
+      name: m.name,
+      email: m.email,
+      avatar: m.avatar,
+      permissions: m.permissions,
+      createdAt: m.joinedAt,
+    }));
+  }
+
+  /**
+   * Get public indexes that the user has not joined (for discovery).
+   */
+  async getPublicIndexes(userId: string) {
+    logger.info('[IndexService] Getting public indexes for user', { userId });
+    return this.adapter.getPublicIndexesNotJoined(userId);
+  }
+
+  /**
+   * Join a public index.
+   */
+  async joinPublicIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Joining public index', { indexId, userId });
+    await this.adapter.joinPublicIndex(indexId, userId);
+    return this.adapter.getIndexDetail(indexId, userId);
+  }
+
+  /**
+   * Leave an index. Members (non-owners) can leave.
+   */
+  async leaveIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Leaving index', { indexId, userId });
+    await this.adapter.leaveIndex(indexId, userId);
+  }
+
+  /**
+   * Get current user's member settings (permissions and ownership status).
+   */
+  async getMemberSettings(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting member settings', { indexId, userId });
+    const settings = await this.adapter.getMemberSettings(indexId, userId);
+    if (!settings) {
+      throw new Error('Not a member of this index');
+    }
+    return settings;
+  }
+
+  /**
+   * Get current user's intents in an index. Members only.
+   */
+  async getMyIntentsInIndex(indexId: string, userId: string) {
+    logger.info('[IndexService] Getting my intents in index', { indexId, userId });
+    return this.adapter.getIndexIntentsForMember(indexId, userId);
   }
 }
 

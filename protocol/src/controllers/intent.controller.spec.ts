@@ -4,11 +4,8 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { IntentController } from "./intent.controller";
-import { IntentDatabaseAdapter } from "../adapters/database.adapter";
+import { IntentDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // IntentDatabaseAdapter Integration Tests
@@ -16,47 +13,34 @@ import { eq } from 'drizzle-orm';
 
 describe("IntentDatabaseAdapter Integration", () => {
   let adapter: IntentDatabaseAdapter;
+  const userAdapter = new UserDatabaseAdapter();
   let testUserId: string;
   let testIntentId: string;
   const testEmail = `test-intent-adapter-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Setup: Create test user
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmail))
-      .limit(1);
-
-    if (existingUser.length > 0) {
-      // Clean up intents first
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, existingUser[0].id));
-      await db.delete(schema.users)
-        .where(eq(schema.users.email, testEmail));
+    adapter = new IntentDatabaseAdapter();
+    const existingUser = await userAdapter.findByEmail(testEmail);
+    if (existingUser) {
+      await adapter.deleteByUserId(existingUser.id);
+      await userAdapter.deleteByEmail(testEmail);
     }
 
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmail,
       name: "Test Intent Adapter User",
       privyId: `privy:intent-adapter:${Date.now()}`,
       intro: "Test user for intent adapter tests",
       location: "Test City",
-    }).returning();
-
+    });
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
-
-    adapter = new IntentDatabaseAdapter();
   });
 
   afterAll(async () => {
-    // Cleanup: Remove test data
     if (testUserId) {
-      // Delete intents first (foreign key constraint)
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, testUserId));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserId));
+      await adapter.deleteByUserId(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
   });
 
@@ -134,13 +118,9 @@ describe("IntentDatabaseAdapter Integration", () => {
     expect(activeIntents.length).toBe(0);
 
     // Verify the intent still exists but has archivedAt set
-    const archivedIntent = await db.select()
-      .from(schema.intents)
-      .where(eq(schema.intents.id, testIntentId))
-      .limit(1);
-
-    expect(archivedIntent.length).toBe(1);
-    expect(archivedIntent[0].archivedAt).not.toBeNull();
+    const archivedIntent = await adapter.getIntentById(testIntentId, testUserId);
+    expect(archivedIntent).not.toBeNull();
+    expect(archivedIntent!.archivedAt).not.toBeNull();
   });
 
   test("archiveIntent should return error for non-existent intent", async () => {
@@ -157,44 +137,34 @@ describe("IntentDatabaseAdapter Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("IntentController Integration", () => {
-  let controller: IntentController;
+  const controller = new IntentController();
+  const userAdapter = new UserDatabaseAdapter();
+  const intentAdapter = new IntentDatabaseAdapter();
+  const profileAdapter = new ProfileDatabaseAdapter();
   let testUserId: string;
+  let testIntentId: string;
   const testEmail = `test-intent-controller-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Setup: Create test user with profile (required for process)
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmail))
-      .limit(1);
-
-    if (existingUser.length > 0) {
-      // Clean up related data first
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, existingUser[0].id));
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, existingUser[0].id));
-      await db.delete(schema.users)
-        .where(eq(schema.users.email, testEmail));
+    const existingUser = await userAdapter.findByEmail(testEmail);
+    if (existingUser) {
+      await intentAdapter.deleteByUserId(existingUser.id);
+      await profileAdapter.deleteProfile(existingUser.id);
+      await userAdapter.deleteByEmail(testEmail);
     }
 
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmail,
       name: "Test Intent Controller User",
       privyId: `privy:intent-ctrl:${Date.now()}`,
       intro: "A software engineer interested in AI and distributed systems",
       location: "San Francisco, CA",
-      socials: {
-        x: "https://x.com/testintent",
-        github: "https://github.com/testintent",
-      }
-    }).returning();
-
+      socials: { x: "https://x.com/testintent", github: "https://github.com/testintent" },
+    });
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
 
-    // Create a profile for the user (required for process endpoint)
-    await db.insert(schema.userProfiles).values({
+    await profileAdapter.saveProfile(testUserId, {
       userId: testUserId,
       identity: {
         name: "Test Intent Controller User",
@@ -208,22 +178,74 @@ describe("IntentController Integration", () => {
         interests: ["AI", "distributed systems", "machine learning"],
         skills: ["Python", "TypeScript", "Go"],
       },
+      embedding: null,
     });
 
-    controller = new IntentController();
+    const created = await intentAdapter.createIntent({
+      userId: testUserId,
+      payload: "Intent for controller list/getById tests",
+      summary: "Test intent",
+    });
+    testIntentId = created.id;
   });
 
   afterAll(async () => {
-    // Cleanup
     if (testUserId) {
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, testUserId));
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, testUserId));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserId));
+      await intentAdapter.deleteByUserId(testUserId);
+      await profileAdapter.deleteProfile(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
-    await closeDb();
+  });
+
+  const mockUser = (): AuthenticatedUser => ({
+    id: testUserId,
+    privyId: `privy:intent-ctrl:${Date.now()}`,
+    email: testEmail,
+    name: "Test Intent Controller User",
+  });
+
+  test("list should return 200 with intents and pagination", async () => {
+    const req = new Request("http://localhost/intents/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: 1, limit: 10 }),
+    });
+    const res = await controller.list(req, mockUser());
+    const data = (await res.json()) as { intents?: unknown[]; pagination?: unknown };
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(data.intents)).toBe(true);
+    expect(data.pagination).toBeDefined();
+    expect(data.intents!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("getById should return 404 when intent not found", async () => {
+    const req = new Request("http://localhost/intents/00000000-0000-0000-0000-000000000000");
+    const res = await controller.getById(req, mockUser(), { id: "00000000-0000-0000-0000-000000000000" });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(404);
+    expect(data.error).toBe("Intent not found");
+  });
+
+  test("getById should return 200 and intent when found", async () => {
+    const req = new Request("http://localhost/intents/" + testIntentId);
+    const res = await controller.getById(req, mockUser(), { id: testIntentId });
+    const data = (await res.json()) as { intent?: { id: string; payload: string } };
+
+    expect(res.status).toBe(200);
+    expect(data.intent).toBeDefined();
+    expect(data.intent!.id).toBe(testIntentId);
+    expect(data.intent!.payload).toBe("Intent for controller list/getById tests");
+  });
+
+  test("archive should return 200 when intent exists", async () => {
+    const req = new Request("http://localhost/intents/" + testIntentId + "/archive", { method: "PATCH" });
+    const res = await controller.archive(req, mockUser(), { id: testIntentId });
+    const data = (await res.json()) as { success?: boolean };
+
+    expect(res.status).toBe(200);
+    expect(data.success).toBe(true);
   });
 
   test("process should handle explicit intent content", async () => {
@@ -290,42 +312,32 @@ describe("IntentController Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("IntentController Edge Cases", () => {
-  let controller: IntentController;
+  const controller = new IntentController();
+  const userAdapter = new UserDatabaseAdapter();
+  const intentAdapter = new IntentDatabaseAdapter();
   let testUserIdNoProfile: string;
   const testEmailNoProfile = `test-intent-no-profile-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Setup: Create test user WITHOUT profile
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmailNoProfile))
-      .limit(1);
-
-    if (existingUser.length > 0) {
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, existingUser[0].id));
-      await db.delete(schema.users)
-        .where(eq(schema.users.email, testEmailNoProfile));
+    const existingUser = await userAdapter.findByEmail(testEmailNoProfile);
+    if (existingUser) {
+      await intentAdapter.deleteByUserId(existingUser.id);
+      await userAdapter.deleteByEmail(testEmailNoProfile);
     }
 
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmailNoProfile,
       name: "Test No Profile User",
       privyId: `privy:intent-noprofile:${Date.now()}`,
-    }).returning();
-
+    });
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
-
-    controller = new IntentController();
   });
 
   afterAll(async () => {
     if (testUserIdNoProfile) {
-      await db.delete(schema.intents)
-        .where(eq(schema.intents.userId, testUserIdNoProfile));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserIdNoProfile));
+      await intentAdapter.deleteByUserId(testUserIdNoProfile);
+      await userAdapter.deleteById(testUserIdNoProfile);
     }
   });
 

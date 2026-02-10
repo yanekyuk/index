@@ -1,8 +1,6 @@
-import { useAuthenticatedAPI } from '../lib/api';
-import { useMemo } from 'react';
 import { User, APIResponse } from '../lib/types';
 
-export const createUsersService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
+export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get user profile by ID
   getUserProfile: async (userId: string): Promise<User> => {
     const response = await api.get<APIResponse<User>>(`/users/${userId}`);
@@ -12,9 +10,3 @@ export const createUsersService = (api: ReturnType<typeof useAuthenticatedAPI>) 
     return response.user;
   },
 });
-
-export function useUsersService() {
-  const api = useAuthenticatedAPI();
-  return useMemo(() => createUsersService(api), [api]);
-}
-

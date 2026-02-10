@@ -1,16 +1,20 @@
 import { ChatController } from './controllers/chat.controller';
 import { IndexController } from './controllers/index.controller';
 import { IntentController } from './controllers/intent.controller';
+import { FileController } from './controllers/file.controller';
+import { LinkController } from './controllers/link.controller';
 import { OpportunityController, IndexOpportunityController } from './controllers/opportunity.controller';
 import { ChatDatabaseAdapter } from './adapters/database.adapter';
 import type { OpportunityControllerDatabase } from './lib/protocol/interfaces/database.interface';
+import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
+import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 
-const PORT = 3003;
-const GLOBAL_PREFIX = '/v2';
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+const GLOBAL_PREFIX = '/api';
 
 const logger = log.server.from("main");
 
@@ -31,20 +35,24 @@ function matchPath(pattern: string, pathname: string): Record<string, string> | 
   return params;
 }
 
-logger.info('Initializing V2 Server...');
+logger.info('Initializing Server...');
 
 // Manually instantiate controllers if needed, or just let strict import handle registration (depends on how decorator works vs instantiation).
 // The decorators run when the class is defined (imported).
 // However, to invoke methods, we need instances.
 const controllerInstances = new Map();
+controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
+controllerInstances.set(FileController, new FileController());
+controllerInstances.set(LinkController, new LinkController());
 const opportunityDb: OpportunityControllerDatabase = new ChatDatabaseAdapter() as OpportunityControllerDatabase;
-controllerInstances.set(OpportunityController, new OpportunityController(opportunityDb));
-controllerInstances.set(IndexOpportunityController, new IndexOpportunityController(opportunityDb));
+controllerInstances.set(OpportunityController, new OpportunityController());
+controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController());
+controllerInstances.set(UserController, new UserController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
@@ -56,14 +64,25 @@ Bun.serve({
     const url = new URL(req.url);
     const method = req.method;
 
-    // CORS headers for cross-origin requests
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': process.env.FRONTEND_URL || '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    // CORS: allow explicit FRONTEND_URL, or reflect Origin for localhost/127.0.0.1 (so both work), else *
+    const origin = req.headers.get('Origin') ?? '';
+    const allowOrigin =
+      process.env.FRONTEND_URL ||
+      (origin && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) ? origin : null) ||
+      '*';
+
+    const corsHeaders: Record<string, string> = {
+      'Access-Control-Allow-Origin': allowOrigin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept',
       'Access-Control-Expose-Headers': 'X-Session-Id',
       'Access-Control-Max-Age': '86400',
     };
+
+    // If we reflected a specific origin, allow credentials (cookies/auth headers)
+    if (allowOrigin !== '*') {
+      corsHeaders['Access-Control-Allow-Credentials'] = 'true';
+    }
 
     logger.info('Request', { method, path: url.pathname });
 
@@ -72,8 +91,20 @@ Bun.serve({
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
+    // Health check endpoint
+    if (url.pathname === '/health') {
+      return Response.json(
+        {
+          status: 'ok',
+          timestamp: new Date().toISOString(),
+          service: 'protocol-v2',
+        },
+        { headers: corsHeaders }
+      );
+    }
+
     // Iterate over controllers and routes to find a match.
-    // Optimization: could pre-compile regular expressions or a router map.
+    // Optimization: could pre-compile regex or a router map.
     // For now, simple iteration is fine for small number of routes.
 
     for (const [target, controllerDef] of RouteRegistry.getControllers()) {
@@ -162,4 +193,4 @@ Bun.serve({
   },
 });
 
-logger.info('V2 Server running', { port: PORT });
+logger.info('Server running', { port: PORT });

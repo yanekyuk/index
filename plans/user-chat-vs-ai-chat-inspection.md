@@ -1,5 +1,7 @@
 # User-to-User Chat vs AI Chat: Implementation Inspection
 
+**Status:** Inspection / reference. Describes current implementation differences.
+
 ## Overview
 
 User-to-user chat and AI chat are implemented differently in terms of:
@@ -47,7 +49,7 @@ User-to-user chat and AI chat are implemented differently in terms of:
 - **LangGraph** – `ChatGraphFactory` orchestrates intent, profile, opportunity subgraphs
 - **Sessions** – Stored in `chat_sessions` with optional title
 - **Messages** – Stored in `chat_messages` (user/assistant)
-- **API** – `POST /v2/chat/stream` (SSE), session/title CRUD
+- **API** – `POST /chat/stream` (SSE), session/title CRUD
 
 ---
 

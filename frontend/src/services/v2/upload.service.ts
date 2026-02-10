@@ -2,14 +2,14 @@ import { useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { FileRecord } from '../../types';
 
-const V2_BASE = process.env.NEXT_PUBLIC_API_URL_V2 ?? '';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 async function v2Fetch(
   path: string,
   options: RequestInit & { accessToken: string }
 ): Promise<Response> {
   const { accessToken, ...init } = options;
-  const url = `${V2_BASE}${path}`;
+  const url = `${API_BASE_URL}${path}`;
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -33,7 +33,7 @@ export const createUploadServiceV2 = (getAccessToken: () => Promise<string | nul
     const formData = new FormData();
     formData.append('file', file);
 
-    const res = await v2Fetch('/v2/uploads', {
+    const res = await v2Fetch('/uploads', {
       method: 'POST',
       body: formData,
       accessToken: token,
@@ -59,7 +59,7 @@ export const createUploadServiceV2 = (getAccessToken: () => Promise<string | nul
     if (!token) throw new Error('Not authenticated');
 
     const res = await v2Fetch(
-      `/v2/uploads?page=${page}&limit=${limit}`,
+      `/uploads?page=${page}&limit=${limit}`,
       { method: 'GET', accessToken: token }
     );
 

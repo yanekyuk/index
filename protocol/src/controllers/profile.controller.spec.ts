@@ -5,49 +5,38 @@ config({ path: '.env.test' });
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ProfileController } from "./profile.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+import { UserDatabaseAdapter, ProfileDatabaseAdapter } from "../adapters/database.adapter";
 
 // Integration test suite for ProfileController using actual DB
 describe("ProfileController Integration", () => {
-  let controller: ProfileController;
+  const controller = new ProfileController();
+  const userAdapter = new UserDatabaseAdapter();
+  const profileAdapter = new ProfileDatabaseAdapter();
   let testUserId: string;
 
   beforeAll(async () => {
-    // Setup - Ensure we are in a clean state (cleanup if previous run failed)
     const email = "test-profile-controller@example.com";
 
-    // Check if user exists, if so delete to start fresh
-    const existingUser = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
-
-    if (existingUser.length > 0) {
-      await db.delete(schema.users).where(eq(schema.users.email, email));
+    const existingUser = await userAdapter.findByEmail(email);
+    if (existingUser) {
+      await userAdapter.deleteByEmail(email);
     }
 
-    // Create a real user in the DB
-    const [user] = await db.insert(schema.users).values({
-      email: email,
+    const user = await userAdapter.create({
+      email,
       name: "Test Profile User",
-      privyId: `privy:${Date.now()}`, // Unique Privy ID
+      privyId: `privy:${Date.now()}`,
       intro: "An engineer interested in agents.",
       location: "San Francisco, CA",
-      socials: {
-        x: "https://x.com/test",
-      }
-    }).returning();
-
+      socials: { x: "https://x.com/test" },
+    });
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
-
-    // Initialize controller
-    controller = new ProfileController();
   });
 
   afterAll(async () => {
-    // Cleanup
     if (testUserId) {
-      await db.delete(schema.users).where(eq(schema.users.id, testUserId));
+      await userAdapter.deleteById(testUserId);
     }
     // Do not close db: other integration specs may run in the same process.
   });
@@ -72,14 +61,14 @@ describe("ProfileController Integration", () => {
     console.log("Sync result:", result);
 
     // 2. Verify DB state - Profile should be created
-    const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, testUserId));
+    const profile = await profileAdapter.getProfileRow(testUserId);
 
-    expect(profile.length).toBe(1);
-    expect(profile[0].identity?.name).toBeDefined();
-    expect(profile[0].embedding).not.toBeNull();
+    expect(profile).not.toBeNull();
+    expect(profile!.identity?.name).toBeDefined();
+    expect(profile!.embedding).not.toBeNull();
     // Verify HyDE
-    expect(profile[0].hydeDescription).not.toBeNull();
-    expect(profile[0].hydeEmbedding).not.toBeNull();
+    expect(profile!.hydeDescription).not.toBeNull();
+    expect(profile!.hydeEmbedding).not.toBeNull();
   }, 120000); // Long timeout for LLM/Scraping calls
 
   test("sync should be idempotent (second run should just verify)", async () => {
@@ -99,8 +88,8 @@ describe("ProfileController Integration", () => {
     // Though without detailed logs inspection, we mainly verify it doesn't crash 
     // and profile still exists.
 
-    const profile = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, testUserId));
-    expect(profile.length).toBe(1);
+    const profile = await profileAdapter.getProfileRow(testUserId);
+    expect(profile).not.toBeNull();
 
     // Optional: check if updatedAt changed? If it skips, it shouldn't update.
     // But graph might do slight updates.

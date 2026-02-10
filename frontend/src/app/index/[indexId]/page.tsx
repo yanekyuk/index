@@ -100,13 +100,6 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
               return;
             }
 
-            // DISABLED: Onboarding check
-            // const hasCompletedOnboarding = response.user.onboarding?.completedAt;
-            // if (!hasCompletedOnboarding) {
-            //   router.push('/onboarding');
-            //   return;
-            // }
-            
             // User is authenticated and member - go to root
             router.push('/');
           }

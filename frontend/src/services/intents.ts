@@ -70,14 +70,4 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     });
     return response;
   }
-});
-
-// Service that uses apiClient directly (for non-authenticated requests)
-export const intentsService = {
-  // No methods currently needed for non-authenticated requests
-};
-
-// Hook for using intents service with proper error handling
-export function useIntentsService() {
-  return createIntentsService;
-} 
+}); 

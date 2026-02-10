@@ -4,11 +4,9 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ChatController } from "./chat.controller";
-import { ChatDatabaseAdapter } from "../adapters/database.adapter";
+import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, IndexGraphDatabaseAdapter } from "../adapters/database.adapter";
+import { chatSessionService } from "../services/chat.service";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
 
 // Response type for chat controller
 interface ChatResponse {
@@ -21,79 +19,65 @@ interface ChatResponse {
 // Integration test suite for ChatController using actual DB
 describe("ChatController Integration", () => {
   let controller: ChatController;
+  const userAdapter = new UserDatabaseAdapter();
+  const profileAdapter = new ProfileDatabaseAdapter();
+  const intentAdapter = new IntentDatabaseAdapter();
+  const indexAdapter = new IndexGraphDatabaseAdapter();
   let testUserId: string;
   /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
   let testIndexIdOther: string | null = null;
 
   beforeAll(async () => {
-    // Setup - Ensure we are in a clean state (cleanup if previous run failed)
     const email = "test-chat-controller@example.com";
 
-    // Check if user exists, if so delete to start fresh
-    const existingUser = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
-
-    if (existingUser.length > 0) {
-      // Clean up any intents first
-      await db.delete(schema.intents).where(eq(schema.intents.userId, existingUser[0].id));
-      await db.delete(schema.users).where(eq(schema.users.email, email));
+    const existingUser = await userAdapter.findByEmail(email);
+    if (existingUser) {
+      await intentAdapter.deleteByUserId(existingUser.id);
+      await userAdapter.deleteByEmail(email);
     }
 
-    // Create a real user in the DB
-    const [user] = await db.insert(schema.users).values({
-      email: email,
+    const user = await userAdapter.create({
+      email,
       name: "Test Chat User",
-      privyId: `privy:chat:${Date.now()}`, // Unique Privy ID
+      privyId: `privy:chat:${Date.now()}`,
       intro: "A software developer interested in AI and distributed systems.",
       location: "New York, NY",
-      socials: {
-        x: "https://x.com/testchat",
-      }
-    }).returning();
-
+      socials: { x: "https://x.com/testchat" },
+    });
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
 
-    // Create a user profile for the test user
-    await db.insert(schema.userProfiles).values({
+    await profileAdapter.saveProfile(testUserId, {
       userId: testUserId,
       identity: {
         name: "Test Chat User",
         bio: "A software developer interested in AI and distributed systems.",
-        location: "New York, NY"
+        location: "New York, NY",
       },
       narrative: {
-        context: "Software developer with 5 years of experience, building AI-powered applications"
+        context: "Software developer with 5 years of experience, building AI-powered applications",
       },
       attributes: {
         skills: ["TypeScript", "Python", "Machine Learning"],
-        interests: ["AI", "Distributed Systems", "Open Source"]
+        interests: ["AI", "Distributed Systems", "Open Source"],
       },
-      embedding: Array(2000).fill(0.01) // Placeholder embedding
+      embedding: Array(2000).fill(0.01) as number[],
     });
-
     console.log(`Created test user profile for: ${testUserId}`);
 
-    // Initialize controller
     controller = new ChatController();
   });
 
   afterAll(async () => {
-    // Clean up indexes created for getIntentsInIndexForMember tests
     for (const indexId of [testIndexId, testIndexIdOther]) {
-      if (indexId) {
-        await db.delete(schema.intentIndexes).where(eq(schema.intentIndexes.indexId, indexId));
-        await db.delete(schema.indexMembers).where(eq(schema.indexMembers.indexId, indexId));
-        await db.delete(schema.indexes).where(eq(schema.indexes.id, indexId));
-      }
+      if (indexId) await indexAdapter.deleteIndexAndMembers(indexId);
     }
     if (testUserId) {
-      // Clean up intents first
-      await db.delete(schema.intents).where(eq(schema.intents.userId, testUserId));
-      // Clean up user (cascading delete should handle profile)
-      await db.delete(schema.users).where(eq(schema.users.id, testUserId));
+      await intentAdapter.deleteByUserId(testUserId);
+      await profileAdapter.deleteProfile(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
-    // Do not close db here: other integration specs (profile, opportunity) run in the same process and need the pool.
   });
 
   describe("ChatDatabaseAdapter", () => {
@@ -203,19 +187,13 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
-      const [index] = await db.insert(schema.indexes).values({
+      const index = await adapter.createIndex({
         title: "Open Mock Network",
         prompt: "Test index for chat adapter",
-      }).returning({ id: schema.indexes.id });
-      if (!index) throw new Error("Failed to create index");
+      });
       testIndexId = index.id;
 
-      await db.insert(schema.indexMembers).values({
-        indexId: testIndexId,
-        userId: testUserId,
-        permissions: [],
-        autoAssign: false,
-      });
+      await adapter.addMemberToIndex(testIndexId, testUserId, 'member');
 
       // Ensure we have an active intent to assign (previous test may have archived the one it created)
       let activeIntents = await adapter.getActiveIntents(testUserId);
@@ -247,11 +225,10 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return empty when user is not a member of the index", async () => {
-      const [index] = await db.insert(schema.indexes).values({
+      const index = await adapter.createIndex({
         title: "Other Index User Not In",
         prompt: "Index without test user",
-      }).returning({ id: schema.indexes.id });
-      if (!index) throw new Error("Failed to create index");
+      });
       testIndexIdOther = index.id;
 
       const intents = await adapter.getIntentsInIndexForMember(testUserId, "Other Index User Not In");
@@ -417,5 +394,167 @@ describe("ChatController Integration", () => {
         expect(intent.payload.toLowerCase()).not.toContain("more details at");
       }
     }, 120000); // Long timeout for LLM + scraping
+  });
+
+  describe("ChatController other endpoints", () => {
+    const mockUser = (): AuthenticatedUser => ({
+      id: testUserId,
+      privyId: `privy:chat:${Date.now()}`,
+      email: "test-chat-controller@example.com",
+      name: "Test Chat User",
+    });
+
+    test("token should return 200 with token when Stream env is set", async () => {
+      const req = new Request("http://localhost/chat/token", { method: "POST" });
+      const res = await controller.token(req, mockUser());
+      const data = (await res.json()) as { token?: string; error?: string };
+
+      if (res.status === 200) {
+        expect(data.token).toBeDefined();
+        expect(typeof data.token).toBe("string");
+      } else {
+        expect([500, 503]).toContain(res.status);
+        expect(data.error ?? (data as any).message).toBeDefined();
+      }
+    });
+
+    test("messageStream should return 400 when message is missing", async () => {
+      const req = new Request("http://localhost/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await controller.messageStream(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toBeDefined();
+    });
+
+    test("getSessions should return 200 with sessions array", async () => {
+      const req = new Request("http://localhost/chat/sessions");
+      const res = await controller.getSessions(req, mockUser());
+      const data = (await res.json()) as { sessions?: unknown[] };
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(data.sessions)).toBe(true);
+    });
+
+    test("getSession should return 400 when sessionId is missing", async () => {
+      const req = new Request("http://localhost/chat/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await controller.getSession(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toContain("sessionId");
+    });
+
+    test("getSession should return 404 when session not found", async () => {
+      const req = new Request("http://localhost/chat/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "00000000-0000-0000-0000-000000000000" }),
+      });
+      const res = await controller.getSession(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(404);
+      expect(data.error).toBe("Session not found");
+    });
+
+    test("getSession should return 200 with session and messages when found", async () => {
+      const sessionId = await chatSessionService.createSession(testUserId, "Session for get test");
+      const req = new Request("http://localhost/chat/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const res = await controller.getSession(req, mockUser());
+      const data = (await res.json()) as { session?: { id: string }; messages?: unknown[] };
+
+      expect(res.status).toBe(200);
+      expect(data.session).toBeDefined();
+      expect(data.session!.id).toBe(sessionId);
+      expect(Array.isArray(data.messages)).toBe(true);
+    });
+
+    test("deleteSession should return 400 when sessionId is missing", async () => {
+      const req = new Request("http://localhost/chat/session/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await controller.deleteSession(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toContain("sessionId");
+    });
+
+    test("deleteSession should return 404 when session not found", async () => {
+      const req = new Request("http://localhost/chat/session/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "00000000-0000-0000-0000-000000000000" }),
+      });
+      const res = await controller.deleteSession(req, mockUser());
+      expect(res.status).toBe(404);
+    });
+
+    test("deleteSession should return 200 when session deleted", async () => {
+      const sessionId = await chatSessionService.createSession(testUserId, "Session to delete");
+      const req = new Request("http://localhost/chat/session/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const res = await controller.deleteSession(req, mockUser());
+      const data = (await res.json()) as { success?: boolean };
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+
+    test("updateSessionTitle should return 400 when sessionId or title missing", async () => {
+      const req = new Request("http://localhost/chat/session/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const res = await controller.updateSessionTitle(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(400);
+      expect(data.error).toContain("sessionId and title");
+    });
+
+    test("updateSessionTitle should return 404 when session not found", async () => {
+      const req = new Request("http://localhost/chat/session/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "00000000-0000-0000-0000-000000000000", title: "New Title" }),
+      });
+      const res = await controller.updateSessionTitle(req, mockUser());
+      expect(res.status).toBe(404);
+    });
+
+    test("updateSessionTitle should return 200 when updated", async () => {
+      const sessionId = await chatSessionService.createSession(testUserId, "Original Title");
+      const req = new Request("http://localhost/chat/session/title", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, title: "Updated Title" }),
+      });
+      const res = await controller.updateSessionTitle(req, mockUser());
+      const data = (await res.json()) as { success?: boolean; title?: string };
+
+      expect(res.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(data.title).toBe("Updated Title");
+    });
   });
 });

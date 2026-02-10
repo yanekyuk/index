@@ -8,7 +8,7 @@ import { MentionsTextInput } from '@/components/MentionsInput';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useUploadServiceV2 } from '@/services/v2/upload.service';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useConnections, useSynthesis, useDiscover } from '@/contexts/APIContext';
+import { useConnections, useSynthesis } from '@/contexts/APIContext';
 import { validateFiles } from '@/lib/file-validation';
 import ThinkingDropdown from '@/components/chat/ThinkingDropdown';
 import InlineDiscoveryCard from '@/components/chat/InlineDiscoveryCard';
@@ -289,7 +289,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
-  const discoverService = useDiscover();
   
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
@@ -376,37 +375,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       setSynthesisLoading(prev => ({ ...prev, [targetUserId]: false }));
     }
   }, [synthesisService]);
-
-  const fetchDiscovery = useCallback(async () => {
-    try {
-      const discoverData = await discoverService.discoverUsers({
-        excludeDiscovered: true,
-        limit: 8
-      });
-
-      const transformedStakesData: StakesByUserResponse[] = (discoverData?.results || []).map(result => ({
-        user: { id: result.user.id, name: result.user.name, avatar: result.user.avatar || '' },
-        intents: (result.intents || []).map(stake => ({
-          intent: { id: stake.intent.id, summary: stake.intent.summary, payload: stake.intent.payload, updatedAt: stake.intent.createdAt },
-          totalStake: String(stake.totalStake),
-          agents: []
-        }))
-      }));
-
-      setDiscoverStakes(transformedStakesData);
-      transformedStakesData.forEach(stake => fetchSynthesis(stake.user.id));
-    } catch (error) {
-      console.error('Error fetching discovery:', error);
-    } finally {
-      setDiscoveryLoading(false);
-    }
-  }, [discoverService, fetchSynthesis]);
-
-  useEffect(() => {
-    if (!USE_STATIC_HOME_DISCOVERY && sessionLoaded && messages.length === 0 && !sessionIdFromUrl) {
-      fetchDiscovery();
-    }
-  }, [sessionLoaded, messages.length, sessionIdFromUrl, fetchDiscovery]);
 
   const handleConnectionAction = useCallback(async (action: ConnectionAction, userId: string) => {
     try {

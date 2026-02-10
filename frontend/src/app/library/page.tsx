@@ -118,8 +118,15 @@ export default function LibraryPage() {
   const loadIntents = useCallback(async () => {
     try {
       setLoadingIntents(true);
-      const res = await api.get<{ intents?: LibrarySourceIntent[] }>('/intents/library');
-      setIntents(res.intents ?? []);
+      const res = await api.post<{ intents?: LibrarySourceIntent[] }>('/intents/list', { page: 1, limit: 100 });
+      setIntents((res.intents ?? []).map(i => ({
+        ...i,
+        sourceType: (i as any).sourceType ?? 'file',
+        sourceId: (i as any).sourceId ?? '',
+        sourceName: (i as any).sourceName ?? '',
+        sourceValue: (i as any).sourceValue ?? null,
+        sourceMeta: (i as any).sourceMeta ?? null,
+      })));
     } catch {
       setIntents([]);
     } finally {

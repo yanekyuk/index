@@ -70,6 +70,46 @@ export interface ValidationResult {
   message?: string;
 }
 
+// ----- Helper Functions -----
+
+/**
+ * Extract file extension from filename
+ */
+export function getFileExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot !== -1 ? filename.slice(lastDot) : '';
+}
+
+export function formatFileSize(bytes: number): string {
+  // Simple file size formatting without external dependency
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * Get file category badge for supported file types
+ */
+export function getFileCategoryBadge(filename: string, mimetype?: string): string {
+  const ext = getFileExtension(filename).toLowerCase();
+  
+  if (ext === '.pdf') return 'PDF';
+  if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
+  if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'SHEET';
+  if (['.ppt', '.pptx', '.key'].includes(ext)) return 'SLIDE';
+  if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.tiff', '.tif', '.heic'].includes(ext)) return 'IMG';
+  if (['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.css', '.js', '.ts', '.py', '.xml'].includes(ext)) return 'TXT';
+  
+  if (mimetype) {
+    if (mimetype.includes('pdf')) return 'PDF';
+    if (mimetype.startsWith('image/')) return 'IMG';
+  }
+  
+  return 'FILE';
+}
+
 // ----- Browser-Native Validation Functions -----
 
 export function validateFileType(file: File, uploadType: UploadType = 'general'): ValidationResult {
@@ -187,100 +227,3 @@ export function validateFiles(files: File[], uploadType: UploadType = 'general')
 
   return { isValid: true };
 }
-
-// ----- Helper Functions -----
-
-export function formatFileSize(bytes: number): string {
-  // Simple file size formatting without external dependency
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-export function getSupportedFileExtensions(uploadType: UploadType = 'general'): string {
-  return uploadType === 'avatar' 
-    ? Object.keys(SUPPORTED_FILE_TYPES.IMAGES).join(',')
-    : Object.keys(GENERAL_ALLOWED_TYPES).join(',');
-}
-
-export function getSupportedFileTypesDisplayText(uploadType: UploadType = 'general'): string {
-  if (uploadType === 'avatar') {
-    const extensions = Object.keys(SUPPORTED_FILE_TYPES.IMAGES)
-      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase
-      .join(', ');
-    return `Supported image files: ${extensions}`;
-  } else {
-    const extensions = Object.keys(GENERAL_ALLOWED_TYPES)
-      .map(ext => ext.toUpperCase().slice(1)) // Remove dot and uppercase  
-      .join(', ');
-    return `Supported files: ${extensions}`;
-  }
-}
-
-/**
- * Extract file extension from filename
- */
-export function getFileExtension(filename: string): string {
-  const lastDot = filename.lastIndexOf('.');
-  return lastDot !== -1 ? filename.slice(lastDot) : '';
-}
-
-/**
- * Get file category badge for supported file types
- */
-export function getFileCategoryBadge(filename: string, mimetype?: string): string {
-  const ext = getFileExtension(filename).toLowerCase();
-  
-  if (ext === '.pdf') return 'PDF';
-  if (['.doc', '.docx', '.rtf', '.odt'].includes(ext)) return 'DOC';
-  if (['.xls', '.xlsx', '.csv'].includes(ext)) return 'SHEET';
-  if (['.ppt', '.pptx', '.key'].includes(ext)) return 'SLIDE';
-  if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.tiff', '.tif', '.heic'].includes(ext)) return 'IMG';
-  if (['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.css', '.js', '.ts', '.py', '.xml'].includes(ext)) return 'TXT';
-  
-  if (mimetype) {
-    if (mimetype.includes('pdf')) return 'PDF';
-    if (mimetype.startsWith('image/')) return 'IMG';
-  }
-  
-  return 'FILE';
-}
-
-/**
- * Check if a file path has a supported extension
- */
-export function isFileExtensionSupported(filePath: string, uploadType: UploadType = 'general'): boolean {
-  const ext = getFileExtension(filePath).toLowerCase();
-  
-  if (uploadType === 'avatar') {
-    return ext in SUPPORTED_FILE_TYPES.IMAGES;
-  } else {
-    return ext in GENERAL_ALLOWED_TYPES;
-  }
-}
-
-/**
- * Get MIME types for a file extension
- */
-export function getMimeTypesForExtension(extension: string): readonly string[] {
-  const ext = extension.toLowerCase();
-  return GENERAL_ALLOWED_TYPES[ext as keyof typeof GENERAL_ALLOWED_TYPES] || [];
-}
-
-/**
- * Get the primary MIME type for a file extension (first in the array)
- * @deprecated Use getMimeTypesForExtension instead for better accuracy
- */
-export function getMimeTypeForExtension(extension: string): string | null {
-  const mimeTypes = getMimeTypesForExtension(extension);
-  return mimeTypes.length > 0 ? mimeTypes[0] : null;
-}
-
-/**
- * Extensions that can be read as plain text when Unstructured API fails
- */
-export const FALLBACK_TEXT_EXTENSIONS = [
-  '.txt', '.md', '.json', '.csv', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yml', '.yaml', '.eml', '.msg'
-] as const;

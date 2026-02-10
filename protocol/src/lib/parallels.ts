@@ -201,7 +201,7 @@ Rooted in curiosity for how people organize, with a background in systems resear
 Shaped by years in distributed systems and cryptography, with work spanning secure tools and open communities. Interests orbit around privacy, identity, and trust in messy, real-world environments. Now experimenting with intent-sharing models that protect the humans behind the data while keeping collaboration joyful.
 
 **Example 3**  
-Blends storytelling, design, and community education into a single thread focused on helping groups express what matters. Energized by participatory processes and narrative-driven decision-making. Currently developing tools that nurture shared meaning and healthier digital spaces.
+Blends storytelling, design, and community education into a single thread focused on helping groups convey what matters. Energized by participatory processes and narrative-driven decision-making. Currently developing tools that nurture shared meaning and healthier digital spaces.
 
 **Example 4**  
 Starting from mathematics and machine learning research, with a growing fascination for small agent ecosystems and emergent behavior. Passion lies in understanding how attention, incentives, and coordination shape complex networks. Now exploring playful experiments where autonomous agents learn from each other in constrained environments.
@@ -230,7 +230,7 @@ Rules:
 
 EXPLICIT (directly stated) → preserve core statement but add relevant context to make it self-contained
 
-IMPLICIT (inferred) → express through topic/direction in source tone, not as role-seeking
+IMPLICIT (inferred) → convey through topic/direction in source tone, not as role-seeking
 
 Examples:
 

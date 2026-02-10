@@ -1,5 +1,5 @@
 To support the **Semantic Governance** architecture we have defined, the database schemas must move beyond simple text storage to capture **logical satisfiability**, **linguistic specificity**, and **referential links**.  
-Here is the recommended database schema design (presented in a Prisma-like syntax for readability), integrating the theoretical constraints from **Donnellan**, **Searle**, **Enç**, and **Shannon**.
+Here is the recommended database schema design (presented in a Prisma-like syntax for readability), integrating the theoretical constraints from **Donnellan**, **Searle**, **Enç**, and **Shannon**. *Note: This is a conceptual schema; the live implementation uses Drizzle ORM in `protocol/src/schemas/database.schema.ts`.*
 
 ### 1\. Active Intent Schema (The Propositional Content)
 

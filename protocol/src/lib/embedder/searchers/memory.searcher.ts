@@ -1,4 +1,4 @@
-import { VectorSearchResult, VectorStoreOption } from '../../../agents/common/types';
+import { VectorSearchResult, VectorStoreOption } from '../embedder.types';
 
 /**
  * Calculates Cosine Similarity between two vectors.

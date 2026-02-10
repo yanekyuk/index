@@ -17,13 +17,6 @@ interface MessageRequest {
   createdAt: string;
 }
 
-interface CanMessageResponse {
-  canMessageDirectly: boolean;
-  connectionStatus: string | null;
-  isInitiator: boolean;
-  requiresRequest: boolean;
-}
-
 interface SendMessageRequestResponse {
   channelId: string;
   pending: boolean;
@@ -39,7 +32,6 @@ interface StreamChatContextType {
   closeChat: (userId: string) => void;
   clearActiveChat: () => void;
   getOrCreateChannel: (userId: string, userName: string, userAvatar?: string) => Promise<Channel | null>;
-  checkCanMessage: (targetUserId: string) => Promise<CanMessageResponse>;
   sendMessageRequest: (targetUserId: string, message: string, targetUserName: string, targetUserAvatar?: string) => Promise<SendMessageRequestResponse>;
   respondToMessageRequest: (channelId: string, action: 'ACCEPT' | 'DECLINE' | 'SKIP') => Promise<void>;
   refreshMessageRequests: () => Promise<void>;
@@ -214,12 +206,6 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     // Previously cleared activeChatId; now a no-op
   }, []);
 
-  // Check if user can message another user directly
-  const checkCanMessage = useCallback(async (targetUserId: string): Promise<CanMessageResponse> => {
-    const response = await api.get<CanMessageResponse>(`/chat/can-message/${targetUserId}`);
-    return response;
-  }, [api]);
-
   // Send a message request (Instagram-style)
   const sendMessageRequest = useCallback(async (
     targetUserId: string, 
@@ -236,24 +222,13 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     return response;
   }, [api]);
 
-  // Fetch pending message requests
+  // Use simulated message requests (endpoint not yet implemented)
   const refreshMessageRequests = useCallback(async (): Promise<void> => {
     if (!isReady) return;
-    
     setMessageRequestsLoading(true);
-    try {
-      const response = await api.get<{ requests: MessageRequest[] }>('/chat/requests');
-      // Merge real requests with simulated ones for testing
-      const realRequests = response.requests || [];
-      setMessageRequests([...SIMULATED_MESSAGE_REQUESTS, ...realRequests]);
-    } catch (error) {
-      console.error('Failed to fetch message requests:', error);
-      // Still show simulated requests even if API fails
-      setMessageRequests(SIMULATED_MESSAGE_REQUESTS);
-    } finally {
-      setMessageRequestsLoading(false);
-    }
-  }, [api, isReady]);
+    setMessageRequests(SIMULATED_MESSAGE_REQUESTS);
+    setMessageRequestsLoading(false);
+  }, [isReady]);
 
   // Respond to a message request
   const respondToMessageRequest = useCallback(async (
@@ -293,7 +268,6 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         closeChat,
         clearActiveChat,
         getOrCreateChannel,
-        checkCanMessage,
         sendMessageRequest,
         respondToMessageRequest,
         refreshMessageRequests,

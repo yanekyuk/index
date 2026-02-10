@@ -14,10 +14,9 @@ Index Network is a private, intent-driven discovery protocol built on autonomous
 cd protocol
 
 # Development
-bun --watch src/index.ts                    # Start dev server with hot reload (Express, default)
-bun dist/index.js                           # Start production server
-bun run dev:v2                              # Start V2 dev server (Bun.serve, port 3003, hot reload)
-bun run start:v2                            # Start V2 production server
+bun run dev                                 # Start dev server with hot reload (Bun.serve, port 3001)
+bun run dev:prod                            # Start dev server in production mode
+bun run start                               # Start production server
 
 # Database (Drizzle ORM)
 bun run db:generate                         # Generate migrations after schema changes
@@ -78,10 +77,7 @@ bun install
 ```
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
-├── frontend/          # Next.js 15 App with React 19
-├── contracts/         # Smart contracts (blockchain)
-├── redis/            # Redis configuration
-└── txt/              # Documentation/knowledge base
+└── frontend/          # Next.js 15 App with React 19
 ```
 
 ### Protocol Architecture
@@ -90,9 +86,8 @@ index/
 
 **Key Directories**:
 - `src/agents/` - LangGraph-based AI agents for intent processing
-- `src/controllers/` - API controllers for the V2 server (chat, intent, opportunity, profile, upload); used with decorator-based routing in `main.ts`
+- `src/controllers/` - API controllers (chat, intent, opportunity, profile, upload); used with decorator-based routing in `main.ts`
 - `src/adapters/` - Implementations of protocol interfaces (database, embedder, cache, queue, scraper); implement interfaces from `src/lib/protocol/interfaces/`
-- `src/routes/` - Express API route handlers (used by `index.ts`); V2 API is served by `main.ts` with controllers + decorator router
 - `src/services/` - Business logic layer
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards for the decorator router (e.g. `auth.guard.ts`)
@@ -105,12 +100,9 @@ index/
 - `src/jobs/` - Scheduled cron jobs
 - `src/events/` - Event emitters for agent system
 
-### Server Entry Points
+### Server Entry Point
 
-The protocol has two entry points:
-
-- **Express (default)** — `protocol/src/index.ts`: Express app, `authenticatePrivy`, routes mounted under `/api/*`, queue workers and cron jobs registered. Started with `bun run dev` / `bun run start`.
-- **V2 (Bun.serve)** — `protocol/src/main.ts`: Bun native server on port 3003, global prefix `/v2`, controller classes registered via `RouteRegistry` (`@Controller`, `@Get`, `@Post`, etc.) in `src/lib/router/router.decorators.ts`, guards, and adapter-injected controllers (e.g. `ChatDatabaseAdapter` for opportunity controller). Started with `bun run dev:v2` / `bun run start:v2`.
+The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, controller classes registered via `RouteRegistry` (`@Controller`, `@Get`, `@Post`, etc.) in `src/lib/router/router.decorators.ts`, guards, and adapter-injected controllers (e.g. `ChatDatabaseAdapter` for opportunity controller). Started with `bun run dev` / `bun run start`.
 
 ### Agent System (LangGraph-Based)
 
@@ -202,29 +194,21 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 ### API Routes Organization
 
-**Location**: `protocol/src/routes/` for Express. V2 endpoints live under `/v2` and are defined by controller decorators (see Server Entry Points and Adapter/Controller patterns).
+**Location**: API routes are defined by controller classes using decorators in `protocol/src/controllers/`. See Server Entry Point and Adapter/Controller patterns.
 
-**Middleware Pattern**: Express routes use `authenticatePrivy` middleware which validates Privy JWT tokens and creates/updates users in DB.
+**Authentication Pattern**: Routes use guards (e.g. `auth.guard.ts`) which validate Privy JWT tokens and create/update users in DB.
 
-**Key Routes (Express, `/api`)**:
-- `/api/auth` - Authentication (Privy integration)
-- `/api/intents` - Intent CRUD, generation, suggestions
-- `/api/indexes` - Community management
-- `/api/files` - File uploads and processing
-- `/api/connections` - User-to-user connections
-- `/api/integrations` - External service connectors (Slack, Notion, etc.)
-- `/api/discover` - Discovery/matching endpoint
-- `/api/chat` - Chat interface
-- `/api/queue` - Queue monitoring
-- `/api/users` - User management
-- `/api/upload` - Upload handling
-- `/api/synthesis` - Synthesis
-- `/api/sync` - Sync
-- `/api/feedback` - Feedback
-- `/api/notifications` - Notifications
-- `/api/links` - Links
-- `/api/dev` - Dev utilities
-- `/api/agents` - Agent playground (getAvailableAgents, runAgent)
+**Key Controllers and Routes**:
+- `AuthController` - Authentication (Privy integration)
+- `IntentController` - Intent CRUD, generation, suggestions
+- `IndexController` - Community management and index opportunities
+- `FileController` - File uploads and processing
+- `ChatController` - Chat interface
+- `ProfileController` - User profiles
+- `OpportunityController` - Opportunity management
+- `UploadController` - Upload handling
+- `UserController` - User management
+- `LinkController` - Link management
 
 ### Frontend Architecture
 
@@ -239,7 +223,6 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
   - `/l/[code]` - Link redirect (e.g. by code)
   - `/library` - Library
   - `/networks` - Networks
-  - `/onboarding` - User onboarding flows
   - `/blog` - Blog listing; `/blog/[slug]` - Markdown-based blog posts
   - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
   - `/api/blog`, `/api/subscribe` - API routes for blog and subscription
@@ -259,9 +242,9 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
 
-### Controller and Decorator Routing (V2)
+### Controller and Decorator Routing
 
-V2 uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
+The API uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
 
 ### Polymorphic Source Tracking
 
@@ -389,6 +372,8 @@ NODE_ENV=development
 
 See `frontend/.env.example` for frontend-specific configuration (Privy app ID, API URL, etc.)
 
+**Privy "Origin not allowed" (`invalid_origin`)**: If login fails with this error, the app’s current origin is not in Privy’s allowed list. In the [Privy Dashboard](https://dashboard.privy.io) go to **Configuration → App settings → Domains**, then under **Allowed origins** (Web & mobile web) add the exact origin(s) you use, e.g. `http://localhost:3000` (port required for localhost). Remove localhost from allowed domains when not developing.
+
 ## Testing
 
 Tests use Vitest framework. Test files are located in:
@@ -485,11 +470,10 @@ If Sentry is configured (`SENTRY_DSN`):
 
 ### API Routes
 
-- Express routes use `authenticatePrivy` middleware
-- Validate input with express-validator
-- Use `AuthRequest` type for authenticated requests
+- Controllers use guard functions for authentication (e.g. `AuthGuard`)
+- Validate input with Zod schemas where needed
 - Handle errors with try/catch and proper HTTP status codes
-- Return consistent JSON responses
+- Return consistent JSON responses or Response objects
 
 ### Database
 

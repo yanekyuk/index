@@ -1,14 +1,14 @@
-import db from '../lib/drizzle/drizzle';
-import { userNotificationSettings, OnboardingState } from '../schemas/database.schema';
+import { userDatabaseAdapter } from '../adapters/database.adapter';
+import { OnboardingState } from '../schemas/database.schema';
 import { privyClient } from '../lib/privy';
 import { log } from '../lib/log';
 
 const logger = log.service.from("AuthService");
-
 /**
  * AuthService
  * 
  * Manages user authentication lifecycle and onboarding state.
+ * Uses UserDatabaseAdapter for database operations.
  * 
  * RESPONSIBILITIES:
  * - Bootstrapping new users (Default preferences).
@@ -16,6 +16,8 @@ const logger = log.service.from("AuthService");
  * - Bridging with Privy (External Auth Provider).
  */
 export class AuthService {
+    constructor(private db = userDatabaseAdapter) {}
+
     /**
      * Initializes default notification settings for a new user.
      * Idempotent (safe to call multiple times).
@@ -24,15 +26,7 @@ export class AuthService {
      */
     async setupDefaultPreferences(userId: string) {
         logger.info('[AuthService] Setting up default preferences', { userId });
-        await db.insert(userNotificationSettings)
-            .values({
-                userId: userId,
-                preferences: {
-                    connectionUpdates: true,
-                    weeklyNewsletter: true,
-                }
-            })
-            .onConflictDoNothing();
+        await this.db.setupDefaultNotificationSettings(userId);
     }
 
     /**

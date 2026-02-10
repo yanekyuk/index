@@ -53,9 +53,4 @@ export const createConnectionsService = (api: ReturnType<typeof import('../lib/a
       action: 'CANCEL'
     }).then(res => res.event);
   }
-});
-
-// Hook for using connections service with proper error handling
-export function useConnectionsService() {
-  return createConnectionsService;
-} 
+}); 

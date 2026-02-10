@@ -1,9 +1,0 @@
-{
-    "node_version": "20",
-    "graphs": {
-        "intent_inferrer": "./core/intent_inferrer/index.ts:createIntentSuggesterWorkflow"
-    },
-    "dependencies": ["."],
-    "image_distro": "wolfi"
-}
-  

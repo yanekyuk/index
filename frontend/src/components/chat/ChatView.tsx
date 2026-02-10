@@ -48,7 +48,7 @@ interface ChannelPendingState {
 }
 
 export default function ChatView({ userId, userName, userAvatar, userTitle, onClose, onBack }: ChatViewProps) {
-  const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests, sendMessageRequest, checkCanMessage } = useStreamChat();
+  const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const [channel, setChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -80,13 +80,6 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
 
     const initChannel = async () => {
       try {
-        let canMessageDirectly = false;
-        try {
-          const canMessageResponse = await checkCanMessage(userId);
-          canMessageDirectly = canMessageResponse.canMessageDirectly;
-          if (canMessageResponse.connectionStatus === 'REQUEST' && canMessageResponse.isInitiator) canMessageDirectly = true;
-        } catch (err) { console.error('Failed to check message permission:', err); }
-
         const sortedIds = [client.userID, userId].sort().join('_');
         const expectedChannelId = sortedIds.length > 64 
           ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
@@ -114,7 +107,6 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
             setPendingState({ isPending: false, isRequester: false });
           }
           
-          if (!canMessageDirectly && ch.state.messages.length === 0 && !channelData?.pending) setIsNewConversation(true);
           setMessages(ch.state.messages.map(transformMessage));
           setLoading(false);
 
@@ -148,7 +140,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         if (syncMessagesHandler) currentChannel.off('channel.updated', syncMessagesHandler);
       }
     };
-  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, checkCanMessage, channelRefreshKey]);
+  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, channelRefreshKey]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -165,24 +157,18 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
     scrollToBottom();
 
     try {
-      if (isNewConversation) {
-        const response = await sendMessageRequest(userId, text, userName, userAvatar);
+      let activeChannel = channel;
+
+      if (isNewConversation && activeChannel) {
+        await activeChannel.watch();
         setIsNewConversation(false);
-        setPendingState({ isPending: true, isRequester: true });
-        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'sent' } : m));
-        success('Message request sent', `${userName} will see this in their message requests.`);
-        setSendingMessageId(null);
-        setChannelRefreshKey((k) => k + 1);
-        scrollToBottom();
-        inputRef.current?.focus();
-        return;
       }
 
-      if (!channel) {
+      if (!activeChannel) {
         inputRef.current?.focus();
         return;
       }
-      const response = await channel.sendMessage({ text });
+      const response = await activeChannel.sendMessage({ text });
       setMessages((prev) => { const filtered = prev.filter((m) => m.id !== tempId); return [...filtered, transformMessage(response.message)]; });
       setSendingMessageId(null);
       scrollToBottom();
@@ -195,7 +181,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
       showError('Failed to send', error instanceof Error ? error.message : 'Please try again.');
       inputRef.current?.focus();
     }
-  }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, sendMessageRequest, userId, userName, userAvatar, success, showError]);
+  }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, showError]);
 
   // Auto-focus input on keydown anywhere
   useEffect(() => {

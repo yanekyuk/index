@@ -111,7 +111,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       };
       
       // #endregion
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL_V2}/v2/chat/stream`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/stream`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -229,8 +229,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL_V2 || '';
-      const res = await fetch(`${base}/v2/chat/session`, {
+      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${base}/chat/session`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -266,8 +266,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     if (!trimmed) return false;
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL_V2 || '';
-      const res = await fetch(`${base}/v2/chat/session/title`, {
+      const base = process.env.NEXT_PUBLIC_API_URL || '';
+      const res = await fetch(`${base}/chat/session/title`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

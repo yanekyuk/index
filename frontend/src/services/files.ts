@@ -24,16 +24,3 @@ export const createFilesService = (api: ReturnType<typeof useAuthenticatedAPI>) 
   }
 });
 
-// Non-authenticated service for public endpoints
-export const filesService = {
-  // Legacy methods that require authentication
-  uploadFile: () => { throw new Error('Use useFilesService() hook instead of filesService directly'); },
-  deleteFile: () => { throw new Error('Use useFilesService() hook instead of filesService directly'); },
-  getFiles: () => { throw new Error('Use useFilesService() hook instead of filesService directly'); }
-};
-
-// Hook for using files service with proper error handling
-export function useFilesService() {
-  const api = useAuthenticatedAPI();
-  return useMemo(() => createFilesService(api), [api]);
-}

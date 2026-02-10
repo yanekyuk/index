@@ -9,50 +9,43 @@ config({ path: '.env.test' });
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { UploadController } from "./upload.controller";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db, { closeDb } from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+import { UserDatabaseAdapter, FileDatabaseAdapter } from "../adapters/database.adapter";
 import { getUploadsPath } from '../lib/paths';
 import * as fs from 'fs';
 
 describe("UploadController Integration", () => {
-  let controller: UploadController;
+  const controller = new UploadController();
+  const userAdapter = new UserDatabaseAdapter();
+  const fileAdapter = new FileDatabaseAdapter();
   let testUserId: string;
   let emptyListUserId: string;
   const testEmail = `test-upload-controller-${Date.now()}@example.com`;
   const emptyListEmail = `test-upload-controller-empty-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmail))
-      .limit(1);
-
-    if (existingUser.length > 0) {
-      await db.delete(schema.files).where(eq(schema.files.userId, existingUser[0].id));
-      await db.delete(schema.users).where(eq(schema.users.email, testEmail));
+    const existingUser = await userAdapter.findByEmail(testEmail);
+    if (existingUser) {
+      await fileAdapter.deleteByUserId(existingUser.id);
+      await userAdapter.deleteByEmail(testEmail);
     }
 
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmail,
       name: "Test Upload User",
       privyId: `privy:upload:${Date.now()}`,
       intro: "Test user for upload controller",
       location: "Test City",
-    }).returning();
-
+    });
     testUserId = user.id;
 
-    const [emptyUser] = await db.insert(schema.users).values({
+    const emptyUser = await userAdapter.create({
       email: emptyListEmail,
       name: "Empty List User",
       privyId: `privy:upload-empty:${Date.now()}`,
       intro: "User with no files",
       location: "Test City",
-    }).returning();
-
+    });
     emptyListUserId = emptyUser.id;
-    controller = new UploadController();
   });
 
   afterAll(async () => {
@@ -65,14 +58,14 @@ describe("UploadController Integration", () => {
         }
         fs.rmdirSync(userDir);
       }
-      await db.delete(schema.files).where(eq(schema.files.userId, testUserId));
-      await db.delete(schema.users).where(eq(schema.users.id, testUserId));
+      await fileAdapter.deleteByUserId(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
     if (emptyListUserId) {
-      await db.delete(schema.files).where(eq(schema.files.userId, emptyListUserId));
-      await db.delete(schema.users).where(eq(schema.users.id, emptyListUserId));
+      await fileAdapter.deleteByUserId(emptyListUserId);
+      await userAdapter.deleteById(emptyListUserId);
     }
-    await closeDb();
+    // Do not close db: other integration specs may run in the same process.
   });
 
   const getMockUser = (): AuthenticatedUser => ({
@@ -85,7 +78,7 @@ describe("UploadController Integration", () => {
   describe("upload", () => {
     test("should return 400 when no file is uploaded", async () => {
       const formData = new FormData();
-      const req = new Request("http://test/v2/uploads", {
+      const req = new Request("http://test/uploads", {
         method: "POST",
         body: formData,
       });
@@ -102,7 +95,7 @@ describe("UploadController Integration", () => {
     test("should return 400 when file field is a string", async () => {
       const formData = new FormData();
       formData.append("file", "not-a-file");
-      const req = new Request("http://test/v2/uploads", {
+      const req = new Request("http://test/uploads", {
         method: "POST",
         body: formData,
       });
@@ -120,7 +113,7 @@ describe("UploadController Integration", () => {
       const file = new File(["binary content"], "script.exe", { type: "application/x-msdownload" });
       const formData = new FormData();
       formData.append("file", file);
-      const req = new Request("http://test/v2/uploads", {
+      const req = new Request("http://test/uploads", {
         method: "POST",
         body: formData,
       });
@@ -139,7 +132,7 @@ describe("UploadController Integration", () => {
       const file = new File([content], "test-upload.txt", { type: "text/plain" });
       const formData = new FormData();
       formData.append("file", file);
-      const req = new Request("http://test/v2/uploads", {
+      const req = new Request("http://test/uploads", {
         method: "POST",
         body: formData,
       });
@@ -165,15 +158,15 @@ describe("UploadController Integration", () => {
       const file = new File([content], "persist.txt", { type: "text/plain" });
       const formData = new FormData();
       formData.append("file", file);
-      const req = new Request("http://test/v2/uploads", { method: "POST", body: formData });
+      const req = new Request("http://test/uploads", { method: "POST", body: formData });
 
       const result = await controller.upload(req, getMockUser()) as { file: { id: string; name: string } };
       const fileId = result.file.id;
 
-      const rows = await db.select().from(schema.files).where(eq(schema.files.id, fileId));
-      expect(rows.length).toBe(1);
-      expect(rows[0].name).toBe("persist.txt");
-      expect(rows[0].userId).toBe(testUserId);
+      const row = await fileAdapter.getByIdUnscoped(fileId);
+      expect(row).not.toBeNull();
+      expect(row!.name).toBe("persist.txt");
+      expect(row!.userId).toBe(testUserId);
 
       const userDir = getUploadsPath('files', testUserId);
       const pathToFile = `${userDir}/${fileId}.txt`;
@@ -190,7 +183,7 @@ describe("UploadController Integration", () => {
         email: emptyListEmail,
         name: "Empty List User",
       };
-      const req = new Request("http://test/v2/uploads?page=1&limit=10");
+      const req = new Request("http://test/uploads?page=1&limit=10");
       const result = await controller.list(req, emptyUser);
 
       expect(result).toHaveProperty("files");
@@ -206,10 +199,10 @@ describe("UploadController Integration", () => {
       const file = new File(["list test"], "list-me.txt", { type: "text/plain" });
       const formData = new FormData();
       formData.append("file", file);
-      const uploadReq = new Request("http://test/v2/uploads", { method: "POST", body: formData });
+      const uploadReq = new Request("http://test/uploads", { method: "POST", body: formData });
       await controller.upload(uploadReq, getMockUser());
 
-      const listReq = new Request("http://test/v2/uploads?page=1&limit=10");
+      const listReq = new Request("http://test/uploads?page=1&limit=10");
       const result = await controller.list(listReq, getMockUser());
 
       const data = result as { files: Array<{ id: string; name: string; url: string }>; pagination: { current: number; totalCount: number } };
@@ -222,7 +215,7 @@ describe("UploadController Integration", () => {
     });
 
     test("should respect page and limit query params", async () => {
-      const req = new Request("http://test/v2/uploads?page=2&limit=5");
+      const req = new Request("http://test/uploads?page=2&limit=5");
       const result = await controller.list(req, getMockUser());
 
       const data = result as { pagination: { current: number; total: number; count: number; totalCount: number } };

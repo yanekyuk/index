@@ -2,50 +2,53 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { OpportunityController } from "./opportunity.controller";
-import { OpportunityDatabaseAdapter } from "../adapters/database.adapter";
+import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, IndexGraphDatabaseAdapter } from "../adapters/database.adapter";
 import type { AuthenticatedUser } from "../guards/auth.guard";
-import db from '../lib/drizzle/drizzle';
-import * as schema from '../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+
+// Mock notification queue so loading OpportunityController does not connect to Redis
+mock.module("../queues/notification.queue", () => ({
+  queueOpportunityNotification: async () => ({ id: "mock-job" } as any),
+}));
+
+// Load controllers after mock is registered so createManual path never touches Redis in tests
+let OpportunityControllerClass: typeof import("./opportunity.controller").OpportunityController;
+let IndexOpportunityControllerClass: typeof import("./opportunity.controller").IndexOpportunityController;
+beforeAll(async () => {
+  const mod = await import("./opportunity.controller");
+  OpportunityControllerClass = mod.OpportunityController;
+  IndexOpportunityControllerClass = mod.IndexOpportunityController;
+});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // OpportunityDatabaseAdapter Integration Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityDatabaseAdapter Integration", () => {
+  const userAdapter = new UserDatabaseAdapter();
+  const profileAdapter = new ProfileDatabaseAdapter();
   let adapter: OpportunityDatabaseAdapter;
   let testUserId: string;
   const testEmail = `test-opportunity-adapter-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Setup: Create test user with profile
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmail))
-      .limit(1);
-
-    if (existingUser.length > 0) {
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, existingUser[0].id));
-      await db.delete(schema.users)
-        .where(eq(schema.users.email, testEmail));
+    const existingUser = await userAdapter.findByEmail(testEmail);
+    if (existingUser) {
+      await profileAdapter.deleteProfile(existingUser.id);
+      await userAdapter.deleteByEmail(testEmail);
     }
 
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmail,
       name: "Test Opportunity Adapter User",
       privyId: `privy:opp-adapter:${Date.now()}`,
       intro: "Test user for opportunity adapter tests",
       location: "Test City",
-    }).returning();
-
+    });
     testUserId = user.id;
     console.log(`Created test user: ${testUserId}`);
 
-    // Create a profile for the test user
-    await db.insert(schema.userProfiles).values({
+    await profileAdapter.saveProfile(testUserId, {
       userId: testUserId,
       identity: {
         name: "Test Opportunity Adapter User",
@@ -59,18 +62,16 @@ describe("OpportunityDatabaseAdapter Integration", () => {
         interests: ["distributed systems", "databases", "TypeScript"],
         skills: ["Node.js", "PostgreSQL", "Redis"],
       },
+      embedding: null,
     });
 
     adapter = new OpportunityDatabaseAdapter();
   });
 
   afterAll(async () => {
-    // Cleanup
     if (testUserId) {
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, testUserId));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserId));
+      await profileAdapter.deleteProfile(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
   });
 
@@ -102,46 +103,40 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Integration", () => {
-  let controller: OpportunityController;
+  const controller = new OpportunityControllerClass();
+  const indexOpportunityController = new IndexOpportunityControllerClass();
+  const userAdapter = new UserDatabaseAdapter();
+  const profileAdapter = new ProfileDatabaseAdapter();
+  const chatDbAdapter = new ChatDatabaseAdapter();
+  const opportunityAdapter = new OpportunityDatabaseAdapter();
   let testUserId: string;
   let candidateUserId: string;
+  let testIndexId: string;
+  let testOpportunityId: string;
   const testEmail = `test-opportunity-ctrl-${Date.now()}@example.com`;
   const candidateEmail = `test-opportunity-candidate-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Cleanup any existing test users
     for (const email of [testEmail, candidateEmail]) {
-      const existingUser = await db.select()
-        .from(schema.users)
-        .where(eq(schema.users.email, email))
-        .limit(1);
-
-      if (existingUser.length > 0) {
-        await db.delete(schema.userProfiles)
-          .where(eq(schema.userProfiles.userId, existingUser[0].id));
-        await db.delete(schema.users)
-          .where(eq(schema.users.email, email));
+      const existingUser = await userAdapter.findByEmail(email);
+      if (existingUser) {
+        await profileAdapter.deleteProfile(existingUser.id);
+        await userAdapter.deleteByEmail(email);
       }
     }
 
-    // Create main test user
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmail,
       name: "Test Opportunity Controller User",
       privyId: `privy:opp-ctrl:${Date.now()}`,
       intro: "CEO of an AI startup looking for technical talent",
       location: "San Francisco, CA",
-      socials: {
-        x: "https://x.com/testopp",
-        linkedin: "https://linkedin.com/in/testopp",
-      }
-    }).returning();
-
+      socials: { x: "https://x.com/testopp", linkedin: "https://linkedin.com/in/testopp" },
+    });
     testUserId = user.id;
     console.log(`Created main test user: ${testUserId}`);
 
-    // Create profile for main user
-    await db.insert(schema.userProfiles).values({
+    await profileAdapter.saveProfile(testUserId, {
       userId: testUserId,
       identity: {
         name: "Test Opportunity Controller User",
@@ -155,24 +150,20 @@ describe("OpportunityController Integration", () => {
         interests: ["AI", "startups", "product development"],
         skills: ["leadership", "product strategy", "fundraising"],
       },
-      // Add embedding so this user can be found in vector search
-      embedding: Array(2000).fill(0.1),
+      embedding: Array(2000).fill(0.1) as number[],
     });
 
-    // Create candidate user (potential match)
-    const [candidate] = await db.insert(schema.users).values({
+    const candidate = await userAdapter.create({
       email: candidateEmail,
       name: "Test Candidate User",
       privyId: `privy:opp-candidate:${Date.now()}`,
       intro: "Senior ML engineer with startup experience",
       location: "New York, NY",
-    }).returning();
-
+    });
     candidateUserId = candidate.id;
     console.log(`Created candidate test user: ${candidateUserId}`);
 
-    // Create profile for candidate user with embedding
-    await db.insert(schema.userProfiles).values({
+    await profileAdapter.saveProfile(candidateUserId, {
       userId: candidateUserId,
       identity: {
         name: "Test Candidate User",
@@ -186,28 +177,217 @@ describe("OpportunityController Integration", () => {
         interests: ["machine learning", "NLP", "computer vision", "startups"],
         skills: ["Python", "PyTorch", "TensorFlow", "MLOps"],
       },
-      // Add embedding so candidate can be found in vector search
-      embedding: Array(2000).fill(0.15),
+      embedding: Array(2000).fill(0.15) as number[],
     });
 
-    controller = new OpportunityController();
+    const index = await chatDbAdapter.createIndex({
+      title: "Test Opportunity Index",
+      prompt: "Index for opportunity controller tests",
+    });
+    testIndexId = index.id;
+    await chatDbAdapter.addMemberToIndex(testIndexId, testUserId, "owner");
+
+    const opp = await opportunityAdapter.createOpportunity({
+      detection: {
+        source: "manual",
+        createdBy: testUserId,
+        timestamp: new Date().toISOString(),
+      },
+      actors: [
+        { role: "agent", identityId: testUserId, intents: [], profile: true },
+        { role: "patient", identityId: candidateUserId, intents: [], profile: true },
+      ],
+      interpretation: {
+        category: "collaboration",
+        summary: "Controller test opportunity",
+        confidence: 0.9,
+      },
+      context: { indexId: testIndexId },
+      indexId: testIndexId,
+      confidence: "0.9",
+    });
+    testOpportunityId = opp.id;
   });
 
   afterAll(async () => {
-    // Cleanup
+    if (testIndexId) {
+      const indexAdapter = new IndexGraphDatabaseAdapter();
+      await indexAdapter.deleteMembersForIndex(testIndexId);
+    }
     if (testUserId) {
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, testUserId));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserId));
+      await profileAdapter.deleteProfile(testUserId);
+      await userAdapter.deleteById(testUserId);
     }
     if (candidateUserId) {
-      await db.delete(schema.userProfiles)
-        .where(eq(schema.userProfiles.userId, candidateUserId));
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, candidateUserId));
+      await profileAdapter.deleteProfile(candidateUserId);
+      await userAdapter.deleteById(candidateUserId);
     }
-    // Do not close db: other specs may run in the same process.
+  });
+
+  const mockUser = (): AuthenticatedUser => ({
+    id: testUserId,
+    privyId: `privy:opp-ctrl:${Date.now()}`,
+    email: testEmail,
+    name: "Test Opportunity Controller User",
+  });
+
+  test("listOpportunities should return 200 with opportunities array", async () => {
+    const req = new Request("http://localhost/opportunities");
+    const res = await controller.listOpportunities(req, mockUser());
+    const data = (await res.json()) as { opportunities?: unknown[] };
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(data.opportunities)).toBe(true);
+    expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("getOpportunity should return 400 when id is missing", async () => {
+    const req = new Request("http://localhost/opportunities");
+    const res = await controller.getOpportunity(req, mockUser(), {});
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe("Missing opportunity id");
+  });
+
+  test("getOpportunity should return 404 when opportunity not found", async () => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    const req = new Request("http://localhost/opportunities/" + fakeId);
+    const res = await controller.getOpportunity(req, mockUser(), { id: fakeId });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(404);
+    expect(data.error).toBe("Opportunity not found");
+  });
+
+  test("getOpportunity should return 200 and opportunity when found", async () => {
+    const req = new Request("http://localhost/opportunities/" + testOpportunityId);
+    const res = await controller.getOpportunity(req, mockUser(), { id: testOpportunityId });
+    const data = (await res.json()) as { id?: string; category?: string; status?: string } & Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expect(data.id).toBe(testOpportunityId);
+    expect(data.category).toBe("collaboration");
+    expect(data.status).toBeDefined();
+  });
+
+  test("updateStatus should return 400 when id is missing", async () => {
+    const req = new Request("http://localhost/opportunities/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "viewed" }),
+    });
+    const res = await controller.updateStatus(req, mockUser(), {});
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe("Missing opportunity id");
+  });
+
+  test("updateStatus should return 400 when status is invalid", async () => {
+    const req = new Request("http://localhost/opportunities/" + testOpportunityId + "/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "invalid" }),
+    });
+    const res = await controller.updateStatus(req, mockUser(), { id: testOpportunityId });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain("Invalid status");
+  });
+
+  test("updateStatus should return 404 when opportunity not found", async () => {
+    const fakeId = "00000000-0000-0000-0000-000000000000";
+    const req = new Request("http://localhost/opportunities/" + fakeId + "/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "viewed" }),
+    });
+    const res = await controller.updateStatus(req, mockUser(), { id: fakeId });
+    expect(res.status).toBe(404);
+  });
+
+  test("updateStatus should return 200 when updated", async () => {
+    const req = new Request("http://localhost/opportunities/" + testOpportunityId + "/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "viewed" }),
+    });
+    const res = await controller.updateStatus(req, mockUser(), { id: testOpportunityId });
+    const data = (await res.json()) as { status?: string };
+
+    expect(res.status).toBe(200);
+    expect(data.status).toBe("viewed");
+  });
+
+  test("listForIndex should return 400 when indexId is missing", async () => {
+    const req = new Request("http://localhost/indexes/opportunities");
+    const res = await indexOpportunityController.listForIndex(req, mockUser(), {});
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe("Missing index id");
+  });
+
+  test("listForIndex should return 200 with opportunities for index", async () => {
+    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities");
+    const res = await indexOpportunityController.listForIndex(req, mockUser(), { indexId: testIndexId });
+    const data = (await res.json()) as { opportunities?: unknown[] };
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(data.opportunities)).toBe(true);
+    expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("createManual should return 400 when indexId is missing", async () => {
+    const req = new Request("http://localhost/indexes/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parties: [{ userId: testUserId }, { userId: candidateUserId }],
+        reasoning: "Test manual opportunity",
+      }),
+    });
+    const res = await indexOpportunityController.createManual(req, mockUser(), {});
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toBe("Missing index id");
+  });
+
+  test("createManual should return 400 when body missing parties or reasoning", async () => {
+    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const res = await indexOpportunityController.createManual(req, mockUser(), { indexId: testIndexId });
+    const data = (await res.json()) as { error?: string };
+
+    expect(res.status).toBe(400);
+    expect(data.error).toContain("parties");
+  });
+
+  test("createManual should return 201 when valid or 409 when opportunity already exists", async () => {
+    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parties: [{ userId: testUserId }, { userId: candidateUserId }],
+        reasoning: "Manual match for controller test",
+      }),
+    });
+    const res = await indexOpportunityController.createManual(req, mockUser(), { indexId: testIndexId });
+    const data = (await res.json()) as { id?: string; interpretation?: { summary: string }; error?: string };
+
+    expect([201, 409]).toContain(res.status);
+    if (res.status === 201) {
+      expect(data.id).toBeDefined();
+      expect(data.interpretation).toBeDefined();
+    } else {
+      expect(data.error).toContain("already exists");
+    }
   });
 
   test("discover should return 400 if query is missing", async () => {
@@ -355,39 +535,26 @@ describe("OpportunityController Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Edge Cases", () => {
-  let controller: OpportunityController;
+  const controller = new OpportunityControllerClass();
+  const userAdapter = new UserDatabaseAdapter();
   let testUserIdNoProfile: string;
   const testEmailNoProfile = `test-opp-no-profile-${Date.now()}@example.com`;
 
   beforeAll(async () => {
-    // Setup: Create test user WITHOUT profile
-    const existingUser = await db.select()
-      .from(schema.users)
-      .where(eq(schema.users.email, testEmailNoProfile))
-      .limit(1);
+    const existingUser = await userAdapter.findByEmail(testEmailNoProfile);
+    if (existingUser) await userAdapter.deleteByEmail(testEmailNoProfile);
 
-    if (existingUser.length > 0) {
-      await db.delete(schema.users)
-        .where(eq(schema.users.email, testEmailNoProfile));
-    }
-
-    const [user] = await db.insert(schema.users).values({
+    const user = await userAdapter.create({
       email: testEmailNoProfile,
       name: "Test No Profile User",
       privyId: `privy:opp-noprofile:${Date.now()}`,
-    }).returning();
-
+    });
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
-
-    controller = new OpportunityController();
   });
 
   afterAll(async () => {
-    if (testUserIdNoProfile) {
-      await db.delete(schema.users)
-        .where(eq(schema.users.id, testUserIdNoProfile));
-    }
+    if (testUserIdNoProfile) await userAdapter.deleteById(testUserIdNoProfile);
   });
 
   test("discover should handle user with no profile gracefully", async () => {

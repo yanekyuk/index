@@ -26,53 +26,70 @@
 
 ## About Index Network
 
-Index Network enables **private, intent-driven discovery** through a network of autonomous agents. Instead of jumping between fragmented platforms to find collaborators, investors, or opportunities, users define specific "intents" and competing **Broker Agents** work to fulfill them through relevant connections.
+Index Network enables **private, intent-driven discovery** through a sophisticated opportunity detection system. Users express what they're seeking as structured intents, and the protocol identifies **opportunities**—legible coordination points that emerge when aligned intents intersect with trust thresholds, timing constraints, and expected value calculations, making action rational for all parties involved.
 
-Atonomous agents compete to provide the best matches by staking tokens on their recommendations. When both parties accept a match (double opt-in), the successful agent earns rewards. If the match fails, the agent loses stake. This creates economic incentives for highly relevant connections while preserving privacy through confidential compute.
+Unlike traditional matching systems that operate on profile similarity, Index treats opportunities as **first-class coordination primitives**: they exist as distinct entities with their own lifecycle, interpretations, and contextual metadata, enabling nuanced understanding of *why* and *when* a connection makes sense, not just *that* it matches.
 
 ## Key Features
 
 ### 🔒 Private Intent-Driven Discovery
 
-- **Confidential Compute**: Personal data remains private while enriching match quality
 - **Intent-Based**: Express specific needs like "finding a privacy-focused AI engineer"
-- **Economic Incentives**: Agents stake tokens on match recommendations
-- **Quality Assurance**: Only successful double opt-in matches generate rewards
-- **Continuous Optimization**: Better models and data yield better returns
+- **Privacy by Design**: Index-based access control with granular permissions
+- **Opportunity Detection**: Context-aware agents surface coordination points when intents align
+- **Semantic Understanding**: Vector similarity and HyDE strategies for intelligent matching
+- **Agent Orchestration**: LangGraph-powered workflows for complex discovery tasks
 
 ## How It Works
 
-1. **Users Define Intents**: Express specific discovery needs privately
-2. **Agents Compete**: Broker agents stake tokens on match recommendations  
-3. **Double Opt-In**: Both parties must accept for the match to succeed
-4. **Economic Settlement**: Successful agents earn rewards, failed matches lose stake
-5. **Network Learning**: Each interaction improves the overall discovery quality
+1. **Users Express Intents**: Define what you're seeking in natural language
+2. **Context Organization**: Group intents into indexes with privacy controls
+3. **Opportunity Detection**: Agents identify coordination points when profiles and intents align
+4. **Connection Facilitation**: Dual-perspective descriptions preserve privacy while explaining value
+5. **Continuous Discovery**: Profile updates trigger new opportunity searches
 
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   User Intents  │───▶│  Broker Agents  │───▶│     Matches     │
-│                 │    │                 │    │                 │
-│ • Private data  │    │ • Staking       │    │ • Double opt-in │
-│ • Confidential  │    │ • Competition   │    │ • Rewards       │
-│ • Unstructured  │    │                 │    │ • Quality loop  │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+┌──────────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
+│   Intent Graph       │───▶│  Opportunity Engine  │───▶│  Discovery Layer     │
+│                      │    │                      │    │                      │
+│ • Semantic vectors   │    │ • Multi-strategy     │    │ • Dual synthesis     │
+│ • Index partitions   │    │   HyDE generation    │    │ • Contextual         │
+│ • Speech act types   │    │ • 4-dimensional      │    │   integrity          │
+│ • Felicity scores    │    │   threshold eval     │    │ • Attribution model  │
+│ • Temporal decay     │    │ • Confidence scoring │    │ • Privacy boundaries │
+└──────────────────────┘    └──────────────────────┘    └──────────────────────┘
 ```
 
-The protocol leverages:
+**Three-Layer Architecture**:
 
-- **Confidential Compute** for privacy-preserving data processing
-- **LangGraph** for agent orchestration and workflows
-- **Drizzle** for data management and persistence, which will be replaced by Ethereum soon.
-- **LMSR** for incentive alignment
+1. **Intent Graph**: Structured intent storage with semantic embeddings, speech act validation, and index-based access control. Intents are first-class entities with quality scores (semantic entropy, felicity conditions) ensuring high-signal inputs.
+
+2. **Opportunity Engine**: Multi-dimensional detection system that generates hypothetical documents (HyDE) across 6 relationship strategies, evaluates candidates against trust/timing/value/alignment thresholds, and produces scored opportunities with dual-perspective interpretations.
+
+3. **Discovery Layer**: Privacy-preserving presentation system where each party receives synthesized insights about potential connections without exposure to raw private data. Maintains contextual integrity through attributed agent interpretations.
+
+**Core Infrastructure**:
+
+- **LangGraph** for agent state machines and complex orchestration workflows
+- **PostgreSQL with pgvector** for 2000-dimensional semantic search (HNSW indexes)
+- **Drizzle ORM** for type-safe database operations with schema-driven types
+- **OpenRouter** for LLM-powered agents with Zod-validated structured output
 
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL 14+ (will serve as a local cache)
+- PostgreSQL 14+ with pgvector extension
+
+### Future Roadmap
+
+The protocol architecture is designed for future deployment with:
+- **TEE (Trusted Execution Environments)** for confidential compute
+- **Decentralized storage** with on-chain finality
+- **XMTP integration** for decentralized messaging
 
 ### Quick Start
 
@@ -87,7 +104,7 @@ cd index
 
 ```bash
 # Install all workspace dependencies
-yarn install
+bun install
 ```
 
 3. **Set up environment variables**
@@ -104,8 +121,8 @@ cp frontend/.env.example frontend/.env
 
 ```bash
 cd protocol
-yarn drizzle:generate
-yarn drizzle:migrate
+bun run db:generate
+bun run db:migrate
 ```
 
 5. **Start the development servers**
@@ -113,11 +130,11 @@ yarn drizzle:migrate
 ```bash
 # Terminal 1: Start the protocol server
 cd protocol
-yarn dev
+bun run dev
 
 # Terminal 2: Start the frontend
-cd frontend  
-yarn dev
+cd frontend
+bun run dev
 ```
 
 Visit `http://localhost:3000` to see the application.
@@ -138,28 +155,31 @@ The `protocol/` directory contains the core agent infrastructure:
 
 ### Key Components
 
-- **Agents**: Built on LangGraph for complex agent workflows
-- **Intent & Indexing operations**: Drizzle-managed PostgreSQL with agent, intent, and match models
-- **Economic Simulations**: Token staking and reward distribution logic
+- **Agents**: LangGraph-based agents for intent inference, opportunity evaluation, and profile generation
+- **Graph Workflows**: Six state machines (Intent, Index, Opportunity, Profile, HyDE, Chat) orchestrating complex operations
+- **Database Layer**: PostgreSQL with pgvector for semantic search and Drizzle ORM for type safety
+- **Semantic Governance**: Intent quality validation using speech act theory and felicity conditions
 
 ### Development Commands
+
+For the full list of protocol commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
 
 ```bash
 cd protocol
 
-# Start development server with hot reload
-yarn dev
+# Start development server (Bun.serve, port 3001)
+bun run dev
 
 # Build for production
-yarn build
+bun run build
 
 # Database operations
-yarn drizzle:generate    # Generate Drizzle client
-yarn drizzle:migrate     # Run database migrations  
-yarn drizzle:studio      # Open database GUI
+bun run db:generate    # Generate migrations after schema changes
+bun run db:migrate     # Run database migrations
+bun run db:studio      # Open Drizzle Studio (DB GUI)
 
 # Code quality
-yarn lint               # Run ESLint
+bun run lint           # Run ESLint
 ```
 
 ## Contributing
@@ -182,7 +202,7 @@ git clone https://github.com/YOUR_USERNAME/index.git
 git checkout -b feature/your-feature-name
 
 # Make changes and test
-yarn test
+bun test
 
 # Submit PR
 git push origin feature/your-feature-name

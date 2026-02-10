@@ -1,5 +1,7 @@
 # Unify Person Chat UI and Remove Pop-up Chat
 
+**Status:** Implementation plan. See inspection doc linked below for context.
+
 ## Summary
 
 1. **Remove pop-up chat infrastructure** – The floating bottom-right chat widget no longer exists in the codebase, but leftover logic and components remain. Remove that dead code.

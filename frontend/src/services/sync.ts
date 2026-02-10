@@ -1,5 +1,3 @@
-import { useAuthenticatedAPI } from '@/lib/api';
-
 export type SyncProviderName = 'links' | 'notion' | 'slack' | 'discord' | 'airtable' | 'linkedin';
 
 export interface SyncParams {
@@ -12,7 +10,7 @@ export interface SyncResponse {
 }
 
 // Create sync service with authenticated API
-export function createSyncService(api: ReturnType<typeof useAuthenticatedAPI>) {
+export function createSyncService(api: ReturnType<typeof import('@/lib/api').useAuthenticatedAPI>) {
   return {
     // Trigger sync for a provider
     async syncNow(
@@ -38,10 +36,4 @@ export function createSyncService(api: ReturnType<typeof useAuthenticatedAPI>) {
       return this.syncNow(integrationType, { integrationId });
     }
   };
-}
-
-// Hook for using sync service with proper error handling
-export function useSyncService() {
-  const api = useAuthenticatedAPI();
-  return createSyncService(api);
 }
