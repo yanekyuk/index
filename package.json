@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "bun@1.2.20",
   "scripts": {
-    "dev": "bun run dev:protocol & bun run dev:frontend",
+    "dev": "bun run dev:protocol & bun run dev:frontend & bun run dev:evaluator",
+    "dev:evaluator": "cd evaluator && bun run dev",
     "dev:frontend": "cd frontend && bun run dev",
     "dev:protocol": "cd protocol && bun run dev",
     "build": "bun run build:protocol && bun run build:frontend",

@@ -10,7 +10,6 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
-import { EvalController } from './controllers/eval.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 
@@ -54,7 +53,6 @@ controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController());
 controllerInstances.set(UserController, new UserController());
-controllerInstances.set(EvalController, new EvalController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
