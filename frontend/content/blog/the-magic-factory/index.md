@@ -34,7 +34,7 @@ First, we'd need to understand what kills it. Social platforms today assume peop
 
 **Opportunity timing is rarely written down.** You can’t always see “the right time” but you can feel it. It’s sensed in conversations: through tone, urgency, and what people start or stop saying. Maybe they just crossed a threshold (funding, conviction, frustration), or they’re tinkering with a prototype but haven’t registered the business. In any case, public channels aren’t usually where you discover someone at those early moments.
 
-Let’s say it this way: **Opportunity becomes the new coordination primitive**. The right connections enable not just the match itself, but also - the opportunity to have a conversation, an agreement, something that tees up to the outcome you’re looking for. Opportunities are a networked object: the smallest unit at which value formation becomes legible. They form when shared intent and timing bring people together in a way that feels trustworthy, worthwhile, and appropriate to act on.
+The right connections enable not just the match itself, but also - the opportunity to have a conversation, an agreement, something that tees up to the outcome you’re looking for. Opportunities are a networked object: the smallest unit at which value formation becomes legible. They form when shared intent and timing bring people together in a way that feels trustworthy, worthwhile, and appropriate to act on.
 
 The progression usually looks like:
 
