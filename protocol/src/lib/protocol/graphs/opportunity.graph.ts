@@ -583,7 +583,9 @@ export class OpportunityGraphFactory {
 
         const enriched = await Promise.all(
           list.map(async (opp) => {
-            const otherParties = opp.actors.filter((a: OpportunityActor) => a.identityId !== state.userId && a.role === 'party');
+            // "Other parties" = all actors who are not the current user (exclude introducer for suggestedBy).
+            // Opportunity graph persists roles as 'agent'|'patient'|'peer'; manual/createManual use 'party'.
+            const otherParties = opp.actors.filter((a: OpportunityActor) => a.identityId !== state.userId && a.role !== 'introducer');
             const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
             const partyIds = otherParties.map((a: OpportunityActor) => a.identityId);
             const idsToResolve = introducer ? [...partyIds, introducer.identityId] : partyIds;
