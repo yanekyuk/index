@@ -197,7 +197,6 @@ export function createChatGraphMockDb(
       location: data?.location ?? null,
     }),
     saveProfile: noop,
-    saveHydeProfile: noop,
     createIntent: async (data: CreateIntentData) => ({
       id: `intent-${Date.now()}`,
       payload: data.payload,

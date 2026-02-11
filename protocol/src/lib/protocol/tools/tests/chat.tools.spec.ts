@@ -141,7 +141,6 @@ function createMockDatabase(
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
     getIndex: async () => null,
     saveProfile: noop,
-    saveHydeProfile: noop,
     createIntent: async () => ({ id: "", payload: "", summary: null, isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: "" }),
     updateIntent: noopNull,
     updateUser: noopNull,

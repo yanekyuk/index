@@ -15,34 +15,29 @@ import type {
   OpportunityActor,
 } from '../../interfaces/database.interface';
 import type { Embedder } from '../../interfaces/embedder.interface';
-import type { CandidateProfile } from '../../agents/opportunity.evaluator';
+import type { EvaluatedOpportunityWithActors } from '../../agents/opportunity.evaluator';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
-const defaultMockEvaluatorResult = [
+const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   {
-    sourceId: 'user-source',
-    candidateId: 'user-bob',
-    score: 88,
     reasoning: 'The source user is building a DeFi protocol and the candidate has relevant community and marketing expertise in the crypto space.',
-    valencyRole: 'Agent' as const,
+    score: 88,
+    actors: [
+      { userId: 'user-source', role: 'patient' as const },
+      { userId: 'user-bob', role: 'agent' as const },
+    ],
   },
 ];
 
 function createMockEvaluator(
-  result: Array<{
-    sourceId: string;
-    candidateId: string;
-    score: number;
-    reasoning: string;
-    valencyRole: 'Agent' | 'Patient' | 'Peer';
-  }> = defaultMockEvaluatorResult
+  result: EvaluatedOpportunityWithActors[] = defaultMockEvaluatorResult
 ): OpportunityEvaluatorLike {
   return {
-    invoke: async () => result,
+    invokeEntityBundle: async () => result,
   };
 }
 
@@ -52,7 +47,7 @@ function createMockGraph(deps?: {
   getIndex?: (id: string) => Promise<{ id: string; title: string } | null>;
   getIndexMemberCount?: (id: string) => Promise<number>;
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
-  evaluatorResult?: Array<{ sourceId: string; candidateId: string; score: number; reasoning: string; valencyRole: 'Agent' | 'Patient' | 'Peer' }>;
+  evaluatorResult?: EvaluatedOpportunityWithActors[];
 }) {
   const mockDb: OpportunityGraphDatabase = {
     getProfile: () => Promise.resolve(deps?.getProfile ?? null),
@@ -284,8 +279,8 @@ describe('Opportunity Graph', () => {
     test('sorts by score and applies limit', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [
-          { sourceId: 'user-source', candidateId: 'user-bob', score: 85, reasoning: 'The source user needs technical help and the candidate has relevant engineering skills.', valencyRole: 'Agent' },
-          { sourceId: 'user-source', candidateId: 'user-alice', score: 92, reasoning: 'Both users share complementary interests in building developer tools and could collaborate effectively.', valencyRole: 'Peer' },
+          { reasoning: 'Technical help match.', score: 85, actors: [{ userId: 'user-source', role: 'patient' }, { userId: 'user-bob', role: 'agent' }] },
+          { reasoning: 'Complementary interests in developer tools.', score: 92, actors: [{ userId: 'user-source', role: 'peer' }, { userId: 'user-alice', role: 'peer' }] },
         ],
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
