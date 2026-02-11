@@ -226,14 +226,20 @@ describe('ChatDatabaseAdapter', () => {
     expect(got!.attributes.interests).toEqual(['x']);
   });
 
-  it('should save HyDE profile fields', async () => {
+  it('should save HyDE profile to hyde_documents', async () => {
     const desc = 'Hypothetical description';
     const embedding = new Array(2000).fill(0.1);
-    await adapter.saveHydeProfile(fixture.userAId, desc, embedding);
-    const profile = await adapter.getProfile(fixture.userAId);
-    expect(profile).not.toBeNull();
-    const raw = await db.select().from(userProfiles).where(eq(userProfiles.userId, fixture.userAId)).limit(1);
-    expect(raw[0]?.hydeDescription).toBe(desc);
+    await adapter.saveHydeDocument({
+      sourceType: 'profile',
+      sourceId: fixture.userAId,
+      strategy: 'mirror',
+      targetCorpus: 'profiles',
+      hydeText: desc,
+      hydeEmbedding: embedding,
+    });
+    const doc = await adapter.getHydeDocument('profile', fixture.userAId, 'mirror');
+    expect(doc).not.toBeNull();
+    expect(doc!.hydeText).toBe(desc);
   });
 
   it('should get index memberships for user', async () => {
@@ -373,10 +379,19 @@ describe('ProfileDatabaseAdapter', () => {
     expect(got!.identity.name).toBe('P B');
   });
 
-  it('should save HyDE profile', async () => {
-    await adapter.saveHydeProfile(fixture.userBId, 'HyDE desc', new Array(2000).fill(0.2));
-    const raw = await db.select().from(userProfiles).where(eq(userProfiles.userId, fixture.userBId)).limit(1);
-    expect(raw[0]?.hydeDescription).toBe('HyDE desc');
+  it('should save HyDE profile to hyde_documents', async () => {
+    await adapter.saveHydeDocument({
+      sourceType: 'profile',
+      sourceId: fixture.userBId,
+      strategy: 'mirror',
+      targetCorpus: 'profiles',
+      hydeText: 'HyDE desc',
+      hydeEmbedding: new Array(2000).fill(0.2),
+    });
+    const hydeAdapter = new HydeDatabaseAdapter();
+    const doc = await hydeAdapter.getHydeDocument('profile', fixture.userBId, 'mirror');
+    expect(doc).not.toBeNull();
+    expect(doc!.hydeText).toBe('HyDE desc');
   });
 
   it('should get user', async () => {

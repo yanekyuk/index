@@ -66,9 +66,13 @@ describe("ProfileController Integration", () => {
     expect(profile).not.toBeNull();
     expect(profile!.identity?.name).toBeDefined();
     expect(profile!.embedding).not.toBeNull();
-    // Verify HyDE
-    expect(profile!.hydeDescription).not.toBeNull();
-    expect(profile!.hydeEmbedding).not.toBeNull();
+    // Verify HyDE is stored in hyde_documents
+    const { HydeDatabaseAdapter } = await import("../adapters/database.adapter");
+    const hydeAdapter = new HydeDatabaseAdapter();
+    const hydeDoc = await hydeAdapter.getHydeDocument('profile', testUserId, 'mirror');
+    expect(hydeDoc).not.toBeNull();
+    expect(hydeDoc!.hydeText).toBeDefined();
+    expect(hydeDoc!.hydeEmbedding).not.toBeNull();
   }, 120000); // Long timeout for LLM/Scraping calls
 
   test("sync should be idempotent (second run should just verify)", async () => {

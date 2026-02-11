@@ -206,35 +206,39 @@ export class EmbedderAdapter {
     strategy: HydeStrategy
   ): Promise<HydeCandidate[]> {
     const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, indexMembers } = schema;
+    const { hydeDocuments, indexMembers } = schema;
 
     const conditions = [
+      eq(hydeDocuments.sourceType, 'profile'),
+      eq(hydeDocuments.strategy, strategy),
       inArray(indexMembers.indexId, filter.indexScope),
-      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
-      isNotNull(userProfiles.hydeEmbedding),
-      sql`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      isNotNull(hydeDocuments.hydeEmbedding),
+      sql`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(filter.excludeUserId ? [ne(hydeDocuments.sourceId, filter.excludeUserId)] : []),
     ];
 
     const results = await db
       .select({
-        userId: userProfiles.userId,
-        similarity: sql<number>`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector)`,
+        userId: hydeDocuments.sourceId,
+        similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
         indexId: indexMembers.indexId,
       })
-      .from(userProfiles)
-      .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+      .from(hydeDocuments)
+      .innerJoin(indexMembers, eq(hydeDocuments.sourceId, indexMembers.userId))
       .where(and(...conditions))
-      .orderBy(sql`${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector`)
+      .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
       .limit(limit);
 
-    return results.map((r) => ({
-      type: 'profile' as const,
-      id: r.userId,
-      userId: r.userId,
-      score: r.similarity,
-      matchedVia: strategy,
-      indexId: r.indexId,
-    }));
+    return results
+      .filter((r) => r.userId != null)
+      .map((r) => ({
+        type: 'profile' as const,
+        id: r.userId!,
+        userId: r.userId!,
+        score: r.similarity,
+        matchedVia: strategy,
+        indexId: r.indexId,
+      }));
   }
 
   private async searchIntentsForHyde(
@@ -314,7 +318,15 @@ export class EmbedderAdapter {
     minScore: number
   ): Promise<VectorSearchResult<unknown>[]> {
     const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, indexMembers } = schema;
+    const { hydeDocuments, indexMembers, userProfiles } = schema;
+    const strategy = 'mirror' as const;
+
+    const baseConditions = [
+      eq(hydeDocuments.sourceType, 'profile'),
+      eq(hydeDocuments.strategy, strategy),
+      isNotNull(hydeDocuments.hydeEmbedding),
+      sql`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+    ];
 
     const results =
       filter?.indexScope && Array.isArray(filter.indexScope)
@@ -324,17 +336,13 @@ export class EmbedderAdapter {
               identity: userProfiles.identity,
               narrative: userProfiles.narrative,
               attributes: userProfiles.attributes,
-              similarity: sql<number>`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector)`,
+              similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
             })
-            .from(userProfiles)
-            .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
-            .where(
-              and(
-                inArray(indexMembers.indexId, filter.indexScope as string[]),
-                sql`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`
-              )
-            )
-            .orderBy(sql`${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector`)
+            .from(hydeDocuments)
+            .innerJoin(indexMembers, eq(hydeDocuments.sourceId, indexMembers.userId))
+            .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
+            .where(and(...baseConditions, inArray(indexMembers.indexId, filter.indexScope as string[])))
+            .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
             .limit(limit)
         : await db
             .select({
@@ -342,11 +350,12 @@ export class EmbedderAdapter {
               identity: userProfiles.identity,
               narrative: userProfiles.narrative,
               attributes: userProfiles.attributes,
-              similarity: sql<number>`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector)`,
+              similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
             })
-            .from(userProfiles)
-            .where(sql`1 - (${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`)
-            .orderBy(sql`${userProfiles.hydeEmbedding} <=> ${vectorStr}::vector`)
+            .from(hydeDocuments)
+            .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
+            .where(and(...baseConditions))
+            .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
             .limit(limit);
 
     return results.map((r) => ({

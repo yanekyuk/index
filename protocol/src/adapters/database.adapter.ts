@@ -778,16 +778,6 @@ export class ChatDatabaseAdapter {
       });
   }
 
-  async saveHydeProfile(userId: string, description: string, embedding: number[]): Promise<void> {
-    await db.update(schema.userProfiles)
-      .set({
-        hydeDescription: description,
-        hydeEmbedding: embedding,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.userProfiles.userId, userId));
-  }
-
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
       const [created] = await db.insert(schema.intents)
@@ -2008,16 +1998,6 @@ export class ProfileDatabaseAdapter {
       });
   }
 
-  async saveHydeProfile(userId: string, description: string, embedding: number[]): Promise<void> {
-    await db.update(schema.userProfiles)
-      .set({
-        hydeDescription: description,
-        hydeEmbedding: embedding,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.userProfiles.userId, userId));
-  }
-
   async getUser(userId: string): Promise<User | null> {
     const result = await db.select()
       .from(schema.users)
@@ -2081,23 +2061,19 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Get full profile row by userId (for test assertions, includes hydeDescription, hydeEmbedding).
+   * Get full profile row by userId (for test assertions).
    */
   async getProfileRow(userId: string): Promise<{
     identity: ProfileIdentity;
     narrative: ProfileNarrative;
     attributes: ProfileAttributes;
     embedding: number[] | number[][] | null;
-    hydeDescription: string | null;
-    hydeEmbedding: number[] | null;
   } | null> {
     const result = await db.select({
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
       embedding: schema.userProfiles.embedding,
-      hydeDescription: schema.userProfiles.hydeDescription,
-      hydeEmbedding: schema.userProfiles.hydeEmbedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -2109,8 +2085,6 @@ export class ProfileDatabaseAdapter {
       narrative: row.narrative as ProfileNarrative,
       attributes: row.attributes as ProfileAttributes,
       embedding: row.embedding,
-      hydeDescription: row.hydeDescription,
-      hydeEmbedding: row.hydeEmbedding as number[] | null,
     };
   }
 
@@ -2139,6 +2113,14 @@ export class ProfileDatabaseAdapter {
   }
 
   private hydeAdapter = new HydeDatabaseAdapter();
+
+  async getHydeDocument(
+    sourceType: 'intent' | 'profile' | 'query',
+    sourceId: string,
+    strategy: string
+  ) {
+    return this.hydeAdapter.getHydeDocument(sourceType, sourceId, strategy);
+  }
 
   async saveHydeDocument(data: {
     sourceType: 'intent' | 'profile' | 'query';
