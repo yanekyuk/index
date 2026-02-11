@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Loader2, Trash2, ExternalLink } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAPI, useIntegrations } from "@/contexts/APIContext";
+import { useAPI, useIntegrations, useOpportunities } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import IntentList from "@/components/IntentList";
+import type { OpportunityListItem } from "@/services/opportunities";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 
@@ -56,10 +57,11 @@ export default function LibraryPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { filesService, linksService, intentsService } = useAPI();
   const integrationsService = useIntegrations();
+  const opportunitiesService = useOpportunities();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<'intents' | 'connections' | 'files' | 'links'>('intents');
+  const [activeTab, setActiveTab] = useState<'intents' | 'opportunities' | 'connections' | 'files' | 'links'>('intents');
   const [isLoading, setIsLoading] = useState(true);
   const tabDescriptions = {
     intents: {
@@ -68,6 +70,13 @@ export default function LibraryPage() {
         "Things that your agent thinks you might be looking for, inferred from your activity. Review them and remove anything that doesn’t feel right.",
       privacy:
         "AI agents use these to surface opportunities and only match when there’s mutual intent."
+    },
+    opportunities: {
+      title: "My Opportunities",
+      description:
+        "Potential matches surfaced by the system based on mutual intent within your networks.",
+      privacy:
+        "Only visible to you and other actors on each opportunity; role-based visibility applies."
     },
     connections: {
       title: "Connections",
@@ -94,12 +103,14 @@ export default function LibraryPage() {
 
   // Data states
   const [intents, setIntents] = useState<LibrarySourceIntent[]>([]);
+  const [opportunities, setOpportunities] = useState<OpportunityListItem[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
 
   // Loading states per tab
   const [loadingIntents, setLoadingIntents] = useState(false);
+  const [loadingOpportunities, setLoadingOpportunities] = useState(false);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingLinks, setLoadingLinks] = useState(false);
@@ -133,6 +144,18 @@ export default function LibraryPage() {
       setLoadingIntents(false);
     }
   }, [api]);
+
+  const loadOpportunities = useCallback(async () => {
+    try {
+      setLoadingOpportunities(true);
+      const list = await opportunitiesService.getOpportunities({ limit: 50 });
+      setOpportunities(list);
+    } catch {
+      setOpportunities([]);
+    } finally {
+      setLoadingOpportunities(false);
+    }
+  }, [opportunitiesService]);
 
   // Load integrations
   const loadIntegrations = useCallback(async () => {
@@ -289,12 +312,12 @@ export default function LibraryPage() {
 
     const loadAll = async () => {
       setIsLoading(true);
-      await Promise.all([loadIntents(), loadIntegrations(), loadFiles(), loadLinks()]);
+      await Promise.all([loadIntents(), loadOpportunities(), loadIntegrations(), loadFiles(), loadLinks()]);
       setIsLoading(false);
     };
 
     loadAll();
-  }, [isAuthenticated, authLoading, loadIntents, loadIntegrations, loadFiles, loadLinks]);
+  }, [isAuthenticated, authLoading, loadIntents, loadOpportunities, loadIntegrations, loadFiles, loadLinks]);
 
   // Archive intent handler
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
@@ -361,6 +384,15 @@ export default function LibraryPage() {
               )}
             </Tabs.Trigger>
             <Tabs.Trigger 
+              value="opportunities" 
+              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+            >
+              My Opportunities
+              {opportunities.length > 0 && (
+                <span className="ml-2 text-xs text-gray-500">({opportunities.length})</span>
+              )}
+            </Tabs.Trigger>
+            <Tabs.Trigger 
               value="connections" 
               className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
             >
@@ -411,6 +443,47 @@ export default function LibraryPage() {
                 onArchiveIntent={handleArchiveIntent}
                 className="w-full"
               />
+            )}
+          </Tabs.Content>
+
+          {/* My Opportunities Tab */}
+          <Tabs.Content value="opportunities" className="w-full">
+            {loadingOpportunities ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : opportunities.length === 0 ? (
+              <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
+                <p>No opportunities yet. Create intents and join networks; the system will surface matches when there&apos;s mutual intent.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 w-full">
+                {opportunities.map((opp) => (
+                  <div
+                    key={opp.id}
+                    className="p-3 border border-gray-200 rounded-sm hover:border-gray-300 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] px-1.5 py-0.5 border border-gray-200 rounded-sm text-gray-700 bg-gray-50 capitalize">
+                        {opp.status}
+                      </span>
+                      {opp.context?.indexId && (
+                        <span className="text-xs text-gray-500 truncate" title={opp.context.indexId}>
+                          Index: {opp.context.indexId.slice(0, 8)}…
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-500 ml-auto">
+                        {formatDate(opp.createdAt).split(',')[0]}
+                      </span>
+                    </div>
+                    {(opp.interpretation?.reasoning ?? opp.interpretation?.summary) && (
+                      <p className="text-sm text-gray-700 mt-1 line-clamp-2">
+                        {(opp.interpretation.reasoning ?? opp.interpretation.summary) ?? ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </Tabs.Content>
 
