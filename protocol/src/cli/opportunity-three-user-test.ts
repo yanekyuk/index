@@ -1,0 +1,145 @@
+#!/usr/bin/env bun
+/**
+ * Minimal three-user opportunity test.
+ *
+ * Prerequisites:
+ * - DATABASE_URL and OPENROUTER_API_KEY in .env.development
+ * - Redis running (optional; script runs HyDE and discovery synchronously)
+ * - Run once: bun run db:seed --confirm (creates 3 users + indexes + memberships)
+ *
+ * Flow:
+ * 1. Load 3 users by seed emails and one index.
+ * 2. Ensure minimal user_profiles for each (so evaluator has profile data).
+ * 3. Create one intent for User A and assign to index.
+ * 4. Run HyDE for that intent (mirror + reciprocal).
+ * 5. Add a profile HyDE for User B with the intent's mirror embedding so discovery finds B.
+ * 6. Run opportunity discovery (creates latent opportunities).
+ * 7. Print opportunities per user.
+ */
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.development') });
+
+import { eq, inArray } from 'drizzle-orm';
+import db, { closeDb } from '../lib/drizzle/drizzle';
+import * as schema from '../schemas/database.schema';
+import { TESTABLE_TEST_ACCOUNTS } from './test-data';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { RedisCacheAdapter } from '../adapters/cache.adapter';
+import type { HydeGraphDatabase, OpportunityGraphDatabase } from '../lib/protocol/interfaces/database.interface';
+import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
+import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
+import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
+import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { handleDiscoverOpportunities } from '../jobs/opportunity-discovery.job';
+
+const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Open Mock Network from seed
+const DIMENSIONS = 2000;
+
+async function main() {
+  console.log('=== Three-user opportunity test ===\n');
+
+  const emails = TESTABLE_TEST_ACCOUNTS.map((a) => a.email);
+  const userRows = await db
+    .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name })
+    .from(schema.users)
+    .where(inArray(schema.users.email, emails));
+  if (userRows.length < 3) {
+    console.error('Need 3 users. Run: bun run db:seed --confirm');
+    process.exit(1);
+  }
+  const [userA, userB, userC] = userRows.slice(0, 3);
+  console.log('Users:', userA.name, userA.id, '|', userB.name, userB.id, '|', userC.name, userC.id);
+
+  // Ensure minimal profiles (evaluator needs profile for entity bundle)
+  for (const u of userRows.slice(0, 3)) {
+    const [existing] = await db.select().from(schema.userProfiles).where(eq(schema.userProfiles.userId, u.id)).limit(1);
+    if (!existing) {
+      await db.insert(schema.userProfiles).values({
+        userId: u.id,
+        identity: { name: u.name ?? 'Test', bio: '', location: '' },
+        narrative: { context: '' },
+        attributes: { interests: [], skills: [] },
+      });
+      console.log('  Created minimal profile for', u.name);
+    }
+  }
+
+  const database = new ChatDatabaseAdapter();
+  const graphDb = database as unknown as HydeGraphDatabase & OpportunityGraphDatabase;
+
+  // Create intent for User A and assign to index
+  const intentPayload = 'Looking for a technical co-founder with React experience';
+  const [created] = await db
+    .insert(schema.intents)
+    .values({
+      userId: userA.id,
+      payload: intentPayload,
+      summary: 'Co-founder',
+      sourceType: 'discovery_form',
+      sourceId: userA.id,
+    })
+    .returning({ id: schema.intents.id });
+  if (!created) {
+    console.error('Failed to create intent');
+    process.exit(1);
+  }
+  await database.assignIntentToIndex(created.id, INDEX_ID);
+  console.log('Created intent for', userA.name, ':', created.id, '->', intentPayload);
+
+  // Run HyDE for the intent (no queue; direct invoke)
+  const embedder: Embedder = new EmbedderAdapter();
+  const cache: HydeCache = new RedisCacheAdapter();
+  const generator = new HydeGenerator();
+  const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, generator).createGraph();
+  await hydeGraph.invoke({
+    sourceText: intentPayload,
+    sourceType: 'intent',
+    sourceId: created.id,
+    strategies: ['mirror', 'reciprocal'],
+    forceRegenerate: true,
+  });
+  console.log('HyDE generated for intent');
+
+  // So discovery can find User B: add profile HyDE for B with same mirror embedding as intent
+  const intentMirror = await database.getHydeDocument('intent', created.id, 'mirror');
+  if (intentMirror?.hydeEmbedding?.length === DIMENSIONS) {
+    await database.saveHydeDocument({
+      sourceType: 'profile',
+      sourceId: userB.id,
+      strategy: 'mirror',
+      targetCorpus: 'profiles',
+      hydeText: `${userB.name} – developer, React, startup.`,
+      hydeEmbedding: intentMirror.hydeEmbedding,
+    });
+    console.log('Profile HyDE for', userB.name, '(mirror) so discovery can match');
+  }
+
+  // Run opportunity discovery (synchronous)
+  await handleDiscoverOpportunities({ intentId: created.id, userId: userA.id });
+  console.log('Discovery run complete\n');
+
+  // List opportunities per user
+  const adapter = new ChatDatabaseAdapter();
+  for (const u of [userA, userB, userC]) {
+    const list = await adapter.getOpportunitiesForUser(u.id, { limit: 20 });
+    console.log(`${u.name} (${u.id}): ${list.length} opportunity(ies)`);
+    list.forEach((opp) => {
+      const actorIds = opp.actors?.map((a) => a.userId).join(', ') ?? '';
+      console.log(`  - ${opp.id} status=${opp.status} actors=[${actorIds}] reasoning=${(opp.interpretation?.reasoning ?? '').slice(0, 60)}...`);
+    });
+  }
+
+  console.log('\n=== Done ===');
+}
+
+main()
+  .then(() => closeDb())
+  .catch((e) => {
+    console.error(e);
+    closeDb();
+    process.exit(1);
+  });
