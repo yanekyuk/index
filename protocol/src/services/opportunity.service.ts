@@ -17,6 +17,7 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
+import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
 
 const logger = log.service.from("OpportunityService");
 
@@ -97,20 +98,26 @@ export class OpportunityService {
       return null;
     }
 
-    // Check if viewer is an actor
-    const isActor = opp.actors.some((a) => a.identityId === viewerId);
+    // Check if viewer is an actor and allowed to see per role-based visibility (Latent Opportunity Lifecycle)
+    const isActor = opp.actors.some((a) => a.userId === viewerId);
     if (!isActor) {
       return { error: 'Not authorized to view this opportunity', status: 403 };
     }
+    if (!canUserSeeOpportunity(opp.actors, opp.status, viewerId)) {
+      return { error: 'Not authorized to view this opportunity', status: 403 };
+    }
 
-    const myActor = opp.actors.find((a) => a.identityId === viewerId)!;
+    const myActor = opp.actors.find((a) => a.userId === viewerId)!;
     const introducer = opp.actors.find((a) => a.role === 'introducer');
-    const introducerId = introducer?.identityId;
-    const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.identityId !== viewerId);
-    const otherPartyIds = nonIntroducerActors.map((a) => a.identityId);
+    const introducerId = introducer?.userId;
+    const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.userId !== viewerId);
+    const otherPartyIds = nonIntroducerActors.map((a) => a.userId);
 
+    const contextIndexId = opp.context?.indexId;
+    const actorIndexId = opp.actors[0]?.indexId;
+    const indexIdForDisplay = contextIndexId ?? actorIndexId;
     const [indexRecord, ...userRecords] = await Promise.all([
-      this.db.getIndex(opp.indexId),
+      indexIdForDisplay ? this.db.getIndex(indexIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
     const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
@@ -128,7 +135,7 @@ export class OpportunityService {
     const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, introducerInfo, 'card');
 
     const otherParties = nonIntroducerActors.map((a) => {
-      const info = userMap.get(a.identityId) ?? { id: a.identityId, name: 'Unknown', avatar: null as string | null };
+      const info = userMap.get(a.userId) ?? { id: a.userId, name: 'Unknown', avatar: null as string | null };
       return { id: info.id, name: info.name, avatar: info.avatar, role: a.role };
     });
 
@@ -144,7 +151,7 @@ export class OpportunityService {
       introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : { id: opp.indexId, title: '' },
+      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (indexIdForDisplay ? { id: indexIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
       expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
@@ -171,7 +178,7 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    const isActor = opp.actors.some((a) => a.identityId === userId);
+    const isActor = opp.actors.some((a) => a.userId === userId);
     if (!isActor) {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
@@ -277,14 +284,14 @@ export class OpportunityService {
       return { error: 'Opportunity already exists between these parties', status: 409 };
     }
 
-    // Build actors
+    // Build actors (manual opportunities are single-index; all actors share indexId)
     const actors: OpportunityActor[] = data.parties.map((p) => ({
+      indexId,
+      userId: p.userId,
       role: 'party',
-      identityId: p.userId,
-      intents: p.intentId ? [p.intentId] : [],
-      profile: true,
+      ...(p.intentId ? { intent: p.intentId } : {}),
     }));
-    actors.push({ role: 'introducer', identityId: creatorId, intents: [], profile: false });
+    actors.push({ indexId, userId: creatorId, role: 'introducer' });
 
     const conf = data.confidence ?? 0.8;
     const opportunityData: CreateOpportunityData = {
@@ -301,7 +308,6 @@ export class OpportunityService {
         signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual match by curator' }],
       },
       context: { indexId },
-      indexId,
       confidence: String(conf),
       status: 'pending',
     };

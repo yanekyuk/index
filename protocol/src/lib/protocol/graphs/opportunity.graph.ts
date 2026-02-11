@@ -210,31 +210,28 @@ export class OpportunityGraphFactory {
           return { candidates: [] };
         }
 
-        // Determine target index scope
-        const indexScope = state.targetIndexes.map((idx) => idx.indexId);
-        
-        if (indexScope.length === 0) {
+        if (state.targetIndexes.length === 0) {
           logger.warn('[Graph:Discovery] No target indexes for search');
           return { candidates: [] };
         }
 
-        // Determine strategies
+        // Determine strategies (use first index for strategy selection)
         const strategies = state.options.strategies ?? selectStrategies(searchText, {
-          indexId: indexScope[0],
+          indexId: state.targetIndexes[0].indexId,
         });
 
         logger.info('[Graph:Discovery] Generating HyDE and searching', {
           query: searchText.substring(0, 50),
           strategies,
-          indexScopeCount: indexScope.length,
+          targetIndexesCount: state.targetIndexes.length,
         });
 
-        // Generate HyDE embeddings
+        // Generate HyDE embeddings (context from first index)
         const hydeResult = await this.hydeGenerator.invoke({
           sourceType: 'query',
           sourceText: searchText,
           strategies,
-          context: indexScope[0] ? { indexId: indexScope[0] } : undefined,
+          context: state.targetIndexes[0] ? { indexId: state.targetIndexes[0].indexId } : undefined,
           forceRegenerate: false,
         });
 
@@ -245,7 +242,6 @@ export class OpportunityGraphFactory {
           return { hydeEmbeddings: {} as Record<HydeStrategy, number[]>, candidates: [] };
         }
 
-        // Convert to Map for search
         const embeddingsMap = new Map<HydeStrategy, number[]>();
         for (const [strategy, embedding] of Object.entries(hydeEmbeddings)) {
           if (embedding?.length) {
@@ -253,49 +249,55 @@ export class OpportunityGraphFactory {
           }
         }
 
-        // Perform search using existing method (handles index scope, dedup, ranking)
-        const hydeSearchResults = await this.embedder.searchWithHydeEmbeddings(embeddingsMap, {
-          strategies,
-          indexScope,
-          excludeUserId: state.userId,
-          limitPerStrategy: state.options.limit ?? 10,
-          limit: state.options.limit ?? 20,
-          minScore: 0.5,
-        });
+        const limitPerStrategy = state.options.limit ?? 10;
+        const perIndexLimit = state.options.limit ?? 20;
+        const allCandidates: CandidateMatch[] = [];
 
-        const intentResults = hydeSearchResults.filter((r) => r.type === 'intent');
-        const profileResults = hydeSearchResults.filter((r) => r.type === 'profile');
+        await Promise.all(
+          state.targetIndexes.map(async (targetIndex) => {
+            const results = await this.embedder.searchWithHydeEmbeddings(embeddingsMap, {
+              strategies,
+              indexScope: [targetIndex.indexId],
+              excludeUserId: state.userId,
+              limitPerStrategy,
+              limit: perIndexLimit,
+              minScore: 0.5,
+            });
+            const intentResults = results.filter((r) => r.type === 'intent');
+            const profileResults = results.filter((r) => r.type === 'profile');
+            for (const result of intentResults) {
+              allCandidates.push({
+                candidateUserId: result.userId as Id<'users'>,
+                candidateIntentId: result.id as Id<'intents'>,
+                indexId: targetIndex.indexId,
+                similarity: result.score,
+                strategy: result.matchedVia as HydeStrategy,
+                candidatePayload: '',
+                candidateSummary: undefined,
+              });
+            }
+            for (const result of profileResults) {
+              allCandidates.push({
+                candidateUserId: result.userId as Id<'users'>,
+                indexId: targetIndex.indexId,
+                similarity: result.score,
+                strategy: result.matchedVia as HydeStrategy,
+                candidatePayload: '',
+                candidateSummary: undefined,
+              });
+            }
+          })
+        );
 
-        // Map intent results to CandidateMatch (with candidateIntentId)
-        const intentCandidates: CandidateMatch[] = intentResults.map((result) => ({
-          candidateUserId: result.userId as Id<'users'>,
-          candidateIntentId: result.id as Id<'intents'>,
-          indexId: result.indexId as Id<'indexes'>,
-          similarity: result.score,
-          strategy: result.matchedVia as HydeStrategy,
-          candidatePayload: '',
-          candidateSummary: undefined,
-        }));
-
-        // Include profile matches (profile-only candidates have no candidateIntentId)
-        const profileCandidates: CandidateMatch[] = profileResults.map((result) => ({
-          candidateUserId: result.userId as Id<'users'>,
-          indexId: result.indexId as Id<'indexes'>,
-          similarity: result.score,
-          strategy: result.matchedVia as HydeStrategy,
-          candidatePayload: '',
-          candidateSummary: undefined,
-        }));
-
-        // Dedupe by candidateUserId (intent match wins if both exist)
-        const byUser = new Map<string, CandidateMatch>();
-        for (const c of [...intentCandidates, ...profileCandidates]) {
-          const key = c.candidateUserId;
-          if (!byUser.has(key) || (byUser.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
-            byUser.set(key, c);
+        // Dedupe by (candidateUserId, indexId): keep one per user per index, intent wins over profile
+        const byUserAndIndex = new Map<string, CandidateMatch>();
+        for (const c of allCandidates) {
+          const key = `${c.candidateUserId}:${c.indexId}`;
+          if (!byUserAndIndex.has(key) || (byUserAndIndex.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+            byUserAndIndex.set(key, c);
           }
         }
-        const candidates = Array.from(byUser.values());
+        const candidates = Array.from(byUserAndIndex.values());
 
         logger.info('[Graph:Discovery] Discovery complete', {
           candidatesFound: candidates.length,
@@ -481,16 +483,16 @@ export class OpportunityGraphFactory {
             },
             actors: [
               {
+                indexId: evaluated.indexId,
+                userId: evaluated.sourceUserId,
                 role: sourceRole,
-                identityId: evaluated.sourceUserId,
-                intents: evaluated.sourceIntentId ? [evaluated.sourceIntentId] : [],
-                profile: true,
+                ...(evaluated.sourceIntentId ? { intent: evaluated.sourceIntentId } : {}),
               },
               {
+                indexId: evaluated.indexId,
+                userId: evaluated.candidateUserId,
                 role: candidateRole,
-                identityId: evaluated.candidateUserId,
-                intents: evaluated.candidateIntentId ? [evaluated.candidateIntentId] : [],
-                profile: true,
+                ...(evaluated.candidateIntentId ? { intent: evaluated.candidateIntentId } : {}),
               },
             ],
             interpretation: {
@@ -506,10 +508,8 @@ export class OpportunityGraphFactory {
               ],
             },
             context: {
-              indexId: evaluated.indexId,
-              triggeringIntentId: evaluated.sourceIntentId,
+              ...(state.indexId ? { indexId: state.indexId } : {}),
             },
-            indexId: evaluated.indexId,
             confidence: String(evaluated.score / 100),
             status: initialStatus,
           };
@@ -585,12 +585,13 @@ export class OpportunityGraphFactory {
           list.map(async (opp) => {
             // "Other parties" = all actors who are not the current user (exclude introducer for suggestedBy).
             // Opportunity graph persists roles as 'agent'|'patient'|'peer'; manual/createManual use 'party'.
-            const otherParties = opp.actors.filter((a: OpportunityActor) => a.identityId !== state.userId && a.role !== 'introducer');
+            const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== state.userId && a.role !== 'introducer');
             const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
-            const partyIds = otherParties.map((a: OpportunityActor) => a.identityId);
-            const idsToResolve = introducer ? [...partyIds, introducer.identityId] : partyIds;
+            const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
+            const idsToResolve = introducer ? [...partyIds, introducer.userId] : partyIds;
+            const actorIndexId = opp.actors[0]?.indexId;
             const [indexRecord, ...profileAndUserPairs] = await Promise.all([
-              this.database.getIndex(opp.indexId),
+              actorIndexId ? this.database.getIndex(actorIndexId) : Promise.resolve(null),
               ...idsToResolve.map(async (uid: string) => {
                 const [profile, user] = await Promise.all([
                   this.database.getProfile(uid),
@@ -606,7 +607,7 @@ export class OpportunityGraphFactory {
             const source = opp.detection?.source ? (sourceLabel[opp.detection.source] ?? opp.detection.source) : null;
             return {
               id: opp.id,
-              indexName: indexRecord?.title ?? opp.indexId,
+              indexName: indexRecord?.title ?? (actorIndexId ?? ''),
               connectedWith,
               suggestedBy,
               reasoning: opp.interpretation?.reasoning ?? 'Connection opportunity',
@@ -655,7 +656,7 @@ export class OpportunityGraphFactory {
         if (!opp) {
           return { mutationResult: { success: false, error: 'Opportunity not found.' } };
         }
-        const isActor = opp.actors.some((a: OpportunityActor) => a.identityId === state.userId);
+        const isActor = opp.actors.some((a: OpportunityActor) => a.userId === state.userId);
         if (!isActor) {
           return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
         }
@@ -696,7 +697,7 @@ export class OpportunityGraphFactory {
         if (!opp) {
           return { mutationResult: { success: false, error: 'Opportunity not found.' } };
         }
-        const isActor = opp.actors.some((a: OpportunityActor) => a.identityId === state.userId);
+        const isActor = opp.actors.some((a: OpportunityActor) => a.userId === state.userId);
         if (!isActor) {
           return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
         }
@@ -742,20 +743,38 @@ export class OpportunityGraphFactory {
             },
           };
         }
-        const isActor = opp.actors.some((a: OpportunityActor) => a.identityId === state.userId);
-        if (!isActor) {
+        const senderActor = opp.actors.find((a: OpportunityActor) => a.userId === state.userId);
+        if (!senderActor) {
           return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
+        }
+
+        const hasIntroducer = opp.actors.some((a: OpportunityActor) => a.role === 'introducer');
+        const canSend =
+          senderActor.role === 'introducer' ||
+          senderActor.role === 'peer' ||
+          (senderActor.role === 'patient' && !hasIntroducer) ||
+          (senderActor.role === 'party' && !hasIntroducer);
+        if (!canSend) {
+          return { mutationResult: { success: false, error: 'You cannot send this opportunity.' } };
         }
 
         await this.database.updateOpportunityStatus(state.opportunityId, 'pending');
 
-        // Notify other actors
-        const recipients = opp.actors.filter((a: OpportunityActor) => a.identityId !== state.userId);
-        for (const recipient of recipients) {
-          await queueOpportunityNotification(opp.id, recipient.identityId, 'high');
+        // Notify only the role that becomes visible at the next tier
+        let recipients: OpportunityActor[];
+        if (senderActor.role === 'introducer') {
+          recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'patient' || a.role === 'party');
+        } else if (senderActor.role === 'peer') {
+          recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'peer' && a.userId !== state.userId);
+        } else {
+          recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'agent');
         }
 
-        const recipientIds = recipients.map((a: OpportunityActor) => a.identityId);
+        for (const recipient of recipients) {
+          await queueOpportunityNotification(opp.id, recipient.userId, 'high');
+        }
+
+        const recipientIds = recipients.map((a: OpportunityActor) => a.userId);
         return {
           mutationResult: {
             success: true,
