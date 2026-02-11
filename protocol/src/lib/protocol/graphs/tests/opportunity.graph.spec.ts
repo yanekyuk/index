@@ -63,7 +63,6 @@ function createMockGraph(deps?: {
         actors: data.actors,
         interpretation: data.interpretation,
         context: data.context,
-        indexId: data.indexId,
         confidence: data.confidence,
         status: data.status ?? 'pending',
         createdAt: new Date(),
@@ -277,7 +276,7 @@ describe('Opportunity Graph', () => {
       expect(result.opportunities.length).toBe(1);
       expect(result.opportunities[0].detection.source).toBe('opportunity_graph');
       expect(result.opportunities[0].actors.length).toBe(2);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-bob')).toBe(true);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'user-bob')).toBe(true);
     });
   });
 
@@ -301,7 +300,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-alice')).toBe(true);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'user-alice')).toBe(true);
     });
   });
 
@@ -422,7 +421,10 @@ describe('Opportunity Graph', () => {
         expect(opp.detection.source).toBe('opportunity_graph');
         expect(opp.detection.createdBy).toBe('agent-opportunity-finder');
         expect(opp.interpretation.reasoning).toBeDefined();
-        expect(opp.context.indexId).toBeDefined();
+        // context.indexId is set only when user explicitly scoped search; actor tokens carry discovery indexId
+        expect(opp.actors.length).toBeGreaterThanOrEqual(1);
+        expect(opp.actors[0].indexId).toBeDefined();
+        expect(opp.actors[0].userId).toBeDefined();
         expect(opp.status).toBe('latent');
       }
     });

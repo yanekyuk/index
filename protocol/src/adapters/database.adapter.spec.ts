@@ -7,7 +7,7 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/drizzle/drizzle';
 import {
@@ -98,7 +98,7 @@ afterAll(async () => {
     await db.delete(intentIndexes).where(inArray(intentIndexes.intentId, intentIds));
     await db.delete(intents).where(inArray(intents.id, intentIds));
   }
-  await db.delete(opportunities).where(eq(opportunities.indexId, fixture.indexId));
+  await db.delete(opportunities).where(sql`${opportunities.context}->>'indexId' = ${fixture.indexId}`);
   await db.delete(indexMembers).where(eq(indexMembers.indexId, fixture.indexId));
   await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId]));
   await db.delete(indexes).where(eq(indexes.id, fixture.indexId));
@@ -420,16 +420,15 @@ describe('OpportunityDatabaseAdapter', () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { role: 'agent', identityId: fixture.userAId, intents: [fixture.intent1Id], profile: true },
-        { role: 'patient', identityId: fixture.userBId, intents: [], profile: false },
+        { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+        { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
       ],
       interpretation: {
         category: 'collaboration',
         reasoning: 'Test opportunity',
         confidence: 0.85,
       },
-      context: { indexId: fixture.indexId, triggeringIntentId: fixture.intent1Id },
-      indexId: fixture.indexId,
+      context: { indexId: fixture.indexId },
       confidence: '0.85',
     });
     expect(created.id).toBeDefined();
@@ -465,6 +464,125 @@ describe('OpportunityDatabaseAdapter', () => {
     expect(updated!.status).toBe('viewed');
     const refetched = await adapter.getOpportunity(opp.id);
     expect(refetched!.status).toBe('viewed');
+  });
+
+  describe('role-based visibility (getOpportunitiesForUser)', () => {
+    const thirdUserId = uuidv4();
+
+    it('latent, no introducer: patient sees, agent does not', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'patient' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('latent, with introducer: only introducer sees', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('pending, no introducer: both patient and agent see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'patient' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(true);
+    });
+
+    it('pending, with introducer: introducer and patient see, agent does not', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'pending',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { indexId: fixture.indexId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('accepted, with introducer: all actors see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'accepted',
+      });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { indexId: fixture.indexId });
+      expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
+      expect(forPatient.some((o) => o.id === created.id)).toBe(true);
+      expect(forAgent.some((o) => o.id === created.id)).toBe(true);
+    });
+
+    it('latent, peers: both peers see', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'peer' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'peer' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        status: 'latent',
+      });
+      const forPeerA = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const forPeerB = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      expect(forPeerA.some((o) => o.id === created.id)).toBe(true);
+      expect(forPeerB.some((o) => o.id === created.id)).toBe(true);
+    });
   });
 });
 

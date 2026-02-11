@@ -194,8 +194,8 @@ describe("OpportunityController Integration", () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { role: "agent", identityId: testUserId, intents: [], profile: true },
-        { role: "patient", identityId: candidateUserId, intents: [], profile: true },
+        { indexId: testIndexId, userId: testUserId, role: "agent" },
+        { indexId: testIndexId, userId: candidateUserId, role: "patient" },
       ],
       interpretation: {
         category: "collaboration",
@@ -203,7 +203,6 @@ describe("OpportunityController Integration", () => {
         confidence: 0.9,
       },
       context: { indexId: testIndexId },
-      indexId: testIndexId,
       confidence: "0.9",
     });
     testOpportunityId = opp.id;

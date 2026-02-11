@@ -11,8 +11,8 @@ describe('presentOpportunity', () => {
     id: 'opp-1',
     detection: { source: 'manual', timestamp: new Date().toISOString() },
     actors: [
-      { role: 'agent', identityId: 'alice', intents: [], profile: true },
-      { role: 'patient', identityId: 'bob', intents: [], profile: false },
+      { indexId: 'idx-1', userId: 'alice', role: 'agent' },
+      { indexId: 'idx-1', userId: 'bob', role: 'patient' },
     ],
     interpretation: {
       category: 'collaboration',
@@ -20,7 +20,6 @@ describe('presentOpportunity', () => {
       confidence: 0.85,
     },
     context: { indexId: 'idx-1' },
-    indexId: 'idx-1',
     confidence: '0.85',
     status: 'pending',
     createdAt: new Date(),
