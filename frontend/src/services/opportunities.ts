@@ -73,6 +73,16 @@ export interface GetHomeViewOptions {
   limit?: number;
 }
 
+export type OpportunityStatus = 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
+
+export interface OpportunityStatusUpdateResponse {
+  opportunity: OpportunityListItem | null;
+  chat?: {
+    channelId: string;
+    counterpartUserId: string;
+  };
+}
+
 export const createOpportunitiesService = (
   api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>
 ) => ({
@@ -100,5 +110,15 @@ export const createOpportunitiesService = (
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
     const res = await api.get<HomeViewResponse>(url);
     return res;
+  },
+
+  updateStatus: async (
+    opportunityId: string,
+    status: OpportunityStatus
+  ): Promise<OpportunityStatusUpdateResponse> => {
+    return api.patch<OpportunityStatusUpdateResponse>(
+      `/opportunities/${opportunityId}/status`,
+      { status }
+    );
   },
 });

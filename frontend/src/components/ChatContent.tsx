@@ -300,6 +300,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [homeViewData, setHomeViewData] = useState<{ sections: HomeViewSection[]; meta: { totalOpportunities: number; totalSections: number } } | null>(null);
   const [homeViewLoading, setHomeViewLoading] = useState(false);
   const [homeViewError, setHomeViewError] = useState<string | null>(null);
+  const [homeActionLoadingByOpportunity, setHomeActionLoadingByOpportunity] = useState<Record<string, boolean>>({});
 
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
@@ -424,7 +425,36 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [connectionsService]);
 
-  const handleUserClick = useCallback((userId: string) => router.push(`/u/${userId}`), [router]);
+  const handleHomeOpportunityAction = useCallback(async (
+    opportunityId: string,
+    action: 'accepted' | 'rejected',
+    fallbackUserId?: string
+  ) => {
+    setHomeActionLoadingByOpportunity((prev) => ({ ...prev, [opportunityId]: true }));
+    try {
+      const result = await opportunitiesService.updateStatus(opportunityId, action);
+      const counterpartUserId = result.chat?.counterpartUserId ?? fallbackUserId;
+      if (action === 'accepted' && counterpartUserId) {
+        router.push(`/u/${counterpartUserId}/chat`);
+      }
+      setHomeViewData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sections: prev.sections
+            .map((section) => ({
+              ...section,
+              items: section.items.filter((item) => item.opportunityId !== opportunityId),
+            }))
+            .filter((section) => section.items.length > 0),
+        };
+      });
+    } catch (error) {
+      showError(error instanceof Error ? error.message : 'Failed to update opportunity');
+    } finally {
+      setHomeActionLoadingByOpportunity((prev) => ({ ...prev, [opportunityId]: false }));
+    }
+  }, [opportunitiesService, router, showError]);
 
   const canSend = input.trim() || selectedFiles.length > 0;
   const isBusy = isLoading || isUploadingFiles;
@@ -670,8 +700,22 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             </div>
                           </div>
                           <div className="flex gap-1.5 shrink-0">
-                            <button type="button" className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors" onClick={() => item.userId && handleUserClick(item.userId)}>{item.primaryActionLabel ?? 'Start Chat'}</button>
-                            <button type="button" className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">{item.secondaryActionLabel ?? 'Skip'}</button>
+                            <button
+                              type="button"
+                              disabled={!!homeActionLoadingByOpportunity[item.opportunityId]}
+                              className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              onClick={() => handleHomeOpportunityAction(item.opportunityId, 'accepted', item.userId)}
+                            >
+                              {homeActionLoadingByOpportunity[item.opportunityId] ? 'Working...' : (item.primaryActionLabel ?? 'Start Chat')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!!homeActionLoadingByOpportunity[item.opportunityId]}
+                              className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              onClick={() => handleHomeOpportunityAction(item.opportunityId, 'rejected', item.userId)}
+                            >
+                              {item.secondaryActionLabel ?? 'Skip'}
+                            </button>
                           </div>
                         </div>
                         <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
