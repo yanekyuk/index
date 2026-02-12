@@ -45,6 +45,9 @@ export type CategorizerResult = {
   sections: HomeSectionProposal[];
 };
 
+const UNCATEGORIZED_SECTION_ID = 'uncategorized';
+const UNCATEGORIZED_SECTION_TITLE = 'UNCATEGORIZED OPPORTUNITIES';
+
 /**
  * Build card summaries for the categorizer prompt.
  */
@@ -52,6 +55,54 @@ function buildCardSummaries(cards: CategorizerInputItem[]): string {
   return cards
     .map((c) => `[${c.index}] ${c.headline ?? c.mainText.slice(0, 60)}... (${c.name})`)
     .join('\n');
+}
+
+function reconcileSections(sections: HomeSectionProposal[], maxIndex: number): HomeSectionProposal[] {
+  const assigned = new Set<number>();
+
+  const normalizedSections = sections.map((section) => {
+    const uniqueIndices = Array.from(
+      new Set(section.itemIndices.filter((index) => index >= 0 && index <= maxIndex))
+    ).sort((a, b) => a - b);
+
+    for (const index of uniqueIndices) {
+      assigned.add(index);
+    }
+
+    return {
+      ...section,
+      itemIndices: uniqueIndices,
+    };
+  });
+
+  const missingIndices: number[] = [];
+  for (let index = 0; index <= maxIndex; index += 1) {
+    if (!assigned.has(index)) {
+      missingIndices.push(index);
+    }
+  }
+
+  if (missingIndices.length === 0) {
+    return normalizedSections;
+  }
+
+  const fallbackSection = normalizedSections.find((section) => section.id === UNCATEGORIZED_SECTION_ID);
+  if (fallbackSection) {
+    fallbackSection.itemIndices = Array.from(
+      new Set([...fallbackSection.itemIndices, ...missingIndices])
+    ).sort((a, b) => a - b);
+    return normalizedSections;
+  }
+
+  return [
+    ...normalizedSections,
+    {
+      id: UNCATEGORIZED_SECTION_ID,
+      title: UNCATEGORIZED_SECTION_TITLE,
+      iconName: DEFAULT_HOME_SECTION_ICON,
+      itemIndices: missingIndices,
+    },
+  ];
 }
 
 export class HomeCategorizerAgent {
@@ -123,7 +174,8 @@ Rules:
         iconName: s.iconName,
         itemIndices: s.itemIndices.filter((i) => i >= 0 && i <= maxIndex),
       }));
-      return { sections };
+      const reconciledSections = reconcileSections(sections, maxIndex);
+      return { sections: reconciledSections };
     } catch (e) {
       const err = e instanceof Error ? { message: e.message, name: e.name } : String(e);
       logger.error('HomeCategorizer categorize failed', { error: err });
