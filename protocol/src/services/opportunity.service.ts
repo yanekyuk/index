@@ -7,6 +7,7 @@ import type {
   HomeGraphDatabase,
   CreateOpportunityData,
   OpportunityActor,
+  Opportunity,
   OpportunityStatus,
 } from '../lib/protocol/interfaces/database.interface';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
@@ -23,11 +24,20 @@ import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils
 import { StreamChat } from 'stream-chat';
 
 const logger = log.service.from("OpportunityService");
+const INDEX_BOT_USER_ID = 'index_bot';
+const INDEX_BOT_NAME = 'Index';
+
+interface AcceptedOpportunityChannelMeta {
+  opportunityId: string;
+  acceptedAt: string;
+}
+
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
   chat?: {
     channelId: string;
     counterpartUserId: string;
+    acceptedOpportunities?: AcceptedOpportunityChannelMeta[];
   };
 }
 
@@ -42,6 +52,18 @@ function getDirectChannelId(firstUserId: string, secondUserId: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36).slice(0, 63);
+}
+
+function hasActorPair(opportunity: Opportunity | null, firstUserId: string, secondUserId: string): boolean {
+  if (!opportunity) return false;
+  const actorIds = new Set(opportunity.actors.map((actor) => actor.userId));
+  return actorIds.has(firstUserId) && actorIds.has(secondUserId);
+}
+
+function toIso(value: Date | string | null | undefined): string {
+  if (!value) return new Date().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return new Date(value).toISOString();
 }
 
 function getStreamServerClient(): StreamChat | null {
@@ -263,6 +285,28 @@ export class OpportunityService {
       return { opportunity: updated };
     }
 
+    // Accept all active opportunities between the same actor pair so the grouped home card disappears.
+    const opportunitiesForActor = await this.db.getOpportunitiesForUser(userId);
+    const siblingMatches = opportunitiesForActor.filter(
+      (candidate) =>
+        candidate.id !== opportunityId &&
+        candidate.status !== 'accepted' &&
+        candidate.status !== 'expired' &&
+        hasActorPair(candidate, userId, counterpart.userId)
+    );
+    await Promise.all(
+      siblingMatches.map((candidate) => this.db.updateOpportunityStatus(candidate.id, 'accepted'))
+    );
+
+    const acceptedForActor = await this.db.getOpportunitiesForUser(userId, { status: 'accepted' });
+    const acceptedBetweenActors = acceptedForActor
+      .filter((candidate) => hasActorPair(candidate, userId, counterpart.userId))
+      .sort((a, b) => toIso(b.updatedAt).localeCompare(toIso(a.updatedAt)));
+    const acceptedOpportunitiesMeta: AcceptedOpportunityChannelMeta[] = acceptedBetweenActors.map((candidate) => ({
+      opportunityId: candidate.id,
+      acceptedAt: toIso(candidate.updatedAt),
+    }));
+
     const streamClient = getStreamServerClient();
     const channelId = getDirectChannelId(userId, counterpart.userId);
 
@@ -276,6 +320,7 @@ export class OpportunityService {
         chat: {
           channelId,
           counterpartUserId: counterpart.userId,
+          acceptedOpportunities: acceptedOpportunitiesMeta,
         },
       };
     }
@@ -299,6 +344,7 @@ export class OpportunityService {
       await channel.updatePartial({
         set: {
           pending: false,
+          acceptedOpportunities: acceptedOpportunitiesMeta,
         },
         unset: ['requestedBy'],
       });
@@ -310,11 +356,57 @@ export class OpportunityService {
       });
     }
 
+    try {
+      await streamClient.upsertUsers([
+        {
+          id: INDEX_BOT_USER_ID,
+          name: INDEX_BOT_NAME,
+        },
+      ]);
+    } catch (error) {
+      logger.warn('[OpportunityService] Failed to upsert Index bot user', { error, opportunityId, channelId });
+    }
+
+    try {
+      const queryResult = await channel.query({ state: true, watch: false, messages: { limit: 30 } });
+      const introExists = (queryResult.messages ?? []).some((message) => {
+        const m = message as unknown as { introType?: string; opportunityId?: string };
+        return m.introType === 'opportunity_intro' && m.opportunityId === opportunityId;
+      });
+      if (!introExists) {
+        const counterpartUser = await this.db.getUser(counterpart.userId);
+        const introText = [
+          `Index intro: you are now connected with ${counterpartUser?.name ?? 'this member'}.`,
+          `Accepted opportunities between you: ${acceptedOpportunitiesMeta.length}.`,
+          'Start by sharing what you are currently working on and what help you need.',
+        ].join('\n');
+
+        await channel.sendMessage(
+          {
+            type: 'system',
+            text: introText,
+            introType: 'opportunity_intro',
+            opportunityId,
+            acceptedOpportunityIds: acceptedOpportunitiesMeta.map((item) => item.opportunityId),
+            acceptedAt: toIso(updated.updatedAt),
+          } as Record<string, unknown>,
+          INDEX_BOT_USER_ID
+        );
+      }
+    } catch (error) {
+      logger.warn('[OpportunityService] Failed to send Index intro message', {
+        error,
+        opportunityId,
+        channelId,
+      });
+    }
+
     return {
       opportunity: updated,
       chat: {
         channelId,
         counterpartUserId: counterpart.userId,
+        acceptedOpportunities: acceptedOpportunitiesMeta,
       },
     };
   }
