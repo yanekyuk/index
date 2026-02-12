@@ -65,6 +65,7 @@ function createMockGraph(deps?: {
         expiresAt: null,
       }),
     opportunityExistsBetweenActors: () => Promise.resolve(false),
+    findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
     getActiveIntents:
       deps?.getActiveIntents ??
