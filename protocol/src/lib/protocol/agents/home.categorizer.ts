@@ -132,6 +132,11 @@ export class HomeCategorizerAgent {
     if (cards.length === 0) {
       return { sections: [] };
     }
+    // #region agent log
+    const statuses = cards.map((c) => c.opportunityStatus ?? 'pending');
+    const expiredCount = statuses.filter((s) => s === 'expired').length;
+    fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'home.categorizer.ts:categorize:entry', message: 'home categorizer input', data: { cardCount: cards.length, statuses, expiredCount, hasExpired: expiredCount > 0 }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     const iconList = getIconNamesForPrompt();
     const cardSummaries = buildCardSummaries(cards);
     const maxIndex = cards.length - 1;

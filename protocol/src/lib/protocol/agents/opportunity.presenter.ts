@@ -227,6 +227,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
    * Generate full home-card display contract (headline, body, narrator remark, action labels, mutual-intent label).
    */
   public async presentHomeCard(input: HomeCardPresenterInput): Promise<HomeCardPresentationResult> {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'opportunity.presenter.ts:presentHomeCard:entry', message: 'presenter home card input', data: { opportunityStatus: input.opportunityStatus ?? 'pending', viewerRole: input.viewerRole, isExpired: input.opportunityStatus === 'expired' }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
     const mutualHint =
       input.mutualIntentCount != null
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
