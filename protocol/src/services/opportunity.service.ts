@@ -20,8 +20,38 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
+import { StreamChat } from 'stream-chat';
 
 const logger = log.service.from("OpportunityService");
+interface OpportunityStatusUpdateResult {
+  opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
+  chat?: {
+    channelId: string;
+    counterpartUserId: string;
+  };
+}
+
+function getDirectChannelId(firstUserId: string, secondUserId: string): string {
+  const sortedIds = [firstUserId, secondUserId].sort().join('_');
+  if (sortedIds.length <= 64) return sortedIds;
+
+  let hash = 0;
+  for (let i = 0; i < sortedIds.length; i++) {
+    const char = sortedIds.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).slice(0, 63);
+}
+
+function getStreamServerClient(): StreamChat | null {
+  const apiKey = process.env.STREAM_API_KEY;
+  const secret = process.env.STREAM_SECRET;
+  if (!apiKey || !secret) {
+    return null;
+  }
+  return StreamChat.getInstance(apiKey, secret);
+}
 
 /**
  * OpportunityService
@@ -204,7 +234,7 @@ export class OpportunityService {
     opportunityId: string,
     status: OpportunityStatus,
     userId: string
-  ) {
+  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
     logger.info('[OpportunityService] Updating opportunity status', { opportunityId, status, userId });
 
     const opp = await this.db.getOpportunity(opportunityId);
@@ -217,7 +247,76 @@ export class OpportunityService {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
 
-    return this.db.updateOpportunityStatus(opportunityId, status);
+    const updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    if (!updated) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    if (status !== 'accepted' || opp.status === 'accepted') {
+      return { opportunity: updated };
+    }
+
+    const counterpart = opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
+      ?? opp.actors.find((actor) => actor.userId !== userId);
+
+    if (!counterpart) {
+      return { opportunity: updated };
+    }
+
+    const streamClient = getStreamServerClient();
+    const channelId = getDirectChannelId(userId, counterpart.userId);
+
+    if (!streamClient) {
+      logger.warn('[OpportunityService] Stream credentials are missing; skipping chat activation', {
+        opportunityId,
+        channelId,
+      });
+      return {
+        opportunity: updated,
+        chat: {
+          channelId,
+          counterpartUserId: counterpart.userId,
+        },
+      };
+    }
+
+    const channel = streamClient.channel('messaging', channelId, {
+      members: [userId, counterpart.userId],
+      pending: false,
+    });
+
+    try {
+      await channel.create();
+    } catch (error) {
+      logger.debug('[OpportunityService] Stream channel already exists or create failed', {
+        opportunityId,
+        channelId,
+        error,
+      });
+    }
+
+    try {
+      await channel.updatePartial({
+        set: {
+          pending: false,
+        },
+        unset: ['requestedBy'],
+      });
+    } catch (error) {
+      logger.warn('[OpportunityService] Failed to clear pending status for channel', {
+        opportunityId,
+        channelId,
+        error,
+      });
+    }
+
+    return {
+      opportunity: updated,
+      chat: {
+        channelId,
+        counterpartUserId: counterpart.userId,
+      },
+    };
   }
 
   /**
