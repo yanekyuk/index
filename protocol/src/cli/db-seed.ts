@@ -11,8 +11,8 @@ import { indexMembers, indexes, userProfiles, users } from '../schemas/database.
 import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
-import { TESTABLE_TEST_ACCOUNTS, TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
-import type { SeedProfile } from './test-data';
+import { TESTABLE_TEST_ACCOUNTS } from './test-data';
+import type { SeedProfile, TesterPersona } from './test-data';
 import type { Id } from '../types/common.types';
 
 /** Minimal account shape for user creation (real or synthetic). */
@@ -33,6 +33,491 @@ interface IndexDef {
   prompt: string | null;
   joinPolicy: 'anyone' | 'invite_only';
 }
+
+const DB_SEED_TESTER_PERSONAS: TesterPersona[] = [
+  {
+    name: 'Alex Chen',
+    email: 'seed-tester-1@index-network.test',
+    linkedin: 'https://linkedin.com/in/alexchen-dev',
+    github: 'https://github.com/alexchen',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Alex Chen',
+        bio: 'Full-stack engineer focused on React and Node. Building developer tools.',
+        location: 'San Francisco, CA',
+      },
+      narrative: { context: 'Previously at a YC startup. Exploring a B2B workflow automation product.' },
+      attributes: {
+        interests: ['startups', 'developer tools', 'open source'],
+        skills: ['TypeScript', 'React', 'Node.js', 'PostgreSQL'],
+      },
+    },
+    intents: [
+      'Looking for a technical co-founder with strong backend and product sense for a workflow automation startup.',
+      'I want to meet engineers who enjoy building open-source tooling for developers.',
+    ],
+  },
+  {
+    name: 'Jordan Lee',
+    email: 'seed-tester-2@index-network.test',
+    linkedin: 'https://linkedin.com/in/jordanlee-design',
+    github: null,
+    x: 'https://x.com/jordanleedesign',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Jordan Lee',
+        bio: 'Product designer with 8 years in fintech and health tech.',
+        location: 'New York, NY',
+      },
+      narrative: { context: 'Design lead trying to launch a consumer finance app with stronger UX and trust.' },
+      attributes: {
+        interests: ['fintech', 'health tech', 'design systems'],
+        skills: ['Figma', 'UX research', 'prototyping', 'design systems'],
+      },
+    },
+    intents: [
+      'Seeking a technical co-founder to launch a fintech product where I lead product and design.',
+      'Looking for a frontend engineer passionate about accessibility in health-related apps.',
+    ],
+  },
+  {
+    name: 'Sam Rivera',
+    email: 'seed-tester-3@index-network.test',
+    linkedin: 'https://linkedin.com/in/samrivera-ml',
+    github: 'https://github.com/samrivera',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Sam Rivera',
+        bio: 'ML engineer focused on NLP and recommendation systems.',
+        location: 'Austin, TX',
+      },
+      narrative: { context: 'Exploring AI startup ideas in vertical SaaS and searching for domain experts.' },
+      attributes: {
+        interests: ['machine learning', 'LLMs', 'recommendation systems'],
+        skills: ['Python', 'PyTorch', 'vector search', 'LangChain'],
+      },
+    },
+    intents: [
+      'Looking for a co-founder with data engineering experience to build an AI analytics product.',
+      'I want to collaborate with a product founder on an LLM-based workflow assistant.',
+    ],
+  },
+  {
+    name: 'Morgan Taylor',
+    email: 'seed-tester-4@index-network.test',
+    linkedin: null,
+    github: 'https://github.com/morgantaylor',
+    x: 'https://x.com/morgantaylor',
+    website: 'https://morgantaylor.dev',
+    profile: {
+      identity: {
+        name: 'Morgan Taylor',
+        bio: 'Indie hacker and solo founder shipping small SaaS products.',
+        location: 'Remote',
+      },
+      narrative: { context: 'Growing a profitable side project and considering a strategic partner.' },
+      attributes: {
+        interests: ['indie hacking', 'SaaS', 'content creation'],
+        skills: ['Next.js', 'Stripe', 'SEO', 'writing'],
+      },
+    },
+    intents: [
+      'Seeking a growth-focused collaborator for an existing self-serve SaaS product.',
+      'Open to conversations with founders interested in acquiring or partnering on my app.',
+    ],
+  },
+  {
+    name: 'Riley Kim',
+    email: 'seed-tester-5@index-network.test',
+    linkedin: 'https://linkedin.com/in/rileykim',
+    github: null,
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Riley Kim',
+        bio: 'Product manager with background in edtech and marketplaces.',
+        location: 'Seattle, WA',
+      },
+      narrative: { context: 'Validating an education marketplace and assembling an early founding team.' },
+      attributes: {
+        interests: ['edtech', 'marketplaces', 'community'],
+        skills: ['product strategy', 'roadmapping', 'user research', 'SQL'],
+      },
+    },
+    intents: [
+      'Looking for a technical co-founder for an adult learning marketplace startup.',
+      'I want to meet a designer and engineer who can co-build an education platform MVP.',
+    ],
+  },
+  {
+    name: 'Priya Nair',
+    email: 'seed-tester-6@index-network.test',
+    linkedin: 'https://linkedin.com/in/priyanair-data',
+    github: 'https://github.com/priyanair',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Priya Nair',
+        bio: 'Data engineer building reliable analytics pipelines for growth teams.',
+        location: 'Chicago, IL',
+      },
+      narrative: { context: 'Leaving consulting to join a mission-driven startup as first data hire.' },
+      attributes: {
+        interests: ['analytics engineering', 'product metrics', 'experimentation'],
+        skills: ['SQL', 'dbt', 'Airflow', 'BigQuery'],
+      },
+    },
+    intents: [
+      'Seeking an early-stage startup that needs a first data engineer to build analytics foundations.',
+      'Looking for founders tackling product-led growth who want help with experimentation and metrics.',
+    ],
+  },
+  {
+    name: 'Noah Williams',
+    email: 'seed-tester-7@index-network.test',
+    linkedin: 'https://linkedin.com/in/noahw-frontend',
+    github: 'https://github.com/noahwilliams',
+    x: 'https://x.com/noahcodes',
+    website: 'https://noahw.dev',
+    profile: {
+      identity: {
+        name: 'Noah Williams',
+        bio: 'Frontend engineer specializing in complex interfaces and performance.',
+        location: 'Denver, CO',
+      },
+      narrative: { context: 'Interested in design-heavy products where frontend quality is a differentiator.' },
+      attributes: {
+        interests: ['frontend architecture', 'design systems', 'web performance'],
+        skills: ['React', 'TypeScript', 'Next.js', 'Storybook'],
+      },
+    },
+    intents: [
+      'Looking for a startup team building a polished B2B dashboard product that needs a senior frontend engineer.',
+      'I want to collaborate with a product designer to craft a reusable design system for a new SaaS.',
+    ],
+  },
+  {
+    name: 'Elena Petrova',
+    email: 'seed-tester-8@index-network.test',
+    linkedin: 'https://linkedin.com/in/elenapetrova-ai',
+    github: 'https://github.com/elenapetrova',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Elena Petrova',
+        bio: 'Applied AI researcher turning language models into production workflows.',
+        location: 'Boston, MA',
+      },
+      narrative: { context: 'Building an AI operations toolkit and looking for technical collaborators.' },
+      attributes: {
+        interests: ['applied AI', 'agent workflows', 'evaluation tooling'],
+        skills: ['Python', 'evaluation design', 'RAG', 'MLOps'],
+      },
+    },
+    intents: [
+      'Seeking an engineer experienced with distributed systems to co-build an AI operations platform.',
+      'Looking for design partners who want to pilot LLM evaluation workflows in real teams.',
+    ],
+  },
+  {
+    name: 'Diego Alvarez',
+    email: 'seed-tester-9@index-network.test',
+    linkedin: 'https://linkedin.com/in/diegoalvarez-growth',
+    github: null,
+    x: 'https://x.com/diegoongrowth',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Diego Alvarez',
+        bio: 'Growth marketer with SaaS and marketplace launch experience.',
+        location: 'Miami, FL',
+      },
+      narrative: { context: 'Joining technical founders as first GTM hire and building repeatable demand generation.' },
+      attributes: {
+        interests: ['growth loops', 'PLG', 'content distribution'],
+        skills: ['positioning', 'paid acquisition', 'lifecycle marketing', 'analytics'],
+      },
+    },
+    intents: [
+      'Looking for technical founders with a launched product who need a growth partner for early traction.',
+      'Open to collaborating with B2B SaaS teams on positioning and go-to-market experiments.',
+    ],
+  },
+  {
+    name: 'Hannah Brooks',
+    email: 'seed-tester-10@index-network.test',
+    linkedin: 'https://linkedin.com/in/hannahbrooks-devrel',
+    github: 'https://github.com/hbrooks',
+    x: 'https://x.com/hannahdevrel',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Hannah Brooks',
+        bio: 'Developer relations lead connecting engineers with useful tools.',
+        location: 'Portland, OR',
+      },
+      narrative: { context: 'Exploring startup opportunities where community-led growth is core to the strategy.' },
+      attributes: {
+        interests: ['developer community', 'education', 'content'],
+        skills: ['technical writing', 'public speaking', 'community strategy', 'APIs'],
+      },
+    },
+    intents: [
+      'Seeking a developer tools startup that needs early DevRel leadership and community building.',
+      'I want to partner with engineering founders who care about docs, education, and developer experience.',
+    ],
+  },
+  {
+    name: 'Marcus Johnson',
+    email: 'seed-tester-11@index-network.test',
+    linkedin: 'https://linkedin.com/in/marcusjohnson-security',
+    github: 'https://github.com/marcusj',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Marcus Johnson',
+        bio: 'Security engineer focused on cloud security and compliance automation.',
+        location: 'Atlanta, GA',
+      },
+      narrative: { context: 'Helping early startups become enterprise-ready without slowing product velocity.' },
+      attributes: {
+        interests: ['security automation', 'compliance', 'cloud infrastructure'],
+        skills: ['AWS', 'threat modeling', 'SOC2', 'policy as code'],
+      },
+    },
+    intents: [
+      'Looking for B2B SaaS founders preparing for enterprise sales who need security guidance.',
+      'Seeking collaborators building tools that automate security and compliance workflows.',
+    ],
+  },
+  {
+    name: 'Mei Lin',
+    email: 'seed-tester-12@index-network.test',
+    linkedin: 'https://linkedin.com/in/meilin-mobile',
+    github: 'https://github.com/meilin',
+    x: null,
+    website: 'https://meilin.app',
+    profile: {
+      identity: {
+        name: 'Mei Lin',
+        bio: 'Mobile engineer building high-quality iOS and Android experiences.',
+        location: 'Los Angeles, CA',
+      },
+      narrative: { context: 'Exploring consumer health and habit products with strong retention loops.' },
+      attributes: {
+        interests: ['consumer mobile', 'health tech', 'behavior design'],
+        skills: ['Swift', 'Kotlin', 'React Native', 'mobile analytics'],
+      },
+    },
+    intents: [
+      'Seeking a product founder to build a habit-forming mobile health app with measurable outcomes.',
+      'Looking for designers experienced in consumer onboarding and retention for a mobile product.',
+    ],
+  },
+  {
+    name: 'Arjun Patel',
+    email: 'seed-tester-13@index-network.test',
+    linkedin: 'https://linkedin.com/in/arjunpatel-finance',
+    github: null,
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Arjun Patel',
+        bio: 'Finance operator supporting startup fundraising and planning.',
+        location: 'New York, NY',
+      },
+      narrative: { context: 'Partnering with technical teams that need help with pricing, forecasts, and fundraising prep.' },
+      attributes: {
+        interests: ['fundraising', 'business models', 'unit economics'],
+        skills: ['financial modeling', 'pricing strategy', 'investor relations', 'FP&A'],
+      },
+    },
+    intents: [
+      'Looking for startup founders who need a finance partner to prepare for seed fundraising.',
+      'Open to advising teams on pricing and unit economics for B2B SaaS launches.',
+    ],
+  },
+  {
+    name: 'Sofia Martinez',
+    email: 'seed-tester-14@index-network.test',
+    linkedin: 'https://linkedin.com/in/sofiamartinez-product',
+    github: null,
+    x: 'https://x.com/sofiaproduct',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Sofia Martinez',
+        bio: 'Product leader with marketplace and trust-and-safety experience.',
+        location: 'Mexico City, MX',
+      },
+      narrative: { context: 'Designing a creator marketplace and searching for technical co-founders.' },
+      attributes: {
+        interests: ['creator economy', 'marketplaces', 'trust and safety'],
+        skills: ['product discovery', 'roadmapping', 'experimentation', 'operations'],
+      },
+    },
+    intents: [
+      'Seeking a backend engineer to co-found a creator marketplace with built-in trust and safety.',
+      'Looking for growth-minded operators interested in two-sided marketplace dynamics.',
+    ],
+  },
+  {
+    name: 'Liam O\'Connor',
+    email: 'seed-tester-15@index-network.test',
+    linkedin: 'https://linkedin.com/in/liamoconnor-ops',
+    github: 'https://github.com/liamops',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Liam O\'Connor',
+        bio: 'Platform engineer who scales infrastructure for high-growth products.',
+        location: 'Dublin, IE',
+      },
+      narrative: { context: 'Interested in joining infrastructure-heavy startups as an early engineering leader.' },
+      attributes: {
+        interests: ['platform engineering', 'observability', 'reliability'],
+        skills: ['Kubernetes', 'Terraform', 'Go', 'SRE'],
+      },
+    },
+    intents: [
+      'Looking for teams building developer or infrastructure products that need an early platform engineer.',
+      'Open to partnering with founders on reliability architecture before scale bottlenecks appear.',
+    ],
+  },
+  {
+    name: 'Chloe Bennett',
+    email: 'seed-tester-16@index-network.test',
+    linkedin: 'https://linkedin.com/in/chloebennett-ux',
+    github: null,
+    x: null,
+    website: 'https://chloebennett.design',
+    profile: {
+      identity: {
+        name: 'Chloe Bennett',
+        bio: 'UX researcher and service designer for public-sector digital products.',
+        location: 'London, UK',
+      },
+      narrative: { context: 'Working on civic tech ideas that improve access to local services.' },
+      attributes: {
+        interests: ['civic tech', 'user research', 'accessibility'],
+        skills: ['qualitative research', 'journey mapping', 'prototyping', 'service design'],
+      },
+    },
+    intents: [
+      'Seeking a technical collaborator to build civic tech tools for local government services.',
+      'Looking for teams who prioritize inclusive UX and accessibility from day one.',
+    ],
+  },
+  {
+    name: 'Omar Haddad',
+    email: 'seed-tester-17@index-network.test',
+    linkedin: 'https://linkedin.com/in/omarhaddad-mlops',
+    github: 'https://github.com/omarhaddad',
+    x: 'https://x.com/omarmlops',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Omar Haddad',
+        bio: 'MLOps engineer productionizing model training and inference systems.',
+        location: 'Berlin, DE',
+      },
+      narrative: { context: 'Seeking high-velocity AI teams that need reliable deployment and monitoring pipelines.' },
+      attributes: {
+        interests: ['MLOps', 'model serving', 'observability'],
+        skills: ['Docker', 'Kubernetes', 'PyTorch', 'CI/CD'],
+      },
+    },
+    intents: [
+      'Looking for AI startups that need a founding MLOps engineer to ship models safely to production.',
+      'Open to collaborating with ML researchers who want robust evaluation and deployment infrastructure.',
+    ],
+  },
+  {
+    name: 'Amina Yusuf',
+    email: 'seed-tester-18@index-network.test',
+    linkedin: 'https://linkedin.com/in/aminayusuf-community',
+    github: null,
+    x: 'https://x.com/aminacommunity',
+    website: null,
+    profile: {
+      identity: {
+        name: 'Amina Yusuf',
+        bio: 'Community strategist helping mission-driven products build engaged user bases.',
+        location: 'Lagos, NG',
+      },
+      narrative: { context: 'Building a network-focused startup and seeking technical and product collaborators.' },
+      attributes: {
+        interests: ['community growth', 'creator tools', 'social products'],
+        skills: ['community operations', 'event design', 'content strategy', 'partnerships'],
+      },
+    },
+    intents: [
+      'Seeking a technical co-founder for a community platform focused on creator collaboration.',
+      'Looking for product builders who understand network effects and social product design.',
+    ],
+  },
+  {
+    name: 'Ethan Park',
+    email: 'seed-tester-19@index-network.test',
+    linkedin: 'https://linkedin.com/in/ethanpark-bio',
+    github: 'https://github.com/ethanparkbio',
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Ethan Park',
+        bio: 'Bioinformatics engineer turning clinical data into decision support tools.',
+        location: 'San Diego, CA',
+      },
+      narrative: { context: 'Exploring healthcare data products and looking for regulatory-aware co-founders.' },
+      attributes: {
+        interests: ['digital health', 'clinical data', 'AI in healthcare'],
+        skills: ['Python', 'biostatistics', 'ETL', 'healthcare data standards'],
+      },
+    },
+    intents: [
+      'Looking for a clinician-founder interested in building practical decision-support software.',
+      'Seeking engineers and operators experienced with healthcare compliance and privacy constraints.',
+    ],
+  },
+  {
+    name: 'Grace Howard',
+    email: 'seed-tester-20@index-network.test',
+    linkedin: 'https://linkedin.com/in/gracehoward-enterprise',
+    github: null,
+    x: null,
+    website: null,
+    profile: {
+      identity: {
+        name: 'Grace Howard',
+        bio: 'Enterprise sales lead scaling B2B SaaS from first deal to repeatable pipeline.',
+        location: 'Toronto, CA',
+      },
+      narrative: { context: 'Partnering with technical founders who need customer discovery and enterprise GTM support.' },
+      attributes: {
+        interests: ['enterprise SaaS', 'sales enablement', 'customer discovery'],
+        skills: ['B2B sales', 'pipeline building', 'buyer research', 'GTM strategy'],
+      },
+    },
+    intents: [
+      'Seeking early-stage SaaS founders who want a partner for enterprise customer discovery and pilot deals.',
+      'Open to joining a startup where sales strategy and founder-led GTM are top priorities.',
+    ],
+  },
+];
+
+const TESTER_PERSONAS_MAX = DB_SEED_TESTER_PERSONAS.length;
 
 const SEED_INDEXES: IndexDef[] = [
   // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
@@ -205,11 +690,11 @@ async function upsertUserProfile(userId: string, profile: SeedProfile): Promise<
 async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
   const opts = parseArgs();
   const { silent, personas: personasLimit } = opts;
-  const personasToSeed = personasLimit === 0 ? [] : TESTER_PERSONAS.slice(0, personasLimit);
+  const personasToSeed = personasLimit === 0 ? [] : DB_SEED_TESTER_PERSONAS.slice(0, personasLimit);
 
   try {
     if (!silent) console.log('Seeding indexes and users...');
-    if (!silent && TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
+    if (!silent && DB_SEED_TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
 
     // Create all indexes
     for (const idx of SEED_INDEXES) {
