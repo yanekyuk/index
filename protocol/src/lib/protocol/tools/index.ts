@@ -108,6 +108,7 @@ export async function createChatTools(deps: ToolContext) {
   const toolDeps: ToolDeps = {
     database,
     scraper,
+    embedder,
     graphs: {
       profile: profileGraph,
       intent: intentGraph,

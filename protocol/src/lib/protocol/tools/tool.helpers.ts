@@ -70,6 +70,7 @@ export type DefineTool = <T extends z.ZodType>(opts: {
 export interface ToolDeps {
   database: ChatGraphCompositeDatabase;
   scraper: Scraper;
+  embedder: import('../interfaces/embedder.interface').Embedder;
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;
