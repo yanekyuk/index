@@ -93,13 +93,14 @@ describe('HomeGraph', () => {
     expect(firstItem).toHaveProperty('primaryActionLabel');
     expect(firstItem).toHaveProperty('secondaryActionLabel');
     expect(firstItem).toHaveProperty('mutualIntentsLabel');
+    expect(firstItem.opportunityId).toBe(opp.id);
     expect(typeof firstItem.primaryActionLabel).toBe('string');
     expect(typeof firstItem.secondaryActionLabel).toBe('string');
     expect(typeof firstItem.mutualIntentsLabel).toBe('string');
     expect(resolveHomeSectionIcon(firstSection.iconName)).toBeDefined();
   }, 30000);
 
-  test('groups multiple opportunities between same actors into one card', async () => {
+  test('actor-dedupes multiple opportunities between same actors to one card', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
     const opp1 = minimalOpportunityWithId(
@@ -120,16 +121,17 @@ describe('HomeGraph', () => {
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(2);
+    expect(result.meta.totalOpportunities).toBe(1);
     const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
     expect(totalItems).toBe(1);
     const firstItem = result.sections[0]?.items[0];
     expect(firstItem).toBeDefined();
     expect(firstItem?.name).toBe('User other-1');
-    expect(firstItem?.mainText).toContain('2 opportunities between you and User other-1');
+    expect(firstItem?.opportunityId).toBeDefined();
+    expect(['opp-1', 'opp-2']).toContain(firstItem?.opportunityId);
   }, 30000);
 
-  test('groups opportunities by displayed counterpart even across actor sets', async () => {
+  test('actor-dedupes opportunities with same non-introducer actors to one card', async () => {
     const viewerId = 'viewer-1';
     const otherId = 'other-1';
     const introducerA = 'intro-a';
@@ -174,12 +176,13 @@ describe('HomeGraph', () => {
     const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
-    expect(result.meta.totalOpportunities).toBe(2);
+    expect(result.meta.totalOpportunities).toBe(1);
     const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
     expect(totalItems).toBe(1);
     const firstItem = result.sections[0]?.items[0];
     expect(firstItem?.userId).toBe(otherId);
-    expect(firstItem?.mainText).toContain(`2 opportunities between you and User ${otherId}`);
+    expect(firstItem?.opportunityId).toBeDefined();
+    expect(['opp-intro-a', 'opp-intro-b']).toContain(firstItem?.opportunityId);
   }, 30000);
 
   test('includes tier-2 visible opportunities per lifecycle visibility rules', async () => {
