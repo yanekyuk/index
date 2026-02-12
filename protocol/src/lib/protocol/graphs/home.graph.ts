@@ -43,6 +43,7 @@ export type HomeGraphInvokeResult = {
 
 const MAX_ITEMS_PER_SECTION = 20;
 const PRESENTATION_CONCURRENCY = 5;
+const MAX_REASONING_SNIPPET_LENGTH = 240;
 
 const toIntentArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
@@ -85,6 +86,74 @@ const computeMutualIntentCount = (ctx: Record<string, unknown>): number => {
   return overlap;
 };
 
+const normalizeReasoningSnippet = (reasoning: unknown): string | null => {
+  if (typeof reasoning !== 'string') {
+    return null;
+  }
+  const cleaned = reasoning.replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return null;
+  }
+  return cleaned.length > MAX_REASONING_SNIPPET_LENGTH
+    ? `${cleaned.slice(0, MAX_REASONING_SNIPPET_LENGTH).trimEnd()}...`
+    : cleaned;
+};
+
+const buildGroupedReasoning = (opportunities: typeof HomeGraphState.State['opportunities']): string => {
+  const snippets = opportunities
+    .map((opportunity) => normalizeReasoningSnippet(opportunity.interpretation?.reasoning))
+    .filter((snippet): snippet is string => !!snippet);
+  if (snippets.length === 0) {
+    return 'Multiple opportunities were identified for this connection.';
+  }
+  return snippets.map((snippet, index) => `Opportunity ${index + 1}: ${snippet}`).join('\n');
+};
+
+const buildActorGroupingKey = (opportunity: typeof HomeGraphState.State['opportunities'][number], viewerId: string): string => {
+  const otherParticipantIds = opportunity.actors
+    .filter((actor) => actor.userId !== viewerId && actor.role !== 'introducer')
+    .map((actor) => actor.userId)
+    .sort();
+
+  if (otherParticipantIds.length > 0) {
+    return `participants:${otherParticipantIds.join('|')}`;
+  }
+
+  const fallbackActorIds = opportunity.actors
+    .filter((actor) => actor.userId !== viewerId)
+    .map((actor) => actor.userId)
+    .sort();
+  return `actors:${fallbackActorIds.join('|')}`;
+};
+
+const pickDisplayCounterpartActor = (
+  opportunity: typeof HomeGraphState.State['opportunities'][number],
+  viewerId: string
+): { userId: string; role: string } | null => {
+  const candidates = opportunity.actors.filter(
+    (actor) => actor.userId !== viewerId && actor.role !== 'introducer'
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Prefer direct counterpart roles when available, then stable sort by user id.
+  const rolePriority = new Map<string, number>([
+    ['patient', 0],
+    ['party', 1],
+    ['agent', 2],
+    ['peer', 3],
+  ]);
+
+  const sorted = [...candidates].sort((a, b) => {
+    const aPriority = rolePriority.get(a.role) ?? 99;
+    const bPriority = rolePriority.get(b.role) ?? 99;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    return a.userId.localeCompare(b.userId);
+  });
+  return sorted[0] ?? null;
+};
+
 export class HomeGraphFactory {
   constructor(private database: HomeGraphDb) {}
 
@@ -97,7 +166,9 @@ export class HomeGraphFactory {
         return { error: 'userId is required' };
       }
       try {
-        const options: { limit?: number; indexId?: string } = { limit: state.limit };
+        const options: { limit?: number; indexId?: string } = {
+          limit: state.limit,
+        };
         if (state.indexId) options.indexId = state.indexId;
         const raw = await this.database.getOpportunitiesForUser(state.userId, options);
         const visible = raw.filter(
@@ -120,8 +191,30 @@ export class HomeGraphFactory {
       }
       const db = this.database as Parameters<typeof gatherPresenterContext>[0];
       const cards: HomeCardItem[] = [];
+      const groupedByCounterpartUser = new Map<string, typeof state.opportunities>();
+      for (const opportunity of state.opportunities) {
+        const displayCounterpart = pickDisplayCounterpartActor(opportunity, state.userId);
+        const fallbackActorKey = buildActorGroupingKey(opportunity, state.userId);
+        const key = displayCounterpart?.userId
+          ? `counterpart:${displayCounterpart.userId}`
+          : `fallback:${fallbackActorKey}`;
+        const existing = groupedByCounterpartUser.get(key);
+        if (existing) {
+          existing.push(opportunity);
+        } else {
+          groupedByCounterpartUser.set(key, [opportunity]);
+        }
+      }
+      const groupedOpportunities = Array.from(groupedByCounterpartUser.values()).map((group) =>
+        [...group].sort((a, b) => {
+          const aTime = a.updatedAt instanceof Date ? a.updatedAt.getTime() : new Date(a.updatedAt).getTime();
+          const bTime = b.updatedAt instanceof Date ? b.updatedAt.getTime() : new Date(b.updatedAt).getTime();
+          return bTime - aTime;
+        })
+      );
       const relevantActorIds = new Set<string>();
-      for (const opp of state.opportunities) {
+      for (const oppGroup of groupedOpportunities) {
+        const opp = oppGroup[0];
         const otherActor = opp.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
         const introducer = opp.actors.find((a) => a.role === 'introducer');
         if (otherActor?.userId) relevantActorIds.add(otherActor.userId);
@@ -140,23 +233,31 @@ export class HomeGraphFactory {
       );
       const userMap = new Map(userEntries);
 
-      for (let i = 0; i < state.opportunities.length; i += PRESENTATION_CONCURRENCY) {
-        const chunk = state.opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
+      for (let i = 0; i < groupedOpportunities.length; i += PRESENTATION_CONCURRENCY) {
+        const chunk = groupedOpportunities.slice(i, i + PRESENTATION_CONCURRENCY);
         const chunkCards = await Promise.all(
-          chunk.map(async (opp, offset) => {
+          chunk.map(async (grouped, offset) => {
+            const primaryOpportunity = grouped[0];
+            const groupedCount = grouped.length;
             const cardIndex = i + offset;
-            const otherActor = opp.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
-            const introducer = opp.actors.find((a) => a.role === 'introducer');
+            const otherActor = pickDisplayCounterpartActor(primaryOpportunity, state.userId)
+              ?? primaryOpportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
+            const introducer = primaryOpportunity.actors.find((a) => a.role === 'introducer');
             const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
             const userName = otherUser?.name ?? 'Unknown';
             const userAvatar = otherUser?.avatar ?? null;
+            const groupedReasoning = groupedCount > 1
+              ? buildGroupedReasoning(grouped)
+              : (primaryOpportunity.interpretation?.reasoning ?? 'A connection opportunity.');
 
             const fallbackCard = (): HomeCardItem => ({
-              opportunityId: opp.id,
+              opportunityId: primaryOpportunity.id,
               userId: otherActor?.userId ?? '',
               name: userName,
               avatar: userAvatar,
-              mainText: opp.interpretation?.reasoning?.slice(0, 300) ?? 'A connection opportunity.',
+              mainText: groupedCount > 1
+                ? `Index found ${groupedCount} opportunities between you and ${userName}. ${groupedReasoning}`
+                : groupedReasoning.slice(0, 300),
               cta: 'View opportunity and decide whether to reach out.',
               primaryActionLabel: 'Start Chat',
               secondaryActionLabel: 'Skip',
@@ -166,9 +267,16 @@ export class HomeGraphFactory {
             });
 
             try {
-              const ctx = await gatherPresenterContext(db, opp, state.userId);
+              const ctx = await gatherPresenterContext(db, primaryOpportunity, state.userId);
               const mutualIntentCount = computeMutualIntentCount(ctx as unknown as Record<string, unknown>);
-              const homeInput = { ...ctx, mutualIntentCount };
+              const homeInput = {
+                ...ctx,
+                mutualIntentCount,
+                matchReasoning: groupedReasoning,
+                signalsSummary: groupedCount > 1
+                  ? `${ctx.signalsSummary}; groupedOpportunities=${groupedCount}`
+                  : ctx.signalsSummary,
+              };
               const presentation = await presenter.presentHomeCard(homeInput);
               let narratorChip: { name: string; text: string; avatar?: string | null } | undefined;
               if (introducer) {
@@ -181,12 +289,15 @@ export class HomeGraphFactory {
               } else {
                 narratorChip = { name: 'Index', text: presentation.narratorRemark };
               }
+              const mainText = groupedCount > 1
+                ? `Index found ${groupedCount} opportunities between you and ${userName}. ${presentation.personalizedSummary}`
+                : presentation.personalizedSummary;
               return {
-                opportunityId: opp.id,
+                opportunityId: primaryOpportunity.id,
                 userId: otherActor?.userId ?? '',
                 name: userName,
                 avatar: userAvatar,
-                mainText: presentation.personalizedSummary,
+                mainText,
                 cta: presentation.suggestedAction,
                 headline: presentation.headline,
                 primaryActionLabel: presentation.primaryActionLabel,
@@ -196,7 +307,7 @@ export class HomeGraphFactory {
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {
-              logger.warn('HomeGraph presenter failed for opportunity', { opportunityId: opp.id, error: e });
+              logger.warn('HomeGraph presenter failed for opportunity group', { opportunityId: primaryOpportunity.id, groupedCount, error: e });
               return fallbackCard();
             }
           })

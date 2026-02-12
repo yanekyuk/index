@@ -33,7 +33,25 @@ function minimalOpportunity(viewerId: string, otherId: string): Opportunity {
     interpretation: { reasoning: 'Test match.', category: 'connection', confidence: 0.8 },
     context: { indexId: 'idx-1' },
     confidence: '0.8',
-    status: 'latent',
+    status: 'pending',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    expiresAt: null,
+  };
+}
+
+function minimalOpportunityWithId(viewerId: string, otherId: string, id: string, reasoning: string): Opportunity {
+  return {
+    id,
+    detection: { source: 'manual', timestamp: new Date().toISOString() },
+    actors: [
+      { userId: viewerId, role: 'patient', indexId: 'idx-1' },
+      { userId: otherId, role: 'agent', indexId: 'idx-1' },
+    ],
+    interpretation: { reasoning, category: 'connection', confidence: 0.8 },
+    context: { indexId: 'idx-1' },
+    confidence: '0.8',
+    status: 'pending',
     createdAt: new Date(),
     updatedAt: new Date(),
     expiresAt: null,
@@ -79,7 +97,118 @@ describe('HomeGraph', () => {
     expect(typeof firstItem.secondaryActionLabel).toBe('string');
     expect(typeof firstItem.mutualIntentsLabel).toBe('string');
     expect(resolveHomeSectionIcon(firstSection.iconName)).toBeDefined();
-  });
+  }, 30000);
+
+  test('groups multiple opportunities between same actors into one card', async () => {
+    const viewerId = 'viewer-1';
+    const otherId = 'other-1';
+    const opp1 = minimalOpportunityWithId(
+      viewerId,
+      otherId,
+      'opp-1',
+      'You both want to collaborate on recommendation systems.'
+    );
+    const opp2 = minimalOpportunityWithId(
+      viewerId,
+      otherId,
+      'opp-2',
+      'You could also collaborate on early startup team formation.'
+    );
+    const db = createMockDb([opp1, opp2]);
+    const graph = new HomeGraphFactory(db).createGraph();
+
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(2);
+    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    expect(totalItems).toBe(1);
+    const firstItem = result.sections[0]?.items[0];
+    expect(firstItem).toBeDefined();
+    expect(firstItem?.name).toBe('User other-1');
+    expect(firstItem?.mainText).toContain('2 opportunities between you and User other-1');
+  }, 30000);
+
+  test('groups opportunities by displayed counterpart even across actor sets', async () => {
+    const viewerId = 'viewer-1';
+    const otherId = 'other-1';
+    const introducerA = 'intro-a';
+    const introducerB = 'intro-b';
+    const now = new Date();
+
+    const withIntroducerA: Opportunity = {
+      id: 'opp-intro-a',
+      detection: { source: 'manual', timestamp: now.toISOString() },
+      actors: [
+        { userId: viewerId, role: 'patient', indexId: 'idx-1', intent: 'intent-1' },
+        { userId: otherId, role: 'agent', indexId: 'idx-1', intent: 'intent-2' },
+        { userId: introducerA, role: 'introducer', indexId: 'idx-1' },
+      ],
+      interpretation: { reasoning: 'First match for same counterpart via introducer A.', category: 'connection', confidence: 0.8 },
+      context: { indexId: 'idx-1' },
+      confidence: '0.8',
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: null,
+    };
+
+    const withIntroducerB: Opportunity = {
+      id: 'opp-intro-b',
+      detection: { source: 'manual', timestamp: now.toISOString() },
+      actors: [
+        { userId: viewerId, role: 'patient', indexId: 'idx-1', intent: 'intent-3' },
+        { userId: otherId, role: 'agent', indexId: 'idx-1', intent: 'intent-4' },
+        { userId: introducerB, role: 'introducer', indexId: 'idx-1' },
+      ],
+      interpretation: { reasoning: 'Second match for same counterpart via introducer B.', category: 'connection', confidence: 0.9 },
+      context: { indexId: 'idx-1' },
+      confidence: '0.9',
+      status: 'pending',
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: null,
+    };
+
+    const db = createMockDb([withIntroducerA, withIntroducerB]);
+    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(2);
+    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    expect(totalItems).toBe(1);
+    const firstItem = result.sections[0]?.items[0];
+    expect(firstItem?.userId).toBe(otherId);
+    expect(firstItem?.mainText).toContain(`2 opportunities between you and User ${otherId}`);
+  }, 30000);
+
+  test('includes tier-2 visible opportunities per lifecycle visibility rules', async () => {
+    const viewerId = 'viewer-1';
+    const otherId = 'other-1';
+    const acceptedOpp: Opportunity = {
+      id: 'opp-accepted',
+      detection: { source: 'manual', timestamp: new Date().toISOString() },
+      actors: [
+        { userId: viewerId, role: 'patient', indexId: 'idx-1' },
+        { userId: otherId, role: 'agent', indexId: 'idx-1' },
+      ],
+      interpretation: { reasoning: 'Accepted opportunities remain visible to all actors.', category: 'connection', confidence: 0.8 },
+      context: { indexId: 'idx-1' },
+      confidence: '0.8',
+      status: 'accepted',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+    const db = createMockDb([acceptedOpp]);
+    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(1);
+    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    expect(totalItems).toBe(1);
+    expect(result.sections[0]?.items[0]?.opportunityId).toBe('opp-accepted');
+  }, 30000);
 });
 
 describe('Lucide icon catalog', () => {
