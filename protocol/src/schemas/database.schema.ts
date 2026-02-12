@@ -162,12 +162,12 @@ export interface OpportunityDetection {
 }
 
 export interface OpportunityActor {
+  // idx-1:usr-1:(intent-1)?
   /** The index this actor was matched within. */
   indexId: Id<'indexes'>;
   userId: Id<'users'>;
+  intent?: Id<'intents'>; // Single intent that contributed to this match. Absent = profile-based match.
   role: string;
-  /** Single intent that contributed to this match. Absent = profile-based match. */
-  intent?: Id<'intents'>;
 }
 
 export interface OpportunitySignal {
