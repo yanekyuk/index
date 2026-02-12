@@ -63,6 +63,8 @@ interface ChatViewProps {
   userName: string;
   userAvatar?: string;
   userTitle?: string;
+  /** When set (e.g. from accept response), open this exact channel so it matches the backend. */
+  initialChannelId?: string;
   onClose: () => void;
   onBack?: () => void;
 }
@@ -77,7 +79,7 @@ interface AcceptedOpportunityMeta {
   acceptedAt: string;
 }
 
-export default function ChatView({ userId, userName, userAvatar, userTitle, onClose, onBack }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, userTitle, initialChannelId, onClose, onBack }: ChatViewProps) {
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -111,10 +113,12 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
 
     const initChannel = async () => {
       try {
-        const sortedIds = [client.userID, userId].sort().join('_');
-        const expectedChannelId = sortedIds.length > 64 
-          ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
-          : sortedIds;
+        const expectedChannelId = initialChannelId ?? (() => {
+          const sortedIds = [client.userID, userId].sort().join('_');
+          return sortedIds.length > 64
+            ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
+            : sortedIds;
+        })();
 
         let existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
 
@@ -183,7 +187,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         if (syncMessagesHandler) currentChannel.off('channel.updated', syncMessagesHandler);
       }
     };
-  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, channelRefreshKey]);
+  }, [isReady, client, userId, userName, userAvatar, initialChannelId, getOrCreateChannel, scrollToBottom, channelRefreshKey]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 

@@ -14,7 +14,8 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
 import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
-import { getDirectChannelId, getStreamServerClient, ensureIndexBotUser, sendBotMessage, channelHasMessageForOpportunity } from '../lib/protocol/support/stream-chat.utils';
+import type { Channel } from 'stream-chat';
+import { getDirectChannelId, getStreamServerClient, ensureStreamUsers, ensureIndexBotUser, sendBotMessage, channelHasMessageForOpportunity } from '../lib/protocol/support/stream-chat.utils';
 
 const logger = log.service.from("OpportunityService");
 
@@ -243,7 +244,7 @@ export class OpportunityService {
       return { error: 'Opportunity not found', status: 404 };
     }
 
-    if (status !== 'accepted' || opp.status === 'accepted') {
+    if (status !== 'accepted') {
       return { opportunity: updated };
     }
 
@@ -294,42 +295,56 @@ export class OpportunityService {
       };
     }
 
-    const channel = streamClient.channel('messaging', channelId, {
-      members: [userId, counterpart.userId],
-      pending: false,
-    } as Record<string, unknown>);
+    const [accepterUser, counterpartUser] = await Promise.all([
+      this.db.getUser(userId),
+      this.db.getUser(counterpart.userId),
+    ]);
+    await ensureStreamUsers(streamClient, [
+      { id: userId, name: accepterUser?.name, image: accepterUser?.avatar ?? undefined },
+      { id: counterpart.userId, name: counterpartUser?.name, image: counterpartUser?.avatar ?? undefined },
+    ]);
+    await ensureIndexBotUser(streamClient);
 
-    try {
-      await channel.create();
-    } catch (error) {
-      logger.debug('[OpportunityService] Stream channel already exists or create failed', {
-        opportunityId,
-        channelId,
-        error,
-      });
+    let channel: Channel;
+    let existingMessages: unknown[] = [];
+
+    const existingChannels = await streamClient.queryChannels(
+      { type: 'messaging', id: channelId } as Record<string, unknown>,
+      {} as Record<string, unknown>,
+      { state: true, watch: false, messages: { limit: 50 } } as Record<string, unknown>,
+    );
+
+    if (existingChannels.length > 0) {
+      channel = existingChannels[0] as Channel;
+      const state = (channel as { state?: { messages?: unknown[] } }).state;
+      existingMessages = state?.messages ?? [];
+    } else {
+      channel = streamClient.channel('messaging', channelId, {
+        members: [userId, counterpart.userId],
+        pending: false,
+        created_by_id: userId,
+      } as Record<string, unknown>) as Channel;
+      try {
+        await (channel as { create: () => Promise<unknown> }).create();
+      } catch (error) {
+        logger.debug('[OpportunityService] Stream channel create failed', { opportunityId, channelId, error });
+      }
     }
 
     try {
-      await channel.updatePartial({
+      await (channel as { updatePartial: (arg: unknown) => Promise<unknown> }).updatePartial({
         set: {
           pending: false,
           acceptedOpportunities: acceptedOpportunitiesMeta,
         } as Record<string, unknown>,
         unset: ['requestedBy'],
-      } as unknown as Parameters<typeof channel.updatePartial>[0]);
+      } as Record<string, unknown>);
     } catch (error) {
-      logger.warn('[OpportunityService] Failed to clear pending status for channel', {
-        opportunityId,
-        channelId,
-        error,
-      });
+      logger.warn('[OpportunityService] Failed to update channel partial', { opportunityId, channelId, error });
     }
 
-    await ensureIndexBotUser(streamClient);
-
     try {
-      const queryResult = await channel.query({ state: true, watch: false, messages: { limit: 30 } });
-      const introExists = channelHasMessageForOpportunity(queryResult.messages ?? [], opportunityId);
+      const introExists = channelHasMessageForOpportunity(existingMessages, opportunityId);
       if (!introExists) {
         let introText: string;
         let presentation: { headline: string; personalizedSummary: string; suggestedAction: string } | undefined;
@@ -353,6 +368,7 @@ export class OpportunityService {
           ].join('\n');
         }
 
+        logger.info('[OpportunityService] Sending Index intro message', { opportunityId, channelId });
         await sendBotMessage(channel, {
           type: 'system',
           text: introText,
@@ -362,13 +378,15 @@ export class OpportunityService {
           acceptedOpportunityIds: acceptedOpportunitiesMeta.map((item) => item.opportunityId),
           acceptedAt: toIso(updated.updatedAt),
         });
+        logger.info('[OpportunityService] Index intro message sent', { opportunityId, channelId });
       }
     } catch (error) {
-      logger.warn('[OpportunityService] Failed to send Index intro message', {
+      logger.error('[OpportunityService] Failed to send Index intro message; rethrowing', {
         error,
         opportunityId,
         channelId,
       });
+      throw error;
     }
 
     return {

@@ -58,8 +58,39 @@ export function getStreamServerClient(): StreamChat | null {
 }
 
 // ──────────────────────────────────────────────────────────────
-// BOT-USER MANAGEMENT
+// USER MANAGEMENT
 // ──────────────────────────────────────────────────────────────
+
+/**
+ * Payload for upserting a user to Stream (id required; name and image optional).
+ * Stream uses `image` for the avatar URL.
+ */
+export type StreamUserUpsert = {
+  id: string;
+  name?: string;
+  image?: string;
+};
+
+/**
+ * Upsert one or more users to Stream so they exist before creating channels or sending messages.
+ * Uses name and image (avatar) when provided. Logs and continues on partial failure.
+ */
+export async function ensureStreamUsers(
+  streamClient: StreamChat,
+  users: StreamUserUpsert[],
+): Promise<void> {
+  if (users.length === 0) return;
+  const payload = users.map((u) => ({
+    id: u.id,
+    name: u.name?.trim() || 'Unknown',
+    image: u.image?.trim() || undefined,
+  }));
+  try {
+    await streamClient.upsertUsers(payload);
+  } catch (error) {
+    logger.warn('[ensureStreamUsers] Failed to upsert users', { userIds: users.map((u) => u.id), error });
+  }
+}
 
 /**
  * Upsert the Index bot user so it can send messages.
@@ -80,25 +111,26 @@ export async function ensureIndexBotUser(streamClient: StreamChat): Promise<void
 /**
  * Send a message from the Index bot on `channel`.
  *
- * Wraps Stream's `channel.sendMessage` with the necessary type casts
- * (the SDK's TS definitions don't accommodate custom fields or
- * the server-side user-id-as-second-arg pattern cleanly).
+ * With server-side auth, Stream requires message.user_id (or message.user) on the payload.
+ * We merge user_id into the message and pass the same id as the second arg for compatibility.
  */
 export async function sendBotMessage(
   channel: Channel,
   message: Record<string, unknown>,
 ): Promise<void> {
+  const payload = { ...message, user_id: INDEX_BOT_USER_ID };
   await (
     channel as unknown as {
       sendMessage: (msg: Record<string, unknown>, userId: string) => Promise<unknown>;
     }
-  ).sendMessage(message, INDEX_BOT_USER_ID);
+  ).sendMessage(payload, INDEX_BOT_USER_ID);
 }
 
 /**
  * Check whether any message in `messages` already references the given
  * `opportunityId` via an `introType` of `opportunity_intro` or
  * `opportunity_update`.
+ * Supports both top-level and message.custom for Stream SDK message shape.
  */
 export function channelHasMessageForOpportunity(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,10 +138,16 @@ export function channelHasMessageForOpportunity(
   opportunityId: string,
 ): boolean {
   return messages.some((message) => {
-    const m = message as { introType?: string; opportunityId?: string };
+    const m = message as {
+      introType?: string;
+      opportunityId?: string;
+      custom?: { introType?: string; opportunityId?: string };
+    };
+    const introType = m.introType ?? m.custom?.introType;
+    const msgOppId = m.opportunityId ?? m.custom?.opportunityId;
     return (
-      (m.introType === 'opportunity_intro' || m.introType === 'opportunity_update') &&
-      m.opportunityId === opportunityId
+      (introType === 'opportunity_intro' || introType === 'opportunity_update') &&
+      msgOppId === opportunityId
     );
   });
 }
