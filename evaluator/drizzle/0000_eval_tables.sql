@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE TYPE "public"."eval_run_status" AS ENUM('draft', 'running', 'completed');--> statement-breakpoint
 CREATE TYPE "public"."eval_scenario_status" AS ENUM('pending', 'running', 'completed', 'error');--> statement-breakpoint
 CREATE TABLE "eval_runs" (

@@ -1,5 +1,13 @@
-CREATE TYPE "public"."eval_run_status" AS ENUM('draft', 'running', 'completed');--> statement-breakpoint
-CREATE TYPE "public"."eval_scenario_status" AS ENUM('pending', 'running', 'completed', 'error');--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "public"."eval_run_status" AS ENUM('draft', 'running', 'completed');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "public"."eval_scenario_status" AS ENUM('pending', 'running', 'completed', 'error');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "eval_runs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" text NOT NULL,
