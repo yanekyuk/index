@@ -73,30 +73,6 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const effectiveIndexId = query.indexId?.trim() || context.indexId || undefined;
 
-      // Fetch all previous intents (and index-scoped intents when applicable) so the tool is self-contained.
-      const allIntentsResult = await graphs.intent.invoke({
-        userId: context.userId,
-        userProfile: "",
-        indexId: undefined,
-        operationMode: 'read' as const,
-        queryUserId: undefined,
-        allUserIntents: true,
-      });
-      const allUserIntents = allIntentsResult.readResult?.intents ?? [];
-
-      let indexIntents: { id: string; description?: string; summary?: string }[] = [];
-      if (effectiveIndexId && UUID_REGEX.test(effectiveIndexId)) {
-        const indexIntentsResult = await graphs.intent.invoke({
-          userId: context.userId,
-          userProfile: "",
-          indexId: effectiveIndexId,
-          operationMode: 'read' as const,
-          queryUserId: context.userId,
-          allUserIntents: false,
-        });
-        indexIntents = indexIntentsResult.readResult?.intents ?? [];
-      }
-
       let inputContent = query.description;
       const urls = extractUrls(query.description);
       if (urls.length > 0) {
