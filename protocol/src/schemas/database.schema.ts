@@ -154,11 +154,13 @@ export const hydeDocuments = pgTable('hyde_documents', {
 
 // Opportunity redesign: JSON types for extensible opportunity model
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
   /** User id who created, or system label (e.g. 'agent-opportunity-finder'). */
   createdBy?: Id<'users'> | string;
   triggeredBy?: Id<'intents'>;
   timestamp: string;
+  /** IDs of predecessor opportunities that were merged into this one. */
+  enrichedFrom?: string[];
 }
 
 export interface OpportunityActor {

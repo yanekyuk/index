@@ -21,6 +21,7 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
+import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
 import { StreamChat } from 'stream-chat';
 
 const logger = log.service.from("OpportunityService");
@@ -537,7 +538,20 @@ export class OpportunityService {
       status: 'pending',
     };
 
-    return this.db.createOpportunity(opportunityData);
+    const embedder = new EmbedderAdapter();
+    const enrichment = await enrichOrCreate(this.db, embedder, opportunityData);
+    const toCreate = enrichment.data;
+    if (enrichment.enriched) {
+      toCreate.status = enrichment.resolvedStatus;
+    }
+    const created = await this.db.createOpportunity(toCreate);
+
+    if (enrichment.enriched && enrichment.expiredIds.length > 0) {
+      for (const id of enrichment.expiredIds) {
+        await this.db.updateOpportunityStatus(id, 'expired');
+      }
+    }
+    return created;
   }
 
   /**
