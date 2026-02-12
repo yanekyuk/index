@@ -200,8 +200,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       score = 70;
     }
 
-    // Build actors: use evaluator roles if available, otherwise default to party/introducer
-    const actors = evaluatedActors.length >= 2
+    // Build actors: only use evaluator roles when all required parties are represented.
+    const requiredPartyUserIds = partyUserIds.filter((uid) => uid !== context.userId);
+    const evaluatorHasAllRequiredParties = requiredPartyUserIds.every((uid) =>
+      evaluatedActors.some((a) => a.userId === uid)
+    );
+    const actors = evaluatorHasAllRequiredParties
       ? [
           ...evaluatedActors
             .filter((a) => a.userId !== context.userId)
@@ -214,7 +218,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           { indexId: effectiveIndexId, userId: context.userId, role: 'introducer' },
         ]
       : [
-          ...partyUserIds.map((uid) => ({ indexId: effectiveIndexId, userId: uid, role: 'party' })),
+          ...requiredPartyUserIds.map((uid) => ({ indexId: effectiveIndexId, userId: uid, role: 'party' })),
           { indexId: effectiveIndexId, userId: context.userId, role: 'introducer' },
         ];
 

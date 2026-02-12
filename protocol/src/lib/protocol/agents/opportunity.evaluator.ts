@@ -329,6 +329,7 @@ export class OpportunityEvaluator {
     options: { minScore?: number } = {}
   ): Promise<EvaluatedOpportunityWithActors[]> {
     const minScore = options.minScore ?? 70;
+    const totalEntities = input.entities?.length ?? 0;
     if (!input.entities?.length) {
       logger.info('[OpportunityEvaluator.invokeEntityBundle] No entities.');
       return [];
@@ -352,14 +353,23 @@ export class OpportunityEvaluator {
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),
     ];
+    let parsedTotal = 0;
     try {
       const result = await this.entityBundleModel.invoke(messages);
       const parsed = entityBundleResponseFormat.parse(result);
+      parsedTotal = parsed.opportunities.length;
       const filtered = parsed.opportunities.filter((op) => op.score >= minScore);
       logger.info('[OpportunityEvaluator.invokeEntityBundle] Done', { total: parsed.opportunities.length, accepted: filtered.length });
       return filtered;
     } catch (llmError) {
-      throw llmError;
+      logger.error('[OpportunityEvaluator.invokeEntityBundle] Failed; returning empty opportunities.', {
+        discovererId: input.discovererId,
+        totalEntities,
+        parsedTotal,
+        minScore,
+        llmError,
+      });
+      return [];
     }
   }
 

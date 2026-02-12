@@ -41,7 +41,14 @@ export async function addOpportunityDiscoveryJob(
   data: OpportunityDiscoveryJobData,
   options?: { jobId?: string }
 ): Promise<Job<OpportunityDiscoveryJobData>> {
+  const initialDelayMs = 1000;
+
   return opportunityDiscoveryQueue.add('discover_opportunities', data, {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: initialDelayMs },
+    removeOnComplete: { age: 24 * 60 * 60 },
+    removeOnFail: { age: 24 * 60 * 60 },
+    ...options,
     jobId: options?.jobId,
   });
 }
