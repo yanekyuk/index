@@ -15,36 +15,29 @@ import type {
   OpportunityActor,
 } from '../../interfaces/database.interface';
 import type { Embedder } from '../../interfaces/embedder.interface';
-import type { CandidateProfile } from '../../agents/opportunity.evaluator';
+import type { EvaluatedOpportunityWithActors } from '../../agents/opportunity.evaluator';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
 
 const dummyEmbedding = new Array(2000).fill(0.1);
 
-const defaultMockEvaluatorResult = [
+const defaultMockEvaluatorResult: EvaluatedOpportunityWithActors[] = [
   {
-    sourceId: 'user-source',
-    candidateId: 'user-bob',
+    reasoning: 'The source user is building a DeFi protocol and the candidate has relevant community and marketing expertise in the crypto space.',
     score: 88,
-    sourceDescription: 'Match.',
-    candidateDescription: 'Match.',
-    valencyRole: 'Agent' as const,
+    actors: [
+      { userId: 'user-source', role: 'patient' as const, intentId: null },
+      { userId: 'user-bob', role: 'agent' as const, intentId: null },
+    ],
   },
 ];
 
 function createMockEvaluator(
-  result: Array<{
-    sourceId: string;
-    candidateId: string;
-    score: number;
-    sourceDescription: string;
-    candidateDescription: string;
-    valencyRole: 'Agent' | 'Patient' | 'Peer';
-  }> = defaultMockEvaluatorResult
+  result: EvaluatedOpportunityWithActors[] = defaultMockEvaluatorResult
 ): OpportunityEvaluatorLike {
   return {
-    invoke: async () => result,
+    invokeEntityBundle: async () => result,
   };
 }
 
@@ -54,7 +47,7 @@ function createMockGraph(deps?: {
   getIndex?: (id: string) => Promise<{ id: string; title: string } | null>;
   getIndexMemberCount?: (id: string) => Promise<number>;
   getProfile?: Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
-  evaluatorResult?: Array<{ sourceId: string; candidateId: string; score: number; sourceDescription: string; candidateDescription: string; valencyRole: 'Agent' | 'Patient' | 'Peer' }>;
+  evaluatorResult?: EvaluatedOpportunityWithActors[];
 }) {
   const mockDb: OpportunityGraphDatabase = {
     getProfile: () => Promise.resolve(deps?.getProfile ?? null),
@@ -65,7 +58,6 @@ function createMockGraph(deps?: {
         actors: data.actors,
         interpretation: data.interpretation,
         context: data.context,
-        indexId: data.indexId,
         confidence: data.confidence,
         status: data.status ?? 'pending',
         createdAt: new Date(),
@@ -92,6 +84,7 @@ function createMockGraph(deps?: {
     getOpportunity: () => Promise.resolve(null),
     getOpportunitiesForUser: () => Promise.resolve([]),
     updateOpportunityStatus: () => Promise.resolve(null),
+    getIntent: () => Promise.resolve(null),
   };
 
   const mockEmbedder: Embedder = {
@@ -279,7 +272,7 @@ describe('Opportunity Graph', () => {
       expect(result.opportunities.length).toBe(1);
       expect(result.opportunities[0].detection.source).toBe('opportunity_graph');
       expect(result.opportunities[0].actors.length).toBe(2);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-bob')).toBe(true);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'user-bob')).toBe(true);
     });
   });
 
@@ -287,8 +280,8 @@ describe('Opportunity Graph', () => {
     test('sorts by score and applies limit', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({
         evaluatorResult: [
-          { sourceId: 'user-source', candidateId: 'user-bob', score: 85, sourceDescription: 'A', candidateDescription: 'B', valencyRole: 'Agent' },
-          { sourceId: 'user-source', candidateId: 'user-alice', score: 92, sourceDescription: 'C', candidateDescription: 'D', valencyRole: 'Peer' },
+          { reasoning: 'Technical help match.', score: 85, actors: [{ userId: 'user-source', role: 'patient', intentId: null }, { userId: 'user-bob', role: 'agent', intentId: null }] },
+          { reasoning: 'Complementary interests in developer tools.', score: 92, actors: [{ userId: 'user-source', role: 'peer', intentId: null }, { userId: 'user-alice', role: 'peer', intentId: null }] },
         ],
       });
       spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
@@ -303,7 +296,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.opportunities.length).toBe(1);
-      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.identityId === 'user-alice')).toBe(true);
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.userId === 'user-alice')).toBe(true);
     });
   });
 
@@ -423,8 +416,11 @@ describe('Opportunity Graph', () => {
         const opp = result.opportunities[0];
         expect(opp.detection.source).toBe('opportunity_graph');
         expect(opp.detection.createdBy).toBe('agent-opportunity-finder');
-        expect(opp.interpretation.summary).toBeDefined();
-        expect(opp.context.indexId).toBeDefined();
+        expect(opp.interpretation.reasoning).toBeDefined();
+        // context.indexId is set only when user explicitly scoped search; actor tokens carry discovery indexId
+        expect(opp.actors.length).toBeGreaterThanOrEqual(1);
+        expect(opp.actors[0].indexId).toBeDefined();
+        expect(opp.actors[0].userId).toBeDefined();
         expect(opp.status).toBe('latent');
       }
     });

@@ -47,7 +47,7 @@ export interface CandidateMatch {
 }
 
 /**
- * Evaluated candidate with LLM scoring.
+ * Evaluated candidate with LLM scoring (legacy; used when evaluator returns source/candidate pair).
  * candidateIntentId is set for intent matches; omitted for profile-only matches.
  */
 export interface EvaluatedCandidate {
@@ -57,10 +57,29 @@ export interface EvaluatedCandidate {
   candidateIntentId?: Id<'intents'>;
   indexId: Id<'indexes'>;
   score: number; // 0-100
-  sourceDescription: string; // Why source should meet candidate
-  candidateDescription: string; // Why candidate should meet source
+  reasoning: string; // Third-party analytical explanation of the match (for LLM agents)
   valencyRole: 'Agent' | 'Patient' | 'Peer';
   strategy: HydeStrategy;
+}
+
+/**
+ * Actor in an evaluated opportunity (from entity-bundle evaluator).
+ * indexId is filled from the entity bundle in the graph, not by the evaluator.
+ */
+export interface EvaluatedOpportunityActor {
+  userId: Id<'users'>;
+  role: 'agent' | 'patient' | 'peer';
+  intentId?: Id<'intents'>;
+  indexId: Id<'indexes'>;
+}
+
+/**
+ * Evaluated opportunity with multi-actor output (entity-bundle evaluator).
+ */
+export interface EvaluatedOpportunity {
+  actors: EvaluatedOpportunityActor[];
+  score: number;
+  reasoning: string;
 }
 
 /**
@@ -77,6 +96,8 @@ export interface OpportunityGraphOptions {
   strategies?: HydeStrategy[];
   /** User's search query for HyDE generation */
   hydeDescription?: string;
+  /** Existing opportunities summary for evaluator deduplication */
+  existingOpportunities?: string;
 }
 
 /**
@@ -163,8 +184,14 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => [],
   }),
   
-  /** Evaluated candidates with scores (from evaluation) */
+  /** Evaluated candidates with scores (from evaluation; legacy) */
   evaluatedCandidates: Annotation<EvaluatedCandidate[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /** Evaluated opportunities with actors (from entity-bundle evaluator) */
+  evaluatedOpportunities: Annotation<EvaluatedOpportunity[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
@@ -192,7 +219,7 @@ export const OpportunityGraphState = Annotation.Root({
       indexName: string;
       connectedWith: string[];
       suggestedBy: string | null;
-      summary: string;
+      reasoning: string;
       status: string;
       category: string;
       confidence: number | null;

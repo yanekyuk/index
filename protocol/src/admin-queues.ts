@@ -19,10 +19,12 @@ import { HonoAdapter } from '@bull-board/hono';
 import { serveStatic } from 'hono/bun';
 import { Hono } from 'hono';
 import { notificationQueue } from './queues/notification.queue';
+import { intentHydeQueue } from './queues/intent-hyde.queue';
+import { opportunityDiscoveryQueue } from './queues/opportunity-discovery.queue';
 import { emailQueue } from './lib/email/queue/email.queue';
 
-const BASE_PATH = '/admin/queues';
-const PORT = Number(process.env.ADMIN_QUEUES_PORT ?? process.env.PORT ?? 3001);
+/** Served by the main server at this path (e.g. http://localhost:3001/dev/queues/). */
+const BASE_PATH = '/dev/queues';
 
 const app = new Hono();
 
@@ -32,6 +34,8 @@ const serverAdapter = new HonoAdapter(serveStatic);
 createBullBoard({
   queues: [
     new BullMQAdapter(notificationQueue),
+    new BullMQAdapter(intentHydeQueue),
+    new BullMQAdapter(opportunityDiscoveryQueue),
     new BullMQAdapter(emailQueue),
   ],
   serverAdapter,
@@ -40,7 +44,7 @@ createBullBoard({
 serverAdapter.setBasePath(BASE_PATH);
 const boardApp = serverAdapter.registerPlugin();
 
-// When mounted at BASE_PATH, Hono passes the path suffix to the subApp. So /admin/queues/ becomes
+// When mounted at BASE_PATH, Hono passes the path suffix to the subApp. So /dev/queues/ becomes
 // path '' (not '/'), and the board's GET '/' never matches. Forward exact BASE_PATH and BASE_PATH/
 // to the board with path '/' so the entry route matches.
 app.get(BASE_PATH, (c) => c.redirect(`${BASE_PATH}/`, 302));
@@ -54,10 +58,5 @@ app.route(`${BASE_PATH}/`, boardApp);
 
 app.get('/', (c) => c.redirect(`${BASE_PATH}/`, 302));
 
-Bun.serve({
-  fetch: app.fetch,
-  port: PORT,
-});
-
-console.log(`Bull Board UI: http://localhost:${PORT}${BASE_PATH}/`);
-console.log('Make sure Redis is running (REDIS_URL or default localhost:6379).');
+/** Hono app that serves Bull Board at BASE_PATH. Mounted in main server only. */
+export const adminQueuesApp = app;

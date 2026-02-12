@@ -48,10 +48,10 @@
 	- Status: Not started. `read_intents` does a flat DB read via the intent graph's `queryNode`. There is no similarity-based retrieval path for browsing others' intents.
 	- Next step: Add a `search_intents` tool (or a `similaritySearch` mode on `read_intents`) that uses HyDE embeddings + pgvector to find semantically similar intents from other users in shared indexes. Can leverage the existing `hyde_documents` table.
 
-15. **Opportunity summary should target LLM agents, not people**
-	- Opportunity summary is not directed at a person. It shouldn't be directed to a person. It should be directed to LLM agents explaining why the opportunity happened.
-	- Status: Not done. The `OpportunityEvaluator` currently generates person-directed descriptions (`sourceDescription`: "Why the SOURCE should meet the candidate", `candidateDescription`: "Why the CANDIDATE should meet the source").
-	- Next step: Update evaluator prompt and Zod schema in `opportunity.evaluator.ts` to produce a neutral, analytical `summary` field explaining why the opportunity exists — targeting LLM agent consumption rather than end-user display. The person-facing descriptions can be generated separately at display time by the chat agent.
+15. **Opportunity reasoning field for LLM agents** (DONE)
+	- The evaluator now generates a single `reasoning` field: a neutral, third-party analytical explanation of why the opportunity exists, mentioning both users by role. Written for other LLM agents to read and understand.
+	- Old `sourceDescription`/`candidateDescription` fields removed; `interpretation.summary` replaced by `interpretation.reasoning` in the schema.
+	- Person-facing descriptions are generated at display time by the chat agent.
 
 ---
 
@@ -63,4 +63,4 @@ Create these three issues in your Linear project (e.g. with Linear MCP in Cursor
 |-------|-------------|
 | **[Chat] Conversation history in tools** | Make sure to send the conversation history to tools every time. Status: LLM sees full history; tool handlers do not receive it. Decision: clarify if handlers need `messages`; if yes, change `defineTool` to pass `messages`. Ref: this plan §10. |
 | **[Chat] HyDE search for other people's intents** | When looking for other people's intents, use HyDE similarity search. Next step: add `search_intents` (or `similaritySearch` on `read_intents`) using HyDE + pgvector; leverage `hyde_documents`. Ref: this plan §14. |
-| **[Chat] Opportunity summary for LLM agents** | Opportunity summary should explain why the opportunity happened to LLM agents, not be person-directed. Next step: update `opportunity.evaluator.ts` prompt/schema to output neutral `summary`; keep person-facing text for display time. Ref: this plan §15. |
+| **[Chat] Opportunity reasoning for LLM agents** | DONE. Evaluator now outputs `reasoning` (third-party, both-users, for LLMs). Schema `interpretation.reasoning` replaces `interpretation.summary`. Ref: this plan §15. |

@@ -39,6 +39,28 @@ export class OpportunityController {
   }
 
   /**
+   * GET /opportunities/home — home view with dynamic sections (LLM-categorized, presenter text, Lucide icons).
+   */
+  @Get('/home')
+  @UseGuards(AuthGuard)
+  async getHome(req: Request, user: AuthenticatedUser) {
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const indexId = url.searchParams.get('indexId') ?? undefined;
+    const limitParam = url.searchParams.get('limit');
+    const result = await opportunityService.getHomeView(user.id, {
+      indexId,
+      limit: limitParam ? parseInt(limitParam, 10) : undefined,
+    });
+    if ('error' in result) {
+      return new Response(JSON.stringify({ error: result.error }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return Response.json(result);
+  }
+
+  /**
    * GET /opportunities/:id — get one opportunity with presentation for the viewer.
    */
   @Get('/:id')

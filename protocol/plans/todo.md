@@ -17,7 +17,7 @@
 ## Chat Enhancements (from chat-enhancement.md)
 - [ ] **IND-110** Conversation history in tools [Medium]
 - [ ] **IND-111** HyDE search for other people's intents [High]
-- [ ] **IND-112** Opportunity summary for LLM agents [Medium]
+- [x] **IND-112** Opportunity reasoning for LLM agents [Medium] (Done: `interpretation.reasoning` replaces `summary`)
 
 ## Future
 - [ ] **IND-105** Agent-to-Agent Interactions: introductions and bulk discovery [Medium]

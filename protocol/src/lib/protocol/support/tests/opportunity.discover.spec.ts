@@ -139,11 +139,11 @@ describe("opportunity.discover", () => {
             {
               id: "opp-1",
               actors: [
-                { role: "patient", identityId: "u1", intents: [], profile: false },
-                { role: "agent", identityId: candidateId, intents: [], profile: true },
+                { indexId: "idx-1", userId: "u1", role: "patient" },
+                { indexId: "idx-1", userId: candidateId, role: "agent" },
               ],
               interpretation: {
-                summary: "Strong match for mentorship.",
+                reasoning: "Strong match for mentorship.",
                 confidence: 0.85,
               },
             },

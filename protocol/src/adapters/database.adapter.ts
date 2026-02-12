@@ -778,16 +778,6 @@ export class ChatDatabaseAdapter {
       });
   }
 
-  async saveHydeProfile(userId: string, description: string, embedding: number[]): Promise<void> {
-    await db.update(schema.userProfiles)
-      .set({
-        hydeDescription: description,
-        hydeEmbedding: embedding,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.userProfiles.userId, userId));
-  }
-
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
       const [created] = await db.insert(schema.intents)
@@ -2008,16 +1998,6 @@ export class ProfileDatabaseAdapter {
       });
   }
 
-  async saveHydeProfile(userId: string, description: string, embedding: number[]): Promise<void> {
-    await db.update(schema.userProfiles)
-      .set({
-        hydeDescription: description,
-        hydeEmbedding: embedding,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.userProfiles.userId, userId));
-  }
-
   async getUser(userId: string): Promise<User | null> {
     const result = await db.select()
       .from(schema.users)
@@ -2081,23 +2061,19 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Get full profile row by userId (for test assertions, includes hydeDescription, hydeEmbedding).
+   * Get full profile row by userId (for test assertions).
    */
   async getProfileRow(userId: string): Promise<{
     identity: ProfileIdentity;
     narrative: ProfileNarrative;
     attributes: ProfileAttributes;
     embedding: number[] | number[][] | null;
-    hydeDescription: string | null;
-    hydeEmbedding: number[] | null;
   } | null> {
     const result = await db.select({
       identity: schema.userProfiles.identity,
       narrative: schema.userProfiles.narrative,
       attributes: schema.userProfiles.attributes,
       embedding: schema.userProfiles.embedding,
-      hydeDescription: schema.userProfiles.hydeDescription,
-      hydeEmbedding: schema.userProfiles.hydeEmbedding,
     })
       .from(schema.userProfiles)
       .where(eq(schema.userProfiles.userId, userId))
@@ -2109,8 +2085,6 @@ export class ProfileDatabaseAdapter {
       narrative: row.narrative as ProfileNarrative,
       attributes: row.attributes as ProfileAttributes,
       embedding: row.embedding,
-      hydeDescription: row.hydeDescription,
-      hydeEmbedding: row.hydeEmbedding as number[] | null,
     };
   }
 
@@ -2140,6 +2114,14 @@ export class ProfileDatabaseAdapter {
 
   private hydeAdapter = new HydeDatabaseAdapter();
 
+  async getHydeDocument(
+    sourceType: 'intent' | 'profile' | 'query',
+    sourceId: string,
+    strategy: string
+  ) {
+    return this.hydeAdapter.getHydeDocument(sourceType, sourceId, strategy);
+  }
+
   async saveHydeDocument(data: {
     sourceType: 'intent' | 'profile' | 'query';
     sourceId?: string | null;
@@ -2166,7 +2148,6 @@ interface OpportunityRow {
   actors: schema.OpportunityActor[];
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
-  indexId: string;
   confidence: string;
   status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
@@ -2180,7 +2161,6 @@ interface CreateOpportunityInput {
   actors: schema.OpportunityActor[];
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
-  indexId: string;
   confidence: string;
   status?: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
@@ -2194,7 +2174,6 @@ function toOpportunityRow(row: typeof opportunities.$inferSelect): OpportunityRo
     actors: row.actors as schema.OpportunityActor[],
     interpretation: row.interpretation as schema.OpportunityInterpretation,
     context: row.context as schema.OpportunityContext,
-    indexId: row.indexId,
     confidence: typeof confidence === 'string' ? confidence : String(confidence),
     status: row.status,
     createdAt: row.createdAt,
@@ -2231,7 +2210,6 @@ export class OpportunityDatabaseAdapter {
         actors: data.actors,
         interpretation: data.interpretation,
         context: data.context,
-        indexId: data.indexId,
         confidence: data.confidence,
         status: data.status ?? 'pending',
         expiresAt: data.expiresAt ?? null,
@@ -2251,10 +2229,29 @@ export class OpportunityDatabaseAdapter {
     userId: string,
     options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    const actorFilter = sql`${opportunities.actors} @> ${JSON.stringify([{ identityId: userId }])}::jsonb`;
-    const conditions = [actorFilter];
+    // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
+    const visibilityGuard = sql`(
+      ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'introducer' }])}::jsonb
+      OR ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'patient' }])}::jsonb
+        AND (${opportunities.status} != 'latent' OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      )
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'agent' }])}::jsonb
+        AND (
+          ${opportunities.status} IN ('accepted', 'rejected', 'expired')
+          OR (${opportunities.status} != 'latent' AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+        )
+      )
+      OR (
+        ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'party' }])}::jsonb
+        AND (${opportunities.status} != 'latent' OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+      )
+    )`;
+    const conditions = [visibilityGuard];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
-    if (options?.indexId) conditions.push(eq(opportunities.indexId, options.indexId));
+    if (options?.indexId) conditions.push(sql`${opportunities.context}->>'indexId' = ${options.indexId}`);
     let q = db
       .select()
       .from(opportunities)
@@ -2270,7 +2267,7 @@ export class OpportunityDatabaseAdapter {
     indexId: string,
     options?: { status?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    const conditions = [eq(opportunities.indexId, indexId)];
+    const conditions = [sql`${opportunities.context}->>'indexId' = ${indexId}`];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     let q = db
       .select()
@@ -2299,13 +2296,13 @@ export class OpportunityDatabaseAdapter {
     if (actorIds.length === 0) return false;
     const expired = 'expired';
     const conditions = [
-      eq(opportunities.indexId, indexId),
+      sql`${opportunities.context}->>'indexId' = ${indexId}`,
       ne(opportunities.status, expired),
     ];
     // Require that all given actorIds appear in actors (opportunity may have extra actors, e.g. introducer)
     for (const actorId of actorIds) {
       conditions.push(
-        sql`${opportunities.actors} @> ${JSON.stringify([{ identityId: actorId }])}::jsonb`
+        sql`${opportunities.actors} @> ${JSON.stringify([{ userId: actorId }])}::jsonb`
       );
     }
     const rows = await db
@@ -2321,7 +2318,7 @@ export class OpportunityDatabaseAdapter {
       .select({ id: opportunities.id })
       .from(opportunities)
       .where(
-        sql`${opportunities.actors} @> ${JSON.stringify([{ intents: [intentId] }])}::jsonb`
+        sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`
       );
     if (rows.length === 0) return 0;
     const ids = rows.map((r) => r.id);
@@ -2330,7 +2327,7 @@ export class OpportunityDatabaseAdapter {
       .set({ status: 'expired', updatedAt: new Date() })
       .where(
         and(
-          sql`${opportunities.actors} @> ${JSON.stringify([{ intents: [intentId] }])}::jsonb`
+          sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`
         )
       )
       .returning({ id: opportunities.id });
@@ -2343,8 +2340,8 @@ export class OpportunityDatabaseAdapter {
       .set({ status: 'expired', updatedAt: new Date() })
       .where(
         and(
-          eq(opportunities.indexId, indexId),
-          sql`${opportunities.actors} @> ${JSON.stringify([{ identityId: userId }])}::jsonb`
+          sql`${opportunities.context}->>'indexId' = ${indexId}`,
+          sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`
         )
       )
       .returning({ id: opportunities.id });

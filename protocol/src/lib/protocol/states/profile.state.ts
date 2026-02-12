@@ -53,7 +53,7 @@ export const ProfileGraphState = Annotation.Root({
 
   /**
    * The generated or loaded profile document.
-   * Includes embedding, hydeDescription, and hydeEmbedding from DB.
+   * Includes embedding from DB. Profile HyDE is stored in hyde_documents.
    */
   profile: Annotation<ProfileDocument | undefined>({
     reducer: (curr, next) => next,

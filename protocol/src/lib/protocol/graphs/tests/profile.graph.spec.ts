@@ -51,7 +51,7 @@ describe('ProfileGraph', () => {
         location: data.location ?? null,
       })),
       saveProfile: mock(async () => {}),
-      saveHydeProfile: mock(async () => {}),
+      getHydeDocument: mock(async () => null),
       saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
     } as any;
 
@@ -145,14 +145,13 @@ describe('ProfileGraph', () => {
     });
 
     it('should only generate hyde when profile exists but hyde is missing', async () => {
-      // Setup: Profile with embedding exists, but no hyde
+      // Setup: Profile with embedding exists, but no hyde document
       const profileWithEmbedding = {
         ...mockProfile,
         embedding: [0.1, 0.2, 0.3] as any,
-        hydeDescription: undefined,
-        hydeEmbedding: undefined
       };
       (mockDatabase.getProfile as any).mockResolvedValue(profileWithEmbedding);
+      (mockDatabase.getHydeDocument as any).mockResolvedValue(null);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -162,21 +161,20 @@ describe('ProfileGraph', () => {
 
       // Should generate hyde and its embedding
       expect(mockEmbedder.generate).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeProfile).toHaveBeenCalled();
+      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
       
       // Should NOT regenerate profile
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
 
-    it('should only generate hyde embedding when hyde description exists but embedding is missing', async () => {
-      // Setup: Profile complete, hyde description exists, but no hyde embedding
-      const profileWithHydeDescription = {
+    it('should generate and save hyde when no hyde document exists', async () => {
+      // Setup: Profile exists with embedding, but no hyde document
+      const profileWithEmbedding = {
         ...mockProfile,
         embedding: [0.1, 0.2, 0.3] as any,
-        hydeDescription: 'Existing hyde description',
-        hydeEmbedding: undefined
       };
-      (mockDatabase.getProfile as any).mockResolvedValue(profileWithHydeDescription);
+      (mockDatabase.getProfile as any).mockResolvedValue(profileWithEmbedding);
+      (mockDatabase.getHydeDocument as any).mockResolvedValue(null);
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -184,23 +182,23 @@ describe('ProfileGraph', () => {
         operationMode: 'write'
       });
 
-      // Should generate hyde embedding only
-      expect(mockEmbedder.generate).toHaveBeenCalledWith('Existing hyde description');
-      expect(mockDatabase.saveHydeProfile).toHaveBeenCalled();
-      
-      // Should NOT regenerate profile or hyde description
+      // Should generate hyde and save to hyde_documents
+      expect(mockEmbedder.generate).toHaveBeenCalled();
+      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
     });
 
     it('should do nothing when all components exist', async () => {
-      // Setup: Complete profile with all components
+      // Setup: Complete profile and existing hyde document
       const completeProfile = {
         ...mockProfile,
         embedding: [0.1, 0.2, 0.3] as any,
-        hydeDescription: 'Existing hyde description',
-        hydeEmbedding: [0.4, 0.5, 0.6] as any
       };
       (mockDatabase.getProfile as any).mockResolvedValue(completeProfile);
+      (mockDatabase.getHydeDocument as any).mockResolvedValue({
+        hydeText: 'Existing hyde description',
+        hydeEmbedding: [0.4, 0.5, 0.6],
+      });
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -212,20 +210,22 @@ describe('ProfileGraph', () => {
       expect(result.profile).toEqual(completeProfile);
       expect(mockEmbedder.generate).not.toHaveBeenCalled();
       expect(mockDatabase.saveProfile).not.toHaveBeenCalled();
-      expect(mockDatabase.saveHydeProfile).not.toHaveBeenCalled();
+      expect(mockDatabase.saveHydeDocument).not.toHaveBeenCalled();
     });
   });
 
   describe('Force Update Behavior', () => {
     it('should regenerate profile and hyde when forceUpdate is true with new input', async () => {
-      // Setup: Complete profile exists
+      // Setup: Complete profile and hyde doc exist
       const existingProfile = {
         ...mockProfile,
         embedding: [0.1, 0.2, 0.3] as any,
-        hydeDescription: 'Old hyde description',
-        hydeEmbedding: [0.4, 0.5, 0.6] as any
       };
       (mockDatabase.getProfile as any).mockResolvedValue(existingProfile);
+      (mockDatabase.getHydeDocument as any).mockResolvedValue({
+        hydeText: 'Old hyde description',
+        hydeEmbedding: [0.4, 0.5, 0.6],
+      });
 
       const graph = factory.createGraph();
       const result = await graph.invoke({
@@ -239,7 +239,7 @@ describe('ProfileGraph', () => {
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
       
       // Should also regenerate hyde (because profile was updated)
-      expect(mockDatabase.saveHydeProfile).toHaveBeenCalled();
+      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
       
       // Should generate embeddings for both
       expect(mockEmbedder.generate).toHaveBeenCalled();
@@ -258,7 +258,7 @@ describe('ProfileGraph', () => {
 
       // When profile is generated, hyde should be regenerated too
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
-      expect(mockDatabase.saveHydeProfile).toHaveBeenCalled();
+      expect(mockDatabase.saveHydeDocument).toHaveBeenCalled();
     });
   });
 

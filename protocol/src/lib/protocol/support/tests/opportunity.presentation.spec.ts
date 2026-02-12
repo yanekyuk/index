@@ -11,16 +11,15 @@ describe('presentOpportunity', () => {
     id: 'opp-1',
     detection: { source: 'manual', timestamp: new Date().toISOString() },
     actors: [
-      { role: 'agent', identityId: 'alice', intents: [], profile: true },
-      { role: 'patient', identityId: 'bob', intents: [], profile: false },
+      { indexId: 'idx-1', userId: 'alice', role: 'agent' },
+      { indexId: 'idx-1', userId: 'bob', role: 'patient' },
     ],
     interpretation: {
       category: 'collaboration',
-      summary: 'Alice can help Bob with React.',
+      reasoning: 'The source user (Alice) has deep React expertise while the candidate (Bob) is building a frontend-heavy product, making this a strong technical collaboration opportunity.',
       confidence: 0.85,
     },
     context: { indexId: 'idx-1' },
-    indexId: 'idx-1',
     confidence: '0.85',
     status: 'pending',
     createdAt: new Date(),
@@ -69,7 +68,7 @@ describe('presentOpportunity', () => {
     const longSummary = 'A'.repeat(150);
     const opp: Opportunity = {
       ...baseOpp,
-      interpretation: { ...baseOpp.interpretation, summary: longSummary },
+      interpretation: { ...baseOpp.interpretation, reasoning: longSummary },
     };
     const result = presentOpportunity(
       opp,

@@ -8,7 +8,7 @@ import { MentionsTextInput } from '@/components/MentionsInput';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useUploadServiceV2 } from '@/services/v2/upload.service';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useConnections, useSynthesis } from '@/contexts/APIContext';
+import { useConnections, useSynthesis, useOpportunities } from '@/contexts/APIContext';
 import { validateFiles } from '@/lib/file-validation';
 import ThinkingDropdown from '@/components/chat/ThinkingDropdown';
 import InlineDiscoveryCard from '@/components/chat/InlineDiscoveryCard';
@@ -25,10 +25,15 @@ import { useSuggestions } from '@/hooks/useSuggestions';
 import Image from 'next/image';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { mentionsToMarkdownLinks } from '@/lib/mentions';
+import type { HomeViewSection, HomeViewCardItem } from '@/services/opportunities';
+import { DynamicIcon, type IconName } from 'lucide-react/dynamic';
 
 /**
- * Static home discovery data (no remote calls). Realistic placeholder names and avatars.
- * Synthesis text is static copy. Set to true to use this data instead of discover API.
+ * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
+ */
+const USE_HOME_API = true;
+/**
+ * Static home discovery data (no remote calls). Used when USE_HOME_API is false.
  */
 const USE_STATIC_HOME_DISCOVERY = true;
 
@@ -289,7 +294,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
-  
+  const opportunitiesService = useOpportunities();
+
+  // Home view from API (when USE_HOME_API)
+  const [homeViewData, setHomeViewData] = useState<{ sections: HomeViewSection[]; meta: { totalOpportunities: number; totalSections: number } } | null>(null);
+  const [homeViewLoading, setHomeViewLoading] = useState(false);
+  const [homeViewError, setHomeViewError] = useState<string | null>(null);
+
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();
@@ -313,6 +324,27 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   useEffect(() => {
     setScopeIndexId(selectedIndexId);
   }, [selectedIndexId, setScopeIndexId]);
+
+  // Fetch home view when on home (no messages) and USE_HOME_API
+  useEffect(() => {
+    if (!USE_HOME_API || messages.length > 0) {
+      setHomeViewData(null);
+      return;
+    }
+    setHomeViewLoading(true);
+    setHomeViewError(null);
+    opportunitiesService
+      .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 50 })
+      .then((res) => {
+        setHomeViewData(res);
+        setHomeViewLoading(false);
+      })
+      .catch((err) => {
+        setHomeViewError(err?.message ?? 'Failed to load home view');
+        setHomeViewData(null);
+        setHomeViewLoading(false);
+      });
+  }, [USE_HOME_API, messages.length, selectedIndexId, opportunitiesService]);
 
   const handleSuggestionClick = useCallback((suggestion: { label: string; type: string; followupText?: string; prefill?: string }) => {
     if (suggestion.type === 'prompt' && suggestion.prefill) {
@@ -565,6 +597,110 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // HOME STATE - No messages yet
   if (messages.length === 0) {
     const selectedIndex = indexes.find(i => selectedIndexIds.includes(i.id));
+
+    // API-driven home view (dynamic sections with Lucide icons)
+    if (USE_HOME_API) {
+      if (homeViewLoading) {
+        return (
+          <div className="px-6 lg:px-8 py-4 bg-[#FDFDFD] min-h-full flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          </div>
+        );
+      }
+      if (homeViewData && homeViewData.sections.length > 0) {
+        return (
+          <div className="px-6 lg:px-8 py-4 bg-[#FDFDFD] min-h-full">
+            <ContentContainer className="text-left">
+              <div className="mt-12 mb-6">
+                <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
+                  Find your others
+                </h1>
+              </div>
+              {/* Input + index dropdown: same as below, reuse later if needed */}
+              <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-[#F8F8F8] border border-[#E9E9E9] rounded-full px-4 py-3 mb-6">
+                <input ref={fileInputRef} type="file" multiple accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml" onChange={handleFileSelect} className="sr-only" />
+                <Button type="button" variant="ghost" size="icon" disabled={isBusy} onClick={() => fileInputRef.current?.click()} className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#007EFF] hover:bg-gray-200 p-0" title="Attach files"><Paperclip className="h-4 w-4" /></Button>
+                <MentionsTextInput value={input} onChange={setInput} placeholder="What are you looking for?" disabled={isBusy} autoFocus inputRef={inputRef} />
+                {indexes.length > 0 && (
+                  <div className="relative flex-shrink-0">
+                    <button type="button" onClick={() => setIsIndexDropdownOpen(!isIndexDropdownOpen)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-black transition-colors hover:bg-gray-100">
+                      {selectedIndexIds.includes('my-network') || selectedIndex?.permissions?.joinPolicy === 'invite_only' ? <Lock className="w-4 h-4" /> : selectedIndex ? <Globe className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                      <span>{selectedIndexIds.includes('my-network') ? 'My network' : selectedIndex?.title || 'Everywhere'}</span>
+                      <ChevronDown className={cn('w-4 h-4 transition-transform', isIndexDropdownOpen && 'rotate-180')} />
+                    </button>
+                    {isIndexDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsIndexDropdownOpen(false)} />
+                        <div className="absolute right-0 top-full mt-2 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px]">
+                          <button type="button" onClick={() => { handleIndexSelect(null); setIsIndexDropdownOpen(false); }} className={cn('w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2', selectedIndexIds.length === 0 && 'text-gray-900 font-medium')}><Globe className="w-4 h-4" /> Everywhere</button>
+                          <button type="button" onClick={() => { handleIndexSelect('my-network'); setIsIndexDropdownOpen(false); }} className={cn('w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2', selectedIndexIds.includes('my-network') && 'text-gray-900 font-medium')}><Lock className="w-4 h-4" /> My network</button>
+                          <div className="my-1 border-t border-gray-200" />
+                          {[...indexes].sort((a, b) => ((a.permissions?.joinPolicy === 'invite_only') ? 1 : 0) - ((b.permissions?.joinPolicy === 'invite_only') ? 1 : 0) || (a.title || '').localeCompare(b.title || '')).map((index) => (
+                            <button key={index.id} type="button" onClick={() => { handleIndexSelect(index.id); setIsIndexDropdownOpen(false); }} className={cn('w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2', selectedIndexIds.includes(index.id) && 'text-gray-900 font-medium')}>
+                              {index.permissions?.joinPolicy === 'invite_only' ? <Lock className="w-4 h-4 flex-shrink-0" /> : <Globe className="w-4 h-4 flex-shrink-0" />}
+                              <span className="truncate">{index.title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                <Button type="submit" size="icon" disabled={isBusy || !canSend} className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0">{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}</Button>
+              </form>
+              {homeViewData.sections.map((section) => (
+                <div key={section.id} className={section.id === homeViewData.sections[0]?.id ? 'mt-12' : 'mt-6'}>
+                  <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5">
+                      <DynamicIcon name={section.iconName as IconName} />
+                    </span>
+                    {section.title}
+                  </h3>
+                  <div className="space-y-3">
+                    {section.items.map((item: HomeViewCardItem) => (
+                      <div key={item.opportunityId} className="bg-[#F8F8F8] rounded-md p-4">
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
+                              <Image src={getAvatarUrl({ id: item.userId, name: item.name, avatar: item.avatar })} alt="" width={32} height={32} className="w-full h-full object-cover" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-gray-900 text-sm">{item.name}</h4>
+                              <p className="text-[11px] text-[#3D3D3D]">{item.mutualIntentsLabel ?? '1 mutual intent'}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button type="button" className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors" onClick={() => item.userId && handleUserClick(item.userId)}>{item.primaryActionLabel ?? 'Start Chat'}</button>
+                            <button type="button" className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">{item.secondaryActionLabel ?? 'Skip'}</button>
+                          </div>
+                        </div>
+                        <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.mainText}</ReactMarkdown>
+                        </div>
+                        {item.narratorChip && (
+                          <div className="mt-3">
+                            <div className="inline-flex items-center gap-2.5 px-3 py-1 bg-[#F0F0F0] rounded-md">
+                              <div className="relative shrink-0">
+                                {item.narratorChip.name === 'Index' ? (
+                                  <Bot className="w-7 h-7 text-[#3D3D3D]" />
+                                ) : (
+                                  <Image src={getAvatarUrl({ name: item.narratorChip.name, avatar: item.narratorChip.avatar ?? null })} alt="" width={28} height={28} className="w-7 h-7 rounded-full object-cover" />
+                                )}
+                              </div>
+                              <span className="text-[13px] text-[#3D3D3D]"><span className="font-semibold">{item.narratorChip.name}:</span> {item.narratorChip.text}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </ContentContainer>
+          </div>
+        );
+      }
+    }
 
     // Static data when USE_STATIC_HOME_DISCOVERY; otherwise from discover API or mock fallback
     const opportunitiesDisplay = USE_STATIC_HOME_DISCOVERY

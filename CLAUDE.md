@@ -36,7 +36,6 @@ bun test --watch                            # Run tests in watch mode
 bun run lint                                # Run ESLint
 
 # Queue monitoring
-bun run admin-queues                        # Start BullBoard UI for queue monitoring
 
 # Maintenance/CLI tools
 bun run maintenance:trigger-integration     # Manually trigger integration sync
@@ -190,7 +189,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - Cleanup: Completed jobs removed after 24h, failed after 7d
 - Default concurrency: 1 (sequential processing)
 
-**Monitoring**: Use `bun run admin-queues` to start BullBoard UI at http://localhost:3001/admin/queues
+**Monitoring**: Bull Board UI is served at http://localhost:3001/dev/queues/ when the protocol server is running
 
 ### API Routes Organization
 
@@ -420,8 +419,7 @@ bun run db:seed
 ### Queue Monitoring
 
 ```bash
-bun run admin-queues
-# Opens BullBoard UI at http://localhost:3001/admin/queues
+# Bull Board at http://localhost:3001/dev/queues/ (when server is running)
 # View job status, retry failed jobs, clear queues
 ```
 

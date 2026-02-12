@@ -76,6 +76,9 @@ const defaultOwnedIndex = (): OwnedIndex => ({
   intentCount: 0,
 });
 
+/** Actor shape for opportunity mocks (role determines visibility). */
+export type MockOpportunityActor = { indexId: string; userId: string; role: "introducer" | "patient" | "agent" | "peer" | "party"; intent?: string };
+
 /** Build a minimal Opportunity for list_my_opportunities / create_opportunities tests. */
 export function mockOpportunity(overrides: {
   id?: string;
@@ -83,26 +86,28 @@ export function mockOpportunity(overrides: {
   indexId?: string;
   /** Current user (must be one of the actors so they "have" this opportunity). */
   currentUserId?: string;
-  /** Other party user ids (role "party"); tool resolves names via getUser. */
+  /** Other party user ids (role "party"); tool resolves names via getUser. Ignored if actors is provided. */
   otherPartyUserIds?: string[];
+  /** Override actors with specific roles for role-based visibility tests. */
+  actors?: MockOpportunityActor[];
 }): Opportunity {
   const id = overrides.id ?? `opp-${Date.now()}`;
   const indexId = overrides.indexId ?? "idx-1";
   const otherIds = overrides.otherPartyUserIds ?? ["user-alice"];
   const currentUserId = overrides.currentUserId ?? "current-user";
+  const actors = overrides.actors ?? [
+    { indexId, userId: currentUserId, role: "party" as const },
+    ...otherIds.map((userId) => ({ indexId, userId, role: "party" as const })),
+  ];
   return {
     id,
     detection: {
       source: "opportunity_graph" as const,
       timestamp: new Date().toISOString(),
     },
-    actors: [
-      { role: "party" as const, identityId: currentUserId },
-      ...otherIds.map((identityId) => ({ role: "party" as const, identityId })),
-    ],
-    interpretation: { category: "connection", summary: "Match", confidence: 0.8 },
+    actors,
+    interpretation: { category: "connection", reasoning: "Match", confidence: 0.8 },
     context: { indexId },
-    indexId,
     confidence: "0.8",
     status: overrides.status ?? "latent",
     createdAt: new Date(),
@@ -192,7 +197,6 @@ export function createChatGraphMockDb(
       location: data?.location ?? null,
     }),
     saveProfile: noop,
-    saveHydeProfile: noop,
     createIntent: async (data: CreateIntentData) => ({
       id: `intent-${Date.now()}`,
       payload: data.payload,

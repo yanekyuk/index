@@ -46,7 +46,7 @@ export async function processOpportunityNotification(
   }
 
   const summary =
-    (opportunity as { interpretation?: { summary?: string } }).interpretation?.summary ??
+    opportunity.interpretation.reasoning ??
     'A new match that might be relevant to you.';
 
   switch (priority) {

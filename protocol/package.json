@@ -4,10 +4,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "bun --watch src/main.ts",
+    "dev": "NODE_ENV=development bun --watch src/main.ts",
     "dev:prod": "NODE_ENV=production bun --watch src/main.ts",
     "build": "tsc",
-    "start": "bun dist/main.js",
+    "start": "NODE_ENV=production bun dist/main.js",
     "lint": "eslint src/**/*.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -22,9 +22,8 @@
     "integration-worker": "bun ./src/cli/integration-worker.ts",
     "social-worker": "bun ./src/cli/social-worker.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
-    "admin-queues": "bun ./src/admin-queues.ts",
-    "admin-queues:prod": "bun dist/admin-queues.js",
-    "test": "bun test"
+    "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
+    "test": "NODE_ENV=test bun test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.939.0",

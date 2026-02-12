@@ -28,7 +28,7 @@ describe('NotificationJob', () => {
       const db = {
         getOpportunity: mock(async () => ({
           id: 'opp-1',
-          interpretation: { summary: 'A great match' },
+          interpretation: { reasoning: 'A great match' },
           confidence: '0.9',
         })),
       };
@@ -69,7 +69,7 @@ describe('NotificationJob', () => {
         const db = {
           getOpportunity: mock(async () => ({
             id: 'opp-1',
-            interpretation: { summary: 'Summary' },
+            interpretation: { reasoning: 'Summary' },
           })),
         };
 
@@ -90,7 +90,7 @@ describe('NotificationJob', () => {
         const db = {
           getOpportunity: mock(async () => ({
             id: 'opp-1',
-            interpretation: { summary: 'Summary' },
+            interpretation: { reasoning: 'Summary' },
           })),
         };
 
@@ -135,7 +135,7 @@ describe('NotificationJob', () => {
         const db = {
           getOpportunity: mock(async () => ({
             id: 'opp-1',
-            interpretation: { summary: 'Summary' },
+            interpretation: { reasoning: 'Summary' },
           })),
         };
 
@@ -158,7 +158,7 @@ describe('NotificationJob', () => {
         const db = {
           getOpportunity: mock(async () => ({
             id: 'opp-1',
-            interpretation: { summary: 'Summary' },
+            interpretation: { reasoning: 'Summary' },
           })),
         };
 

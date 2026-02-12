@@ -60,7 +60,7 @@ When a user creates an intent, you trigger the HyDE process:
 3.  **Synthesize the Opportunity**:
     *   If a match is found, you fill the `opportunities` table.
     *   **Valency Role**: If matched via Type A (Mirror), the candidate fills a "Patient" or "Theme" role (e.g., Employee). If matched via Type B (Reciprocal), they fill an "Agent" role (e.g., Co-founder).
-    *   **Descriptions**: Use the LLM to generate the `sourceDescription` and `candidateDescription` by synthesizing the Source Intent and the matched Candidate Profile/Intent.
+    *   **Reasoning**: Use the LLM to generate a `reasoning` field — a neutral, third-party analytical explanation of why the opportunity exists, mentioning both users by role — by synthesizing the Source Intent and the matched Candidate Profile/Intent.
 
 ### 3. Why this solves "Implicit" problems
 You removed explicit "implicit intent" generation because it was likely too vague or hallucinated goals the user didn't actually have.

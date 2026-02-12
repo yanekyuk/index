@@ -1,3 +1,5 @@
+import './startup.env';
+
 import { ChatController } from './controllers/chat.controller';
 import { IndexController } from './controllers/index.controller';
 import { IntentController } from './controllers/intent.controller';
@@ -12,9 +14,14 @@ import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
+import { adminQueuesApp } from './admin-queues';
+// Bootstrap queue workers so jobs are processed in this process
+import './queues/intent-hyde.queue';
+import './queues/opportunity-discovery.queue';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
 
@@ -186,6 +193,14 @@ Bun.serve({
           }
         }
       }
+    }
+
+    // Bull Board UI at /dev/queues (disabled in production)
+    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
+      const res = await adminQueuesApp.fetch(req);
+      const newHeaders = new Headers(res.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
     logger.info('No match found', { path: url.pathname });

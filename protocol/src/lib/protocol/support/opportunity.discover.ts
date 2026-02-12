@@ -12,6 +12,7 @@ import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 import type { OpportunityGraphOptions } from "../states/opportunity.state";
 import type { HydeStrategy } from "../agents/hyde.strategies";
+import { OpportunityPresenter, gatherPresenterContext, type OpportunityPresentationResult } from "../agents/opportunity.presenter";
 import { protocolLogger, withCallLogging } from "./protocol.logger";
 
 const logger = protocolLogger("OpportunityDiscover");
@@ -30,6 +31,8 @@ export interface DiscoverInput {
   query: string;
   indexScope: string[];
   limit?: number;
+  /** When provided, each opportunity is enriched with personalized presentation (headline, personalizedSummary, suggestedAction). */
+  presenter?: OpportunityPresenter;
 }
 
 /** Max chars for bio and matchReason in chat tool results to keep context manageable. */
@@ -50,6 +53,8 @@ export interface FormattedDiscoveryCandidate {
   bio?: string;
   matchReason: string;
   score: number;
+  /** Present when DiscoverInput.presenter was provided. */
+  presentation?: OpportunityPresentationResult;
 }
 
 export interface DiscoverResult {
@@ -153,7 +158,7 @@ export async function runDiscoverFromQuery(
       const result = await opportunityGraph.invoke({
         userId,
         searchQuery: queryOrEmpty || undefined,
-        indexId: indexScope.length > 0 ? indexScope[0] : undefined,
+        indexId: indexScope.length === 1 ? indexScope[0] : undefined,
         options,
       });
 
@@ -169,10 +174,10 @@ export async function runDiscoverFromQuery(
         };
       }
 
-      const enriched = await Promise.all(
+      const baseEnriched = await Promise.all(
         opportunities.map(async (opp) => {
-          const candidateActor = opp.actors.find((a) => a.identityId !== userId);
-          const candidateUserId = candidateActor?.identityId ?? "";
+          const candidateActor = opp.actors.find((a) => a.userId !== userId);
+          const candidateUserId = candidateActor?.userId ?? "";
           const profile = candidateUserId
             ? await database.getProfile(candidateUserId)
             : null;
@@ -181,13 +186,48 @@ export async function runDiscoverFromQuery(
               ? opp.interpretation.confidence
               : parseFloat(String(opp.interpretation?.confidence ?? 0)) || 0;
           return {
-            opportunityId: opp.id,
-            userId: candidateUserId,
-            name: profile?.identity?.name ?? undefined,
-            bio: truncateForChat(profile?.identity?.bio),
-            matchReason: truncateForChat(opp.interpretation?.summary ?? "") ?? "",
-            score: confidence,
+            opportunity: opp,
+            candidateUserId,
+            profile,
+            confidence,
           };
+        })
+      );
+
+      let presentations: OpportunityPresentationResult[] | undefined;
+      if (input.presenter && baseEnriched.length > 0) {
+        try {
+          const contexts = await Promise.all(
+            baseEnriched.map(({ opportunity }) =>
+              gatherPresenterContext(database, opportunity, userId)
+            )
+          );
+          presentations = await input.presenter.presentBatch(contexts, {
+            concurrency: 5,
+          });
+        } catch (error) {
+          logger.warn(
+            "Presenter enrichment failed during opportunity discovery; returning base results without presentations",
+            {
+              userId,
+              opportunitiesCount: baseEnriched.length,
+              error: error instanceof Error ? error.message : String(error),
+            }
+          );
+          presentations = undefined;
+        }
+      }
+
+      const enriched: FormattedDiscoveryCandidate[] = baseEnriched.map(
+        (item, idx) => ({
+          opportunityId: item.opportunity.id,
+          userId: item.candidateUserId,
+          name: item.profile?.identity?.name ?? undefined,
+          bio: truncateForChat(item.profile?.identity?.bio),
+          matchReason:
+            truncateForChat(item.opportunity.interpretation?.reasoning ?? "") ?? "",
+          score: item.confidence,
+          ...(presentations?.[idx] && { presentation: presentations[idx] }),
         })
       );
 

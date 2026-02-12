@@ -28,7 +28,7 @@ export function presentOpportunity(
   introducerInfo: UserInfo | null,
   format: 'card' | 'email' | 'notification'
 ): OpportunityPresentation {
-  const myActor = opp.actors.find((a) => a.identityId === viewerId);
+  const myActor = opp.actors.find((a) => a.userId === viewerId);
   const introducer = opp.actors.find((a) => a.role === 'introducer');
 
   if (!myActor) {
@@ -38,6 +38,7 @@ export function presentOpportunity(
   const otherName = otherPartyInfo.name;
   let title: string;
   let description: string;
+  let descriptionIsReasoning = false;
 
   switch (myActor.role) {
     case 'agent':
@@ -72,15 +73,19 @@ export function presentOpportunity(
     default:
       if (introducer && introducerInfo) {
         title = `${introducerInfo.name} thinks you should meet ${otherName}`;
-        description = opp.interpretation.summary;
+        description = opp.interpretation.reasoning;
+        descriptionIsReasoning = true;
       } else {
         title = `Opportunity with ${otherName}`;
-        description = opp.interpretation.summary;
+        description = opp.interpretation.reasoning;
+        descriptionIsReasoning = true;
       }
       break;
   }
 
-  description += `\n\n${opp.interpretation.summary}`;
+  if (!descriptionIsReasoning) {
+    description += `\n\n${opp.interpretation.reasoning}`;
+  }
 
   if (format === 'notification') {
     description =

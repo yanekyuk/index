@@ -124,8 +124,9 @@ export class ProfileGraphFactory {
         const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
         const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
         const needsProfileEmbedding = profile && (!profile.embedding || profile.embedding.length === 0);
-        const needsHydeGeneration = !profile?.hydeDescription || (state.forceUpdate && hasMeaningfulInput);
-        const needsHydeEmbedding = profile?.hydeDescription && (!profile.hydeEmbedding || profile.hydeEmbedding.length === 0);
+        const existingHydeDoc = await this.database.getHydeDocument('profile', state.userId, 'mirror');
+        const needsHydeGeneration = !existingHydeDoc || (state.forceUpdate && hasMeaningfulInput);
+        const needsHydeEmbedding = false; // Profile HyDE lives in hyde_documents; no partial "text only" state
 
         // Check if we need to scrape (profile generation needed but no meaningful input provided)
         const willNeedScraping = needsProfileGeneration && !hasMeaningfulInput;
@@ -215,12 +216,12 @@ export class ProfileGraphFactory {
           forceUpdate: state.forceUpdate,
           hasInput: !!state.input,
           hasMeaningfulInput,
-          hasHydeDescription: !!profile?.hydeDescription
+          hasHydeDocument: !!existingHydeDoc,
         });
 
         return {
           profile: profile || undefined,
-          hydeDescription: profile?.hydeDescription || undefined,
+          hydeDescription: existingHydeDoc?.hydeText ?? undefined,
           needsProfileGeneration,
           needsProfileEmbedding,
           needsHydeGeneration,
@@ -608,29 +609,19 @@ export class ProfileGraphFactory {
           ? (hydeEmbedding as number[][])[0] 
           : (hydeEmbedding as number[]);
 
-        logger.info("Saving HyDE to DB...", { 
+        logger.info("Saving HyDE to hyde_documents...", {
           userId: state.userId,
           embeddingDimensions: flatHydeEmbedding.length
         });
 
-        await this.database.saveHydeProfile(state.userId, state.hydeDescription, flatHydeEmbedding);
-
-        // Also persist to hyde_documents table for consistency
-        try {
-          await this.database.saveHydeDocument({
-            sourceType: 'profile',
-            sourceId: state.userId,
-            strategy: 'mirror',
-            targetCorpus: 'profiles',
-            hydeText: state.hydeDescription,
-            hydeEmbedding: flatHydeEmbedding,
-          });
-          logger.info("HyDE saved to both userProfiles and hyde_documents");
-        } catch (hydeDocErr) {
-          logger.warn("Failed to save HyDE to hyde_documents (profile HyDE still saved on userProfiles)", {
-            error: hydeDocErr instanceof Error ? hydeDocErr.message : String(hydeDocErr),
-          });
-        }
+        await this.database.saveHydeDocument({
+          sourceType: 'profile',
+          sourceId: state.userId,
+          strategy: 'mirror',
+          targetCorpus: 'profiles',
+          hydeText: state.hydeDescription,
+          hydeEmbedding: flatHydeEmbedding,
+        });
 
         return {
           operationsPerformed: { embeddedHyde: true }

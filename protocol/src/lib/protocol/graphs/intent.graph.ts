@@ -6,6 +6,7 @@ import { IntentReconciler } from "../agents/intent.reconciler";
 import { IntentGraphDatabase } from "../interfaces/database.interface";
 import type { EmbeddingGenerator } from "../interfaces/embedder.interface";
 import { protocolLogger } from "../support/protocol.logger";
+import { addIntentHydeJob } from "../../../queues/intent-hyde.queue";
 
 const logger = protocolLogger("IntentGraphFactory");
 
@@ -282,7 +283,10 @@ export class IntentGraphFactory {
 
             results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
             logger.info(`Created intent: ${created.id}`);
-            
+            addIntentHydeJob('generate_hyde', { intentId: created.id, userId: state.userId }).catch((err) =>
+              logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
+            );
+
           } else if (action.type === 'update') {
             const sanitizedPayload = sanitizePayload(action.payload);
 
@@ -312,7 +316,12 @@ export class IntentGraphFactory {
               error: updated ? undefined : 'Intent not found'
             });
             logger.info(`Updated intent: ${action.id}`);
-            
+            if (updated) {
+              addIntentHydeJob('generate_hyde', { intentId: action.id, userId: state.userId }).catch((err) =>
+                logger.error('Failed to enqueue intent HyDE job', { intentId: action.id, error: err })
+              );
+            }
+
           } else if (action.type === 'expire') {
             const result = await this.database.archiveIntent(action.id);
             results.push({
@@ -322,6 +331,11 @@ export class IntentGraphFactory {
               error: result.error
             });
             logger.info(`Archived intent: ${action.id}`);
+            if (result.success) {
+              addIntentHydeJob('delete_hyde', { intentId: action.id }).catch((err) =>
+                logger.error('Failed to enqueue intent HyDE delete job', { intentId: action.id, error: err })
+              );
+            }
           }
         } catch (error) {
           logger.error(`Failed to execute ${action.type}:`, { error });

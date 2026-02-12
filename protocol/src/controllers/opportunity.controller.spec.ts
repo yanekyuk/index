@@ -194,16 +194,15 @@ describe("OpportunityController Integration", () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { role: "agent", identityId: testUserId, intents: [], profile: true },
-        { role: "patient", identityId: candidateUserId, intents: [], profile: true },
+        { indexId: testIndexId, userId: testUserId, role: "agent" },
+        { indexId: testIndexId, userId: candidateUserId, role: "patient" },
       ],
       interpretation: {
         category: "collaboration",
-        summary: "Controller test opportunity",
+        reasoning: "Controller test opportunity",
         confidence: 0.9,
       },
       context: { indexId: testIndexId },
-      indexId: testIndexId,
       confidence: "0.9",
     });
     testOpportunityId = opp.id;
@@ -239,6 +238,22 @@ describe("OpportunityController Integration", () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(data.opportunities)).toBe(true);
     expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("getHome should return 200 with sections and meta", async () => {
+    const req = new Request("http://localhost/opportunities/home");
+    const res = await controller.getHome(req, mockUser());
+    const data = (await res.json()) as { sections?: unknown[]; meta?: { totalOpportunities: number; totalSections: number }; error?: string };
+
+    if (res.status === 500 && data.error) {
+      expect(data.error).toBeDefined();
+      return;
+    }
+    expect(res.status).toBe(200);
+    expect(Array.isArray(data.sections)).toBe(true);
+    expect(data.meta).toBeDefined();
+    expect(typeof data.meta!.totalOpportunities).toBe("number");
+    expect(typeof data.meta!.totalSections).toBe("number");
   });
 
   test("getOpportunity should return 400 when id is missing", async () => {

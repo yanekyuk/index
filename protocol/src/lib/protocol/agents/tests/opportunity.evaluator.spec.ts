@@ -35,8 +35,7 @@ describe('OpportunityEvaluator', () => {
     const match = result[0];
     expect(match.candidateId).toBe("user-bob");
     expect(match.score).toBeGreaterThan(50);
-    expect(match.sourceDescription).toBeDefined();
-    expect(match.candidateDescription).toBeDefined();
+    expect(match.reasoning).toBeDefined();
   }, 60000);
 
   it('should filter out low relevance candidates', async () => {
