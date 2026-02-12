@@ -1398,6 +1398,39 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
+  async getMembersFromUserIndexes(userId: string): Promise<{ userId: string; name: string; avatar: string | null }[]> {
+    // Indexes the user is a member of (non-deleted)
+    const myIndexRows = await db
+      .select({ indexId: indexMembers.indexId })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(eq(indexMembers.userId, userId), isNull(indexes.deletedAt))
+      );
+    const myIndexIds = myIndexRows.map((r) => r.indexId);
+    if (myIndexIds.length === 0) return [];
+
+    // All members from those indexes, joined with users; dedupe by userId
+    const rows = await db
+      .select({
+        userId: indexMembers.userId,
+        name: users.name,
+        avatar: users.avatar,
+      })
+      .from(indexMembers)
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(
+        and(inArray(indexMembers.indexId, myIndexIds), isNull(indexes.deletedAt))
+      );
+
+    const byId = new Map<string, { userId: string; name: string; avatar: string | null }>();
+    for (const r of rows) {
+      if (!byId.has(r.userId)) byId.set(r.userId, { userId: r.userId, name: r.name, avatar: r.avatar });
+    }
+    return Array.from(byId.values());
+  }
+
   async getIndexIntentsForOwner(
     indexId: string,
     requestingUserId: string,

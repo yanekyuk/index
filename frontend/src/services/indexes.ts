@@ -182,6 +182,21 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
+  // Get all members from every index the signed-in user is a member of (deduplicated). For @mentions.
+  getMyMembers: async (): Promise<{ members: Member[] }> => {
+    const response = await api.get<{ members: Pick<Member, 'id' | 'name' | 'avatar'>[] }>('/indexes/my-members');
+    return {
+      members: (response.members || []).map(m => ({
+        ...m,
+        email: '',
+        permissions: [],
+        metadata: null,
+        createdAt: undefined,
+        updatedAt: undefined,
+      } as Member))
+    };
+  },
+
   // Permissions Management
   // Update index permissions (joinPolicy)
   updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Index> => {

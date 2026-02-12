@@ -709,6 +709,15 @@ export interface Database {
   ): Promise<IndexMemberDetails[]>;
 
   /**
+   * Get all members from every index the user is a member of (deduplicated).
+   * Used for mentionable-users: anyone who shares at least one index with the requesting user.
+   *
+   * @param userId - The signed-in user
+   * @returns Array of member summaries (id, name, avatar only; no email)
+   */
+  getMembersFromUserIndexes(userId: string): Promise<{ userId: string; name: string; avatar: string | null }[]>;
+
+  /**
    * Get all indexed intents for an index.
    * **OWNER ONLY** - throws if user is not an owner.
    *
@@ -1067,6 +1076,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'isIndexMember'
   | 'getIndexMembersForOwner'
   | 'getIndexMembersForMember'
+  | 'getMembersFromUserIndexes'
   | 'getIndexIntentsForOwner'
   | 'getIndexIntentsForMember'
   | 'updateIndexSettings'

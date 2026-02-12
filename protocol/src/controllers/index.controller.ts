@@ -62,6 +62,18 @@ export class IndexController {
   }
 
   /**
+   * Get all members of every index the signed-in user is a member of (deduplicated).
+   * Used for mentionable users (e.g. @mentions in chat).
+   */
+  @Get('/my-members')
+  @UseGuards(AuthGuard)
+  async getMyMembers(_req: Request, user: AuthenticatedUser) {
+    const members = await indexService.getMembersFromMyIndexes(user.id);
+    logger.info('My-index members listed', { userId: user.id, count: members.length });
+    return Response.json({ members });
+  }
+
+  /**
    * Get members of an index. Owner-only.
    */
   @Get('/:id/members')
