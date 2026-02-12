@@ -196,14 +196,26 @@ export async function runDiscoverFromQuery(
 
       let presentations: OpportunityPresentationResult[] | undefined;
       if (input.presenter && baseEnriched.length > 0) {
-        const contexts = await Promise.all(
-          baseEnriched.map(({ opportunity }) =>
-            gatherPresenterContext(database, opportunity, userId)
-          )
-        );
-        presentations = await input.presenter.presentBatch(contexts, {
-          concurrency: 5,
-        });
+        try {
+          const contexts = await Promise.all(
+            baseEnriched.map(({ opportunity }) =>
+              gatherPresenterContext(database, opportunity, userId)
+            )
+          );
+          presentations = await input.presenter.presentBatch(contexts, {
+            concurrency: 5,
+          });
+        } catch (error) {
+          logger.warn(
+            "Presenter enrichment failed during opportunity discovery; returning base results without presentations",
+            {
+              userId,
+              opportunitiesCount: baseEnriched.length,
+              error: error instanceof Error ? error.message : String(error),
+            }
+          );
+          presentations = undefined;
+        }
       }
 
       const enriched: FormattedDiscoveryCandidate[] = baseEnriched.map(
