@@ -7,6 +7,7 @@
  * implementation and all Stream SDK type workarounds live in one place.
  */
 
+import { createHash } from 'node:crypto';
 import { StreamChat } from 'stream-chat';
 import type { Channel } from 'stream-chat';
 import { protocolLogger } from './protocol.logger';
@@ -27,19 +28,13 @@ export const INDEX_BOT_NAME = 'Index';
 /**
  * Deterministic channel id for a direct conversation between two users.
  * Sorts the ids so that the same pair always produces the same channel id.
- * Hashes when the concatenated length would exceed Stream's 64-char limit.
+ * When concatenated length exceeds Stream's 64-char limit, uses SHA-256 (first 64 hex chars)
+ * for collision-resistant, deterministic channel IDs.
  */
 export function getDirectChannelId(firstUserId: string, secondUserId: string): string {
   const sortedIds = [firstUserId, secondUserId].sort().join('_');
   if (sortedIds.length <= 64) return sortedIds;
-
-  let hash = 0;
-  for (let i = 0; i < sortedIds.length; i++) {
-    const char = sortedIds.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36).slice(0, 63);
+  return createHash('sha256').update(sortedIds, 'utf8').digest('hex').slice(0, 64);
 }
 
 // ──────────────────────────────────────────────────────────────
