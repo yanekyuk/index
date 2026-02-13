@@ -174,7 +174,7 @@ describe("IndexController Integration", () => {
 
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
-      createdIndexId = ""; // so afterAll doesn't try to delete again
+      // Keep createdIndexId so afterAll can run deleteIndexAndMembers (drops index_members), then deleteById(user) won't hit FK
     });
   });
 });

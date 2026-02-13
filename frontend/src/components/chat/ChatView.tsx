@@ -12,6 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { ContentContainer } from '@/components/layout';
+import { SystemMessageCard, type SystemMessagePresentation } from './SystemMessageCard';
 
 interface ChatMessage {
   id: string;
@@ -19,15 +20,52 @@ interface ChatMessage {
   user?: { id: string; name?: string } | null;
   created_at?: Date | string;
   status?: string;
+  type?: string;
+  introType?: string;
+  opportunityId?: string;
+  presentation?: SystemMessagePresentation;
+  /** Backend custom marker; takes precedence over top-level introType when present. */
+  custom?: { introType?: string };
 }
 
-const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => ({
-  id: msg.id,
-  text: msg.text,
-  user: msg.user ? { id: msg.user.id, name: msg.user.name } : null,
-  created_at: msg.created_at instanceof Date ? msg.created_at : msg.created_at,
-  status: msg.status,
-});
+function extractStringField(raw: Record<string, unknown>, key: string): string | undefined {
+  const val = raw[key];
+  return typeof val === 'string' ? val : undefined;
+}
+
+function extractPresentation(raw: Record<string, unknown>): SystemMessagePresentation | undefined {
+  const p = raw.presentation;
+  if (p && typeof p === 'object' && 'headline' in p && 'personalizedSummary' in p && 'suggestedAction' in p) {
+    return p as SystemMessagePresentation;
+  }
+  return undefined;
+}
+
+function extractCustomIntroType(raw: Record<string, unknown>): { introType?: string } | undefined {
+  const c = raw.custom;
+  if (c && typeof c === 'object' && 'introType' in c) {
+    const introType = extractStringField(c as Record<string, unknown>, 'introType');
+    return introType !== undefined ? { introType } : undefined;
+  }
+  return undefined;
+}
+
+const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => {
+  const raw = msg as Record<string, unknown>;
+  const custom = extractCustomIntroType(raw);
+  return {
+    id: msg.id,
+    text: msg.text,
+    user: msg.user ? { id: msg.user.id, name: msg.user.name } : null,
+    created_at: msg.created_at,
+    status: msg.status,
+    type: msg.type,
+    introType: extractStringField(raw, 'introType'),
+    opportunityId: extractStringField(raw, 'opportunityId'),
+    presentation: extractPresentation(raw),
+    custom,
+  };
+};
 
 interface ChannelEvent {
   channel?: { id: string };
@@ -38,6 +76,8 @@ interface ChatViewProps {
   userName: string;
   userAvatar?: string;
   userTitle?: string;
+  /** When set (e.g. from accept response), open this exact channel so it matches the backend. */
+  initialChannelId?: string;
   onClose: () => void;
   onBack?: () => void;
 }
@@ -47,7 +87,12 @@ interface ChannelPendingState {
   isRequester: boolean;
 }
 
-export default function ChatView({ userId, userName, userAvatar, userTitle, onClose, onBack }: ChatViewProps) {
+interface AcceptedOpportunityMeta {
+  opportunityId: string;
+  acceptedAt: string;
+}
+
+export default function ChatView({ userId, userName, userAvatar, userTitle, initialChannelId, onClose, onBack }: ChatViewProps) {
   const { client, isReady, getOrCreateChannel, clearActiveChat, respondToMessageRequest, refreshMessageRequests } = useStreamChat();
   const { success, error: showError } = useNotifications();
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -63,6 +108,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
   const [channelRefreshKey, setChannelRefreshKey] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [acceptedOpportunities, setAcceptedOpportunities] = useState<AcceptedOpportunityMeta[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -80,14 +126,17 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
 
     const initChannel = async () => {
       try {
-        const sortedIds = [client.userID, userId].sort().join('_');
-        const expectedChannelId = sortedIds.length > 64 
-          ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
-          : sortedIds;
+        const expectedChannelId = initialChannelId ?? (() => {
+          const sortedIds = [client.userID, userId].sort().join('_');
+          return sortedIds.length > 64
+            ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
+            : sortedIds;
+        })();
 
         let existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
 
-        if (existingChannels.length === 0 && channelRefreshKey > 0 && mounted) {
+        const shouldRetry = existingChannels.length === 0 && mounted && (channelRefreshKey > 0 || initialChannelId != null);
+        if (shouldRetry) {
           await new Promise((r) => setTimeout(r, 500));
           if (!mounted) return;
           existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
@@ -100,17 +149,29 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
           await ch.watch();
           setChannel(ch);
 
-          const channelData = ch.data as { pending?: boolean; requestedBy?: string };
+          const channelData = ch.data as {
+            pending?: boolean;
+            requestedBy?: string;
+            acceptedOpportunities?: AcceptedOpportunityMeta[];
+          };
           if (channelData?.pending) {
             setPendingState({ isPending: true, isRequester: channelData.requestedBy === client?.userID });
           } else {
             setPendingState({ isPending: false, isRequester: false });
           }
+          setAcceptedOpportunities(Array.isArray(channelData?.acceptedOpportunities) ? channelData.acceptedOpportunities : []);
           
           setMessages(ch.state.messages.map(transformMessage));
           setLoading(false);
 
-          syncMessagesHandler = () => { if (mounted && ch.state.messages) { setMessages(ch.state.messages.map(transformMessage)); scrollToBottom(); } };
+          syncMessagesHandler = () => {
+            if (mounted && ch.state.messages) {
+              setMessages(ch.state.messages.map(transformMessage));
+              const latestChannelData = ch.data as { acceptedOpportunities?: AcceptedOpportunityMeta[] } | undefined;
+              setAcceptedOpportunities(Array.isArray(latestChannelData?.acceptedOpportunities) ? latestChannelData.acceptedOpportunities : []);
+              scrollToBottom();
+            }
+          };
           handleMessage = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
           handleMessageUpdated = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
 
@@ -118,6 +179,13 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
           ch.on('message.updated', handleMessageUpdated);
           ch.on('channel.updated', syncMessagesHandler);
         } else {
+          if (initialChannelId != null) {
+            console.warn(
+              '[ChatView] Channel not found after retries for initialChannelId:',
+              initialChannelId,
+              '— falling back to getOrCreateChannel'
+            );
+          }
           const newCh = await getOrCreateChannel(userId, userName, userAvatar);
           if (!newCh) { setLoading(false); return; }
           currentChannel = newCh;
@@ -140,7 +208,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
         if (syncMessagesHandler) currentChannel.off('channel.updated', syncMessagesHandler);
       }
     };
-  }, [isReady, client, userId, userName, userAvatar, getOrCreateChannel, scrollToBottom, channelRefreshKey]);
+  }, [isReady, client, userId, userName, userAvatar, initialChannelId, getOrCreateChannel, scrollToBottom, channelRefreshKey]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -288,6 +356,13 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
       <div className="px-6 lg:px-8 py-6 pb-32">
         <ContentContainer>
           {/* Pending state banners */}
+          {acceptedOpportunities.length > 0 && (
+            <div className="px-4 py-3 rounded-lg mb-4 bg-gray-50 border border-gray-200">
+              <div className="text-xs text-gray-600">
+                This conversation is linked to {acceptedOpportunities.length} accepted opportunit{acceptedOpportunities.length === 1 ? 'y' : 'ies'}.
+              </div>
+            </div>
+          )}
           {pendingState.isPending && (
             <div className={`px-4 py-3 rounded-lg mb-4 ${pendingState.isRequester ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
               {pendingState.isRequester ? (
@@ -320,6 +395,10 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
             <div className="space-y-4">
               {messages.map((message, index) => {
                 const isOwn = message.user?.id === client?.userID;
+                const isIndexIntro =
+                  message.custom?.introType === 'opportunity_intro' ||
+                  message.introType === 'opportunity_intro' ||
+                  (message.type === 'system' && message.user?.id === 'index_bot');
                 const showTimestamp = index === 0 || (messages[index - 1] && new Date(message.created_at || '').getTime() - new Date(messages[index - 1].created_at || '').getTime() > 300000);
 
                 return (
@@ -327,15 +406,23 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, onCl
                     {showTimestamp && message.created_at && (
                       <div className="text-center text-xs text-gray-400  uppercase tracking-wider my-4">Today, {formatTime(message.created_at)}</div>
                     )}
-                    <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
-                      {!isOwn && <Image src={avatarUrl} alt={userName} width={32} height={32} className="rounded-full flex-shrink-0" />}
-                      <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
-                        <article className={cn(' text-sm', isOwn && 'text-white')}>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
-                        </article>
+                    {isIndexIntro ? (
+                      <SystemMessageCard
+                        text={message.text}
+                        introType={message.custom?.introType ?? message.introType}
+                        presentation={message.presentation}
+                      />
+                    ) : (
+                      <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
+                        {!isOwn && <Image src={avatarUrl} alt={userName} width={32} height={32} className="rounded-full flex-shrink-0" />}
+                        <div className={cn('max-w-[70%] rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
+                          <article className={cn(' text-sm', isOwn && 'text-white')}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text || ''}</ReactMarkdown>
+                          </article>
+                        </div>
+                        {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs  font-bold text-[#3D3D3D]">{client?.user?.name?.charAt(0) || 'U'}</div>}
                       </div>
-                      {isOwn && <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs  font-bold text-[#3D3D3D]">{client?.user?.name?.charAt(0) || 'U'}</div>}
-                    </div>
+                    )}
                   </div>
                 );
               })}

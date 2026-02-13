@@ -183,7 +183,7 @@ function wrapWithContext(
   const deprecatedTag =
     context === 'cli' || context === 'route'
       ? '[DEPRECATED] '
-      : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol'
+      : context === 'lib' || context === 'job' || context === 'service' || context === 'server' || context === 'controller' || context === 'protocol' || context === 'queue'
         ? ''
         : (source && isDeprecatedSource(source))
           ? '[DEPRECATED] '

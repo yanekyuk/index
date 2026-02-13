@@ -154,20 +154,22 @@ export const hydeDocuments = pgTable('hyde_documents', {
 
 // Opportunity redesign: JSON types for extensible opportunity model
 export interface OpportunityDetection {
-  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added';
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
   /** User id who created, or system label (e.g. 'agent-opportunity-finder'). */
   createdBy?: Id<'users'> | string;
   triggeredBy?: Id<'intents'>;
   timestamp: string;
+  /** IDs of predecessor opportunities that were merged into this one. */
+  enrichedFrom?: string[];
 }
 
 export interface OpportunityActor {
+  // idx-1:usr-1:(intent-1)?
   /** The index this actor was matched within. */
   indexId: Id<'indexes'>;
   userId: Id<'users'>;
+  intent?: Id<'intents'>; // Single intent that contributed to this match. Absent = profile-based match.
   role: string;
-  /** Single intent that contributed to this match. Absent = profile-based match. */
-  intent?: Id<'intents'>;
 }
 
 export interface OpportunitySignal {

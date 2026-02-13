@@ -26,6 +26,51 @@ export class ChatController {
   }
 
   /**
+   * Upsert a user in Stream Chat so they exist before creating a channel.
+   * Called by the frontend when opening a DM with a user who may not yet exist in Stream.
+   * Callers may only upsert their own profile (body.userId must match the authenticated user).
+   */
+  @Post('/user')
+  @UseGuards(AuthGuard)
+  async upsertStreamUser(req: Request, user: AuthenticatedUser) {
+    let body: { userId?: string; userName?: string; userAvatar?: string };
+    try {
+      body = (await req.json()) as { userId?: string; userName?: string; userAvatar?: string };
+    } catch {
+      return Response.json(
+        { error: 'Invalid request body. Expected { userId: string, userName?: string, userAvatar?: string }' },
+        { status: 400 }
+      );
+    }
+    const userId = body.userId?.trim();
+    if (!userId) {
+      return Response.json({ error: 'userId is required' }, { status: 400 });
+    }
+    if (userId !== user.id) {
+      return Response.json(
+        { error: 'You may only upsert your own Stream profile' },
+        { status: 403 }
+      );
+    }
+    try {
+      await streamServerClient.upsertUsers([
+        {
+          id: userId,
+          name: body.userName?.trim() || 'Unknown',
+          image: body.userAvatar?.trim() || undefined,
+        },
+      ]);
+      return Response.json({ success: true });
+    } catch (error) {
+      logger.warn('Failed to upsert Stream user', { userId, error });
+      return Response.json(
+        { error: error instanceof Error ? error.message : 'Failed to upsert user' },
+        { status: 500 }
+      );
+    }
+  }
+
+  /**
    * Send a message to the chat graph for processing.
    * The graph routes to appropriate subgraphs based on intent analysis.
    *

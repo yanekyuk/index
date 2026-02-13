@@ -39,6 +39,8 @@ export type CategorizerInputItem = {
   headline?: string;
   mainText: string;
   name: string;
+  viewerRole?: string;
+  opportunityStatus?: string;
 };
 
 export type CategorizerResult = {
@@ -53,7 +55,11 @@ const UNCATEGORIZED_SECTION_TITLE = 'UNCATEGORIZED OPPORTUNITIES';
  */
 function buildCardSummaries(cards: CategorizerInputItem[]): string {
   return cards
-    .map((c) => `[${c.index}] ${c.headline ?? c.mainText.slice(0, 60)}... (${c.name})`)
+    .map((c) => {
+      const role = c.viewerRole ?? 'party';
+      const status = c.opportunityStatus ?? 'pending';
+      return `[${c.index}] role=${role}; status=${status}; ${c.headline ?? c.mainText.slice(0, 60)}... (${c.name})`;
+    })
     .join('\n');
 }
 
@@ -144,7 +150,8 @@ Each section must have:
 Rules:
 - Use only icon names from the list above.
 - Every card index must appear in exactly one section.
-- Section titles must read as calls-to-action or invitations, not passive labels.`;
+- Section titles must read as calls-to-action or invitations, not passive labels.
+- If a card has role=introducer and status=pending, prioritize grouping those cards under a connector curation section with a CTA title like "YOU'RE THE CONNECTOR THEY NEED", "MAKE THE INTRO", or "DECIDE IF IT'S A GOOD MATCH".`;
 
     const userContent = `Cards to categorize:\n${cardSummaries}\n\nOutput sections with id, title (CTA-style), subtitle (optional), iconName, and itemIndices.`;
 

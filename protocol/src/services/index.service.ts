@@ -115,6 +115,20 @@ export class IndexService {
   }
 
   /**
+   * Get all members from every index the signed-in user is a member of (deduplicated).
+   * Used for mentionable users / @mentions.
+   */
+  async getMembersFromMyIndexes(userId: string) {
+    logger.info('[IndexService] Getting members from user indexes', { userId });
+    const raw = await this.adapter.getMembersFromUserIndexes(userId);
+    return raw.map(m => ({
+      id: m.userId,
+      name: m.name,
+      avatar: m.avatar,
+    }));
+  }
+
+  /**
    * Get public indexes that the user has not joined (for discovery).
    */
   async getPublicIndexes(userId: string) {

@@ -152,11 +152,10 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     async (otherUserId: string, otherUserName: string, otherUserAvatar?: string): Promise<Channel | null> => {
       if (!client || !user?.id) return null;
 
-      // Check if the other user exists in Stream Chat, upsert if not
+      // Ensure the other user exists in Stream Chat before creating the channel
       try {
         const usersResponse = await client.queryUsers({ id: { $eq: otherUserId } });
         if (usersResponse.users.length === 0) {
-          // User doesn't exist, upsert them via backend API
           await api.post('/chat/user', {
             userId: otherUserId,
             userName: otherUserName,
@@ -165,7 +164,7 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Failed to check/upsert user in Stream Chat:', error);
-        // Continue anyway - channel creation might still work
+        return null;
       }
 
       // Create a unique channel ID based on both user IDs (sorted for consistency)

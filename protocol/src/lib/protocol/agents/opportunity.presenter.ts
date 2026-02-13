@@ -15,6 +15,12 @@ import { protocolLogger } from "../support/protocol.logger";
 import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 
+/**
+ * Minimal database interface required by gatherPresenterContext.
+ * Any database adapter that implements these three methods can be passed.
+ */
+export type PresenterDatabase = Pick<ChatGraphCompositeDatabase, 'getProfile' | 'getActiveIntents' | 'getIndex'>;
+
 const logger = protocolLogger("OpportunityPresenter");
 const LLM_TIMEOUT_MS = 20_000;
 
@@ -83,6 +89,7 @@ export interface PresenterInput {
   signalsSummary: string;
   indexName: string;
   viewerRole: string;
+  opportunityStatus?: string;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -127,6 +134,15 @@ Rules:
 - Address the viewer with "you"/"your". Be concise and compelling.
 - primaryActionLabel must always invite starting or having a conversation (e.g. Start Chat, Say hello). Never use viewing/reviewing wording.
 - secondaryActionLabel must be short (under ~20 chars). narratorRemark should feel like a single sentence from the narrator (Index or a person), not meta-commentary.
+- Exception for connector triage: if viewer role is "introducer" and status is "pending", this is a curation decision. Use:
+  - primaryActionLabel: "Good match"
+  - secondaryActionLabel: "Pass"
+  - suggestedAction: one short line about confirming and sharing the intro.
+  - mutualIntentsLabel: a short connector label (e.g. "Connector opportunity", "You can bridge this").
+- Exception for new-connection reveal: if viewer role is "agent", status is "accepted", and there is an introducer, this is the agent's first time seeing this opportunity. Use:
+  - primaryActionLabel: "Open chat"
+  - secondaryActionLabel: "Later"
+  - suggestedAction: a short line about joining the conversation.
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -241,6 +257,7 @@ MATCH CONTEXT:
 
 COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
+Opportunity status: ${input.opportunityStatus ?? "pending"}
 
 Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryActionLabel, secondaryActionLabel, and mutualIntentsLabel.
 `;
@@ -263,11 +280,25 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       return {
         headline: "A connection opportunity",
         personalizedSummary: input.matchReasoning.slice(0, 300),
-        suggestedAction: "View opportunity and decide whether to reach out.",
+        suggestedAction:
+          input.viewerRole === "introducer" && input.opportunityStatus === "pending"
+            ? "Confirm this match and share the intro."
+            : "View opportunity and decide whether to reach out.",
         narratorRemark: "Worth a look.",
-        primaryActionLabel: "Start Chat",
-        secondaryActionLabel: "Skip",
-        mutualIntentsLabel: input.mutualIntentCount != null ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}` : "Shared interests",
+        primaryActionLabel:
+          input.viewerRole === "introducer" && input.opportunityStatus === "pending"
+            ? "Good match"
+            : "Start Chat",
+        secondaryActionLabel:
+          input.viewerRole === "introducer" && input.opportunityStatus === "pending"
+            ? "Pass"
+            : "Skip",
+        mutualIntentsLabel:
+          input.viewerRole === "introducer" && input.opportunityStatus === "pending"
+            ? "Connector opportunity"
+            : input.mutualIntentCount != null
+              ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
+              : "Shared interests",
       };
     }
   }
@@ -299,7 +330,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
  */
 export async function gatherPresenterContext(
-  database: ChatGraphCompositeDatabase,
+  database: PresenterDatabase,
   opportunity: Opportunity,
   viewerId: string
 ): Promise<PresenterInput> {

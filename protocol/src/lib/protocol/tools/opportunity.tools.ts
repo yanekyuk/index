@@ -2,12 +2,13 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
+import { enrichOrCreate } from "../support/opportunity.enricher";
 import { OpportunityPresenter, gatherPresenterContext } from "../agents/opportunity.presenter";
 import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
 import type { EvaluatorEntity, EvaluatorInput } from "../agents/opportunity.evaluator";
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, graphs } = deps;
+  const { database, graphs, embedder } = deps;
   const presenter = new OpportunityPresenter();
 
   async function buildFallbackReasoning(
@@ -245,7 +246,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       status: 'pending' as const,
     };
 
-    const created = await database.createOpportunity(data);
+    const enrichment = await enrichOrCreate(database, embedder, data);
+    const toCreate = enrichment.data;
+    if (enrichment.enriched) {
+      toCreate.status = enrichment.resolvedStatus;
+    }
+    const created = await database.createOpportunity(toCreate);
+
+    if (enrichment.enriched && enrichment.expiredIds.length > 0) {
+      for (const id of enrichment.expiredIds) {
+        await database.updateOpportunityStatus(id, 'expired');
+      }
+    }
 
     // Resolve names for confirmation
     const partyNames = await Promise.all(

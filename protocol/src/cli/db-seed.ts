@@ -12,7 +12,7 @@ import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { TESTABLE_TEST_ACCOUNTS, TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
-import type { SeedProfile } from './test-data';
+import type { SeedProfile, TesterPersona } from './test-data';
 import type { Id } from '../types/common.types';
 
 /** Minimal account shape for user creation (real or synthetic). */
@@ -33,6 +33,9 @@ interface IndexDef {
   prompt: string | null;
   joinPolicy: 'anyone' | 'invite_only';
 }
+
+/** Use full persona list from test-data (up to TESTER_PERSONAS_MAX). */
+const DB_SEED_TESTER_PERSONAS = TESTER_PERSONAS;
 
 const SEED_INDEXES: IndexDef[] = [
   // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
@@ -72,6 +75,44 @@ const SEED_INDEXES: IndexDef[] = [
     id: 'aaaaaaaa-0004-4000-8000-000000000004',
     title: 'Startup & Business',
     prompt: 'Startups, entrepreneurship, business strategy, fundraising, and go-to-market',
+    joinPolicy: 'anyone',
+  },
+
+  // Non-business / lifestyle indexes
+  {
+    id: 'aaaaaaaa-0005-4000-8000-000000000005',
+    title: 'Art & Creativity',
+    prompt: 'Visual art, illustration, music, writing, performance art, crafts, and creative projects',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0006-4000-8000-000000000006',
+    title: 'Gaming & Esports',
+    prompt: 'Video games, tabletop RPGs, streaming, esports, game development, and gaming community',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0007-4000-8000-000000000007',
+    title: 'Education & Learning',
+    prompt: 'Teaching, tutoring, education, learning, academic research, and knowledge sharing',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0008-4000-8000-000000000008',
+    title: 'Sports & Fitness',
+    prompt: 'Sports, fitness, running, cycling, climbing, swimming, coaching, and athletic activities',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-0009-4000-8000-000000000009',
+    title: 'Community & Volunteering',
+    prompt: 'Community organizing, volunteering, mutual aid, local initiatives, and civic engagement',
+    joinPolicy: 'anyone',
+  },
+  {
+    id: 'aaaaaaaa-000a-4000-8000-00000000000a',
+    title: 'Hobbies & Makers',
+    prompt: 'Hobbies, makers, DIY, ceramics, cooking, photography, and hands-on projects',
     joinPolicy: 'anyone',
   },
 ];
@@ -205,11 +246,11 @@ async function upsertUserProfile(userId: string, profile: SeedProfile): Promise<
 async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
   const opts = parseArgs();
   const { silent, personas: personasLimit } = opts;
-  const personasToSeed = personasLimit === 0 ? [] : TESTER_PERSONAS.slice(0, personasLimit);
+  const personasToSeed = personasLimit === 0 ? [] : DB_SEED_TESTER_PERSONAS.slice(0, personasLimit);
 
   try {
     if (!silent) console.log('Seeding indexes and users...');
-    if (!silent && TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
+    if (!silent && DB_SEED_TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
 
     // Create all indexes
     for (const idx of SEED_INDEXES) {

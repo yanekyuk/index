@@ -13,6 +13,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
+import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import PreferencesModal from '@/components/modals/PreferencesModal';
@@ -35,6 +36,7 @@ export default function Sidebar() {
   const { clearChat } = useAIChat();
   const { getAccessToken, logout } = usePrivy();
   const indexesService = useIndexes();
+  const opportunitiesService = useOpportunities();
   const { addIndex } = useIndexesState();
   const { success, error } = useNotifications();
   
@@ -81,34 +83,32 @@ export default function Sidebar() {
   };
 
   const handleChatClick = async () => {
-    if (!isReady || !client) {
+    if (!user?.id) {
       return;
     }
 
     setNavigatingToChat(true);
     try {
-      const filter = {
-        type: 'messaging',
-        members: { $in: [client.userID || ''] },
-      };
-      const sort = [{ last_message_at: -1 as const }];
-      const channels = await client.queryChannels(filter, sort, {
-        limit: 1,
-        watch: false,
-        state: true,
-      });
-
-      if (channels.length > 0) {
-        const channel = channels[0];
-        const members = Object.values(channel.state.members || {});
-        const otherMember = members.find(m => m.user_id !== client.userID);
-        const recipientId = otherMember?.user?.id;
-        
-        if (recipientId) {
-          router.push(`/u/${recipientId}/chat`);
-          return;
-        }
+      // Conversation definition: at least one accepted opportunity between two users.
+      const acceptedOpportunities = await opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 });
+      const latestByRecipient = new Map<string, number>();
+      for (const opportunity of acceptedOpportunities) {
+        const counterpart = opportunity.actors.find(
+          (actor) => actor.userId !== user.id && actor.role !== 'introducer'
+        ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
+        if (!counterpart?.userId) continue;
+        const ts = new Date(opportunity.updatedAt).getTime();
+        const prev = latestByRecipient.get(counterpart.userId) ?? 0;
+        if (ts > prev) latestByRecipient.set(counterpart.userId, ts);
       }
+
+      const topConversation = Array.from(latestByRecipient.entries())
+        .sort((a, b) => b[1] - a[1])[0];
+      if (topConversation?.[0]) {
+        router.push(`/u/${topConversation[0]}/chat`);
+        return;
+      }
+
       router.push('/chat');
     } catch (err) {
       console.error('Failed to fetch most recent chat:', err);

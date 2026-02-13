@@ -1,14 +1,8 @@
+import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
-import type {
-  OpportunityControllerDatabase,
-  OpportunityGraphDatabase,
-  HydeGraphDatabase,
-  HomeGraphDatabase,
-  CreateOpportunityData,
-  OpportunityActor,
-  OpportunityStatus,
-} from '../lib/protocol/interfaces/database.interface';
+import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../lib/protocol/interfaces/database.interface';
+import { OpportunityPresenter, gatherPresenterContext } from '../lib/protocol/agents/opportunity.presenter';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
@@ -20,8 +14,54 @@ import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
+import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
+import type { Channel } from 'stream-chat';
+import {
+  getDirectChannelId,
+  getStreamServerClient,
+  ensureStreamUsers,
+  ensureIndexBotUser,
+  sendBotMessage,
+  channelHasMessageForOpportunity,
+  getChannelIntroOpportunityIds,
+  addChannelIntroOpportunityId,
+} from '../lib/protocol/support/stream-chat.utils';
 
 const logger = log.service.from("OpportunityService");
+
+interface AcceptedOpportunityChannelMeta {
+  opportunityId: string;
+  acceptedAt: string;
+}
+
+interface OpportunityStatusUpdateResult {
+  opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
+  chat?: {
+    channelId: string;
+    counterpartUserId: string;
+    acceptedOpportunities?: AcceptedOpportunityChannelMeta[];
+  };
+}
+
+function toIso(value: Date | string | null | undefined): string {
+  const fallback = () => new Date().toISOString();
+  if (!value) return fallback();
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback();
+  return date.toISOString();
+}
+
+/** Events emitted after opportunity lifecycle changes (e.g. create, expire). */
+export type OpportunityCreatedPayload = { opportunity: Opportunity };
+export type OpportunityExpiredPayload = { opportunity: Opportunity };
+
+export class OpportunityServiceEvents extends EventEmitter {
+  override emit(event: 'created', payload: OpportunityCreatedPayload): boolean;
+  override emit(event: 'expired', payload: OpportunityExpiredPayload): boolean;
+  override emit(event: string, ...args: unknown[]): boolean {
+    return super.emit(event, ...args);
+  }
+}
 
 /**
  * OpportunityService
@@ -29,6 +69,7 @@ const logger = log.service.from("OpportunityService");
  * Manages opportunity operations including discovery, listing, and creation.
  * Uses OpportunityControllerDatabase adapter for database operations.
  * Uses OpportunityGraph for AI-powered opportunity discovery.
+ * Emits opportunity events (created, expired) after transactional writes so subscribers see consistent state.
  * 
  * RESPONSIBILITIES:
  * - List opportunities for users and indexes
@@ -41,6 +82,8 @@ export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
+  /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
+  private readonly events = new OpportunityServiceEvents();
 
   constructor(database?: OpportunityControllerDatabase) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
@@ -64,6 +107,17 @@ export class OpportunityService {
       this.graph = factory.createGraph();
     }
     this.homeGraph = new HomeGraphFactory(this.db as unknown as HomeGraphDatabase).createGraph();
+  }
+
+  /**
+   * Subscribe to opportunity events (e.g. 'created', 'expired'). Call after transaction commits.
+   */
+  onOpportunityEvent(
+    event: 'created' | 'expired',
+    handler: (payload: OpportunityCreatedPayload | OpportunityExpiredPayload) => void
+  ): () => void {
+    this.events.on(event, handler);
+    return () => this.events.off(event, handler);
   }
 
   /**
@@ -204,7 +258,7 @@ export class OpportunityService {
     opportunityId: string,
     status: OpportunityStatus,
     userId: string
-  ) {
+  ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
     logger.info('[OpportunityService] Updating opportunity status', { opportunityId, status, userId });
 
     const opp = await this.db.getOpportunity(opportunityId);
@@ -217,7 +271,157 @@ export class OpportunityService {
       return { error: 'Not authorized to update this opportunity', status: 403 };
     }
 
-    return this.db.updateOpportunityStatus(opportunityId, status);
+    const updated = await this.db.updateOpportunityStatus(opportunityId, status);
+    if (!updated) {
+      return { error: 'Opportunity not found', status: 404 };
+    }
+
+    if (status !== 'accepted') {
+      return { opportunity: updated };
+    }
+
+    const counterpart = opp.actors.find((actor) => actor.role !== 'introducer' && actor.userId !== userId)
+      ?? opp.actors.find((actor) => actor.userId !== userId);
+
+    if (!counterpart) {
+      return { opportunity: updated };
+    }
+
+    // Accept all sibling opportunities between the same actor pair in one transaction (targeted query + bulk update).
+    await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
+
+    const acceptedBetweenActors = await this.db.getAcceptedOpportunitiesBetweenActors(userId, counterpart.userId);
+    const acceptedOpportunitiesMeta: AcceptedOpportunityChannelMeta[] = acceptedBetweenActors.map((candidate) => ({
+      opportunityId: candidate.id,
+      acceptedAt: toIso(candidate.updatedAt),
+    }));
+
+    const streamClient = getStreamServerClient();
+    const channelId = getDirectChannelId(userId, counterpart.userId);
+
+    if (!streamClient) {
+      logger.warn('[OpportunityService] Stream credentials are missing; skipping chat activation', {
+        opportunityId,
+        channelId,
+      });
+      return {
+        opportunity: updated,
+        chat: {
+          channelId,
+          counterpartUserId: counterpart.userId,
+          acceptedOpportunities: acceptedOpportunitiesMeta,
+        },
+      };
+    }
+
+    const [accepterUser, counterpartUser] = await Promise.all([
+      this.db.getUser(userId),
+      this.db.getUser(counterpart.userId),
+    ]);
+    await ensureStreamUsers(streamClient, [
+      { id: userId, name: accepterUser?.name, image: accepterUser?.avatar ?? undefined },
+      { id: counterpart.userId, name: counterpartUser?.name, image: counterpartUser?.avatar ?? undefined },
+    ]);
+    await ensureIndexBotUser(streamClient);
+
+    let channel: Channel;
+    let existingMessages: unknown[] = [];
+
+    const existingChannels = await streamClient.queryChannels(
+      { type: 'messaging', id: channelId } as Record<string, unknown>,
+      {} as Record<string, unknown>,
+      { state: true, watch: false, messages: { limit: 50 } } as Record<string, unknown>,
+    );
+
+    if (existingChannels.length > 0) {
+      channel = existingChannels[0] as Channel;
+      const state = (channel as { state?: { messages?: unknown[] } }).state;
+      existingMessages = state?.messages ?? [];
+    } else {
+      channel = streamClient.channel('messaging', channelId, {
+        members: [userId, counterpart.userId],
+        pending: false,
+        created_by_id: userId,
+      } as Record<string, unknown>) as Channel;
+      try {
+        await (channel as { create: () => Promise<unknown> }).create();
+      } catch (error) {
+        logger.debug('[OpportunityService] Stream channel create failed', { opportunityId, channelId, error });
+      }
+    }
+
+    try {
+      await (channel as { updatePartial: (arg: unknown) => Promise<unknown> }).updatePartial({
+        set: {
+          pending: false,
+          acceptedOpportunities: acceptedOpportunitiesMeta,
+        } as Record<string, unknown>,
+        unset: ['requestedBy'],
+      } as Record<string, unknown>);
+    } catch (error) {
+      logger.warn('[OpportunityService] Failed to update channel partial', { opportunityId, channelId, error });
+    }
+
+    try {
+      // Same idempotency signal as reinjection (opportunity.chat-injection): channel.data.introOpportunityIds.
+      // Fall back to recent-message scan for legacy channels that may not have metadata yet.
+      const introOpportunityIds = getChannelIntroOpportunityIds(channel);
+      const introExists =
+        introOpportunityIds.includes(opportunityId) ||
+        channelHasMessageForOpportunity(existingMessages, opportunityId);
+      if (!introExists) {
+        let introText: string;
+        let presentation: { headline: string; personalizedSummary: string; suggestedAction: string } | undefined;
+        try {
+          const context = await gatherPresenterContext(this.db, opp, userId);
+          const presenter = new OpportunityPresenter();
+          const result = await presenter.present(context);
+          presentation = result;
+          introText = `**${result.headline}**\n\n${result.personalizedSummary}\n\n${result.suggestedAction}`;
+        } catch (presenterError) {
+          logger.warn('[OpportunityService] Presenter failed; using fallback intro', {
+            opportunityId,
+            channelId,
+            error: presenterError,
+          });
+          const counterpartUser = await this.db.getUser(counterpart.userId);
+          introText = [
+            `Index intro: you are now connected with ${counterpartUser?.name ?? 'this member'}.`,
+            `Accepted opportunities between you: ${acceptedOpportunitiesMeta.length}.`,
+            'Start by sharing what you are currently working on and what help you need.',
+          ].join('\n');
+        }
+
+        logger.info('[OpportunityService] Sending Index intro message', { opportunityId, channelId });
+        await sendBotMessage(channel, {
+          type: 'system',
+          text: introText,
+          introType: 'opportunity_intro',
+          opportunityId,
+          ...(presentation && { presentation }),
+          acceptedOpportunityIds: acceptedOpportunitiesMeta.map((item) => item.opportunityId),
+          acceptedAt: toIso(updated.updatedAt),
+        });
+        await addChannelIntroOpportunityId(channel, opportunityId);
+        logger.info('[OpportunityService] Index intro message sent', { opportunityId, channelId });
+      }
+    } catch (error) {
+      logger.error('[OpportunityService] Failed to send Index intro message; rethrowing', {
+        error,
+        opportunityId,
+        channelId,
+      });
+      throw error;
+    }
+
+    return {
+      opportunity: updated,
+      chat: {
+        channelId,
+        counterpartUserId: counterpart.userId,
+        acceptedOpportunities: acceptedOpportunitiesMeta,
+      },
+    };
   }
 
   /**
@@ -346,7 +550,20 @@ export class OpportunityService {
       status: 'pending',
     };
 
-    return this.db.createOpportunity(opportunityData);
+    const embedder = new EmbedderAdapter();
+    const enrichment = await enrichOrCreate(this.db, embedder, opportunityData);
+    const toCreate = enrichment.data;
+    if (enrichment.enriched) {
+      toCreate.status = enrichment.resolvedStatus;
+    }
+    const expireIds = enrichment.enriched ? enrichment.expiredIds : [];
+    const { created, expired } = await this.db.createOpportunityAndExpireIds(toCreate, expireIds);
+
+    this.events.emit('created', { opportunity: created });
+    for (const opp of expired) {
+      this.events.emit('expired', { opportunity: opp });
+    }
+    return created;
   }
 
   /**

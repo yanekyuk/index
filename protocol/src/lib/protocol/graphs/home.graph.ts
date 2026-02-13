@@ -18,9 +18,9 @@ import {
   type HomeSectionProposal,
   type HomeSectionItem,
 } from '../states/home.state';
-import { OpportunityPresenter, gatherPresenterContext } from '../agents/opportunity.presenter';
+import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../agents/opportunity.presenter';
 import { HomeCategorizerAgent } from '../agents/home.categorizer';
-import { canUserSeeOpportunity } from '../support/opportunity.utils';
+import { canUserSeeOpportunity, isActionableForViewer } from '../support/opportunity.utils';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { protocolLogger } from '../support/protocol.logger';
 
@@ -43,6 +43,7 @@ export type HomeGraphInvokeResult = {
 
 const MAX_ITEMS_PER_SECTION = 20;
 const PRESENTATION_CONCURRENCY = 5;
+const MAX_REASONING_SNIPPET_LENGTH = 240;
 
 const toIntentArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
@@ -85,6 +86,80 @@ const computeMutualIntentCount = (ctx: Record<string, unknown>): number => {
   return overlap;
 };
 
+/** Normalize timestamp for sorting; returns numeric ms or 0 for invalid/missing. */
+const safeParseDate = (value: unknown): number => {
+  if (value == null) return 0;
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const t = new Date(value).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  return 0;
+};
+
+/** Confidence score for sorting (interpretation.confidence or opportunity.confidence). */
+const getConfidence = (opp: typeof HomeGraphState.State['opportunities'][number]): number => {
+  const fromInterp = opp.interpretation?.confidence;
+  if (typeof fromInterp === 'number' && !Number.isNaN(fromInterp)) return fromInterp;
+  if (typeof fromInterp === 'string') {
+    const n = parseFloat(fromInterp);
+    if (!Number.isNaN(n)) return n;
+  }
+  const fromRow = opp.confidence;
+  if (typeof fromRow === 'number' && !Number.isNaN(fromRow)) return fromRow;
+  if (typeof fromRow === 'string') {
+    const n = parseFloat(fromRow);
+    if (!Number.isNaN(n)) return n;
+  }
+  return 0;
+};
+
+/** Unique non-introducer, non-viewer userIds for an opportunity (actors can repeat). */
+const getUniqueCounterpartUserIds = (
+  opp: typeof HomeGraphState.State['opportunities'][number],
+  viewerId: string
+): Set<string> => {
+  const ids = new Set<string>();
+  for (const a of opp.actors) {
+    if (a.role !== 'introducer' && a.userId !== viewerId && a.userId) {
+      ids.add(a.userId);
+    }
+  }
+  return ids;
+};
+
+const pickDisplayCounterpartActor = (
+  opportunity: typeof HomeGraphState.State['opportunities'][number],
+  viewerId: string
+): { userId: string; role: string } | null => {
+  const candidates = opportunity.actors.filter(
+    (actor) => actor.userId !== viewerId && actor.role !== 'introducer'
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  // Prefer direct counterpart roles when available, then stable sort by user id.
+  const rolePriority = new Map<string, number>([
+    ['patient', 0],
+    ['party', 1],
+    ['agent', 2],
+    ['peer', 3],
+  ]);
+
+  const sorted = [...candidates].sort((a, b) => {
+    const aPriority = rolePriority.get(a.role) ?? 99;
+    const bPriority = rolePriority.get(b.role) ?? 99;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+    return a.userId.localeCompare(b.userId);
+  });
+  return sorted[0] ?? null;
+};
+
 export class HomeGraphFactory {
   constructor(private database: HomeGraphDb) {}
 
@@ -97,17 +172,40 @@ export class HomeGraphFactory {
         return { error: 'userId is required' };
       }
       try {
-        const options: { limit?: number; indexId?: string } = { limit: state.limit };
+        const fetchLimit = Math.min(150, Math.max(state.limit * 3, state.limit));
+        const options: { limit?: number; indexId?: string } = {
+          limit: fetchLimit,
+        };
         if (state.indexId) options.indexId = state.indexId;
         const raw = await this.database.getOpportunitiesForUser(state.userId, options);
-        const visible = raw.filter(
-          (opp) => canUserSeeOpportunity(opp.actors, opp.status, state.userId)
+        const visible = raw.filter((opp) =>
+          canUserSeeOpportunity(opp.actors, opp.status, state.userId)
+        );
+        const visibleForFeed = visible.filter((opp) =>
+          isActionableForViewer(opp.actors, opp.status, state.userId)
         );
         const expired = raw.filter(
           (opp) =>
             opp.status === 'expired' && canUserSeeOpportunity(opp.actors, opp.status, state.userId)
         );
-        return { opportunities: visible, expired };
+        const sorted = [...visibleForFeed].sort((a, b) => {
+          const confA = getConfidence(a);
+          const confB = getConfidence(b);
+          if (confB !== confA) return confB - confA;
+          const aTime = safeParseDate(a.updatedAt);
+          const bTime = safeParseDate(b.updatedAt);
+          return bTime - aTime;
+        });
+        const seenUserIds = new Set<string>();
+        const deduped = sorted.filter((opp) => {
+          const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+          const hasOverlap = [...counterpartIds].some((id) => seenUserIds.has(id));
+          if (hasOverlap) return false;
+          for (const id of counterpartIds) seenUserIds.add(id);
+          return true;
+        });
+        const opportunities = deduped.slice(0, state.limit);
+        return { opportunities, expired };
       } catch (e) {
         logger.error('HomeGraph loadOpportunities failed', { error: e });
         return { error: 'Failed to load opportunities', opportunities: [], expired: [] };
@@ -118,14 +216,13 @@ export class HomeGraphFactory {
       if (state.opportunities.length === 0) {
         return { cards: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
-      const db = this.database as Parameters<typeof gatherPresenterContext>[0];
+      const db = this.database as PresenterDatabase;
       const cards: HomeCardItem[] = [];
       const relevantActorIds = new Set<string>();
       for (const opp of state.opportunities) {
-        const otherActor = opp.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
-        const introducer = opp.actors.find((a) => a.role === 'introducer');
-        if (otherActor?.userId) relevantActorIds.add(otherActor.userId);
-        if (introducer?.userId) relevantActorIds.add(introducer.userId);
+        for (const a of opp.actors) {
+          if (a.userId) relevantActorIds.add(a.userId);
+        }
       }
 
       const userEntries = await Promise.all(
@@ -140,38 +237,68 @@ export class HomeGraphFactory {
       );
       const userMap = new Map(userEntries);
 
-      for (let i = 0; i < state.opportunities.length; i += PRESENTATION_CONCURRENCY) {
-        const chunk = state.opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
+      const opportunities = state.opportunities;
+      for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
+        const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
         const chunkCards = await Promise.all(
-          chunk.map(async (opp, offset) => {
+          chunk.map(async (opportunity, offset) => {
             const cardIndex = i + offset;
-            const otherActor = opp.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
-            const introducer = opp.actors.find((a) => a.role === 'introducer');
+            const viewerActor = opportunity.actors.find((a) => a.userId === state.userId);
+            const viewerRole = viewerActor?.role ?? 'party';
+            const isPendingIntroducer =
+              viewerRole === 'introducer' && opportunity.status === 'pending';
+            const preferredActor = pickDisplayCounterpartActor(opportunity, state.userId)
+              ?? opportunity.actors.find((a) => a.userId !== state.userId && a.role !== 'introducer');
+            const actorWithProfile = opportunity.actors.find(
+              (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
+            );
+            const otherActor = (preferredActor && userMap.get(preferredActor.userId))
+              ? preferredActor
+              : (actorWithProfile ?? preferredActor);
+            const introducer = opportunity.actors.find((a) => a.role === 'introducer');
             const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
-            const userName = otherUser?.name ?? 'Unknown';
+            const introducerCounterparts = opportunity.actors.filter(
+              (a) => a.userId !== state.userId && a.role !== 'introducer'
+            );
+            const participantNames = introducerCounterparts
+              .map((actor) => userMap.get(actor.userId)?.name ?? 'Unknown')
+              .sort();
+            const userName = isPendingIntroducer && participantNames.length > 0
+              ? participantNames.join(' ↔ ')
+              : (otherUser?.name ?? 'Unknown');
             const userAvatar = otherUser?.avatar ?? null;
+            const reasoningSnippet =
+              (typeof opportunity.interpretation?.reasoning === 'string'
+                ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
+                : '') || 'A connection opportunity.';
 
             const fallbackCard = (): HomeCardItem => ({
-              opportunityId: opp.id,
+              opportunityId: opportunity.id,
               userId: otherActor?.userId ?? '',
               name: userName,
               avatar: userAvatar,
-              mainText: opp.interpretation?.reasoning?.slice(0, 300) ?? 'A connection opportunity.',
-              cta: 'View opportunity and decide whether to reach out.',
-              primaryActionLabel: 'Start Chat',
-              secondaryActionLabel: 'Skip',
-              mutualIntentsLabel: 'Shared interests',
+              mainText: reasoningSnippet.slice(0, 300),
+              cta: isPendingIntroducer
+                ? 'Decide whether to introduce these members.'
+                : 'View opportunity and decide whether to reach out.',
+              primaryActionLabel: isPendingIntroducer ? 'Good match' : 'Start Chat',
+              secondaryActionLabel: isPendingIntroducer ? 'Pass' : 'Skip',
+              mutualIntentsLabel: isPendingIntroducer ? 'Connector opportunity' : 'Shared interests',
               narratorChip: { name: 'Index', text: 'Worth a look.' },
               _cardIndex: cardIndex,
             });
 
             try {
-              const ctx = await gatherPresenterContext(db, opp, state.userId);
+              const ctx = await gatherPresenterContext(db, opportunity, state.userId);
               const mutualIntentCount = computeMutualIntentCount(ctx as unknown as Record<string, unknown>);
-              const homeInput = { ...ctx, mutualIntentCount };
+              const homeInput = {
+                ...ctx,
+                mutualIntentCount,
+                opportunityStatus: opportunity.status,
+              };
               const presentation = await presenter.presentHomeCard(homeInput);
               let narratorChip: { name: string; text: string; avatar?: string | null } | undefined;
-              if (introducer) {
+              if (introducer && introducer.userId !== state.userId) {
                 const introUser = userMap.get(introducer.userId) ?? null;
                 narratorChip = {
                   name: introUser?.name ?? 'Someone',
@@ -182,7 +309,7 @@ export class HomeGraphFactory {
                 narratorChip = { name: 'Index', text: presentation.narratorRemark };
               }
               return {
-                opportunityId: opp.id,
+                opportunityId: opportunity.id,
                 userId: otherActor?.userId ?? '',
                 name: userName,
                 avatar: userAvatar,
@@ -196,7 +323,7 @@ export class HomeGraphFactory {
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {
-              logger.warn('HomeGraph presenter failed for opportunity', { opportunityId: opp.id, error: e });
+              logger.warn('HomeGraph presenter failed for opportunity', { opportunityId: opportunity.id, error: e });
               return fallbackCard();
             }
           })
@@ -218,6 +345,14 @@ export class HomeGraphFactory {
         headline: c.headline,
         mainText: c.mainText,
         name: c.name,
+        viewerRole:
+          c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
+            ? 'introducer'
+            : undefined,
+        opportunityStatus:
+          c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
+            ? 'pending'
+            : undefined,
       }));
       const { sections } = await categorizer.categorize(categorizerInput);
       const proposals: HomeSectionProposal[] = sections.map((s) => ({

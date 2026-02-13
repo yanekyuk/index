@@ -5,6 +5,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
 import { useStreamChat } from '@/contexts/StreamChatContext';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useOpportunities, useUsers } from '@/contexts/APIContext';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { Channel } from 'stream-chat';
 
@@ -14,11 +16,15 @@ interface RecentChat {
   name: string;
   avatar: string | null;
   lastMessage: string;
+  sortTimestamp: number;
 }
 
 export default function ChatSidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { user } = useAuthContext();
+  const opportunitiesService = useOpportunities();
+  const usersService = useUsers();
   const { client, isReady, messageRequests, messageRequestsLoading } = useStreamChat();
   
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
@@ -31,36 +37,83 @@ export default function ChatSidebar() {
 
   // Fetch user-to-user chats
   useEffect(() => {
-    if (!isReady || !client) return;
+    if (!isReady || !client || !user?.id) return;
     
     const fetchChats = async () => {
       try {
         setLoadingChats(true);
-        const filter = {
+        const streamFilter = {
           type: 'messaging',
           members: { $in: [client.userID || ''] },
         };
-        const sort = [{ last_message_at: -1 as const }];
-        const channels = await client.queryChannels(filter, sort, {
-          limit: 10,
-          watch: false,
-          state: true,
-        });
+        const streamSort = [{ last_message_at: -1 as const }];
+        const [channels, acceptedOpportunities] = await Promise.all([
+          client.queryChannels(streamFilter, streamSort, {
+            limit: 50,
+            watch: false,
+            state: true,
+          }),
+          opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 }),
+        ]);
 
-        const chats: RecentChat[] = channels.map((channel: Channel) => {
+        const streamByRecipient = new Map<string, {
+          id: string;
+          name: string;
+          avatar: string | null;
+          lastMessage: string;
+          sortTimestamp: number;
+        }>();
+
+        channels.forEach((channel: Channel) => {
           const members = Object.values(channel.state.members || {});
           const otherMember = members.find(m => m.user_id !== client.userID);
           const otherUser = otherMember?.user;
-          return {
+          if (!otherUser?.id) return;
+          streamByRecipient.set(otherUser.id, {
             id: channel.id || '',
-            recipientId: otherUser?.id || '',
             name: otherUser?.name || 'Unknown',
             avatar: otherUser?.image || null,
             lastMessage: channel.state.messages?.[channel.state.messages.length - 1]?.text || '',
-          };
-        }).filter((chat: RecentChat) => chat.recipientId);
+            sortTimestamp: new Date(
+              channel.state.last_message_at ||
+              channel.state.messages?.[channel.state.messages.length - 1]?.created_at ||
+              0
+            ).getTime(),
+          });
+        });
 
-        setRecentChats(chats);
+        const acceptedByRecipient = new Map<string, number>();
+        for (const opportunity of acceptedOpportunities) {
+          const counterpart = opportunity.actors.find(
+            (actor) => actor.userId !== user.id && actor.role !== 'introducer'
+          ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
+
+          if (!counterpart?.userId) continue;
+          const ts = new Date(opportunity.updatedAt).getTime();
+          const existing = acceptedByRecipient.get(counterpart.userId) ?? 0;
+          if (ts > existing) acceptedByRecipient.set(counterpart.userId, ts);
+        }
+
+        const acceptedRecipientIds = Array.from(acceptedByRecipient.keys());
+        const profilesCap = 50;
+        const idsToFetch = acceptedRecipientIds.slice(0, profilesCap);
+        const profileMap = await usersService.getUserProfiles(idsToFetch);
+
+        const chats: RecentChat[] = acceptedRecipientIds.map((recipientId) => {
+          const stream = streamByRecipient.get(recipientId);
+          const profile = profileMap.get(recipientId);
+          const acceptedTs = acceptedByRecipient.get(recipientId) ?? 0;
+          return {
+            id: stream?.id || `accepted-${recipientId}`,
+            recipientId,
+            name: profile?.name || stream?.name || 'Unknown',
+            avatar: profile?.avatar || stream?.avatar || null,
+            lastMessage: stream?.lastMessage || 'Connected via accepted opportunities',
+            sortTimestamp: Math.max(stream?.sortTimestamp ?? 0, acceptedTs),
+          };
+        }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+
+        setRecentChats(chats.slice(0, 10));
       } catch (error) {
         console.error('Failed to fetch chats:', error);
       } finally {
@@ -69,7 +122,7 @@ export default function ChatSidebar() {
     };
 
     fetchChats();
-  }, [isReady, client]);
+  }, [isReady, client, opportunitiesService, usersService, user?.id]);
 
   // Close menu when clicking outside
   useEffect(() => {

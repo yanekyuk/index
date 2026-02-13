@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import { useIndexService, Member } from '@/services/indexes';
+import { useIndexService } from '@/services/indexes';
 
 export interface MentionableUser {
   id: string;
@@ -31,7 +31,7 @@ export function useMentionableUsers({
   const cacheRef = useRef<Map<string, MentionableUser>>(new Map());
 
   const fetchAllMembers = useCallback(async () => {
-    if (!enabled || indexes.length === 0) {
+    if (!enabled) {
       setUsers([]);
       return;
     }
@@ -42,24 +42,16 @@ export function useMentionableUsers({
 
     setIsLoading(true);
     try {
-      // Fetch members from all accessible indexes in parallel
-      const memberPromises = indexes.map(index =>
-        indexService.getMembers(index.id, { limit: 100 }).catch(() => ({ members: [] as Member[] }))
-      );
+      const { members } = await indexService.getMyMembers();
 
-      const results = await Promise.all(memberPromises);
-
-      // Deduplicate users by ID
       const userMap = new Map<string, MentionableUser>();
-      for (const result of results) {
-        for (const member of result.members) {
-          if (!userMap.has(member.id)) {
-            userMap.set(member.id, {
-              id: member.id,
-              display: member.name,
-              avatar: member.avatar,
-            });
-          }
+      for (const member of members) {
+        if (!userMap.has(member.id)) {
+          userMap.set(member.id, {
+            id: member.id,
+            display: member.name,
+            avatar: member.avatar,
+          });
         }
       }
 
@@ -72,12 +64,21 @@ export function useMentionableUsers({
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, indexes, indexService]);
+  }, [enabled, indexService]);
+
+  // Stable signature of index IDs so joins/leaves trigger refetch even when length is unchanged
+  const indexesSignature =
+    indexes.length === 0
+      ? ''
+      : [...indexes]
+          .map((i) => i.id)
+          .sort()
+          .join(',');
 
   useEffect(() => {
-    fetchedRef.current = false; // Reset when indexes change
+    fetchedRef.current = false; // Reset when indexes change so we refetch after join/leave
     fetchAllMembers();
-  }, [fetchAllMembers]);
+  }, [fetchAllMembers, indexesSignature]);
 
   // Search function for react-mentions async data fetching
   const searchUsers = useCallback(

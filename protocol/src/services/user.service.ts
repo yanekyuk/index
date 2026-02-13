@@ -22,6 +22,14 @@ export class UserService {
     }
 
     /**
+     * Find multiple users by IDs (public profile fields only, for batch API).
+     */
+    async findByIds(userIds: string[]) {
+        if (userIds.length === 0) return [];
+        return this.db.findByIds(userIds);
+    }
+
+    /**
      * Resolves a full User Graph.
      * 
      * JOINS:

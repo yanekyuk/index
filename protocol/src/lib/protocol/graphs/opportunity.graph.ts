@@ -59,6 +59,8 @@ import type {
 } from '../interfaces/database.interface';
 import { queueOpportunityNotification } from '../../../queues/notification.queue';
 import { selectStrategies } from '../support/opportunity.utils';
+import { enrichOrCreate } from '../support/opportunity.enricher';
+import { injectOpportunityIntoExistingChat } from '../support/opportunity.chat-injection';
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 
 const logger = protocolLogger('OpportunityGraph');
@@ -535,8 +537,25 @@ export class OpportunityGraphFactory {
             status: initialStatus,
           };
 
-          const created = await this.database.createOpportunity(data);
+          const enrichment = await enrichOrCreate(this.database, this.embedder, data);
+          const toCreate = enrichment.data;
+          if (enrichment.enriched) {
+            toCreate.status = enrichment.resolvedStatus;
+          }
+          const created = await this.database.createOpportunity(toCreate);
           persisted.push(created);
+
+          if (enrichment.enriched && enrichment.expiredIds.length > 0) {
+            for (const id of enrichment.expiredIds) {
+              await this.database.updateOpportunityStatus(id, 'expired');
+            }
+          }
+
+          if (created.status === 'pending') {
+            await injectOpportunityIntoExistingChat(created).catch((err) => {
+              logger.warn('[Graph:Persist] Chat injection failed for opportunity', { opportunityId: created.id, error: err });
+            });
+          }
         }
 
         logger.info('[Graph:Persist] Persistence complete', {
@@ -579,10 +598,11 @@ export class OpportunityGraphFactory {
           indexIdFilter = state.indexId;
         }
 
-        const list = await this.database.getOpportunitiesForUser(state.userId, {
+        const rawList = await this.database.getOpportunitiesForUser(state.userId, {
           limit: 30,
           ...(indexIdFilter ? { indexId: indexIdFilter } : {}),
         });
+        const list = rawList.filter((opp) => opp.status !== 'expired');
 
         if (list.length === 0) {
           return {
@@ -594,6 +614,29 @@ export class OpportunityGraphFactory {
           };
         }
 
+        // Dedupe by counterpart set (same people = one row) so chat does not show "You and X" per index
+        const counterpartKey = (opp: (typeof list)[number]) =>
+          opp.actors
+            .filter((a: OpportunityActor) => a.userId !== state.userId && a.role !== 'introducer')
+            .map((a: OpportunityActor) => a.userId)
+            .sort()
+            .join(',');
+        const byKey = new Map<string, (typeof list)[number]>();
+        for (const opp of list) {
+          const key = counterpartKey(opp);
+          const existing = byKey.get(key);
+          const conf = Number(opp.interpretation?.confidence ?? opp.confidence ?? 0);
+          const existingConf = existing ? Number(existing.interpretation?.confidence ?? existing.confidence ?? 0) : 0;
+          const oppTime = opp.updatedAt instanceof Date ? opp.updatedAt.getTime() : new Date(opp.updatedAt).getTime();
+          const existingTime = existing
+            ? (existing.updatedAt instanceof Date ? existing.updatedAt.getTime() : new Date(existing.updatedAt).getTime())
+            : 0;
+          if (!existing || conf > existingConf || (conf === existingConf && oppTime > existingTime)) {
+            byKey.set(key, opp);
+          }
+        }
+        const dedupedList = [...byKey.values()];
+
         const sourceLabel: Record<string, string> = {
           chat: 'Suggested in chat',
           opportunity_graph: 'System match',
@@ -603,7 +646,7 @@ export class OpportunityGraphFactory {
         };
 
         const enriched = await Promise.all(
-          list.map(async (opp) => {
+          dedupedList.map(async (opp) => {
             // "Other parties" = all actors who are not the current user (exclude introducer for suggestedBy).
             // Opportunity graph persists roles as 'agent'|'patient'|'peer'; manual/createManual use 'party'.
             const otherParties = opp.actors.filter((a: OpportunityActor) => a.userId !== state.userId && a.role !== 'introducer');
@@ -794,6 +837,10 @@ export class OpportunityGraphFactory {
         for (const recipient of recipients) {
           await queueOpportunityNotification(opp.id, recipient.userId, 'high');
         }
+
+        await injectOpportunityIntoExistingChat({ ...opp, status: 'pending' }).catch((err) => {
+          logger.warn('[Graph:Send] Chat injection failed for opportunity', { opportunityId: opp.id, error: err });
+        });
 
         const recipientIds = recipients.map((a: OpportunityActor) => a.userId);
         return {

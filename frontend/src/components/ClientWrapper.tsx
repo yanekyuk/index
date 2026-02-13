@@ -1,6 +1,8 @@
 'use client';
 
-import { PropsWithChildren, useMemo, useState } from 'react';
+import { PropsWithChildren, Suspense, useMemo, useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -123,10 +125,27 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                 {showHeader && (
                   <div className={isLandingOrBlog ? 'z-40' : 'sticky top-0 z-40 border-b border-gray-300 bg-white/95 backdrop-blur-md'}>
                     <div className="max-w-7xl mx-auto px-4">
-                      <Header 
-                        showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
-                        forcePublicView={isLandingOrBlog}
-                      />
+                      <Suspense
+                        fallback={
+                          <header className="w-full py-4 px-4 flex justify-between items-center">
+                            <Link href="/">
+                              <Image
+                                src="/logos/logo-black-full.svg"
+                                alt="Index Network"
+                                width={200}
+                                height={36}
+                                className="object-contain"
+                              />
+                            </Link>
+                            <div className="animate-pulse bg-gray-200 h-10 w-20 rounded" />
+                          </header>
+                        }
+                      >
+                        <Header 
+                          showHeaderButtons={!pathname?.startsWith('/l/') && !pathname?.startsWith('/index/')}
+                          forcePublicView={isLandingOrBlog}
+                        />
+                      </Suspense>
                     </div>
                   </div>
                 )}

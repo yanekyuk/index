@@ -149,7 +149,9 @@ export default function LibraryPage() {
     try {
       setLoadingOpportunities(true);
       const list = await opportunitiesService.getOpportunities({ limit: 50 });
-      setOpportunities(list);
+      setOpportunities(
+        list.filter((o) => o.status !== 'expired' && o.status !== 'rejected')
+      );
     } catch {
       setOpportunities([]);
     } finally {

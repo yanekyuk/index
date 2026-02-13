@@ -6,8 +6,38 @@ import { log } from '../lib/log';
 
 const logger = log.controller.from('user');
 
+const BATCH_MAX_IDS = 100;
+
 @Controller('/users')
 export class UserController {
+  @Get('/batch')
+  @UseGuards(AuthGuard)
+  async getBatch(req: Request, _user: AuthenticatedUser) {
+    const url = new URL(req.url);
+    const idsParam = url.searchParams.get('ids') ?? '';
+    const ids = idsParam
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const uniqueIds = [...new Set(ids)].slice(0, BATCH_MAX_IDS);
+    if (uniqueIds.length === 0) {
+      return Response.json({ users: [] });
+    }
+    logger.info('Batch get users requested', { count: uniqueIds.length });
+    const rows = await userService.findByIds(uniqueIds);
+    const users = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      intro: row.intro,
+      avatar: row.avatar,
+      location: row.location,
+      socials: row.socials,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    }));
+    return Response.json({ users });
+  }
+
   @Get('/:userId')
   @UseGuards(AuthGuard)
   async getUser(_req: Request, _user: AuthenticatedUser, params: { userId: string }) {
