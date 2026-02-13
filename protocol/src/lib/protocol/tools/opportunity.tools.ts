@@ -3,7 +3,7 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { enrichOrCreate } from "../support/opportunity.enricher";
-import { OpportunityPresenter, gatherPresenterContext } from "../agents/opportunity.presenter";
+import { OpportunityPresenter } from "../agents/opportunity.presenter";
 import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
 import type { EvaluatorEntity, EvaluatorInput } from "../agents/opportunity.evaluator";
 
@@ -34,13 +34,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Creates opportunities (connections). Two modes:\n" +
       "1. **Discovery mode** (default): finds matching people via semantic search. Pass searchQuery and/or indexId. When searchQuery is omitted, uses the user's existing intents.\n" +
-      "2. **Introduction mode**: when partyUserIds are provided (2+ user IDs from read_users), creates a direct introduction between those specific people. The current user becomes the introducer. You may omit indexId: the system finds indexes both people share, fetches their profiles and intents from those indexes, and creates the introduction. If you provide indexId, that index is used.\n\n" +
+      "2. **Introduction mode**: when partyUserIds are provided (2+ user IDs from read_index_memberships or @mentions), creates a direct introduction between those specific people. The current user becomes the introducer. You may omit indexId: the system finds indexes both people share, fetches their profiles and intents from those indexes, and creates the introduction. If you provide indexId, that index is used.\n\n" +
       "Use discovery mode when user asks to find opportunities, connections, who can help, etc. Use introduction mode when user wants to connect specific OTHER people (e.g. 'I think Alice and Bob should meet', 'introduce X to Y'). For introductions, pass partyUserIds; indexId is optional.\n\n" +
-      "Results are saved as drafts; use send_opportunity when ready.",
+      "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       searchQuery: z.string().optional().describe("Discovery mode: what kind of connections to search for; when omitted, uses the user's intents in scope."),
       indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
-      partyUserIds: z.array(z.string()).optional().describe("Introduction mode: user IDs of the people to introduce (at least 2). Get IDs from read_users or @mentions. indexId optional — system finds shared indexes and uses their intents."),
+      partyUserIds: z.array(z.string()).optional().describe("Introduction mode: user IDs of the people to introduce (at least 2). Get IDs from read_index_memberships or @mentions. indexId optional — system finds shared indexes and uses their intents."),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
@@ -302,21 +302,21 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         score: confidence,
         status: 'latent',
       }],
-      message: `Draft introduction created between ${partyNames.join(' and ')}. Review it and say "send intro" (or use send_opportunity) when you're ready to notify them.`,
+      message: `Draft introduction created between ${partyNames.join(' and ')}. Review it and say "send intro" (or use update_opportunity with status='pending') when you're ready to notify them.`,
     });
   }
 
   const listOpportunities = defineTool({
     name: "list_opportunities",
     description:
-      "Lists the current user's opportunities (suggested connections). Only opportunities the user is allowed to see based on their role and the opportunity status are returned. When the chat is scoped to an index, you can omit indexId to list only opportunities in that index.",
+      "Lists the user's opportunities (suggested connections). Returns raw opportunity data — present it conversationally. Optional indexId filter.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID from read_indexes; optional when chat is index-scoped."),
+      indexId: z.string().optional().describe("Index UUID filter; defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+        return error("Invalid index ID format.");
       }
 
       const result = await graphs.opportunity.invoke({
@@ -328,102 +328,42 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       if (!result.readResult) {
         return error("Failed to list opportunities.");
       }
-
-      type ReadResultItem = (typeof result.readResult.opportunities)[number];
-      const opps: ReadResultItem[] = result.readResult.opportunities;
-      if (opps.length === 0) {
-        return success(result.readResult);
-      }
-
-      const fullOpps = await Promise.all(
-        opps.map((o: ReadResultItem) => database.getOpportunity(o.id))
-      );
-      const fullWithIndices = fullOpps
-        .map((full, index) => ({ full, index }))
-        .filter(
-          (
-            entry
-          ): entry is { full: NonNullable<typeof entry.full>; index: number } =>
-            entry.full != null
-        );
-      const contextsWithIndices = await Promise.all(
-        fullWithIndices.map(async ({ full, index }) => ({
-          index,
-          context: await gatherPresenterContext(database, full, context.userId),
-        }))
-      );
-      const contexts = contextsWithIndices.map(({ context }) => context);
-      const presentations =
-        contexts.length > 0
-          ? await presenter.presentBatch(contexts, { concurrency: 5 })
-          : [];
-      const presentationByIndex = new Map<number, (typeof presentations)[0]>();
-      for (let i = 0; i < contextsWithIndices.length; i++) {
-        presentationByIndex.set(
-          contextsWithIndices[i].index,
-          presentations[i]
-        );
-      }
-      const enriched = opps.map((item: ReadResultItem, i: number) => ({
-        ...item,
-        presentation: presentationByIndex.get(i),
-      }));
-
-      return success({
-        ...result.readResult,
-        opportunities: enriched,
-      });
+      return success(result.readResult);
     },
   });
 
-  const sendOpportunity = defineTool({
-    name: "send_opportunity",
+  const updateOpportunity = defineTool({
+    name: "update_opportunity",
     description:
-      "Sends a draft (latent) opportunity, promoting it to pending. The system notifies the appropriate next person based on actor roles (e.g., patient if sent by introducer, agent if sent by patient). Use after create_opportunities or list_opportunities when the user wants to send the intro.",
+      "Updates an opportunity's status. Use 'pending' to send a draft (notifies next person). Use 'accepted'/'rejected' to respond to a received opportunity.",
     querySchema: z.object({
-      opportunityId: z.string().describe("The opportunity ID to send (from create_opportunities or list_opportunities)"),
+      opportunityId: z.string().describe("Opportunity ID from list_opportunities"),
+      status: z.enum(["pending", "accepted", "rejected", "expired"]).describe("New status: pending (send draft), accepted, rejected, expired"),
     }),
     handler: async ({ context, query }) => {
+      // "pending" means send (latent → pending), everything else is a regular status update
+      const isSend = query.status === "pending";
       const result = await graphs.opportunity.invoke({
         userId: context.userId,
-        operationMode: 'send' as const,
+        operationMode: isSend ? ('send' as const) : ('update' as const),
         opportunityId: query.opportunityId,
+        ...(isSend ? {} : { newStatus: query.status }),
       });
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
-          const opportunityId = result.mutationResult.opportunityId;
-          let presentation: Awaited<
-            ReturnType<OpportunityPresenter["present"]>
-          > | undefined;
-          if (opportunityId) {
-            const opp = await database.getOpportunity(opportunityId);
-            if (opp) {
-              try {
-                const ctx = await gatherPresenterContext(
-                  database,
-                  opp,
-                  context.userId
-                );
-                presentation = await presenter.present(ctx);
-              } catch {
-                // non-fatal: return without presentation
-              }
-            }
-          }
           return success({
-            sent: true,
             opportunityId: result.mutationResult.opportunityId,
-            notified: result.mutationResult.notified,
+            status: query.status,
             message: result.mutationResult.message,
-            ...(presentation && { presentation }),
+            ...(result.mutationResult.notified && { notified: result.mutationResult.notified }),
           });
         }
-        return error(result.mutationResult.error || "Failed to send opportunity.");
+        return error(result.mutationResult.error || "Failed to update opportunity.");
       }
-      return error("Failed to send opportunity.");
+      return error("Failed to update opportunity.");
     },
   });
 
-  return [createOpportunities, listOpportunities, sendOpportunity] as const;
+  return [createOpportunities, listOpportunities, updateOpportunity] as const;
 }
