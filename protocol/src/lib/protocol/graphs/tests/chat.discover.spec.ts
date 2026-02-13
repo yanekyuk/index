@@ -116,14 +116,14 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
   });
 
   describe("Discovery query: find me a mentor", () => {
-    test("chat returns coherent response and matching profiles or join-index guidance", async () => {
+    test("chat returns coherent conversational response with practical guidance", async () => {
       const compiledGraph = factory.createGraph();
 
       const result = await runScenario(
         defineScenario({
           name: "discover-mentor",
           description:
-            "User asks to find a mentor; response must be coherent, mention discovery/mentors or suggest joining a community; no raw JSON.",
+            "User asks to find a mentor; response must be coherent, conversational, and practical; no raw JSON.",
           fixtures: {
             userId: testUserId,
             message: "find me a mentor",
@@ -149,9 +149,9 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
             schema: chatGraphOutputSchema,
             criteria:
               "The responseText must be a coherent, helpful reply to a request to find a mentor. " +
-              "It may suggest joining a community/index, mention mentors or discovery, or explain that no matches were found. " +
+              "It may suggest joining a community, mention mentors or possible matches, or explain that no matches were found. " +
               "It must NOT contain raw JSON, internal pipeline fields (classification, indexScore, actions), or structured data dumps. " +
-              "If it lists people or opportunities, they must be in natural language (e.g. table or list), not JSON.",
+              "If it lists people or matches, they must be in natural language (e.g. table or list), not JSON.",
             llmVerify: true,
           },
         })
@@ -170,14 +170,14 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
   });
 
   describe("Discovery query: who needs a React developer", () => {
-    test("chat returns coherent response and matching intents or guidance", async () => {
+    test("chat returns coherent response and matching people or guidance", async () => {
       const compiledGraph = factory.createGraph();
 
       const result = await runScenario(
         defineScenario({
           name: "discover-react-developer",
           description:
-            "User asks who needs a React developer; response must be coherent, mention opportunities/matches or suggest joining a community; no raw JSON.",
+            "User asks who needs a React developer; response must be coherent, conversational, mention possible matches or suggest joining a community; no raw JSON.",
           fixtures: {
             userId: testUserId,
             message: "who needs a React developer?",
@@ -203,11 +203,11 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
             schema: chatGraphOutputSchema,
             criteria:
               "The responseText must be a coherent reply to a request about who needs a React developer. " +
-              "ACCEPTABLE responses include: suggesting the user join or create a community/index to discover connections, " +
-              "mentioning opportunities or intents, explaining that no matches were found, or providing guidance on how to use the platform for discovery. " +
-              "Responses that guide the user on next steps (like joining an index or adding intents) ARE considered helpful and should PASS. " +
+              "ACCEPTABLE responses include: suggesting the user join or create a community to discover connections, " +
+              "mentioning possible matches, explaining that no matches were found, or providing guidance on how to use the platform. " +
+              "Responses that guide the user on next steps (like joining a community or adding what they are looking for) ARE considered helpful and should PASS. " +
               "It must NOT contain raw JSON or internal pipeline data. " +
-              "If it lists intents or opportunities, they must be in natural language (e.g. table or list), not JSON.",
+              "If it lists people or matches, they must be in natural language (e.g. table or list), not JSON.",
             llmVerify: true,
           },
         })
@@ -222,6 +222,8 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
       expect(output.responseText).not.toContain("classification");
       expect(output.responseText).not.toContain("indexScore");
       expect(output.responseText).not.toContain('"opportunities"');
+      expect(output.responseText).not.toContain("intentId");
+      expect(output.responseText).not.toContain("indexId");
     }, 180000);
   });
 
@@ -233,7 +235,7 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
         defineScenario({
           name: "discover-list-opportunities",
           description:
-            "User asks what opportunities they have; response must list in natural language or table; Draft or pending status is acceptable; no raw JSON.",
+            "User asks what connections they have; response must list in natural language or table; Draft or pending status is acceptable; no raw JSON.",
           fixtures: {
             userId: testUserId,
             message: "What opportunities do I have?",
@@ -258,8 +260,8 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
           verification: {
             schema: chatGraphOutputSchema,
             criteria:
-              "The responseText must be a coherent reply about the user's opportunities (list or none). " +
-              "If listing, use natural language or Markdown table; status like 'Draft' for latent opportunities or 'pending' is acceptable. " +
+              "The responseText must be a coherent reply about the user's possible connections (list or none). " +
+              "If listing, use natural language or Markdown table; status like 'Draft' or 'pending' is acceptable. " +
               "No raw JSON, no opportunityId or userId columns in user-facing text.",
             llmVerify: true,
           },
@@ -282,7 +284,7 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
         defineScenario({
           name: "discover-formatting",
           description:
-            "Discovery-style query; response must be formatted for chat: natural language only, no raw JSON; any list/table must be human-readable.",
+            "Discovery-style query; response must be formatted for chat: conversational natural language only, no raw JSON; any list/table must be human-readable.",
           fixtures: {
             userId: testUserId,
             message: "show me people I could connect with",
@@ -308,7 +310,7 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
             schema: chatGraphOutputSchema,
             criteria:
               "The responseText must be appropriate for a chat UI: natural language only, no raw JSON objects. " +
-              "If the response includes discovery results (people, opportunities, or intents), they must be presented as a Markdown table or bullet list, not as a JSON blob. " +
+              "If the response includes discovery results (people or possible matches), they must be presented as a Markdown table or bullet list, not as a JSON blob. " +
               "No internal fields like opportunityId, userId as raw IDs in user-facing text, classification, or felicity_scores.",
             llmVerify: true,
           },
