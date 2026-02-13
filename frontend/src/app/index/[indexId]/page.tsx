@@ -193,7 +193,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             </div>
             <Button
               onClick={() => router.push('/')}
-              className="bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+              className="bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
             >
               Go to Homepage
             </Button>
@@ -239,7 +239,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             <div className="max-w-md">
               <Button
                 onClick={handleLogin}
-                className="bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+                className="bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
               >
                 Sign in to join
               </Button>
@@ -286,7 +286,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             <div className="max-w-md">
               <Button
                 onClick={handleJoinIndex}
-                className="w-full bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+                className="w-full bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
               >
                 Join
               </Button>
@@ -320,7 +320,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
             </div>
             <Button
               onClick={() => router.push(`/`)}
-              className="bg-black text-white hover:bg-gray-800 font-ibm-plex-mono"
+              className="bg-[#041729] text-white hover:bg-[#0a2d4a] font-ibm-plex-mono"
             >
               Go to your Inbox
             </Button>

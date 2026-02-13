@@ -77,7 +77,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
           <p className="text-gray-600 mb-4 font-ibm-plex-mono">{error}</p>
           <button
             onClick={() => router.back()}
-            className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 font-ibm-plex-mono"
+            className="px-4 py-2 bg-[#041729] text-white rounded hover:bg-[#0a2d4a] font-ibm-plex-mono"
           >
             Go Back
           </button>
@@ -182,7 +182,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
             {/* Message CTA Button */}
             <button
               onClick={() => router.push(`/u/${resolvedParams.id}/chat`)}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-black text-white rounded-sm hover:bg-gray-800 transition-colors font-ibm-plex-mono text-sm font-medium"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#041729] text-white rounded-sm hover:bg-[#0a2d4a] transition-colors font-ibm-plex-mono text-sm font-medium"
             >
               <MessageCircle className="w-4 h-4" />
               Message

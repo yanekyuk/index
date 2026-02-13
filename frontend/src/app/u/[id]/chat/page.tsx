@@ -90,7 +90,7 @@ function ChatPageContent({ params }: ChatPageProps) {
         <p className="text-gray-600 mb-4 ">{error}</p>
         <button
           onClick={() => router.push('/')}
-          className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 "
+          className="px-4 py-2 bg-[#041729] text-white rounded hover:bg-[#0a2d4a] "
         >
           Go Back
         </button>

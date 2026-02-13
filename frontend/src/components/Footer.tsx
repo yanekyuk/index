@@ -32,8 +32,8 @@ export default function Footer() {
 
   return (
     <footer
-      className="text-white py-8 px-6 lg:px-12 border-t-4 border-black relative overflow-hidden w-full"
-      style={{ backgroundColor: "#0a0a0a" }}
+      className="text-white py-8 px-6 lg:px-12 relative overflow-hidden w-full"
+      style={{ backgroundColor: "#041729" }}
     >
       <div className="max-w-[1200px] mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -113,7 +113,7 @@ export default function Footer() {
 
           {/* Right Column: Newsletter */}
           <div className="md:text-right">
-              <p className="text-[14px] text-[#CCC] mb-2 leading-relaxed font-hanken">Join our corner of the internet</p>
+              <p className="text-[14px] text-[#CCC] mb-2 leading-relaxed font-sans">Join our corner of the internet</p>
               <form className="flex flex-col gap-2 items-start md:items-end" aria-label="Newsletter subscription" onSubmit={handleSubscribe}>
                 <label htmlFor="footer-newsletter-email" className="sr-only">
                   Email address
@@ -125,7 +125,7 @@ export default function Footer() {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-transparent border border-[#333] text-white px-4 py-2.5 text-[14px] focus:outline-none focus:border-white transition-colors placeholder:text-[#666] w-full md:w-64 rounded-sm font-hanken"
+                  className="bg-transparent border border-[#333] text-white px-4 py-2.5 text-[14px] focus:outline-none focus:border-white transition-colors placeholder:text-[#666] w-full md:w-64 rounded-sm font-sans"
                   required
                   aria-required="true"
                   disabled={subscribeStatus === "loading"}
@@ -133,7 +133,7 @@ export default function Footer() {
                 <button
                   type="submit"
                   disabled={subscribeStatus === "loading"}
-                  className="bg-white text-black hover:bg-[#F5F5F5] active:bg-[#E5E5E5] uppercase tracking-wider text-xs px-4 py-2.5 w-full md:w-64 rounded-sm transition-colors font-hanken border-none disabled:opacity-50"
+                  className="bg-white text-black hover:bg-[#F5F5F5] active:bg-[#E5E5E5] uppercase tracking-wider text-xs px-4 py-2.5 w-full md:w-64 rounded-sm transition-colors font-sans border-none disabled:opacity-50"
                 >
                   {subscribeStatus === "loading" ? "Subscribing..." : subscribeStatus === "success" ? "Subscribed!" : "Subscribe"}
                 </button>

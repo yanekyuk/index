@@ -164,7 +164,7 @@ export default function FeedbackWidget() {
             </div>
 
             <button
-              className="bg-black text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-[#041729] text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleSubmit}
               disabled={isSubmitting || (!feedback && !selectedImage)}
             >

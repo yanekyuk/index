@@ -596,7 +596,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           size="icon"
           disabled={isBusy}
           onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#007EFF] hover:bg-gray-200 p-0"
+          className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
           title="Attach files"
           aria-label="Attach files"
         >
@@ -614,7 +614,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           type="submit"
           size="icon"
           disabled={isBusy || !canSend}
-          className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0"
+          className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -651,7 +651,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               {/* Input + index dropdown: same as below, reuse later if needed */}
               <form onSubmit={handleSubmit} className="flex items-center gap-3 bg-[#F8F8F8] border border-[#E9E9E9] rounded-full px-4 py-3 mb-6">
                 <input ref={fileInputRef} type="file" multiple accept=".csv,.doc,.docx,.epub,.html,.json,.md,.pdf,.ppt,.pptx,.rtf,.tsv,.txt,.xls,.xlsx,.xml" onChange={handleFileSelect} className="sr-only" />
-                <Button type="button" variant="ghost" size="icon" disabled={isBusy} onClick={() => fileInputRef.current?.click()} className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#007EFF] hover:bg-gray-200 p-0" title="Attach files"><Paperclip className="h-4 w-4" /></Button>
+                <Button type="button" variant="ghost" size="icon" disabled={isBusy} onClick={() => fileInputRef.current?.click()} className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0" title="Attach files"><Paperclip className="h-4 w-4" /></Button>
                 <MentionsTextInput value={input} onChange={setInput} placeholder="What are you looking for?" disabled={isBusy} autoFocus inputRef={inputRef} />
                 {indexes.length > 0 && (
                   <div className="relative flex-shrink-0">
@@ -678,7 +678,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     )}
                   </div>
                 )}
-                <Button type="submit" size="icon" disabled={isBusy || !canSend} className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0">{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}</Button>
+                <Button type="submit" size="icon" disabled={isBusy || !canSend} className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0">{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}</Button>
               </form>
               {homeViewData.sections.map((section) => (
                 <div key={section.id} className={section.id === homeViewData.sections[0]?.id ? 'mt-12' : 'mt-6'}>
@@ -705,7 +705,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             <button
                               type="button"
                               disabled={!!homeActionLoadingByOpportunity[item.opportunityId]}
-                              className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                              className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                               onClick={() => handleHomeOpportunityAction(item.opportunityId, 'accepted', item.userId)}
                             >
                               {homeActionLoadingByOpportunity[item.opportunityId] ? 'Working...' : (item.primaryActionLabel ?? 'Start Chat')}
@@ -720,7 +720,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             </button>
                           </div>
                         </div>
-                        <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                        <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.mainText}</ReactMarkdown>
                         </div>
                         {item.narratorChip && (
@@ -818,7 +818,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               size="icon"
               disabled={isBusy}
               onClick={() => fileInputRef.current?.click()}
-              className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#007EFF] hover:bg-gray-200 p-0"
+              className="shrink-0 h-8 w-8 rounded-full text-gray-500 hover:text-[#4091BB] hover:bg-gray-200 p-0"
               title="Attach files"
             >
               <Paperclip className="h-4 w-4" />
@@ -918,7 +918,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               type="submit"
               size="icon"
               disabled={isBusy || !canSend}
-              className="shrink-0 h-8 w-8 rounded-full bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed p-0"
+              className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
             </Button>
@@ -973,7 +973,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </div>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
-                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                        <button className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors">
                           Start Chat
                         </button>
                         <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
@@ -981,7 +981,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.synthesis}</ReactMarkdown>
                     </div>
                     {item.friendNote && (
@@ -1033,7 +1033,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </div>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
-                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                        <button className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors">
                           Start Chat
                         </button>
                         <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
@@ -1041,7 +1041,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.synthesis}</ReactMarkdown>
                     </div>
                     {item.friendNote && (
@@ -1099,7 +1099,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </div>
                       </div>
                       <div className="flex gap-1.5 shrink-0">
-                        <button className="bg-black text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-800 transition-colors">
+                        <button className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors">
                           Good match
                         </button>
                         <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors">
@@ -1107,7 +1107,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         </button>
                       </div>
                     </div>
-                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed text-left [&_a]:text-[#007EFF] [&_a]:underline [&_a]:underline-offset-1">
+                    <div className="text-[14px] text-[#3D3D3D] leading-relaxed text-left [&_a]:text-[#4091BB] [&_a]:underline [&_a]:underline-offset-1">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a> }}>{item.reason}</ReactMarkdown>
                     </div>
                   </div>
@@ -1253,7 +1253,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 setIsEditingTitle(false);
               }
             }}
-            className="flex-1 min-w-0 font-semibold font-ibm-plex-mono text-gray-900 bg-transparent border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#007EFF]/30 focus:border-[#007EFF]"
+            className="flex-1 min-w-0 font-semibold font-ibm-plex-mono text-gray-900 bg-transparent border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#4091BB]/30 focus:border-[#4091BB]"
             placeholder="Conversation title"
           />
         ) : (
@@ -1271,7 +1271,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 type="button"
                 onClick={startEditingTitle}
                 title="Rename conversation"
-                className="shrink-0 p-1 rounded text-gray-500 hover:text-[#007EFF] hover:bg-gray-100 focus:outline-none"
+                className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
                 aria-label="Rename conversation"
               >
                 <Pencil className="h-4 w-4" />
@@ -1307,12 +1307,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       className={cn(
                         'max-w-[80%] rounded-sm px-3 py-2',
                         msg.role === 'user'
-                          ? 'bg-black text-white'
+                          ? 'bg-[#041729] text-white'
                           : 'bg-gray-100 text-gray-900'
                       )}
                     >
                       {msg.role === 'assistant' && (
-                        <span className="text-[10px] uppercase tracking-wider text-[#007EFF]/70 mb-1 block">
+                        <span className="text-[10px] uppercase tracking-wider text-[#4091BB]/70 mb-1 block">
                           Index
                         </span>
                       )}

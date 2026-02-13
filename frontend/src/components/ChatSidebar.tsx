@@ -161,7 +161,7 @@ export default function ChatSidebar() {
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono">
               Requests
             </h3>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-black text-white">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-[#041729] text-white">
               {messageRequests.length}
             </span>
           </div>

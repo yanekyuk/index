@@ -91,7 +91,7 @@ export default function WaitlistModal() {
 
         {waitlistStatus === "success" ? (
           <div className="text-center py-8">
-            <div className="w-16 h-16 bg-[#0177FF] rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-[#4091BB] rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
               </svg>
@@ -104,7 +104,7 @@ export default function WaitlistModal() {
                 setWaitlistStatus("idle");
                 setWaitlistForm({ name: "", email: "", whatYouDo: "", whoToMeet: "" });
               }}
-              className="mt-6 text-[#0177FF] hover:underline text-sm font-medium"
+              className="mt-6 text-[#4091BB] hover:underline text-sm font-medium"
             >
               Close
             </button>
@@ -126,7 +126,7 @@ export default function WaitlistModal() {
                   id="waitlist-name"
                   value={waitlistForm.name}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#0177FF] transition-colors rounded-sm"
+                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
                   required
                   disabled={waitlistStatus === "loading"}
                 />
@@ -141,7 +141,7 @@ export default function WaitlistModal() {
                   id="waitlist-email"
                   value={waitlistForm.email}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#0177FF] transition-colors rounded-sm"
+                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
                   required
                   disabled={waitlistStatus === "loading"}
                 />
@@ -157,7 +157,7 @@ export default function WaitlistModal() {
                   id="waitlist-whatYouDo"
                   value={waitlistForm.whatYouDo}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#0177FF] transition-colors rounded-sm"
+                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
                   disabled={waitlistStatus === "loading"}
                 />
               </div>
@@ -174,7 +174,7 @@ export default function WaitlistModal() {
                   value={waitlistForm.whoToMeet}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })}
                   rows={3}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#0177FF] transition-colors rounded-sm resize-none"
+                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm resize-none"
                   disabled={waitlistStatus === "loading"}
                 />
               </div>
@@ -186,7 +186,7 @@ export default function WaitlistModal() {
               <button
                 type="submit"
                 disabled={waitlistStatus === "loading"}
-                className="w-full bg-black text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#333] transition-colors disabled:opacity-50 rounded-sm"
+                className="w-full bg-[#041729] text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 rounded-sm"
               >
                 {waitlistStatus === "loading" ? "Submitting..." : "Join the waitlist"}
               </button>

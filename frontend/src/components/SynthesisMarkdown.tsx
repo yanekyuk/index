@@ -145,7 +145,7 @@ export default function SynthesisMarkdown({ content, className = '', onArchive, 
               <a
                 href={href}
                 onClick={(e) => handleLinkClick(e, href || '', String(children))}
-                className="text-[#007EFF] font-medium py-0.5 px-0.5 -mx-0.5 rounded-md hover:opacity-80 cursor-pointer bg-[#edf5ff]"
+                className="text-[#4091BB] font-medium py-0.5 px-0.5 -mx-0.5 rounded-md hover:opacity-80 cursor-pointer bg-[#edf5ff]"
                 {...props}
               >
                 {children}

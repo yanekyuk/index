@@ -457,7 +457,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
                   <button
                     onClick={handleSend}
                     disabled={!messageText.trim() || sendingMessageId !== null}
-                    className="shrink-0 h-8 w-8 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white flex items-center justify-center hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <ArrowUp className="h-4 w-4" />
                   </button>

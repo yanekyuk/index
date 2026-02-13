@@ -63,7 +63,7 @@ export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardPr
             </button>
             <button
               onClick={handleStartChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-black hover:bg-gray-800 rounded transition-colors "
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#041729] hover:bg-[#0a2d4a] rounded transition-colors "
             >
               <MessageCircle className="w-3.5 h-3.5" />
               Start Conversation
