@@ -17,6 +17,7 @@ interface RecentChat {
   avatar: string | null;
   lastMessage: string;
   sortTimestamp: number;
+  unreadCount: number;
 }
 
 export default function ChatSidebar() {
@@ -38,7 +39,7 @@ export default function ChatSidebar() {
   // Fetch user-to-user chats
   useEffect(() => {
     if (!isReady || !client || !user?.id) return;
-    
+
     const fetchChats = async () => {
       try {
         setLoadingChats(true);
@@ -50,7 +51,7 @@ export default function ChatSidebar() {
         const [channels, acceptedOpportunities] = await Promise.all([
           client.queryChannels(streamFilter, streamSort, {
             limit: 50,
-            watch: false,
+            watch: true,
             state: true,
           }),
           opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 }),
@@ -62,6 +63,7 @@ export default function ChatSidebar() {
           avatar: string | null;
           lastMessage: string;
           sortTimestamp: number;
+            unreadCount: number;
         }>();
 
         channels.forEach((channel: Channel) => {
@@ -79,6 +81,7 @@ export default function ChatSidebar() {
               channel.state.messages?.[channel.state.messages.length - 1]?.created_at ||
               0
             ).getTime(),
+            unreadCount: channel.state.unreadCount || 0,
           });
         });
 
@@ -110,6 +113,7 @@ export default function ChatSidebar() {
             avatar: profile?.avatar || stream?.avatar || null,
             lastMessage: stream?.lastMessage || 'Connected via accepted opportunities',
             sortTimestamp: Math.max(stream?.sortTimestamp ?? 0, acceptedTs),
+            unreadCount: stream?.unreadCount || 0,
           };
         }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
@@ -122,6 +126,24 @@ export default function ChatSidebar() {
     };
 
     fetchChats();
+
+    const handleSync = () => {
+      void fetchChats();
+    };
+
+    client.on('message.new', handleSync);
+    client.on('notification.message_new', handleSync);
+    client.on('message.read', handleSync);
+    client.on('notification.mark_read', handleSync);
+    client.on('channel.updated', handleSync);
+
+    return () => {
+      client.off('message.new', handleSync);
+      client.off('notification.message_new', handleSync);
+      client.off('message.read', handleSync);
+      client.off('notification.mark_read', handleSync);
+      client.off('channel.updated', handleSync);
+    };
   }, [isReady, client, opportunitiesService, usersService, user?.id]);
 
   // Close menu when clicking outside
@@ -192,6 +214,11 @@ export default function ChatSidebar() {
                       className="rounded-full flex-shrink-0"
                     />
                     <span className="truncate">{chat.name}</span>
+                    {chat.unreadCount > 0 && (
+                      <span className="ml-auto mr-1 bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                        {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={(e) => {

@@ -31,7 +31,7 @@ export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, updateUser, refetchUser } = useAuthContext();
-  const { client, isReady } = useStreamChat();
+  const { client, isReady, requestBrowserNotifications } = useStreamChat();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { getAccessToken, logout } = usePrivy();
@@ -86,6 +86,9 @@ export default function Sidebar() {
     if (!user?.id) {
       return;
     }
+
+    // Prompt once so native browser notifications can be shown for new chat messages.
+    void requestBrowserNotifications();
 
     setNavigatingToChat(true);
     try {
@@ -171,11 +174,13 @@ export default function Sidebar() {
     // Listen for message events to update unread count
     const handleEvent = () => fetchUnreadCount();
     client.on('message.new', handleEvent);
+    client.on('notification.message_new', handleEvent);
     client.on('message.read', handleEvent);
     client.on('notification.mark_read', handleEvent);
 
     return () => {
       client.off('message.new', handleEvent);
+      client.off('notification.message_new', handleEvent);
       client.off('message.read', handleEvent);
       client.off('notification.mark_read', handleEvent);
     };
