@@ -1,4 +1,4 @@
-import { StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
+import { StateGraph, START, END, MemorySaver, type LangGraphRunnableConfig } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { ChatGraphState } from "../states/chat.state";
@@ -167,8 +167,15 @@ export class ChatGraphFactory {
     /**
      * The main agent loop node.
      * Runs a ReAct-style agent that calls tools until it decides to respond.
+     *
+     * Uses `agent.streamRun()` + `config.writer` so that text tokens and
+     * tool-activity events are pushed into the graph's custom stream in
+     * real-time rather than batched at the end.
      */
-    const agentLoopNode = async (state: typeof ChatGraphState.State) => {
+    const agentLoopNode = async (
+      state: typeof ChatGraphState.State,
+      config: LangGraphRunnableConfig
+    ) => {
       logger.info("Agent loop starting", {
         userId: state.userId,
         messageCount: state.messages.length,
@@ -186,9 +193,9 @@ export class ChatGraphFactory {
           indexId,
         });
 
-        // Run the agent loop
-        const result = await agent.run(state.messages);
-        logger.debug("Agent run result", {
+        // Run the agent loop with streaming narration via config.writer
+        const result = await agent.streamRun(state.messages, config.writer);
+        logger.debug("Agent streamRun result", {
           responseText: result.responseText,
           iterationCount: result.iterationCount,
           messageCount: result.messages.length,

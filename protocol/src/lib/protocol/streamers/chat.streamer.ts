@@ -3,24 +3,26 @@ import { MemorySaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { protocolLogger } from "../support/protocol.logger";
 import type { ChatStreamEvent } from "../../../types/chat-streaming.types";
-import { createErrorEvent, createStatusEvent } from "../../../types/chat-streaming.types";
-import { MetadataStreamer } from "./metadata.streamer";
-import { ResponseStreamer } from "./response.streamer";
+import {
+  createErrorEvent,
+  createStatusEvent,
+  createTokenEvent,
+} from "../../../types/chat-streaming.types";
+import type { AgentStreamEvent } from "../agents/chat.agent";
 
 const logger = protocolLogger("ChatStreamer");
 
 // ══════════════════════════════════════════════════════════════════════════════
-// CHAT STREAMER (Agent Loop Architecture)
+// CHAT STREAMER (Streaming Narration Architecture)
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Top-level streaming service for Chat Graph events.
- * Handles SSE event streaming for real-time chat interactions.
  *
- * Orchestrates two streamer modules:
- * - {@link MetadataStreamer} — tool execution tracking, agent iterations,
- *   user-friendly status updates
- * - {@link ResponseStreamer} — final agent response and error handling
+ * Uses `graph.stream()` with `streamMode: ["custom", "updates"]` so that
+ * the agent's `config.writer()` calls arrive as `"custom"` chunks (text
+ * tokens and tool-activity events) and the final state update arrives as
+ * an `"updates"` chunk.
  */
 export class ChatStreamer {
   constructor(
@@ -30,7 +32,8 @@ export class ChatStreamer {
 
   /**
    * Streams chat events with full session context.
-   * Loads previous conversation history and optionally uses a checkpointer for state persistence.
+   * Loads previous conversation history and optionally uses a checkpointer
+   * for state persistence.
    *
    * @param input - Configuration for context-aware streaming
    * @param checkpointer - Optional checkpointer for state persistence
@@ -88,10 +91,11 @@ export class ChatStreamer {
 
   /**
    * Streams chat events from the graph execution.
-   * Yields SSE-formatted events for status, tool calls, and token streaming.
    *
-   * Delegates event processing to {@link MetadataStreamer} and
-   * {@link ResponseStreamer}.
+   * Uses `graph.stream()` with `streamMode: ["custom", "updates"]`:
+   * - `"custom"` chunks carry {@link AgentStreamEvent} objects emitted by
+   *   `ChatAgent.streamRun()` via `config.writer()`
+   * - `"updates"` chunks carry the final state update from `agentLoopNode`
    *
    * @param input - The input state for the graph (userId and messages)
    * @param sessionId - The session ID for event attribution
@@ -105,75 +109,74 @@ export class ChatStreamer {
   ): AsyncGenerator<ChatStreamEvent> {
     const graph = this.createStreamingGraph(checkpointer);
 
-    // Per-stream handler instances (they hold per-stream state)
-    const metadataStreamer = new MetadataStreamer();
-    const responseStreamer = new ResponseStreamer();
-
     try {
-      // Stream events from the graph (include indexId in initial state when chat is index-scoped)
       const initialState: { userId: string; messages: BaseMessage[]; indexId?: string } = {
         userId: input.userId,
         messages: input.messages,
       };
       if (input.indexId) initialState.indexId = input.indexId;
-      const eventStream = graph.streamEvents(
+
+      // Use graph.stream() with custom + updates modes.
+      // Custom events come from config.writer() inside agentLoopNode.
+      const eventStream = await graph.stream(
         initialState,
         {
-          version: "v2",
-          configurable: { thread_id: sessionId }
+          streamMode: ["custom", "updates"] as const,
+          configurable: { thread_id: sessionId },
         }
       );
 
       // Emit initial status
       yield createStatusEvent(sessionId, "Processing your message...");
 
-      for await (const event of eventStream) {
-        // ─────────────────────────────────────────────────────────────────────
-        // METADATA: Tool events
-        // ─────────────────────────────────────────────────────────────────────
+      for await (const tuple of eventStream) {
+        // graph.stream with multiple modes yields [mode, chunk] tuples
+        const [mode, chunk] = tuple as [string, unknown];
 
-        if (event.event === "on_tool_start") {
-          for (const e of metadataStreamer.handleToolStart(sessionId, event)) {
-            yield e;
+        // ─────────────────────────────────────────────────────────────────
+        // CUSTOM: writer events from ChatAgent.streamRun()
+        // ─────────────────────────────────────────────────────────────────
+        if (mode === "custom") {
+          const event = chunk as AgentStreamEvent;
+
+          if (event.type === "text_chunk" && event.content) {
+            yield createTokenEvent(sessionId, event.content);
+          }
+
+          // tool_activity "end" events are logged but not forwarded to
+          // the frontend — the LLM's own text provides the narration.
+          if (event.type === "tool_activity") {
+            logger.debug("Tool activity", { name: event.name, success: event.success });
           }
         }
 
-        if (event.event === "on_tool_end") {
-          for (const e of metadataStreamer.handleToolEnd(sessionId, event)) {
-            yield e;
+        // ─────────────────────────────────────────────────────────────────
+        // UPDATES: final state from agentLoopNode
+        // ─────────────────────────────────────────────────────────────────
+        if (mode === "updates") {
+          // The updates chunk is { agent_loop: { responseText, error, ... } }
+          const updates = chunk as Record<string, Record<string, unknown>>;
+          const agentOutput = updates?.agent_loop;
+
+          if (agentOutput?.error) {
+            logger.warn("Agent loop returned error via updates", { error: agentOutput.error });
+            yield createErrorEvent(
+              sessionId,
+              String(agentOutput.error),
+              "AGENT_ERROR"
+            );
           }
-        }
 
-        // ─────────────────────────────────────────────────────────────────────
-        // METADATA: Agent iteration events
-        // ─────────────────────────────────────────────────────────────────────
-
-        if (event.event === "on_chat_model_end") {
-          const result = metadataStreamer.handleChatModelEnd(sessionId, event);
-          for (const e of result.events) {
-            yield e;
-          }
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // RESPONSE: Agent loop completion
-        // ─────────────────────────────────────────────────────────────────────
-
-        if (event.event === "on_chain_end" && event.name === "agent_loop") {
-          const result = responseStreamer.handleAgentLoopEnd(sessionId, event);
-          for (const e of result.events) {
-            yield e;
-          }
-          logger.info("Agent loop complete", {
-            iterations: metadataStreamer.iterations,
-            responseLength: result.responseText.length,
-            hadError: result.hadError,
+          logger.info("Agent loop complete (updates)", {
+            responseLength: typeof agentOutput?.responseText === "string"
+              ? (agentOutput.responseText as string).length
+              : 0,
           });
         }
       }
     } catch (error) {
       logger.error("Stream error", {
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       yield createErrorEvent(
         sessionId,
