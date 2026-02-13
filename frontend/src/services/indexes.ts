@@ -43,6 +43,10 @@ export interface GetMembersResponse {
   };
 }
 
+const MY_MEMBERS_RECENT_CACHE_TTL_MS = 1500;
+const myMembersInFlight = new Map<string, Promise<{ members: Member[] }>>();
+const myMembersRecent = new Map<string, { data: { members: Member[] }; timestamp: number }>();
+
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
@@ -184,17 +188,40 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Get all members from every index the signed-in user is a member of (deduplicated). For @mentions.
   getMyMembers: async (): Promise<{ members: Member[] }> => {
-    const response = await api.get<{ members: Pick<Member, 'id' | 'name' | 'avatar'>[] }>('/indexes/my-members');
-    return {
-      members: (response.members || []).map(m => ({
-        ...m,
-        email: '',
-        permissions: [],
-        metadata: null,
-        createdAt: undefined,
-        updatedAt: undefined,
-      } as Member))
-    };
+    const cacheKey = '/indexes/my-members';
+    const now = Date.now();
+    const recent = myMembersRecent.get(cacheKey);
+    if (recent && now - recent.timestamp < MY_MEMBERS_RECENT_CACHE_TTL_MS) {
+      return recent.data;
+    }
+
+    const inFlight = myMembersInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = api
+      .get<{ members: Pick<Member, 'id' | 'name' | 'avatar'>[] }>(cacheKey)
+      .then((response) => {
+        const mapped = {
+          members: (response.members || []).map(m => ({
+            ...m,
+            email: '',
+            permissions: [],
+            metadata: null,
+            createdAt: undefined,
+            updatedAt: undefined,
+          } as Member))
+        };
+        myMembersRecent.set(cacheKey, { data: mapped, timestamp: Date.now() });
+        return mapped;
+      })
+      .finally(() => {
+        myMembersInFlight.delete(cacheKey);
+      });
+
+    myMembersInFlight.set(cacheKey, request);
+    return request;
   },
 
   // Permissions Management

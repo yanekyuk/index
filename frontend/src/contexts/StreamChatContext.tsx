@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
 import { StreamChat, Channel } from 'stream-chat';
 import { useAuthContext } from './AuthContext';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -82,6 +82,8 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [messageRequests, setMessageRequests] = useState<MessageRequest[]>([]);
   const [messageRequestsLoading, setMessageRequestsLoading] = useState(false);
+  const connectPromiseRef = useRef<Promise<void> | null>(null);
+  const connectedUserIdRef = useRef<string | null>(null);
 
   // Generate token via backend API
   const generateToken = useCallback(async (userId: string): Promise<string> => {
@@ -96,6 +98,8 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         client.disconnectUser();
         setClient(null);
       }
+      connectedUserIdRef.current = null;
+      connectPromiseRef.current = null;
       setIsReady(false);
       return;
     }
@@ -109,18 +113,53 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         // Create Stream Chat client
         const streamClient = StreamChat.getInstance(STREAM_API_KEY);
 
-        // Generate token via backend API
-        const token = await generateToken(userId);
+        // Reuse existing active connection for the same user.
+        if (streamClient.userID === userId) {
+          connectedUserIdRef.current = userId;
+          if (mounted) {
+            setClient(streamClient);
+            setIsReady(true);
+          }
+          return;
+        }
 
-        // Connect user
-        await streamClient.connectUser(
-          {
-            id: userId,
-            name: userName || 'Anonymous',
-            image: getAvatarUrl(user),
-          },
-          token
-        );
+        if (connectPromiseRef.current) {
+          await connectPromiseRef.current;
+          if (mounted && streamClient.userID === userId) {
+            setClient(streamClient);
+            setIsReady(true);
+          }
+          return;
+        }
+
+        const connectPromise = (async () => {
+          if (streamClient.userID && streamClient.userID !== userId) {
+            await streamClient.disconnectUser();
+          }
+
+          // Generate token via backend API
+          const token = await generateToken(userId);
+
+          // Connect user
+          await streamClient.connectUser(
+            {
+              id: userId,
+              name: userName || 'Anonymous',
+              image: getAvatarUrl(user),
+            },
+            token
+          );
+          connectedUserIdRef.current = userId;
+        })();
+
+        connectPromiseRef.current = connectPromise;
+        try {
+          await connectPromise;
+        } finally {
+          if (connectPromiseRef.current === connectPromise) {
+            connectPromiseRef.current = null;
+          }
+        }
 
         if (mounted) {
           setClient(streamClient);
