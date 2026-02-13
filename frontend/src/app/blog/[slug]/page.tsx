@@ -21,9 +21,27 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return { title: 'Post Not Found | Index Network' };
   }
 
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://index.network';
+  const imageUrl = post.image ? `${baseUrl}${post.image}` : undefined;
+
   return {
     title: `${post.title} | Index Network Blog`,
     description: post.description,
+    ...(imageUrl && {
+      openGraph: {
+        type: 'article',
+        url: `${baseUrl}/blog/${slug}`,
+        title: `${post.title} | Index Network Blog`,
+        description: post.description ?? undefined,
+        images: [{ url: imageUrl }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: `${post.title} | Index Network Blog`,
+        description: post.description ?? undefined,
+        images: [imageUrl],
+      },
+    }),
   };
 }
 
