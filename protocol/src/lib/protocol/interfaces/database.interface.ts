@@ -978,13 +978,13 @@ export interface Database {
   ): Promise<boolean>;
 
   /**
-   * Find non-expired opportunities whose non-introducer actor set exactly matches the given user IDs.
+   * Find opportunities whose non-introducer actor set exactly matches the given user IDs.
    * Overlap semantics: exact actor-set equality — an opportunity is returned only if its set of
    * non-introducer actor userIds (ignoring introducers) equals the set of actorUserIds. Index-agnostic;
    * opportunities are not scoped to a single index.
    *
    * @param actorUserIds - Typed user IDs of non-introducer actors (order-independent; compared as sets)
-   * @param options - Optional excludeStatuses (default: ['expired', 'rejected']). Uses OpportunityStatus.
+   * @param options - Optional excludeStatuses (no default). Uses OpportunityStatus.
    * @returns Promise of opportunities matching the exact actor set, excluding specified statuses
    */
   findOverlappingOpportunities(

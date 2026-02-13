@@ -2466,11 +2466,13 @@ export class OpportunityDatabaseAdapter {
     options?: { excludeStatuses?: ('latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     if (actorUserIds.length === 0) return [];
-    const defaultExcludeStatuses: ('expired' | 'rejected')[] = ['expired', 'rejected'];
     const mergedExcludeStatuses = [
-      ...new Set([...defaultExcludeStatuses, ...(options?.excludeStatuses ?? [])]),
+      ...new Set([...(options?.excludeStatuses ?? [])]),
     ] as ('latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[];
-    const statusCondition = notInArray(opportunities.status, mergedExcludeStatuses);
+    const statusCondition =
+      mergedExcludeStatuses.length > 0
+        ? notInArray(opportunities.status, mergedExcludeStatuses)
+        : undefined;
     // Exact match: opportunity's set of non-introducer userIds must equal actorUserIds (same people only)
     const sortedActorUserIds = [...actorUserIds].sort();
     const overlapCondition = sql`(
@@ -2484,7 +2486,7 @@ export class OpportunityDatabaseAdapter {
     const rows = await db
       .select()
       .from(opportunities)
-      .where(and(statusCondition, overlapCondition))
+      .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
       .orderBy(desc(opportunities.updatedAt));
     const result = rows.map(toOpportunityRow);
     return result;
