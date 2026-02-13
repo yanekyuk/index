@@ -27,12 +27,24 @@ interface CreateIntentInput {
   isIncognito?: boolean;
   sourceType?: SourceType | null;
   sourceId?: string | null;
+  semanticEntropy?: number | null;
+  referentialAnchor?: string | null;
+  felicityAuthority?: number | null;
+  felicitySincerity?: number | null;
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 interface UpdateIntentInput {
   payload?: string;
   summary?: string | null;
   embedding?: number[];
   isIncognito?: boolean;
+  semanticEntropy?: number | null;
+  referentialAnchor?: string | null;
+  felicityAuthority?: number | null;
+  felicitySincerity?: number | null;
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 interface CreatedIntentRow {
   id: string;
@@ -165,6 +177,12 @@ export class IntentDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
         })
         .returning({
           id: schema.intents.id,
@@ -190,6 +208,12 @@ export class IntentDatabaseAdapter {
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
       if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
+      if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
+      if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
+      if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
+      if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
       const [updated] = await db.update(schema.intents)
         .set(updateData)
@@ -790,6 +814,12 @@ export class ChatDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
         })
         .returning({
           id: schema.intents.id,
@@ -815,6 +845,12 @@ export class ChatDatabaseAdapter {
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
       if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
+      if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
+      if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
+      if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
+      if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
       const [updated] = await db.update(schema.intents)
         .set(updateData)

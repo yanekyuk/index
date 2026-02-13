@@ -63,6 +63,18 @@ export interface CreateIntentData {
   confidence: number;
   /** How the intent was inferred */
   inferenceType: 'explicit' | 'implicit';
+  /** Semantic entropy from verifier (0 specific -> 1 vague) */
+  semanticEntropy?: number | null;
+  /** Referential anchor extracted by verifier (if any) */
+  referentialAnchor?: string | null;
+  /** Felicity authority score from verifier (0-100) */
+  felicityAuthority?: number | null;
+  /** Felicity sincerity score from verifier (0-100) */
+  felicitySincerity?: number | null;
+  /** Donnellan intent mode */
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  /** Speech act category used by protocol enum */
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 
 /**
@@ -80,6 +92,18 @@ export interface UpdateIntentData {
   isIncognito?: boolean;
   /** Updated index associations (replaces existing) */
   indexIds?: string[];
+  /** Semantic entropy from verifier (0 specific -> 1 vague) */
+  semanticEntropy?: number | null;
+  /** Referential anchor extracted by verifier (if any) */
+  referentialAnchor?: string | null;
+  /** Felicity authority score from verifier (0-100) */
+  felicityAuthority?: number | null;
+  /** Felicity sincerity score from verifier (0-100) */
+  felicitySincerity?: number | null;
+  /** Donnellan intent mode */
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  /** Speech act category used by protocol enum */
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 
 /**
