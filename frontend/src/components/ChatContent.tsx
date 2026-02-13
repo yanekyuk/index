@@ -174,9 +174,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       // Introducers "send" the intro (latent → pending) instead of accepting
       const isIntroducer = viewerRole === 'introducer';
       const effectiveStatus = isIntroducer && action === 'accepted' ? 'pending' : action;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ChatContent.tsx:handleHomeOpportunityAction',message:'home card action triggered',data:{opportunityId,action,viewerRole,isIntroducer,effectiveStatus},timestamp:Date.now(),hypothesisId:'H-SEND'})}).catch(()=>{});
-      // #endregion
 
       const result = await opportunitiesService.updateStatus(opportunityId, effectiveStatus);
 

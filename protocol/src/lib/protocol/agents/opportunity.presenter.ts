@@ -506,9 +506,5 @@ export async function gatherPresenterContext(
     introducerName,
   };
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'opportunity.presenter.ts:gatherPresenterContext:result',message:'presenter context assembled',data:{viewerRole:result.viewerRole,isIntroduction,introducerName,matchReasoningPreview:result.matchReasoning?.substring(0,300),signalsSummary:result.signalsSummary},timestamp:Date.now(),hypothesisId:'H-INTRO-PRESENT'})}).catch(()=>{});
-  // #endregion
-
   return result;
 }

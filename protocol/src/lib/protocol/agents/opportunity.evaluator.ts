@@ -367,9 +367,6 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
     const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'opportunity.evaluator.ts:invokeEntityBundle',message:'evaluator input',data:{introductionMode:input.introductionMode,introducerName:input.introducerName,introductionHint:input.introductionHint,entityCount:input.entities.length,humanContentPreview:humanContent.substring(0,800)},timestamp:Date.now(),hypothesisId:'H-INTRO-EVAL'})}).catch(()=>{});
-    // #endregion
     const messages = [
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),
@@ -380,9 +377,6 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
       const parsed = entityBundleResponseFormat.parse(result);
       parsedTotal = parsed.opportunities.length;
       const filtered = parsed.opportunities.filter((op) => op.score >= minScore);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e8c82c7-69e7-439d-9a66-0d60a0032c44',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'opportunity.evaluator.ts:invokeEntityBundle:output',message:'evaluator output',data:{totalOpps:parsed.opportunities.length,acceptedOpps:filtered.length,topReasoning:filtered[0]?.reasoning?.substring(0,400),topScore:filtered[0]?.score},timestamp:Date.now(),hypothesisId:'H-INTRO-EVAL'})}).catch(()=>{});
-      // #endregion
       logger.info('[OpportunityEvaluator.invokeEntityBundle] Done', { total: parsed.opportunities.length, accepted: filtered.length });
       return filtered;
     } catch (llmError) {
