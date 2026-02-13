@@ -24,6 +24,8 @@ interface ChatMessage {
   introType?: string;
   opportunityId?: string;
   presentation?: OpportunityPresentation;
+  /** Backend custom marker; takes precedence over top-level introType when present. */
+  custom?: { introType?: string };
 }
 
 function extractStringField(raw: Record<string, unknown>, key: string): string | undefined {
@@ -39,8 +41,18 @@ function extractPresentation(raw: Record<string, unknown>): OpportunityPresentat
   return undefined;
 }
 
+function extractCustomIntroType(raw: Record<string, unknown>): { introType?: string } | undefined {
+  const c = raw.custom;
+  if (c && typeof c === 'object' && 'introType' in c) {
+    const introType = extractStringField(c as Record<string, unknown>, 'introType');
+    return introType !== undefined ? { introType } : undefined;
+  }
+  return undefined;
+}
+
 const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => {
   const raw = msg as Record<string, unknown>;
+  const custom = extractCustomIntroType(raw);
   return {
     id: msg.id,
     text: msg.text,
@@ -51,6 +63,7 @@ const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => {
     introType: extractStringField(raw, 'introType'),
     opportunityId: extractStringField(raw, 'opportunityId'),
     presentation: extractPresentation(raw),
+    custom,
   };
 };
 
@@ -374,7 +387,10 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
             <div className="space-y-4">
               {messages.map((message, index) => {
                 const isOwn = message.user?.id === client?.userID;
-                const isIndexIntro = message.type === 'system' || message.user?.id === 'index_bot';
+                const isIndexIntro =
+                  message.custom?.introType === 'opportunity_intro' ||
+                  message.introType === 'opportunity_intro' ||
+                  (message.type === 'system' && message.user?.id === 'index_bot');
                 const showTimestamp = index === 0 || (messages[index - 1] && new Date(message.created_at || '').getTime() - new Date(messages[index - 1].created_at || '').getTime() > 300000);
 
                 return (
@@ -385,7 +401,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
                     {isIndexIntro ? (
                       <SystemMessageCard
                         text={message.text}
-                        introType={message.introType}
+                        introType={message.custom?.introType ?? message.introType}
                         presentation={message.presentation}
                       />
                     ) : (
