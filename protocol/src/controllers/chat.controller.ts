@@ -1,4 +1,5 @@
-import { StreamChat } from 'stream-chat';
+import type { ChatControllerChatProvider } from '../lib/protocol/interfaces/chat.interface';
+import { getChatProvider } from '../adapters/chat.adapter';
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
@@ -8,20 +9,27 @@ import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } 
 
 const logger = log.controller.from("chat");
 
-const streamServerClient = StreamChat.getInstance(
-  process.env.STREAM_API_KEY!,
-  process.env.STREAM_SECRET!,
-);
-
 @Controller('/chat')
 export class ChatController {
+  private readonly chatProvider: ChatControllerChatProvider | null;
+
+  constructor(chatProvider?: ChatControllerChatProvider | null) {
+    this.chatProvider = chatProvider ?? getChatProvider();
+  }
+
   /**
    * Generate a Stream Chat token for the authenticated user.
    */
   @Post('/token')
   @UseGuards(AuthGuard)
   async token(_req: Request, user: AuthenticatedUser) {
-    const token = streamServerClient.createToken(user.id);
+    if (!this.chatProvider) {
+      return Response.json(
+        { error: 'Chat provider is not configured' },
+        { status: 503 }
+      );
+    }
+    const token = this.chatProvider.createToken(user.id);
     return Response.json({ token });
   }
 
@@ -33,6 +41,12 @@ export class ChatController {
   @Post('/user')
   @UseGuards(AuthGuard)
   async upsertStreamUser(req: Request, user: AuthenticatedUser) {
+    if (!this.chatProvider) {
+      return Response.json(
+        { error: 'Chat provider is not configured' },
+        { status: 503 }
+      );
+    }
     let body: { userId?: string; userName?: string; userAvatar?: string };
     try {
       body = (await req.json()) as { userId?: string; userName?: string; userAvatar?: string };
@@ -53,7 +67,7 @@ export class ChatController {
       );
     }
     try {
-      await streamServerClient.upsertUsers([
+      await this.chatProvider.upsertUsers([
         {
           id: userId,
           name: body.userName?.trim() || 'Unknown',

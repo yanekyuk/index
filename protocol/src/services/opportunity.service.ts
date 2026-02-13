@@ -15,17 +15,17 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
 import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
-import type { Channel } from 'stream-chat';
+import type { OpportunityChatProvider, ChatChannel } from '../lib/protocol/interfaces/chat.interface';
+import { getChatProvider } from '../adapters/chat.adapter';
 import {
   getDirectChannelId,
-  getStreamServerClient,
   ensureStreamUsers,
   ensureIndexBotUser,
   sendBotMessage,
   channelHasMessageForOpportunity,
   getChannelIntroOpportunityIds,
   addChannelIntroOpportunityId,
-} from '../lib/protocol/support/stream-chat.utils';
+} from '../lib/protocol/support/chat-provider.utils';
 
 const logger = log.service.from("OpportunityService");
 
@@ -80,13 +80,18 @@ export class OpportunityServiceEvents extends EventEmitter {
  */
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
+  private chatProvider: OpportunityChatProvider | null;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
 
-  constructor(database?: OpportunityControllerDatabase) {
+  constructor(
+    database?: OpportunityControllerDatabase,
+    chatProvider?: OpportunityChatProvider | null,
+  ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
+    this.chatProvider = chatProvider ?? getChatProvider();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -296,11 +301,11 @@ export class OpportunityService {
       acceptedAt: toIso(candidate.updatedAt),
     }));
 
-    const streamClient = getStreamServerClient();
+    const chatProvider = this.chatProvider;
     const channelId = getDirectChannelId(userId, counterpart.userId);
 
-    if (!streamClient) {
-      logger.warn('[OpportunityService] Stream credentials are missing; skipping chat activation', {
+    if (!chatProvider) {
+      logger.warn('[OpportunityService] Chat provider not configured; skipping chat activation', {
         opportunityId,
         channelId,
       });
@@ -318,46 +323,45 @@ export class OpportunityService {
       this.db.getUser(userId),
       this.db.getUser(counterpart.userId),
     ]);
-    await ensureStreamUsers(streamClient, [
+    await ensureStreamUsers(chatProvider, [
       { id: userId, name: accepterUser?.name, image: accepterUser?.avatar ?? undefined },
       { id: counterpart.userId, name: counterpartUser?.name, image: counterpartUser?.avatar ?? undefined },
     ]);
-    await ensureIndexBotUser(streamClient);
+    await ensureIndexBotUser(chatProvider);
 
-    let channel: Channel;
+    let channel: ChatChannel;
     let existingMessages: unknown[] = [];
 
-    const existingChannels = await streamClient.queryChannels(
-      { type: 'messaging', id: channelId } as Record<string, unknown>,
-      {} as Record<string, unknown>,
-      { state: true, watch: false, messages: { limit: 50 } } as Record<string, unknown>,
+    const existingChannels = await chatProvider.queryChannels(
+      { type: 'messaging', id: channelId },
+      {},
+      { state: true, watch: false, messages: { limit: 50 } },
     );
 
     if (existingChannels.length > 0) {
-      channel = existingChannels[0] as Channel;
-      const state = (channel as { state?: { messages?: unknown[] } }).state;
-      existingMessages = state?.messages ?? [];
+      channel = existingChannels[0];
+      existingMessages = channel.state?.messages ?? [];
     } else {
-      channel = streamClient.channel('messaging', channelId, {
+      channel = chatProvider.channel('messaging', channelId, {
         members: [userId, counterpart.userId],
         pending: false,
         created_by_id: userId,
-      } as Record<string, unknown>) as Channel;
+      });
       try {
-        await (channel as { create: () => Promise<unknown> }).create();
+        await channel.create?.();
       } catch (error) {
         logger.debug('[OpportunityService] Stream channel create failed', { opportunityId, channelId, error });
       }
     }
 
     try {
-      await (channel as { updatePartial: (arg: unknown) => Promise<unknown> }).updatePartial({
+      await channel.updatePartial({
         set: {
           pending: false,
           acceptedOpportunities: acceptedOpportunitiesMeta,
-        } as Record<string, unknown>,
+        },
         unset: ['requestedBy'],
-      } as Record<string, unknown>);
+      });
     } catch (error) {
       logger.warn('[OpportunityService] Failed to update channel partial', { opportunityId, channelId, error });
     }

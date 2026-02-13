@@ -1,11 +1,20 @@
 /**
- * Injects new opportunity messages into existing Stream Chat channels
+ * Injects new opportunity messages into existing chat channels
  * when an opportunity is created or sent between users who already have a chat.
  * Standalone utility to avoid circular dependency between opportunity graph and service.
+ * Uses the ChatProvider interface; pass a provider or omit to use getChatProvider().
  */
 
 import type { Opportunity } from '../interfaces/database.interface';
-import { getDirectChannelId, getStreamServerClient, ensureIndexBotUser, sendBotMessage, getChannelIntroOpportunityIds, addChannelIntroOpportunityId } from './stream-chat.utils';
+import type { OpportunityChatProvider } from '../interfaces/chat.interface';
+import { getChatProvider } from '../../../adapters/chat.adapter';
+import {
+  getDirectChannelId,
+  ensureIndexBotUser,
+  sendBotMessage,
+  getChannelIntroOpportunityIds,
+  addChannelIntroOpportunityId,
+} from './chat-provider.utils';
 import { protocolLogger } from './protocol.logger';
 
 const logger = protocolLogger('OpportunityChatInjection');
@@ -25,15 +34,21 @@ function getActorPairUserIds(opportunity: Opportunity): [string, string] | null 
 }
 
 /**
- * If the two users already have an active Stream channel (from a previous accepted opportunity),
+ * If the two users already have an active chat channel (from a previous accepted opportunity),
  * send a system message about this new opportunity. Idempotent: skips if channel metadata
  * (introOpportunityIds) already records this opportunityId, so prior intros/updates are detected
  * without relying on a fixed message window.
+ *
+ * @param opportunity - The opportunity to inject.
+ * @param chatProvider - Optional. When omitted, uses getChatProvider().
  */
-export async function injectOpportunityIntoExistingChat(opportunity: Opportunity): Promise<void> {
-  const streamClient = getStreamServerClient();
-  if (!streamClient) {
-    logger.debug('[injectOpportunityIntoExistingChat] Stream not configured; skipping');
+export async function injectOpportunityIntoExistingChat(
+  opportunity: Opportunity,
+  chatProvider?: OpportunityChatProvider | null,
+): Promise<void> {
+  const provider = chatProvider ?? getChatProvider();
+  if (!provider) {
+    logger.debug('[injectOpportunityIntoExistingChat] Chat provider not configured; skipping');
     return;
   }
 
@@ -47,7 +62,7 @@ export async function injectOpportunityIntoExistingChat(opportunity: Opportunity
 
   const [userId1, userId2] = pair;
   const channelId = getDirectChannelId(userId1, userId2);
-  const channel = streamClient.channel('messaging', channelId, { members: [userId1, userId2] });
+  const channel = provider.channel('messaging', channelId, { members: [userId1, userId2] });
 
   try {
     const queryResult = await channel.query({ state: true, watch: false, messages: { limit: 1 } });
@@ -70,7 +85,7 @@ export async function injectOpportunityIntoExistingChat(opportunity: Opportunity
       return;
     }
 
-    await ensureIndexBotUser(streamClient);
+    await ensureIndexBotUser(provider);
 
     const reasoning = opportunity.interpretation?.reasoning ?? 'A new connection opportunity was detected.';
     await sendBotMessage(channel, {
