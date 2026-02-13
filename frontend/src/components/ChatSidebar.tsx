@@ -25,7 +25,7 @@ export default function ChatSidebar() {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const usersService = useUsers();
-  const { client, isReady, messageRequests, messageRequestsLoading } = useStreamChat();
+  const { client, isReady } = useStreamChat();
   
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
@@ -154,47 +154,6 @@ export default function ChatSidebar() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Message Requests Section */}
-      {messageRequests.length > 0 && (
-        <div className="flex-shrink-0 px-4 pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono">
-              Requests
-            </h3>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-[#041729] text-white">
-              {messageRequests.length}
-            </span>
-          </div>
-          {messageRequestsLoading ? (
-            <div className="text-sm text-gray-400">Loading...</div>
-          ) : (
-            <div className="space-y-1">
-              {messageRequests.map((request) => (
-                <div 
-                  key={request.channelId} 
-                  className="flex items-center gap-3 py-2 px-2 -mx-2 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  <Image
-                    src={getAvatarUrl({ 
-                      avatar: request.requester?.avatar || null, 
-                      id: request.requester?.id || '', 
-                      name: request.requester?.name || 'User' 
-                    })}
-                    alt={request.requester?.name || 'User'}
-                    width={28}
-                    height={28}
-                    className="rounded-full flex-shrink-0"
-                  />
-                  <span className="text-sm text-gray-700 truncate">
-                    {request.requester?.name || 'User'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Recent Chats Section */}
       <div className="flex-1 overflow-y-auto px-4 pt-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono">
