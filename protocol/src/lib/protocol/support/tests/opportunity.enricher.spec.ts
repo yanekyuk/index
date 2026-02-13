@@ -326,427 +326,499 @@ describe('Opportunity enricher', () => {
 });
 
 /**
- * Multiple domains: same actor set, but opportunities differ by reasoning domain
- * (e.g. AI/ML vs hardware vs design). Embedder is mocked so only same-domain pairs
- * are semantically related; we assert which opportunities get merged and that
- * interpretation and status are combined correctly.
+ * Cross-domain deduplication: the enricher prevents presenting users with multiple
+ * opportunities that are really the same match rediscovered from a different source
+ * or angle, while keeping genuinely different value propositions separate.
+ *
+ * The mock embedder maps each reasoning string to a domain tag (ai_ml, hardware,
+ * design, fundraising). Same-domain reasonings produce identical vectors (cosine = 1),
+ * different-domain reasonings produce orthogonal vectors (cosine = 0). This avoids
+ * brittle keyword-substring matching and makes domain boundaries explicit.
  */
-describe('Opportunity enricher — multiple domains', () => {
-  /** Vectors with cosine similarity 1 (identical). */
-  const sameVec = [0.5, 0.5, 0.5];
-  /** Vectors with cosine similarity 0 (orthogonal). */
-  const unrelatedVecs: [number[], number[]] = [[1, 0, 0], [0, 1, 0]];
+describe('Opportunity enricher — cross-domain deduplication', () => {
+  type DomainTag = 'ai_ml' | 'hardware' | 'design' | 'fundraising';
+
+  /** Each domain gets an orthogonal unit vector so cross-domain cosine = 0. */
+  const domainVectors: Record<DomainTag, number[]> = {
+    ai_ml:       [1, 0, 0, 0],
+    hardware:    [0, 1, 0, 0],
+    design:      [0, 0, 1, 0],
+    fundraising: [0, 0, 0, 1],
+  };
+
+  /** Map every MEANINGFUL.reasoning value to its domain. */
+  const reasoningDomains = new Map<string, DomainTag>([
+    [MEANINGFUL.reasoning.aiMlCofounder,       'ai_ml'],
+    [MEANINGFUL.reasoning.aiMlResearch,        'ai_ml'],
+    [MEANINGFUL.reasoning.aiMlStartup,         'ai_ml'],
+    [MEANINGFUL.reasoning.hardwarePrototyping,  'hardware'],
+    [MEANINGFUL.reasoning.hardwareFirmware,     'hardware'],
+    [MEANINGFUL.reasoning.designUx,             'design'],
+    [MEANINGFUL.reasoning.designProduct,        'design'],
+    [MEANINGFUL.reasoning.fundraising,          'fundraising'],
+    [MEANINGFUL.reasoning.fundraisingAngel,     'fundraising'],
+  ]);
 
   /**
-   * Embedder that treats reasoning as related only when existing reasoning
-   * contains one of the relatedKeywords; otherwise returns orthogonal vectors.
+   * Embedder that returns the domain vector for a reasoning string.
+   * Same-domain pairs → cosine similarity 1. Cross-domain → cosine 0.
    */
-  function domainAwareEmbedder(relatedKeywords: string[]): Embedder {
+  function domainEmbedder(): Embedder {
     return {
-      generate: async (texts: string[]) => {
-        const existingReasoning = (texts[1] ?? '').toLowerCase();
-        const isRelated = relatedKeywords.some((k) => existingReasoning.includes(k.toLowerCase()));
-        if (isRelated) return [sameVec, sameVec] as number[][];
-        return unrelatedVecs as unknown as number[][];
-      },
+      generate: async (texts: string[]) =>
+        texts.map((t) => {
+          const domain = reasoningDomains.get(t);
+          return domain ? domainVectors[domain] : [0.25, 0.25, 0.25, 0.25];
+        }),
     } as unknown as Embedder;
   }
 
-  test('relevant opportunities merge and irrelevant do not (AI vs hardware, design, fundraising)', async () => {
-    const oppAI = existingOpportunity(
-      'opp-ai',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    const oppHardware = existingOpportunity(
-      'opp-hw',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.hardwarePrototyping
-    );
-    const oppDesign = existingOpportunity(
-      'opp-design',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.designUx
-    );
-    const oppFundraising = existingOpportunity(
-      'opp-fund',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.fundraising
-    );
-    const db = {
-      findOverlappingOpportunities: async () => [oppAI, oppHardware, oppDesign, oppFundraising],
-    };
-    const embedder = domainAwareEmbedder(['machine learning', 'ml experience', 'ai/ml', 'nlp']);
-    const newData = minimalNewData(
-      ['user-a', 'user-b'],
-      'idx-1',
-      MEANINGFUL.reasoning.aiMlCofounder
-    );
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+  /** Shorthand: two-party actor list. */
+  const actors = (idx = 'idx-1') => [
+    { indexId: idx, userId: 'user-a', role: 'party' },
+    { indexId: idx, userId: 'user-b', role: 'party' },
+  ];
+
+  // ── Same match rediscovered ──────────────────────────────────────────
+
+  test('graph detects AI match, then chat rediscovers the same match → merges into one', async () => {
+    const graphOpp = existingOpportunity('opp-graph', actors(), MEANINGFUL.reasoning.aiMlCofounder);
+    const db = { findOverlappingOpportunities: async () => [graphOpp] };
+
+    // Chat finds a similar AI angle for the same pair
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
-      expect(result.expiredIds).toContain('opp-ai');
-      expect(result.expiredIds).not.toContain('opp-hw');
-      expect(result.expiredIds).not.toContain('opp-design');
-      expect(result.expiredIds).not.toContain('opp-fund');
-      expect(result.expiredIds).toHaveLength(1);
+      expect(result.expiredIds).toEqual(['opp-graph']);
+      expect(result.data.detection.source).toBe('enrichment');
     }
   });
 
-  test('four domains (AI, hardware, design, fundraising): only same-domain merges', async () => {
-    const oppAI = existingOpportunity(
-      'opp-ai',
-      [{ indexId: 'idx-1', userId: 'user-a', role: 'party' }, { indexId: 'idx-1', userId: 'user-b', role: 'party' }],
-      MEANINGFUL.reasoning.aiMlStartup
-    );
-    const oppHardware = existingOpportunity(
-      'opp-hw',
-      [{ indexId: 'idx-1', userId: 'user-a', role: 'party' }, { indexId: 'idx-1', userId: 'user-b', role: 'party' }],
-      MEANINGFUL.reasoning.hardwareFirmware
-    );
-    const oppDesign = existingOpportunity(
-      'opp-design',
-      [{ indexId: 'idx-1', userId: 'user-a', role: 'party' }, { indexId: 'idx-1', userId: 'user-b', role: 'party' }],
-      MEANINGFUL.reasoning.designProduct
-    );
-    const oppFundraising = existingOpportunity(
-      'opp-fund',
-      [{ indexId: 'idx-1', userId: 'user-a', role: 'party' }, { indexId: 'idx-1', userId: 'user-b', role: 'party' }],
-      MEANINGFUL.reasoning.fundraisingAngel
-    );
-    const all = [oppAI, oppHardware, oppDesign, oppFundraising];
-    const db = { findOverlappingOpportunities: async () => all };
+  test('three AI/ML matches for same pair consolidate into one', async () => {
+    const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.aiMlCofounder);
+    const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.aiMlResearch);
+    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
 
-    // New opportunity is AI: only AI (same domain) should merge; hardware, design, fundraising should not
-    const embedderAI = domainAwareEmbedder(['machine learning', 'ml ', 'ai/ml', 'startup', 'nlp']);
-    const resultAI = await enrichOrCreate(
-      db,
-      embedderAI,
-      minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder),
-      { similarityThreshold: 0.7 }
-    );
-    expect(resultAI.enriched).toBe(true);
-    if (resultAI.enriched) {
-      expect(resultAI.expiredIds).toContain('opp-ai');
-      expect(resultAI.expiredIds).not.toContain('opp-hw');
-      expect(resultAI.expiredIds).not.toContain('opp-design');
-      expect(resultAI.expiredIds).not.toContain('opp-fund');
-      expect(resultAI.expiredIds).toHaveLength(1);
-    }
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
 
-    // New opportunity is fundraising: only fundraising (same domain) should merge; AI, hardware, design should not
-    const embedderFund = domainAwareEmbedder(['pre-seed', 'angel', 'raising', 'sector experience']);
-    const resultFund = await enrichOrCreate(
-      db,
-      embedderFund,
-      minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraising),
-      { similarityThreshold: 0.7 }
-    );
-    expect(resultFund.enriched).toBe(true);
-    if (resultFund.enriched) {
-      expect(resultFund.expiredIds).toContain('opp-fund');
-      expect(resultFund.expiredIds).not.toContain('opp-ai');
-      expect(resultFund.expiredIds).not.toContain('opp-hw');
-      expect(resultFund.expiredIds).not.toContain('opp-design');
-      expect(resultFund.expiredIds).toHaveLength(1);
-    }
-  });
-
-  test('multiple relevant merge and single irrelevant does not (AI/ML vs hardware)', async () => {
-    const opp1 = existingOpportunity(
-      'opp-1',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'agent' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'patient' },
-      ],
-      MEANINGFUL.reasoning.aiMlCofounder
-    );
-    const opp2 = existingOpportunity(
-      'opp-2',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'peer' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'peer' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    const opp3 = existingOpportunity(
-      'opp-3',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.hardwarePrototyping
-    );
-    const db = {
-      findOverlappingOpportunities: async () => [opp1, opp2, opp3],
-    };
-    const embedder = domainAwareEmbedder(['ai', 'ml', 'machine learning']);
-    const newData = minimalNewData(
-      ['user-a', 'user-b'],
-      'idx-1',
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
     expect(result.enriched).toBe(true);
     if (result.enriched) {
-      // Relevant (AI/ML): both merged and expired
       expect(result.expiredIds).toContain('opp-1');
       expect(result.expiredIds).toContain('opp-2');
-      expect(result.data.detection.enrichedFrom).toContain('opp-1');
-      expect(result.data.detection.enrichedFrom).toContain('opp-2');
-      // Irrelevant (hardware): not merged, not expired
-      expect(result.expiredIds).not.toContain('opp-3');
-      expect(result.data.detection.enrichedFrom).not.toContain('opp-3');
       expect(result.expiredIds).toHaveLength(2);
-      const userIds = new Set(result.data.actors.map((a) => a.userId));
-      expect(userIds.has('user-a')).toBe(true);
-      expect(userIds.has('user-b')).toBe(true);
+      // Merged reasoning carries context from all three
+      expect(result.data.interpretation.reasoning).toContain('co-founder');
+      expect(result.data.interpretation.reasoning).toContain('NLP');
+      expect(result.data.interpretation.reasoning).toContain('ML infrastructure');
     }
   });
 
-  test('merged interpretation combines reasoning and takes max confidence across related', async () => {
-    const opp1 = existingOpportunity(
-      'opp-1',
+  // ── Genuinely different value stays separate ──────────────────────────
+
+  test('AI collaboration and fundraising intro for same pair are different opportunities', async () => {
+    const aiOpp = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlCofounder);
+    const db = { findOverlappingOpportunities: async () => [aiOpp] };
+
+    // Fundraising is a different value proposition — should NOT merge
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraising);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(false);
+    expect(result.data.detection.source).not.toBe('enrichment');
+  });
+
+  test('hardware match and design match for same pair are different opportunities', async () => {
+    const hwOpp = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwarePrototyping);
+    const db = { findOverlappingOpportunities: async () => [hwOpp] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designUx);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(false);
+  });
+
+  // ── Mixed: some related, some not ────────────────────────────────────
+
+  test('AI merges with AI but hardware and fundraising stay separate', async () => {
+    const oppAI = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlResearch);
+    const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwareFirmware);
+    const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraisingAngel);
+    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppFund] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-ai']);
+      expect(result.expiredIds).not.toContain('opp-hw');
+      expect(result.expiredIds).not.toContain('opp-fund');
+    }
+  });
+
+  test('all four domains present — new hardware match only merges with existing hardware', async () => {
+    const oppAI = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlStartup);
+    const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwareFirmware);
+    const oppDesign = existingOpportunity('opp-design', actors(), MEANINGFUL.reasoning.designProduct);
+    const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraisingAngel);
+    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppDesign, oppFund] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.hardwarePrototyping);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-hw']);
+      expect(result.expiredIds).not.toContain('opp-ai');
+      expect(result.expiredIds).not.toContain('opp-design');
+      expect(result.expiredIds).not.toContain('opp-fund');
+    }
+  });
+
+  test('all four domains present — new fundraising match only merges with existing fundraising', async () => {
+    const oppAI = existingOpportunity('opp-ai', actors(), MEANINGFUL.reasoning.aiMlCofounder);
+    const oppHW = existingOpportunity('opp-hw', actors(), MEANINGFUL.reasoning.hardwarePrototyping);
+    const oppDesign = existingOpportunity('opp-design', actors(), MEANINGFUL.reasoning.designUx);
+    const oppFund = existingOpportunity('opp-fund', actors(), MEANINGFUL.reasoning.fundraising);
+    const db = { findOverlappingOpportunities: async () => [oppAI, oppHW, oppDesign, oppFund] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraisingAngel);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-fund']);
+      expect(result.expiredIds).not.toContain('opp-ai');
+      expect(result.expiredIds).not.toContain('opp-hw');
+      expect(result.expiredIds).not.toContain('opp-design');
+    }
+  });
+
+  // ── Intent-driven vs profile-based ───────────────────────────────────
+
+  test('intent-driven and profile-based matches in same domain merge', async () => {
+    // Existing: intent-driven AI match
+    const intentOpp = existingOpportunity(
+      'opp-intent',
       [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+        { indexId: 'idx-1', userId: 'user-a', role: 'agent', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'patient', intent: MEANINGFUL.intentIds.bobEarlyStage },
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    opp1.interpretation = { ...opp1.interpretation!, confidence: 0.7 };
-    const opp2 = existingOpportunity(
-      'opp-2',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    opp2.interpretation = { ...opp2.interpretation!, confidence: 0.9 };
-    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
-    const sameVec = [0.5, 0.5, 0.5];
-    const embedder = {
-      generate: async () => [sameVec, sameVec, sameVec] as number[][],
-    } as unknown as Embedder;
-    const newData = minimalNewData(
-      ['user-a', 'user-b'],
-      'idx-1',
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+    const db = { findOverlappingOpportunities: async () => [intentOpp] };
+
+    // New: profile-based AI match (no intents, same domain reasoning)
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
-      expect(result.data.interpretation.reasoning).toContain('technical co-founder');
-      expect(result.data.interpretation.reasoning).toContain('machine learning research');
-      expect(result.data.interpretation.reasoning).toContain('complementary skills');
-      const conf =
-        typeof result.data.interpretation.confidence === 'number'
-          ? result.data.interpretation.confidence
-          : parseFloat(String(result.data.interpretation.confidence));
-      expect(conf).toBe(0.9);
+      expect(result.expiredIds).toEqual(['opp-intent']);
+      // Intent IDs from the old opportunity are preserved in merged actors
+      expect(result.data.actors.some((a) => a.intent === MEANINGFUL.intentIds.aliceMlCofounder)).toBe(true);
     }
   });
 
-  test('status resolution: pending and rejected yield pending', async () => {
-    const oppPending = existingOpportunity(
-      'opp-p',
+  test('intent-driven AI match and intent-driven design match for same pair stay separate', async () => {
+    const aiOpp = existingOpportunity(
+      'opp-ai',
       [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
+        { indexId: 'idx-1', userId: 'user-a', role: 'agent', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'patient', intent: MEANINGFUL.intentIds.bobEarlyStage },
+      ],
+      MEANINGFUL.reasoning.aiMlCofounder
+    );
+    const db = { findOverlappingOpportunities: async () => [aiOpp] };
+
+    const newData: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designProduct),
+      actors: [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.daveDesign },
         { indexId: 'idx-1', userId: 'user-b', role: 'party' },
       ],
-      MEANINGFUL.reasoning.aiMlCofounder,
-      'pending'
-    );
-    const oppRejected = existingOpportunity(
-      'opp-r',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch,
-      'rejected'
-    );
-    const db = { findOverlappingOpportunities: async () => [oppPending, oppRejected] };
-    const sameVec = [0.5, 0.5, 0.5];
-    const embedder = { generate: async () => [sameVec, sameVec, sameVec] as number[][] } as unknown as Embedder;
-    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+    };
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(false);
+  });
+
+  // ── Merge mechanics ──────────────────────────────────────────────────
+
+  test('accepted predecessor keeps accepted status through merge', async () => {
+    const acceptedOpp = existingOpportunity('opp-old', actors(), MEANINGFUL.reasoning.aiMlResearch, 'accepted');
+    const db = { findOverlappingOpportunities: async () => [acceptedOpp] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.resolvedStatus).toBe('accepted');
+    }
+  });
+
+  test('pending + rejected predecessors resolve to pending', async () => {
+    const pendingOpp = existingOpportunity('opp-p', actors(), MEANINGFUL.reasoning.aiMlCofounder, 'pending');
+    const rejectedOpp = existingOpportunity('opp-r', actors(), MEANINGFUL.reasoning.aiMlResearch, 'rejected');
+    const db = { findOverlappingOpportunities: async () => [pendingOpp, rejectedOpp] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       expect(result.resolvedStatus).toBe('pending');
-      expect(result.expiredIds).toContain('opp-p');
-      expect(result.expiredIds).toContain('opp-r');
+      expect(result.expiredIds).toHaveLength(2);
     }
   });
 
-  test('status resolution: all latent yields latent', async () => {
-    const opp1 = existingOpportunity(
-      'opp-1',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlCofounder,
-      'latent'
-    );
-    const opp2 = existingOpportunity(
-      'opp-2',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch,
-      'latent'
-    );
+  test('all latent predecessors + latent new yields latent', async () => {
+    const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.hardwarePrototyping, 'latent');
+    const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.hardwareFirmware, 'latent');
     const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
-    const sameVec = [0.5, 0.5, 0.5];
-    const embedder = { generate: async () => [sameVec, sameVec, sameVec] as number[][] } as unknown as Embedder;
+
     const newData = {
-      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch),
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.hardwarePrototyping),
       status: 'latent' as const,
     };
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       expect(result.resolvedStatus).toBe('latent');
     }
   });
 
-  test('signals from all related opportunities are deduplicated in merge', async () => {
-    const opp1 = existingOpportunity(
-      'opp-1',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlCofounder
-    );
-    const opp2 = existingOpportunity(
-      'opp-2',
-      [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
-      ],
-      MEANINGFUL.reasoning.aiMlResearch
-    );
-    const opp1WithSignals: Opportunity = {
+  test('merged reasoning includes context from all predecessor matches', async () => {
+    const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.aiMlCofounder);
+    opp1.interpretation = { ...opp1.interpretation!, confidence: 0.7 };
+    const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.aiMlResearch);
+    opp2.interpretation = { ...opp2.interpretation!, confidence: 0.9 };
+    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      const r = result.data.interpretation.reasoning;
+      // Contains phrases from all three
+      expect(r).toContain('co-founder');
+      expect(r).toContain('NLP');
+      expect(r).toContain('ML infrastructure');
+      // Max confidence wins
+      const conf = typeof result.data.interpretation.confidence === 'number'
+        ? result.data.interpretation.confidence
+        : parseFloat(String(result.data.interpretation.confidence));
+      expect(conf).toBe(0.9);
+    }
+  });
+
+  test('signals are deduplicated across merged matches', async () => {
+    const opp1 = existingOpportunity('opp-1', actors(), MEANINGFUL.reasoning.designUx);
+    const opp2 = existingOpportunity('opp-2', actors(), MEANINGFUL.reasoning.designProduct);
+    const opp1s: Opportunity = {
       ...opp1,
       interpretation: {
         ...opp1.interpretation!,
         signals: [
-          { type: 'skill_match', weight: 0.8, detail: 'Python' },
-          { type: 'interest_overlap', weight: 0.9, detail: 'AI' },
+          { type: 'skill_match', weight: 0.8, detail: 'Figma' },
+          { type: 'interest_overlap', weight: 0.9, detail: 'UX' },
         ],
       },
     };
-    const opp2WithSignals: Opportunity = {
+    const opp2s: Opportunity = {
       ...opp2,
       interpretation: {
         ...opp2.interpretation!,
         signals: [
-          { type: 'skill_match', weight: 0.8, detail: 'Python' },
-          { type: 'intent_overlap', weight: 0.7, detail: 'research' },
+          { type: 'skill_match', weight: 0.8, detail: 'Figma' },   // duplicate
+          { type: 'portfolio_match', weight: 0.7, detail: 'mobile' },
         ],
       },
     };
-    const db = {
-      findOverlappingOpportunities: async () => [opp1WithSignals, opp2WithSignals],
-    };
-    const sameVec = [0.5, 0.5, 0.5];
-    const embedder = { generate: async () => [sameVec, sameVec, sameVec] as number[][] } as unknown as Embedder;
+    const db = { findOverlappingOpportunities: async () => [opp1s, opp2s] };
+
     const newData: CreateOpportunityData = {
-      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch),
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.designUx),
       interpretation: {
         category: 'collaboration',
-        reasoning: MEANINGFUL.reasoning.aiMlResearch,
+        reasoning: MEANINGFUL.reasoning.designUx,
         confidence: 0.8,
         signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual' }],
       },
     };
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       const signals = result.data.interpretation.signals ?? [];
       const keys = signals.map((s) => `${s.type}:${s.detail ?? ''}`);
-      const uniqueKeys = new Set(keys);
-      expect(uniqueKeys.size).toBe(keys.length);
-      expect(signals.some((s) => s.type === 'skill_match' && s.detail === 'Python')).toBe(true);
-      expect(signals.some((s) => s.type === 'interest_overlap')).toBe(true);
-      expect(signals.some((s) => s.type === 'intent_overlap')).toBe(true);
+      expect(new Set(keys).size).toBe(keys.length); // no duplicates
+      expect(signals.some((s) => s.type === 'skill_match' && s.detail === 'Figma')).toBe(true);
+      expect(signals.some((s) => s.type === 'portfolio_match')).toBe(true);
+      expect(signals.some((s) => s.type === 'curator_judgment')).toBe(true);
     }
   });
 
-  test('embedder failure falls back to intent overlap', async () => {
-    const sharedIntent = MEANINGFUL.intentIds.aliceMlCofounder;
+  // ── Phase 1: Intent-first relatedness ────────────────────────────────
+
+  test('shared intent merges without needing embedding (Phase 1)', async () => {
     const existing = existingOpportunity(
       'opp-old',
       [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: sharedIntent },
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+      MEANINGFUL.reasoning.aiMlCofounder
+    );
+    const db = { findOverlappingOpportunities: async () => [existing] };
+    // Embedder should never be called — Phase 1 catches the shared intent
+    let embedderCalled = false;
+    const embedder = {
+      generate: async () => { embedderCalled = true; return []; },
+    } as unknown as Embedder;
+
+    const newData: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch),
+      actors: [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+    };
+    const result = await enrichOrCreate(db, embedder, newData);
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-old']);
+    }
+    expect(embedderCalled).toBe(false);
+  });
+
+  test('shared intent merges even when reasoning is in a different domain (Phase 1 overrides Phase 2)', async () => {
+    // Existing has AI reasoning but shares an intent with new data that has fundraising reasoning
+    const existing = existingOpportunity(
+      'opp-old',
+      [
+        { indexId: 'idx-1', userId: 'user-a', role: 'agent', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'patient' },
+      ],
+      MEANINGFUL.reasoning.aiMlCofounder
+    );
+    const db = { findOverlappingOpportunities: async () => [existing] };
+
+    // New data shares the intent but has fundraising reasoning (different domain embedding)
+    const newData: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.fundraising),
+      actors: [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+    };
+    // domainEmbedder would say these are unrelated (AI vs fundraising = cosine 0)
+    // but Phase 1 catches the shared intent
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-old']);
+    }
+  });
+
+  // ── Fallback paths ───────────────────────────────────────────────────
+
+  test('embedder failure with shared intents: Phase 1 already captured the match', async () => {
+    const existing = existingOpportunity(
+      'opp-old',
+      [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
         { indexId: 'idx-1', userId: 'user-b', role: 'party' },
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
     const db = { findOverlappingOpportunities: async () => [existing] };
     const embedder = {
-      generate: async () => {
-        throw new Error('Embedder unavailable');
-      },
+      generate: async () => { throw new Error('Embedder unavailable'); },
     } as unknown as Embedder;
+
     const newData: CreateOpportunityData = {
       ...minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch),
       actors: [
-        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: sharedIntent },
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
         { indexId: 'idx-1', userId: 'user-b', role: 'party' },
       ],
     };
     const result = await enrichOrCreate(db, embedder, newData);
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       expect(result.expiredIds).toEqual(['opp-old']);
     }
   });
 
-  test('intent-linked opportunities: shared intent ID drives relatedness when reasoning is short', async () => {
+  test('embedder failure without shared intents: does not merge', async () => {
+    const existing = existingOpportunity(
+      'opp-old',
+      [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party' },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+      MEANINGFUL.reasoning.aiMlCofounder
+    );
+    const db = { findOverlappingOpportunities: async () => [existing] };
+    const embedder = {
+      generate: async () => { throw new Error('Embedder unavailable'); },
+    } as unknown as Embedder;
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlResearch);
+    const result = await enrichOrCreate(db, embedder, newData);
+
+    expect(result.enriched).toBe(false);
+  });
+
+  test('short reasoning with shared intent merges; without shared intent does not', async () => {
     const existing = existingOpportunity(
       'opp-old',
       [
         { indexId: 'idx-1', userId: 'user-a', role: 'agent', intent: MEANINGFUL.intentIds.aliceMlCofounder },
-        { indexId: 'idx-1', userId: 'user-b', role: 'patient', intent: MEANINGFUL.intentIds.bobEarlyStage },
+        { indexId: 'idx-1', userId: 'user-b', role: 'patient' },
       ],
-      'Short.' // below MIN_REASONING_LENGTH_FOR_EMBEDDING → intent overlap used
+      'Short.' // below MIN_REASONING_LENGTH_FOR_EMBEDDING
     );
     const db = { findOverlappingOpportunities: async () => [existing] };
     const embedder = { generate: async () => [] } as unknown as Embedder;
-    const newData: CreateOpportunityData = {
-      ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Also short.'),
+
+    // With shared intent → merges (Phase 1 catches it)
+    const withSharedIntent: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Brief.'),
       actors: [
         { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.aliceMlCofounder },
-        { indexId: 'idx-1', userId: 'user-b', role: 'party', intent: MEANINGFUL.intentIds.bobEarlyStage },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
       ],
     };
-    const result = await enrichOrCreate(db, embedder, newData);
-    expect(result.enriched).toBe(true);
-    if (result.enriched) {
-      expect(result.expiredIds).toEqual(['opp-old']);
-      expect(result.data.actors.some((a) => a.intent === MEANINGFUL.intentIds.aliceMlCofounder)).toBe(true);
-      expect(result.data.actors.some((a) => a.intent === MEANINGFUL.intentIds.bobEarlyStage)).toBe(true);
-    }
+    const resultMerge = await enrichOrCreate(db, embedder, withSharedIntent);
+    expect(resultMerge.enriched).toBe(true);
+
+    // Without shared intent → does not merge (Phase 1 misses, Phase 2 skips short reasoning)
+    const withoutSharedIntent: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Brief.'),
+      actors: [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: MEANINGFUL.intentIds.carolHardware },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+    };
+    const resultNoMerge = await enrichOrCreate(db, embedder, withoutSharedIntent);
+    expect(resultNoMerge.enriched).toBe(false);
   });
 
-  test('different indexes: actors keyed by indexId so merge preserves both', async () => {
-    const oppIdx1 = existingOpportunity(
+  // ── Cross-index ──────────────────────────────────────────────────────
+
+  test('same match found in two indexes merges and preserves both index contexts', async () => {
+    const opp1 = existingOpportunity(
       'opp-idx1',
       [
         { indexId: 'idx-1', userId: 'user-a', role: 'party' },
@@ -754,7 +826,7 @@ describe('Opportunity enricher — multiple domains', () => {
       ],
       MEANINGFUL.reasoning.aiMlCofounder
     );
-    const oppIdx2 = existingOpportunity(
+    const opp2 = existingOpportunity(
       'opp-idx2',
       [
         { indexId: 'idx-2', userId: 'user-a', role: 'party' },
@@ -762,11 +834,11 @@ describe('Opportunity enricher — multiple domains', () => {
       ],
       MEANINGFUL.reasoning.aiMlResearch
     );
-    const db = { findOverlappingOpportunities: async () => [oppIdx1, oppIdx2] };
-    const sameVec = [0.5, 0.5, 0.5];
-    const embedder = { generate: async () => [sameVec, sameVec, sameVec] as number[][] } as unknown as Embedder;
-    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlCofounder);
-    const result = await enrichOrCreate(db, embedder, newData, { similarityThreshold: 0.7 });
+    const db = { findOverlappingOpportunities: async () => [opp1, opp2] };
+
+    const newData = minimalNewData(['user-a', 'user-b'], 'idx-1', MEANINGFUL.reasoning.aiMlStartup);
+    const result = await enrichOrCreate(db, domainEmbedder(), newData, { similarityThreshold: 0.7 });
+
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       expect(result.expiredIds).toContain('opp-idx1');
