@@ -117,8 +117,8 @@ export class IntentQueue implements IntentGraphQueue {
       priority: options?.priority,
       attempts: 3,
       backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: 24 * 60 * 60,
-      removeOnFail: 7 * 24 * 60 * 60,
+      removeOnComplete: { age: 24 * 60 * 60 },
+      removeOnFail: { age: 7 * 24 * 60 * 60 },
     });
   }
 
