@@ -115,6 +115,10 @@ export class IntentQueue implements IntentGraphQueue {
     return this.queue.add(name, data as IntentJobPayload, {
       jobId: options?.jobId,
       priority: options?.priority,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: 24 * 60 * 60,
+      removeOnFail: 7 * 24 * 60 * 60,
     });
   }
 

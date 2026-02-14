@@ -524,7 +524,14 @@ export class ChatAgent {
     const forceStream = await this.model.stream(forceMessages);
     for await (const chunk of forceStream) {
       forcedAccumulated = forcedAccumulated ? concat(forcedAccumulated, chunk) : chunk;
-      const textPart = typeof chunk.content === "string" ? chunk.content : "";
+      const textPart = typeof chunk.content === "string"
+        ? chunk.content
+        : Array.isArray(chunk.content)
+          ? chunk.content
+              .filter((b: any) => b.type === "text")
+              .map((b: any) => b.text)
+              .join("")
+          : "";
       if (textPart) {
         emit({ type: "text_chunk", content: textPart });
         forcedText += textPart;

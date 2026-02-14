@@ -136,8 +136,9 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
           if (mounted && streamClient.userID === userId) {
             setClient(streamClient);
             setIsReady(true);
+            return;
           }
-          return;
+          // Awaited connection was for a different user; fall through to create connection for current user.
         }
 
         const connectPromise = (async () => {

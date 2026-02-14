@@ -69,11 +69,44 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // Mode 2: list a user's memberships (indexes they belong to)
       const targetUserId = userId || context.userId;
-      // Only allow querying your own memberships or another user's (for shared-context composition)
-      const memberships = await database.getIndexMemberships(targetUserId);
 
-      // If both indexId and userId: filter to that specific membership
+      // Guard: only allow targetUserId === context.userId, or verify shared index access for another user
+      let memberships: Awaited<ReturnType<typeof database.getIndexMemberships>>;
+      if (targetUserId !== context.userId) {
+        const callerMemberships = await database.getIndexMemberships(context.userId);
+        if (indexId) {
+          const callerInIndex = callerMemberships.some((m) => m.indexId === indexId);
+          if (!callerInIndex) {
+            return error(
+              "Unauthorized: you can only view another user's membership in an index you belong to. Provide your own userId or omit userId for your memberships.",
+            );
+          }
+          memberships = await database.getIndexMemberships(targetUserId);
+        } else {
+          const targetMemberships = await database.getIndexMemberships(targetUserId);
+          const callerIndexIds = new Set(callerMemberships.map((m) => m.indexId));
+          const hasOverlap = targetMemberships.some((m) => callerIndexIds.has(m.indexId));
+          if (!hasOverlap) {
+            return error(
+              "Unauthorized: you can only view another user's memberships if you share at least one index, or request your own memberships.",
+            );
+          }
+          memberships = targetMemberships;
+        }
+      } else {
+        memberships = await database.getIndexMemberships(targetUserId);
+      }
+
+      // If both indexId and userId: filter to that specific membership (guard already enforced when targetUserId !== context.userId)
       if (indexId) {
+        const callerInIndex =
+          targetUserId === context.userId ||
+          (await database.getIndexMemberships(context.userId)).some((m) => m.indexId === indexId);
+        if (!callerInIndex) {
+          return error(
+            "Unauthorized: you can only view membership in an index you belong to.",
+          );
+        }
         const match = memberships.find((m) => m.indexId === indexId);
         if (!match) {
           return success({ isMember: false, userId: targetUserId, indexId, message: "User is not a member of this index." });
@@ -101,12 +134,19 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
+  const updateIndexSettingsSchema = z.object({
+    title: z.string().optional(),
+    prompt: z.string().nullable().optional(),
+    joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
+    allowGuestVibeCheck: z.boolean().optional(),
+  }).strict();
+
   const updateIndex = defineTool({
     name: "update_index",
     description: "Updates an index (owner only). Pass indexId or omit when index-scoped.",
     querySchema: z.object({
       indexId: z.string().optional().describe("Index UUID; defaults to current index when scoped."),
-      settings: z.record(z.unknown()).describe("{ title?, prompt?, joinPolicy?, allowGuestVibeCheck? }"),
+      settings: updateIndexSettingsSchema.describe("Fields to update: title?, prompt?, joinPolicy?, allowGuestVibeCheck?"),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
@@ -118,7 +158,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: context.userId,
         indexId: effectiveIndexId,
         operationMode: 'update' as const,
-        updateInput: query.settings as { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean },
+        updateInput: query.settings,
       });
 
       if (result.mutationResult && !result.mutationResult.success) {

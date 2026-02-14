@@ -124,6 +124,7 @@ const normalizeActionType = (type: string): "create" | "update" | "expire" => {
   if (normalized === "create" || normalized === "update" || normalized === "expire") {
     return normalized;
   }
+  logger.warn(`normalizeActionType: unexpected action type "${type}", defaulting to "create"`);
   return "create";
 };
 

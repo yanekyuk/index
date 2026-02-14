@@ -5,17 +5,25 @@ import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("IntentClarifier");
 
-/** Config */
-import { config } from "dotenv";
-config({ path: ".env.development", override: true });
+function createIntentClarifierChatModel(): ChatOpenAI {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey || String(apiKey).trim() === "") {
+    throw new Error(
+      "IntentClarifier: OPENROUTER_API_KEY is required. Set it in your environment or .env."
+    );
+  }
+  const baseURL =
+    process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
+  return new ChatOpenAI({
+    model: "google/gemini-2.5-flash",
+    configuration: {
+      baseURL,
+      apiKey,
+    },
+  });
+}
 
-const model = new ChatOpenAI({
-  model: "google/gemini-2.5-flash",
-  configuration: {
-    baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-    apiKey: process.env.OPENROUTER_API_KEY,
-  },
-});
+type ClarifierStructuredModel = ReturnType<ChatOpenAI["withStructuredOutput"]>;
 
 const clarificationSchema = z.object({
   needsClarification: z.boolean(),
@@ -76,14 +84,22 @@ Rules:
 `;
 
 export class IntentClarifier {
-  private model: ReturnType<typeof model.withStructuredOutput>;
-  private suggestionModel: ReturnType<typeof model.withStructuredOutput>;
-  private clarificationDraftModel: ReturnType<typeof model.withStructuredOutput>;
+  private readonly model: ClarifierStructuredModel;
+  private readonly suggestionModel: ClarifierStructuredModel;
+  private readonly clarificationDraftModel: ClarifierStructuredModel;
 
   constructor() {
-    this.model = model.withStructuredOutput(clarificationSchema, { name: "intent_clarifier" });
-    this.suggestionModel = model.withStructuredOutput(suggestionSchema, { name: "intent_clarifier_suggestion" });
-    this.clarificationDraftModel = model.withStructuredOutput(clarificationDraftSchema, { name: "intent_clarifier_message" });
+    const baseModel = createIntentClarifierChatModel();
+    this.model = baseModel.withStructuredOutput(clarificationSchema, {
+      name: "intent_clarifier",
+    });
+    this.suggestionModel = baseModel.withStructuredOutput(suggestionSchema, {
+      name: "intent_clarifier_suggestion",
+    });
+    this.clarificationDraftModel = baseModel.withStructuredOutput(
+      clarificationDraftSchema,
+      { name: "intent_clarifier_message" }
+    );
   }
 
   public async invoke(

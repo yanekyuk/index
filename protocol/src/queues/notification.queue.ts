@@ -86,7 +86,13 @@ export class NotificationQueue {
     return this.queue.add(
       'process_opportunity_notification',
       { opportunityId, recipientId, priority },
-      { priority: priorityNum }
+      {
+        priority: priorityNum,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: 24 * 60 * 60,
+        removeOnFail: 7 * 24 * 60 * 60,
+      }
     );
   }
 
