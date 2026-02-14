@@ -23,6 +23,7 @@ import { getAvatarUrl } from '@/lib/file-utils';
 import { mentionsToMarkdownLinks } from '@/lib/mentions';
 import type { HomeViewSection, HomeViewCardItem } from '@/services/opportunities';
 import { DynamicIcon, type IconName } from 'lucide-react/dynamic';
+import { useTypewriter } from '@/hooks/useTypewriter';
 
 /**
  * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
@@ -38,6 +39,43 @@ interface ChatContentProps {
   sessionIdParam?: string | null;
 }
 
+/**
+ * Sub-component for assistant message content so React hooks (useTypewriter)
+ * can be called per-message inside the .map() loop.
+ */
+/**
+ * Ensure blockquote lines are always followed by a blank line so that
+ * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
+ * e.g. "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ */
+function normalizeBlockquotes(text: string): string {
+  return text.replace(/^(>.*)\n(?!>|\n)/gm, '$1\n\n');
+}
+
+function AssistantMessageContent({ content, isStreaming }: { content: string; isStreaming: boolean }) {
+  const { text: displayedContent, isAnimating } = useTypewriter(
+    normalizeBlockquotes(mentionsToMarkdownLinks(content)),
+    isStreaming,
+    22, // ms per character during streaming
+    8,  // ms per character catch-up after stream ends
+  );
+
+  // Show cursor while streaming (even before first token) or during catch-up
+  const showCursor = isStreaming || isAnimating;
+
+  // No text yet — render a standalone blinking cursor
+  if (!displayedContent && showCursor) {
+    return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
+  }
+
+  return (
+    <div className={showCursor ? 'chat-markdown-typing' : undefined}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {displayedContent}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
@@ -651,19 +689,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       )}
                       <article className={cn(
                         "chat-markdown max-w-none",
-                        msg.role === 'user' && 'chat-markdown-invert'
+                        msg.role === 'user' && 'chat-markdown-invert',
+                        msg.isStreaming && 'chat-markdown-streaming'
                       )}>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {mentionsToMarkdownLinks(msg.content)}
-                        </ReactMarkdown>
+                        {msg.role === 'assistant' ? (
+                          <AssistantMessageContent
+                            content={msg.content}
+                            isStreaming={msg.isStreaming ?? false}
+                          />
+                        ) : (
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {mentionsToMarkdownLinks(msg.content)}
+                          </ReactMarkdown>
+                        )}
                       </article>
                       {msg.role === 'user' && msg.attachmentNames && msg.attachmentNames.length > 0 && (
                         <p className="text-xs opacity-90 mt-1.5">
                           Attached: {msg.attachmentNames.join(', ')}
                         </p>
-                      )}
-                      {msg.isStreaming && (
-                        <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
                       )}
                     </div>
                   </div>
