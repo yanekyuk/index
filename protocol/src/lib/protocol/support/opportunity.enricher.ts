@@ -205,7 +205,12 @@ export async function enrichOrCreate(
     return { enriched: false, data: newData };
   }
 
-  const overlapping = await database.findOverlappingOpportunities(actorUserIds);
+  // Only consider active (latent/pending/viewed) overlaps for enrichment.
+  // Resolved opportunities (accepted/rejected/expired) represent already-completed
+  // connections and should not silently upgrade the new opportunity's status.
+  const overlapping = await database.findOverlappingOpportunities(actorUserIds, {
+    excludeStatuses: ['accepted', 'rejected', 'expired'],
+  });
   if (overlapping.length === 0) {
     return { enriched: false, data: newData };
   }
