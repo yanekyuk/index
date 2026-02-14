@@ -93,11 +93,13 @@ describe("Chat Graph opportunity workflows", () => {
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
       expect(
-        output.responseText!.toLowerCase().match(/no opportunities|none|don't have|empty|yet/)
+        output.responseText!
+          .toLowerCase()
+          .match(/no matches|no connections|none|don't have|empty|yet/)
       ).toBeTruthy();
     }, 60000);
 
-    test("has latent (draft) opportunities → list shows Draft or similar", async () => {
+    test("has latent (draft) opportunities → list shows conversational draft/match wording", async () => {
       const opps = [
         mockOpportunity({
           id: "opp-1",
@@ -122,7 +124,9 @@ describe("Chat Graph opportunity workflows", () => {
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
       expect(
-        output.responseText!.toLowerCase().match(/opportunit|draft|alice|bob|list|match/)
+        output.responseText!
+          .toLowerCase()
+          .match(/draft|alice|list|match|connection|intro|possible/)
       ).toBeTruthy();
     }, 60000);
 
@@ -148,7 +152,7 @@ describe("Chat Graph opportunity workflows", () => {
   });
 
   describe("Find / create opportunities", () => {
-    test("Find me opportunities with no intents → explains join index and add intents", async () => {
+    test("Find me opportunities with no intents → explains join community and add what user is looking for", async () => {
       const db = createChatGraphMockDb({
         activeIntents: () => [],
         intentsInIndexForMember: () => [],
@@ -163,7 +167,9 @@ describe("Chat Graph opportunity workflows", () => {
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
       expect(
-        output.responseText!.toLowerCase().match(/join|index|intent|community|add|first/)
+        output.responseText!
+          .toLowerCase()
+          .match(/join|community|add|first|looking for|matches|connection/)
       ).toBeTruthy();
     }, 60000);
 

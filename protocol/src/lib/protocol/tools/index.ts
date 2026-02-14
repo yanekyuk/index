@@ -11,6 +11,7 @@ import { IndexGraphFactory } from "../graphs/index.graph";
 import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
 import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
 import { RedisCacheAdapter } from "../../../adapters/cache.adapter";
+import { intentQueue } from "../../../queues/intent.queue";
 import { protocolLogger } from "../support/protocol.logger";
 
 import type { ToolContext, ResolvedToolContext, ToolDeps } from "./tool.helpers";
@@ -85,7 +86,7 @@ export async function createChatTools(deps: ToolContext) {
   }
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
-  const intentGraph = new IntentGraphFactory(database, embedder).createGraph();
+  const intentGraph = new IntentGraphFactory(database, embedder, intentQueue).createGraph();
   const profileGraph = new ProfileGraphFactory(database, embedder, scraper).createGraph();
   const hydeCache: HydeCache = new RedisCacheAdapter();
   const hydeGenerator = new HydeGenerator();

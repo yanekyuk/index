@@ -113,3 +113,9 @@ export const HYDE_STRATEGIES: Record<HydeStrategy, HydeStrategyConfig> = {
     cacheTTL: 3600,
   },
 };
+
+/** Mapping from strategy to target corpus for search. Used by embedder adapter. */
+export const HYDE_STRATEGY_TARGET_CORPUS: Record<HydeStrategy, HydeTargetCorpus> =
+  Object.fromEntries(
+    Object.entries(HYDE_STRATEGIES).map(([k, v]) => [k, v.targetCorpus])
+  ) as Record<HydeStrategy, HydeTargetCorpus>;

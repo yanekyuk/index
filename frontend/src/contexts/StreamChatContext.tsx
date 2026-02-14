@@ -1,10 +1,13 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { StreamChat, Channel } from 'stream-chat';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from 'react';
+import { StreamChat, Channel, type Event as StreamEvent } from 'stream-chat';
 import { useAuthContext } from './AuthContext';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useAuthenticatedAPI } from '@/lib/api';
+import { getDirectChannelId } from '@/lib/chat-channel';
+import { useNotifications } from './NotificationContext';
+import { usePathname, useRouter } from 'next/navigation';
 
 interface MessageRequest {
   channelId: string;
@@ -28,6 +31,7 @@ interface StreamChatContextType {
   isReady: boolean;
   messageRequests: MessageRequest[];
   messageRequestsLoading: boolean;
+  requestBrowserNotifications: () => Promise<NotificationPermission | 'unsupported'>;
   openChat: (userId: string, userName: string, userAvatar?: string, initialMessage?: string) => void;
   closeChat: (userId: string) => void;
   clearActiveChat: () => void;
@@ -78,10 +82,16 @@ const SIMULATED_MESSAGE_REQUESTS: MessageRequest[] = [
 export function StreamChatProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuthContext();
   const api = useAuthenticatedAPI();
+  const { addNotification } = useNotifications();
+  const pathname = usePathname();
+  const router = useRouter();
   const [client, setClient] = useState<StreamChat | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [messageRequests, setMessageRequests] = useState<MessageRequest[]>([]);
   const [messageRequestsLoading, setMessageRequestsLoading] = useState(false);
+  const connectPromiseRef = useRef<Promise<void> | null>(null);
+  const connectedUserIdRef = useRef<string | null>(null);
+  const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Generate token via backend API
   const generateToken = useCallback(async (userId: string): Promise<string> => {
@@ -96,6 +106,8 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         client.disconnectUser();
         setClient(null);
       }
+      connectedUserIdRef.current = null;
+      connectPromiseRef.current = null;
       setIsReady(false);
       return;
     }
@@ -109,18 +121,54 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         // Create Stream Chat client
         const streamClient = StreamChat.getInstance(STREAM_API_KEY);
 
-        // Generate token via backend API
-        const token = await generateToken(userId);
+        // Reuse existing active connection for the same user.
+        if (streamClient.userID === userId) {
+          connectedUserIdRef.current = userId;
+          if (mounted) {
+            setClient(streamClient);
+            setIsReady(true);
+          }
+          return;
+        }
 
-        // Connect user
-        await streamClient.connectUser(
-          {
-            id: userId,
-            name: userName || 'Anonymous',
-            image: getAvatarUrl(user),
-          },
-          token
-        );
+        if (connectPromiseRef.current) {
+          await connectPromiseRef.current;
+          if (mounted && streamClient.userID === userId) {
+            setClient(streamClient);
+            setIsReady(true);
+            return;
+          }
+          // Awaited connection was for a different user; fall through to create connection for current user.
+        }
+
+        const connectPromise = (async () => {
+          if (streamClient.userID && streamClient.userID !== userId) {
+            await streamClient.disconnectUser();
+          }
+
+          // Generate token via backend API
+          const token = await generateToken(userId);
+
+          // Connect user
+          await streamClient.connectUser(
+            {
+              id: userId,
+              name: userName || 'Anonymous',
+              image: getAvatarUrl(user),
+            },
+            token
+          );
+          connectedUserIdRef.current = userId;
+        })();
+
+        connectPromiseRef.current = connectPromise;
+        try {
+          await connectPromise;
+        } finally {
+          if (connectPromiseRef.current === connectPromise) {
+            connectPromiseRef.current = null;
+          }
+        }
 
         if (mounted) {
           setClient(streamClient);
@@ -168,19 +216,7 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
       }
 
       // Create a unique channel ID based on both user IDs (sorted for consistency)
-      const sortedIds = [user.id, otherUserId].sort().join('_');
-      // Hash to ensure it's under 64 characters if needed
-      const channelId = sortedIds.length > 64 
-        ? (() => {
-            let hash = 0;
-            for (let i = 0; i < sortedIds.length; i++) {
-              const char = sortedIds.charCodeAt(i);
-              hash = ((hash << 5) - hash) + char;
-              hash = hash & hash;
-            }
-            return Math.abs(hash).toString(36).slice(0, 63);
-          })()
-        : sortedIds;
+      const channelId = await getDirectChannelId(user.id, otherUserId);
 
       // Get or create channel
       const channel = client.channel('messaging', channelId, {
@@ -229,6 +265,43 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     setMessageRequestsLoading(false);
   }, [isReady]);
 
+  const requestBrowserNotifications = useCallback(async (): Promise<NotificationPermission | 'unsupported'> => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return 'unsupported';
+    }
+    if (Notification.permission === 'granted' || Notification.permission === 'denied') {
+      return Notification.permission;
+    }
+    return Notification.requestPermission();
+  }, []);
+
+  // Prompt notifications once per user after first interaction.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
+
+    const storageKey = `notification-permission-prompted:${user.id}`;
+    if (window.localStorage.getItem(storageKey) === 'true') return;
+
+    const promptOnce = async () => {
+      const permission = await requestBrowserNotifications();
+      // Persist only after the browser has actually resolved permission.
+      if (permission === 'granted' || permission === 'denied') {
+        window.localStorage.setItem(storageKey, 'true');
+      }
+    };
+
+    // Use direct click + keydown as strongest user gestures for permission prompts.
+    window.addEventListener('click', promptOnce, { once: true, capture: true });
+    window.addEventListener('keydown', promptOnce, { once: true, capture: true });
+
+    return () => {
+      window.removeEventListener('click', promptOnce, true);
+      window.removeEventListener('keydown', promptOnce, true);
+    };
+  }, [isAuthenticated, user?.id, requestBrowserNotifications]);
+
   // Respond to a message request
   const respondToMessageRequest = useCallback(async (
     channelId: string, 
@@ -256,6 +329,78 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
     }
   }, [isReady, refreshMessageRequests]);
 
+  // Global incoming DM notifications so users see alerts outside the active chat thread.
+  useEffect(() => {
+    if (!isReady || !client || !user?.id) return;
+
+    const handleIncomingMessage = async (event: StreamEvent) => {
+      const messageId = event.message?.id;
+      if (!messageId) return;
+
+      if (notifiedMessageIdsRef.current.has(messageId)) {
+        return;
+      }
+      notifiedMessageIdsRef.current.add(messageId);
+      if (notifiedMessageIdsRef.current.size > 500) {
+        const iter = notifiedMessageIdsRef.current.values().next();
+        if (!iter.done && iter.value) {
+          notifiedMessageIdsRef.current.delete(iter.value);
+        }
+      }
+
+      const senderId = event.message?.user?.id ?? event.user?.id;
+      if (!senderId || senderId === user.id) return;
+
+      const currentThreadUserId = pathname?.match(/^\/u\/([^/]+)\/chat/)?.[1];
+      const sameThreadVisible =
+        currentThreadUserId === senderId &&
+        typeof document !== 'undefined' &&
+        document.visibilityState === 'visible' &&
+        document.hasFocus();
+      if (sameThreadVisible) return;
+
+      const senderName = event.message?.user?.name?.trim() || event.user?.name?.trim() || 'New message';
+      const preview = event.message?.text?.trim() || 'Sent you a message';
+      const senderAvatar =
+        event.message?.user?.image ||
+        event.user?.image ||
+        undefined;
+      addNotification({
+        type: 'info',
+        title: senderName,
+        message: preview,
+        avatarUrl: senderAvatar,
+        duration: 5000,
+      });
+
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        try {
+          const notification = new Notification(senderName, { body: preview });
+          notification.onclick = async () => {
+            window.focus();
+            try {
+              const channelId =
+                event.channel_id ??
+                (await getDirectChannelId(user.id, senderId));
+              router.push(`/u/${senderId}/chat?channelId=${encodeURIComponent(channelId)}`);
+            } catch {
+              router.push(`/u/${senderId}/chat`);
+            }
+          };
+        } catch {
+          // Browser notification errors should not block in-app notifications.
+        }
+      }
+    };
+
+    client.on('message.new', handleIncomingMessage);
+    client.on('notification.message_new', handleIncomingMessage);
+    return () => {
+      client.off('message.new', handleIncomingMessage);
+      client.off('notification.message_new', handleIncomingMessage);
+    };
+  }, [isReady, client, user?.id, addNotification, pathname, router]);
+
   return (
     <StreamChatContext.Provider
       value={{
@@ -263,6 +408,7 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
         isReady,
         messageRequests,
         messageRequestsLoading,
+        requestBrowserNotifications,
         openChat,
         closeChat,
         clearActiveChat,

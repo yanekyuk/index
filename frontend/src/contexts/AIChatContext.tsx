@@ -150,6 +150,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
               
               switch (event.type) {
                 case 'thinking':
+                  // Legacy: kept for backward compat with old sessions
                   setMessages(prev => prev.map(msg => {
                     if (msg.id === assistantMessageId) {
                       const newThinkingStep: ThinkingStep = {
@@ -172,12 +173,19 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       : msg
                   ));
                   break;
+                // tool_activity events are intentionally not rendered;
+                // the LLM's own streamed text provides the narration.
                 case 'done':
-                  setMessages(prev => prev.map(msg =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: event.response || msg.content, isStreaming: false }
-                      : msg
-                  ));
+                  setMessages(prev => prev.map(msg => {
+                    if (msg.id !== assistantMessageId) return msg;
+                    // If we already have streamed content (with possible inline tool
+                    // activity blockquotes), keep it. Only fall back to event.response
+                    // when no tokens were received (e.g. legacy/fallback path).
+                    const finalContent = msg.content.trim()
+                      ? msg.content
+                      : (event.response || msg.content);
+                    return { ...msg, content: finalContent, isStreaming: false };
+                  }));
                   // Update session title if provided by backend
                   if (event.title) {
                     setSessionTitle(event.title);

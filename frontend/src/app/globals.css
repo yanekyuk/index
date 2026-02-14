@@ -222,6 +222,64 @@ button {
   margin: 0.75em 0;
 }
 
+/* Blockquote – inline tool activity indicator */
+.chat-markdown blockquote {
+  border-left: 3px solid #4091BB;
+  background-color: rgba(64, 145, 187, 0.06);
+  padding: 0.375em 0.75em;
+  margin: 0.5em 0;
+  border-radius: 0 2px 2px 0;
+  font-style: italic;
+  color: #5a5a5a;
+  font-size: 0.8125rem;
+}
+
+.chat-markdown blockquote p {
+  margin: 0;
+}
+
+/* Inline typing cursor — appears at the end of the last text element while
+   the typewriter is actively revealing characters (streaming or catch-up).
+   Uses ::after so it stays on the same line as the text. */
+.chat-markdown-typing > p:last-child::after,
+.chat-markdown-typing > h1:last-child::after,
+.chat-markdown-typing > h2:last-child::after,
+.chat-markdown-typing > h3:last-child::after,
+.chat-markdown-typing > h4:last-child::after,
+.chat-markdown-typing > blockquote:last-child > p:last-child::after,
+.chat-markdown-typing > ul:last-child > li:last-child::after,
+.chat-markdown-typing > ol:last-child > li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 1em;
+  background-color: currentColor;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cursor-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Animated shimmer on blockquotes while assistant is still streaming */
+.chat-markdown-streaming blockquote {
+  animation: blockquote-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes blockquote-shimmer {
+  0%, 100% {
+    background-color: rgba(64, 145, 187, 0.06);
+    border-left-color: #4091BB;
+  }
+  50% {
+    background-color: rgba(64, 145, 187, 0.15);
+    border-left-color: #2d7aa3;
+  }
+}
+
 /* Inverted (user message – dark bubble) */
 .chat-markdown-invert code {
   background-color: rgba(255, 255, 255, 0.2);

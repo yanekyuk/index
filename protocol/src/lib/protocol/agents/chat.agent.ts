@@ -1,13 +1,34 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { BaseMessage, SystemMessage, ToolMessage } from "@langchain/core/messages";
+import { BaseMessage, SystemMessage, ToolMessage, AIMessageChunk } from "@langchain/core/messages";
+import { concat } from "@langchain/core/utils/stream";
 import { createChatTools, type ToolContext, type ResolvedToolContext } from "../tools";
-import { CHAT_AGENT_SYSTEM_PROMPT, ITERATION_NUDGE, buildSystemContent } from "./chat.prompt";
+import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt";
 import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatAgent");
 
 // Re-export for external consumers
-export { CHAT_AGENT_SYSTEM_PROMPT, ITERATION_NUDGE } from "./chat.prompt";
+export { ITERATION_NUDGE } from "./chat.prompt";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Writer callback for streaming custom data out of the graph node.
+ * Matches the `config.writer` signature from LangGraphRunnableConfig.
+ */
+export type StreamWriter = (data: unknown) => void;
+
+/**
+ * Events emitted by `streamRun()` via the writer callback.
+ *
+ * - `text_chunk`    — a token (or group of tokens) of model text to stream
+ * - `tool_activity` — emitted when a tool finishes (for logging / analytics)
+ */
+export type AgentStreamEvent =
+  | { type: "text_chunk"; content: string }
+  | { type: "tool_activity"; phase: "end"; name: string; success: boolean; summary?: string };
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -74,14 +95,27 @@ export class ChatAgent {
     private resolvedContext: ResolvedToolContext,
     tools: Awaited<ReturnType<typeof createChatTools>>,
   ) {
-    // Create model with tool calling capability
+    // Thinking model for tool use: better reasoning over tool inputs/outputs (OpenRouter reasoning tokens)
+    const chatModel =
+      process.env.CHAT_MODEL ?? 'google/gemini-3-pro-preview';
+    const reasoningEffort =
+      (process.env.CHAT_REASONING_EFFORT as 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined) ??
+      'low';
+
     this.model = new ChatOpenAI({
-      model: 'google/gemini-2.5-flash',
+      model: chatModel,
       configuration: {
         baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
         apiKey: process.env.OPENROUTER_API_KEY
       },
-      maxTokens: 4096,
+      maxTokens: 8192,
+      // OpenRouter: reasoning budget for thinking models (Gemini 3, etc.)
+      modelKwargs: {
+        reasoning: {
+          effort: reasoningEffort,
+          exclude: true, // don't stream thinking tokens to the user
+        },
+      },
     });
 
     // Store tools and index by name
@@ -298,7 +332,6 @@ export class ChatAgent {
     logger.warn("Hit hard iteration limit", { iterationCount });
     
     const forceResponseMessages = [
-      new SystemMessage(CHAT_AGENT_SYSTEM_PROMPT),
       ...messages,
       new SystemMessage("You have reached the maximum number of tool calls. You MUST provide a final response now. Summarize what you've accomplished and what might still be needed.")
     ];
@@ -313,6 +346,203 @@ export class ChatAgent {
       responseText,
       messages: [...messages, forcedResponse],
       iterationCount
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STREAMING RUN (for narration-style output)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Run the full agent loop with streaming narration.
+   *
+   * Instead of returning a single blob at the end, this method calls
+   * `writer()` for every text token and tool-activity event so the
+   * consumer (graph node) can push them out via `config.writer`.
+   *
+   * @param initialMessages - Starting conversation messages
+   * @param writer - Callback to emit streaming events (from `config.writer`)
+   * @returns Final response metadata (same shape as `run()`)
+   */
+  async streamRun(
+    initialMessages: BaseMessage[],
+    writer?: StreamWriter
+  ): Promise<{
+    responseText: string;
+    messages: BaseMessage[];
+    iterationCount: number;
+  }> {
+    const emit = (event: AgentStreamEvent) => {
+      try { writer?.(event); } catch { /* swallow if writer is gone */ }
+    };
+
+    let messages = initialMessages;
+    let iterationCount = 0;
+    let fullResponseText = "";
+
+    while (iterationCount < HARD_ITERATION_LIMIT) {
+      const systemContent = buildSystemContent(this.resolvedContext);
+      const fullMessages: BaseMessage[] = [
+        new SystemMessage(systemContent),
+        ...messages,
+      ];
+      if (iterationCount >= SOFT_ITERATION_LIMIT) {
+        fullMessages.push(new SystemMessage(ITERATION_NUDGE));
+      }
+
+      logger.info("Streaming iteration", {
+        iteration: iterationCount,
+        messageCount: messages.length,
+        pastSoftLimit: iterationCount >= SOFT_ITERATION_LIMIT,
+      });
+
+      // ── Stream the model response token-by-token ──────────────────────
+      let accumulated: AIMessageChunk | undefined;
+      let iterationText = "";
+
+      const stream = await this.model.stream(fullMessages);
+      for await (const chunk of stream) {
+        // Accumulate full message (text + tool_calls)
+        accumulated = accumulated ? concat(accumulated, chunk) : chunk;
+
+        // Emit text content tokens to the user immediately
+        const textPart = typeof chunk.content === "string"
+          ? chunk.content
+          : Array.isArray(chunk.content)
+            ? chunk.content
+                .filter((b: any) => b.type === "text")
+                .map((b: any) => b.text)
+                .join("")
+            : "";
+        if (textPart) {
+          emit({ type: "text_chunk", content: textPart });
+          iterationText += textPart;
+          fullResponseText += textPart;
+        }
+      }
+
+      if (!accumulated) {
+        logger.warn("Empty model response in streaming iteration", { iterationCount });
+        iterationCount++;
+        continue;
+      }
+
+      // ── Check for tool calls ──────────────────────────────────────────
+      const toolCalls = accumulated.tool_calls || [];
+
+      if (toolCalls.length > 0) {
+        logger.info("Streaming: agent made tool calls", {
+          iteration: iterationCount,
+          tools: toolCalls.map((tc) => tc.name),
+        });
+
+        // Execute tools one-by-one. The model's own streamed text serves as
+        // the narration; we only emit tool_activity "end" events for logging.
+        const toolResults: Array<{ toolCallId: string; name: string; result: string }> = [];
+        for (const tc of toolCalls) {
+          const tool = this.toolsByName.get(tc.name);
+          if (!tool) {
+            const errResult = JSON.stringify({ success: false, error: `Unknown tool: ${tc.name}` });
+            emit({ type: "tool_activity", phase: "end", name: tc.name, success: false, summary: "Unknown tool" });
+            toolResults.push({ toolCallId: tc.id || `unknown-${Date.now()}`, name: tc.name, result: errResult });
+            continue;
+          }
+
+          try {
+            logger.info("Streaming: executing tool", { name: tc.name });
+            const result = await tool.invoke(tc.args);
+            const resultStr = typeof result === "string" ? result : JSON.stringify(result);
+            logger.info("Streaming: tool completed", { name: tc.name, resultLength: resultStr.length });
+
+            // Build brief summary for the activity event
+            let summary = "Done";
+            try {
+              const parsed = JSON.parse(resultStr);
+              if (parsed.error) summary = parsed.error;
+              else if (parsed.data?.intents) summary = `${parsed.data.intents.length} result(s)`;
+              else if (parsed.data?.created) summary = "Created";
+              else if (parsed.data?.updated) summary = "Updated";
+              else if (parsed.data?.deleted) summary = "Removed";
+              else if (parsed.data?.opportunities) summary = `${parsed.data.opportunities.length} connection(s)`;
+            } catch { /* not JSON, keep default */ }
+
+            emit({ type: "tool_activity", phase: "end", name: tc.name, success: true, summary });
+            toolResults.push({ toolCallId: tc.id || `${tc.name}-${Date.now()}`, name: tc.name, result: resultStr });
+          } catch (error) {
+            const errMsg = error instanceof Error ? error.message : "Unknown error";
+            logger.error("Streaming: tool failed", { name: tc.name, error: errMsg });
+            emit({ type: "tool_activity", phase: "end", name: tc.name, success: false, summary: errMsg });
+            toolResults.push({
+              toolCallId: tc.id || `${tc.name}-${Date.now()}`,
+              name: tc.name,
+              result: JSON.stringify({ success: false, error: `Tool execution failed: ${errMsg}` }),
+            });
+          }
+        }
+
+        // Build updated messages and loop
+        messages = [
+          ...messages,
+          accumulated, // AIMessage with tool_calls
+          ...toolResults.map((tr) => new ToolMessage({
+            tool_call_id: tr.toolCallId,
+            content: tr.result,
+            name: tr.name,
+          })),
+        ];
+        iterationCount++;
+        continue;
+      }
+
+      // ── No tool calls → final response already streamed ───────────────
+      logger.info("Streaming: agent produced response", {
+        iteration: iterationCount,
+        responseLength: iterationText.length,
+      });
+      messages = [...messages, accumulated];
+      iterationCount++;
+
+      return {
+        responseText: fullResponseText,
+        messages,
+        iterationCount,
+      };
+    }
+
+    // ── Hard limit: force a response ──────────────────────────────────────
+    logger.warn("Streaming: hit hard iteration limit", { iterationCount });
+
+    const forceMessages = [
+      ...messages,
+      new SystemMessage(
+        "You have reached the maximum number of tool calls. You MUST provide a final response now. Summarize what you've accomplished and what might still be needed."
+      ),
+    ];
+
+    let forcedText = "";
+    let forcedAccumulated: AIMessageChunk | undefined;
+    const forceStream = await this.model.stream(forceMessages);
+    for await (const chunk of forceStream) {
+      forcedAccumulated = forcedAccumulated ? concat(forcedAccumulated, chunk) : chunk;
+      const textPart = typeof chunk.content === "string"
+        ? chunk.content
+        : Array.isArray(chunk.content)
+          ? chunk.content
+              .filter((b: any) => b.type === "text")
+              .map((b: any) => b.text)
+              .join("")
+          : "";
+      if (textPart) {
+        emit({ type: "text_chunk", content: textPart });
+        forcedText += textPart;
+        fullResponseText += textPart;
+      }
+    }
+
+    return {
+      responseText: fullResponseText,
+      messages: [...messages, ...(forcedAccumulated ? [forcedAccumulated] : [])],
+      iterationCount,
     };
   }
 }

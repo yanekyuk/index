@@ -17,6 +17,10 @@ const model = new ChatOpenAI({
   configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
 });
 
+const CreateActionTypeSchema = z.union([z.literal("create"), z.literal("CREATE")]);
+const UpdateActionTypeSchema = z.union([z.literal("update"), z.literal("UPDATE")]);
+const ExpireActionTypeSchema = z.union([z.literal("expire"), z.literal("EXPIRE")]);
+
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
 // ──────────────────────────────────────────────────────────────
@@ -72,7 +76,7 @@ IMPORTANT: The type field MUST be exactly one of: "create", "update", "expire" (
 // ──────────────────────────────────────────────────────────────
 
 const CreateIntentActionSchema = z.object({
-  type: z.literal("create"),
+  type: CreateActionTypeSchema,
   payload: z.string().describe("The new intent description"),
   score: z.number().nullable().describe("The felicity score (0-100)"),
   reasoning: z.string().nullable().describe("Reasoning for the creation (including felicity)"),
@@ -83,7 +87,7 @@ const CreateIntentActionSchema = z.object({
 });
 
 const UpdateIntentActionSchema = z.object({
-  type: z.literal("update"),
+  type: UpdateActionTypeSchema,
   id: z.string().describe("The ID of the intent to update"),
   payload: z.string().describe("The updated intent description"),
   score: z.number().nullable().describe("The felicity score (0-100)"),
@@ -92,26 +96,38 @@ const UpdateIntentActionSchema = z.object({
 });
 
 const ExpireIntentActionSchema = z.object({
-  type: z.literal("expire"),
+  type: ExpireActionTypeSchema,
   id: z.string().describe("The ID of the intent to expire"),
   reason: z.string().describe("Why it is expired")
 });
 
 const responseFormat = z.object({
-  actions: z.array(
-    z.discriminatedUnion("type", [
-      CreateIntentActionSchema,
-      UpdateIntentActionSchema,
-      ExpireIntentActionSchema
-    ])
-  ).describe("List of actions to apply")
+  actions: z.array(z.union([
+    CreateIntentActionSchema,
+    UpdateIntentActionSchema,
+    ExpireIntentActionSchema
+  ])).describe("List of actions to apply")
 });
 
 // ──────────────────────────────────────────────────────────────
-// 3. TYPE DEFINITIONS
+// 3. TYPE DEFINITIONS (match invoke() return shape: normalized lowercase action types)
 // ──────────────────────────────────────────────────────────────
 
-export type IntentReconcilerOutput = z.infer<typeof responseFormat>;
+export type NormalizedIntentAction =
+  | Omit<z.infer<typeof CreateIntentActionSchema>, "type"> & { type: "create" }
+  | Omit<z.infer<typeof UpdateIntentActionSchema>, "type"> & { type: "update" }
+  | Omit<z.infer<typeof ExpireIntentActionSchema>, "type"> & { type: "expire" };
+
+export type IntentReconcilerOutput = { actions: NormalizedIntentAction[] };
+
+const normalizeActionType = (type: string): "create" | "update" | "expire" => {
+  const normalized = type.toLowerCase();
+  if (normalized === "create" || normalized === "update" || normalized === "expire") {
+    return normalized;
+  }
+  logger.warn(`normalizeActionType: unexpected action type "${type}", defaulting to "create"`);
+  return "create";
+};
 
 // ──────────────────────────────────────────────────────────────
 // 4. CLASS DEFINITION
@@ -155,9 +171,13 @@ export class IntentReconciler {
 
     try {
       const output = await this.model.invoke(messages);
+      const normalizedActions = output.actions.map((action: z.infer<typeof responseFormat>["actions"][number]) => ({
+        ...action,
+        type: normalizeActionType(action.type),
+      })) as NormalizedIntentAction[];
 
-      logger.info(`[IntentReconciler.invoke] Decision: ${output.actions.length} actions.`);
-      return output;
+      logger.info(`[IntentReconciler.invoke] Decision: ${normalizedActions.length} actions.`);
+      return { actions: normalizedActions };
     } catch (error) {
       logger.error("[IntentReconciler] Error during invocation", { error });
       return { actions: [] };

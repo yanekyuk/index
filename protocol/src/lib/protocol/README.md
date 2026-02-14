@@ -45,7 +45,6 @@ protocol/src/lib/protocol/
 | HyDE Generator | `hyde.generator.ts` | HyDE graph — generates hypothetical match documents |
 | HyDE Strategies | `hyde.strategies.ts` | HyDE graph — strategy registry (mirror, reciprocal, etc.) |
 | Opp. Evaluator | `opportunity.evaluator.ts` | Opportunity graph — scores and synthesizes matches |
-| Opp. Notification | `opportunity.notification.ts` | Opportunity graph — generates notification content |
 
 ## Tools (Chat)
 

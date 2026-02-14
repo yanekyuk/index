@@ -28,9 +28,9 @@ const serverAdapter = new HonoAdapter(serveStatic);
 
 createBullBoard({
   queues: [
-    new BullMQAdapter(notificationQueue),
-    new BullMQAdapter(intentQueue),
-    new BullMQAdapter(opportunityQueue),
+    new BullMQAdapter(notificationQueue.queue),
+    new BullMQAdapter(intentQueue.queue),
+    new BullMQAdapter(opportunityQueue.queue),
     new BullMQAdapter(emailQueue),
   ],
   serverAdapter,

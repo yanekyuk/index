@@ -52,6 +52,8 @@ export interface HomeViewCardItem {
   /** Presenter-generated subtitle under the other party name (e.g. "1 mutual intent"). */
   mutualIntentsLabel: string;
   narratorChip?: { name: string; text: string; avatar?: string | null };
+  /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
+  viewerRole?: string;
 }
 
 /** Home view section (dynamic title, icon, items). */
@@ -99,6 +101,10 @@ export interface OpportunityDetailResponse {
   introducedBy?: { id: string; name: string; avatar?: string | null };
 }
 
+const HOME_VIEW_RECENT_CACHE_TTL_MS = 1500;
+const homeViewInFlight = new Map<string, Promise<HomeViewResponse>>();
+const homeViewRecent = new Map<string, { data: HomeViewResponse; timestamp: number }>();
+
 export const createOpportunitiesService = (
   api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>
 ) => ({
@@ -124,8 +130,30 @@ export const createOpportunitiesService = (
     if (options?.limit != null) params.set('limit', String(options.limit));
     const qs = params.toString();
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
-    const res = await api.get<HomeViewResponse>(url);
-    return res;
+    const cacheKey = url;
+    const now = Date.now();
+    const recent = homeViewRecent.get(cacheKey);
+    if (recent && now - recent.timestamp < HOME_VIEW_RECENT_CACHE_TTL_MS) {
+      return recent.data;
+    }
+
+    const inFlight = homeViewInFlight.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = api
+      .get<HomeViewResponse>(url)
+      .then((res) => {
+        homeViewRecent.set(cacheKey, { data: res, timestamp: Date.now() });
+        return res;
+      })
+      .finally(() => {
+        homeViewInFlight.delete(cacheKey);
+      });
+
+    homeViewInFlight.set(cacheKey, request);
+    return request;
   },
 
   updateStatus: async (

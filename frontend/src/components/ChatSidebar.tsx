@@ -8,7 +8,7 @@ import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities, useUsers } from '@/contexts/APIContext';
 import { getAvatarUrl } from '@/lib/file-utils';
-import { Channel } from 'stream-chat';
+import { Channel, type Event as StreamEvent } from 'stream-chat';
 
 interface RecentChat {
   id: string;
@@ -17,7 +17,37 @@ interface RecentChat {
   avatar: string | null;
   lastMessage: string;
   sortTimestamp: number;
+  unreadCount: number;
 }
+
+const formatConversationTime = (timestamp: number) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const now = new Date();
+  const isSameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (isSameDay) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+};
+
+const sortChats = (a: RecentChat, b: RecentChat) => {
+  const aUnread = a.unreadCount > 0 ? 1 : 0;
+  const bUnread = b.unreadCount > 0 ? 1 : 0;
+  if (aUnread !== bUnread) return bUnread - aUnread;
+  return b.sortTimestamp - a.sortTimestamp;
+};
 
 export default function ChatSidebar() {
   const router = useRouter();
@@ -25,36 +55,67 @@ export default function ChatSidebar() {
   const { user } = useAuthContext();
   const opportunitiesService = useOpportunities();
   const usersService = useUsers();
-  const { client, isReady, messageRequests, messageRequestsLoading } = useStreamChat();
+  const { client, isReady } = useStreamChat();
   
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [loadingChats, setLoadingChats] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
   const [deletingChat, setDeletingChat] = useState<string | null>(null);
   const chatMenuRef = useRef<HTMLDivElement>(null);
+  const chatsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const getOpportunitiesRef = useRef(opportunitiesService.getOpportunities);
+  const getUserProfilesRef = useRef(usersService.getUserProfiles);
+  const optimisticUnreadRef = useRef<Map<string, number>>(new Map());
+  const hasLoadedChatsRef = useRef(false);
 
   const currentChatUserId = pathname?.match(/^\/u\/([^/]+)\/chat/)?.[1] || null;
+
+  useEffect(() => {
+    getOpportunitiesRef.current = opportunitiesService.getOpportunities;
+    getUserProfilesRef.current = usersService.getUserProfiles;
+  }, [opportunitiesService, usersService]);
 
   // Fetch user-to-user chats
   useEffect(() => {
     if (!isReady || !client || !user?.id) return;
-    
+
+    let acceptedByRecipientSnapshot = new Map<string, number>();
+
+    const fetchAcceptedRecipients = async () => {
+      try {
+        const acceptedOpportunities = await getOpportunitiesRef.current({ status: 'accepted', limit: 300 });
+        const acceptedByRecipient = new Map<string, number>();
+        for (const opportunity of acceptedOpportunities) {
+          const counterpart = opportunity.actors.find(
+            (actor) => actor.userId !== user.id && actor.role !== 'introducer'
+          ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
+
+          if (!counterpart?.userId) continue;
+          const ts = new Date(opportunity.updatedAt).getTime();
+          const existing = acceptedByRecipient.get(counterpart.userId) ?? 0;
+          if (ts > existing) acceptedByRecipient.set(counterpart.userId, ts);
+        }
+        acceptedByRecipientSnapshot = acceptedByRecipient;
+      } catch (error) {
+        console.error('Failed to fetch accepted opportunities for chats:', error);
+      }
+    };
+
     const fetchChats = async () => {
       try {
-        setLoadingChats(true);
+        if (!hasLoadedChatsRef.current) {
+          setLoadingChats(true);
+        }
         const streamFilter = {
           type: 'messaging',
           members: { $in: [client.userID || ''] },
         };
         const streamSort = [{ last_message_at: -1 as const }];
-        const [channels, acceptedOpportunities] = await Promise.all([
-          client.queryChannels(streamFilter, streamSort, {
-            limit: 50,
-            watch: false,
-            state: true,
-          }),
-          opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 }),
-        ]);
+        const channels = await client.queryChannels(streamFilter, streamSort, {
+          limit: 50,
+          watch: false,
+          state: true,
+        });
 
         const streamByRecipient = new Map<string, {
           id: string;
@@ -62,6 +123,7 @@ export default function ChatSidebar() {
           avatar: string | null;
           lastMessage: string;
           sortTimestamp: number;
+          unreadCount: number;
         }>();
 
         channels.forEach((channel: Channel) => {
@@ -79,30 +141,25 @@ export default function ChatSidebar() {
               channel.state.messages?.[channel.state.messages.length - 1]?.created_at ||
               0
             ).getTime(),
+            unreadCount: channel.countUnread(),
           });
         });
 
-        const acceptedByRecipient = new Map<string, number>();
-        for (const opportunity of acceptedOpportunities) {
-          const counterpart = opportunity.actors.find(
-            (actor) => actor.userId !== user.id && actor.role !== 'introducer'
-          ) ?? opportunity.actors.find((actor) => actor.userId !== user.id);
-
-          if (!counterpart?.userId) continue;
-          const ts = new Date(opportunity.updatedAt).getTime();
-          const existing = acceptedByRecipient.get(counterpart.userId) ?? 0;
-          if (ts > existing) acceptedByRecipient.set(counterpart.userId, ts);
-        }
-
-        const acceptedRecipientIds = Array.from(acceptedByRecipient.keys());
+        // Include both accepted-opportunity counterparts and actual Stream DM channels.
+        // This ensures conversations with messages always appear, even if not in accepted opportunities.
+        const acceptedRecipientIds = Array.from(acceptedByRecipientSnapshot.keys());
+        const streamRecipientIds = Array.from(streamByRecipient.keys());
+        const allRecipientIds = Array.from(new Set([...streamRecipientIds, ...acceptedRecipientIds]));
         const profilesCap = 50;
-        const idsToFetch = acceptedRecipientIds.slice(0, profilesCap);
-        const profileMap = await usersService.getUserProfiles(idsToFetch);
+        const idsToFetch = allRecipientIds.slice(0, profilesCap);
+        const profileMap = await getUserProfilesRef.current(idsToFetch);
 
-        const chats: RecentChat[] = acceptedRecipientIds.map((recipientId) => {
+        const chats: RecentChat[] = allRecipientIds.map((recipientId) => {
           const stream = streamByRecipient.get(recipientId);
           const profile = profileMap.get(recipientId);
-          const acceptedTs = acceptedByRecipient.get(recipientId) ?? 0;
+          const acceptedTs = acceptedByRecipientSnapshot.get(recipientId) ?? 0;
+          const serverUnread = stream?.unreadCount || 0;
+          const optimisticUnread = optimisticUnreadRef.current.get(recipientId) || 0;
           return {
             id: stream?.id || `accepted-${recipientId}`,
             recipientId,
@@ -110,19 +167,123 @@ export default function ChatSidebar() {
             avatar: profile?.avatar || stream?.avatar || null,
             lastMessage: stream?.lastMessage || 'Connected via accepted opportunities',
             sortTimestamp: Math.max(stream?.sortTimestamp ?? 0, acceptedTs),
+            unreadCount: Math.max(serverUnread, optimisticUnread),
           };
-        }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
+        }).sort(sortChats);
 
         setRecentChats(chats.slice(0, 10));
       } catch (error) {
         console.error('Failed to fetch chats:', error);
       } finally {
-        setLoadingChats(false);
+        if (!hasLoadedChatsRef.current) {
+          hasLoadedChatsRef.current = true;
+          setLoadingChats(false);
+        }
       }
     };
 
-    fetchChats();
-  }, [isReady, client, opportunitiesService, usersService, user?.id]);
+    const initialize = async () => {
+      await fetchAcceptedRecipients();
+      await fetchChats();
+    };
+    void initialize();
+
+    const scheduleChatsRefresh = () => {
+      if (chatsRefreshTimerRef.current) return;
+      chatsRefreshTimerRef.current = setTimeout(() => {
+        chatsRefreshTimerRef.current = null;
+        void fetchChats();
+      }, 1200);
+    };
+    const handleSync = (event?: StreamEvent) => {
+      if (!event) {
+        scheduleChatsRefresh();
+        return;
+      }
+
+      if (event.type === 'message.new' || event.type === 'notification.message_new') {
+        const senderId = event.user?.id ?? event.message?.user?.id;
+        const messageText = event.message?.text?.trim();
+        const channelId =
+          event.channel_id ??
+          (typeof event.cid === 'string' && event.cid.includes(':') ? event.cid.split(':')[1] : undefined);
+
+        if (senderId && senderId !== user.id) {
+          setRecentChats((prev) => {
+            const next = [...prev];
+            const idx = next.findIndex((chat) => chat.recipientId === senderId || (channelId ? chat.id === channelId : false));
+            if (idx >= 0) {
+              const current = next[idx];
+              const unreadIncrement = currentChatUserId === senderId ? 0 : 1;
+              const nextUnread = current.unreadCount + unreadIncrement;
+              if (unreadIncrement > 0) {
+                optimisticUnreadRef.current.set(senderId, nextUnread);
+              }
+              next[idx] = {
+                ...current,
+                lastMessage: messageText || current.lastMessage,
+                sortTimestamp: Date.now(),
+                unreadCount: nextUnread,
+              };
+              return next.sort(sortChats);
+            }
+            return prev;
+          });
+        }
+        scheduleChatsRefresh();
+        return;
+      }
+
+      if (event.type === 'message.read' || event.type === 'notification.mark_read') {
+        const channelId =
+          event.channel_id ??
+          (typeof event.cid === 'string' && event.cid.includes(':') ? event.cid.split(':')[1] : undefined);
+        if (channelId) {
+          setRecentChats((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== channelId) return chat;
+              optimisticUnreadRef.current.set(chat.recipientId, 0);
+              return { ...chat, unreadCount: 0 };
+            })
+          );
+        }
+        scheduleChatsRefresh();
+        return;
+      }
+
+      scheduleChatsRefresh();
+    };
+
+    client.on('message.new', handleSync);
+    client.on('notification.message_new', handleSync);
+    client.on('message.read', handleSync);
+    client.on('notification.mark_read', handleSync);
+    client.on('notification.mark_unread', handleSync);
+    client.on('channel.updated', handleSync);
+
+    return () => {
+      if (chatsRefreshTimerRef.current) {
+        clearTimeout(chatsRefreshTimerRef.current);
+        chatsRefreshTimerRef.current = null;
+      }
+      client.off('message.new', handleSync);
+      client.off('notification.message_new', handleSync);
+      client.off('message.read', handleSync);
+      client.off('notification.mark_read', handleSync);
+      client.off('notification.mark_unread', handleSync);
+      client.off('channel.updated', handleSync);
+    };
+  }, [isReady, client, user?.id, currentChatUserId]);
+
+  useEffect(() => {
+    if (!currentChatUserId) return;
+    optimisticUnreadRef.current.set(currentChatUserId, 0);
+    setRecentChats((prev) =>
+      prev.map((chat) =>
+        chat.recipientId === currentChatUserId ? { ...chat, unreadCount: 0 } : chat
+      )
+    );
+  }, [currentChatUserId]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -154,47 +315,6 @@ export default function ChatSidebar() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Message Requests Section */}
-      {messageRequests.length > 0 && (
-        <div className="flex-shrink-0 px-4 pt-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider font-ibm-plex-mono">
-              Requests
-            </h3>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-[#041729] text-white">
-              {messageRequests.length}
-            </span>
-          </div>
-          {messageRequestsLoading ? (
-            <div className="text-sm text-gray-400">Loading...</div>
-          ) : (
-            <div className="space-y-1">
-              {messageRequests.map((request) => (
-                <div 
-                  key={request.channelId} 
-                  className="flex items-center gap-3 py-2 px-2 -mx-2 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  <Image
-                    src={getAvatarUrl({ 
-                      avatar: request.requester?.avatar || null, 
-                      id: request.requester?.id || '', 
-                      name: request.requester?.name || 'User' 
-                    })}
-                    alt={request.requester?.name || 'User'}
-                    width={28}
-                    height={28}
-                    className="rounded-full flex-shrink-0"
-                  />
-                  <span className="text-sm text-gray-700 truncate">
-                    {request.requester?.name || 'User'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Recent Chats Section */}
       <div className="flex-1 overflow-y-auto px-4 pt-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono">
@@ -208,21 +328,24 @@ export default function ChatSidebar() {
           <div className="space-y-1">
             {recentChats.map((chat) => {
               const isSelected = currentChatUserId === chat.recipientId;
+              const isUnread = chat.unreadCount > 0;
               return (
                 <div 
                   key={chat.id} 
                   className={`relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors ${
-                    isSelected 
-                      ? 'bg-gray-50' 
+                    isSelected
+                      ? 'bg-gray-100'
                       : 'hover:bg-gray-50'
                   }`}
                 >
                   <button
                     onClick={() => router.push(`/u/${chat.recipientId}/chat`)}
-                    className={`flex-1 flex items-center gap-3 text-sm text-left ${
-                      isSelected 
-                        ? 'text-black font-medium' 
-                        : 'text-gray-700 hover:text-black'
+                    className={`flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 ${
+                      isSelected
+                        ? 'text-black font-semibold'
+                        : isUnread
+                          ? 'text-black font-bold'
+                          : 'text-gray-700 hover:text-black'
                     }`}
                   >
                     <Image
@@ -232,8 +355,22 @@ export default function ChatSidebar() {
                       height={28}
                       className="rounded-full flex-shrink-0"
                     />
-                    <span className="truncate">{chat.name}</span>
+                    <div className="min-w-0">
+                      <p className={`truncate ${isUnread ? 'text-sm font-bold text-black' : 'text-sm font-medium text-black'}`}>
+                        {chat.name}
+                      </p>
+                      <p className={`truncate ${isUnread ? 'text-sm font-semibold text-gray-900' : 'text-sm font-normal text-gray-500'}`}>
+                        {chat.lastMessage || 'No messages yet'}
+                      </p>
+                    </div>
                   </button>
+                  <span
+                    className={`absolute right-8 top-2 text-[11px] leading-none ${
+                      isUnread ? 'font-semibold text-gray-700' : 'font-normal text-gray-400'
+                    }`}
+                  >
+                    {formatConversationTime(chat.sortTimestamp)}
+                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

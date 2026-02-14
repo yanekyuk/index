@@ -3,6 +3,7 @@ import type { IntentGraphDatabase } from '../lib/protocol/interfaces/database.in
 import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { intentQueue } from '../queues/intent.queue';
 
 const logger = log.service.from("IntentService");
 
@@ -28,7 +29,7 @@ export class IntentService {
     this.adapter = intentDatabaseAdapter;
     this.db = this.adapter;
     this.embedder = new EmbedderAdapter();
-    this.factory = new IntentGraphFactory(this.db, this.embedder);
+    this.factory = new IntentGraphFactory(this.db, this.embedder, intentQueue);
   }
 
   /**

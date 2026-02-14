@@ -27,12 +27,24 @@ interface CreateIntentInput {
   isIncognito?: boolean;
   sourceType?: SourceType | null;
   sourceId?: string | null;
+  semanticEntropy?: number | null;
+  referentialAnchor?: string | null;
+  felicityAuthority?: number | null;
+  felicitySincerity?: number | null;
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 interface UpdateIntentInput {
   payload?: string;
   summary?: string | null;
   embedding?: number[];
   isIncognito?: boolean;
+  semanticEntropy?: number | null;
+  referentialAnchor?: string | null;
+  felicityAuthority?: number | null;
+  felicitySincerity?: number | null;
+  intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+  speechActType?: 'COMMISSIVE' | 'DIRECTIVE' | null;
 }
 interface CreatedIntentRow {
   id: string;
@@ -165,6 +177,12 @@ export class IntentDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
         })
         .returning({
           id: schema.intents.id,
@@ -190,6 +208,12 @@ export class IntentDatabaseAdapter {
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
       if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
+      if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
+      if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
+      if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
+      if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
       const [updated] = await db.update(schema.intents)
         .set(updateData)
@@ -790,6 +814,12 @@ export class ChatDatabaseAdapter {
           isIncognito: data.isIncognito ?? false,
           sourceType: data.sourceType,
           sourceId: data.sourceId,
+          semanticEntropy: data.semanticEntropy ?? undefined,
+          referentialAnchor: data.referentialAnchor ?? undefined,
+          felicityAuthority: data.felicityAuthority ?? undefined,
+          felicitySincerity: data.felicitySincerity ?? undefined,
+          intentMode: data.intentMode ?? undefined,
+          speechActType: data.speechActType ?? undefined,
         })
         .returning({
           id: schema.intents.id,
@@ -815,6 +845,12 @@ export class ChatDatabaseAdapter {
       if (data.summary !== undefined) updateData.summary = data.summary;
       if (data.embedding !== undefined) updateData.embedding = data.embedding;
       if (data.isIncognito !== undefined) updateData.isIncognito = data.isIncognito;
+      if (data.semanticEntropy !== undefined) updateData.semanticEntropy = data.semanticEntropy;
+      if (data.referentialAnchor !== undefined) updateData.referentialAnchor = data.referentialAnchor;
+      if (data.felicityAuthority !== undefined) updateData.felicityAuthority = data.felicityAuthority;
+      if (data.felicitySincerity !== undefined) updateData.felicitySincerity = data.felicitySincerity;
+      if (data.intentMode !== undefined) updateData.intentMode = data.intentMode;
+      if (data.speechActType !== undefined) updateData.speechActType = data.speechActType;
 
       const [updated] = await db.update(schema.intents)
         .set(updateData)
@@ -2466,11 +2502,13 @@ export class OpportunityDatabaseAdapter {
     options?: { excludeStatuses?: ('latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     if (actorUserIds.length === 0) return [];
-    const defaultExcludeStatuses: ('expired' | 'rejected')[] = ['expired', 'rejected'];
     const mergedExcludeStatuses = [
-      ...new Set([...defaultExcludeStatuses, ...(options?.excludeStatuses ?? [])]),
+      ...new Set([...(options?.excludeStatuses ?? [])]),
     ] as ('latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[];
-    const statusCondition = notInArray(opportunities.status, mergedExcludeStatuses);
+    const statusCondition =
+      mergedExcludeStatuses.length > 0
+        ? notInArray(opportunities.status, mergedExcludeStatuses)
+        : undefined;
     // Exact match: opportunity's set of non-introducer userIds must equal actorUserIds (same people only)
     const sortedActorUserIds = [...actorUserIds].sort();
     const overlapCondition = sql`(
@@ -2484,7 +2522,7 @@ export class OpportunityDatabaseAdapter {
     const rows = await db
       .select()
       .from(opportunities)
-      .where(and(statusCondition, overlapCondition))
+      .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
       .orderBy(desc(opportunities.updatedAt));
     const result = rows.map(toOpportunityRow);
     return result;

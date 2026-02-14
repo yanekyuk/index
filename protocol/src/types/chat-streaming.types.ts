@@ -18,7 +18,9 @@ export type ChatStreamEventType =
   // Agent Loop Architecture events
   | 'tool_start'
   | 'tool_end'
-  | 'agent_thinking';
+  | 'agent_thinking'
+  // Streaming narration events
+  | 'tool_activity';
 
 /**
  * Base interface for all chat stream events.
@@ -158,6 +160,24 @@ export interface AgentThinkingEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Tool activity event - inline narration of tool execution.
+ * Sent as the agent streams its response, replacing the old ThinkingDropdown.
+ */
+export interface ToolActivityEvent extends ChatStreamEventBase {
+  type: 'tool_activity';
+  /** Internal tool name */
+  toolName: string;
+  /** User-friendly description (e.g. "Looking up your profile...") */
+  description: string;
+  /** Whether the tool is starting or has finished */
+  phase: 'start' | 'end';
+  /** Whether the tool succeeded (present when phase === 'end') */
+  success?: boolean;
+  /** Brief result summary (present when phase === 'end') */
+  summary?: string;
+}
+
+/**
  * Union type of all chat stream events.
  */
 export type ChatStreamEvent =
@@ -172,7 +192,9 @@ export type ChatStreamEvent =
   // Agent Loop Architecture events
   | ToolStartEvent
   | ToolEndEvent
-  | AgentThinkingEvent;
+  | AgentThinkingEvent
+  // Streaming narration events
+  | ToolActivityEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -341,4 +363,28 @@ export function createAgentThinkingEvent(
   toolsUsed: string[]
 ): AgentThinkingEvent {
   return createStreamEvent<AgentThinkingEvent>('agent_thinking', sessionId, { iteration, toolsUsed });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// STREAMING NARRATION EVENT CREATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a formatted tool activity event (inline narration).
+ */
+export function createToolActivityEvent(
+  sessionId: string,
+  toolName: string,
+  description: string,
+  phase: 'start' | 'end',
+  success?: boolean,
+  summary?: string
+): ToolActivityEvent {
+  return createStreamEvent<ToolActivityEvent>('tool_activity', sessionId, {
+    toolName,
+    description,
+    phase,
+    success,
+    summary,
+  });
 }

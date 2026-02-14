@@ -19,6 +19,7 @@
     "maintenance:import-slack-export": "bun ./src/cli/import-slack-export.ts",
     "maintenance:reset-brokers": "bun ./src/cli/reset-brokers.ts",
     "maintenance:update:embeddings": "bun ./src/cli/update-embeddings.ts",
+    "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "integration-worker": "bun ./src/cli/integration-worker.ts",
     "social-worker": "bun ./src/cli/social-worker.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",

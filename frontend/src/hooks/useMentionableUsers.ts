@@ -25,16 +25,19 @@ export function useMentionableUsers({
 }: UseMentionableUsersOptions = {}): UseMentionableUsersResult {
   const [users, setUsers] = useState<MentionableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { indexes } = useIndexesState();
+  const { indexes, loading: indexesLoading } = useIndexesState();
   const indexService = useIndexService();
   const fetchedRef = useRef(false);
   const cacheRef = useRef<Map<string, MentionableUser>>(new Map());
 
   const fetchAllMembers = useCallback(async () => {
     if (!enabled) {
+      fetchedRef.current = false;
       setUsers([]);
       return;
     }
+
+    if (indexesLoading) return;
 
     // Avoid duplicate fetches
     if (fetchedRef.current) return;
@@ -64,7 +67,7 @@ export function useMentionableUsers({
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, indexService]);
+  }, [enabled, indexService, indexesLoading]);
 
   // Stable signature of index IDs so joins/leaves trigger refetch even when length is unchanged
   const indexesSignature =
@@ -78,7 +81,7 @@ export function useMentionableUsers({
   useEffect(() => {
     fetchedRef.current = false; // Reset when indexes change so we refetch after join/leave
     fetchAllMembers();
-  }, [fetchAllMembers, indexesSignature]);
+  }, [fetchAllMembers, indexesSignature, indexesLoading]);
 
   // Search function for react-mentions async data fetching
   const searchUsers = useCallback(

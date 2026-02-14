@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
+import Image from 'next/image';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
 
@@ -10,6 +11,7 @@ export interface Notification {
   type: NotificationType;
   title: string;
   message?: string;
+  avatarUrl?: string;
   duration?: number; // in milliseconds, default 4000
 }
 
@@ -132,21 +134,34 @@ function NotificationToasts({
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2">
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end">
       {notifications.map((notification, index) => (
         <div
           key={notification.id}
-          className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-bottom-2 min-w-64"
+          className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-right-2 min-w-80 max-w-[360px]"
           style={{ 
             animationDelay: `${index * 100}ms`,
             animationFillMode: 'both'
           }}
         >
-          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
-            {getIcon(notification.type)}
-          </div>
+          {notification.avatarUrl ? (
+            <Image
+              src={notification.avatarUrl}
+              alt={notification.title}
+              width={32}
+              height={32}
+              className="flex-shrink-0 w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
+              {getIcon(notification.type)}
+            </div>
+          )}
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+            {notification.message ? (
+              <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{notification.message}</p>
+            ) : null}
           </div>
           <button
             onClick={() => onRemove(notification.id)}

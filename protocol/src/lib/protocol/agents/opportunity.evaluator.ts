@@ -156,10 +156,16 @@ export interface EvaluatorEntity {
 export interface EvaluatorInput {
   /** The user who triggered discovery (for context, not special treatment). */
   discovererId: string;
-  /** All relevant entities from RAG results + the discoverer themselves. */
+  /** All relevant entities. In introduction mode, only the people being introduced (no introducer). */
   entities: EvaluatorEntity[];
   /** Existing opportunities for deduplication. */
   existingOpportunities?: string;
+  /** When true, DISCOVERER is the introducer; reasoning and actors must be only among ENTITIES. */
+  introductionMode?: boolean;
+  /** Name of the introducer (for attribution in reasoning when introductionMode is true). */
+  introducerName?: string;
+  /** Optional hint/context from the introducer about why these people should meet. */
+  introductionHint?: string;
 }
 
 const ActorSchema = z.object({
@@ -186,8 +192,8 @@ export type EvaluatorOutputBundle = z.infer<typeof entityBundleResponseFormat>;
 // 3. TYPE DEFINITIONS
 // ──────────────────────────────────────────────────────────────
 
-export type Opportunity = z.infer<typeof OpportunitySchema>;
-export type EvaluatorOutput = z.infer<typeof responseFormat>;
+type Opportunity = z.infer<typeof OpportunitySchema>;
+type EvaluatorOutput = z.infer<typeof responseFormat>;
 
 // Define CandidateProfile type (simplified for now, ideally imported from shared types)
 export interface CandidateProfile {
@@ -198,7 +204,7 @@ export interface CandidateProfile {
   score?: number; // Search score
 }
 
-export interface OpportunityEvaluatorOptions {
+interface OpportunityEvaluatorOptions {
   minScore?: number;
   limit?: number;
   hydeDescription?: string;
@@ -337,6 +343,18 @@ export class OpportunityEvaluator {
     const existingPart = input.existingOpportunities
       ? `\nEXISTING OPPORTUNITIES:\n${input.existingOpportunities}\n`
       : '';
+    const introModePart = input.introductionMode
+      ? `\nINTRODUCTION MODE: This is a human-curated introduction. ${input.introducerName ?? 'The introducer'} (DISCOVERER: ${input.discovererId}) explicitly wants these people to connect. This is NOT an automatic discovery — a real person saw value in this connection.
+
+CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
+- Your reasoning MUST acknowledge that this is an introduction initiated by ${input.introducerName ?? 'the introducer'}, not a system-discovered match.
+- Start reasoning with something like "${input.introducerName ?? 'The introducer'} is connecting [Name A] and [Name B] because..." or "This introduction by ${input.introducerName ?? 'the introducer'} brings together..."
+- Even if the parties' intents or profiles don't obviously overlap, the introduction is still valid because the introducer saw the connection. Explain what the introducer likely sees in this match.
+- If explicit intents align, mention them — but frame it as supporting the introducer's judgment, not as the primary reason.${input.introductionHint ? `\nINTRODUCER'S CONTEXT: "${input.introductionHint}" — use this to inform your reasoning about why the introducer made this connection.` : ''}
+- Actors must refer ONLY to the ENTITIES below (the people being introduced). Do not include the DISCOVERER as an actor.
+- Be generous with scoring (70+ for any introduction with a plausible basis, since a human made the judgment).
+`
+      : '';
     const entitiesBlock = input.entities.map((e) => {
       const intentsPart = e.intents?.length
         ? `\n  INTENTS:\n${e.intents.map((i) => `    - ${i.intentId}: ${i.payload}`).join('\n')}`
@@ -348,7 +366,7 @@ export class OpportunityEvaluator {
   RAG SCORE: ${e.ragScore ?? '—'}
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
-    const humanContent = `DISCOVERER: ${input.discovererId}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
+    const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
     const messages = [
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),

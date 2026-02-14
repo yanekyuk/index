@@ -1,8 +1,8 @@
 /**
  * Protocol-layer logging: call-scoped inputs, outputs, and context for debugging.
  * Use protocolLogger('ComponentName') for the logger, then wrap calls with
- * withCallLogging or use logCallStart/end for manual control. All protocol code
- * should log inputs at call start and outputs (or summary) + duration at end.
+ * withCallLogging. All protocol code should log inputs at call start and
+ * outputs (or summary) + duration at end.
  */
 
 import { log, sanitizeForLog } from "../../log";
@@ -59,39 +59,4 @@ export async function withCallLogging<T>(
     });
     throw err;
   }
-}
-
-/**
- * Log the start of a call (inputs + optional context). Returns an end function to call
- * with output on success, or call logCallEndError on failure. Use when you need manual
- * control (e.g. different success paths or streaming).
- */
-export function logCallStart(
-  logger: LoggerWithSource,
-  callName: string,
-  inputs: Record<string, unknown>,
-  context?: Record<string, unknown>
-): { end: (output: unknown) => void; endError: (error: unknown) => void } {
-  const start = Date.now();
-  const sanitizedInputs = sanitizeForLog(inputs) as Record<string, unknown>;
-  logger.info(`[Call] ${callName} start`, { inputs: sanitizedInputs, ...context });
-
-  return {
-    end(output: unknown) {
-      const durationMs = Date.now() - start;
-      logger.info(`[Call] ${callName} end`, {
-        output: sanitizeForLog(output),
-        durationMs,
-        ...context,
-      });
-    },
-    endError(error: unknown) {
-      const durationMs = Date.now() - start;
-      logger.error(`[Call] ${callName} failed`, {
-        error,
-        durationMs,
-        ...context,
-      });
-    },
-  };
 }
