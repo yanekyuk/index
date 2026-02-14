@@ -207,9 +207,10 @@ ${activeIntentsContext || "none"}
       logger.warn("generateClarificationDraft: failed", { error });
       const suggestion = await this.generateSuggestion(description, profileContext, activeIntentsContext);
       if (!suggestion) return null;
+      const clarificationMessage = `Do you mean: ${suggestion}?`;
       return {
         suggestedDescription: suggestion,
-        clarificationMessage: "",
+        clarificationMessage,
       };
     }
   }
