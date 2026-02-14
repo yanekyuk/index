@@ -349,6 +349,130 @@ describe('Opportunity Graph', () => {
 
       expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending' }));
     });
+
+    test('when evaluator assigns discoverer as agent (no introducer), persist swaps discoverer to patient', async () => {
+      // Evaluator thinks the discoverer (user-source) is the agent (provider) and
+      // the candidate (user-bob) is the patient (seeker). The lifecycle guard in the
+      // persist node should swap them so the discoverer always sees first at latent.
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Source can offer mentoring to candidate.',
+            score: 85,
+            actors: [
+              { userId: 'user-source', role: 'agent' as const, intentId: null },
+              { userId: 'user-bob', role: 'patient' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentee',
+        options: { initialStatus: 'latent', minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalled();
+      const createdData = createSpy.mock.calls[0][0];
+      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-source');
+      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-bob');
+      // Discoverer should have been swapped from agent → patient
+      expect(discovererActor?.role).toBe('patient');
+      // Counterpart should have been swapped from patient → agent
+      expect(counterpartActor?.role).toBe('agent');
+    });
+
+    test('when evaluator assigns discoverer as patient, no swap occurs', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Source needs mentoring from candidate.',
+            score: 85,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-bob', role: 'agent' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find mentor',
+        options: { initialStatus: 'latent', minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalled();
+      const createdData = createSpy.mock.calls[0][0];
+      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-source');
+      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-bob');
+      // No swap — discoverer stays patient, counterpart stays agent
+      expect(discovererActor?.role).toBe('patient');
+      expect(counterpartActor?.role).toBe('agent');
+    });
+
+    test('when evaluator assigns both as peers, no swap occurs', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Symmetric collaboration match.',
+            score: 90,
+            actors: [
+              { userId: 'user-source', role: 'peer' as const, intentId: null },
+              { userId: 'user-bob', role: 'peer' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob',
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'collaborator' as const,
+          indexId: 'idx-1',
+        },
+      ]);
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'Find collaborator',
+        options: { initialStatus: 'latent', minScore: 70 },
+      } as OpportunityGraphInvokeInput);
+
+      expect(createSpy).toHaveBeenCalled();
+      const createdData = createSpy.mock.calls[0][0];
+      const discovererActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-source');
+      const counterpartActor = createdData.actors.find((a: OpportunityActor) => a.userId === 'user-bob');
+      // Both stay peer — no swap needed
+      expect(discovererActor?.role).toBe('peer');
+      expect(counterpartActor?.role).toBe('peer');
+    });
   });
 
   describe('Conditional routing: early exit', () => {

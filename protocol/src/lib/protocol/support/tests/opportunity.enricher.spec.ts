@@ -323,6 +323,7 @@ describe('Opportunity enricher', () => {
     expect(result.enriched).toBe(false);
     expect(result.data.actors).toHaveLength(1);
   });
+
 });
 
 /**

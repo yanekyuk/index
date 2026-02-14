@@ -515,6 +515,27 @@ export class OpportunityGraphFactory {
           // Do not add an "introducer" for opportunity_graph — that role is only for manual intros.
           // Automatic discovery has no human introducer; presenter uses Index as narrator.
           const actors: OpportunityActor[] = evaluatorActors;
+
+          // Lifecycle guard: discoverer must be patient or peer (sees first, can send).
+          // If evaluator assigned discoverer as agent, swap with a patient counterpart
+          // so the discoverer can see their own discovery at latent status.
+          const hasIntroducerActor = actors.some(a => a.role === 'introducer');
+          if (!hasIntroducerActor) {
+            const discovererIdx = actors.findIndex(a => a.userId === state.userId);
+            if (discovererIdx >= 0 && actors[discovererIdx].role === 'agent') {
+              const counterpartIdx = actors.findIndex(
+                (a, i) => i !== discovererIdx && a.role === 'patient'
+              );
+              actors[discovererIdx] = { ...actors[discovererIdx], role: 'patient' };
+              if (counterpartIdx >= 0) {
+                actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
+              }
+              logger.info('[Graph:Persist] Swapped discoverer from agent to patient for lifecycle visibility', {
+                discovererId: state.userId,
+              });
+            }
+          }
+
           const data: CreateOpportunityData = {
             detection: {
               source: 'opportunity_graph',

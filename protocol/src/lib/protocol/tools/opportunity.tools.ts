@@ -181,7 +181,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: created.id,
             matchReason: reasoning,
             score: confidence,
-            status: 'latent',
+            status: created.status ?? 'latent',
           }],
         });
       }
