@@ -79,7 +79,7 @@ function getNonIntroducerUserIds(data: CreateOpportunityData): Id<'users'>[] {
 }
 
 /**
- * Extract intent IDs from actors (for fallback relatedness when reasoning is short).
+ * Extract intent IDs from actors.
  */
 function getIntentIdsFromActors(actors: OpportunityActor[]): Set<string> {
   const ids = new Set<string>();
@@ -178,43 +178,21 @@ function mergeInterpretation(
 }
 
 /**
- * Determine if an existing opportunity is semantically related to the new one:
- * - If reasoning is long enough, embed both and compare cosine similarity.
- * - If reasoning is too short, consider related if they share at least one intent ID.
- */
-async function isSemanticallyRelated(
-  newData: CreateOpportunityData,
-  existing: Opportunity,
-  embedder: Embedder,
-  threshold: number
-): Promise<boolean> {
-  const newReasoning = (newData.interpretation?.reasoning ?? '').trim();
-  const existingReasoning = (existing.interpretation?.reasoning ?? '').trim();
-
-  if (
-    newReasoning.length < MIN_REASONING_LENGTH_FOR_EMBEDDING ||
-    existingReasoning.length < MIN_REASONING_LENGTH_FOR_EMBEDDING
-  ) {
-    return shareIntentIds(newData, existing);
-  }
-
-  try {
-    const result = (await embedder.generate([newReasoning, existingReasoning])) as number[][];
-    const newVec = result[0];
-    const existingVec = result[1];
-    if (!newVec?.length || !existingVec?.length) return shareIntentIds(newData, existing);
-    const sim = cosineSimilarity(newVec, existingVec);
-    return sim >= threshold;
-  } catch (e) {
-    logger.warn('[Enricher] Embedding check failed, fallback to intent overlap', { error: e });
-    return shareIntentIds(newData, existing);
-  }
-}
-
-/**
- * Enrich or create: find overlapping opportunities, filter by semantic relatedness,
- * merge actors and interpretation into a single CreateOpportunityData, and return
- * the data plus IDs to expire. If no related overlap, return original data unchanged.
+ * Enrich or create: find overlapping opportunities, filter by semantic relatedness
+ * using a two-phase approach, merge actors and interpretation into a single
+ * CreateOpportunityData, and return the data plus IDs to expire. If no related
+ * overlap, return original data unchanged.
+ *
+ * Phase 1 — Intent check (free, no API call):
+ *   Shared intent IDs mean the same declared user goal drove both opportunities.
+ *   This is rare because the IntentReconciler already deduplicates intents per-user
+ *   upstream, but when it fires it is definitive.
+ *
+ * Phase 2 — Batched embedding similarity (one API call for all remaining):
+ *   For opportunities without shared intents, embed all reasoning texts in a single
+ *   batch call and compare cosine similarity. Cross-user intent comparison (e.g.
+ *   Alice's "find ML co-founder" vs Bob's "join ML startup") is implicitly handled
+ *   here since reasoning text synthesizes both users' intents.
  */
 export async function enrichOrCreate(
   database: EnricherDatabase,
@@ -233,10 +211,56 @@ export async function enrichOrCreate(
   }
 
   const threshold = options?.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+
+  // Phase 1: Intent-based relatedness (free, strongest signal)
   const related: Opportunity[] = [];
+  const remaining: Opportunity[] = [];
   for (const opp of overlapping) {
-    const related_ = await isSemanticallyRelated(newData, opp, embedder, threshold);
-    if (related_) related.push(opp);
+    if (shareIntentIds(newData, opp)) {
+      related.push(opp);
+    } else {
+      remaining.push(opp);
+    }
+  }
+
+  // Phase 2: Batched embedding similarity (one API call for all remaining)
+  if (remaining.length > 0) {
+    const newReasoning = (newData.interpretation?.reasoning ?? '').trim();
+
+    // Only embed opps where both reasonings are long enough
+    const embeddable: Opportunity[] = [];
+    for (const opp of remaining) {
+      const existingReasoning = (opp.interpretation?.reasoning ?? '').trim();
+      if (
+        newReasoning.length >= MIN_REASONING_LENGTH_FOR_EMBEDDING &&
+        existingReasoning.length >= MIN_REASONING_LENGTH_FOR_EMBEDDING
+      ) {
+        embeddable.push(opp);
+      }
+      // Short reasoning + no shared intents (Phase 1 missed) → not related
+    }
+
+    if (embeddable.length > 0) {
+      try {
+        const textsToEmbed = [
+          newReasoning,
+          ...embeddable.map((o) => (o.interpretation?.reasoning ?? '').trim()),
+        ];
+        const vectors = (await embedder.generate(textsToEmbed)) as number[][];
+        const newVec = vectors[0];
+        if (newVec?.length) {
+          for (let i = 0; i < embeddable.length; i++) {
+            const existingVec = vectors[i + 1];
+            if (existingVec?.length && cosineSimilarity(newVec, existingVec) >= threshold) {
+              related.push(embeddable[i]);
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('[Enricher] Embedding check failed; intent-matched opportunities already captured', { error: e });
+        // Phase 1 matches are preserved; remaining opps without shared intents are not related
+      }
+    }
   }
 
   if (related.length === 0) {

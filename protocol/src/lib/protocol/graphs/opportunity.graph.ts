@@ -505,6 +505,37 @@ export class OpportunityGraphFactory {
         const initialStatus = state.options.initialStatus ?? 'pending';
 
         for (const evaluated of state.evaluatedOpportunities) {
+          const indexIdForActors = state.indexId ?? evaluated.actors[0]?.indexId;
+          const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
+            indexId: a.indexId ?? indexIdForActors,
+            userId: a.userId,
+            role: a.role,
+            ...(a.intentId ? { intent: a.intentId } : {}),
+          }));
+          // Do not add an "introducer" for opportunity_graph — that role is only for manual intros.
+          // Automatic discovery has no human introducer; presenter uses Index as narrator.
+          const actors: OpportunityActor[] = evaluatorActors;
+
+          // Lifecycle guard: discoverer must be patient or peer (sees first, can send).
+          // If evaluator assigned discoverer as agent, swap with a patient counterpart
+          // so the discoverer can see their own discovery at latent status.
+          const hasIntroducerActor = actors.some(a => a.role === 'introducer');
+          if (!hasIntroducerActor) {
+            const discovererIdx = actors.findIndex(a => a.userId === state.userId);
+            if (discovererIdx >= 0 && actors[discovererIdx].role === 'agent') {
+              const counterpartIdx = actors.findIndex(
+                (a, i) => i !== discovererIdx && a.role === 'patient'
+              );
+              actors[discovererIdx] = { ...actors[discovererIdx], role: 'patient' };
+              if (counterpartIdx >= 0) {
+                actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
+              }
+              logger.info('[Graph:Persist] Swapped discoverer from agent to patient for lifecycle visibility', {
+                discovererId: state.userId,
+              });
+            }
+          }
+
           const data: CreateOpportunityData = {
             detection: {
               source: 'opportunity_graph',
@@ -512,12 +543,7 @@ export class OpportunityGraphFactory {
               triggeredBy: state.indexedIntents[0]?.intentId,
               timestamp: now,
             },
-            actors: evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-              indexId: a.indexId,
-              userId: a.userId,
-              role: a.role,
-              ...(a.intentId ? { intent: a.intentId } : {}),
-            })),
+            actors,
             interpretation: {
               category: 'collaboration',
               reasoning: evaluated.reasoning,
@@ -808,16 +834,15 @@ export class OpportunityGraphFactory {
           };
         }
         const senderActor = opp.actors.find((a: OpportunityActor) => a.userId === state.userId);
+        const hasIntroducer = opp.actors.some((a: OpportunityActor) => a.role === 'introducer');
+        const canSend =
+          senderActor?.role === 'introducer' ||
+          senderActor?.role === 'peer' ||
+          (senderActor?.role === 'patient' && !hasIntroducer) ||
+          (senderActor?.role === 'party' && !hasIntroducer);
         if (!senderActor) {
           return { mutationResult: { success: false, error: 'You are not part of this opportunity.' } };
         }
-
-        const hasIntroducer = opp.actors.some((a: OpportunityActor) => a.role === 'introducer');
-        const canSend =
-          senderActor.role === 'introducer' ||
-          senderActor.role === 'peer' ||
-          (senderActor.role === 'patient' && !hasIntroducer) ||
-          (senderActor.role === 'party' && !hasIntroducer);
         if (!canSend) {
           return { mutationResult: { success: false, error: 'You cannot send this opportunity.' } };
         }

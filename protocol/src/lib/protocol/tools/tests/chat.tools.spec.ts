@@ -529,6 +529,94 @@ describe("read_intents tool (no indexId)", () => {
     expect(parsed.success).toBe(false);
     expect(parsed.error).toMatch(/Not authorized|other users' global intents/i);
   });
+
+  test("with allMemberIntents true, returns other members intents across all memberships", async () => {
+    const indexA = "a1b2c3d4-0000-4000-8000-0000000000a1";
+    const indexB = "a1b2c3d4-0000-4000-8000-0000000000b2";
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async (uid) =>
+        uid === testUserId
+          ? [
+              { indexId: indexA, indexTitle: "Builders", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+              { indexId: indexB, indexTitle: "Researchers", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+            ]
+          : [],
+      isIndexMember: async () => true,
+      getIndexIntentsForMember: async (indexId) => {
+        if (indexId === indexA) {
+          return [
+            { id: "mine-a", payload: "My intent", summary: "Mine", createdAt: new Date("2025-01-01"), userId: testUserId, userName: "Test User" },
+            { id: "alice-a", payload: "Alice intent", summary: "Alice", createdAt: new Date("2025-01-03"), userId: "user-alice", userName: "Alice" },
+          ] as IndexedIntentDetails[];
+        }
+        if (indexId === indexB) {
+          return [
+            { id: "bob-b", payload: "Bob intent", summary: "Bob", createdAt: new Date("2025-01-02"), userId: "user-bob", userName: "Bob" },
+          ] as IndexedIntentDetails[];
+        }
+        return [];
+      },
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { allMemberIntents?: boolean }) => Promise<string> };
+    const result = await tool.invoke({ allMemberIntents: true });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.count).toBe(2);
+    expect(parsed.data.intents).toHaveLength(2);
+    expect(parsed.data.intents[0]).toMatchObject({ id: "alice-a", userId: "user-alice", indexName: "Builders" });
+    expect(parsed.data.intents[1]).toMatchObject({ id: "bob-b", userId: "user-bob", indexName: "Researchers" });
+    expect(parsed.data.indexes).toHaveLength(2);
+  });
+
+  test("with allMemberIntents true and explicit indexId returns error", async () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { allMemberIntents?: boolean; indexId?: string }) => Promise<string> };
+    const result = await tool.invoke({ allMemberIntents: true, indexId: testIndexId });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/Do not pass indexId/i);
+  });
+
+  test("with allMemberIntents true supports limit/page pagination", async () => {
+    const indexA = "a1b2c3d4-0000-4000-8000-0000000000c1";
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async (uid) =>
+        uid === testUserId
+          ? [
+              { indexId: indexA, indexTitle: "Builders", indexPrompt: null, permissions: ["member"], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+            ]
+          : [],
+      isIndexMember: async () => true,
+      getIndexIntentsForMember: async () =>
+        [
+          { id: "i-1", payload: "Intent 1", summary: "1", createdAt: new Date("2025-01-05"), userId: "u-1", userName: "U1" },
+          { id: "i-2", payload: "Intent 2", summary: "2", createdAt: new Date("2025-01-04"), userId: "u-2", userName: "U2" },
+          { id: "i-3", payload: "Intent 3", summary: "3", createdAt: new Date("2025-01-03"), userId: "u-3", userName: "U3" },
+        ] as IndexedIntentDetails[],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "read_intents") as {
+      invoke: (args: { allMemberIntents?: boolean; limit?: number; page?: number }) => Promise<string>;
+    };
+
+    const page1 = JSON.parse(await tool.invoke({ allMemberIntents: true, limit: 2, page: 1 }));
+    expect(page1.success).toBe(true);
+    expect(page1.data.count).toBe(2);
+    expect(page1.data.totalCount).toBe(3);
+    expect(page1.data.totalPages).toBe(2);
+    expect(page1.data.intents[0].id).toBe("i-1");
+    expect(page1.data.intents[1].id).toBe("i-2");
+
+    const page2 = JSON.parse(await tool.invoke({ allMemberIntents: true, limit: 2, page: 2 }));
+    expect(page2.success).toBe(true);
+    expect(page2.data.count).toBe(1);
+    expect(page2.data.intents[0].id).toBe("i-3");
+  });
 });
 
 describe("read_users tool", () => {

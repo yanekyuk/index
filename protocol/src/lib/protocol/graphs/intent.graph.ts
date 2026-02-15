@@ -5,10 +5,107 @@ import { SemanticVerifier } from "../agents/intent.verifier";
 import { IntentReconciler } from "../agents/intent.reconciler";
 import { IntentGraphDatabase } from "../interfaces/database.interface";
 import type { EmbeddingGenerator } from "../interfaces/embedder.interface";
+import type { IntentGraphQueue } from "../interfaces/queue.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { addJob as addIntentJob } from "../../../queues/intent.queue";
 
 const logger = protocolLogger("IntentGraphFactory");
+const MAX_PERMISSIBLE_ENTROPY = 0.75;
+const MIN_CLEAR_INTENT_SCORE = 55;
+const GENERIC_JOB_PHRASE = /\b(?:a|any|some)\s+job\b/i;
+
+type ParsedProfile = {
+  identity?: { bio?: string; name?: string; location?: string };
+  narrative?: { context?: string };
+  attributes?: { skills?: string[]; interests?: string[] };
+};
+
+const parseProfile = (profile: string): ParsedProfile | null => {
+  if (!profile || !profile.trim()) return null;
+  try {
+    const parsed = JSON.parse(profile) as ParsedProfile;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const inferRoleFromProfileText = (text: string): string | null => {
+  const normalized = text.toLowerCase();
+  if (/\b(engineer|developer)\b/.test(normalized)) return "software engineering";
+  if (/\b(designer|ux|ui)\b/.test(normalized)) return "product design";
+  if (/\b(marketing|marketer|growth)\b/.test(normalized)) return "marketing";
+  if (/\b(product manager|product)\b/.test(normalized)) return "product management";
+  if (/\b(data scientist|machine learning|ml|ai)\b/.test(normalized)) return "AI/ML";
+  if (/\b(sales|account executive|business development)\b/.test(normalized)) return "sales";
+  return null;
+};
+
+const buildJobQualifierFromProfile = (profile: ParsedProfile | null): string | null => {
+  if (!profile) return null;
+
+  const skills = (profile.attributes?.skills ?? [])
+    .filter((skill): skill is string => typeof skill === "string" && skill.trim().length > 0)
+    .slice(0, 2);
+  const interests = (profile.attributes?.interests ?? [])
+    .filter((interest): interest is string => typeof interest === "string" && interest.trim().length > 0)
+    .slice(0, 1);
+
+  const profileText = [
+    profile.identity?.bio,
+    profile.narrative?.context,
+  ]
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .join(" ");
+  const roleHint = inferRoleFromProfileText(profileText);
+
+  if (skills.length > 0 && roleHint) {
+    return `${skills.join(" / ")} ${roleHint} role`;
+  }
+  if (skills.length > 0) {
+    return `${skills.join(" / ")} role`;
+  }
+  if (interests.length > 0 && roleHint) {
+    return `${interests[0]} ${roleHint} role`;
+  }
+  if (roleHint) {
+    return `${roleHint} role`;
+  }
+  return null;
+};
+
+const enrichVagueIntentWithProfile = (description: string, profileContext: string): string => {
+  const trimmed = description?.trim();
+  if (!trimmed) return description;
+
+  const isGenericJobRequest =
+    GENERIC_JOB_PHRASE.test(trimmed) ||
+    /\b(?:find|get|look(?:ing)?\s+for|want)\s+(?:to\s+)?(?:find\s+)?job\b/i.test(trimmed);
+  if (!isGenericJobRequest) return description;
+
+  const profile = parseProfile(profileContext);
+  const qualifier = buildJobQualifierFromProfile(profile);
+  if (!qualifier) return description;
+
+  const enriched = trimmed
+    .replace(/\ba job\b/i, `a ${qualifier}`)
+    .replace(/\bjob\b/i, `${qualifier}`)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return enriched.length > 0 ? enriched : description;
+};
+
+const isVague = (description: string, entropy: number, clarity: number): boolean => {
+  if (GENERIC_JOB_PHRASE.test(description)) return true;
+  if (entropy > MAX_PERMISSIBLE_ENTROPY) return true;
+  if (clarity < MIN_CLEAR_INTENT_SCORE) return true;
+  return false;
+};
+
+const toSpeechActType = (classification?: string): "COMMISSIVE" | "DIRECTIVE" | null => {
+  if (classification === "COMMISSIVE" || classification === "DIRECTIVE") return classification;
+  return null;
+};
 
 /**
  * Factory class to build and compile the Intent Processing Graph.
@@ -17,6 +114,7 @@ export class IntentGraphFactory {
   constructor(
     private database: IntentGraphDatabase,
     private embedder?: EmbeddingGenerator,
+    private intentQueue?: IntentGraphQueue,
   ) { }
 
   public createGraph() {
@@ -127,12 +225,39 @@ export class IntentGraphFactory {
       const verificationResults = await Promise.all(
         intents.map(async (intent): Promise<VerifiedIntent | null> => {
           try {
-            const verdict = await verifier.invoke(intent.description, state.userProfile);
+            let description = intent.description;
+            let verdict = await verifier.invoke(description, state.userProfile);
+
+            if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
+              const enrichedDescription = enrichVagueIntentWithProfile(description, state.userProfile);
+              if (enrichedDescription !== description) {
+                logger.info("Enriched vague intent using profile context", {
+                  before: description,
+                  after: enrichedDescription,
+                });
+                const enrichedVerdict = await verifier.invoke(enrichedDescription, state.userProfile);
+                const becameClear =
+                  enrichedVerdict.semantic_entropy < verdict.semantic_entropy ||
+                  enrichedVerdict.felicity_scores.clarity > verdict.felicity_scores.clarity;
+                if (becameClear) {
+                  description = enrichedDescription;
+                  verdict = enrichedVerdict;
+                }
+              }
+            }
 
             // Filter Logic: Must be a Commissive, Directive, or Declaration
             const VALID_TYPES = ['COMMISSIVE', 'DIRECTIVE', 'DECLARATION'];
             if (!VALID_TYPES.includes(verdict.classification)) {
-              logger.warn(`Dropping intent: "${intent.description}" (Type: ${verdict.classification})`);
+              logger.warn(`Dropping intent: "${description}" (Type: ${verdict.classification})`);
+              return null;
+            }
+
+            if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
+              logger.warn(`Dropping vague intent after verification: "${description}"`, {
+                entropy: verdict.semantic_entropy,
+                clarity: verdict.felicity_scores.clarity,
+              });
               return null;
             }
 
@@ -146,6 +271,7 @@ export class IntentGraphFactory {
             // Return enriched intent
             return {
               ...intent,
+              description,
               verification: verdict,
               score
             };
@@ -252,11 +378,27 @@ export class IntentGraphFactory {
 
       logger.info(`Executing ${actions.length} actions...`);
       const results: ExecutionResult[] = [];
+      const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
+      for (const verifiedIntent of state.verifiedIntents) {
+        verifiedIntentByPayload.set(verifiedIntent.description, verifiedIntent);
+        verifiedIntentByPayload.set(sanitizePayload(verifiedIntent.description), verifiedIntent);
+      }
 
       for (const action of actions) {
+        const actionType = action.type.toLowerCase() as 'create' | 'update' | 'expire';
         try {
-          if (action.type === 'create') {
-            const sanitizedPayload = sanitizePayload(action.payload);
+          if (actionType === 'create') {
+            const createAction = action as {
+              payload: string;
+              score: number | null;
+              semanticEntropy?: number | null;
+              referentialAnchor?: string | null;
+              intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+            };
+            const sanitizedPayload = sanitizePayload(createAction.payload);
+            const matchedVerifiedIntent =
+              verifiedIntentByPayload.get(createAction.payload) ||
+              verifiedIntentByPayload.get(sanitizedPayload);
 
             // Generate embedding for the intent payload
             let flatEmbedding: number[] | undefined;
@@ -275,20 +417,40 @@ export class IntentGraphFactory {
             const created = await this.database.createIntent({
               userId: state.userId,
               payload: sanitizedPayload,
-              confidence: action.score ? action.score / 100 : 1.0,
+              confidence: createAction.score ? createAction.score / 100 : 1.0,
               inferenceType: 'explicit',
               sourceType: 'discovery_form',
               embedding: flatEmbedding,
+              semanticEntropy:
+                createAction.semanticEntropy ??
+                matchedVerifiedIntent?.verification?.semantic_entropy ??
+                null,
+              referentialAnchor:
+                createAction.referentialAnchor ??
+                matchedVerifiedIntent?.verification?.referential_anchor ??
+                null,
+              felicityAuthority: matchedVerifiedIntent?.verification?.felicity_scores.authority ?? null,
+              felicitySincerity: matchedVerifiedIntent?.verification?.felicity_scores.sincerity ?? null,
+              intentMode: createAction.intentMode ?? null,
+              speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
             });
 
             results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
             logger.info(`Created intent: ${created.id}`);
-            addIntentJob('generate_hyde', { intentId: created.id, userId: state.userId }).catch((err) =>
+            this.intentQueue?.addGenerateHydeJob({ intentId: created.id, userId: state.userId }).catch((err) =>
               logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
             );
 
-          } else if (action.type === 'update') {
-            const sanitizedPayload = sanitizePayload(action.payload);
+          } else if (actionType === 'update') {
+            const updateAction = action as {
+              id: string;
+              payload: string;
+              intentMode?: 'REFERENTIAL' | 'ATTRIBUTIVE' | null;
+            };
+            const sanitizedPayload = sanitizePayload(updateAction.payload);
+            const matchedVerifiedIntent =
+              verifiedIntentByPayload.get(updateAction.payload) ||
+              verifiedIntentByPayload.get(sanitizedPayload);
 
             // Regenerate embedding for the updated payload
             let flatEmbedding: number[] | undefined;
@@ -298,49 +460,60 @@ export class IntentGraphFactory {
                 flatEmbedding = Array.isArray(embedding?.[0])
                   ? (embedding as number[][])[0]
                   : (embedding as number[]);
-                logger.info("Generated embedding for updated intent", { intentId: action.id, dimensions: flatEmbedding?.length });
+                logger.info("Generated embedding for updated intent", { intentId: updateAction.id, dimensions: flatEmbedding?.length });
               } catch (embErr) {
                 logger.error("Failed to generate embedding for intent update (continuing without)", { error: embErr });
               }
             }
 
-            const updated = await this.database.updateIntent(action.id, {
+            const updated = await this.database.updateIntent(updateAction.id, {
               payload: sanitizedPayload,
               embedding: flatEmbedding,
+              semanticEntropy:
+                matchedVerifiedIntent?.verification?.semantic_entropy ??
+                null,
+              referentialAnchor:
+                matchedVerifiedIntent?.verification?.referential_anchor ??
+                null,
+              felicityAuthority: matchedVerifiedIntent?.verification?.felicity_scores.authority ?? null,
+              felicitySincerity: matchedVerifiedIntent?.verification?.felicity_scores.sincerity ?? null,
+              intentMode: updateAction.intentMode ?? null,
+              speechActType: toSpeechActType(matchedVerifiedIntent?.verification?.classification),
             });
             results.push({
               actionType: 'update',
               success: !!updated,
-              intentId: action.id,
+              intentId: updateAction.id,
               payload: sanitizedPayload,
               error: updated ? undefined : 'Intent not found'
             });
-            logger.info(`Updated intent: ${action.id}`);
+            logger.info(`Updated intent: ${updateAction.id}`);
             if (updated) {
-              addIntentJob('generate_hyde', { intentId: action.id, userId: state.userId }).catch((err) =>
-                logger.error('Failed to enqueue intent HyDE job', { intentId: action.id, error: err })
+              this.intentQueue?.addGenerateHydeJob({ intentId: updateAction.id, userId: state.userId }).catch((err) =>
+                logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
               );
             }
 
-          } else if (action.type === 'expire') {
-            const result = await this.database.archiveIntent(action.id);
+          } else if (actionType === 'expire') {
+            const expireAction = action as { id: string };
+            const result = await this.database.archiveIntent(expireAction.id);
             results.push({
               actionType: 'expire',
               success: result.success,
-              intentId: action.id,
+              intentId: expireAction.id,
               error: result.error
             });
-            logger.info(`Archived intent: ${action.id}`);
+            logger.info(`Archived intent: ${expireAction.id}`);
             if (result.success) {
-              addIntentJob('delete_hyde', { intentId: action.id }).catch((err) =>
-                logger.error('Failed to enqueue intent HyDE delete job', { intentId: action.id, error: err })
+              this.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
+                logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
               );
             }
           }
         } catch (error) {
           logger.error(`Failed to execute ${action.type}:`, { error });
           results.push({
-            actionType: action.type,
+            actionType,
             success: false,
             intentId: 'id' in action ? action.id : undefined,
             error: error instanceof Error ? error.message : 'Unknown error'

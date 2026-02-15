@@ -1,9 +1,6 @@
 /**
  * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search (HyDE multi-strategy).
  * Uses the same OpenRouter + OpenAI embedder config as lib/embedder (OpenRouterGenerator).
- *
- * Types below align with lib/protocol/interfaces/embedder.interface.ts so this adapter
- * is structurally compatible with Embedder without importing from lib/protocol.
  */
 
 import OpenAI from 'openai';
@@ -15,18 +12,16 @@ import {
 } from '../lib/embedder/embedder.config';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
+import {
+  type HydeStrategy,
+  HYDE_STRATEGY_TARGET_CORPUS,
+} from '../lib/protocol/agents/hyde.strategies';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (align with lib/protocol/interfaces/embedder.interface.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type HydeStrategy =
-  | 'mirror'
-  | 'reciprocal'
-  | 'mentor'
-  | 'investor'
-  | 'collaborator'
-  | 'hiree';
+export type { HydeStrategy } from '../lib/protocol/agents/hyde.strategies';
 
 export interface HydeSearchOptions {
   strategies: HydeStrategy[];
@@ -57,16 +52,6 @@ export type VectorStoreOption<T> = {
   filter?: Record<string, unknown>;
   candidates?: (T & { embedding?: number[] | null })[];
   minScore?: number;
-};
-
-/** Strategy → target corpus for HyDE search (profiles vs intents). */
-const HYDE_STRATEGY_TARGET_CORPUS: Record<HydeStrategy, 'profiles' | 'intents'> = {
-  mirror: 'profiles',
-  reciprocal: 'intents',
-  mentor: 'profiles',
-  investor: 'profiles',
-  collaborator: 'intents',
-  hiree: 'intents',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

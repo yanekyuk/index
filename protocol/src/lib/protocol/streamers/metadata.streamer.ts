@@ -30,12 +30,52 @@ const TOOL_DESCRIPTIONS: Record<string, string> = {
   update_index: "Updating index...",
   delete_index: "Deleting index...",
   create_index_membership: "Adding member...",
-  read_users: "Fetching members...",
+  read_index_memberships: "Fetching memberships...",
   create_opportunities: "Creating draft opportunities...",
   list_my_opportunities: "Listing your opportunities...",
-  send_opportunity: "Sending opportunity...",
+  update_opportunity: "Updating opportunity...",
   scrape_url: "Reading web content...",
+  read_docs: "Looking up protocol docs...",
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PARAM FORMATTING
+// ══════════════════════════════════════════════════════════════════════════════
+
+/** Max characters for a single parameter value before truncating. */
+const PARAM_VALUE_MAX = 120;
+
+/**
+ * Formats tool arguments into a compact, human-readable string for the thinking panel.
+ * Skips empty/undefined values. Truncates long strings. Returns empty string when no args.
+ */
+function formatToolParams(args: Record<string, unknown>): string {
+  const entries = Object.entries(args).filter(
+    ([, v]) => v !== undefined && v !== null && v !== ""
+  );
+  if (entries.length === 0) return "";
+
+  const parts = entries.map(([key, value]) => {
+    let display: string;
+    if (typeof value === "string") {
+      display = value.length > PARAM_VALUE_MAX
+        ? value.slice(0, PARAM_VALUE_MAX) + "…"
+        : value;
+    } else if (Array.isArray(value)) {
+      display = `[${value.length} item${value.length !== 1 ? "s" : ""}]`;
+    } else if (typeof value === "object") {
+      display = JSON.stringify(value);
+      if (display.length > PARAM_VALUE_MAX) {
+        display = display.slice(0, PARAM_VALUE_MAX) + "…";
+      }
+    } else {
+      display = String(value);
+    }
+    return `  ${key}: ${display}`;
+  });
+
+  return parts.join("\n");
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // METADATA STREAMER
@@ -72,7 +112,7 @@ export class MetadataStreamer {
 
   /**
    * Processes an `on_tool_start` graph event.
-   * Returns tool_start + thinking (user-friendly description) stream events.
+   * Returns tool_start + thinking (user-friendly description + params) stream events.
    */
   handleToolStart(sessionId: string, event: { name?: string; data?: { input?: Record<string, unknown> } }): ChatStreamEvent[] {
     const toolName = event.name || "unknown_tool";
@@ -80,11 +120,16 @@ export class MetadataStreamer {
     logger.info("Tool starting", { toolName, args: toolArgs });
 
     const description = TOOL_DESCRIPTIONS[toolName] || `Running ${toolName}...`;
+    const paramsSummary = formatToolParams(toolArgs);
+    const thinkingContent = paramsSummary
+      ? `${description}\n${paramsSummary}`
+      : description;
+
     this.toolsInCurrentIteration.push(toolName);
 
     return [
       createToolStartEvent(sessionId, toolName, toolArgs),
-      createThinkingEvent(sessionId, description, toolName),
+      createThinkingEvent(sessionId, thinkingContent, toolName),
     ];
   }
 

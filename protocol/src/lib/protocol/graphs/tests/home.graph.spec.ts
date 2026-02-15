@@ -5,7 +5,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test' });
 
 import { describe, test, expect } from 'bun:test';
-import { HomeGraphFactory } from '../home.graph';
+import { HomeGraphFactory, stripLeadingNarratorName } from '../home.graph';
 import type { HomeGraphDatabase } from '../../interfaces/database.interface';
 import type { Opportunity } from '../../interfaces/database.interface';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON, getIconNamesForPrompt } from '../../support/lucide.icon-catalog';
@@ -118,6 +118,22 @@ describe('HomeGraph', () => {
     expect(typeof firstItem.mutualIntentsLabel).toBe('string');
     expect(resolveHomeSectionIcon(firstSection.iconName)).toBeDefined();
   }, 30000);
+
+  test('manual source without introducer actor yields Index as narrator (no false intro attribution)', async () => {
+    const viewerId = 'viewer-1';
+    const otherId = 'other-1';
+    const opp = minimalOpportunityAgentViewer(viewerId, otherId);
+    expect(opp.detection?.source).toBe('manual');
+    expect(opp.actors.some((a) => a.role === 'introducer')).toBe(false);
+    const db = createMockDb([opp]);
+    const factory = new HomeGraphFactory(db);
+    const graph = factory.createGraph();
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+    expect(result.error).toBeUndefined();
+    expect(result.sections.length).toBeGreaterThanOrEqual(1);
+    const firstItem = result.sections[0]?.items[0];
+    expect(firstItem?.narratorChip?.name).toBe('Index');
+  }, 70000);
 
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
     const viewerId = 'viewer-1';
@@ -370,6 +386,28 @@ describe('HomeGraph', () => {
     expect(totalItems).toBe(0);
   }, 30000);
 
+});
+
+describe('stripLeadingNarratorName', () => {
+  test('strips leading narrator name from remark', () => {
+    expect(stripLeadingNarratorName('Alice introduced you two.', 'Alice')).toBe('introduced you two.');
+    expect(stripLeadingNarratorName('Yankı Ekin Yüksel introduced you two, sensing a valuable connection.', 'Yankı Ekin Yüksel')).toBe('introduced you two, sensing a valuable connection.');
+  });
+
+  test('strips name followed by colon and space', () => {
+    expect(stripLeadingNarratorName('Bob: Bob thinks you should meet.', 'Bob')).toBe('thinks you should meet.');
+  });
+
+  test('leaves remark unchanged when it does not start with narrator name', () => {
+    const remark = 'Based on your overlapping intents.';
+    expect(stripLeadingNarratorName(remark, 'Index')).toBe(remark);
+    expect(stripLeadingNarratorName(remark, 'Alice')).toBe(remark);
+  });
+
+  test('returns original remark when narrator name is empty', () => {
+    const remark = 'Alice introduced you two.';
+    expect(stripLeadingNarratorName(remark, '')).toBe(remark);
+  });
 });
 
 describe('Lucide icon catalog', () => {

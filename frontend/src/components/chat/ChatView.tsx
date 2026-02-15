@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Channel, MessageResponse, LocalMessage } from 'stream-chat';
+import { Channel, MessageResponse, LocalMessage, type Event as StreamEvent } from 'stream-chat';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Clock, Check, SkipForward, Loader2, ArrowUp, X, MoreHorizontal, Trash2 } from 'lucide-react';
@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { ContentContainer } from '@/components/layout';
 import { SystemMessageCard, type SystemMessagePresentation } from './SystemMessageCard';
+import { getDirectChannelId } from '@/lib/chat-channel';
 
 interface ChatMessage {
   id: string;
@@ -67,10 +68,6 @@ const transformMessage = (msg: MessageResponse | LocalMessage): ChatMessage => {
   };
 };
 
-interface ChannelEvent {
-  channel?: { id: string };
-}
-
 interface ChatViewProps {
   userId: string;
   userName: string;
@@ -111,6 +108,9 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
   const [acceptedOpportunities, setAcceptedOpportunities] = useState<AcceptedOpportunityMeta[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const messageTimestamp = (message: ChatMessage) =>
+    message.created_at ? new Date(message.created_at).getTime() : 0;
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, []);
@@ -120,18 +120,69 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
 
     let mounted = true;
     let currentChannel: Channel | null = null;
-    let handleMessage: ((event: ChannelEvent) => void) | null = null;
-    let handleMessageUpdated: ((event: ChannelEvent) => void) | null = null;
+    let handleMessage: ((event: StreamEvent) => void) | null = null;
+    let handleMessageUpdated: ((event: StreamEvent) => void) | null = null;
     let syncMessagesHandler: (() => void) | null = null;
+    const markReadIfVisible = async (ch: Channel) => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      try {
+        await ch.markRead();
+      } catch {
+        // Read state sync is best-effort.
+      }
+    };
+    const attachChannelListeners = (ch: Channel) => {
+      syncMessagesHandler = () => {
+        if (mounted && ch.state.messages) {
+          setMessages(ch.state.messages.map(transformMessage));
+          const latestChannelData = ch.data as { acceptedOpportunities?: AcceptedOpportunityMeta[] } | undefined;
+          setAcceptedOpportunities(Array.isArray(latestChannelData?.acceptedOpportunities) ? latestChannelData.acceptedOpportunities : []);
+          scrollToBottom();
+          void markReadIfVisible(ch);
+        }
+      };
+      handleMessage = (event: StreamEvent) => {
+        if (!mounted) return;
+        if (!event.message) {
+          syncMessagesHandler?.();
+          return;
+        }
+
+        const incoming = transformMessage(event.message);
+        setMessages((prev) => {
+          const existingIndex = prev.findIndex((msg) => msg.id === incoming.id);
+          if (existingIndex >= 0) {
+            const next = [...prev];
+            next[existingIndex] = incoming;
+            return next;
+          }
+
+          const next = [...prev, incoming];
+          next.sort((a, b) => messageTimestamp(a) - messageTimestamp(b));
+          return next;
+        });
+        scrollToBottom();
+        void markReadIfVisible(ch);
+      };
+      handleMessageUpdated = (event: StreamEvent) => {
+        if (!mounted) return;
+        if (!event.message) {
+          syncMessagesHandler?.();
+          return;
+        }
+
+        const updated = transformMessage(event.message);
+        setMessages((prev) => prev.map((msg) => (msg.id === updated.id ? updated : msg)));
+      };
+
+      ch.on('message.new', handleMessage);
+      ch.on('message.updated', handleMessageUpdated);
+      ch.on('channel.updated', syncMessagesHandler);
+    };
 
     const initChannel = async () => {
       try {
-        const expectedChannelId = initialChannelId ?? (() => {
-          const sortedIds = [client.userID, userId].sort().join('_');
-          return sortedIds.length > 64
-            ? (() => { let hash = 0; for (let i = 0; i < sortedIds.length; i++) { const char = sortedIds.charCodeAt(i); hash = ((hash << 5) - hash) + char; hash = hash & hash; } return Math.abs(hash).toString(36).slice(0, 63); })()
-            : sortedIds;
-        })();
+        const expectedChannelId = initialChannelId ?? await getDirectChannelId(client.userID!, userId);
 
         let existingChannels = await client.queryChannels({ type: 'messaging', id: expectedChannelId }, {}, { limit: 1, watch: true, state: true });
 
@@ -148,6 +199,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
           if (!mounted) return;
           await ch.watch();
           setChannel(ch);
+          await markReadIfVisible(ch);
 
           const channelData = ch.data as {
             pending?: boolean;
@@ -164,20 +216,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
           setMessages(ch.state.messages.map(transformMessage));
           setLoading(false);
 
-          syncMessagesHandler = () => {
-            if (mounted && ch.state.messages) {
-              setMessages(ch.state.messages.map(transformMessage));
-              const latestChannelData = ch.data as { acceptedOpportunities?: AcceptedOpportunityMeta[] } | undefined;
-              setAcceptedOpportunities(Array.isArray(latestChannelData?.acceptedOpportunities) ? latestChannelData.acceptedOpportunities : []);
-              scrollToBottom();
-            }
-          };
-          handleMessage = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
-          handleMessageUpdated = (event: ChannelEvent) => { if (mounted && event.channel?.id === ch.id) syncMessagesHandler?.(); };
-
-          ch.on('message.new', handleMessage);
-          ch.on('message.updated', handleMessageUpdated);
-          ch.on('channel.updated', syncMessagesHandler);
+          attachChannelListeners(ch);
         } else {
           if (initialChannelId != null) {
             console.warn(
@@ -188,10 +227,15 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
           }
           const newCh = await getOrCreateChannel(userId, userName, userAvatar);
           if (!newCh) { setLoading(false); return; }
+          await newCh.watch();
           currentChannel = newCh;
           setIsNewConversation(true);
           setChannel(newCh);
-          setMessages([]);
+          await markReadIfVisible(newCh);
+          setMessages(newCh.state.messages.map(transformMessage));
+          const channelData = newCh.data as { acceptedOpportunities?: AcceptedOpportunityMeta[] } | undefined;
+          setAcceptedOpportunities(Array.isArray(channelData?.acceptedOpportunities) ? channelData.acceptedOpportunities : []);
+          attachChannelListeners(newCh);
           setLoading(false);
           return;
         }
@@ -225,7 +269,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
     scrollToBottom();
 
     try {
-      let activeChannel = channel;
+      const activeChannel = channel;
 
       if (isNewConversation && activeChannel) {
         await activeChannel.watch();

@@ -2,27 +2,10 @@
 // HyDE (Hypothetical Document Embeddings) search types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Strategy names for HyDE-based multi-strategy search (aligns with lib/protocol/agents/hyde). */
-export type HydeStrategy =
-  | 'mirror'
-  | 'reciprocal'
-  | 'mentor'
-  | 'investor'
-  | 'collaborator'
-  | 'hiree';
+export type { HydeStrategy, HydeTargetCorpus } from '../agents/hyde.strategies';
+export { HYDE_STRATEGY_TARGET_CORPUS } from '../agents/hyde.strategies';
 
-/** Which corpus a HyDE strategy searches (profiles = user_profiles.hyde_embedding, intents = intents.embedding). */
-export type HydeTargetCorpus = 'profiles' | 'intents';
-
-/** Mapping from strategy to target corpus for search. Used by embedder adapter. */
-export const HYDE_STRATEGY_TARGET_CORPUS: Record<HydeStrategy, HydeTargetCorpus> = {
-  mirror: 'profiles',
-  reciprocal: 'intents',
-  mentor: 'profiles',
-  investor: 'profiles',
-  collaborator: 'intents',
-  hiree: 'intents',
-};
+import type { HydeStrategy } from '../agents/hyde.strategies';
 
 /** Options for searchWithHydeEmbeddings (index scope, limits, min score). */
 export interface HydeSearchOptions {

@@ -31,7 +31,7 @@ export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, updateUser, refetchUser } = useAuthContext();
-  const { client, isReady } = useStreamChat();
+  const { client, isReady, requestBrowserNotifications } = useStreamChat();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { getAccessToken, logout } = usePrivy();
@@ -50,6 +50,7 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
+  const unreadRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
@@ -86,6 +87,9 @@ export default function Sidebar() {
     if (!user?.id) {
       return;
     }
+
+    // Prompt once so native browser notifications can be shown for new chat messages.
+    void requestBrowserNotifications();
 
     setNavigatingToChat(true);
     try {
@@ -150,34 +154,54 @@ export default function Sidebar() {
 
     const fetchUnreadCount = async () => {
       try {
-        const filter = {
-          type: 'messaging',
-          members: { $in: [client.userID || ''] },
-        };
-        const channels = await client.queryChannels(filter, {}, {
-          watch: true,
-          state: true,
-        });
-        
-        const total = channels.reduce((sum, ch) => sum + (ch.state.unreadCount || 0), 0);
+        const channels = await client.queryChannels(
+          {
+            type: 'messaging',
+            members: { $in: [client.userID || ''] },
+          },
+          {},
+          { limit: 50, watch: false, state: true }
+        );
+        const total = channels.reduce((sum, channel) => sum + channel.countUnread(), 0);
         setTotalUnreadCount(total);
       } catch (error) {
         console.error('Failed to fetch unread count:', error);
       }
     };
 
-    fetchUnreadCount();
+    void fetchUnreadCount();
 
-    // Listen for message events to update unread count
-    const handleEvent = () => fetchUnreadCount();
+    // Stream emits total_unread_count on many events; prefer that, with API fallback.
+    const scheduleUnreadRefresh = () => {
+      if (unreadRefreshTimerRef.current) return;
+      unreadRefreshTimerRef.current = setTimeout(() => {
+        unreadRefreshTimerRef.current = null;
+        void fetchUnreadCount();
+      }, 250);
+    };
+    const handleEvent = (event?: { total_unread_count?: number; type?: string }) => {
+      if (typeof event?.total_unread_count === 'number') {
+        setTotalUnreadCount(event.total_unread_count);
+        return;
+      }
+      scheduleUnreadRefresh();
+    };
     client.on('message.new', handleEvent);
+    client.on('notification.message_new', handleEvent);
     client.on('message.read', handleEvent);
     client.on('notification.mark_read', handleEvent);
+    client.on('notification.mark_unread', handleEvent);
 
     return () => {
+      if (unreadRefreshTimerRef.current) {
+        clearTimeout(unreadRefreshTimerRef.current);
+        unreadRefreshTimerRef.current = null;
+      }
       client.off('message.new', handleEvent);
+      client.off('notification.message_new', handleEvent);
       client.off('message.read', handleEvent);
       client.off('notification.mark_read', handleEvent);
+      client.off('notification.mark_unread', handleEvent);
     };
   }, [isReady, client]);
 
@@ -226,7 +250,7 @@ export default function Sidebar() {
         <button
           onClick={handleChatClick}
           disabled={navigatingToChat}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+          className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
             isMessagesView
               ? 'bg-gray-100 text-black font-bold'
               : 'text-black font-medium hover:bg-gray-50'
@@ -235,7 +259,7 @@ export default function Sidebar() {
           <MessagesSquare className="w-5 h-5" />
           <span className="flex-1 text-left">Chat</span>
           {totalUnreadCount > 0 && (
-            <span className="bg-[#041729] text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
+            <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded-full min-w-[20px] text-center">
               {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
             </span>
           )}

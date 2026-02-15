@@ -16,9 +16,16 @@ import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { adminQueuesApp } from './controllers/queues.controller';
-// Bootstrap queue workers so jobs are processed in this process
-import './queues/intent.queue';
-import './queues/opportunity.queue';
+// Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
+import { intentQueue } from './queues/intent.queue';
+import { opportunityQueue } from './queues/opportunity.queue';
+import { notificationQueue } from './queues/notification.queue';
+import { hydeQueue } from './queues/hyde.queue';
+
+intentQueue.startWorker();
+opportunityQueue.startWorker();
+notificationQueue.startWorker();
+hydeQueue.startCrons();
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';
@@ -111,6 +118,14 @@ Bun.serve({
       );
     }
 
+    // Bull Board UI at /dev/queues (before API loop so it is always served in dev)
+    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
+      const res = await adminQueuesApp.fetch(req);
+      const newHeaders = new Headers(res.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
+    }
+
     // Iterate over controllers and routes to find a match.
     // Optimization: could pre-compile regex or a router map.
     // For now, simple iteration is fine for small number of routes.
@@ -194,14 +209,6 @@ Bun.serve({
           }
         }
       }
-    }
-
-    // Bull Board UI at /dev/queues (disabled in production)
-    if (!IS_PRODUCTION && (url.pathname === '/dev/queues' || url.pathname.startsWith('/dev/queues/'))) {
-      const res = await adminQueuesApp.fetch(req);
-      const newHeaders = new Headers(res.headers);
-      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
-      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
     logger.info('No match found', { path: url.pathname });

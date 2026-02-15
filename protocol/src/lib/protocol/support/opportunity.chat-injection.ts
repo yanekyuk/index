@@ -87,10 +87,10 @@ export async function injectOpportunityIntoExistingChat(
 
     await ensureIndexBotUser(provider);
 
-    const reasoning = opportunity.interpretation?.reasoning ?? 'A new connection opportunity was detected.';
+    const reasoning = opportunity.interpretation?.reasoning ?? "I found a new possible connection for you.";
     await sendBotMessage(channel, {
       type: 'system',
-      text: `**New opportunity detected**\n\n${reasoning}`,
+      text: `**I found a new possible connection**\n\n${reasoning}`,
       introType: 'opportunity_update',
       opportunityId: opportunity.id,
     });

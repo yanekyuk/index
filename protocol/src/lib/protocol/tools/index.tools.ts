@@ -3,7 +3,7 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 
 export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { graphs } = deps;
+  const { graphs, database } = deps;
 
   const readIndexes = defineTool({
     name: "read_indexes",
@@ -34,79 +34,137 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const readUsers = defineTool({
-    name: "read_users",
-    description: "Lists all members of an index with their userId, name, avatar, permissions, intentCount, and joinedAt. Requires indexId (UUID from read_indexes). You must be a member of the index. Use the returned userId values to unambiguously reference members in other tools like create_opportunity_between_members.",
+  const readIndexMemberships = defineTool({
+    name: "read_index_memberships",
+    description:
+      "Reads index membership data. Two modes: (1) Pass indexId to list all members of that index (returns userId, name, avatar, permissions, intentCount, joinedAt). (2) Pass userId (or omit for current user) to list all indexes that user belongs to (returns indexId, indexTitle, permissions, joinedAt). Pass both to check whether a specific user is in a specific index.",
     querySchema: z.object({
-      indexId: z.string().describe("Index UUID from read_indexes."),
+      indexId: z.string().optional().describe("Index UUID — when provided, lists members of this index."),
+      userId: z.string().optional().describe("User ID — when provided, lists that user's index memberships. Omit to default to current user."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim();
-      if (!indexId || !UUID_REGEX.test(indexId)) {
+      const indexId = query.indexId?.trim() || undefined;
+      const userId = query.userId?.trim() || undefined;
+
+      if (indexId && !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
 
-      const result = await graphs.indexMembership.invoke({
-        userId: context.userId,
-        indexId,
-        operationMode: 'read' as const,
-      });
+      // Mode 1: list members of an index
+      if (indexId && !userId) {
+        const result = await graphs.indexMembership.invoke({
+          userId: context.userId,
+          indexId,
+          operationMode: 'read' as const,
+        });
 
-      if (result.error) {
-        return error(result.error);
+        if (result.error) {
+          return error(result.error);
+        }
+        if (result.readResult) {
+          return success(result.readResult);
+        }
+        return error("Failed to fetch index members.");
       }
-      if (result.readResult) {
-        return success(result.readResult);
+
+      // Mode 2: list a user's memberships (indexes they belong to)
+      const targetUserId = userId || context.userId;
+
+      // Guard: only allow targetUserId === context.userId, or verify shared index access for another user
+      let memberships: Awaited<ReturnType<typeof database.getIndexMemberships>>;
+      if (targetUserId !== context.userId) {
+        const callerMemberships = await database.getIndexMemberships(context.userId);
+        if (indexId) {
+          const callerInIndex = callerMemberships.some((m) => m.indexId === indexId);
+          if (!callerInIndex) {
+            return error(
+              "Unauthorized: you can only view another user's membership in an index you belong to. Provide your own userId or omit userId for your memberships.",
+            );
+          }
+          memberships = await database.getIndexMemberships(targetUserId);
+        } else {
+          const targetMemberships = await database.getIndexMemberships(targetUserId);
+          const callerIndexIds = new Set(callerMemberships.map((m) => m.indexId));
+          const hasOverlap = targetMemberships.some((m) => callerIndexIds.has(m.indexId));
+          if (!hasOverlap) {
+            return error(
+              "Unauthorized: you can only view another user's memberships if you share at least one index, or request your own memberships.",
+            );
+          }
+          memberships = targetMemberships;
+        }
+      } else {
+        memberships = await database.getIndexMemberships(targetUserId);
       }
-      return error("Failed to fetch index members.");
+
+      // If both indexId and userId: filter to that specific membership (guard already enforced when targetUserId !== context.userId)
+      if (indexId) {
+        const callerInIndex =
+          targetUserId === context.userId ||
+          (await database.getIndexMemberships(context.userId)).some((m) => m.indexId === indexId);
+        if (!callerInIndex) {
+          return error(
+            "Unauthorized: you can only view membership in an index you belong to.",
+          );
+        }
+        const match = memberships.find((m) => m.indexId === indexId);
+        if (!match) {
+          return success({ isMember: false, userId: targetUserId, indexId, message: "User is not a member of this index." });
+        }
+        return success({
+          isMember: true,
+          userId: targetUserId,
+          indexId,
+          indexTitle: match.indexTitle,
+          permissions: match.permissions,
+          joinedAt: match.joinedAt,
+        });
+      }
+
+      return success({
+        userId: targetUserId,
+        count: memberships.length,
+        memberships: memberships.map((m) => ({
+          indexId: m.indexId,
+          indexTitle: m.indexTitle,
+          permissions: m.permissions,
+          joinedAt: m.joinedAt,
+        })),
+      });
     },
   });
 
+  const updateIndexSettingsSchema = z.object({
+    title: z.string().optional(),
+    prompt: z.string().nullable().optional(),
+    joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
+    allowGuestVibeCheck: z.boolean().optional(),
+  }).strict();
+
   const updateIndex = defineTool({
     name: "update_index",
-    description: "Updates an index the user owns. Pass indexId (UUID from read_indexes) or omit when chat is index-scoped. OWNER ONLY.",
+    description: "Updates an index (owner only). Pass indexId or omit when index-scoped.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID; optional when chat is index-scoped."),
-      settings: z.record(z.unknown()).describe("Settings to update: { title?, prompt?, joinPolicy?, allowGuestVibeCheck? }"),
+      indexId: z.string().optional().describe("Index UUID; defaults to current index when scoped."),
+      settings: updateIndexSettingsSchema.describe("Fields to update: title?, prompt?, joinPolicy?, allowGuestVibeCheck?"),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
-      if (!effectiveIndexId) {
-        return error("Index required. Pass index UUID or open chat from an index you own.");
-      }
-      if (!UUID_REGEX.test(effectiveIndexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+      if (!effectiveIndexId || !UUID_REGEX.test(effectiveIndexId)) {
+        return error("Valid indexId required.");
       }
 
-      const readResult = await graphs.index.invoke({
-        userId: context.userId,
-        indexId: effectiveIndexId,
-        operationMode: 'read' as const,
-      });
-      const owned = readResult.readResult?.owns?.find((o: { indexId: string }) => o.indexId === effectiveIndexId);
-      if (!owned) {
-        return error("You can only modify indexes you own. Use read_indexes to see your owned indexes.");
-      }
-
-      const settingsData: Record<string, unknown> = {};
-      if ("title" in query.settings) settingsData.title = query.settings.title;
-      if ("prompt" in query.settings) settingsData.prompt = query.settings.prompt;
-      if ("joinPolicy" in query.settings) settingsData.joinPolicy = query.settings.joinPolicy;
-      if ("allowGuestVibeCheck" in query.settings) settingsData.allowGuestVibeCheck = query.settings.allowGuestVibeCheck;
-      if ("private" in query.settings && query.settings.private) settingsData.joinPolicy = "invite_only";
-      if ("public" in query.settings && query.settings.public) settingsData.joinPolicy = "anyone";
-
-      // Execute update directly
       const result = await graphs.index.invoke({
         userId: context.userId,
         indexId: effectiveIndexId,
         operationMode: 'update' as const,
-        updateInput: settingsData as { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean },
+        updateInput: query.settings,
       });
+
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to update index.");
       }
-      return success({ message: "Index updated.", settings: Object.keys(settingsData) });
+      return success({ message: "Index updated.", settings: Object.keys(query.settings) });
     },
   });
 
@@ -150,40 +208,26 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const deleteIndex = defineTool({
     name: "delete_index",
-    description: "Deletes an index you own. Only allowed when you are the only member. Requires indexId (UUID from read_indexes).",
+    description: "Deletes an index (owner only, must be sole member).",
     querySchema: z.object({
-      indexId: z.string().describe("Index UUID from read_indexes."),
+      indexId: z.string().describe("Index UUID from read_indexes"),
     }),
     handler: async ({ context, query }) => {
       const indexId = query.indexId?.trim();
       if (!indexId || !UUID_REGEX.test(indexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+        return error("Valid indexId required.");
       }
 
-      const readResult = await graphs.index.invoke({
-        userId: context.userId,
-        indexId,
-        operationMode: 'read' as const,
-      });
-      const owned = readResult.readResult?.owns?.find((o: { indexId: string }) => o.indexId === indexId);
-      if (!owned) {
-        return error("You can only delete indexes you own. Use read_indexes to see your owned indexes.");
-      }
-      if (owned.memberCount > 1) {
-        return error("Cannot delete index with other members. Remove members first or transfer ownership.");
-      }
-
-      // Execute delete directly
       const result = await graphs.index.invoke({
         userId: context.userId,
         indexId,
         operationMode: 'delete' as const,
       });
+
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to delete index.");
       }
-      const title = (owned.title ?? "this index").slice(0, 60);
-      return success({ message: `Index "${title}" deleted.` });
+      return success({ message: "Index deleted." });
     },
   });
 
@@ -225,5 +269,5 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readIndexes, readUsers, updateIndex, createIndex, deleteIndex, createIndexMembership] as const;
+  return [readIndexes, readIndexMemberships, updateIndex, createIndex, deleteIndex, createIndexMembership] as const;
 }

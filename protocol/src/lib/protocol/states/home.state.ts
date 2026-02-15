@@ -19,6 +19,8 @@ export interface HomeCardItem {
   mutualIntentsLabel: string;
   /** e.g. { name: 'Index', text: '...' } or introducer name + remark; avatar set when narrator is a user */
   narratorChip?: { name: string; text: string; avatar?: string | null };
+  /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
+  viewerRole?: string;
   /** For section assignment from LLM */
   _cardIndex: number;
 }
