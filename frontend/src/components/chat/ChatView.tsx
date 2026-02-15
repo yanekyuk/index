@@ -112,7 +112,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
     message.created_at ? new Date(message.created_at).getTime() : 0;
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
   useEffect(() => {
@@ -260,13 +260,7 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
     if (!messageText.trim() || sendingMessageId) return;
     const text = messageText.trim();
     setMessageText('');
-    
-    const tempId = `temp-${Date.now()}`;
-    const optimisticMessage: ChatMessage = { id: tempId, text, user: client?.userID ? { id: client.userID, name: client?.user?.name } : null, created_at: new Date(), status: 'sending' };
-    
-    setSendingMessageId(tempId);
-    setMessages((prev) => [...prev, optimisticMessage]);
-    scrollToBottom();
+    setSendingMessageId(text);
 
     try {
       const activeChannel = channel;
@@ -280,24 +274,17 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
         inputRef.current?.focus();
         return;
       }
-      const response = await activeChannel.sendMessage({ text });
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== tempId);
-        if (filtered.some((m) => m.id === response.message.id)) return filtered;
-        return [...filtered, transformMessage(response.message)];
-      });
+      await activeChannel.sendMessage({ text });
       setSendingMessageId(null);
-      scrollToBottom();
       inputRef.current?.focus();
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setSendingMessageId(null);
       setMessageText(text);
       showError('Failed to send', error instanceof Error ? error.message : 'Please try again.');
       inputRef.current?.focus();
     }
-  }, [channel, messageText, client, sendingMessageId, scrollToBottom, isNewConversation, showError]);
+  }, [channel, messageText, sendingMessageId, isNewConversation, showError]);
 
   // Auto-focus input on keydown anywhere
   useEffect(() => {
