@@ -36,10 +36,11 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const showSidebar = isAppRoute && !isPublicRoute;
   const showHeader = !showSidebar;
 
-  const isLandingOrBlog = useMemo(() => 
-    (pathname === '/' && !isAuthenticated) || 
-    pathname === '/blog' || 
-    pathname?.startsWith('/blog/'),
+  const isLandingOrBlog = useMemo(() =>
+    (pathname === '/' && !isAuthenticated) ||
+    pathname === '/blog' ||
+    pathname?.startsWith('/blog/') ||
+    pathname?.startsWith('/pages/'),
   [pathname, isAuthenticated]);
 
   const isMessagesView = useMemo(() => 

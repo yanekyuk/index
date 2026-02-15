@@ -111,7 +111,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
 
     const isHomePage = pathname === '/';
 
-    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog');
+    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages');
     const isProtectedPage = pathname.startsWith('/i/');
     // DISABLED: Removed isOnboardingPage from isProtectedPage
 

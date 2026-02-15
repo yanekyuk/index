@@ -69,11 +69,17 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
       {showHeaderButtons && (
         isAlpha ? (
           <div className="flex items-center gap-12">
-            <Link 
-              href="/blog" 
+            <Link
+              href="/blog"
               className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
             >
               Blog
+            </Link>
+            <Link
+              href="/pages/about"
+              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
+            >
+              About
             </Link>
             <button
               onClick={login}
@@ -87,11 +93,17 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
           </div>
         ) : (
           <div className="flex items-center gap-12">
-            <Link 
-              href="/blog" 
+            <Link
+              href="/blog"
               className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
             >
               Blog
+            </Link>
+            <Link
+              href="/pages/about"
+              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
+            >
+              About
             </Link>
             <button
               onClick={() => {
