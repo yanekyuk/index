@@ -400,13 +400,6 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
       <div className="px-6 lg:px-8 py-6 pb-32">
         <ContentContainer>
           {/* Pending state banners */}
-          {acceptedOpportunities.length > 0 && (
-            <div className="px-4 py-3 rounded-lg mb-4 bg-gray-50 border border-gray-200">
-              <div className="text-xs text-gray-600">
-                This conversation is linked to {acceptedOpportunities.length} accepted opportunit{acceptedOpportunities.length === 1 ? 'y' : 'ies'}.
-              </div>
-            </div>
-          )}
           {pendingState.isPending && (
             <div className={`px-4 py-3 rounded-lg mb-4 ${pendingState.isRequester ? 'bg-blue-50 border border-blue-200' : 'bg-green-50 border border-green-200'}`}>
               {pendingState.isRequester ? (
