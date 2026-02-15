@@ -145,11 +145,9 @@ export default function ChatSidebar() {
           });
         });
 
-        // Include both accepted-opportunity counterparts and actual Stream DM channels.
-        // This ensures conversations with messages always appear, even if not in accepted opportunities.
-        const acceptedRecipientIds = Array.from(acceptedByRecipientSnapshot.keys());
-        const streamRecipientIds = Array.from(streamByRecipient.keys());
-        const allRecipientIds = Array.from(new Set([...streamRecipientIds, ...acceptedRecipientIds]));
+        // Only show recipients where the user is still a channel member.
+        // Accepted-opportunity counterparts without a Stream channel are excluded.
+        const allRecipientIds = Array.from(streamByRecipient.keys());
         const profilesCap = 50;
         const idsToFetch = allRecipientIds.slice(0, profilesCap);
         const profileMap = await getUserProfilesRef.current(idsToFetch);
@@ -299,11 +297,11 @@ export default function ChatSidebar() {
   }, [chatMenuOpen]);
 
   const handleDeleteChat = async (channelId: string) => {
-    if (!client || deletingChat) return;
+    if (!client?.userID || deletingChat) return;
     setDeletingChat(channelId);
     try {
       const channel = client.channel('messaging', channelId);
-      await channel.delete();
+      await channel.removeMembers([client.userID]);
       setRecentChats(prev => prev.filter(c => c.id !== channelId));
       setChatMenuOpen(null);
     } catch (error) {
