@@ -98,12 +98,11 @@ export async function resolveChatContext(params: {
   ]);
 
   // Omit embedding from profile so resolved context stays lean (embedding is for search only).
-  const userProfile: ProfileContext = rawProfile
-    ? (() => {
-        const { embedding: _omit, ...rest } = rawProfile;
-        return rest;
-      })()
-    : null;
+  let userProfile: ProfileContext = null;
+  if (rawProfile) {
+    const { embedding: _omit, ...rest } = rawProfile;
+    userProfile = rest;
+  }
 
   if (!user) {
     throw new ChatContextAccessError(
