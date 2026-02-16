@@ -15,10 +15,12 @@ interface MentionsInputProps {
   onSubmit?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inputRef?: React.RefObject<any>;
+  /** Show the suggestions dropdown above the input (for sticky-bottom inputs) */
+  suggestionsAbove?: boolean;
 }
 
 // Custom styles for react-mentions to match existing design
-const mentionsInputStyle = {
+const getMentionsInputStyle = (above?: boolean) => ({
   control: {
     backgroundColor: 'transparent',
     fontSize: 14,
@@ -56,19 +58,20 @@ const mentionsInputStyle = {
       maxHeight: '200px',
       overflowY: 'auto' as const,
       position: 'absolute' as const,
-      top: '100%',
-      marginTop: '8px',
       zIndex: 100,
+      ...(above
+        ? { bottom: '100%', marginBottom: '8px' }
+        : { top: '100%', marginTop: '8px' }),
     },
     item: {
-      padding: '8px 12px',
+      padding: '2px 6px',
       cursor: 'pointer',
       '&focused': {
         backgroundColor: '#F5F5F5',
       },
     },
   },
-};
+});
 
 // Style for highlighted mentions in the input
 // Note: react-mentions overlays a highlighter on the input, the background shows through
@@ -113,6 +116,7 @@ export function MentionsTextInput({
   onKeyDown,
   onSubmit,
   inputRef,
+  suggestionsAbove,
 }: MentionsInputProps) {
   const { searchUsers } = useMentionableUsers({ enabled: true });
 
@@ -136,7 +140,8 @@ export function MentionsTextInput({
       disabled={disabled}
       autoFocus={autoFocus}
       onKeyDown={handleKeyDown}
-      style={mentionsInputStyle}
+      style={getMentionsInputStyle(suggestionsAbove)}
+      forceSuggestionsAboveCursor={suggestionsAbove}
       a11ySuggestionsListLabel="Suggested users"
       className="flex-1"
       inputRef={inputRef}

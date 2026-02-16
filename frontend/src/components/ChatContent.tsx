@@ -392,6 +392,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             disabled={isBusy}
             autoFocus
             inputRef={inputRef}
+            suggestionsAbove
           />
           <Button
             type="submit"
