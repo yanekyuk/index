@@ -291,7 +291,7 @@ export class HomeGraphFactory {
             const reasoningSnippet =
               (typeof opportunity.interpretation?.reasoning === 'string'
                 ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
-                : '') || 'A connection opportunity.';
+                : '') || 'A promising connection.';
 
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
@@ -301,10 +301,10 @@ export class HomeGraphFactory {
               mainText: reasoningSnippet.slice(0, 300),
               cta: isIntroducer
                 ? 'Share this introduction to get things started.'
-                : 'View opportunity and decide whether to reach out.',
+                : 'Take a look and decide whether to reach out.',
               primaryActionLabel: isIntroducer ? 'Good match' : 'Start Chat',
               secondaryActionLabel: isIntroducer ? 'Pass' : 'Skip',
-              mutualIntentsLabel: isIntroducer ? 'Connector opportunity' : 'Shared interests',
+              mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
               narratorChip: { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               _cardIndex: cardIndex,

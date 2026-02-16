@@ -109,6 +109,8 @@ Rules:
 1. Address the VIEWER directly using "you" and "your". This is for them.
 2. Be concise and compelling — not analytical or third-party. No "The source user" or "The candidate"; use names or "they" where needed.
 3. Do not leak private or confidential details. Use only the context provided.
+4. Vary user-facing nouns naturally. Do not repeatedly use the same label in one response.
+5. If possible, avoid repeating "opportunity" in both headline and summary. Prefer alternatives like "connection", "thought partner", "mutual fit", "valuable conversation", or "peer".
 
 **Introduction-originated opportunities:**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer (a real person who saw value in this connection). This is NOT an automatic system discovery — someone made a deliberate judgment.
@@ -165,6 +167,7 @@ Rules:
 - primaryActionLabel must always invite starting or having a conversation (e.g. Start Chat, Say hello). Never use viewing/reviewing wording.
 - secondaryActionLabel must be short (under ~20 chars). narratorRemark should feel like a single sentence from the narrator (Index or a person), not meta-commentary.
 - narratorRemark is displayed with the narrator name prepended (e.g. "Index: …" or "Alice: …"). Do NOT start narratorRemark with the narrator's name or repeat it; write only the remark (e.g. "Based on your overlapping intents" or "introduced you two, sensing a valuable connection").
+- Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 
 **Introduction-originated opportunities (ONLY when INTRODUCTION CONTEXT is provided):**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer. It was NOT automatically discovered.
@@ -180,7 +183,7 @@ When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created b
   - primaryActionLabel: "Good match"
   - secondaryActionLabel: "Pass"
   - suggestedAction: one short line about sharing the intro or confirming the match.
-  - mutualIntentsLabel: a short connector label (e.g. "Connector opportunity", "You can bridge this").
+  - mutualIntentsLabel: a short connector label (e.g. "Connector match", "You can bridge this").
   - headline: describe the connection between the parties (e.g., "Connecting a PhD researcher with a translator"). Do NOT reference the introducer's own needs.
   - personalizedSummary: explain why the parties you're introducing should meet, referencing THEIR profiles and intents, not yours.
 - Exception for new-connection reveal: if viewer role is "agent", status is "accepted", and there is an introducer, this is the agent's first time seeing this opportunity. Use:
@@ -273,9 +276,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
         timeoutReason,
       });
       return {
-        headline: "A connection opportunity",
+        headline: "A promising connection",
         personalizedSummary: input.matchReasoning.slice(0, 300),
-        suggestedAction: "View opportunity and decide whether to reach out.",
+        suggestedAction: "Take a look and decide whether to reach out.",
       };
     }
   }
@@ -329,16 +332,16 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       });
       const isIntroducer = input.viewerRole === "introducer";
       return {
-        headline: "A connection opportunity",
+        headline: "A promising connection",
         personalizedSummary: input.matchReasoning.slice(0, 300),
         suggestedAction: isIntroducer
           ? "Share this introduction to get things started."
-          : "View opportunity and decide whether to reach out.",
+          : "Take a look and decide whether to reach out.",
         narratorRemark: "Worth a look.",
         primaryActionLabel: isIntroducer ? "Good match" : "Start Chat",
         secondaryActionLabel: isIntroducer ? "Pass" : "Skip",
         mutualIntentsLabel: isIntroducer
-          ? "Connector opportunity"
+          ? "Connector match"
           : input.mutualIntentCount != null
             ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
             : "Shared interests",

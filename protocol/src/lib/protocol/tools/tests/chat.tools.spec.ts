@@ -431,7 +431,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
   test("when userId is provided, response includes userId and userName for each intent", async () => {
     const otherUserId = "00000000-0000-0000-0000-000000000002";
     const mockDb = createMockDatabase(async (uid, idx) => {
-      if (uid === otherUserId && idx === indexId) return [{ id: "bob-1", payload: "Bob's goal", summary: "B", createdAt: new Date() }];
+      if (uid === otherUserId && idx === indexId) return [{ id: "bob-1", payload: "Bob's priority", summary: "B", createdAt: new Date() }];
       return [];
     }, {
       isIndexMember: async () => true,
@@ -447,7 +447,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
     expect(parsed.data.intents).toHaveLength(1);
     expect(parsed.data.intents[0]).toMatchObject({
       id: "bob-1",
-      description: "Bob's goal",
+      description: "Bob's priority",
       userId: otherUserId,
       userName: "Bob",
     });
@@ -557,8 +557,8 @@ describe("read_intents tool (no indexId)", () => {
 
   test("without indexId returns current user active intents (getActiveIntents)", async () => {
     const globalIntents = [
-      { id: "g1", payload: "Goal one", summary: "One", createdAt: new Date("2025-01-01") },
-      { id: "g2", payload: "Goal two", summary: "Two", createdAt: new Date("2025-01-02") },
+      { id: "g1", payload: "Priority one", summary: "One", createdAt: new Date("2025-01-01") },
+      { id: "g2", payload: "Priority two", summary: "Two", createdAt: new Date("2025-01-02") },
     ];
     const mockDb = createMockDatabase(async () => [], {
       getActiveIntents: async () => globalIntents,

@@ -55,7 +55,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
 - **Profiles**: A user's identity — bio, skills, interests, location, social links. Generated from account data or social URLs. Has a vector embedding for semantic search.
 - **Indexes**: Communities or groups. Each has a title, optional prompt (purpose description), and a join policy (anyone or invite_only). Users join indexes as members; the creator is the owner.
 - **Index Members**: Junction between Users and Indexes. Tracks permissions, join date, auto-assign setting, and optional member prompt.
-- **Intents**: What a user is looking for — goals, wants, needs. Each has a description (payload), summary, confidence score, and vector embedding. Intents belong to a user but are linked to indexes via IntentIndexes (many-to-many).
+- **Intents**: What a user is looking for — wants, needs, and priorities. Each has a description (payload), summary, confidence score, and vector embedding. Intents belong to a user but are linked to indexes via IntentIndexes (many-to-many).
 - **IntentIndexes**: Junction between Intents and Indexes. An intent can be in multiple indexes. When an intent is created, it is evaluated against index prompts and linked to relevant ones.
 - **Opportunities**: Discovered connections between users based on intent overlap. Have roles (introducer, patient, agent, peer), status lifecycle, reasoning, and presentation data.
 - **HyDE Documents**: Hypothetical Document Embeddings — generated synthetic documents used for semantic retrieval of intents and profiles`,

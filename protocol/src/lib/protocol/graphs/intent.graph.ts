@@ -636,7 +636,7 @@ export class IntentGraphFactory {
               count: 0,
               intents: [],
               message:
-                "You don't have any active intents yet. Share your goals or what you're looking for.",
+                "You don't have any active intents yet. Share what you're looking for.",
             },
           };
         }

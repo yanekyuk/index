@@ -16,7 +16,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const readIntents = defineTool({
     name: "read_intents",
     description:
-      "Reads intents (goals, wants, needs). No indexId: returns the user's own active intents. With indexId: returns all intents in that index; add userId to filter to one user. To find other members' intents, use read_index_memberships first, then read_intents per index.",
+      "Reads intents (what people are looking for). No indexId: returns the user's own active intents. With indexId: returns all intents in that index; add userId to filter to one user. To find other members' intents, use read_index_memberships first, then read_intents per index.",
     querySchema: z.object({
       indexId: z.string().optional().describe("Index UUID — filters intents to this index. Defaults to current index when scoped."),
       userId: z.string().optional().describe("User ID — filters to this user's intents. Combined with indexId: that user's intents in that index."),
@@ -77,9 +77,9 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const createIntent = defineTool({
     name: "create_intent",
     description:
-      "Creates a new intent (goal/want/need). Pass a clear, concept-based description. If indexId is provided, the intent is linked to that index. Background discovery is triggered automatically after creation. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
+      "Creates a new intent (what the user is looking for). Pass a clear, concept-based description. If indexId is provided, the intent is linked to that index. Background discovery is triggered automatically after creation. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
     querySchema: z.object({
-      description: z.string().describe("The intent/goal in conceptual terms (scrape URLs and check specificity before calling)"),
+      description: z.string().describe("The intent in conceptual terms (scrape URLs and check specificity before calling)"),
       indexId: z.string().optional().describe("Index UUID to link the intent to. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
