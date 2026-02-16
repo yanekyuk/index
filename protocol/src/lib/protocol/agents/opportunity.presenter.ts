@@ -171,7 +171,9 @@ Rules:
 
 **Introduction-originated opportunities (ONLY when INTRODUCTION CONTEXT is provided):**
 When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created by an introducer. It was NOT automatically discovered.
-- For parties/patients/agents/peers viewing an introduction: mention who introduced them. The headline and summary should acknowledge the introduction (e.g., "[Name] thinks you should meet [Other]"). The narratorRemark should reference the introducer (without repeating their name at the start).
+- For parties/patients/agents/peers viewing an introduction: keep the introducer signal in narratorRemark (and narrator chip), not in personalizedSummary.
+- For these introduced parties, personalizedSummary must focus only on fit/value between viewer and counterpart. Do NOT mention the introducer there.
+- narratorRemark should carry the introduction signal (e.g., "saw strong alignment between you two" or "thought this connection could be valuable"), without repeating the narrator name at the start.
 - This is a personal recommendation, not an algorithm match. Frame it accordingly.
 
 **When INTRODUCTION CONTEXT is NOT provided (system-discovered match):**
