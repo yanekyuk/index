@@ -361,16 +361,27 @@ export function StreamChatProvider({ children }: { children: ReactNode }) {
 
       const senderName = event.message?.user?.name?.trim() || event.user?.name?.trim() || 'New message';
       const preview = event.message?.text?.trim() || 'Sent you a message';
-      const senderAvatar =
-        event.message?.user?.image ||
-        event.user?.image ||
-        undefined;
+      const senderAvatar = getAvatarUrl({
+        avatar: event.message?.user?.image || event.user?.image,
+        id: senderId,
+        name: senderName,
+      });
       addNotification({
         type: 'info',
         title: senderName,
         message: preview,
         avatarUrl: senderAvatar,
         duration: 5000,
+        onClick: async () => {
+          try {
+            const channelId =
+              event.channel_id ??
+              (await getDirectChannelId(user.id, senderId));
+            router.push(`/u/${senderId}/chat?channelId=${encodeURIComponent(channelId)}`);
+          } catch {
+            router.push(`/u/${senderId}/chat`);
+          }
+        },
       });
 
       if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {

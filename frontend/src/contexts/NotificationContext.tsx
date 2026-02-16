@@ -13,6 +13,7 @@ export interface Notification {
   message?: string;
   avatarUrl?: string;
   duration?: number; // in milliseconds, default 4000
+  onClick?: () => void;
 }
 
 interface NotificationContextType {
@@ -135,42 +136,51 @@ function NotificationToasts({
 
   return (
     <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 items-end">
-      {notifications.map((notification, index) => (
-        <div
-          key={notification.id}
-          className="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-right-2 min-w-80 max-w-[360px]"
-          style={{ 
-            animationDelay: `${index * 100}ms`,
-            animationFillMode: 'both'
-          }}
-        >
-          {notification.avatarUrl ? (
-            <Image
-              src={notification.avatarUrl}
-              alt={notification.title}
-              width={32}
-              height={32}
-              className="flex-shrink-0 w-8 h-8 rounded-full object-cover"
-            />
-          ) : (
-            <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
-              {getIcon(notification.type)}
-            </div>
-          )}
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-900">{notification.title}</p>
-            {notification.message ? (
-              <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{notification.message}</p>
-            ) : null}
-          </div>
-          <button
-            onClick={() => onRemove(notification.id)}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+      {notifications.map((notification, index) => {
+        return (
+          <div
+            key={notification.id}
+            role={notification.onClick ? 'button' : undefined}
+            tabIndex={notification.onClick ? 0 : undefined}
+            onClick={notification.onClick}
+            onKeyDown={notification.onClick ? (e) => e.key === 'Enter' && notification.onClick?.() : undefined}
+            className={`flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-right-2 min-w-80 max-w-[360px] w-full text-left ${notification.onClick ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}`}
+            style={{
+              animationDelay: `${index * 100}ms`,
+              animationFillMode: 'both',
+            }}
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      ))}
+            {notification.avatarUrl ? (
+              <Image
+                src={notification.avatarUrl}
+                alt={notification.title}
+                width={32}
+                height={32}
+                className="flex-shrink-0 w-8 h-8 rounded-full object-cover"
+              />
+            ) : (
+              <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
+                {getIcon(notification.type)}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900">{notification.title}</p>
+              {notification.message ? (
+                <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{notification.message}</p>
+              ) : null}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(notification.id);
+              }}
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-0.5"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 } 
