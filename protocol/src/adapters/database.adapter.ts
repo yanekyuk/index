@@ -912,6 +912,35 @@ export class ChatDatabaseAdapter {
     }
   }
 
+  async getIndexMembership(indexId: string, userId: string): Promise<IndexMembershipRow | null> {
+    try {
+      const result = await db
+        .select({
+          indexId: schema.indexMembers.indexId,
+          indexTitle: schema.indexes.title,
+          indexPrompt: schema.indexes.prompt,
+          permissions: schema.indexMembers.permissions,
+          memberPrompt: schema.indexMembers.prompt,
+          autoAssign: schema.indexMembers.autoAssign,
+          joinedAt: schema.indexMembers.createdAt,
+        })
+        .from(schema.indexMembers)
+        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .where(
+          and(
+            eq(schema.indexMembers.indexId, indexId),
+            eq(schema.indexMembers.userId, userId),
+            isNull(schema.indexes.deletedAt)
+          )
+        )
+        .limit(1);
+      return result[0] ?? null;
+    } catch (error: unknown) {
+      console.error('ChatDatabaseAdapter.getIndexMembership error:', error);
+      return null;
+    }
+  }
+
   async getIndex(indexId: string): Promise<{ id: string; title: string } | null> {
     const rows = await db
       .select({ id: schema.indexes.id, title: schema.indexes.title })

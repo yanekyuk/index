@@ -567,6 +567,16 @@ export interface Database {
   getIndexMemberships(userId: string): Promise<IndexMembership[]>;
 
   /**
+   * Get a single index membership by index and user.
+   * Used when the preloaded memberships list may not contain this index (e.g. after isIndexMember check).
+   *
+   * @param indexId - The index ID
+   * @param userId - The user ID
+   * @returns The membership or null if not found
+   */
+  getIndexMembership(indexId: string, userId: string): Promise<IndexMembership | null>;
+
+  /**
    * Get index by ID (id and title only). Used for opportunity presentation.
    */
   getIndex(indexId: string): Promise<{ id: string; title: string } | null>;
@@ -1133,6 +1143,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // IndexGraph subgraph requirements (index created intents in user's indexes)
   | 'getUserIndexIds'
   | 'getIndexMemberships'
+  | 'getIndexMembership'
   | 'getIndex'
   | 'getIndexWithPermissions'
   | 'getIntentForIndexing'

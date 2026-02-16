@@ -84,7 +84,7 @@ export class ChatContextAccessError extends Error {
 export async function resolveChatContext(params: {
   database: Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getIndexMemberships" | "getIndex" | "isIndexOwner" | "isIndexMember"
+    "getUser" | "getProfile" | "getIndexMemberships" | "getIndexMembership" | "getIndex" | "isIndexOwner" | "isIndexMember"
   >;
   userId: string;
   indexId?: string;
@@ -141,7 +141,10 @@ export async function resolveChatContext(params: {
       );
     }
 
-    const membership = userIndexes.find((m) => m.indexId === index.id);
+    let membership = userIndexes.find((m) => m.indexId === index.id);
+    if (membership === undefined) {
+      membership = (await database.getIndexMembership(index.id, userId)) ?? undefined;
+    }
     scopedIndex = {
       id: index.id,
       title: index.title,
