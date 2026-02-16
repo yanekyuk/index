@@ -11,3 +11,4 @@ postgres/
 docker-compose.yml
 env.docker
 *.report.md
+.worktrees/
