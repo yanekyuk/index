@@ -1098,21 +1098,11 @@ export type ProfileGraphDatabase = Pick<
 >;
 
 /**
- * Database interface narrowed for Chat Graph operations.
- * Read-only context loading for conversation handling.
- */
-export type ChatGraphDatabase = Pick<
-  Database,
-  'getProfile' | 'getActiveIntents'
->;
-
-/**
  * Composite database interface for Chat Graph.
  * Includes direct ChatGraph operations plus all methods needed by
  * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph, IndexGraph).
  *
  * Use this type when ChatGraph orchestrates subgraphs internally.
- * For direct ChatGraph operations only, use ChatGraphDatabase.
  */
 export type ChatGraphCompositeDatabase = Pick<
   Database,
@@ -1196,20 +1186,6 @@ export type OpportunityGraphDatabase = Pick<
 >;
 
 /**
- * Database interface for opportunity maintenance jobs.
- */
-export type OpportunityMaintenanceDatabase = Pick<
-  Database,
-  | 'deleteExpiredHydeDocuments'
-  | 'getStaleHydeDocuments'
-  | 'deleteHydeDocumentsForSource'
-  | 'expireOpportunitiesByIntent'
-  | 'expireOpportunitiesForRemovedMember'
-  | 'expireStaleOpportunities'
-  | 'getIntent'
->;
-
-/**
  * Database interface for opportunity controller (API).
  */
 export type OpportunityControllerDatabase = Pick<
@@ -1231,24 +1207,6 @@ export type OpportunityControllerDatabase = Pick<
   | 'getIndexMemberships'
   | 'getProfile'
   | 'getActiveIntents'
->;
-
-/**
- * Database interface for Intent action execution (post-graph processing).
- * Used by controllers to execute intent CRUD, query, and vector operations
- * based on Intent Graph output actions.
- */
-export type IntentExecutorDatabase = Pick<
-  Database,
-  | 'createIntent'
-  | 'updateIntent'
-  | 'archiveIntent'
-  | 'getIntent'
-  | 'getIntentWithOwnership'
-  | 'getActiveIntents'
-  | 'getUserIndexIds'
-  | 'associateIntentWithIndexes'
-  | 'findSimilarIntents'
 >;
 
 /**
@@ -1319,20 +1277,6 @@ export type IndexMembershipGraphDatabase = Pick<
   | 'getIndexWithPermissions'
   | 'addMemberToIndex'
   | 'getIndexMembersForMember'
->;
-
-/**
- * Database interface for Index Ownership operations.
- * Used by chat graph for owner-specific index management.
- */
-export type IndexOwnershipDatabase = Pick<
-  Database,
-  | 'getOwnedIndexes'
-  | 'isIndexOwner'
-  | 'getIndexMembersForOwner'
-  | 'getIndexIntentsForOwner'
-  | 'updateIndexSettings'
-  | 'getIndexMemberships'
 >;
 
 /**
