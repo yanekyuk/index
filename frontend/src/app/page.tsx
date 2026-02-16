@@ -984,7 +984,7 @@ function LandingPage() {
                   className="text-[17px] leading-relaxed text-black/80 font-normal"
                   style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
                 >
-                  Meet Index. Instead of shouting into the void, now you can just say the word, and LLM-enabled agents will run ambient discovery based on the shape of what you meant. It&apos;s not that the people you&apos;re looking for don&apos;t exist. They do, and they&apos;re closer than you think.
+                  Meet Index. Instead of shouting into the void, now you can just say the word, and AI agents will run ambient discovery based on the shape of what you meant. It&apos;s not that the people you&apos;re looking for don&apos;t exist. They do, and they&apos;re closer than you think.
                 </p>
               </div>
 
