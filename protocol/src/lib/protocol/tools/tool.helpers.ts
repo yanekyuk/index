@@ -1,10 +1,14 @@
 import { z } from "zod";
+import type { ProfileDocument } from "../agents/profile.generator";
 import type {
   ChatGraphCompositeDatabase,
   IndexMembership,
   UserRecord,
 } from "../interfaces/database.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
+
+/** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
+export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPILED GRAPH TYPE
@@ -33,9 +37,9 @@ export interface ResolvedToolContext {
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
 
-  // Rich identity context for prompt/tool orchestration.
+  // Rich identity context for prompt/tool orchestration (profile omits embedding to keep context lean).
   user: UserRecord;
-  userProfile: Awaited<ReturnType<ChatGraphCompositeDatabase["getProfile"]>>;
+  userProfile: ProfileContext;
   userIndexes: IndexMembership[];
   scopedIndex?: {
     id: string;
@@ -87,11 +91,19 @@ export async function resolveChatContext(params: {
 }): Promise<ResolvedToolContext> {
   const { database, userId, indexId } = params;
 
-  const [user, userProfile, userIndexes] = await Promise.all([
+  const [user, rawProfile, userIndexes] = await Promise.all([
     database.getUser(userId),
     database.getProfile(userId),
     database.getIndexMemberships(userId),
   ]);
+
+  // Omit embedding from profile so resolved context stays lean (embedding is for search only).
+  const userProfile: ProfileContext = rawProfile
+    ? (() => {
+        const { embedding: _omit, ...rest } = rawProfile;
+        return rest;
+      })()
+    : null;
 
   if (!user) {
     throw new ChatContextAccessError(
