@@ -51,7 +51,7 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
     getActiveIntents: noopArray,
     getIntentsInIndexForMember: async () => [],
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
-    getIndex: async () => null,
+    getIndex: async (indexId: string) => ({ id: indexId, title: "Test Index" }),
     saveProfile: noop,
     createIntent: async (data: CreateIntentData) => ({
       id: `intent-${Date.now()}`,

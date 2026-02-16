@@ -139,7 +139,7 @@ function createMockDatabase(
     getActiveIntents: noopArray,
     getIntentsInIndexForMember: getIntentsInIndexForMemberImpl,
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
-    getIndex: async () => null,
+    getIndex: async (indexId: string) => ({ id: indexId, title: "Test Index" }),
     saveProfile: noop,
     createIntent: async () => ({ id: "", payload: "", summary: null, isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: "" }),
     updateIntent: noopNull,
