@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
+import type {
+  ChatGraphCompositeDatabase,
+  IndexMembership,
+  UserRecord,
+} from "../interfaces/database.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -20,6 +24,7 @@ export type CompiledGraph = { invoke: (input: any) => Promise<any> };
  * The LLM can see this context (via system prompt) but cannot change it.
  */
 export interface ResolvedToolContext {
+  // Legacy flat fields (kept for backwards compatibility in tools/prompts).
   userId: string;
   userName: string;
   userEmail: string;
@@ -27,6 +32,17 @@ export interface ResolvedToolContext {
   indexName?: string;
   /** True when chat is index-scoped and the user owns the index. */
   isOwner?: boolean;
+
+  // Rich identity context for prompt/tool orchestration.
+  user: UserRecord;
+  userProfile: Awaited<ReturnType<ChatGraphCompositeDatabase["getProfile"]>>;
+  userIndexes: IndexMembership[];
+  scopedIndex?: {
+    id: string;
+    title: string;
+    prompt: string | null;
+  };
+  scopedMembershipRole?: "owner" | "member";
 }
 
 /**
@@ -40,6 +56,103 @@ export interface ToolContext {
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   indexId?: string;
+}
+
+/**
+ * Thrown when a requested chat scope is invalid for the authenticated user.
+ * Controllers can map this to an HTTP status code.
+ */
+export class ChatContextAccessError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+    public readonly code: "USER_NOT_FOUND" | "INDEX_NOT_FOUND" | "INDEX_MEMBERSHIP_REQUIRED"
+  ) {
+    super(message);
+    this.name = "ChatContextAccessError";
+  }
+}
+
+/**
+ * Resolve the canonical context used by chat tools and system prompt.
+ * This preloads user identity, profile, index memberships, and scoped index role.
+ */
+export async function resolveChatContext(params: {
+  database: Pick<
+    ChatGraphCompositeDatabase,
+    "getUser" | "getProfile" | "getIndexMemberships" | "getIndex" | "isIndexOwner" | "isIndexMember"
+  >;
+  userId: string;
+  indexId?: string;
+}): Promise<ResolvedToolContext> {
+  const { database, userId, indexId } = params;
+
+  const [user, userProfile, userIndexes] = await Promise.all([
+    database.getUser(userId),
+    database.getProfile(userId),
+    database.getIndexMemberships(userId),
+  ]);
+
+  if (!user) {
+    throw new ChatContextAccessError(
+      "User not found",
+      404,
+      "USER_NOT_FOUND"
+    );
+  }
+
+  let scopedIndex: ResolvedToolContext["scopedIndex"] = undefined;
+  let scopedMembershipRole: ResolvedToolContext["scopedMembershipRole"] = undefined;
+  let isOwner = false;
+  let indexName: string | undefined;
+
+  if (indexId) {
+    const [index, isMember, owner] = await Promise.all([
+      database.getIndex(indexId),
+      database.isIndexMember(indexId, userId),
+      database.isIndexOwner(indexId, userId),
+    ]);
+
+    if (!index) {
+      throw new ChatContextAccessError(
+        "Index not found",
+        404,
+        "INDEX_NOT_FOUND"
+      );
+    }
+
+    if (!isMember) {
+      throw new ChatContextAccessError(
+        "You are not a member of this index",
+        403,
+        "INDEX_MEMBERSHIP_REQUIRED"
+      );
+    }
+
+    const membership = userIndexes.find((m) => m.indexId === index.id);
+    scopedIndex = {
+      id: index.id,
+      title: index.title,
+      prompt: membership?.indexPrompt ?? null,
+    };
+    isOwner = owner;
+    indexName = index.title;
+    scopedMembershipRole = owner ? "owner" : "member";
+  }
+
+  return {
+    userId,
+    userName: user.name ?? "Unknown",
+    userEmail: user.email ?? "",
+    indexId,
+    indexName,
+    isOwner,
+    user,
+    userProfile,
+    userIndexes,
+    scopedIndex,
+    scopedMembershipRole,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
