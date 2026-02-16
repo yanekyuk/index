@@ -14,16 +14,72 @@ export const ITERATION_NUDGE = `[System Note: You've made several tool calls. Pl
  * Single unified prompt — the thinking model composes dumb primitive tools.
  */
 export function buildSystemContent(ctx: ResolvedToolContext): string {
-  const roleLabel = !ctx.indexId ? "general" : ctx.isOwner ? "owner" : "member";
+  const roleLabel = !ctx.indexId
+    ? "general"
+    : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
   const indexScope = ctx.indexId
     ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.indexId}), role: ${roleLabel}`
     : "no index scope (general chat)";
+  const userContext = JSON.stringify(ctx.user, null, 2);
+  const profileContext = ctx.userProfile ? JSON.stringify(ctx.userProfile, null, 2) : "null";
+  const indexesContext = JSON.stringify(
+    ctx.userIndexes.map((membership) => ({
+      indexId: membership.indexId,
+      indexTitle: membership.indexTitle,
+      indexPrompt: membership.indexPrompt,
+      permissions: membership.permissions,
+      memberPrompt: membership.memberPrompt,
+      autoAssign: membership.autoAssign,
+      joinedAt: membership.joinedAt,
+    })),
+    null,
+    2
+  );
+  const scopedIndexContext = ctx.scopedIndex
+    ? JSON.stringify(
+        {
+          ...ctx.scopedIndex,
+          membershipRole: ctx.scopedMembershipRole,
+        },
+        null,
+        2
+      )
+    : "null";
 
   return `You are the AI assistant for Index Network — a private, intent-driven discovery protocol where people state what they're looking for and the system finds connections.
 
 ## Session
 - User: ${ctx.userName} (${ctx.userEmail}), id: ${ctx.userId}
 - Scope: ${indexScope}
+
+### Current User (preloaded context)
+\`\`\`json
+${userContext}
+\`\`\`
+
+### Current User Profile (preloaded context)
+\`\`\`json
+${profileContext}
+\`\`\`
+
+### Current User Index Memberships (preloaded context)
+\`\`\`json
+${indexesContext}
+\`\`\`
+
+### Scoped Index (preloaded context)
+\`\`\`json
+${scopedIndexContext}
+\`\`\`
+
+### Preloaded Context Policy
+- The JSON blocks above are already fetched for this turn and are the default source of truth.
+- For questions about the current user (their info, profile, memberships, scoped index role), answer directly from preloaded context first.
+- Do **not** call tools for data that is already present in preloaded context.
+- Call tools only when:
+  - The requested data is missing/empty in preloaded context, or
+  - The user explicitly asks to refresh/verify/get latest data from storage.
+- If you do call a tool after using preloaded context, briefly explain why (e.g. "refreshing to confirm latest changes").
 
 ## Architecture Philosophy
 
@@ -160,6 +216,7 @@ Status translation: latent → "draft", pending → "sent", accepted → "connec
 ### 7. Explore what a community is about
 
 \`\`\`
+0. If user asks about communities they belong to, first use preloaded memberships in this prompt.
 1. read_indexes() → get index details (title, prompt)
 2. read_intents(indexId=X) → what members are looking for
 3. read_index_memberships(indexId=X) → who's in it
@@ -188,7 +245,7 @@ ${ctx.isOwner ? `- You are the **owner** of this index. You can update settings,
 ### Narration Style
 Your response is **streamed to the user token-by-token in real-time**. Write as a continuous conversation, NOT a report delivered after all work is done.
 
-**One tool at a time.** Call only ONE tool per response. Before calling it, write a short blockquote line that tells the user what you're about to do, using markdown \`>\` syntax. Be creative and context-aware — never use generic phrases like "Looking up your profile".
+**One tool at a time (only when needed).** If a tool is required, call only ONE tool per response. Before calling it, write a short blockquote line that tells the user what you're about to do, using markdown \`>\` syntax. Be creative and context-aware — never use generic phrases like "Looking up your profile".
 
 Example flow (each arrow is a separate response from you):
 \`\`\`
