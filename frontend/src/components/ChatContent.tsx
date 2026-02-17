@@ -178,7 +178,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       loadSession(sessionIdFromUrl).finally(() => setSessionLoaded(true));
     } else {
       navigatingToHomeRef.current = true;
-      clearChat();
+      // Don't abort in-flight stream so the new session can finish and appear in the sidebar
+      clearChat({ abortStream: false });
       setSessionLoaded(true);
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
@@ -620,7 +621,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         <button
           type="button"
           onClick={() => {
-            clearChat();
+            clearChat({ abortStream: false });
             router.push('/');
           }}
           className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"

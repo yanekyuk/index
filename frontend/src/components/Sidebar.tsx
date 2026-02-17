@@ -80,7 +80,7 @@ export default function Sidebar() {
   }, [indexesService, addIndex, success, error]);
 
   const handleDiscoverClick = () => {
-    clearChat();
+    clearChat({ abortStream: false });
     router.push('/');
   };
 

@@ -45,7 +45,8 @@ interface AIChatContextType {
   setScopeIndexId: (indexId: string | null) => void;
   isLoading: boolean;
   sendMessage: (message: string, fileIds?: string[], attachmentNames?: string[]) => Promise<void>;
-  clearChat: () => void;
+  /** Clear messages and session state. Use { abortStream: false } when navigating away so the in-flight stream can finish and the new session appears in the sidebar. */
+  clearChat: (options?: { abortStream?: boolean }) => void;
   loadSession: (sessionId: string) => Promise<void>;
   updateSessionTitle: (sessionId: string, title: string) => Promise<boolean>;
 }
@@ -76,6 +77,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { getAccessToken } = usePrivy();
   const { refetchSessions } = useAIChatSessions();
   const abortControllerRef = useRef<AbortController | null>(null);
+  /** When true, sendMessage will only refetch sessions on X-Session-Id and not set sessionId (used when user navigated away during stream). */
+  const skipSessionUpdateForRequestRef = useRef(false);
 
   const sendMessage = useCallback(async (message: string, fileIds?: string[], attachmentNames?: string[]) => {
     const token = await getAccessToken();
@@ -129,14 +132,18 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       // Get session ID from header (new session created)
       const newSessionId = response.headers.get('X-Session-Id');
       if (newSessionId && !sessionId) {
-        setSessionId(newSessionId);
-        // The index selected at session creation becomes the session's bound index
-        // (scopeIndexId at this point is the UI selection since sessionIndexId is null for new chats)
-        if (scopeIndexId) {
-          setSessionIndexId(scopeIndexId);
+        if (skipSessionUpdateForRequestRef.current) {
+          // User navigated away; only refresh sidebar so the new session appears and can be opened later
+          refetchSessions();
+        } else {
+          setSessionId(newSessionId);
+          // The index selected at session creation becomes the session's bound index
+          // (scopeIndexId at this point is the UI selection since sessionIndexId is null for new chats)
+          if (scopeIndexId) {
+            setSessionIndexId(scopeIndexId);
+          }
+          refetchSessions();
         }
-        // Show new session in sidebar immediately (will display as "Untitled chat")
-        refetchSessions();
       }
 
       const reader = response.body?.getReader();
@@ -229,16 +236,22 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         ));
       }
     } finally {
+      skipSessionUpdateForRequestRef.current = false;
       setIsLoading(false);
     }
   }, [getAccessToken, sessionId, scopeIndexId, refetchSessions]);
 
-  const clearChat = useCallback(() => {
+  const clearChat = useCallback((options?: { abortStream?: boolean }) => {
+    const abortStream = options?.abortStream !== false;
+    if (!abortStream) {
+      skipSessionUpdateForRequestRef.current = true;
+      setIsLoading(false); // Stop showing loading on home while stream continues in background
+    }
     setMessages([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionIndexId(null); // Clear session-bound index so new chat can use UI selection
-    if (abortControllerRef.current) {
+    if (abortStream && abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
   }, []);
