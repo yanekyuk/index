@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -629,7 +634,6 @@ test/chat-controller
 - `@composio/core` - Integration platform
 - `langfuse-langchain` - LLM observability
 - `resend` - Email delivery
-- `vitest` - Testing framework
 
 **Frontend**:
 - `next` - React framework
