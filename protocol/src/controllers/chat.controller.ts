@@ -5,9 +5,18 @@ import { log } from '../lib/log';
 import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { chatSessionService } from '../services/chat.service';
 import { fileService } from '../services/file.service';
+import { SuggestionGenerator } from '../lib/protocol/agents/suggestion.generator';
 import { createDoneEvent, createErrorEvent, createStatusEvent, formatSSEEvent } from '../types/chat-streaming.types';
 
 const logger = log.controller.from("chat");
+
+let suggestionGeneratorInstance: SuggestionGenerator | null = null;
+function getSuggestionGenerator(): SuggestionGenerator {
+  if (!suggestionGeneratorInstance) {
+    suggestionGeneratorInstance = new SuggestionGenerator();
+  }
+  return suggestionGeneratorInstance;
+}
 
 @Controller('/chat')
 export class ChatController {
@@ -269,12 +278,22 @@ export class ChatController {
             subgraphResults,
           });
 
-          // Auto-generate session title
-          const sessionTitle = await chatSessionService.generateSessionTitle(sessionId, user.id);
+          // Generate session title and suggestions in parallel (graceful fallback if suggestions fail)
+          const [sessionTitle, suggestions] = await Promise.all([
+            chatSessionService.generateSessionTitle(sessionId, user.id),
+            getSuggestionGenerator()
+              .generate({
+                messages: [
+                  { role: 'user', content: messageContent },
+                  { role: 'assistant', content: fullResponse },
+                ],
+              })
+              .catch(() => undefined),
+          ]);
 
-          // Send done event with title
+          // Send done event with title and suggestions
           controller.enqueue(encoder.encode(
-            formatSSEEvent(createDoneEvent(sessionId, fullResponse, routingDecision, subgraphResults, sessionTitle))
+            formatSSEEvent(createDoneEvent(sessionId, fullResponse, routingDecision, subgraphResults, sessionTitle, suggestions))
           ));
 
         } catch (error) {
