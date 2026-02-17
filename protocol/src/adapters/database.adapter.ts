@@ -3647,17 +3647,21 @@ export function createSystemDatabase(
         'intents',
         { limit, minScore: threshold, filter: { indexScope } }
       );
-      return results.map((r): SimilarIntent => ({
-        id: r.item.id,
-        payload: r.item.payload,
-        summary: r.item.summary ?? null,
-        userId: r.item.userId,
-        isIncognito: false,
-        createdAt: new Date(0),
-        updatedAt: new Date(0),
-        archivedAt: null,
-        similarity: r.score,
-      }));
+      const intents = await Promise.all(results.map((r) => db.getIntent(r.item.id)));
+      return results
+        .map((r, i) => ({ r, intent: intents[i] }))
+        .filter((pair): pair is { r: (typeof results)[0]; intent: NonNullable<(typeof intents)[0]> } => pair.intent != null)
+        .map(({ r, intent }): SimilarIntent => ({
+          id: intent.id,
+          payload: intent.payload,
+          summary: intent.summary ?? null,
+          userId: intent.userId,
+          isIncognito: intent.isIncognito ?? false,
+          createdAt: intent.createdAt,
+          updatedAt: intent.updatedAt,
+          archivedAt: intent.archivedAt ?? null,
+          similarity: r.score,
+        }));
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
