@@ -6,6 +6,19 @@ import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatTools:Intent");
 
+/** When context is index-scoped, verifies the caller is still a member of that index. Returns error message or null. */
+async function ensureScopedMembership(
+  context: { indexId?: string; indexName?: string; userId: string },
+  systemDb: ToolDeps['systemDb']
+): Promise<string | null> {
+  if (!context.indexId) return null;
+  const isMember = await systemDb.isIndexMember(context.indexId, context.userId);
+  if (!isMember) {
+    return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
+  }
+  return null;
+}
+
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs } = deps;
 
@@ -24,6 +37,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       page: z.number().int().min(1).optional().describe("Page number (1-based)."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       // Strict scope enforcement: when chat is index-scoped, only allow querying that index
       if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
         return error(
@@ -114,6 +129,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       indexId: z.string().optional().describe("Index UUID to link the intent to. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       if (!query.description?.trim()) {
         return error("Description is required.");
       }
@@ -198,6 +215,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       newDescription: z.string().describe("New description for the intent"),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       if (!UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
@@ -240,6 +259,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       intentId: z.string().describe("Intent UUID from read_intents"),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       if (!UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
@@ -283,6 +304,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       const indexId = query.indexId?.trim() || context.indexId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {
@@ -324,6 +347,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       userId: z.string().optional().describe("Filter by user when listing by index."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() || undefined;
       let indexId = query.indexId?.trim() || context.indexId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
@@ -384,6 +409,8 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       indexId: z.string().optional().describe("Index UUID. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       const indexId = query.indexId?.trim() || context.indexId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {

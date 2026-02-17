@@ -57,7 +57,6 @@ import type {
   OpportunityActor,
   ActiveIntent,
 } from '../interfaces/database.interface';
-import { queueOpportunityNotification } from '../../../queues/notification.queue';
 import { selectStrategies } from '../support/opportunity.utils';
 import { enrichOrCreate } from '../support/opportunity.enricher';
 import { injectOpportunityIntoExistingChat } from '../support/opportunity.chat-injection';
@@ -74,6 +73,13 @@ export interface HydeGeneratorInvokeInput {
   forceRegenerate?: boolean;
 }
 
+/** Optional notifier for opportunity send; when omitted, the real queue is used via dynamic import. */
+export type QueueOpportunityNotificationFn = (
+  opportunityId: string,
+  recipientId: string,
+  priority: 'immediate' | 'high' | 'low'
+) => Promise<unknown>;
+
 /**
  * Factory class to build and compile the Opportunity Graph.
  * Uses dependency injection for testability.
@@ -85,7 +91,8 @@ export class OpportunityGraphFactory {
     private hydeGenerator: {
       invoke: (input: HydeGeneratorInvokeInput) => Promise<{ hydeEmbeddings: Record<string, number[]> }>;
     },
-    private optionalEvaluator?: OpportunityEvaluatorLike
+    private optionalEvaluator?: OpportunityEvaluatorLike,
+    private queueNotification?: QueueOpportunityNotificationFn
   ) {}
 
   public createGraph() {
@@ -119,8 +126,8 @@ export class OpportunityGraphFactory {
             };
           }
           const intents = await this.database.getActiveIntents(state.userId);
-          if (intents.length === 0 && !state.searchQuery) {
-            logger.info('[Graph:Prep] User has no active intents and no searchQuery');
+          if (intents.length === 0) {
+            logger.info('[Graph:Prep] User has no active intents - cannot run discovery');
             return {
               userIndexes: userIndexIds,
               error: 'You need to add some intents before finding opportunities.',
@@ -859,8 +866,12 @@ export class OpportunityGraphFactory {
           recipients = opp.actors.filter((a: OpportunityActor) => a.role === 'agent');
         }
 
+        const notifier: QueueOpportunityNotificationFn | undefined =
+          this.queueNotification ??
+          (await import('../../../queues/notification.queue').then((m) => m.queueOpportunityNotification));
+        if (!notifier) throw new Error('Opportunity notification not configured');
         for (const recipient of recipients) {
-          await queueOpportunityNotification(opp.id, recipient.userId, 'high');
+          await notifier(opp.id, recipient.userId, 'high');
         }
 
         await injectOpportunityIntoExistingChat({ ...opp, status: 'pending' }).catch((err) => {
@@ -909,8 +920,8 @@ export class OpportunityGraphFactory {
         return END;
       }
 
-      if (state.indexedIntents.length === 0 && !state.searchQuery) {
-        logger.info('[Graph:Routing] No indexed intents and no searchQuery - ending early');
+      if (state.indexedIntents.length === 0) {
+        logger.info('[Graph:Routing] No indexed intents - ending early');
         return END;
       }
 

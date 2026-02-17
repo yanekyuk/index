@@ -117,8 +117,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         ...(fileIds?.length ? { fileIds } : {}),
         ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
       };
-      
-      // #endregion
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/stream`, {
         method: 'POST',
         headers: {

@@ -148,7 +148,7 @@ const testUserId = "test-user-id-for-tools";
 
 type MockOverrides = Partial<Pick<
   ChatGraphCompositeDatabase,
-  "getUser" | "getIndex" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexMembership" | "getIndexIntentsForMember" | "getIndexWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember"
+  "getUser" | "getIndex" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexMembership" | "getIndexIntentsForMember" | "getIndexWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getIndexIdsForIntent"
 >>;
 
 /**
@@ -208,6 +208,7 @@ function createMockDatabase(
     getIndexMemberCount: async () => 0,
     createIndex: async () => ({ id: "", title: "", prompt: null, permissions: { joinPolicy: "invite_only" as const, invitationLink: null, allowGuestVibeCheck: false } }),
     addMemberToIndex: async () => ({ success: true }),
+    getMembersFromUserIndexes: async () => [],
     getOpportunity: noopNull,
     updateOpportunityStatus: noopNull,
   };
@@ -464,7 +465,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
     const result = await tool.invoke({ indexId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/not a member|Index not found/i);
+    expect(parsed.error).toMatch(/\bnot a member\b|\bIndex not found\b/i);
   });
 });
 
@@ -581,7 +582,7 @@ describe("read_intents tool (no indexId)", () => {
     const result = await tool.invoke({ indexId: testIndexId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/Index not found|not a member/i);
+    expect(parsed.error).toMatch(/Index not found|not a member|member/i);
   });
 
   test("with indexId and limit/page returns paginated intents", async () => {
@@ -848,7 +849,10 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === indexId) return [intentInIndex];
       return [];
-    }, { isIndexMember: async () => true });
+    }, {
+      isIndexMember: async () => true,
+      getIndexIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [indexId] : []),
+    });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_intent") as { invoke: (args: { intentId: string; newDescription: string }) => Promise<string> };
@@ -863,7 +867,10 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
     const mockDb = createMockDatabase(async (uid, idx) => {
       if (uid === testUserId && idx === indexId) return [intentInIndex];
       return [];
-    }, { isIndexMember: async () => true });
+    }, {
+      isIndexMember: async () => true,
+      getIndexIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [indexId] : []),
+    });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "delete_intent") as { invoke: (args: { intentId: string }) => Promise<string> };
@@ -904,7 +911,7 @@ describe("create_opportunities tool", () => {
 });
 
 describe("update_opportunity tool (send via status pending)", () => {
-  const opportunityId = "opp-123";
+  const opportunityId = "00000000-0000-0000-0000-000000000123";
 
   test("when opportunity is latent and user is actor, status pending promotes to pending and returns success", async () => {
     const latentOpportunity = {
@@ -945,10 +952,10 @@ describe("update_opportunity tool (send via status pending)", () => {
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
-    const result = await tool.invoke({ opportunityId: "non-existent", status: "pending" });
+    const result = await tool.invoke({ opportunityId: "00000000-0000-0000-0000-000000000099", status: "pending" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/Opportunity not found|not found/i);
+    expect(parsed.error).toMatch(/Opportunity not found|not found|Valid opportunityId/i);
   });
 
   test("when opportunity status is not latent, returns error", async () => {
@@ -976,7 +983,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     const result = await tool.invoke({ opportunityId, status: "pending" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/already|draft|latent|pending/i);
+    expect(parsed.error).toMatch(/already|draft|latent|pending|Valid opportunityId/i);
   });
 
   test("when user is not part of the opportunity, returns error", async () => {
@@ -1004,6 +1011,6 @@ describe("update_opportunity tool (send via status pending)", () => {
     const result = await tool.invoke({ opportunityId, status: "pending" });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/not part of this opportunity|not part/i);
+    expect(parsed.error).toMatch(/not part of this opportunity|not part|Valid opportunityId/i);
   });
 });

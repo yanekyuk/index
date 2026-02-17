@@ -1323,7 +1323,7 @@ export interface SystemDatabase {
   getIndexMembers(indexId: string): Promise<IndexMemberDetails[]>;
 
   /** Get all members across all indexes in scope (deduplicated). */
-  getMembersFromScope(): Promise<{ userId: string; name: string; avatar: string | null }[]>;
+  getMembersFromScope(): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
 
   /** Add a user to an index (requires ownership or 'anyone' policy). */
   addMemberToIndex(indexId: string, userId: string, role: 'owner' | 'admin' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
@@ -1494,6 +1494,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createIndex'
   | 'getIndexMemberCount'
   | 'addMemberToIndex'
+  | 'removeMemberFromIndex'
 >;
 
 /**

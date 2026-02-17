@@ -176,7 +176,9 @@ export function createChatGraphMockDb(
   const getIndex = config.getIndex ?? (() => null);
   const isIndexMember = config.isIndexMember ?? (() => false);
   const isIndexOwner = config.isIndexOwner ?? (() => false);
-  const getUser = config.getUser ?? (() => null);
+  const getUser =
+    config.getUser ??
+    ((userId: string): UserRecord => ({ id: userId, name: "Test User", email: "test@example.com" }));
   const ownedIndexes = config.ownedIndexes ?? (() => []);
 
   return {
@@ -215,6 +217,12 @@ export function createChatGraphMockDb(
     getIndexMemberships: async (userId: string) =>
       Promise.resolve(indexMemberships(userId)).then((f) => (Array.isArray(f) ? f : [])),
     getIndex: async (indexId: string) => Promise.resolve(getIndex(indexId)),
+    getIndexMembership: async (indexId: string, userId: string) => {
+      const index = await Promise.resolve(getIndex(indexId));
+      if (!index) return null;
+      const member = await Promise.resolve(isIndexMember(indexId, userId));
+      return member ? { indexId, indexTitle: index.title, indexPrompt: null, permissions: [] } : null;
+    },
     getIndexWithPermissions: async () => null,
     getIntentForIndexing: noopNull,
     getIndexMemberContext: noopNull,
@@ -240,6 +248,8 @@ export function createChatGraphMockDb(
       Promise.resolve(isIndexMember(indexId, userId)),
     getIndexMembersForOwner: noopArray,
     getIndexMembersForMember: noopArray,
+    getMembersFromUserIndexes: async () => [],
+    removeMemberFromIndex: async () => ({ success: true }),
     getIndexIntentsForOwner: async (indexId: string, requestingUserId: string, opts?: { limit?: number; offset?: number }) =>
       Promise.resolve(indexIntentsForOwner(indexId, requestingUserId)).then((f) =>
         Array.isArray(f) ? f : []
