@@ -37,6 +37,8 @@ interface AIChatContextType {
   sessionId: string | null;
   sessionTitle: string | null;
   setSessionId: (id: string | null) => void;
+  /** The index bound to the current session (persisted). Null if no index scope. */
+  sessionIndexId: string | null;
   /** When the user has selected a single index (e.g. in chat dropdown), chat and create_intent are scoped to that index. */
   scopeIndexId: string | null;
   /** Set the current index scope (e.g. from the index filter dropdown in ChatContent). Call with null for "Everywhere". */
@@ -61,7 +63,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [scopeIndexIdOverride, setScopeIndexIdOverride] = useState<string | null>(null);
   const scopeFromPath = getScopeIndexIdFromPathname(pathname);
-  const scopeIndexId = scopeIndexIdOverride ?? scopeFromPath;
+  // For new chats, use the UI selection; for existing sessions, the session's bound index takes precedence
+  const [sessionIndexId, setSessionIndexId] = useState<string | null>(null);
+  // Effective scope: session's bound index takes precedence, then UI override, then path
+  const scopeIndexId = sessionIndexId ?? scopeIndexIdOverride ?? scopeFromPath;
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -125,6 +130,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       const newSessionId = response.headers.get('X-Session-Id');
       if (newSessionId && !sessionId) {
         setSessionId(newSessionId);
+        // The index selected at session creation becomes the session's bound index
+        // (scopeIndexId at this point is the UI selection since sessionIndexId is null for new chats)
+        if (scopeIndexId) {
+          setSessionIndexId(scopeIndexId);
+        }
         // Show new session in sidebar immediately (will display as "Untitled chat")
         refetchSessions();
       }
@@ -227,6 +237,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setMessages([]);
     setSessionId(null);
     setSessionTitle(null);
+    setSessionIndexId(null); // Clear session-bound index so new chat can use UI selection
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -248,11 +259,13 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       });
       if (!res.ok) throw new Error('Failed to load session');
       const data = (await res.json()) as {
-        session: { id: string; title?: string | null };
+        session: { id: string; title?: string | null; indexId?: string | null };
         messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
       };
       setSessionId(data.session.id);
       setSessionTitle(data.session.title?.trim() ?? null);
+      // Load the session's bound index - this is the persisted scope for this conversation
+      setSessionIndexId(data.session.indexId ?? null);
       setMessages(
         data.messages.map((m) => ({
           id: m.id,
@@ -303,6 +316,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       sessionId,
       sessionTitle,
       setSessionId,
+      sessionIndexId,
       scopeIndexId,
       setScopeIndexId: setScopeIndexIdOverride,
       isLoading,

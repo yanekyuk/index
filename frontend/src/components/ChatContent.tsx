@@ -80,7 +80,7 @@ function AssistantMessageContent({ content, isStreaming }: { content: string; is
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
   const sessionIdFromUrl = sessionIdParam ?? null;
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle, setScopeIndexId } = useAIChat();
+  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle, setScopeIndexId, sessionIndexId } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError } = useNotifications();
   const [input, setInput] = useState('');
@@ -668,6 +668,23 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 <Pencil className="h-4 w-4" />
               </button>
             )}
+            {/* Active index indicator - show session's bound index for existing sessions */}
+            {(() => {
+              // For existing sessions, show the session's bound index; for new chats, show the UI selection
+              const boundIndexId = sessionIndexId ?? selectedIndexId;
+              const boundIndex = indexes.find(i => i.id === boundIndexId);
+              if (!boundIndex) return null;
+              return (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 ml-2">
+                  {boundIndex.permissions?.joinPolicy === 'invite_only' ? (
+                    <Lock className="w-3 h-3" />
+                  ) : (
+                    <Globe className="w-3 h-3" />
+                  )}
+                  <span className="truncate max-w-[120px]">{boundIndex.title}</span>
+                </span>
+              );
+            })()}
           </div>
         )}
       </div>
