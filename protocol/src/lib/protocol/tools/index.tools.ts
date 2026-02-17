@@ -142,7 +142,6 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           }
 
           // Unscoped chat: show overlap with shared indexes (intersection of caller and target memberships)
-          const callerIndexIds = new Set(callerMemberships.map((m) => m.indexId));
           const sharedIndexes: typeof callerMemberships = [];
           for (const m of callerMemberships) {
             if (await systemDb.isIndexMember(m.indexId, targetUserId)) {
