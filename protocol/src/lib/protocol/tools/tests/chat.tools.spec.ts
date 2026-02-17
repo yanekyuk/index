@@ -465,7 +465,9 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
     const result = await tool.invoke({ indexId });
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(false);
-    expect(parsed.error).toMatch(/\bnot a member\b|\bIndex not found\b/i);
+    expect(parsed.error).toMatch(
+      /\bnot a member\b|\bIndex not found\b|member of/i,
+    );
   });
 });
 

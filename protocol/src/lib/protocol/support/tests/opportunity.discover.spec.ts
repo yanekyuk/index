@@ -80,6 +80,7 @@ describe("opportunity.discover", () => {
 
   const mockDatabase: ChatGraphCompositeDatabase = {
     getProfile: async () => null,
+    getUser: async () => null,
   } as unknown as ChatGraphCompositeDatabase;
 
   describe("runDiscoverFromQuery", () => {
