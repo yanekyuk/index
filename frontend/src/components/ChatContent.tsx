@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUp, Loader2, Pencil, Paperclip, X, Globe, Zap, Type, ChevronDown, Lock, ChevronLeft, Bot } from 'lucide-react';
+import { ArrowUp, Loader2, Pencil, Paperclip, X, Globe, ChevronDown, Lock, ChevronLeft, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MentionsTextInput } from '@/components/MentionsInput';
 import { useAIChat } from '@/contexts/AIChatContext';
@@ -11,6 +11,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { validateFiles } from '@/lib/file-validation';
 import InlineDiscoveryCard from '@/components/chat/InlineDiscoveryCard';
+import { SuggestionChips } from '@/components/chat/SuggestionChips';
 import { ContentContainer } from '@/components/layout';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
@@ -80,7 +81,7 @@ function AssistantMessageContent({ content, isStreaming }: { content: string; is
 export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const router = useRouter();
   const sessionIdFromUrl = sessionIdParam ?? null;
-  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, updateSessionTitle, setScopeIndexId, sessionIndexId } = useAIChat();
+  const { messages, isLoading, sendMessage, clearChat, loadSession, sessionId, sessionTitle, suggestions: contextSuggestions, setScopeIndexId, sessionIndexId, updateSessionTitle } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError } = useNotifications();
   const [input, setInput] = useState('');
@@ -115,8 +116,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const { indexes } = useIndexesState();
   const selectedIndexId = selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
   
-  // Suggestions (for conversation mode)
+  // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
+    contextSuggestions: contextSuggestions ?? null,
+    hasMessages: messages.length > 0,
     indexId: selectedIndexId,
     enabled: messages.length > 0,
   });
@@ -753,26 +756,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       <div className="sticky bottom-0 z-20">
         <div className="px-6 lg:px-8">
           <ContentContainer>
-            {/* Suggestion chips - always visible in conversation */}
-            {suggestions.length > 0 && (
-              <div className="mb-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-                {suggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    disabled={isBusy}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-[#3D3D3D] hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm disabled:opacity-50 whitespace-nowrap flex-shrink-0"
-                  >
-                    {suggestion.type === 'direct' ? (
-                      <Zap className="w-3 h-3 text-gray-400" />
-                    ) : (
-                      <Type className="w-3 h-3 text-gray-400" />
-                    )}
-                    {suggestion.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <SuggestionChips
+              suggestions={suggestions}
+              disabled={isBusy}
+              onSuggestionClick={handleSuggestionClick}
+            />
             {renderInputForm()}
           </ContentContainer>
         </div>
