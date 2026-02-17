@@ -3,9 +3,15 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { enrichOrCreate } from "../support/opportunity.enricher";
-import { OpportunityPresenter } from "../agents/opportunity.presenter";
+import {
+  OpportunityPresenter,
+  gatherPresenterContext,
+} from "../agents/opportunity.presenter";
 import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
-import type { EvaluatorEntity, EvaluatorInput } from "../agents/opportunity.evaluator";
+import type {
+  EvaluatorEntity,
+  EvaluatorInput,
+} from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatTools:Opportunity");
@@ -24,66 +30,105 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Optionally pass hint (the user's reason for the introduction).\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
-      searchQuery: z.string().optional().describe("Discovery mode: what to search for."),
-      indexId: z.string().optional().describe("Index UUID; optional when index-scoped."),
-      partyUserIds: z.array(z.string()).optional().describe("Introduction mode: user IDs to introduce (at least 2)."),
-      entities: z.array(z.object({
-        userId: z.string(),
-        profile: z.object({
-          name: z.string().optional(),
-          bio: z.string().optional(),
-          location: z.string().optional(),
-          interests: z.array(z.string()).optional(),
-          skills: z.array(z.string()).optional(),
-          context: z.string().optional(),
-        }).optional(),
-        intents: z.array(z.object({
-          intentId: z.string(),
-          payload: z.string(),
-          summary: z.string().optional(),
-        })).optional(),
-        indexId: z.string().describe("Shared index this entity's data comes from"),
-      })).optional().describe("Introduction mode: pre-gathered profiles + intents per party. Gather via read_user_profiles + read_intents before calling."),
-      hint: z.string().optional().describe("Introduction mode: the user's reason for the intro (e.g. 'both AI devs')."),
+      searchQuery: z
+        .string()
+        .optional()
+        .describe("Discovery mode: what to search for."),
+      indexId: z
+        .string()
+        .optional()
+        .describe("Index UUID; optional when index-scoped."),
+      partyUserIds: z
+        .array(z.string())
+        .optional()
+        .describe("Introduction mode: user IDs to introduce (at least 2)."),
+      entities: z
+        .array(
+          z.object({
+            userId: z.string(),
+            profile: z
+              .object({
+                name: z.string().optional(),
+                bio: z.string().optional(),
+                location: z.string().optional(),
+                interests: z.array(z.string()).optional(),
+                skills: z.array(z.string()).optional(),
+                context: z.string().optional(),
+              })
+              .optional(),
+            intents: z
+              .array(
+                z.object({
+                  intentId: z.string(),
+                  payload: z.string(),
+                  summary: z.string().optional(),
+                }),
+              )
+              .optional(),
+            indexId: z
+              .string()
+              .describe("Shared index this entity's data comes from"),
+          }),
+        )
+        .optional()
+        .describe(
+          "Introduction mode: pre-gathered profiles + intents per party. Gather via read_user_profiles + read_intents before calling.",
+        ),
+      hint: z
+        .string()
+        .optional()
+        .describe(
+          "Introduction mode: the user's reason for the intro (e.g. 'both AI devs').",
+        ),
     }),
     handler: async ({ context, query }) => {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
-      if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
+      if (
+        context.indexId &&
+        query.indexId?.trim() &&
+        query.indexId.trim() !== context.indexId
+      ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create opportunities in this community.`
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
         );
       }
 
-      const effectiveIndexId = (context.indexId || query.indexId?.trim()) ?? null;
+      const effectiveIndexId =
+        (context.indexId || query.indexId?.trim()) ?? null;
 
       // ── Introduction mode ──
       if (query.partyUserIds && query.partyUserIds.length >= 2) {
         if (!query.entities || query.entities.length === 0) {
           return error(
             "Introduction requires pre-gathered entity data. " +
-            "First use read_index_memberships to find shared indexes, " +
-            "then read_user_profiles and read_intents for each party, " +
-            "then pass the results as entities."
+              "First use read_index_memberships to find shared indexes, " +
+              "then read_user_profiles and read_intents for each party, " +
+              "then pass the results as entities.",
           );
         }
 
         const primaryIndexId = query.entities[0]?.indexId;
         if (!primaryIndexId) {
-          return error("Each entity must include an indexId (the shared index).");
+          return error(
+            "Each entity must include an indexId (the shared index).",
+          );
         }
 
         // Strict scope enforcement: when chat is index-scoped, primaryIndexId must match
         if (context.indexId && primaryIndexId !== context.indexId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only introduce members of this community.`
+            `This chat is scoped to ${context.indexName ?? "this index"}. You can only introduce members of this community.`,
           );
         }
 
         // Verify introducer (caller) is a member of the primary index
-        const introducerIsMember = await systemDb.isIndexMember(primaryIndexId, context.userId);
+        const introducerIsMember = await systemDb.isIndexMember(
+          primaryIndexId,
+          context.userId,
+        );
         if (!introducerIsMember) {
           return error(
-            "One or more users are not members of the specified community. You can only introduce members who share an index."
+            "One or more users are not members of the specified community. You can only introduce members who share an index.",
           );
         }
 
@@ -93,23 +138,28 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           const isMember = await systemDb.isIndexMember(primaryIndexId, userId);
           if (!isMember) {
             return error(
-              "One or more users are not members of the specified community. You can only introduce members who share an index."
+              "One or more users are not members of the specified community. You can only introduce members who share an index.",
             );
           }
         }
 
         // Map entities to evaluator format
-        const evaluatorEntities: EvaluatorEntity[] = query.entities.map((e) => ({
-          userId: e.userId,
-          profile: e.profile ?? {},
-          intents: e.intents,
-          indexId: e.indexId,
-        }));
+        const evaluatorEntities: EvaluatorEntity[] = query.entities.map(
+          (e) => ({
+            userId: e.userId,
+            profile: e.profile ?? {},
+            intents: e.intents,
+            indexId: e.indexId,
+          }),
+        );
 
         // Check for existing opportunity
         const partyUserIds = query.partyUserIds;
         // Use systemDb for cross-user opportunity checks
-        const exists = await systemDb.opportunityExistsBetweenActors(partyUserIds, primaryIndexId);
+        const exists = await systemDb.opportunityExistsBetweenActors(
+          partyUserIds,
+          primaryIndexId,
+        );
         if (exists) {
           return error("An opportunity already exists between these people.");
         }
@@ -128,10 +178,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
         let reasoning: string;
         let score: number;
-        let evaluatedActors: Array<{ userId: string; role: string; intentId?: string }> = [];
+        let evaluatedActors: Array<{
+          userId: string;
+          role: string;
+          intentId?: string;
+        }> = [];
 
         try {
-          const evaluated = await evaluator.invokeEntityBundle(evalInput, { minScore: 0 });
+          const evaluated = await evaluator.invokeEntityBundle(evalInput, {
+            minScore: 0,
+          });
           if (evaluated.length > 0) {
             const best = evaluated[0];
             reasoning = best.reasoning;
@@ -142,21 +198,27 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               ...(a.intentId != null ? { intentId: a.intentId } : {}),
             }));
           } else {
-            reasoning = `${introducerUser?.name ?? "A member"} believes these people should connect.` +
+            reasoning =
+              `${introducerUser?.name ?? "A member"} believes these people should connect.` +
               (query.hint ? ` Context: ${query.hint}` : "");
             score = 70;
           }
         } catch (evalErr) {
-          logger.warn("Evaluator failed, using fallback reasoning", { error: evalErr });
-          reasoning = `${introducerUser?.name ?? "A member"} believes these people should connect.` +
+          logger.warn("Evaluator failed, using fallback reasoning", {
+            error: evalErr,
+          });
+          reasoning =
+            `${introducerUser?.name ?? "A member"} believes these people should connect.` +
             (query.hint ? ` Context: ${query.hint}` : "");
           score = 70;
         }
 
         // Build actors array
-        const requiredPartyUserIds = partyUserIds.filter((uid) => uid !== context.userId);
+        const requiredPartyUserIds = partyUserIds.filter(
+          (uid) => uid !== context.userId,
+        );
         const evaluatorHasAllParties = requiredPartyUserIds.every((uid) =>
-          evaluatedActors.some((a) => a.userId === uid)
+          evaluatedActors.some((a) => a.userId === uid),
         );
         const actors = evaluatorHasAllParties
           ? [
@@ -168,32 +230,50 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   role: a.role as string,
                   ...(a.intentId ? { intent: a.intentId } : {}),
                 })),
-              { indexId: primaryIndexId, userId: context.userId, role: 'introducer' },
+              {
+                indexId: primaryIndexId,
+                userId: context.userId,
+                role: "introducer",
+              },
             ]
           : [
-              ...requiredPartyUserIds.map((uid) => ({ indexId: primaryIndexId, userId: uid, role: 'party' })),
-              { indexId: primaryIndexId, userId: context.userId, role: 'introducer' },
+              ...requiredPartyUserIds.map((uid) => ({
+                indexId: primaryIndexId,
+                userId: uid,
+                role: "party",
+              })),
+              {
+                indexId: primaryIndexId,
+                userId: context.userId,
+                role: "introducer",
+              },
             ];
 
         // Persist
         const confidence = score / 100;
         const data = {
           detection: {
-            source: 'manual' as const,
+            source: "manual" as const,
             createdBy: context.userId,
             createdByName: introducerUser?.name ?? undefined,
             timestamp: new Date().toISOString(),
           },
           actors,
           interpretation: {
-            category: 'collaboration' as const,
+            category: "collaboration" as const,
             reasoning,
             confidence,
-            signals: [{ type: 'curator_judgment' as const, weight: 1, detail: `Introduction by ${introducerUser?.name ?? 'a member'} via chat` }],
+            signals: [
+              {
+                type: "curator_judgment" as const,
+                weight: 1,
+                detail: `Introduction by ${introducerUser?.name ?? "a member"} via chat`,
+              },
+            ],
           },
           context: { indexId: primaryIndexId },
           confidence: String(confidence),
-          status: 'latent' as const,
+          status: "latent" as const,
         };
 
         // Note: enrichOrCreate still uses the legacy database param for now
@@ -208,19 +288,21 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         if (enrichment.enriched && enrichment.expiredIds.length > 0) {
           for (const id of enrichment.expiredIds) {
             // Use systemDb for opportunity status updates
-            await systemDb.updateOpportunityStatus(id, 'expired');
+            await systemDb.updateOpportunityStatus(id, "expired");
           }
         }
 
         return success({
           found: true,
           count: 1,
-          opportunities: [{
-            opportunityId: created.id,
-            matchReason: reasoning,
-            score: confidence,
-            status: created.status ?? 'latent',
-          }],
+          opportunities: [
+            {
+              opportunityId: created.id,
+              matchReason: reasoning,
+              score: confidence,
+              status: created.status ?? "latent",
+            },
+          ],
         });
       }
 
@@ -235,7 +317,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const memberResult = await graphs.indexMembership.invoke({
           userId: context.userId,
           indexId: effectiveIndexId,
-          operationMode: 'read' as const,
+          operationMode: "read" as const,
         });
         if (memberResult.error) {
           return error("Index not found or you are not a member.");
@@ -248,10 +330,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         // No scope - use all indexes (only in unscoped chat)
         const indexResult = await graphs.index.invoke({
           userId: context.userId,
-          operationMode: 'read' as const,
+          operationMode: "read" as const,
           showAll: true,
         });
-        indexScope = (indexResult.readResult?.memberOf || []).map((m: { indexId: string }) => m.indexId);
+        indexScope = (indexResult.readResult?.memberOf || []).map(
+          (m: { indexId: string }) => m.indexId,
+        );
       }
 
       const result = await runDiscoverFromQuery({
@@ -262,6 +346,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope,
         limit: 5,
         presenter,
+        useHomeCardFormat: true, // Enable rich opportunity cards in chat (same format as home page)
       });
 
       if (!result.found) {
@@ -272,10 +357,38 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // Format opportunities as code blocks for the LLM to include in its response
+      // The frontend will parse ```opportunity blocks and render them as cards
+      const opportunityBlocks = (result.opportunities ?? []).map((opp) => {
+        const cardData = {
+          opportunityId: opp.opportunityId,
+          userId: opp.userId,
+          name: opp.name,
+          avatar: opp.avatar,
+          mainText:
+            opp.homeCardPresentation?.personalizedSummary ??
+            opp.matchReason ??
+            "",
+          cta: opp.homeCardPresentation?.suggestedAction,
+          headline: opp.homeCardPresentation?.headline,
+          primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,
+          secondaryActionLabel: opp.homeCardPresentation?.secondaryActionLabel,
+          mutualIntentsLabel: opp.homeCardPresentation?.mutualIntentsLabel,
+          narratorChip: opp.narratorChip,
+          viewerRole: opp.viewerRole,
+          score: opp.score,
+          status: opp.status,
+        };
+        return "```opportunity\n" + JSON.stringify(cardData, null, 2) + "\n```";
+      });
+
+      // Join all opportunity blocks into a single string for the LLM to include verbatim
+      const blocksText = opportunityBlocks.join("\n\n");
+
       return success({
         found: true,
         count: result.count,
-        opportunities: result.opportunities ?? [],
+        message: `Found ${result.count} potential connection(s). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
       });
     },
   });
@@ -283,33 +396,162 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const listOpportunities = defineTool({
     name: "list_opportunities",
     description:
-      "Lists the user's opportunities (suggested connections). Returns raw opportunity data — present it conversationally. When chat is index-scoped, only shows opportunities from that index.",
+      "Lists the user's opportunities (suggested connections). Returns opportunity cards to display. When chat is index-scoped, only shows opportunities from that index.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID filter; defaults to current index when scoped."),
+      indexId: z
+        .string()
+        .optional()
+        .describe("Index UUID filter; defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
-      if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
+      if (
+        context.indexId &&
+        query.indexId?.trim() &&
+        query.indexId.trim() !== context.indexId
+      ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only list opportunities from this community.`
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this community.`,
         );
       }
 
-      const effectiveIndexId = (context.indexId || query.indexId?.trim()) ?? undefined;
+      const effectiveIndexId =
+        (context.indexId || query.indexId?.trim()) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format.");
       }
 
-      const result = await graphs.opportunity.invoke({
-        userId: context.userId,
-        indexId: effectiveIndexId,
-        operationMode: 'read' as const,
-      });
+      // Get raw opportunities with full data for presentation
+      const opportunities = await database.getOpportunitiesForUser(
+        context.userId,
+        {
+          indexId: effectiveIndexId,
+          limit: 10,
+        },
+      );
 
-      if (!result.readResult) {
-        return error("Failed to list opportunities.");
+      if (!opportunities || opportunities.length === 0) {
+        return success({
+          found: false,
+          count: 0,
+          message:
+            "You have no opportunities yet. Use create_opportunities to search for connections.",
+        });
       }
-      return success(result.readResult);
+
+      // Generate rich presentations for each opportunity
+      const opportunityBlocks: string[] = [];
+
+      for (const opp of opportunities) {
+        try {
+          // Find the counterpart (other party in the opportunity)
+          const counterpartActor = opp.actors.find(
+            (a) => a.userId !== context.userId && a.role !== "introducer",
+          );
+          const counterpartUserId = counterpartActor?.userId;
+
+          if (!counterpartUserId) continue;
+
+          // Get counterpart profile and user info
+          const [counterpartProfile, counterpartUser] = await Promise.all([
+            database.getProfile(counterpartUserId),
+            database.getUser(counterpartUserId),
+          ]);
+
+          const counterpartName =
+            counterpartProfile?.identity?.name ??
+            counterpartUser?.name ??
+            "Someone";
+
+          // Gather context for presentation
+          const presenterContext = await gatherPresenterContext(
+            database,
+            opp,
+            context.userId,
+          );
+
+          // Generate rich presentation
+          const presentation = await presenter.presentHomeCard({
+            ...presenterContext,
+            mutualIntentCount: undefined,
+            opportunityStatus: opp.status,
+          });
+
+          // Check if this is an introduction (has introducer)
+          const introducerActor = opp.actors.find(
+            (a) => a.role === "introducer" && a.userId !== context.userId,
+          );
+          let narratorChip: {
+            name: string;
+            text: string;
+            avatar?: string | null;
+            userId?: string;
+          };
+          if (introducerActor && presenterContext.introducerName) {
+            narratorChip = {
+              name: presenterContext.introducerName,
+              text: presentation.narratorRemark,
+              userId: introducerActor.userId,
+            };
+          } else {
+            narratorChip = {
+              name: "Index",
+              text: presentation.narratorRemark,
+            };
+          }
+
+          // Determine viewer's role
+          const viewerActor = opp.actors.find(
+            (a) => a.userId === context.userId,
+          );
+          const viewerRole = viewerActor?.role ?? "party";
+
+          const cardData = {
+            opportunityId: opp.id,
+            userId: counterpartUserId,
+            name: counterpartName,
+            avatar: counterpartUser?.avatar ?? null,
+            mainText: presentation.personalizedSummary,
+            cta: presentation.suggestedAction,
+            headline: presentation.headline,
+            primaryActionLabel: presentation.primaryActionLabel,
+            secondaryActionLabel: presentation.secondaryActionLabel,
+            mutualIntentsLabel: presentation.mutualIntentsLabel,
+            narratorChip,
+            viewerRole,
+            score:
+              typeof opp.interpretation?.confidence === "number"
+                ? opp.interpretation.confidence
+                : undefined,
+            status: opp.status,
+          };
+
+          opportunityBlocks.push(
+            "```opportunity\n" + JSON.stringify(cardData, null, 2) + "\n```",
+          );
+        } catch (err) {
+          // Skip opportunities that fail to enrich
+          continue;
+        }
+      }
+
+      if (opportunityBlocks.length === 0) {
+        return success({
+          found: false,
+          count: 0,
+          message:
+            "You have no opportunities yet. Use create_opportunities to search for connections.",
+        });
+      }
+
+      // Join all opportunity blocks into a single string for the LLM to include verbatim
+      const blocksText = opportunityBlocks.join("\n\n");
+
+      return success({
+        found: true,
+        count: opportunityBlocks.length,
+        message: `You have ${opportunityBlocks.length} opportunity(ies). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+      });
     },
   });
 
@@ -318,8 +560,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Updates an opportunity's status. Use 'pending' to send a draft (notifies next person). Use 'accepted'/'rejected' to respond to a received opportunity. When chat is index-scoped, can only update opportunities from that index.",
     querySchema: z.object({
-      opportunityId: z.string().describe("Opportunity ID from list_opportunities"),
-      status: z.enum(["pending", "accepted", "rejected", "expired"]).describe("New status: pending (send draft), accepted, rejected, expired"),
+      opportunityId: z
+        .string()
+        .describe("Opportunity ID from list_opportunities"),
+      status: z
+        .enum(["pending", "accepted", "rejected", "expired"])
+        .describe(
+          "New status: pending (send draft), accepted, rejected, expired",
+        ),
     }),
     handler: async ({ context, query }) => {
       const opportunityId = query.opportunityId?.trim();
@@ -342,7 +590,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const isSend = query.status === "pending";
       const result = await graphs.opportunity.invoke({
         userId: context.userId,
-        operationMode: isSend ? ('send' as const) : ('update' as const),
+        operationMode: isSend ? ("send" as const) : ("update" as const),
         opportunityId: query.opportunityId,
         ...(isSend ? {} : { newStatus: query.status }),
       });
@@ -353,10 +601,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: result.mutationResult.opportunityId,
             status: query.status,
             message: result.mutationResult.message,
-            ...(result.mutationResult.notified && { notified: result.mutationResult.notified }),
+            ...(result.mutationResult.notified && {
+              notified: result.mutationResult.notified,
+            }),
           });
         }
-        return error(result.mutationResult.error || "Failed to update opportunity.");
+        return error(
+          result.mutationResult.error || "Failed to update opportunity.",
+        );
       }
       return error("Failed to update opportunity.");
     },

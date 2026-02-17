@@ -26,8 +26,13 @@ const logger = protocolLogger("ChatStreamer");
  */
 export class ChatStreamer {
   constructor(
-    private loadSessionContext: (sessionId: string, maxMessages: number) => Promise<BaseMessage[]>,
-    private createStreamingGraph: (checkpointer?: MemorySaver | PostgresSaver) => any
+    private loadSessionContext: (
+      sessionId: string,
+      maxMessages: number,
+    ) => Promise<BaseMessage[]>,
+    private createStreamingGraph: (
+      checkpointer?: MemorySaver | PostgresSaver,
+    ) => any,
   ) {}
 
   /**
@@ -47,9 +52,15 @@ export class ChatStreamer {
       maxContextMessages?: number;
       indexId?: string;
     },
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
   ): AsyncGenerator<ChatStreamEvent> {
-    const { userId, message, sessionId, maxContextMessages = 20, indexId } = input;
+    const {
+      userId,
+      message,
+      sessionId,
+      maxContextMessages = 20,
+      indexId,
+    } = input;
     logger.info("Starting context-aware streaming", {
       userId,
       sessionId,
@@ -61,7 +72,10 @@ export class ChatStreamer {
 
     try {
       // Load previous conversation context
-      const previousMessages = await this.loadSessionContext(sessionId, maxContextMessages);
+      const previousMessages = await this.loadSessionContext(
+        sessionId,
+        maxContextMessages,
+      );
 
       // Add current message
       const allMessages = [...previousMessages, new HumanMessage(message)];
@@ -75,7 +89,7 @@ export class ChatStreamer {
       yield* this.streamChatEvents(
         { userId, messages: allMessages, indexId },
         sessionId,
-        checkpointer
+        checkpointer,
       );
     } catch (error) {
       logger.error("Stream error", {
@@ -83,8 +97,10 @@ export class ChatStreamer {
       });
       yield createErrorEvent(
         sessionId,
-        error instanceof Error ? error.message : "Unknown error during context-aware streaming",
-        "CONTEXT_STREAM_ERROR"
+        error instanceof Error
+          ? error.message
+          : "Unknown error during context-aware streaming",
+        "CONTEXT_STREAM_ERROR",
       );
     }
   }
@@ -105,12 +121,16 @@ export class ChatStreamer {
   public async *streamChatEvents(
     input: { userId: string; messages: BaseMessage[]; indexId?: string },
     sessionId: string,
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
   ): AsyncGenerator<ChatStreamEvent> {
     const graph = this.createStreamingGraph(checkpointer);
 
     try {
-      const initialState: { userId: string; messages: BaseMessage[]; indexId?: string } = {
+      const initialState: {
+        userId: string;
+        messages: BaseMessage[];
+        indexId?: string;
+      } = {
         userId: input.userId,
         messages: input.messages,
       };
@@ -118,13 +138,10 @@ export class ChatStreamer {
 
       // Use graph.stream() with custom + updates modes.
       // Custom events come from config.writer() inside agentLoopNode.
-      const eventStream = await graph.stream(
-        initialState,
-        {
-          streamMode: ["custom", "updates"] as const,
-          configurable: { thread_id: sessionId },
-        }
-      );
+      const eventStream = await graph.stream(initialState, {
+        streamMode: ["custom", "updates"] as const,
+        configurable: { thread_id: sessionId },
+      });
 
       // Emit initial status
       yield createStatusEvent(sessionId, "Processing your message...");
@@ -146,7 +163,10 @@ export class ChatStreamer {
           // tool_activity "end" events are logged but not forwarded to
           // the frontend — the LLM's own text provides the narration.
           if (event.type === "tool_activity") {
-            logger.debug("Tool activity", { name: event.name, success: event.success });
+            logger.debug("Tool activity", {
+              name: event.name,
+              success: event.success,
+            });
           }
         }
 
@@ -159,18 +179,21 @@ export class ChatStreamer {
           const agentOutput = updates?.agent_loop;
 
           if (agentOutput?.error) {
-            logger.warn("Agent loop returned error via updates", { error: agentOutput.error });
+            logger.warn("Agent loop returned error via updates", {
+              error: agentOutput.error,
+            });
             yield createErrorEvent(
               sessionId,
               String(agentOutput.error),
-              "AGENT_ERROR"
+              "AGENT_ERROR",
             );
           }
 
           logger.info("Agent loop complete (updates)", {
-            responseLength: typeof agentOutput?.responseText === "string"
-              ? (agentOutput.responseText as string).length
-              : 0,
+            responseLength:
+              typeof agentOutput?.responseText === "string"
+                ? (agentOutput.responseText as string).length
+                : 0,
           });
         }
       }
@@ -180,8 +203,10 @@ export class ChatStreamer {
       });
       yield createErrorEvent(
         sessionId,
-        error instanceof Error ? error.message : "Unknown error during streaming",
-        "STREAM_ERROR"
+        error instanceof Error
+          ? error.message
+          : "Unknown error during streaming",
+        "STREAM_ERROR",
       );
     }
   }
