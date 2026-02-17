@@ -79,6 +79,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
+        // Verify introducer (caller) is a member of the primary index
+        const introducerIsMember = await systemDb.isIndexMember(primaryIndexId, context.userId);
+        if (!introducerIsMember) {
+          return error(
+            `User ${context.userId} is not a member of the specified community. You can only introduce members who share an index.`
+          );
+        }
+
         // Verify all party users are members of the primary index
         for (const userId of query.partyUserIds) {
           if (userId === context.userId) continue; // Skip self (we know we're a member)
@@ -326,10 +334,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           return error("Opportunity not found.");
         }
         const opportunityIndexId = opportunity.context?.indexId;
-        if (opportunityIndexId && opportunityIndexId !== context.indexId) {
-          return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update opportunities from this community.`
-          );
+        if (!opportunityIndexId || opportunityIndexId !== context.indexId) {
+          return error("Opportunity not found.");
         }
       }
 

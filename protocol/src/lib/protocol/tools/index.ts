@@ -117,9 +117,11 @@ export async function createChatTools(
   // Get the user's index scope (all indexes they have access to)
   const indexScope = resolvedContext.userIndexes.map((m) => m.indexId);
 
-  // Create context-bound database instances
-  const userDb = createUserDatabase(chatDatabaseAdapter, resolvedContext.userId);
-  const systemDb = createSystemDatabase(chatDatabaseAdapter, resolvedContext.userId, indexScope);
+  // Use injected instances when provided (e.g. tests). Otherwise create from the same
+  // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
+  // update) use the same adapter as the rest of the tool pipeline.
+  const userDb = deps.userDb ?? createUserDatabase(database as Parameters<typeof createUserDatabase>[0], resolvedContext.userId);
+  const systemDb = deps.systemDb ?? createSystemDatabase(database as Parameters<typeof createSystemDatabase>[0], resolvedContext.userId, indexScope, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const toolDeps: ToolDeps = {

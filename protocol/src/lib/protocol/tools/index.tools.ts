@@ -141,9 +141,14 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
             });
           }
 
-          // Unscoped chat: show overlap with shared indexes
+          // Unscoped chat: show overlap with shared indexes (intersection of caller and target memberships)
           const callerIndexIds = new Set(callerMemberships.map((m) => m.indexId));
-          const sharedIndexes = callerMemberships.filter(m => callerIndexIds.has(m.indexId));
+          const sharedIndexes: typeof callerMemberships = [];
+          for (const m of callerMemberships) {
+            if (await systemDb.isIndexMember(m.indexId, targetUserId)) {
+              sharedIndexes.push(m);
+            }
+          }
           if (sharedIndexes.length === 0) {
             return error(
               "Unauthorized: you can only view another user's memberships if you share at least one index, or request your own memberships.",
