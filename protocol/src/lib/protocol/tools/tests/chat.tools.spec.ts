@@ -785,7 +785,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
     expect(parsed.data.summary.scopeNote).toContain("Showing current index");
   });
 
-  test("when context.indexId is set and showAll true, returns all memberships", async () => {
+  test("when context.indexId is set, showAll parameter is ignored (strict scope enforcement)", async () => {
     const allMemberships = [
       { indexId: scopedIndexId, indexTitle: "Index A", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
       { indexId: "b2c3d4e5-0000-4000-8000-000000000011", indexTitle: "Index B", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: false, joinedAt: new Date() },
@@ -797,12 +797,15 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
     });
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: scopedIndexId };
     const tools = await createChatTools(context);
-    const tool = tools.find((t: { name: string }) => t.name === "read_indexes") as { invoke: (args: { showAll?: boolean }) => Promise<string> };
-    const result = await tool.invoke({ showAll: true });
+    // Note: showAll is no longer in querySchema, but even if passed it's ignored
+    const tool = tools.find((t: { name: string }) => t.name === "read_indexes") as { invoke: (args: Record<string, unknown>) => Promise<string> };
+    const result = await tool.invoke({});
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
-    expect(parsed.data.memberOf).toHaveLength(2);
-    expect(parsed.data.summary.scopeNote).toBeUndefined();
+    // Only returns scoped index, not all 2 memberships - strict scope enforcement
+    expect(parsed.data.memberOf).toHaveLength(1);
+    expect(parsed.data.memberOf[0].indexId).toBe(scopedIndexId);
+    expect(parsed.data.summary.scopeNote).toContain("Showing current index");
   });
 });
 
