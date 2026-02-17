@@ -19,6 +19,7 @@ import {
   type HomeCardPresentationResult,
   type HomeCardPresenterInput,
 } from "../agents/opportunity.presenter";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
 import { protocolLogger, withCallLogging } from "./protocol.logger";
 
 const logger = protocolLogger("OpportunityDiscover");
@@ -248,7 +249,7 @@ export async function runDiscoverFromQuery(
           personalizedSummary:
             truncateForChat(
               item.opportunity.interpretation?.reasoning ?? "",
-              200,
+              MINIMAL_MAIN_TEXT_MAX_CHARS,
             ) ?? "A suggested connection.",
           suggestedAction: "Start a conversation to connect.",
           narratorRemark: "Based on your overlap in this community.",

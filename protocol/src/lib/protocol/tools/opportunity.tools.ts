@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { enrichOrCreate } from "../support/opportunity.enricher";
 import { OpportunityPresenter } from "../agents/opportunity.presenter";
@@ -13,9 +14,6 @@ import { protocolLogger } from "../support/protocol.logger";
 import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
-
-/** Max chars for match reason in minimal cards to keep tool payload small. */
-const MINIMAL_MAIN_TEXT_MAX_CHARS = 200;
 
 /**
  * Truncate a string for use inside JSON so the result is always valid and bounded.
@@ -176,7 +174,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const effectiveIndexId =
-        (context.indexId || query.indexId?.trim()) ?? null;
+        (context.indexId || query.indexId?.trim()) ?? undefined;
 
       // ── Introduction mode ──
       if (query.partyUserIds && query.partyUserIds.length >= 2) {
@@ -303,11 +301,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           score = 70;
         }
 
-        // Build actors array
-        const requiredPartyUserIds = partyUserIds.filter(
-          (uid) => uid !== context.userId,
-        );
-        const evaluatorHasAllParties = requiredPartyUserIds.every((uid) =>
+        // Build actors array (reuse introducedPartyUserIds: party users excluding self)
+        const evaluatorHasAllParties = introducedPartyUserIds.every((uid) =>
           evaluatedActors.some((a) => a.userId === uid),
         );
         const actors = evaluatorHasAllParties
@@ -327,7 +322,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               },
             ]
           : [
-              ...requiredPartyUserIds.map((uid) => ({
+              ...introducedPartyUserIds.map((uid) => ({
                 indexId: primaryIndexId,
                 userId: uid,
                 role: "party",
@@ -394,7 +389,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           avatar: null as string | null,
           mainText: truncateForCardText(reasoning),
           cta: "Start a conversation to connect.",
-          headline: `Connection: ${counterpartName}`,
+          headline: `Connection with ${counterpartName}`,
           primaryActionLabel: "Start Chat",
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
@@ -571,7 +566,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
         if (introducerActor?.userId) introducerUserIds.add(introducerActor.userId);
       }
-      const allUserIds = [...counterpartUserIds, ...introducerUserIds];
+      const allUserIds = [
+        ...new Set([...counterpartUserIds, ...introducerUserIds]),
+      ];
       const [profileResults, userResults] = await Promise.all([
         Promise.all(allUserIds.map((id) => database.getProfile(id))),
         Promise.all(allUserIds.map((id) => database.getUser(id))),
