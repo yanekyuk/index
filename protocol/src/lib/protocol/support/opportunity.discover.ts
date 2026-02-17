@@ -44,6 +44,11 @@ export interface DiscoverInput {
    * This enables rendering the same rich opportunity cards in chat as on the home page.
    */
   useHomeCardFormat?: boolean;
+  /**
+   * When true, skip the LLM presenter and return minimal card data only (faster for chat).
+   * Sets homeCardPresentation and narratorChip from static labels and match reason.
+   */
+  minimalForChat?: boolean;
 }
 
 /** Max chars for bio and matchReason in chat tool results to keep context manageable. */
@@ -233,7 +238,22 @@ export async function runDiscoverFromQuery(
         | Awaited<ReturnType<typeof gatherPresenterContext>>[]
         | undefined;
 
-      if (input.presenter && baseEnriched.length > 0) {
+      if (input.minimalForChat && baseEnriched.length > 0) {
+        // Minimal path: no LLM, static labels and match reason only
+        homeCardPresentations = baseEnriched.map((item) => ({
+          headline: `Connection with ${item.profile?.identity?.name ?? "someone"}`,
+          personalizedSummary:
+            truncateForChat(
+              item.opportunity.interpretation?.reasoning ?? "",
+              200,
+            ) ?? "A suggested connection.",
+          suggestedAction: "Start a conversation to connect.",
+          narratorRemark: "Based on your overlap in this community.",
+          primaryActionLabel: "Start Chat",
+          secondaryActionLabel: "Skip",
+          mutualIntentsLabel: "Suggested connection",
+        }));
+      } else if (input.presenter && baseEnriched.length > 0) {
         try {
           presenterContexts = await Promise.all(
             baseEnriched.map(({ opportunity }) =>

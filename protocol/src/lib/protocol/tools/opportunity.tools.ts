@@ -3,18 +3,94 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { enrichOrCreate } from "../support/opportunity.enricher";
-import {
-  OpportunityPresenter,
-  gatherPresenterContext,
-} from "../agents/opportunity.presenter";
+import { OpportunityPresenter } from "../agents/opportunity.presenter";
 import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
 import type {
   EvaluatorEntity,
   EvaluatorInput,
 } from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
+import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
+
+/** Max chars for match reason in minimal cards to keep tool payload small. */
+const MINIMAL_MAIN_TEXT_MAX_CHARS = 200;
+
+/**
+ * Truncate a string for use inside JSON so the result is always valid and bounded.
+ */
+function truncateForCardText(s: string, max = MINIMAL_MAIN_TEXT_MAX_CHARS): string {
+  const raw = s.trim();
+  if (raw.length <= max) return raw || "A suggested connection.";
+  return raw.slice(0, max) + "...";
+}
+
+/**
+ * Build minimal opportunity card data for chat without calling the LLM presenter.
+ * Uses only required fields from the opportunity record and counterpart name/avatar
+ * so list_opportunities and discovery return quickly.
+ */
+function buildMinimalOpportunityCard(
+  opp: Opportunity,
+  viewerId: string,
+  counterpartUserId: string,
+  counterpartName: string,
+  counterpartAvatar: string | null,
+  introducerName?: string | null,
+): {
+  opportunityId: string;
+  userId: string;
+  name: string;
+  avatar: string | null;
+  mainText: string;
+  cta: string;
+  headline: string;
+  primaryActionLabel: string;
+  secondaryActionLabel: string;
+  mutualIntentsLabel: string;
+  narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
+  viewerRole: string;
+  score: number | undefined;
+  status: string;
+} {
+  const viewerActor = opp.actors.find((a) => a.userId === viewerId);
+  const viewerRole = viewerActor?.role ?? "party";
+  const introducerActor = opp.actors.find(
+    (a) => a.role === "introducer" && a.userId !== viewerId,
+  );
+  const raw = opp.interpretation?.reasoning?.trim() ?? "";
+  const mainText =
+    raw.length <= MINIMAL_MAIN_TEXT_MAX_CHARS
+      ? raw
+      : raw.slice(0, MINIMAL_MAIN_TEXT_MAX_CHARS) + "...";
+  const score =
+    typeof opp.interpretation?.confidence === "number"
+      ? opp.interpretation.confidence
+      : undefined;
+  const narratorName =
+    introducerName ?? (introducerActor ? "Someone" : "Index");
+  return {
+    opportunityId: opp.id,
+    userId: counterpartUserId,
+    name: counterpartName,
+    avatar: counterpartAvatar,
+    mainText: mainText || "A suggested connection.",
+    cta: "Start a conversation to connect.",
+    headline: `Connection with ${counterpartName}`,
+    primaryActionLabel: "Start Chat",
+    secondaryActionLabel: "Skip",
+    mutualIntentsLabel: "Suggested connection",
+    narratorChip: {
+      name: narratorName,
+      text: "Based on your overlap in this community.",
+      ...(introducerActor ? { userId: introducerActor.userId } : {}),
+    },
+    viewerRole,
+    score,
+    status: opp.status ?? "latent",
+  };
+}
 
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const { database, userDb, systemDb, graphs, embedder } = deps;
@@ -292,17 +368,41 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }
         }
 
+        // Build a proper ```opportunity block so the frontend can render a card (same format as list/discovery)
+        const introducedPartyUserIds = partyUserIds.filter(
+          (uid) => uid !== context.userId,
+        );
+        const firstPartyId = introducedPartyUserIds[0];
+        const firstEntity = query.entities?.find((e) => e.userId === firstPartyId);
+        const counterpartName =
+          firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
+        const cardData = {
+          opportunityId: created.id,
+          userId: firstPartyId,
+          name: counterpartName,
+          avatar: null as string | null,
+          mainText: truncateForCardText(reasoning),
+          cta: "Start a conversation to connect.",
+          headline: `Connection: ${counterpartName}`,
+          primaryActionLabel: "Start Chat",
+          secondaryActionLabel: "Skip",
+          mutualIntentsLabel: "Suggested connection",
+          narratorChip: {
+            name: introducerUser?.name ?? "A member",
+            text: "Based on your overlap in this community.",
+            userId: context.userId,
+          },
+          viewerRole: "introducer",
+          score: confidence,
+          status: created.status ?? "latent",
+        };
+        const block = "```opportunity\n" + JSON.stringify(cardData, null, 2) + "\n```";
+
         return success({
           found: true,
           count: 1,
-          opportunities: [
-            {
-              opportunityId: created.id,
-              matchReason: reasoning,
-              score: confidence,
-              status: created.status ?? "latent",
-            },
-          ],
+          message: `Draft introduction created. IMPORTANT: Include the following \`\`\`opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n${block}`,
+          opportunities: [{ opportunityId: created.id, matchReason: reasoning, score: confidence, status: created.status ?? "latent" }],
         });
       }
 
@@ -346,7 +446,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope,
         limit: 5,
         presenter,
-        useHomeCardFormat: true, // Enable rich opportunity cards in chat (same format as home page)
+        useHomeCardFormat: true,
+        minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
       });
 
       if (!result.found) {
@@ -421,7 +522,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Invalid index ID format.");
       }
 
-      // Get raw opportunities with full data for presentation
+      // Get opportunities; use minimal card data (no LLM presenter) for fast chat response
       const opportunities = await database.getOpportunitiesForUser(
         context.userId,
         {
@@ -439,98 +540,57 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
-      // Generate rich presentations for each opportunity
       const opportunityBlocks: string[] = [];
 
       for (const opp of opportunities) {
         try {
-          // Find the counterpart (other party in the opportunity)
           const counterpartActor = opp.actors.find(
             (a) => a.userId !== context.userId && a.role !== "introducer",
           );
           const counterpartUserId = counterpartActor?.userId;
-
           if (!counterpartUserId) continue;
 
-          // Get counterpart profile and user info
-          const [counterpartProfile, counterpartUser] = await Promise.all([
-            database.getProfile(counterpartUserId),
-            database.getUser(counterpartUserId),
-          ]);
+          const introducerActor = opp.actors.find(
+            (a) => a.role === "introducer" && a.userId !== context.userId,
+          );
+          const createdByName = (opp.detection as { createdByName?: string })
+            ?.createdByName;
+
+          // Only fetch counterpart name/avatar and optional introducer name (no full context, no LLM)
+          const [counterpartProfile, counterpartUser, introducerProfile] =
+            await Promise.all([
+              database.getProfile(counterpartUserId),
+              database.getUser(counterpartUserId),
+              introducerActor && !createdByName
+                ? database.getProfile(introducerActor.userId)
+                : Promise.resolve(null),
+            ]);
 
           const counterpartName =
             counterpartProfile?.identity?.name ??
             counterpartUser?.name ??
             "Someone";
+          const introducerName =
+            createdByName ??
+            (introducerActor ? introducerProfile?.identity?.name : null);
 
-          // Gather context for presentation
-          const presenterContext = await gatherPresenterContext(
-            database,
+          const cardData = buildMinimalOpportunityCard(
             opp,
             context.userId,
+            counterpartUserId,
+            counterpartName,
+            counterpartUser?.avatar ?? null,
+            introducerName,
           );
-
-          // Generate rich presentation
-          const presentation = await presenter.presentHomeCard({
-            ...presenterContext,
-            mutualIntentCount: undefined,
-            opportunityStatus: opp.status,
-          });
-
-          // Check if this is an introduction (has introducer)
-          const introducerActor = opp.actors.find(
-            (a) => a.role === "introducer" && a.userId !== context.userId,
-          );
-          let narratorChip: {
-            name: string;
-            text: string;
-            avatar?: string | null;
-            userId?: string;
-          };
-          if (introducerActor && presenterContext.introducerName) {
-            narratorChip = {
-              name: presenterContext.introducerName,
-              text: presentation.narratorRemark,
-              userId: introducerActor.userId,
-            };
-          } else {
-            narratorChip = {
-              name: "Index",
-              text: presentation.narratorRemark,
-            };
-          }
-
-          // Determine viewer's role
-          const viewerActor = opp.actors.find(
-            (a) => a.userId === context.userId,
-          );
-          const viewerRole = viewerActor?.role ?? "party";
-
-          const cardData = {
-            opportunityId: opp.id,
-            userId: counterpartUserId,
-            name: counterpartName,
-            avatar: counterpartUser?.avatar ?? null,
-            mainText: presentation.personalizedSummary,
-            cta: presentation.suggestedAction,
-            headline: presentation.headline,
-            primaryActionLabel: presentation.primaryActionLabel,
-            secondaryActionLabel: presentation.secondaryActionLabel,
-            mutualIntentsLabel: presentation.mutualIntentsLabel,
-            narratorChip,
-            viewerRole,
-            score:
-              typeof opp.interpretation?.confidence === "number"
-                ? opp.interpretation.confidence
-                : undefined,
-            status: opp.status,
-          };
 
           opportunityBlocks.push(
             "```opportunity\n" + JSON.stringify(cardData, null, 2) + "\n```",
           );
         } catch (err) {
-          // Skip opportunities that fail to enrich
+          logger.warn("Skipping opportunity that failed to build minimal card", {
+            opportunityId: opp.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
           continue;
         }
       }
