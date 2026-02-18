@@ -247,25 +247,25 @@ export class OpportunityGraphFactory {
           };
         }
 
-      if (state.searchQuery?.trim() && state.indexedIntents.length > 0) {
-        const q = state.searchQuery.trim().toLowerCase();
-        const matched = state.indexedIntents.find((i) => i.payload?.toLowerCase().includes(q));
-        if (matched) {
-          resolvedIntentId = matched.intentId;
-          const inIndex = await this.database.getIndexIdsForIntent(matched.intentId);
-          const resolvedIntentInIndex = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
-          const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
-          return {
-            resolvedTriggerIntentId: resolvedIntentId,
-            resolvedIntentInIndex,
-            discoverySource,
-          };
+        if (state.searchQuery?.trim() && state.indexedIntents.length > 0) {
+          const q = state.searchQuery.trim().toLowerCase();
+          const matched = state.indexedIntents.find((i) => i.payload?.toLowerCase().includes(q));
+          if (matched) {
+            resolvedIntentId = matched.intentId;
+            const inIndex = await this.database.getIndexIdsForIntent(matched.intentId);
+            const resolvedIntentInIndex = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
+            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+            return {
+              resolvedTriggerIntentId: resolvedIntentId,
+              resolvedIntentInIndex,
+              discoverySource,
+            };
+          }
+          logger.warn('[Graph:Resolve] No intent matched search query; leaving resolvedIntentId unset', {
+            searchQuery: state.searchQuery,
+            indexedIntentsCount: state.indexedIntents.length,
+          });
         }
-        logger.warn('[Graph:Resolve] No intent matched search query; leaving resolvedIntentId unset', {
-          searchQuery: state.searchQuery,
-          indexedIntentsCount: state.indexedIntents.length,
-        });
-      }
 
         return {
           resolvedTriggerIntentId: undefined,
