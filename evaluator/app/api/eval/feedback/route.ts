@@ -52,7 +52,6 @@ export async function GET(req: NextRequest) {
     const entries = await db
       .select()
       .from(userFeedback)
-      .where(eq(userFeedback.userId, userId))
       .orderBy(desc(userFeedback.createdAt));
 
     return Response.json({ feedback: entries });
