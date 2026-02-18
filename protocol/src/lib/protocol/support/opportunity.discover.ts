@@ -387,7 +387,7 @@ export async function runDiscoverFromQuery(
         opportunities: enriched,
       };
     },
-    { context: { userId }, logOutput: true },
+    { context: { userId }, logOutput: false },
   ).catch((err) => {
     return {
       found: false,
