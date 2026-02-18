@@ -26,6 +26,7 @@ import OpportunityCard, {
   OpportunitySkeleton,
 } from "@/components/chat/OpportunityCardInChat";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
+import ThinkingDropdown from "@/components/chat/ThinkingDropdown";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -179,18 +180,29 @@ function AssistantMessageContent({
   const segments = parseOpportunityBlocks(displayedContent);
 
   return (
-    <div className={showCursor ? "chat-markdown-typing" : undefined}>
+    <div>
       {segments.map((segment, idx) => {
         if (segment.type === "text") {
+          const isLast = idx === segments.length - 1;
           return (
-            <ReactMarkdown key={idx} remarkPlugins={[remarkGfm]}>
-              {segment.content}
-            </ReactMarkdown>
+            <div
+              key={idx}
+              className={cn(
+                "chat-markdown max-w-none",
+                isStreaming && "chat-markdown-streaming",
+                showCursor && isLast && "chat-markdown-typing",
+              )}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {segment.content}
+              </ReactMarkdown>
+            </div>
           );
         } else if (segment.type === "opportunity") {
           return (
             <div key={idx} className="my-3">
               <OpportunityCard
+
                 card={segment.data}
                 onPrimaryAction={onOpportunityPrimaryAction}
                 onSecondaryAction={onOpportunitySecondaryAction}
@@ -1184,28 +1196,29 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 >
                   <div
                     className={cn(
-                      "max-w-[80%] rounded-sm px-3 py-2",
+                      msg.role === "user" ? "max-w-[75%]" : "max-w-[90%]",
                       msg.role === "user"
-                        ? "bg-[#041729] text-white"
-                        : "bg-gray-100 text-gray-900",
+                        ? "bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-[32px] px-4 py-1 text-sm leading-relaxed"
+                        : "text-gray-900",
                     )}
                   >
                     {msg.role === "assistant" && (
-                      <span className="text-[10px] uppercase tracking-wider text-[#4091BB]/70 mb-1 block">
+                      <span className="text-[10px] uppercase tracking-wider text-black font-bold mb-1 block">
                         Index
                       </span>
                     )}
-                    <article
-                      className={cn(
-                        "chat-markdown max-w-none",
-                        msg.role === "user" && "chat-markdown-invert",
-                        msg.isStreaming && "chat-markdown-streaming",
-                      )}
-                    >
+                    <article className="max-w-none">
                       {msg.role === "assistant" ? (
-                        <AssistantMessageContent
-                          content={msg.content}
-                          isStreaming={msg.isStreaming ?? false}
+                        <>
+                          {msg.thinking && msg.thinking.length > 0 && (
+                            <ThinkingDropdown
+                              thinking={msg.thinking}
+                              isStreaming={msg.isStreaming}
+                            />
+                          )}
+                          <AssistantMessageContent
+                            content={msg.content}
+                            isStreaming={msg.isStreaming ?? false}
                           onOpportunityPrimaryAction={(
                             oppId,
                             userId,
@@ -1230,13 +1243,16 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               viewerRole,
                             )
                           }
-                          opportunityLoadingMap={opportunityActionLoading}
-                          currentStatusMap={opportunityStatusMap}
-                        />
+                            opportunityLoadingMap={opportunityActionLoading}
+                            currentStatusMap={opportunityStatusMap}
+                          />
+                        </>
                       ) : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {mentionsToMarkdownLinks(msg.content)}
-                        </ReactMarkdown>
+                        <div className="chat-markdown max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {mentionsToMarkdownLinks(msg.content)}
+                          </ReactMarkdown>
+                        </div>
                       )}
                     </article>
                     {msg.role === "user" &&

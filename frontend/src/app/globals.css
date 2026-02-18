@@ -113,7 +113,7 @@ button {
 /* Chat markdown – aligns with app design (Public Sans, sharp corners, gray/black) */
 .chat-markdown {
   font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 0.875rem;
+  font-size: 1rem;
   line-height: 1.6;
   max-width: none;
 }
@@ -222,20 +222,45 @@ button {
   margin: 0.75em 0;
 }
 
-/* Blockquote – inline tool activity indicator */
+/* Blockquote – inline tool activity / timeline step */
 .chat-markdown blockquote {
-  border-left: 3px solid #4091BB;
-  background-color: rgba(64, 145, 187, 0.06);
-  padding: 0.375em 0.75em;
-  margin: 0.5em 0;
-  border-radius: 0 2px 2px 0;
-  font-style: italic;
-  color: #5a5a5a;
+  position: relative;
+  padding: 0 0 0 1.25em;
+  margin: 0.1em 0;
+  border-left: none;
+  color: #16a34a;
   font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* Vertical connecting line — runs only through adjacent steps */
+.chat-markdown blockquote + blockquote::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -0.1em;
+  bottom: 0.55em;
+  width: 1px;
+  background: #e5e7eb;
+}
+
+/* Dot marker */
+.chat-markdown blockquote::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0.4em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  z-index: 1;
 }
 
 .chat-markdown blockquote p {
   margin: 0;
+  font-style: normal;
 }
 
 /* Inline typing cursor — appears at the end of the last text element while
@@ -264,19 +289,19 @@ button {
   50% { opacity: 0.5; }
 }
 
-/* Animated shimmer on blockquotes while assistant is still streaming */
-.chat-markdown-streaming blockquote {
-  animation: blockquote-shimmer 1.5s ease-in-out infinite;
+/* Pulse dot while assistant is still streaming */
+.chat-markdown-streaming blockquote::after {
+  animation: dot-pulse 1s ease-in-out infinite;
 }
 
-@keyframes blockquote-shimmer {
+@keyframes dot-pulse {
   0%, 100% {
-    background-color: rgba(64, 145, 187, 0.06);
-    border-left-color: #4091BB;
+    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    background-color: rgba(64, 145, 187, 0.15);
-    border-left-color: #2d7aa3;
+    opacity: 0.4;
+    transform: scale(0.7);
   }
 }
 
