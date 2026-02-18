@@ -120,7 +120,13 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-  
+
+  /** Optional intent to use as discovery source and for triggeredBy. When set, used for search text (if query empty) and persist. */
+  triggerIntentId: Annotation<Id<'intents'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   options: Annotation<OpportunityGraphOptions>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
@@ -197,7 +203,43 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
+  /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */
+  discoverySource: Annotation<'intent' | 'profile'>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 'intent',
+  }),
+
+  /** Resolved intent ID used for this discovery run (when discoverySource is 'intent'). Set by intent-resolution. */
+  resolvedTriggerIntentId: Annotation<Id<'intents'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Asker's profile (from prep). Used for profile-as-source discovery and evaluation. */
+  sourceProfile: Annotation<{ embedding: number[] | null; identity?: { name?: string; bio?: string }; narrative?: { context?: string }; attributes?: { skills?: string[]; interests?: string[] } } | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /** Resolved intent is in at least one target index (path A vs C). */
+  resolvedIntentInIndex: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
+  createIntentSuggested: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /** Suggested description for create_intent when createIntentSuggested is true. */
+  suggestedIntentDescription: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /** HyDE embeddings per strategy (from discovery) */
   hydeEmbeddings: Annotation<Record<HydeStrategy, number[]>>({
     reducer: (curr, next) => next ?? curr,

@@ -114,6 +114,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Index UUID; optional when index-scoped."),
+      intentId: z
+        .string()
+        .optional()
+        .describe("Discovery mode: optional intent to use as source and for triggeredBy (e.g. from queue)."),
       partyUserIds: z
         .array(z.string())
         .optional()
@@ -143,6 +147,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               .optional(),
             indexId: z
               .string()
+              .optional()
               .describe("Shared index this entity's data comes from"),
           }),
         )
@@ -322,7 +327,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope,
         limit: 5,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
+        triggerIntentId: query.intentId ?? undefined,
       });
+
+      if (result.createIntentSuggested && result.suggestedIntentDescription) {
+        return success({
+          found: false,
+          count: 0,
+          createIntentSuggested: true,
+          suggestedIntentDescription: result.suggestedIntentDescription,
+          message:
+            "No matching opportunities for that search. Call create_intent with the suggested description, then create_opportunities again.",
+        });
+      }
 
       if (!result.found) {
         return success({

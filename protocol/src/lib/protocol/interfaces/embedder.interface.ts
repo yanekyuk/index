@@ -90,4 +90,13 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
     hydeEmbeddings: Map<HydeStrategy, number[]>,
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]>;
+
+  /**
+   * Profile-as-source search: run vector search with the asker's profile embedding
+   * against profiles and intents in the given index scope. Returns same shape as HyDE search.
+   */
+  searchWithProfileEmbedding(
+    profileEmbedding: number[],
+    options: HydeSearchOptions
+  ): Promise<HydeCandidate[]>;
 }

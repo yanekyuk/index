@@ -38,6 +38,8 @@ export interface DiscoverInput {
   query: string;
   indexScope: string[];
   limit?: number;
+  /** Optional intent to use as discovery source and for triggeredBy (e.g. from opportunity queue). */
+  triggerIntentId?: string;
   /** When provided, each opportunity is enriched with personalized presentation (headline, personalizedSummary, suggestedAction). */
   presenter?: OpportunityPresenter;
   /**
@@ -98,6 +100,10 @@ export interface DiscoverResult {
   count: number;
   message?: string;
   opportunities?: FormattedDiscoveryCandidate[];
+  /** When true, the chat agent should call create_intent(suggestedIntentDescription) and retry discovery. */
+  createIntentSuggested?: boolean;
+  /** Description to pass to create_intent when createIntentSuggested is true. */
+  suggestedIntentDescription?: string;
 }
 
 /**
@@ -161,6 +167,7 @@ export async function runDiscoverFromQuery(
     query,
     indexScope,
     limit = 5,
+    triggerIntentId,
   } = input;
 
   if (indexScope.length === 0) {
@@ -194,13 +201,24 @@ export async function runDiscoverFromQuery(
       limit,
     },
     async () => {
-      // When searchQuery is empty/undefined, graph uses user's indexed intents (prep loads them; discovery uses first intent payload and derives strategies)
       const result = await opportunityGraph.invoke({
         userId,
         searchQuery: queryOrEmpty || undefined,
         indexId: indexScope.length === 1 ? indexScope[0] : undefined,
+        triggerIntentId: triggerIntentId ?? undefined,
         options,
       });
+
+      if (result.createIntentSuggested && result.suggestedIntentDescription) {
+        return {
+          found: false,
+          count: 0,
+          createIntentSuggested: true,
+          suggestedIntentDescription: result.suggestedIntentDescription,
+          message:
+            "No matching opportunities; add an intent with the suggested description to improve discovery.",
+        };
+      }
 
       const opportunities: Opportunity[] = Array.isArray(result.opportunities)
         ? result.opportunities

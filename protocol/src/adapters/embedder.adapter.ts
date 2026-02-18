@@ -179,6 +179,26 @@ export class EmbedderAdapter {
     return this.mergeAndRankCandidates(flatResults, limit);
   }
 
+  async searchWithProfileEmbedding(
+    profileEmbedding: number[],
+    options: HydeSearchOptions
+  ): Promise<HydeCandidate[]> {
+    const {
+      indexScope,
+      excludeUserId,
+      limitPerStrategy = 10,
+      limit = 20,
+      minScore = 0.5,
+    } = options;
+    const filter = { indexScope, excludeUserId };
+    const [profileResults, intentResults] = await Promise.all([
+      this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
+      this.searchIntentsByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
+    ]);
+    const flatResults = [...profileResults, ...intentResults];
+    return this.mergeAndRankCandidates(flatResults, limit);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Private: profile/intent search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
@@ -263,6 +283,80 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: strategy,
+      indexId: r.indexId,
+    }));
+  }
+
+  private async searchProfilesByProfileEmbedding(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number
+  ): Promise<HydeCandidate[]> {
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { userProfiles, indexMembers } = schema;
+    const conditions = [
+      inArray(indexMembers.indexId, filter.indexScope),
+      isNotNull(userProfiles.embedding),
+      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
+    ];
+    const results = await db
+      .select({
+        userId: userProfiles.userId,
+        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`,
+        indexId: indexMembers.indexId,
+      })
+      .from(userProfiles)
+      .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+      .where(and(...conditions))
+      .orderBy(sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+    return results
+      .filter((r) => r.userId != null)
+      .map((r) => ({
+        type: 'profile' as const,
+        id: r.userId!,
+        userId: r.userId!,
+        score: r.similarity,
+        matchedVia: 'mirror' as HydeStrategy,
+        indexId: r.indexId,
+      }));
+  }
+
+  private async searchIntentsByProfileEmbedding(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number
+  ): Promise<HydeCandidate[]> {
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { intents, intentIndexes } = schema;
+    const conditions = [
+      inArray(intentIndexes.indexId, filter.indexScope),
+      isNull(intents.archivedAt),
+      isNotNull(intents.embedding),
+      sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
+    ];
+    const results = await db
+      .select({
+        id: intents.id,
+        userId: intents.userId,
+        similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
+        indexId: intentIndexes.indexId,
+      })
+      .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .where(and(...conditions))
+      .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+    return results.map((r) => ({
+      type: 'intent' as const,
+      id: r.id,
+      userId: r.userId,
+      score: r.similarity,
+      matchedVia: 'mirror' as HydeStrategy,
       indexId: r.indexId,
     }));
   }

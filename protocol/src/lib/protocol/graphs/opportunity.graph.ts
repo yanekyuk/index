@@ -123,26 +123,32 @@ export class OpportunityGraphFactory {
             logger.info('[Graph:Prep] User has no index memberships - cannot find opportunities');
             return {
               userIndexes: [] as Id<'indexes'>[],
+              sourceProfile: null,
               error: 'You need to join at least one index to find opportunities.',
             };
           }
-          const intents = await this.database.getActiveIntents(state.userId);
-          if (intents.length === 0) {
-            logger.info('[Graph:Prep] User has no active intents - cannot run discovery');
-            return {
-              userIndexes: userIndexIds,
-              error: 'You need to add some intents before finding opportunities.',
-            };
-          }
+          const [intents, profile] = await Promise.all([
+            this.database.getActiveIntents(state.userId),
+            this.database.getProfile(state.userId),
+          ]);
           const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
             intentId: intent.id,
             payload: intent.payload,
             summary: intent.summary ?? undefined,
             indexes: [],
           }));
+          const sourceProfile = profile
+            ? {
+                embedding: profile.embedding ?? null,
+                identity: profile.identity ?? undefined,
+                narrative: profile.narrative ?? undefined,
+                attributes: profile.attributes ?? undefined,
+              }
+            : null;
           return {
             userIndexes: userIndexIds,
             indexedIntents,
+            sourceProfile,
           };
         },
         { context: { userId: state.userId }, logOutput: true }
@@ -213,42 +219,158 @@ export class OpportunityGraphFactory {
     };
 
     /**
-     * Node 2: Discovery
-     * Generates HyDE embeddings and performs semantic search.
-     * Uses existing searchWithHydeEmbeddings which handles index-scoped search.
+     * Node 2: Resolve
+     * Resolves trigger intent from triggerIntentId or searchQuery vs indexedIntents;
+     * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInIndex for routing (path A/B/C).
+     */
+    const resolveNode = async (state: typeof OpportunityGraphState.State) => {
+      logger.info('[Graph:Resolve] Resolving intent and index membership', {
+        triggerIntentId: state.triggerIntentId,
+        hasSearchQuery: !!state.searchQuery,
+        indexedIntentsCount: state.indexedIntents.length,
+      });
+
+      const targetIndexIds = state.targetIndexes.map((t) => t.indexId);
+
+      let resolvedIntentId: Id<'intents'> | undefined;
+      if (state.triggerIntentId) {
+        const inIndex = await this.database.getIndexIdsForIntent(state.triggerIntentId);
+        const inTarget = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
+        resolvedIntentId = state.triggerIntentId;
+        const resolvedIntentInIndex = inTarget;
+        const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+        return {
+          resolvedTriggerIntentId: resolvedIntentId,
+          resolvedIntentInIndex,
+          discoverySource,
+        };
+      }
+
+      if (state.searchQuery?.trim() && state.indexedIntents.length > 0) {
+        const q = state.searchQuery.trim().toLowerCase();
+        const matched =
+          state.indexedIntents.find((i) => i.payload?.toLowerCase().includes(q)) ?? state.indexedIntents[0];
+        resolvedIntentId = matched.intentId;
+        const inIndex = await this.database.getIndexIdsForIntent(matched.intentId);
+        const resolvedIntentInIndex = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
+        const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+        return {
+          resolvedTriggerIntentId: resolvedIntentId,
+          resolvedIntentInIndex,
+          discoverySource,
+        };
+      }
+
+      return {
+        resolvedTriggerIntentId: undefined,
+        resolvedIntentInIndex: false,
+        discoverySource: 'profile' as const,
+      };
+    };
+
+    /**
+     * Node 3: Discovery
+     * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
      */
     const discoveryNode = async (state: typeof OpportunityGraphState.State) => {
       logger.info('[Graph:Discovery] Starting semantic search', {
         targetIndexesCount: state.targetIndexes.length,
-        hasSearchQuery: !!state.searchQuery,
+        discoverySource: state.discoverySource,
       });
 
       try {
-        // Determine search query (user query or use first intent as fallback)
-        const searchText = state.searchQuery ?? state.indexedIntents[0]?.payload ?? '';
-        
-        if (!searchText) {
-          logger.warn('[Graph:Discovery] No search text available');
-          return { candidates: [] };
-        }
-
         if (state.targetIndexes.length === 0) {
           logger.warn('[Graph:Discovery] No target indexes for search');
           return { candidates: [] };
         }
 
-        // Determine strategies (use first index for strategy selection)
+        const limitPerStrategy = state.options.limit ?? 10;
+        const perIndexLimit = state.options.limit ?? 20;
+        const minScore = 0.5;
+
+        if (state.discoverySource === 'profile') {
+          const embedding = state.sourceProfile?.embedding ?? null;
+          const vector = Array.isArray(embedding) && embedding.length > 0 && typeof embedding[0] === 'number'
+            ? (embedding as number[])
+            : Array.isArray(embedding) && Array.isArray(embedding[0])
+              ? (embedding[0] as number[])
+              : null;
+          if (!vector || vector.length === 0) {
+            const isPathB = !state.resolvedTriggerIntentId;
+            if (isPathB && state.searchQuery?.trim()) {
+              return {
+                candidates: [],
+                createIntentSuggested: true,
+                suggestedIntentDescription: state.searchQuery.trim(),
+              };
+            }
+            return { candidates: [] };
+          }
+          const allCandidates: CandidateMatch[] = [];
+          for (const targetIndex of state.targetIndexes) {
+            const results = await this.embedder.searchWithProfileEmbedding(vector, {
+              strategies: ['mirror'],
+              indexScope: [targetIndex.indexId],
+              excludeUserId: state.userId,
+              limitPerStrategy,
+              limit: perIndexLimit,
+              minScore,
+            });
+            for (const result of results) {
+              if (result.type === 'intent') {
+                allCandidates.push({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidateIntentId: result.id as Id<'intents'>,
+                  indexId: targetIndex.indexId,
+                  similarity: result.score,
+                  strategy: result.matchedVia as HydeStrategy,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                });
+              } else {
+                allCandidates.push({
+                  candidateUserId: result.userId as Id<'users'>,
+                  indexId: targetIndex.indexId,
+                  similarity: result.score,
+                  strategy: result.matchedVia as HydeStrategy,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                });
+              }
+            }
+          }
+          const byUserAndIndex = new Map<string, CandidateMatch>();
+          for (const c of allCandidates) {
+            const key = `${c.candidateUserId}:${c.indexId}`;
+            if (!byUserAndIndex.has(key) || (byUserAndIndex.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+              byUserAndIndex.set(key, c);
+            }
+          }
+          const candidates = Array.from(byUserAndIndex.values());
+          const isPathB = !state.resolvedTriggerIntentId;
+          if (candidates.length === 0 && isPathB && state.searchQuery?.trim()) {
+            return {
+              candidates: [],
+              createIntentSuggested: true,
+              suggestedIntentDescription: state.searchQuery.trim(),
+            };
+          }
+          logger.info('[Graph:Discovery] Profile-as-source discovery complete', { candidatesFound: candidates.length });
+          return { candidates };
+        }
+
+        const resolvedIntent = state.resolvedTriggerIntentId
+          ? state.indexedIntents.find((i) => i.intentId === state.resolvedTriggerIntentId)
+          : state.indexedIntents[0];
+        const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
+        if (!searchText) {
+          logger.warn('[Graph:Discovery] No search text available for intent path');
+          return { candidates: [] };
+        }
+
         const strategies = state.options.strategies ?? selectStrategies(searchText, {
           indexId: state.targetIndexes[0].indexId,
         });
-
-        logger.info('[Graph:Discovery] Generating HyDE and searching', {
-          query: searchText.substring(0, 50),
-          strategies,
-          targetIndexesCount: state.targetIndexes.length,
-        });
-
-        // Generate HyDE embeddings (context from first index)
         const hydeResult = await this.hydeGenerator.invoke({
           sourceType: 'query',
           sourceText: searchText,
@@ -256,25 +378,17 @@ export class OpportunityGraphFactory {
           context: state.targetIndexes[0] ? { indexId: state.targetIndexes[0].indexId } : undefined,
           forceRegenerate: false,
         });
-
         const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
-        
         if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-          logger.warn('[Graph:Discovery] No HyDE embeddings generated');
           return { hydeEmbeddings: {} as Record<HydeStrategy, number[]>, candidates: [] };
         }
-
         const embeddingsMap = new Map<HydeStrategy, number[]>();
         for (const [strategy, embedding] of Object.entries(hydeEmbeddings)) {
           if (embedding?.length) {
             embeddingsMap.set(strategy as HydeStrategy, embedding);
           }
         }
-
-        const limitPerStrategy = state.options.limit ?? 10;
-        const perIndexLimit = state.options.limit ?? 20;
         const allCandidates: CandidateMatch[] = [];
-
         await Promise.all(
           state.targetIndexes.map(async (targetIndex) => {
             const results = await this.embedder.searchWithHydeEmbeddings(embeddingsMap, {
@@ -285,9 +399,7 @@ export class OpportunityGraphFactory {
               limit: perIndexLimit,
               minScore: 0.5,
             });
-            const intentResults = results.filter((r) => r.type === 'intent');
-            const profileResults = results.filter((r) => r.type === 'profile');
-            for (const result of intentResults) {
+            for (const result of results.filter((r) => r.type === 'intent')) {
               allCandidates.push({
                 candidateUserId: result.userId as Id<'users'>,
                 candidateIntentId: result.id as Id<'intents'>,
@@ -298,7 +410,7 @@ export class OpportunityGraphFactory {
                 candidateSummary: undefined,
               });
             }
-            for (const result of profileResults) {
+            for (const result of results.filter((r) => r.type === 'profile')) {
               allCandidates.push({
                 candidateUserId: result.userId as Id<'users'>,
                 indexId: targetIndex.indexId,
@@ -310,8 +422,6 @@ export class OpportunityGraphFactory {
             }
           })
         );
-
-        // Dedupe by (candidateUserId, indexId): keep one per user per index, intent wins over profile
         const byUserAndIndex = new Map<string, CandidateMatch>();
         for (const c of allCandidates) {
           const key = `${c.candidateUserId}:${c.indexId}`;
@@ -320,10 +430,7 @@ export class OpportunityGraphFactory {
           }
         }
         const candidates = Array.from(byUserAndIndex.values());
-
-        logger.info('[Graph:Discovery] Discovery complete', {
-          candidatesFound: candidates.length,
-        });
+        logger.info('[Graph:Discovery] Intent-path discovery complete', { candidatesFound: candidates.length });
         return {
           hydeEmbeddings: hydeEmbeddings as Record<HydeStrategy, number[]>,
           candidates,
@@ -717,7 +824,9 @@ export class OpportunityGraphFactory {
               detection: {
                 source: 'opportunity_graph',
                 createdBy: 'agent-opportunity-finder',
-                triggeredBy: state.indexedIntents[0]?.intentId,
+                ...(state.discoverySource === 'intent' && state.resolvedTriggerIntentId
+                  ? { triggeredBy: state.resolvedTriggerIntentId }
+                  : {}),
                 timestamp: now,
               },
               actors,
@@ -1090,12 +1199,6 @@ export class OpportunityGraphFactory {
         logger.info('[Graph:Routing] Error in prep - ending early');
         return END;
       }
-
-      if (state.indexedIntents.length === 0) {
-        logger.info('[Graph:Routing] No indexed intents - ending early');
-        return END;
-      }
-
       logger.info('[Graph:Routing] Continuing to scope');
       return 'scope';
     };
@@ -1108,9 +1211,19 @@ export class OpportunityGraphFactory {
         logger.info('[Graph:Routing] No target indexes - ending early');
         return END;
       }
+      logger.info('[Graph:Routing] Continuing to resolve');
+      return 'resolve';
+    };
 
-      logger.info('[Graph:Routing] Continuing to discovery');
-      return 'discovery';
+    /**
+     * After discovery: if create-intent signal was set, end so tool can return it; else continue to evaluation.
+     */
+    const shouldContinueAfterDiscovery = (state: typeof OpportunityGraphState.State): string => {
+      if (state.createIntentSuggested) {
+        logger.info('[Graph:Routing] Create-intent suggested - ending for tool signal');
+        return END;
+      }
+      return 'evaluation';
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -1121,6 +1234,7 @@ export class OpportunityGraphFactory {
       // Add all nodes
       .addNode('prep', prepNode)
       .addNode('scope', scopeNode)
+      .addNode('resolve', resolveNode)
       .addNode('discovery', discoveryNode)
       .addNode('evaluation', evaluationNode)
       .addNode('ranking', rankingNode)
@@ -1161,12 +1275,17 @@ export class OpportunityGraphFactory {
 
       // Conditional routing: early exit if no target indexes
       .addConditionalEdges('scope', shouldContinueAfterScope, {
-        discovery: 'discovery',
+        resolve: 'resolve',
+        [END]: END,
+      })
+      .addEdge('resolve', 'discovery')
+
+      .addConditionalEdges('discovery', shouldContinueAfterDiscovery, {
+        evaluation: 'evaluation',
         [END]: END,
       })
 
       // Linear edges for main flow
-      .addEdge('discovery', 'evaluation')
       .addEdge('evaluation', 'ranking')
       .addEdge('ranking', 'persist')
       .addEdge('persist', END);
