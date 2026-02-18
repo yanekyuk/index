@@ -1,0 +1,30 @@
+---
+description: Order imports from external to local, with blank lines between groups
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Import Ordering
+
+Order imports from most general (external) to most local (nearby), separated by blank lines.
+
+1. **External packages** (npm modules)
+2. **Deep relative imports** (multiple levels up: `../../`, `../../../`, etc.)
+3. **Nearby relative imports** (siblings/children: `./` or `../`)
+
+```typescript
+// ❌ BAD
+import { something } from "./nearby";
+import { util } from "../../../lib/utils";
+import express from "express";
+
+// ✅ GOOD
+import express from "express";
+import { z } from "zod";
+
+import { util } from "../../../lib/utils";
+import { helper } from "../../helpers/helper";
+
+import { something } from "../something";
+import { local } from "./nearby";
+```

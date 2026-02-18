@@ -1,0 +1,87 @@
+---
+description: File naming convention - domain.purpose.extension pattern
+globs: protocol/**/*.ts
+alwaysApply: false
+---
+
+# File Naming Convention
+
+All files in the protocol directory should follow the pattern: `{domain}.{purpose}.{extension}`
+
+- **domain**: The scope or area of the codebase (e.g., `chat`, `intent`, `profile`, `opportunity`)
+- **purpose**: The type or role of the file (e.g., `graph`, `agent`, `generator`, `verifier`, `state`, `spec`)
+
+## Pattern Examples
+
+### ✅ GOOD - Following the Convention
+
+```typescript
+// Graph files
+chat.graph.ts              // domain: chat, purpose: graph
+chat.graph.state.ts        // domain: chat, purpose: graph.state
+intent.graph.ts            // domain: intent, purpose: graph
+intent.graph.spec.ts       // domain: intent, purpose: graph.spec (test)
+
+// Agent files
+router.agent.ts            // domain: router, purpose: agent
+router.agent.spec.ts       // domain: router, purpose: agent.spec (test)
+
+// Generator/processor files
+response.generator.ts      // domain: response, purpose: generator
+hyde.generator.ts          // domain: hyde, purpose: generator
+
+// Other specialized files
+explicit.inferrer.ts       // domain: explicit, purpose: inferrer
+semantic.verifier.ts       // domain: semantic, purpose: verifier
+intent.reconciler.ts       // domain: intent, purpose: reconciler
+opportunity.evaluator.ts   // domain: opportunity, purpose: evaluator
+```
+
+### ❌ BAD - Not Following the Convention
+
+```typescript
+// Missing domain or purpose
+chatGraph.ts              // Use: chat.graph.ts
+intentAgent.ts            // Use: intent.agent.ts
+generator.ts              // Use: {domain}.generator.ts
+utils.ts                  // Use: {domain}.utils.ts
+```
+
+## Exceptions
+
+The following file types are **exempt** from this convention:
+
+- `index.ts` - Barrel export files
+- `schema.ts` - Database schema files
+- `main.ts` - Application entry points
+- Single-purpose utility files at the root level (e.g., `constants.ts`, `types.ts`)
+
+## Common Purpose Types
+
+| Purpose | Description | Example |
+|---------|-------------|---------|
+| `.graph` | LangGraph state machines | `chat.graph.ts` |
+| `.state` | State definitions | `chat.graph.state.ts` |
+| `.agent` | AI agents | `router.agent.ts` |
+| `.generator` | Content generators | `response.generator.ts` |
+| `.evaluator` | Evaluation/scoring logic | `opportunity.evaluator.ts` |
+| `.verifier` | Verification/validation | `semantic.verifier.ts` |
+| `.inferrer` | Inference logic | `explicit.inferrer.ts` |
+| `.reconciler` | Reconciliation logic | `intent.reconciler.ts` |
+| `.controller` | API controllers | `chat.controller.ts` |
+| `.service` | Business logic services | `intent.service.ts` |
+| `.queue` | Job queue definitions | `intent.queue.ts` |
+| `.spec` | Test files | `router.agent.spec.ts` |
+
+## Naming New Files
+
+When creating a new file:
+
+1. Identify the **domain/scope**: What area does this belong to? (e.g., chat, intent, profile)
+2. Identify the **purpose/type**: What does this file do? (e.g., agent, graph, generator)
+3. Combine: `{domain}.{purpose}.ts`
+
+Example: Creating a new validator for messages
+- Domain: `message`
+- Purpose: `validator`
+- File name: `message.validator.ts`

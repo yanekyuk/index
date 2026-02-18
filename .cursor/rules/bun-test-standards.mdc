@@ -1,0 +1,501 @@
+---
+description: Standards for writing tests with bun test
+globs: **/*.spec.ts
+alwaysApply: false
+---
+
+# Bun Test Standards
+
+Follow these patterns when writing tests with `bun test` in this codebase.
+
+## File Structure
+
+### Environment Configuration
+
+Always load environment variables at the top of test files:
+
+```typescript
+// ✅ GOOD - Load env first
+import { config } from "dotenv";
+config({ path: '.env.development', override: true });
+
+import { describe, expect, it } from "bun:test";
+```
+
+```typescript
+// ❌ BAD - Missing env config
+import { describe, expect, it } from "bun:test";
+```
+
+### Import Organization
+
+Import test utilities from `bun:test`:
+
+```typescript
+// ✅ GOOD - Destructured imports
+import { describe, expect, it, beforeAll, beforeEach, afterAll, afterEach, mock } from "bun:test";
+```
+
+```typescript
+// ❌ BAD - Default import
+import test from "bun:test";
+```
+
+## Test Organization
+
+### Describe Blocks
+
+Group related tests with descriptive `describe` blocks:
+
+```typescript
+// ✅ GOOD - Clear hierarchy and grouping
+describe('RouterAgent - Phase 1: Read/Write Operations', () => {
+  // Setup
+  const router = new RouterAgent();
+  
+  describe('READ operations', () => {
+    it('should route simple intent query to intent_query with read operation', async () => {
+      // test implementation
+    });
+  });
+  
+  describe('WRITE operations - CREATE', () => {
+    it('should route new intent creation to intent_write with create operation', async () => {
+      // test implementation
+    });
+  });
+});
+```
+
+```typescript
+// ❌ BAD - Flat structure without grouping
+it('should route simple intent query', async () => {});
+it('should route new intent creation', async () => {});
+it('should route profile query', async () => {});
+```
+
+### Test Names
+
+Write clear, specific test descriptions that explain what is being tested:
+
+```typescript
+// ✅ GOOD - Describes behavior and expected outcome
+it('should route simple intent query to intent_query with read operation', async () => {
+  // ...
+});
+
+it('should return error for non-existent user', async () => {
+  // ...
+});
+
+it('should trigger override for "Make that" with action verb', async () => {
+  // ...
+});
+```
+
+```typescript
+// ❌ BAD - Vague or unclear
+it('should work', async () => {
+  // ...
+});
+
+it('test router', async () => {
+  // ...
+});
+```
+
+## Lifecycle Hooks
+
+### Setup and Teardown
+
+Use lifecycle hooks appropriately:
+
+```typescript
+// ✅ GOOD - Setup and teardown with proper cleanup
+describe('ChatController Integration', () => {
+  let controller: ChatController;
+  let testUserId: string;
+
+  beforeAll(async () => {
+    // One-time setup before all tests
+    const [user] = await db.insert(schema.users).values({
+      email: "test@example.com",
+      name: "Test User"
+    }).returning();
+    testUserId = user.id;
+    controller = new ChatController();
+  });
+
+  beforeEach(() => {
+    // Setup before each test
+    profileGenerator = new ProfileGenerator();
+  });
+
+  afterAll(async () => {
+    // Cleanup after all tests
+    if (testUserId) {
+      await db.delete(schema.intents).where(eq(schema.intents.userId, testUserId));
+      await db.delete(schema.users).where(eq(schema.users.id, testUserId));
+    }
+    await closeDb();
+  });
+});
+```
+
+```typescript
+// ❌ BAD - No cleanup, resources leak
+describe('Integration tests', () => {
+  beforeAll(async () => {
+    await db.insert(schema.users).values({...});
+  });
+  // Missing afterAll cleanup
+});
+```
+
+## Timeouts
+
+### Explicit Timeouts for Async Operations
+
+Set appropriate timeouts for tests with external dependencies:
+
+```typescript
+// ✅ GOOD - Explicit timeout for LLM calls
+it('should process a simple greeting message', async () => {
+  const result = await controller.message(mockRequest, mockUser);
+  expect(result.response).toBeDefined();
+}, 120000); // 120 seconds for LLM operations
+
+// ✅ GOOD - Explicit timeout for network calls
+it('should extract a clear explicit goal', async () => {
+  const result = await inferrer.invoke(content, profileContext);
+  expect(result.intents.length).toBeGreaterThan(0);
+}, 30000); // 30 seconds for agent inference
+```
+
+```typescript
+// ❌ BAD - No timeout for slow operations (will use 5s default)
+it('should call external API', async () => {
+  const result = await expensiveOperation();
+  expect(result).toBeDefined();
+});
+```
+
+**Timeout Guidelines:**
+- Fast operations (no external calls): No timeout needed (default 5s)
+- Agent inference: 30000ms (30s)
+- Graph operations: 60000ms (60s)
+- LLM operations with multiple calls: 120000ms (120s)
+
+## Assertions
+
+### Clear and Specific Expectations
+
+Use appropriate matchers and make assertions specific:
+
+```typescript
+// ✅ GOOD - Specific assertions
+expect(result.target).toBe("intent_query");
+expect(result.operationType).toBe("read");
+expect(result.reasoning).toContain('[ANAPHORIC OVERRIDE]');
+expect(result.intents.length).toBeGreaterThan(0);
+expect(!!result.output.identity.bio).toBe(true);
+expect(intents).toBeArray();
+expect(profile).not.toBeNull();
+expect(profile?.identity?.name).toBe("Test Chat User");
+```
+
+```typescript
+// ❌ BAD - Vague or overly loose
+expect(result).toBeTruthy();
+expect(result.target).toBeDefined();
+```
+
+### Multiple Assertions
+
+Test multiple aspects of the result:
+
+```typescript
+// ✅ GOOD - Comprehensive assertions
+const result = await graphRunner.invoke(inputState);
+
+expect(result.inferredIntents.length).toBeGreaterThan(0);
+expect(result.verifiedIntents.length).toBeGreaterThan(0);
+expect(result.actions.length).toBeGreaterThan(0);
+
+const action = result.actions[0];
+expect(action.type).toBe("create");
+expect(action.payload).toContain("React");
+
+expect(result.executionResults[0].success).toBe(true);
+expect(result.executionResults[0].actionType).toBe("create");
+expect(result.executionResults[0].intentId).toBeDefined();
+```
+
+## Mocking
+
+### Mock External Dependencies
+
+Create mock implementations for testing in isolation:
+
+```typescript
+// ✅ GOOD - Mock database for graph testing
+const createMockDatabase = (): IntentGraphDatabase => {
+  const intents: CreatedIntent[] = [];
+  let idCounter = 1;
+
+  return {
+    async getActiveIntents(userId: string): Promise<ActiveIntent[]> {
+      return intents
+        .filter(i => i.userId === userId)
+        .map(i => ({
+          id: i.id,
+          payload: i.payload,
+          summary: i.summary,
+          createdAt: i.createdAt
+        }));
+    },
+    async createIntent(data): Promise<CreatedIntent> {
+      const newIntent: CreatedIntent = {
+        id: `intent-${idCounter++}`,
+        userId: data.userId,
+        payload: data.payload,
+        summary: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      intents.push(newIntent);
+      return newIntent;
+    },
+    // ... other methods
+  };
+};
+
+describe('IntentGraph - Basic Operations', () => {
+  let mockDatabase: IntentGraphDatabase;
+
+  beforeAll(() => {
+    mockDatabase = createMockDatabase();
+    const factory = new IntentGraphFactory(mockDatabase);
+    graphRunner = factory.createGraph();
+  });
+});
+```
+
+### Mock Functions
+
+Use `mock()` from `bun:test` for function mocking:
+
+```typescript
+// ✅ GOOD - Mock function with assertions
+import { mock } from "bun:test";
+
+const random = mock(() => Math.random());
+
+test("random", () => {
+  const val = random();
+  expect(val).toBeGreaterThan(0);
+  expect(random).toHaveBeenCalled();
+  expect(random).toHaveBeenCalledTimes(1);
+});
+```
+
+## Test Data
+
+### Realistic Test Data
+
+Use realistic, representative test data:
+
+```typescript
+// ✅ GOOD - Realistic mock profile
+const mockProfile = JSON.stringify({
+  identity: {
+    name: "Test User",
+    bio: "Software engineer passionate about web development",
+    location: "San Francisco, CA"
+  },
+  narrative: {
+    context: "Experienced developer looking to expand skills"
+  },
+  attributes: {
+    skills: ["JavaScript", "TypeScript", "React"],
+    interests: ["Web Development", "System Design", "AI"]
+  }
+});
+```
+
+```typescript
+// ❌ BAD - Minimal or unrealistic data
+const mockProfile = JSON.stringify({ name: "Test" });
+```
+
+## Integration Tests
+
+### Database Setup and Cleanup
+
+For integration tests with database:
+
+```typescript
+// ✅ GOOD - Complete setup and cleanup
+describe("ChatController Integration", () => {
+  let testUserId: string;
+
+  beforeAll(async () => {
+    // Clean up any existing test data
+    const existingUser = await db.select()
+      .from(schema.users)
+      .where(eq(schema.users.email, email))
+      .limit(1);
+
+    if (existingUser.length > 0) {
+      await db.delete(schema.intents).where(eq(schema.intents.userId, existingUser[0].id));
+      await db.delete(schema.users).where(eq(schema.users.email, email));
+    }
+
+    // Create test data
+    const [user] = await db.insert(schema.users).values({
+      email: "test@example.com",
+      name: "Test User",
+      privyId: `privy:test:${Date.now()}`
+    }).returning();
+
+    testUserId = user.id;
+  });
+
+  afterAll(async () => {
+    // Always clean up
+    if (testUserId) {
+      await db.delete(schema.intents).where(eq(schema.intents.userId, testUserId));
+      await db.delete(schema.users).where(eq(schema.users.id, testUserId));
+    }
+    await closeDb();
+  });
+});
+```
+
+## Error Handling
+
+### Test Error Cases
+
+Always test both success and failure paths:
+
+```typescript
+// ✅ GOOD - Test both success and error cases
+describe('Input validation', () => {
+  it('should ignore vague or phatic communication', async () => {
+    const content = "Hey how are you?";
+    const result = await inferrer.invoke(content, profileContext);
+    expect(result.intents.length).toBe(0);
+  }, 30000);
+
+  it('should return error for missing message', async () => {
+    const mockRequest = { json: async () => ({}) } as unknown as Request;
+    const response = await controller.message(mockRequest, mockUser);
+    const data = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(data.error).toBe('Message content is required');
+  });
+
+  it('should return error for non-existent intent', async () => {
+    const result = await adapter.archiveIntent("00000000-0000-0000-0000-000000000001");
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
+```
+
+## Comments and Documentation
+
+### Add Context When Needed
+
+Add comments to explain complex test scenarios:
+
+```typescript
+// ✅ GOOD - Comments explain the test scenario
+it('should trigger override for "Make that" with action verb', async () => {
+  // ANAPHORIC OVERRIDE rule should catch this pattern
+  const result = await router.invoke("Make that text-based RPG game", profileContext, activeIntents);
+  
+  expect(result.target).toBe("intent_write");
+  expect(result.operationType).toBe("update");
+  expect(result.reasoning).toContain('[ANAPHORIC OVERRIDE]');
+}, 30000);
+
+// ✅ GOOD - Explain conditional behavior
+it('should ignore vague nonsense', async () => {
+  const inputState = {
+    userId: "test-user-2",
+    userProfile: "User is a Senior Developer named Alice.",
+    inputContent: "I feel like doing something maybe.",
+  };
+
+  const result = await graphRunner.invoke(inputState);
+
+  // It might infer an intent, but the Verifier should drop it, or Reconciler ignore it.
+  // If Verifier drops it, verifiedIntents should be empty.
+  // OR Reconciler returns 0 actions.
+  expect(result.actions.length).toBe(0);
+  expect(result.executionResults.length).toBe(0);
+}, 60000);
+```
+
+## Debugging Output
+
+### Use Console Logs Strategically
+
+Add console logs for debugging complex test flows:
+
+```typescript
+// ✅ GOOD - Strategic logging
+test("should process a simple greeting message", async () => {
+  console.log("Starting chat message processing...");
+  const response = await controller.message(mockRequest, mockUser);
+  const data = await response.json();
+  console.log("Chat response:", data);
+
+  expect(response.status).toBe(200);
+  expect(data.response).toBeDefined();
+}, 120000);
+```
+
+## Test Modifiers
+
+### Use Test Modifiers When Appropriate
+
+Bun supports test modifiers for special cases:
+
+```typescript
+// Skip a test temporarily
+it.skip('should implement complex feature', async () => {
+  // TODO: Implement this test
+});
+
+// Mark a test as todo
+it.todo('should handle edge case with nested objects');
+
+// Run only this test (for debugging)
+it.only('should debug this specific case', async () => {
+  // ...
+});
+
+// Mark a test as expected to fail
+it.failing('known bug with upstream dependency', async () => {
+  // This test documents a known issue
+});
+```
+
+## Summary Checklist
+
+- [ ] Environment config loaded at top
+- [ ] Imports from `bun:test`
+- [ ] Tests grouped with `describe` blocks
+- [ ] Clear, descriptive test names
+- [ ] Appropriate timeouts for async operations
+- [ ] Lifecycle hooks used correctly (beforeAll, afterAll)
+- [ ] Cleanup in `afterAll` for integration tests
+- [ ] Specific, comprehensive assertions
+- [ ] Mock external dependencies
+- [ ] Test both success and error paths
+- [ ] Realistic test data
+- [ ] Comments for complex scenarios
+- [ ] Strategic console logs for debugging
