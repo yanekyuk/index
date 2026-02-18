@@ -21,8 +21,10 @@ export function buildSystemContent(ctx: ResolvedToolContext): string {
     ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.indexId}), role: ${roleLabel}`
     : "no index scope (general chat)";
   const userContext = JSON.stringify(ctx.user, null, 2);
-  const profileContext = ctx.userProfile ? JSON.stringify(ctx.userProfile, null, 2) : "null";
-  
+  const profileContext = ctx.userProfile
+    ? JSON.stringify(ctx.userProfile, null, 2)
+    : "null";
+
   // When scoped to an index, only include that index in memberships context
   // When not scoped (general chat), include all indexes
   const relevantIndexes = ctx.indexId
@@ -39,7 +41,7 @@ export function buildSystemContent(ctx: ResolvedToolContext): string {
       joinedAt: membership.joinedAt,
     })),
     null,
-    2
+    2,
   );
   const scopedIndexContext = ctx.scopedIndex
     ? JSON.stringify(
@@ -48,7 +50,7 @@ export function buildSystemContent(ctx: ResolvedToolContext): string {
           membershipRole: ctx.scopedMembershipRole,
         },
         null,
-        2
+        2,
       )
     : "null";
 
@@ -68,7 +70,7 @@ ${userContext}
 ${profileContext}
 \`\`\`
 
-### Current User Index Memberships (preloaded context${ctx.indexId ? ' — scoped to current index' : ''})
+### Current User Index Memberships (preloaded context${ctx.indexId ? " — scoped to current index" : ""})
 \`\`\`json
 ${indexesContext}
 \`\`\`
@@ -146,7 +148,7 @@ You compose these primitives. Here's how to handle key scenarios:
 \`\`\`
 IF description is vague ("find a job", "meet people", "learn something"):
   1. read_user_profiles()           → get their background
-  2. read_intents()                 → see existing intents for context
+  2. read_intents()                 → see existing intents for context (when index-scoped, this shows only intents in this community)
   3. THINK: given their profile and existing intents, suggest a refined version
   4. Reply: "Based on your background in X, did you mean something like 'Y'?"
   5. Wait for confirmation
@@ -155,6 +157,8 @@ IF description is vague ("find a job", "meet people", "learn something"):
 IF description is specific enough ("contribute to an open-source LLM project"):
   → create_intent(description=...) directly
 \`\`\`
+
+**Scope note**: When this chat is scoped to a community, read_intents returns only intents in that community. create_intent still considers **all** of the user's intents (across communities) to avoid duplicates and to update similar ones. So if read_intents shows none or few here, do not say they have a "fresh slate" or no similar priorities — the system will still check globally when saving.
 
 Specificity test: Does it contain a concrete domain, action, or scope? If just a single generic verb+noun ("find a job"), it's vague. If it has qualifying detail ("senior UX design role at a tech company in Berlin"), it's specific.
 
@@ -240,11 +244,15 @@ Status translation: latent → "draft", pending → "sent", accepted → "connec
 - Messages may contain \`@[Display Name](userId)\` markup. The value in parentheses is the userId.
 
 ### Index Scope
-${ctx.indexId ? `- This chat is scoped to index "${ctx.indexName}" (id: ${ctx.indexId}). Default indexId for read_intents and create_intent is ${ctx.indexId}.
-- **Scope enforcement**: Tools will only return data for this index. Results are automatically filtered.
+${
+  ctx.indexId
+    ? `- This chat is scoped to index "${ctx.indexName}" (id: ${ctx.indexId}). Default indexId for read_intents and create_intent is ${ctx.indexId}.
+- **Scope enforcement**: read_intents returns only intents in this community. create_intent still checks **all** of the user's intents across communities (to avoid duplicates and update similar ones). Do not infer "no similar priorities" or "fresh slate" from an empty read_intents result here.
 - **Communicating scope**: When tool results include \`_scopeRestriction\`, inform the user that results are limited to this community and they may have other memberships not shown. Never imply the scoped results represent all their data.
-- To query other communities, the user must start a new unscoped chat or switch to a different community.` : `- No index scope. When creating intents, the system evaluates against all user's indexes in the background.
-- To find shared context with another user, use read_index_memberships to intersect.`}
+- To query other communities, the user must start a new unscoped chat or switch to a different community.`
+    : `- No index scope. When creating intents, the system evaluates against all user's indexes in the background.
+- To find shared context with another user, use read_index_memberships to intersect.`
+}
 ${ctx.isOwner ? `- You are the **owner** of this index. You can update settings, add members, delete it.` : ""}
 
 ### URLs
@@ -281,6 +289,7 @@ Rules:
 - Markdown: **bold** for emphasis, bullets for lists. Concise but complete.
 - **Never expose IDs, UUIDs, field names, or code** to the user.
 - **Never use internal vocabulary** (intent, index, opportunity, profile) in replies.
+- **Opportunity cards**: When a tool returns \`\`\`opportunity code blocks, you MUST include them exactly as-is in your response. These blocks are rendered as interactive cards in the UI. Do NOT summarize or rephrase them — copy them verbatim. You may add conversational text before/after the blocks.
 - For person references, prefer first names in user-facing copy. Use full names only when needed to disambiguate people with the same first name.
 - Do not label intents as "goals" in user-facing language. Prefer: "what you're looking for", "your priorities", "your interests".
 - Avoid repeating the same term for a match. Rotate naturally between: "possible connection", "thought partner", "peer", "aligned conversation", "mutual fit".

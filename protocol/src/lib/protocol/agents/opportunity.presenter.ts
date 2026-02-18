@@ -19,7 +19,10 @@ import type { ChatGraphCompositeDatabase } from "../interfaces/database.interfac
  * Minimal database interface required by gatherPresenterContext.
  * Any database adapter that implements these three methods can be passed.
  */
-export type PresenterDatabase = Pick<ChatGraphCompositeDatabase, 'getProfile' | 'getActiveIntents' | 'getIndex'>;
+export type PresenterDatabase = Pick<
+  ChatGraphCompositeDatabase,
+  "getProfile" | "getActiveIntents" | "getIndex"
+>;
 
 const logger = protocolLogger("OpportunityPresenter");
 const LLM_TIMEOUT_MS = 20_000;
@@ -40,12 +43,12 @@ const PresentationSchema = z.object({
   headline: z
     .string()
     .describe(
-      "Short, compelling headline for this opportunity (e.g., 'A React expert who needs your design skills')"
+      "Short, compelling headline for this opportunity (e.g., 'A React expert who needs your design skills')",
     ),
   personalizedSummary: z
     .string()
     .describe(
-      "2-3 sentence explanation using 'you' language, explaining why this opportunity is specifically valuable for the viewer based on their intents and profile"
+      "2-3 sentence explanation using 'you' language, explaining why this opportunity is specifically valuable for the viewer based on their intents and profile",
     ),
   suggestedAction: z.string().describe("Brief suggested next step"),
 });
@@ -64,20 +67,50 @@ export interface HomeCardPresenterInput extends PresenterInput {
 
 /** Full home-card display contract returned by presentHomeCard. */
 export const HomeCardPresentationSchema = z.object({
-  headline: z.string().describe("Short, compelling headline for this opportunity"),
-  personalizedSummary: z.string().describe("2-3 sentence explanation in 'you' language for the main card body"),
-  suggestedAction: z.string().describe("Brief suggested next step (e.g. CTA line)"),
-  narratorRemark: z.string().max(120).describe("One short sentence for the narrator chip (e.g. who is suggesting and why)"),
-  primaryActionLabel: z.string().max(32).describe("Label for the primary button (accept = start a conversation). Conversation-oriented only, e.g. 'Start Chat', 'Say hello', 'Reply in chat'. Never 'View Project' or 'Review Opportunity'."),
-  secondaryActionLabel: z.string().max(32).describe("Label for the secondary button (reject/dismiss: e.g. 'Skip', 'Not now')"),
-  mutualIntentsLabel: z.string().max(48).describe("Short line for the subtitle under the other party name (e.g. '1 mutual intent', '2 overlapping intents')"),
+  headline: z
+    .string()
+    .describe("Short, compelling headline for this opportunity"),
+  personalizedSummary: z
+    .string()
+    .describe(
+      "2-3 sentence explanation in 'you' language for the main card body",
+    ),
+  suggestedAction: z
+    .string()
+    .describe("Brief suggested next step (e.g. CTA line)"),
+  narratorRemark: z
+    .string()
+    .max(80)
+    .describe(
+      "One short sentence for the narrator chip, max ~80 chars (e.g. who is suggesting and why)",
+    ),
+  primaryActionLabel: z
+    .string()
+    .max(32)
+    .describe(
+      "Label for the primary button (accept = start a conversation). Conversation-oriented only, e.g. 'Start Chat', 'Say hello', 'Reply in chat'. Never 'View Project' or 'Review Opportunity'.",
+    ),
+  secondaryActionLabel: z
+    .string()
+    .max(32)
+    .describe(
+      "Label for the secondary button (reject/dismiss: e.g. 'Skip', 'Not now')",
+    ),
+  mutualIntentsLabel: z
+    .string()
+    .max(48)
+    .describe(
+      "Short line for the subtitle under the other party name (e.g. '1 mutual intent', '2 overlapping intents')",
+    ),
 });
 
 const homeCardResponseFormat = z.object({
   presentation: HomeCardPresentationSchema,
 });
 
-export type HomeCardPresentationResult = z.infer<typeof HomeCardPresentationSchema>;
+export type HomeCardPresentationResult = z.infer<
+  typeof HomeCardPresentationSchema
+>;
 
 /** Input for a single presenter call (all context pre-assembled). */
 export interface PresenterInput {
@@ -181,7 +214,6 @@ When INTRODUCTION CONTEXT is provided, this opportunity was explicitly created b
 **When INTRODUCTION CONTEXT is NOT provided (system-discovered match):**
 - Do NOT use introducer-style wording. Do NOT say "you suggested", "this is an introduction you suggested", or "you suggested this connection". The system found this match; no human introducer was involved.
 - Instead, narratorRemark should describe why the match is relevant (e.g. "Based on your overlapping intents", "Your skills align with what they need").
-- narratorRemark should describe why the match is relevant (e.g. "Based on your overlapping intents", "Your skills align with what they need").
 
 - Exception for connector/introducer: if viewer role is "introducer" (any status), this is a curation/connector card. Use:
   - primaryActionLabel: "Good match"
@@ -213,14 +245,17 @@ export class OpportunityPresenter {
     });
   }
 
-  private async invokeWithTimeout(targetModel: Runnable, messages: (SystemMessage | HumanMessage)[]): Promise<unknown> {
+  private async invokeWithTimeout(
+    targetModel: Runnable,
+    messages: (SystemMessage | HumanMessage)[],
+  ): Promise<unknown> {
     const timeoutReason = `LLM invoke timed out after ${LLM_TIMEOUT_MS}ms`;
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const invokePromise = targetModel.invoke(messages, {
       signal: controller.signal,
-    } as Record<string, unknown>);
+    });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -241,10 +276,12 @@ export class OpportunityPresenter {
   /**
    * Generate personalized presentation for a single opportunity.
    */
-  public async present(input: PresenterInput): Promise<OpportunityPresentationResult> {
+  public async present(
+    input: PresenterInput,
+  ): Promise<OpportunityPresentationResult> {
     const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? 'someone in the community'}. It was NOT discovered automatically — a real person made this connection.\n`
-      : '';
+      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
+      : "";
     const humanContent = `
 VIEWER (the person seeing this opportunity):
 ${input.viewerContext}
@@ -275,10 +312,13 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn("[OpportunityPresenter.present] LLM failed, returning fallback", {
-        message,
-        timeoutReason,
-      });
+      logger.warn(
+        "[OpportunityPresenter.present] LLM failed, returning fallback",
+        {
+          message,
+          timeoutReason,
+        },
+      );
       return {
         headline: "A promising connection",
         personalizedSummary: input.matchReasoning.slice(0, 300),
@@ -290,14 +330,16 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
   /**
    * Generate full home-card display contract (headline, body, narrator remark, action labels, mutual-intent label).
    */
-  public async presentHomeCard(input: HomeCardPresenterInput): Promise<HomeCardPresentationResult> {
+  public async presentHomeCard(
+    input: HomeCardPresenterInput,
+  ): Promise<HomeCardPresentationResult> {
     const mutualHint =
       input.mutualIntentCount != null
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
         : "Match is based on profile and intent alignment.";
     const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? 'someone in the community'}. It was NOT discovered automatically — a real person made this connection.\n`
-      : '';
+      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
+      : "";
     const humanContent = `
 VIEWER (the person seeing this opportunity):
 ${input.viewerContext}
@@ -330,10 +372,13 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       const timeoutReason = message.includes("timed out") ? message : undefined;
-      logger.warn("[OpportunityPresenter.presentHomeCard] LLM failed, returning fallback", {
-        message,
-        timeoutReason,
-      });
+      logger.warn(
+        "[OpportunityPresenter.presentHomeCard] LLM failed, returning fallback",
+        {
+          message,
+          timeoutReason,
+        },
+      );
       const isIntroducer = input.viewerRole === "introducer";
       return {
         headline: "A promising connection",
@@ -358,13 +403,35 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
    */
   public async presentBatch(
     inputs: PresenterInput[],
-    options?: { concurrency?: number }
+    options?: { concurrency?: number },
   ): Promise<OpportunityPresentationResult[]> {
     const concurrency = options?.concurrency ?? 5;
     const results: OpportunityPresentationResult[] = [];
     for (let i = 0; i < inputs.length; i += concurrency) {
       const chunk = inputs.slice(i, i + concurrency);
-      const chunkResults = await Promise.all(chunk.map((inp) => this.present(inp)));
+      const chunkResults = await Promise.all(
+        chunk.map((inp) => this.present(inp)),
+      );
+      results.push(...chunkResults);
+    }
+    return results;
+  }
+
+  /**
+   * Process multiple opportunities as home cards in parallel with bounded concurrency.
+   * Returns full home-card display contracts (headline, body, narrator remark, action labels, mutual-intent label).
+   */
+  public async presentHomeCardBatch(
+    inputs: HomeCardPresenterInput[],
+    options?: { concurrency?: number },
+  ): Promise<HomeCardPresentationResult[]> {
+    const concurrency = options?.concurrency ?? 5;
+    const results: HomeCardPresentationResult[] = [];
+    for (let i = 0; i < inputs.length; i += concurrency) {
+      const chunk = inputs.slice(i, i + concurrency);
+      const chunkResults = await Promise.all(
+        chunk.map((inp) => this.presentHomeCard(inp)),
+      );
       results.push(...chunkResults);
     }
     return results;
@@ -382,7 +449,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
 export async function gatherPresenterContext(
   database: PresenterDatabase,
   opportunity: Opportunity,
-  viewerId: string
+  viewerId: string,
 ): Promise<PresenterInput> {
   const myActor = opportunity.actors.find((a) => a.userId === viewerId);
   if (!myActor) {
@@ -404,17 +471,23 @@ export async function gatherPresenterContext(
   ]);
 
   // Fetch intents: for introducer, fetch each party's intents; otherwise fetch viewer's intents.
-  let viewerIntents: Awaited<ReturnType<typeof database.getActiveIntents>> | undefined;
-  let partyIntentsMap: Map<string, Awaited<ReturnType<typeof database.getActiveIntents>>> | undefined;
+  let viewerIntents:
+    | Awaited<ReturnType<typeof database.getActiveIntents>>
+    | undefined;
+  let partyIntentsMap:
+    | Map<string, Awaited<ReturnType<typeof database.getActiveIntents>>>
+    | undefined;
 
   if (isIntroducer) {
     const partyIntentResults = await Promise.all(
       otherPartyIds.map(async (uid) => ({
         uid,
         intents: await database.getActiveIntents(uid),
-      }))
+      })),
     );
-    partyIntentsMap = new Map(partyIntentResults.map((r) => [r.uid, r.intents]));
+    partyIntentsMap = new Map(
+      partyIntentResults.map((r) => [r.uid, r.intents]),
+    );
   } else {
     viewerIntents = await database.getActiveIntents(viewerId);
   }
@@ -431,7 +504,9 @@ export async function gatherPresenterContext(
     ].join("\n");
 
     const otherParts = otherPartyIds.map((uid, idx) => {
-      const profile = otherProfiles[idx] as Awaited<ReturnType<typeof database.getProfile>>;
+      const profile = otherProfiles[idx] as Awaited<
+        ReturnType<typeof database.getProfile>
+      >;
       const name = profile?.identity?.name ?? "Unknown";
       const bio = profile?.identity?.bio ?? "";
       const location = profile?.identity?.location ?? "";
@@ -440,7 +515,9 @@ export async function gatherPresenterContext(
       const context = profile?.narrative?.context ?? "";
       const intents = partyIntentsMap?.get(uid);
       const intentLines = intents?.length
-        ? intents.slice(0, 5).map((i) => `  - ${i.payload}${i.summary ? ` (${i.summary})` : ""}`)
+        ? intents
+            .slice(0, 5)
+            .map((i) => `  - ${i.payload}${i.summary ? ` (${i.summary})` : ""}`)
         : ["  (no active intents)"];
       return [
         `${name}:`,
@@ -451,9 +528,12 @@ export async function gatherPresenterContext(
         context ? `  Context: ${context}` : null,
         `  Active intents:`,
         ...intentLines,
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
     });
-    otherPartyContext = otherParts.join("\n\n") || "Parties (details not available).";
+    otherPartyContext =
+      otherParts.join("\n\n") || "Parties (details not available).";
   } else {
     // Non-introducer view: full viewer profile + intents, other party profiles
     const viewerContextLines = [
@@ -466,35 +546,45 @@ export async function gatherPresenterContext(
       `Context: ${viewerProfile?.narrative?.context ?? ""}`,
       "Active intents:",
       ...(viewerIntents?.length
-        ? viewerIntents.map((i) => `- ${i.payload}${i.summary ? ` (${i.summary})` : ""}`)
+        ? viewerIntents.map(
+            (i) => `- ${i.payload}${i.summary ? ` (${i.summary})` : ""}`,
+          )
         : ["(none listed)"]),
     ];
     viewerContext = viewerContextLines.join("\n");
 
     const otherParts = otherPartyIds.map((uid, idx) => {
-      const profile = otherProfiles[idx] as Awaited<ReturnType<typeof database.getProfile>>;
+      const profile = otherProfiles[idx] as Awaited<
+        ReturnType<typeof database.getProfile>
+      >;
       const name = profile?.identity?.name ?? "Unknown";
       const bio = profile?.identity?.bio ?? "";
       const skills = profile?.attributes?.skills?.join(", ") ?? "";
       const interests = profile?.attributes?.interests?.join(", ") ?? "";
       return `${name}: ${bio}. Skills: ${skills}. Interests: ${interests}`;
     });
-    otherPartyContext = otherParts.join("\n\n") || "Other party (details not available).";
+    otherPartyContext =
+      otherParts.join("\n\n") || "Other party (details not available).";
   }
 
   const interp = opportunity.interpretation;
   const signalsSummary =
-    interp.signals?.map((s) => `${s.type}: ${s.detail ?? s.type}`).join("; ") ?? "Match based on profile and intent alignment.";
+    interp.signals?.map((s) => `${s.type}: ${s.detail ?? s.type}`).join("; ") ??
+    "Match based on profile and intent alignment.";
 
   // Detect introduction-originated opportunities: only when there is an explicit introducer actor.
   // Do NOT use detection.source === "manual" alone — system-discovered opportunities can have manual source without an introducer.
-  const introducerActor = opportunity.actors.find((a) => a.role === "introducer");
+  const introducerActor = opportunity.actors.find(
+    (a) => a.role === "introducer",
+  );
   const isIntroduction = !!introducerActor;
   let introducerName: string | undefined;
   if (introducerActor) {
-    introducerName = (opportunity.detection as unknown as Record<string, unknown>)?.createdByName as string | undefined;
+    introducerName = opportunity.detection.createdByName;
     if (!introducerName) {
-      const introducerProfile = await database.getProfile(introducerActor.userId);
+      const introducerProfile = await database.getProfile(
+        introducerActor.userId,
+      );
       introducerName = introducerProfile?.identity?.name ?? undefined;
     }
   }
@@ -505,9 +595,11 @@ export async function gatherPresenterContext(
     matchReasoning: interp.reasoning,
     category: interp.category ?? "connection",
     confidence:
-      typeof interp.confidence === "number" ? interp.confidence : parseFloat(String(interp.confidence ?? 0)) || 0,
+      typeof interp.confidence === "number"
+        ? interp.confidence
+        : parseFloat(String(interp.confidence ?? 0)) || 0,
     signalsSummary,
-    indexName: indexRecord?.title ?? (contextIndexId ?? ''),
+    indexName: indexRecord?.title ?? contextIndexId ?? "",
     viewerRole: myActor.role ?? "party",
     isIntroduction,
     introducerName,
