@@ -311,9 +311,19 @@ export async function runDiscoverFromQuery(
         }
       }
 
-      // Batch-fetch user avatars (same pattern as listOpportunities)
+      // Batch-fetch user avatars (candidates + introducers for narrator chip)
+      const introducerUserIds = new Set<string>();
+      for (const item of baseEnriched) {
+        const introducer = item.opportunity.actors.find(
+          (a) => a.role === "introducer" && a.userId !== userId,
+        );
+        if (introducer?.userId) introducerUserIds.add(introducer.userId);
+      }
       const candidateUserIds = [
-        ...new Set(baseEnriched.map((item) => item.candidateUserId)),
+        ...new Set([
+          ...baseEnriched.map((item) => item.candidateUserId),
+          ...introducerUserIds,
+        ]),
       ];
       const userResults = await Promise.all(
         candidateUserIds.map((id) => database.getUser(id)),
@@ -341,7 +351,7 @@ export async function runDiscoverFromQuery(
                 name: ctx.introducerName,
                 text: homeCard.narratorRemark,
                 userId: introducerActor.userId,
-                // Avatar would need to be fetched separately if needed
+                avatar: avatarByUserId.get(introducerActor.userId) ?? null,
               };
             } else {
               narratorChip = {
