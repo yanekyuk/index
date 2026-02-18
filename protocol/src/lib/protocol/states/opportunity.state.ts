@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { Id } from '../../../types/common.types';
 import type { OpportunityStatus, Opportunity } from '../interfaces/database.interface';
 import type { HydeStrategy } from '../interfaces/embedder.interface';
+import type { EvaluatorEntity } from '../agents/opportunity.evaluator';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -128,6 +129,7 @@ export const OpportunityGraphState = Annotation.Root({
   /**
    * Operation mode controls graph flow:
    * - 'create': Existing discover pipeline (Prep → Scope → Discovery → Evaluation → Ranking → Persist)
+   * - 'create_introduction': Introduction path (validation → evaluation → persist) for chat-driven intros
    * - 'read': List opportunities filtered by userId and optionally indexId (fast path)
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
@@ -135,9 +137,33 @@ export const OpportunityGraphState = Annotation.Root({
    *
    * Defaults to 'create' for backward compatibility.
    */
-  operationMode: Annotation<'create' | 'read' | 'update' | 'delete' | 'send'>({
+  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create' as const,
+  }),
+
+  /** Introduction mode: pre-gathered entities (profiles + intents per party). */
+  introductionEntities: Annotation<EvaluatorEntity[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /** Introduction mode: optional hint from the introducer. */
+  introductionHint: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** When set (e.g. chat scope), indexId must match this. */
+  requiredIndexId: Annotation<Id<'indexes'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Set by intro_evaluation; used by persist to build manual detection and introducer actor. */
+  introductionContext: Annotation<{ createdByName?: string } | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   /** Target opportunity ID for update/delete/send modes. */
