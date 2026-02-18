@@ -289,6 +289,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       // ── Discovery mode ──
       const searchQuery = query.searchQuery?.trim() ?? "";
 
+      if (query.intentId != null && query.intentId !== "" && !UUID_REGEX.test(query.intentId.trim())) {
+        return error("Invalid intent ID format.");
+      }
+
       let indexScope: string[];
       if (effectiveIndexId) {
         if (!UUID_REGEX.test(effectiveIndexId)) {
@@ -318,6 +322,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const triggerIntentId = query.intentId?.trim() || undefined;
+      if (triggerIntentId != null && !UUID_REGEX.test(triggerIntentId)) {
+        return error("Invalid intent ID format.");
+      }
+
       const result = await runDiscoverFromQuery({
         opportunityGraph: graphs.opportunity as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         database,
@@ -326,7 +335,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope,
         limit: 5,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
-        triggerIntentId: query.intentId ?? undefined,
+        triggerIntentId,
       });
 
       if (result.createIntentSuggested && result.suggestedIntentDescription) {

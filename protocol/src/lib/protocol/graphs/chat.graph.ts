@@ -13,6 +13,22 @@ import { ChatStreamer } from "../streamers";
 
 const logger = protocolLogger("ChatGraphFactory");
 
+function isRetriableError(err: unknown): boolean {
+  const status =
+    (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
+  if (typeof status === "number" && status >= 500 && status <= 599) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("internal server error") ||
+    /\b500\b|status[: ]*500/i.test(msg) ||
+    lower.includes("econnreset") ||
+    lower.includes("etimedout")
+  );
+}
+
+const RETRY_DELAY_MS = 800;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT GRAPH FACTORY (Agent Loop Architecture)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -195,22 +211,17 @@ export class ChatGraphFactory {
           scraper,
           indexId,
         });
-        return await agent.streamRun(state.messages, config.writer);
-      };
-
-      const isRetriableError = (err: unknown): boolean => {
-        const status = (err as { status?: number; statusCode?: number; code?: string }).status
-          ?? (err as { statusCode?: number }).statusCode;
-        if (typeof status === "number" && status >= 500 && status <= 599) return true;
-        const msg = err instanceof Error ? err.message : String(err);
-        const lower = msg.toLowerCase();
-        return (
-          lower === "internal server error" ||
-          lower.includes("internal server error") ||
-          /\b500\b|status[: ]*500/i.test(msg) ||
-          lower.includes("econnreset") ||
-          lower.includes("etimedout")
-        );
+        const buffer: unknown[] = [];
+        const attemptWriter = (data: unknown) => buffer.push(data);
+        const result = await agent.streamRun(state.messages, attemptWriter);
+        for (const event of buffer) {
+          try {
+            config.writer?.(event);
+          } catch {
+            /* swallow if writer is gone */
+          }
+        }
+        return result;
       };
 
       try {
@@ -237,6 +248,7 @@ export class ChatGraphFactory {
             userId: state.userId,
             error: error instanceof Error ? error.message : String(error)
           });
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
           try {
             const result = await runLoop();
             logger.info("Agent loop complete after retry", {

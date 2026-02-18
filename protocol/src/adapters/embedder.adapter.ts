@@ -16,6 +16,7 @@ import {
   type HydeStrategy,
   HYDE_STRATEGY_TARGET_CORPUS,
 } from '../lib/protocol/agents/hyde.strategies';
+import type { ProfileEmbeddingSearchOptions } from '../lib/protocol/interfaces/embedder.interface';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (align with lib/protocol/interfaces/embedder.interface.ts)
@@ -41,6 +42,11 @@ export interface HydeCandidate {
   indexId: string;
   matchedStrategies?: HydeStrategy[];
 }
+
+/** Overfetch multiplier for profile-by-embedding search; indexMembers join yields multiple rows per user, so we fetch more then dedupe. */
+const OVERFETCH_MULTIPLIER = 10;
+/** Cap on overfetch rows to bound expensive queries. */
+const MAX_OVERFETCH_ROWS = 500;
 
 export interface VectorSearchResult<T> {
   item: T;
@@ -181,7 +187,7 @@ export class EmbedderAdapter {
 
   async searchWithProfileEmbedding(
     profileEmbedding: number[],
-    options: HydeSearchOptions
+    options: ProfileEmbeddingSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
       indexScope,
@@ -210,6 +216,7 @@ export class EmbedderAdapter {
     minScore: number,
     strategy: HydeStrategy
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { hydeDocuments, indexMembers } = schema;
 
@@ -253,6 +260,7 @@ export class EmbedderAdapter {
     minScore: number,
     strategy: HydeStrategy
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentIndexes } = schema;
 
@@ -293,6 +301,7 @@ export class EmbedderAdapter {
     limit: number,
     minScore: number
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { userProfiles, indexMembers } = schema;
     const conditions = [
@@ -301,6 +310,8 @@ export class EmbedderAdapter {
       sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
       ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
     ];
+    // Overfetch then dedupe: indexMembers join returns multiple rows per user (user in N indexes → N rows).
+    const fetchLimit = Math.min(limit * OVERFETCH_MULTIPLIER, MAX_OVERFETCH_ROWS);
     const results = await db
       .select({
         userId: userProfiles.userId,
@@ -311,7 +322,7 @@ export class EmbedderAdapter {
       .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
       .where(and(...conditions))
       .orderBy(sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
-      .limit(limit * 10);
+      .limit(fetchLimit);
     const byUser = new Map<string, { userId: string; similarity: number; indexId: string }>();
     for (const r of results) {
       if (r.userId == null) continue;
@@ -339,6 +350,7 @@ export class EmbedderAdapter {
     limit: number,
     minScore: number
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentIndexes } = schema;
     const conditions = [

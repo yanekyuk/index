@@ -23,6 +23,9 @@ export interface HydeSearchOptions {
   minScore?: number;
 }
 
+/** Options for searchWithProfileEmbedding (no strategies; profile embedding search does not use strategy selection). */
+export type ProfileEmbeddingSearchOptions = Omit<HydeSearchOptions, 'strategies'>;
+
 /** A single candidate from HyDE search (profile or intent), with score and which strategy matched. */
 export interface HydeCandidate {
   type: 'profile' | 'intent';
@@ -97,6 +100,6 @@ export interface Embedder extends EmbeddingGenerator, VectorStore {
    */
   searchWithProfileEmbedding(
     profileEmbedding: number[],
-    options: HydeSearchOptions
+    options: ProfileEmbeddingSearchOptions
   ): Promise<HydeCandidate[]>;
 }

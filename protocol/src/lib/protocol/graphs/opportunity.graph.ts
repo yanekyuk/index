@@ -328,7 +328,6 @@ export class OpportunityGraphFactory {
           const allCandidates: CandidateMatch[] = [];
           for (const targetIndex of state.targetIndexes) {
             const results = await this.embedder.searchWithProfileEmbedding(vector, {
-              strategies: ['mirror'],
               indexScope: [targetIndex.indexId],
               excludeUserId: state.userId,
               limitPerStrategy,

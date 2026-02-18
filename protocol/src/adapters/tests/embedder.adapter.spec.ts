@@ -229,7 +229,6 @@ describe('EmbedderAdapter', () => {
     it('should return candidates (profiles and/or intents) in index scope with correct shape', async () => {
       const profileEmbedding = makeTestVector(42);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        strategies: ['mirror'],
         indexScope: [fixture.indexId],
         limit: 10,
         limitPerStrategy: 5,
@@ -255,7 +254,6 @@ describe('EmbedderAdapter', () => {
     it('should respect indexScope and excludeUserId', async () => {
       const profileEmbedding = makeTestVector(100);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        strategies: ['mirror'],
         indexScope: [fixture.indexId],
         excludeUserId: fixture.userAId,
         limit: 5,
