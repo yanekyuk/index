@@ -910,6 +910,39 @@ describe("create_opportunities tool", () => {
     expect(parsed.data.found).toBe(false);
     expect(parsed.data.message).toMatch(/join|index|community/i);
   });
+
+  test("introduction mode: when partyUserIds given but entities empty, returns error", async () => {
+    const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { partyUserIds?: string[]; entities?: unknown[] }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: [testUserId, "other-user-id"],
+      entities: [],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/pre-gathered|entity data|entities/i);
+  });
+
+  test("introduction mode: when entities missing indexId, returns error", async () => {
+    const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { partyUserIds?: string[]; entities?: Array<{ userId: string; indexId?: string }> }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: [testUserId, "other-user-id"],
+      entities: [{ userId: testUserId }, { userId: "other-user-id" }],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/indexId|shared index/i);
+    expect(parsed.error).toContain("indexId");
+  });
 });
 
 describe("update_opportunity tool (send via status pending)", () => {

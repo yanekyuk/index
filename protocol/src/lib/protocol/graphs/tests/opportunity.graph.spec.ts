@@ -590,4 +590,98 @@ describe('Opportunity Graph', () => {
       expect(result.opportunities).toEqual([]);
     });
   });
+
+  describe('create_introduction path', () => {
+    const introEntities = [
+      { userId: 'user-alice', profile: { name: 'Alice' }, indexId: 'idx-1' },
+      { userId: 'user-bob', profile: { name: 'Bob' }, indexId: 'idx-1' },
+    ];
+
+    test('with valid entities and hint returns one opportunity with manual detection and introducer actor', async () => {
+      const { compiledGraph, mockDb } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Alice and Bob should collaborate.',
+            score: 85,
+            actors: [
+              { userId: 'user-alice', role: 'peer' as const, intentId: null },
+              { userId: 'user-bob', role: 'peer' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+        introductionHint: 'both AI devs',
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeUndefined();
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].detection.source).toBe('manual');
+      expect(result.opportunities[0].detection.createdBy).toBe('user-source');
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.role === 'introducer' && a.userId === 'user-source')).toBe(true);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detection: expect.objectContaining({ source: 'manual', createdBy: 'user-source' }),
+          status: 'latent',
+        })
+      );
+    });
+
+    test('when requiredIndexId does not match indexId returns error', async () => {
+      const { compiledGraph } = createMockGraph();
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+        requiredIndexId: 'idx-other' as Id<'indexes'>,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('scoped');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+
+    test('when opportunityExistsBetweenActors returns true returns error', async () => {
+      const { compiledGraph, mockDb } = createMockGraph();
+      spyOn(mockDb, 'opportunityExistsBetweenActors').mockResolvedValue(true);
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('already exists');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+
+    test('when introducer is not index member returns error', async () => {
+      const { compiledGraph, mockDb } = createMockGraph();
+      spyOn(mockDb, 'isIndexMember').mockImplementation(async (indexId: string, userId: string) => {
+        if (userId === 'user-source') return false;
+        return true;
+      });
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('not members');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+  });
 });
