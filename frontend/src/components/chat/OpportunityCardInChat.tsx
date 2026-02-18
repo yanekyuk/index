@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Bot } from "lucide-react";
+import { Bot, Check, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getAvatarUrl } from "@/lib/file-utils";
@@ -55,17 +55,45 @@ function isActionableStatus(status?: string): boolean {
   return ACTIONABLE_STATUSES.has(status);
 }
 
-/** Get human-readable message for resolved statuses. */
+/** Get human-readable message for resolved statuses (icon shown separately for accepted). */
 function getStatusMessage(status?: string): string | null {
   switch (status) {
     case "accepted":
-      return "✓ This connection has been accepted";
+      return "This connection has been accepted";
     case "rejected":
       return "This opportunity was declined";
     case "expired":
       return "This opportunity has expired";
     default:
       return null;
+  }
+}
+
+/** Tailwind classes for the card wrapper based on opportunity status. */
+function getCardWrapperClass(status?: string): string {
+  switch (status) {
+    case "accepted":
+      return "bg-green-50/80 border border-green-200";
+    case "rejected":
+      return "bg-red-50/60 border border-red-200";
+    case "expired":
+      return "bg-amber-50/80 border border-amber-200";
+    default:
+      return "bg-[#F8F8F8]";
+  }
+}
+
+/** Tailwind classes for the narrator chip based on opportunity status. */
+function getNarratorChipClass(status?: string): string {
+  switch (status) {
+    case "accepted":
+      return "bg-green-100/80 border border-green-200";
+    case "rejected":
+      return "bg-red-100/60 border border-red-200";
+    case "expired":
+      return "bg-amber-100/80 border border-amber-200";
+    default:
+      return "bg-[#F0F0F0] border border-gray-200";
   }
 }
 
@@ -224,35 +252,11 @@ export default function OpportunityCard({
     );
   }
 
-  // If status has changed to a resolved state, show status message
-  if (!canTakeAction && statusMessage) {
-    return (
-      <div className="bg-gray-50 rounded-lg p-4 my-2">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-            <Image
-              src={avatarUrl}
-              alt={card.name || "User"}
-              width={32}
-              height={32}
-              className="w-full h-full object-cover"
-            />
-          </div>
-          <div className="min-w-0">
-            <h4 className="font-bold text-gray-900 text-sm">
-              {card.name || "Someone"}
-            </h4>
-          </div>
-        </div>
-        <p className="text-sm text-gray-500 text-center">{statusMessage}</p>
-      </div>
-    );
-  }
-
   const hasActions = canTakeAction && (onPrimaryAction || onSecondaryAction);
+  const showResolvedStatus = !canTakeAction && statusMessage;
 
   return (
-    <div className="bg-[#F8F8F8] rounded-md p-4">
+    <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
       {/* Header: Avatar, Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div
@@ -312,6 +316,20 @@ export default function OpportunityCard({
             )}
           </div>
         )}
+        {showResolvedStatus && statusMessage && (
+          <div className="flex items-center gap-1.5 shrink-0 text-sm text-gray-600">
+            {effectiveStatus === "accepted" && (
+              <Check className="w-4 h-4 text-green-600 shrink-0" />
+            )}
+            {effectiveStatus === "rejected" && (
+              <X className="w-4 h-4 text-red-600 shrink-0" />
+            )}
+            {effectiveStatus === "expired" && (
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+            )}
+            <span>{statusMessage}</span>
+          </div>
+        )}
       </div>
 
       {/* Main Text (Personalized Summary) */}
@@ -335,9 +353,23 @@ export default function OpportunityCard({
         <div className="mt-3">
           <div
             className={cn(
-              "inline-flex items-center gap-2.5 px-3 py-1 bg-[#F0F0F0] rounded-md",
+              "inline-flex items-center gap-2.5 px-3 py-1 rounded-md border",
+              getNarratorChipClass(effectiveStatus),
+              card.narratorChip.userId && "cursor-pointer transition-colors",
               card.narratorChip.userId &&
-                "cursor-pointer hover:bg-[#E8E8E8] transition-colors",
+                effectiveStatus === "accepted" &&
+                "hover:bg-green-200/50",
+              card.narratorChip.userId &&
+                effectiveStatus === "rejected" &&
+                "hover:bg-red-200/40",
+              card.narratorChip.userId &&
+                effectiveStatus === "expired" &&
+                "hover:bg-amber-200/50",
+              card.narratorChip.userId &&
+                !["accepted", "rejected", "expired"].includes(
+                  effectiveStatus ?? "",
+                ) &&
+                "hover:bg-[#E8E8E8]",
             )}
             {...(card.narratorChip.userId
               ? {
