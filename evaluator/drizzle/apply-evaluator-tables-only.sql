@@ -51,11 +51,11 @@ CREATE TABLE IF NOT EXISTS "eval_scenario_results" (
   "review_flag" text,
   "review_note" text,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+  CONSTRAINT "eval_scenario_results_run_scenario_unique" UNIQUE ("eval_run_id", "scenario_id")
 );
 
 CREATE INDEX IF NOT EXISTS "eval_runs_user_idx" ON "eval_runs" USING btree ("user_id");
-CREATE INDEX IF NOT EXISTS "eval_scenario_results_run_idx" ON "eval_scenario_results" USING btree ("eval_run_id");
 CREATE INDEX IF NOT EXISTS "eval_scenario_results_scenario_idx" ON "eval_scenario_results" USING btree ("eval_run_id", "scenario_id");
 
 DO $$ BEGIN
