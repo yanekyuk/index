@@ -118,12 +118,14 @@ interface OpportunityCardProps {
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void | Promise<void>;
   /** Handler for secondary action (reject/skip). */
   onSecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void | Promise<void>;
   /** Whether an action is currently loading for this card. */
   isLoading?: boolean;
@@ -207,7 +209,12 @@ export default function OpportunityCard({
     if (onPrimaryAction) {
       setActionError(false);
       try {
-        await onPrimaryAction(card.opportunityId, card.userId, card.viewerRole);
+        await onPrimaryAction(
+          card.opportunityId,
+          card.userId,
+          card.viewerRole,
+          card.name,
+        );
         setActionTaken("accepted");
       } catch {
         setActionError(true);
@@ -219,7 +226,12 @@ export default function OpportunityCard({
     if (onSecondaryAction) {
       setActionError(false);
       try {
-        await onSecondaryAction(card.opportunityId, card.userId, card.viewerRole);
+        await onSecondaryAction(
+          card.opportunityId,
+          card.userId,
+          card.viewerRole,
+          card.name,
+        );
         setActionTaken("rejected");
       } catch {
         setActionError(true);

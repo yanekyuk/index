@@ -69,6 +69,10 @@ function buildMinimalOpportunityCard(
       : undefined;
   const narratorName =
     introducerName ?? (introducerActor ? "Someone" : "Index");
+  const primaryActionLabel =
+    viewerRole === "introducer"
+      ? `Send to ${counterpartName || "them"}`
+      : "Start Chat";
   return {
     opportunityId: opp.id,
     userId: counterpartUserId,
@@ -77,7 +81,7 @@ function buildMinimalOpportunityCard(
     mainText,
     cta: "Start a conversation to connect.",
     headline: `Connection with ${counterpartName}`,
-    primaryActionLabel: "Start Chat",
+    primaryActionLabel,
     secondaryActionLabel: "Skip",
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
@@ -254,7 +258,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mainText: truncateForCardText(reasoning),
           cta: "Start a conversation to connect.",
           headline: `Connection with ${counterpartName}`,
-          primaryActionLabel: "Start Chat",
+          primaryActionLabel: `Send to ${counterpartName || "them"}`,
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
           narratorChip: {

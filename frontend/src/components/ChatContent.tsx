@@ -153,11 +153,13 @@ function AssistantMessageContent({
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void;
   onOpportunitySecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
@@ -245,7 +247,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     updateSessionTitle,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
-  const { error: showError } = useNotifications();
+  const { error: showError, success: showSuccess } = useNotifications();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -435,6 +437,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       action: "accepted" | "rejected",
       fallbackUserId?: string,
       viewerRole?: string,
+      counterpartName?: string,
     ) => {
       setOpportunityActionLoading((prev) => ({
         ...prev,
@@ -466,6 +469,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             ? `?channelId=${encodeURIComponent(channelId)}`
             : "";
           router.push(`/u/${counterpartUserId}/chat${query}`);
+        } else if (action === "accepted" && isIntroducer) {
+          showSuccess(
+            "Opportunity sent",
+            `Sent to ${counterpartName || "them"}. They can accept to start the conversation.`,
+          );
         }
         setHomeViewData((prev) => {
           if (!prev) return prev;
@@ -494,7 +502,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         }));
       }
     },
-    [opportunitiesService, router, showError],
+    [opportunitiesService, router, showError, showSuccess],
   );
 
   const canSend = input.trim() || selectedFiles.length > 0;
@@ -878,20 +886,32 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         <OpportunityCard
                           key={item.opportunityId}
                           card={item}
-                          onPrimaryAction={(oppId, userId, viewerRole) =>
+                          onPrimaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                          ) =>
                             handleHomeOpportunityAction(
                               oppId,
                               "accepted",
                               userId,
                               viewerRole,
+                              counterpartName,
                             )
                           }
-                          onSecondaryAction={(oppId, userId, viewerRole) =>
+                          onSecondaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                          ) =>
                             handleHomeOpportunityAction(
                               oppId,
                               "rejected",
                               userId,
                               viewerRole,
+                              counterpartName,
                             )
                           }
                           isLoading={
@@ -1221,30 +1241,34 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           <AssistantMessageContent
                             content={msg.content}
                             isStreaming={msg.isStreaming ?? false}
-                          onOpportunityPrimaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                          ) =>
-                            handleHomeOpportunityAction(
+                            onOpportunityPrimaryAction={(
                               oppId,
-                              "accepted",
                               userId,
                               viewerRole,
-                            )
-                          }
-                          onOpportunitySecondaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                          ) =>
-                            handleHomeOpportunityAction(
+                              counterpartName,
+                            ) =>
+                              handleHomeOpportunityAction(
+                                oppId,
+                                "accepted",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            onOpportunitySecondaryAction={(
                               oppId,
-                              "rejected",
                               userId,
                               viewerRole,
-                            )
-                          }
+                              counterpartName,
+                            ) =>
+                              handleHomeOpportunityAction(
+                                oppId,
+                                "rejected",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
                           />
