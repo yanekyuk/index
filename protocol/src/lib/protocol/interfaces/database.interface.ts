@@ -424,7 +424,7 @@ export interface Database {
    * Caller must be a member of that index; only the user's own intents are returned.
    *
    * @param userId - The user requesting (must be a member of the index)
-   * @param indexNameOrId - Index UUID or display name (e.g. "Open Mock Network")
+   * @param indexNameOrId - Index UUID or display name (e.g. "Commons")
    * @returns Array of active intents in that index for the user, or empty if not a member / no match
    */
   getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntent[]>;
@@ -565,6 +565,16 @@ export interface Database {
    * @returns Array of index memberships with details
    */
   getIndexMemberships(userId: string): Promise<IndexMembership[]>;
+
+  /**
+   * Get a single index membership by index and user.
+   * Used when the preloaded memberships list may not contain this index (e.g. after isIndexMember check).
+   *
+   * @param indexId - The index ID
+   * @param userId - The user ID
+   * @returns The membership or null if not found
+   */
+  getIndexMembership(indexId: string, userId: string): Promise<IndexMembership | null>;
 
   /**
    * Get index by ID (id and title only). Used for opportunity presentation.
@@ -853,6 +863,19 @@ export interface Database {
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }>;
 
+  /**
+   * Removes a user from an index.
+   * Only the index owner can remove members. Cannot remove the owner.
+   *
+   * @param indexId - The index to remove from
+   * @param userId - The user to remove
+   * @returns success, or wasOwner/notMember if removal failed
+   */
+  removeMemberFromIndex(
+    indexId: string,
+    userId: string
+  ): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // HyDE Document Operations (Opportunity Redesign)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1075,25 +1098,337 @@ export interface Database {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// USER DATABASE INTERFACE (Own Resources Only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Context-bound database for accessing the authenticated user's own resources.
+ * Created with authUserId bound at construction; no userId parameter needed on methods.
+ *
+ * **NOT index-scoped**: Returns ALL of the user's own resources regardless of index.
+ * This is critical for the IntentReconciler which needs the full picture for deduplication.
+ *
+ * Use via `createUserDatabase(db, authUserId)` factory function.
+ */
+export interface UserDatabase {
+  /** The bound authenticated user ID */
+  readonly authUserId: string;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Profile Operations (own only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get the authenticated user's profile. */
+  getProfile(): Promise<ProfileDocument | null>;
+
+  /** Get the authenticated user's profile with row ID. */
+  getProfileByUserId(): Promise<(ProfileDocument & { id: string }) | null>;
+
+  /** Save/update the authenticated user's profile. */
+  saveProfile(profile: ProfileDocument): Promise<void>;
+
+  /** Delete the authenticated user's profile. */
+  deleteProfile(): Promise<void>;
+
+  /** Get the authenticated user's basic record (name, email, socials). */
+  getUser(): Promise<UserRecord | null>;
+
+  /** Update the authenticated user's account fields. */
+  updateUser(data: { name?: string; location?: string; socials?: UserSocials }): Promise<UserRecord | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Intent Operations (own only, ALL intents - not index-scoped)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get ALL active intents for the authenticated user (not index-filtered). */
+  getActiveIntents(): Promise<ActiveIntent[]>;
+
+  /** Get a single intent by ID (ownership enforced). */
+  getIntent(intentId: string): Promise<IntentRecord | null>;
+
+  /** Create a new intent for the authenticated user. */
+  createIntent(data: Omit<CreateIntentData, 'userId'>): Promise<CreatedIntent>;
+
+  /** Update an intent owned by the authenticated user. */
+  updateIntent(intentId: string, data: UpdateIntentData): Promise<CreatedIntent | null>;
+
+  /** Archive an intent owned by the authenticated user. */
+  archiveIntent(intentId: string): Promise<ArchiveResult>;
+
+  /** Find similar intents among the user's own intents (for deduplication). */
+  findSimilarIntents(embedding: number[], options?: SimilarIntentSearchOptions): Promise<SimilarIntent[]>;
+
+  /** Get intent fields for indexing (own intent). */
+  getIntentForIndexing(intentId: string): Promise<{
+    id: string;
+    payload: string;
+    userId: string;
+    sourceType: string | null;
+    sourceId: string | null;
+  } | null>;
+
+  /** Associate an intent with indexes. */
+  associateIntentWithIndexes(intentId: string, indexIds: string[]): Promise<void>;
+
+  /** Assign an intent to an index. */
+  assignIntentToIndex(intentId: string, indexId: string): Promise<void>;
+
+  /** Unassign an intent from an index. */
+  unassignIntentFromIndex(intentId: string, indexId: string): Promise<void>;
+
+  /** Get index IDs for an intent. */
+  getIndexIdsForIntent(intentId: string): Promise<string[]>;
+
+  /** Check if intent is assigned to index. */
+  isIntentAssignedToIndex(intentId: string, indexId: string): Promise<boolean>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Membership Operations (own memberships only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get all index memberships for the authenticated user. */
+  getIndexMemberships(): Promise<IndexMembership[]>;
+
+  /** Get index IDs with auto-assign enabled for the authenticated user. */
+  getUserIndexIds(): Promise<string[]>;
+
+  /** Get indexes owned by the authenticated user. */
+  getOwnedIndexes(): Promise<OwnedIndex[]>;
+
+  /** Get a specific index membership for the authenticated user. */
+  getIndexMembership(indexId: string): Promise<IndexMembership | null>;
+
+  /** Get index + member context for the authenticated user (for auto-assign). */
+  getIndexMemberContext(indexId: string): Promise<{
+    indexId: string;
+    indexPrompt: string | null;
+    memberPrompt: string | null;
+  } | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index CRUD Operations (owner operations on own indexes)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Create a new index (user becomes owner). */
+  createIndex(data: {
+    title: string;
+    prompt?: string | null;
+    joinPolicy?: 'anyone' | 'invite_only';
+  }): Promise<{
+    id: string;
+    title: string;
+    prompt: string | null;
+    permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
+  }>;
+
+  /** Update index settings (owner only). */
+  updateIndexSettings(indexId: string, data: UpdateIndexSettingsData): Promise<OwnedIndex>;
+
+  /** Soft-delete an index (owner only). */
+  softDeleteIndex(indexId: string): Promise<void>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Opportunity Operations (where user is actor)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get opportunities where the authenticated user is an actor. */
+  getOpportunitiesForUser(options?: OpportunityQueryOptions): Promise<Opportunity[]>;
+
+  /** Get a specific opportunity (if user is an actor). */
+  getOpportunity(id: string): Promise<Opportunity | null>;
+
+  /** Update an opportunity's status (if user is an actor). */
+  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
+
+  /** Get accepted opportunities between the authenticated user and another actor. */
+  getAcceptedOpportunitiesBetweenActors(counterpartUserId: string): Promise<Opportunity[]>;
+
+  /** Accept sibling opportunities between the authenticated user and another actor. */
+  acceptSiblingOpportunities(counterpartUserId: string, excludeOpportunityId: string): Promise<string[]>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // HyDE Operations (own sources only)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get a HyDE document for the user's own source. */
+  getHydeDocument(sourceType: HydeSourceType, sourceId: string, strategy: string): Promise<HydeDocument | null>;
+
+  /** Get all HyDE documents for the user's own source. */
+  getHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<HydeDocument[]>;
+
+  /** Save a HyDE document for the user's own source. */
+  saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
+
+  /** Delete HyDE documents for the user's own source. */
+  deleteHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<number>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SYSTEM DATABASE INTERFACE (Cross-User Within Shared Indexes)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Context-bound database for LLM/system operations that access cross-user resources.
+ * Created with authUserId + indexScope[]; validates membership before access.
+ *
+ * **Index-scoped**: All cross-user operations are restricted to users/resources
+ * within the bound indexScope[]. This prevents the LLM from accessing arbitrary users' data.
+ *
+ * Use via `createSystemDatabase(db, authUserId, indexScope)` factory function.
+ */
+export interface SystemDatabase {
+  /** The bound authenticated user ID */
+  readonly authUserId: string;
+
+  /** The indexes the authenticated user has access to (determines cross-user scope) */
+  readonly indexScope: string[];
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Profile Operations (any user in scope)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get a user's profile (requires shared index membership). */
+  getProfile(userId: string): Promise<ProfileDocument | null>;
+
+  /** Get a user's basic record (requires shared index membership). */
+  getUser(userId: string): Promise<UserRecord | null>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Intent Operations (cross-user within shared indexes)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get all intents in an index (cross-user, requires membership). */
+  getIntentsInIndex(indexId: string, options?: { limit?: number; offset?: number }): Promise<IndexedIntentDetails[]>;
+
+  /** Get a specific user's intents in an index (requires shared membership). */
+  getUserIntentsInIndex(userId: string, indexId: string): Promise<ActiveIntent[]>;
+
+  /** Get a single intent by ID (if in scope). */
+  getIntent(intentId: string): Promise<IntentRecord | null>;
+
+  /** Find similar intents across users within the index scope. */
+  findSimilarIntentsInScope(embedding: number[], options?: SimilarIntentSearchOptions): Promise<SimilarIntent[]>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Membership Operations (any index in scope)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Check if a user is a member of an index. */
+  isIndexMember(indexId: string, userId: string): Promise<boolean>;
+
+  /** Check if a user is an owner of an index. */
+  isIndexOwner(indexId: string, userId: string): Promise<boolean>;
+
+  /** Get all members of an index (requires membership). */
+  getIndexMembers(indexId: string): Promise<IndexMemberDetails[]>;
+
+  /** Get all members across all indexes in scope (deduplicated). */
+  getMembersFromScope(): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]>;
+
+  /** Add a user to an index (requires ownership or 'anyone' policy). */
+  addMemberToIndex(indexId: string, userId: string, role: 'owner' | 'admin' | 'member'): Promise<{ success: boolean; alreadyMember?: boolean }>;
+
+  /** Remove a user from an index (requires ownership). Cannot remove the owner. */
+  removeMemberFromIndex(indexId: string, userId: string): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Index Operations (any index in scope)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get index info by ID (requires scope). */
+  getIndex(indexId: string): Promise<{ id: string; title: string } | null>;
+
+  /** Get index with permissions (requires scope). */
+  getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null>;
+
+  /** Get member count for an index (requires scope). */
+  getIndexMemberCount(indexId: string): Promise<number>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Opportunity Operations (cross-user within scope)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Create an opportunity (cross-user). */
+  createOpportunity(data: CreateOpportunityData): Promise<Opportunity>;
+
+  /** Create opportunity and expire overlapping ones atomically. */
+  createOpportunityAndExpireIds(data: CreateOpportunityData, expireIds: string[]): Promise<{ created: Opportunity; expired: Opportunity[] }>;
+
+  /** Get an opportunity by ID (for system processing). */
+  getOpportunity(id: string): Promise<Opportunity | null>;
+
+  /** Get opportunities for an index (requires membership). */
+  getOpportunitiesForIndex(indexId: string, options?: OpportunityQueryOptions): Promise<Opportunity[]>;
+
+  /** Update an opportunity's status (system-level). */
+  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<Opportunity | null>;
+
+  /** Check if opportunity exists between actors in an index. */
+  opportunityExistsBetweenActors(actorIds: string[], indexId: string): Promise<boolean>;
+
+  /** Find overlapping opportunities by actor set. */
+  findOverlappingOpportunities(actorUserIds: Id<'users'>[], options?: { excludeStatuses?: OpportunityStatus[] }): Promise<Opportunity[]>;
+
+  /** Expire opportunities referencing an intent. */
+  expireOpportunitiesByIntent(intentId: string): Promise<number>;
+
+  /** Expire opportunities for a removed member. */
+  expireOpportunitiesForRemovedMember(indexId: string, userId: string): Promise<number>;
+
+  /** Expire stale opportunities (maintenance). */
+  expireStaleOpportunities(): Promise<number>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // HyDE Operations (cross-user for opportunity matching)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get a HyDE document (cross-user for matching). */
+  getHydeDocument(sourceType: HydeSourceType, sourceId: string, strategy: string): Promise<HydeDocument | null>;
+
+  /** Get all HyDE documents for a source (cross-user). */
+  getHydeDocumentsForSource(sourceType: HydeSourceType, sourceId: string): Promise<HydeDocument[]>;
+
+  /** Save a HyDE document (system-level). */
+  saveHydeDocument(data: CreateHydeDocumentData): Promise<HydeDocument>;
+
+  /** Delete expired HyDE documents (maintenance). */
+  deleteExpiredHydeDocuments(): Promise<number>;
+
+  /** Get stale HyDE documents for refresh (maintenance). */
+  getStaleHydeDocuments(threshold: Date): Promise<HydeDocument[]>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // NARROWED DATABASE INTERFACES (Interface Segregation)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// These narrowed types are Pick types from the raw Database interface.
+// They are used by graph factories to enforce interface segregation at compile time.
+//
+// Access control relationship to UserDatabase/SystemDatabase:
+// - ProfileGraphDatabase → maps to UserDatabase (user's own profile operations)
+// - IntentGraphDatabase → maps to UserDatabase (mutations) + SystemDatabase (reads)
+// - OpportunityGraphDatabase → maps to SystemDatabase (cross-user operations)
+// - IndexGraphDatabase → maps to UserDatabase (own indexes)
+// - IntentIndexGraphDatabase → maps to both (own intent ↔ shared index)
+// - IndexMembershipGraphDatabase → maps to SystemDatabase (cross-user)
+// - HydeGraphDatabase → maps to both (own HyDE vs cross-user matching)
+//
+// Graphs continue to use these narrowed types because:
+// 1. They receive the raw database adapter with userId passed per method
+// 2. Access control is enforced at the tool/factory layer via createUserDatabase/createSystemDatabase
+// 3. These types ensure graphs only depend on methods they actually use
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Database interface narrowed for Profile Graph operations.
  * Provides full profile lifecycle: read, write, HyDE management, and query mode.
+ *
+ * Access layer: Primarily UserDatabase (user's own profile)
  */
 export type ProfileGraphDatabase = Pick<
   Database,
   'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument'
->;
-
-/**
- * Database interface narrowed for Chat Graph operations.
- * Read-only context loading for conversation handling.
- */
-export type ChatGraphDatabase = Pick<
-  Database,
-  'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -1102,7 +1437,8 @@ export type ChatGraphDatabase = Pick<
  * internally composed subgraphs (ProfileGraph, OpportunityGraph, IntentGraph, IndexGraph).
  *
  * Use this type when ChatGraph orchestrates subgraphs internally.
- * For direct ChatGraph operations only, use ChatGraphDatabase.
+ *
+ * Access layer: Both UserDatabase + SystemDatabase (orchestrates all operations)
  */
 export type ChatGraphCompositeDatabase = Pick<
   Database,
@@ -1133,6 +1469,7 @@ export type ChatGraphCompositeDatabase = Pick<
   // IndexGraph subgraph requirements (index created intents in user's indexes)
   | 'getUserIndexIds'
   | 'getIndexMemberships'
+  | 'getIndexMembership'
   | 'getIndex'
   | 'getIndexWithPermissions'
   | 'getIntentForIndexing'
@@ -1157,12 +1494,15 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createIndex'
   | 'getIndexMemberCount'
   | 'addMemberToIndex'
+  | 'removeMemberFromIndex'
 >;
 
 /**
  * Database interface for Opportunity Graph operations.
  * Includes prep/scope (index membership, intents, index details), persist (create, dedupe),
  * and CRUD operations (read, update status, send).
+ *
+ * Access layer: SystemDatabase (cross-user opportunity operations)
  */
 export type OpportunityGraphDatabase = Pick<
   Database,
@@ -1185,21 +1525,9 @@ export type OpportunityGraphDatabase = Pick<
 >;
 
 /**
- * Database interface for opportunity maintenance jobs.
- */
-export type OpportunityMaintenanceDatabase = Pick<
-  Database,
-  | 'deleteExpiredHydeDocuments'
-  | 'getStaleHydeDocuments'
-  | 'deleteHydeDocumentsForSource'
-  | 'expireOpportunitiesByIntent'
-  | 'expireOpportunitiesForRemovedMember'
-  | 'expireStaleOpportunities'
-  | 'getIntent'
->;
-
-/**
  * Database interface for opportunity controller (API).
+ *
+ * Access layer: Both UserDatabase + SystemDatabase (API handles auth)
  */
 export type OpportunityControllerDatabase = Pick<
   Database,
@@ -1223,27 +1551,11 @@ export type OpportunityControllerDatabase = Pick<
 >;
 
 /**
- * Database interface for Intent action execution (post-graph processing).
- * Used by controllers to execute intent CRUD, query, and vector operations
- * based on Intent Graph output actions.
- */
-export type IntentExecutorDatabase = Pick<
-  Database,
-  | 'createIntent'
-  | 'updateIntent'
-  | 'archiveIntent'
-  | 'getIntent'
-  | 'getIntentWithOwnership'
-  | 'getActiveIntents'
-  | 'getUserIndexIds'
-  | 'associateIntentWithIndexes'
-  | 'findSimilarIntents'
->;
-
-/**
  * Database interface narrowed for Intent Graph operations.
  * Provides state population (getActiveIntents), action execution (create/update/archive),
  * and read operations (query intents; getIntentsInIndexForMember for index-scoped reads).
+ *
+ * Access layer: UserDatabase (mutations on own intents) + SystemDatabase (index-scoped reads)
  */
 export type IntentGraphDatabase = Pick<
   Database,
@@ -1263,6 +1575,8 @@ export type IntentGraphDatabase = Pick<
 /**
  * Database interface narrowed for Index Graph CRUD operations.
  * Handles create, read, update, delete of indexes (communities).
+ *
+ * Access layer: UserDatabase (CRUD on own indexes and memberships)
  */
 export type IndexGraphDatabase = Pick<
   Database,
@@ -1282,6 +1596,8 @@ export type IndexGraphDatabase = Pick<
  * Database interface narrowed for Intent Index Graph operations.
  * Provides intent/index context and assignment for intent–index evaluation.
  * (Migrated from the old IndexGraphDatabase.)
+ *
+ * Access layer: UserDatabase (own intent assignment) + SystemDatabase (index context)
  */
 export type IntentIndexGraphDatabase = Pick<
   Database,
@@ -1300,6 +1616,8 @@ export type IntentIndexGraphDatabase = Pick<
 /**
  * Database interface narrowed for Index Membership Graph operations.
  * Handles CRUD for index memberships (add, list, remove members).
+ *
+ * Access layer: SystemDatabase (cross-user membership operations)
  */
 export type IndexMembershipGraphDatabase = Pick<
   Database,
@@ -1307,26 +1625,15 @@ export type IndexMembershipGraphDatabase = Pick<
   | 'isIndexOwner'
   | 'getIndexWithPermissions'
   | 'addMemberToIndex'
+  | 'removeMemberFromIndex'
   | 'getIndexMembersForMember'
->;
-
-/**
- * Database interface for Index Ownership operations.
- * Used by chat graph for owner-specific index management.
- */
-export type IndexOwnershipDatabase = Pick<
-  Database,
-  | 'getOwnedIndexes'
-  | 'isIndexOwner'
-  | 'getIndexMembersForOwner'
-  | 'getIndexIntentsForOwner'
-  | 'updateIndexSettings'
-  | 'getIndexMemberships'
 >;
 
 /**
  * Database interface narrowed for HyDE Graph operations.
  * Provides HyDE document CRUD and intent lookup for refresh.
+ *
+ * Access layer: UserDatabase (own HyDE) + SystemDatabase (cross-user matching)
  */
 export type HydeGraphDatabase = Pick<
   Database,
@@ -1336,6 +1643,8 @@ export type HydeGraphDatabase = Pick<
 /**
  * Database interface for Home Graph (opportunity home view).
  * Load opportunities, enrich with profile/index, and support presenter context.
+ *
+ * Access layer: UserDatabase (own opportunities and profile)
  */
 export type HomeGraphDatabase = Pick<
   Database,

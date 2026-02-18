@@ -4,7 +4,7 @@ This guide describes how to test the opportunity system **manually in the fronte
 
 ## Prerequisites
 
-- **Database seeded** with the three test users and indexes (Open Mock Network, etc.)
+- **Database seeded** with the three test users and indexes (Commons, etc.)
 - **Protocol server** running (`bun run dev` in `protocol/`)
 - **Workers** running so HyDE and opportunity-discovery run after intents are created:
   - `bun run integration-worker` (if you use it for intents)
@@ -30,7 +30,7 @@ These are Privy test accounts. Use **email + OTP** to log in on the frontend (en
    ```bash
    bun run db:seed --confirm
    ```
-   This creates the three users, indexes (including **Open Mock Network**), and index memberships (first user is owner, others members).
+   This creates the three users, indexes (including **Commons**), and index memberships (first user is owner, others members).
 
 2. **Start backend and workers** (from `protocol/`):
    ```bash
@@ -55,8 +55,8 @@ These are Privy test accounts. Use **email + OTP** to log in on the frontend (en
 - Email: `test-1761@privy.io`
 - When prompted, use OTP: **888893**
 - Go to **Library** → ensure you’re on **My Intents** (or create an intent if needed).
-- Create or use an intent in **Open Mock Network**:
-  - Go to the index page for Open Mock Network (e.g. from **Networks** or **Library**), or create an intent that’s assigned to that index.
+- Create or use an intent in **Commons**:
+  - Go to the index page for Commons (e.g. from **Networks** or **Library**), or create an intent that’s assigned to that index.
 - Wait for background jobs (HyDE → opportunity-discovery) to run (usually within a minute, or check BullBoard at `http://localhost:3001/dev/queues`).
 
 ### 2. Check opportunities as User A

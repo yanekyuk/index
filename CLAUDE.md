@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: true
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -106,6 +111,17 @@ The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, c
 ### Agent System (LangGraph-Based)
 
 All agents extend `BaseLangChainAgent` which wraps LangChain's ChatOpenAI model (configured for OpenRouter). Agents use Zod schemas for structured output validation.
+
+**LangGraph Patterns** (see `.rules` for full details):
+
+- Use graphs only for **complex, multi-step workflows with conditional logic**
+- Don't use graphs for simple CRUD or linear agent calls
+- Every graph requires two files in separate directories: `graphs/{domain}.graph.ts` and `states/{domain}.state.ts`
+- Use factory pattern with dependency injection for testability
+- Graphs **must** have at least one conditional edge (routing decision)
+- Implement fast paths for read-only operations
+- Nodes should catch errors and return error state (don't throw)
+- Log entry/exit in every node with context
 
 **Agent Categories**:
 
@@ -375,7 +391,7 @@ See `frontend/.env.example` for frontend-specific configuration (Privy app ID, A
 
 ## Testing
 
-Tests use Vitest framework. Test files are located in:
+Tests use `bun test` framework. Test files are located in:
 - `protocol/tests/` - Integration and E2E tests
 - `protocol/src/lib/*/tests/` - Unit tests alongside code
 
@@ -392,6 +408,22 @@ bun test path/to/test.ts   # Specific test file
 - E2E tests: Test full API workflows
 - Smoke tests: Test external integrations (crawl4ai, etc.)
 
+**Bun Test Standards** (see `.rules` for full details):
+
+- Load environment variables at the top of test files (`dotenv` with `.env.development`)
+- Import test utilities from `bun:test` (destructured: `describe`, `expect`, `it`, etc.)
+- Group related tests with descriptive `describe` blocks
+- Write clear, specific test descriptions explaining behavior and expected outcome
+- Set appropriate timeouts for async operations:
+  - Fast operations: default (5s)
+  - Agent inference: 30000ms
+  - Graph operations: 60000ms
+  - LLM operations: 120000ms
+- Use lifecycle hooks (`beforeAll`, `afterAll`) with proper cleanup
+- Make assertions specific (not just `.toBeTruthy()`)
+- Mock external dependencies for isolation
+- Test both success and error paths
+
 ## Database Workflow
 
 ### Making Schema Changes
@@ -401,6 +433,14 @@ bun test path/to/test.ts   # Specific test file
 3. **Review migration**: Check `drizzle/` directory for generated SQL
 4. **Apply migration**: `bun run db:migrate`
 5. **Verify**: `bun run db:studio` to inspect changes
+
+### Fixing Ruined Migrations
+
+If a local Drizzle migration gets corrupted or out of sync:
+
+```bash
+bun run db:fix-migrations   # Reset and regenerate migrations locally
+```
 
 ### Common Operations
 
@@ -443,7 +483,57 @@ If Sentry is configured (`SENTRY_DSN`):
 - All agents use Zod schemas for validation
 - Prefer type inference from Drizzle schema over manual types
 - Use `Id<'tableName'>` type from `_generated/dataModel` for document IDs
-- For new files in the protocol, follow the `{domain}.{purpose}.{extension}` naming convention (see `.cursor/rules/file-naming-convention.mdc`)
+
+### File Naming Convention
+
+All files in the protocol directory should follow the pattern: `{domain}.{purpose}.{extension}`
+
+- **domain**: The scope or area (e.g., `chat`, `intent`, `profile`, `opportunity`)
+- **purpose**: The type or role (e.g., `graph`, `agent`, `generator`, `verifier`, `state`, `spec`)
+
+**Common Purpose Types**:
+| Purpose | Description | Example |
+|---------|-------------|---------|
+| `.graph` | LangGraph state machines | `chat.graph.ts` |
+| `.state` | State definitions | `chat.state.ts` |
+| `.agent` | AI agents | `router.agent.ts` |
+| `.generator` | Content generators | `response.generator.ts` |
+| `.evaluator` | Evaluation/scoring logic | `opportunity.evaluator.ts` |
+| `.verifier` | Verification/validation | `semantic.verifier.ts` |
+| `.inferrer` | Inference logic | `explicit.inferrer.ts` |
+| `.reconciler` | Reconciliation logic | `intent.reconciler.ts` |
+| `.controller` | API controllers | `chat.controller.ts` |
+| `.service` | Business logic services | `intent.service.ts` |
+| `.queue` | Job queue definitions | `intent.queue.ts` |
+| `.spec` | Test files | `router.agent.spec.ts` |
+
+**Exceptions** (exempt from convention):
+- `index.ts` - Barrel export files
+- `schema.ts` - Database schema files
+- `main.ts` - Application entry points
+- Single-purpose utility files at root level (e.g., `constants.ts`, `types.ts`)
+
+See `.rules` for full details and examples.
+
+### Import Ordering
+
+Order imports from most general (external) to most local (nearby), separated by blank lines:
+
+1. **External packages** (npm modules)
+2. **Deep relative imports** (multiple levels up: `../../`, `../../../`, etc.)
+3. **Nearby relative imports** (siblings/children: `./` or `../`)
+
+```typescript
+// ✅ GOOD
+import express from "express";
+import { z } from "zod";
+
+import { util } from "../../../lib/utils";
+import { helper } from "../../helpers/helper";
+
+import { something } from "../something";
+import { local } from "./nearby";
+```
 
 ### Agents
 
@@ -482,6 +572,55 @@ If Sentry is configured (`SENTRY_DSN`):
 - Use vector similarity for semantic search
 - Prefer soft deletes (deletedAt) over hard deletes
 
+## Git Workflow
+
+Follow these conventions for version control operations.
+
+### Conventional Commits
+
+Commit messages should follow the Conventional Commits format:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Commit Types**:
+- `feat` - New feature (MINOR in SemVer)
+- `fix` - Bug fix (PATCH in SemVer)
+- `docs` - Documentation changes
+- `style` - Formatting, whitespace (no code change)
+- `refactor` - Code change that neither fixes nor adds
+- `perf` - Performance improvement
+- `test` - Adding/correcting tests
+- `chore` - Maintenance tasks
+
+**Breaking Changes**: Add `BREAKING CHANGE:` in body/footer, or append `!` after type (e.g., `feat!:`)
+
+### Conventional Branches
+
+Branch names follow `<type>/<short-description>`:
+
+```bash
+feat/user-authentication
+fix/login-redirect-loop
+refactor/intent-service
+test/chat-controller
+```
+
+### Pull Requests
+
+1. Use `gh` CLI to create PRs into `upstream/dev`
+2. Write PR description as a changelog with categories:
+   - **New Features**
+   - **Bug Fixes**
+   - **Refactors**
+   - **Documentation**
+   - **Tests**
+
 ## Key Dependencies
 
 **Protocol**:
@@ -495,7 +634,6 @@ If Sentry is configured (`SENTRY_DSN`):
 - `@composio/core` - Integration platform
 - `langfuse-langchain` - LLM observability
 - `resend` - Email delivery
-- `vitest` - Testing framework
 
 **Frontend**:
 - `next` - React framework

@@ -6,7 +6,7 @@ import { protocolLogger } from "../support/protocol.logger";
 const logger = protocolLogger("ChatTools:Profile");
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, graphs } = deps;
+  const { userDb, systemDb, graphs } = deps;
 
   const readUserProfiles = defineTool({
     name: "read_user_profiles",
@@ -31,10 +31,26 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 3: indexId provided → fetch all member profiles ---
       if (effectiveIndexId) {
-        const members = await database.getIndexMembersForMember(effectiveIndexId, context.userId);
+        // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+        if (context.indexId && effectiveIndexId !== context.indexId) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles from this community.`
+          );
+        }
+
+        // Verify the caller is a member of the index they're querying
+        const callerIsMember = await systemDb.isIndexMember(effectiveIndexId, context.userId);
+        if (!callerIsMember) {
+          return error(
+            "You can only read profiles from indexes you are a member of."
+          );
+        }
+
+        // Use systemDb for cross-user access within shared indexes
+        const members = await systemDb.getIndexMembers(effectiveIndexId);
         const profiles = await Promise.all(
           members.map(async (member) => {
-            const profile = await database.getProfile(member.userId);
+            const profile = await systemDb.getProfile(member.userId);
             return {
               userId: member.userId,
               name: member.name,
@@ -56,7 +72,18 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // --- Mode 2: userId provided (different user) → fetch single profile directly ---
       if (targetUserId && targetUserId !== context.userId) {
-        const profile = await database.getProfile(targetUserId);
+        // Strict scope enforcement: when chat is index-scoped, verify user is in that index
+        if (context.indexId) {
+          const isInScopedIndex = await systemDb.isIndexMember(context.indexId, targetUserId);
+          if (!isInScopedIndex) {
+            return error(
+              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles of members in this community.`
+            );
+          }
+        }
+
+        // Use systemDb for cross-user profile access (requires shared index)
+        const profile = await systemDb.getProfile(targetUserId);
         if (profile) {
           return success({
             hasProfile: true,
@@ -122,7 +149,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (query.twitterUrl) socialsUpdate.x = query.twitterUrl;
         if (query.websites && query.websites.length) socialsUpdate.websites = query.websites;
 
-        await database.updateUser(context.userId, {
+        // Use userDb for the user's own data
+        await userDb.updateUser({
           ...(query.name ? { name: query.name } : {}),
           ...(query.location ? { location: query.location } : {}),
           ...(hasSocials ? { socials: socialsUpdate } : {}),

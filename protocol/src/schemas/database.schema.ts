@@ -157,6 +157,8 @@ export interface OpportunityDetection {
   source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
   /** User id who created, or system label (e.g. 'agent-opportunity-finder'). */
   createdBy?: Id<'users'> | string;
+  /** Display name of the user who created (e.g. when created via chat introduction). */
+  createdByName?: string;
   triggeredBy?: Id<'intents'>;
   timestamp: string;
   /** IDs of predecessor opportunities that were merged into this one. */

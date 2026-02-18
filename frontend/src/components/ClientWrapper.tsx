@@ -106,7 +106,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
                   <div className="lg:hidden flex-shrink-0 bg-white border-b border-gray-200 px-4 py-3">
                     <button
                       onClick={() => setMobileSidebarOpen(true)}
-                      className="p-2 -ml-2 rounded-md hover:bg-gray-100"
+                      className="p-2 -ml-2 rounded-md hover:bg-gray-100 text-gray-700"
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M3 6h18M3 12h18M3 18h18" />

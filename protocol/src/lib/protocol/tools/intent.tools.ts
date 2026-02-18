@@ -6,6 +6,19 @@ import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("ChatTools:Intent");
 
+/** When context is index-scoped, verifies the caller is still a member of that index. Returns error message or null. */
+async function ensureScopedMembership(
+  context: { indexId?: string; indexName?: string; userId: string },
+  systemDb: ToolDeps['systemDb']
+): Promise<string | null> {
+  if (!context.indexId) return null;
+  const isMember = await systemDb.isIndexMember(context.indexId, context.userId);
+  if (!isMember) {
+    return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
+  }
+  return null;
+}
+
 export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs } = deps;
 
@@ -16,7 +29,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const readIntents = defineTool({
     name: "read_intents",
     description:
-      "Reads intents (goals, wants, needs). No indexId: returns the user's own active intents. With indexId: returns all intents in that index; add userId to filter to one user. To find other members' intents, use read_index_memberships first, then read_intents per index.",
+      "Reads intents (what people are looking for). No indexId: returns the user's own active intents. With indexId: returns all intents in that index; add userId to filter to one user. To find other members' intents, use read_index_memberships first, then read_intents per index.",
     querySchema: z.object({
       indexId: z.string().optional().describe("Index UUID — filters intents to this index. Defaults to current index when scoped."),
       userId: z.string().optional().describe("User ID — filters to this user's intents. Combined with indexId: that user's intents in that index."),
@@ -24,18 +37,51 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       page: z.number().int().min(1).optional().describe("Page number (1-based)."),
     }),
     handler: async ({ context, query }) => {
-      const effectiveIndexId = query.indexId?.trim() || context.indexId || undefined;
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
+      // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+      if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
+        );
+      }
+
+      const effectiveIndexId = context.indexId || query.indexId?.trim() || undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format.");
       }
 
       const queryUserId = query.userId?.trim() || undefined;
 
+      // When scoped, reading another user's intents is restricted to the scoped index
+      if (context.indexId && queryUserId && queryUserId !== context.userId) {
+        // Verify target user is a member of the scoped index
+        const db = deps.systemDb;
+        const isInScopedIndex = await db.isIndexMember(context.indexId, queryUserId);
+        if (!isInScopedIndex) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from members of this community.`
+          );
+        }
+      }
+
       if (!effectiveIndexId && queryUserId && queryUserId !== context.userId) {
         return error("Cannot read another user's global intents. Use indexId to scope to a shared index.");
       }
 
-      const allUserIntents = !effectiveIndexId && (!queryUserId || queryUserId === context.userId);
+      // Verify the caller is a member of the index they're querying (unscoped chat only - scoped is already validated)
+      if (!context.indexId && effectiveIndexId) {
+        const db = deps.systemDb;
+        const callerIsMember = await db.isIndexMember(effectiveIndexId, context.userId);
+        if (!callerIsMember) {
+          return error(
+            "You can only read intents from indexes you are a member of."
+          );
+        }
+      }
+
+      // When scoped, we should NOT return all user intents across indexes - only those in the scoped index
+      const allUserIntents = !context.indexId && !effectiveIndexId && (!queryUserId || queryUserId === context.userId);
 
       const result = await graphs.intent.invoke({
         userId: context.userId,
@@ -77,17 +123,26 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const createIntent = defineTool({
     name: "create_intent",
     description:
-      "Creates a new intent (goal/want/need). Pass a clear, concept-based description. If indexId is provided, the intent is linked to that index. Background discovery is triggered automatically after creation. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
+      "Creates a new intent (what the user is looking for). Pass a clear, concept-based description. If indexId is provided, the intent is linked to that index. Background discovery is triggered automatically after creation. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
     querySchema: z.object({
-      description: z.string().describe("The intent/goal in conceptual terms (scrape URLs and check specificity before calling)"),
+      description: z.string().describe("The intent in conceptual terms (scrape URLs and check specificity before calling)"),
       indexId: z.string().optional().describe("Index UUID to link the intent to. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       if (!query.description?.trim()) {
         return error("Description is required.");
       }
 
-      const effectiveIndexId = query.indexId?.trim() || context.indexId || undefined;
+      // Strict scope enforcement: when chat is index-scoped, only allow creating in that index
+      if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create intents in this community.`
+        );
+      }
+
+      const effectiveIndexId = context.indexId || query.indexId?.trim() || undefined;
 
       // Fetch profile (the intent graph needs it for inference)
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
@@ -154,15 +209,28 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const updateIntent = defineTool({
     name: "update_intent",
-    description: "Updates an existing intent's description. Requires intentId from read_intents.",
+    description: "Updates an existing intent's description. Requires intentId from read_intents. When chat is index-scoped, can only update intents linked to that index.",
     querySchema: z.object({
       intentId: z.string().describe("Intent UUID from read_intents"),
       newDescription: z.string().describe("New description for the intent"),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       if (!UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
+      if (context.indexId) {
+        const db = deps.userDb;
+        const intentIndexes = await db.getIndexIdsForIntent(intentId);
+        if (!intentIndexes.includes(context.indexId)) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update intents linked to this community.`
+          );
+        }
       }
 
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
@@ -174,6 +242,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         operationMode: 'update' as const,
         inputContent: query.newDescription,
         targetIntentIds: [intentId],
+        ...(context.indexId && { indexId: context.indexId }),
       });
 
       if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
@@ -185,14 +254,27 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const deleteIntent = defineTool({
     name: "delete_intent",
-    description: "Deletes (archives) an intent. Requires intentId from read_intents.",
+    description: "Deletes (archives) an intent. Requires intentId from read_intents. When chat is index-scoped, can only delete intents linked to that index.",
     querySchema: z.object({
       intentId: z.string().describe("Intent UUID from read_intents"),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
       if (!UUID_REGEX.test(intentId)) {
         return error("Invalid intent ID format.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, verify intent is linked to that index
+      if (context.indexId) {
+        const db = deps.userDb;
+        const intentIndexes = await db.getIndexIdsForIntent(intentId);
+        if (!intentIndexes.includes(context.indexId)) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete intents linked to this community.`
+          );
+        }
       }
 
       const result = await graphs.intent.invoke({
@@ -200,6 +282,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         userProfile: "",
         operationMode: 'delete' as const,
         targetIntentIds: [intentId],
+        ...(context.indexId && { indexId: context.indexId }),
       });
 
       if (result.executionResults?.some((r: ExecutionResult) => !r.success)) {
@@ -215,16 +298,25 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const createIntentIndex = defineTool({
     name: "create_intent_index",
-    description: "Links an intent to an index. Requires intentId and indexId.",
+    description: "Links an intent to an index. Requires intentId and indexId. When chat is index-scoped, can only link to the scoped index.",
     querySchema: z.object({
       intentId: z.string().describe("Intent UUID from read_intents"),
-      indexId: z.string().describe("Index UUID from read_indexes"),
+      indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
-      const indexId = query.indexId?.trim() ?? "";
+      const indexId = query.indexId?.trim() || context.indexId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {
         return error("Invalid ID format. Both must be UUIDs.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow linking to that index
+      if (context.indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only link intents to this community.`
+        );
       }
 
       const result = await graphs.intentIndex.invoke({
@@ -248,15 +340,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const readIntentIndexes = defineTool({
     name: "read_intent_indexes",
     description:
-      "Reads intent-index links. Pass indexId to list intents in that index (add userId to filter). Pass intentId to list which indexes an intent is in.",
+      "Reads intent-index links. Pass indexId to list intents in that index (add userId to filter). Pass intentId to check if it's linked to an index. When chat is index-scoped, only the scoped index can be queried.",
     querySchema: z.object({
-      intentId: z.string().optional().describe("Intent UUID — returns indexes this intent is linked to."),
+      intentId: z.string().optional().describe("Intent UUID — checks if linked to the current/specified index."),
       indexId: z.string().optional().describe("Index UUID — returns intents in this index. Defaults to current index when scoped."),
       userId: z.string().optional().describe("Filter by user when listing by index."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() || undefined;
-      const indexId = query.indexId?.trim() || context.indexId || undefined;
+      let indexId = query.indexId?.trim() || context.indexId || undefined;
       const queryUserId = query.userId?.trim() || undefined;
 
       if (intentId && !UUID_REGEX.test(intentId)) {
@@ -267,6 +361,26 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       }
       if (!intentId && !indexId) {
         return error("Provide indexId or intentId.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+      if (context.indexId && indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intent links from this community.`
+        );
+      }
+
+      // When only intentId is provided, enforce scope - don't reveal all linked indexes
+      if (intentId && !indexId) {
+        if (context.indexId) {
+          // When scoped, only check if intent is linked to the scoped index
+          indexId = context.indexId;
+        } else {
+          // When unscoped, still don't reveal all indexes - require explicit indexId
+          return error(
+            "Please provide an indexId to check if the intent is linked to a specific index. Listing all linked indexes is not supported."
+          );
+        }
       }
 
       const result = await graphs.intentIndex.invoke({
@@ -289,16 +403,25 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const deleteIntentIndex = defineTool({
     name: "delete_intent_index",
-    description: "Unlinks an intent from an index. Does not delete the intent itself.",
+    description: "Unlinks an intent from an index. Does not delete the intent itself. When chat is index-scoped, can only unlink from the scoped index.",
     querySchema: z.object({
       intentId: z.string().describe("Intent UUID"),
-      indexId: z.string().describe("Index UUID"),
+      indexId: z.string().optional().describe("Index UUID. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
+      const scopeErr = await ensureScopedMembership(context, deps.systemDb);
+      if (scopeErr) return error(scopeErr);
       const intentId = query.intentId?.trim() ?? "";
-      const indexId = query.indexId?.trim() ?? "";
+      const indexId = query.indexId?.trim() || context.indexId || "";
       if (!UUID_REGEX.test(intentId) || !UUID_REGEX.test(indexId)) {
         return error("Invalid ID format. Both must be UUIDs.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow unlinking from that index
+      if (context.indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only unlink intents from this community.`
+        );
       }
 
       const result = await graphs.intentIndex.invoke({

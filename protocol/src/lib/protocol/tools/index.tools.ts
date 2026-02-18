@@ -3,14 +3,13 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 
 export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { graphs, database } = deps;
+  const { graphs, userDb, systemDb } = deps;
 
   const readIndexes = defineTool({
     name: "read_indexes",
-    description: "Lists indexes the user is a member of and indexes they own. Optional userId (omit for current user). When chat is index-scoped, returns only that index unless showAll: true.",
+    description: "Lists indexes the user is a member of and indexes they own. Optional userId (omit for current user). When chat is index-scoped, returns only that index.",
     querySchema: z.object({
       userId: z.string().optional().describe("Omit for current user."),
-      showAll: z.boolean().optional().describe("When true and chat is index-scoped, return all indexes."),
     }),
     handler: async ({ context, query }) => {
       if (query.userId && query.userId.trim() !== context.userId) {
@@ -21,13 +20,24 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: context.userId,
         indexId: context.indexId || undefined,
         operationMode: 'read' as const,
-        showAll: query.showAll ?? false,
+        showAll: false, // Never allow bypass - strict scope enforcement
       });
 
       if (result.error) {
         return error(result.error);
       }
       if (result.readResult) {
+        // When scoped, add clear metadata so model knows results are limited
+        if (context.indexId) {
+          return success({
+            ...result.readResult,
+            _scopeRestriction: {
+              isScoped: true,
+              scopedToIndex: context.indexName ?? context.indexId,
+              message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+            },
+          });
+        }
         return success(result.readResult);
       }
       return error("Failed to fetch index information.");
@@ -37,7 +47,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
   const readIndexMemberships = defineTool({
     name: "read_index_memberships",
     description:
-      "Reads index membership data. Two modes: (1) Pass indexId to list all members of that index (returns userId, name, avatar, permissions, intentCount, joinedAt). (2) Pass userId (or omit for current user) to list all indexes that user belongs to (returns indexId, indexTitle, permissions, joinedAt). Pass both to check whether a specific user is in a specific index.",
+      "Reads index membership data. Two modes: (1) Pass indexId to list all members of that index (returns userId, name, avatar, permissions, intentCount, joinedAt). (2) Pass userId (or omit for current user) to list all indexes that user belongs to (returns indexId, indexTitle, permissions, joinedAt). Pass both to check whether a specific user is in a specific index. When chat is index-scoped, only that index can be queried.",
     querySchema: z.object({
       indexId: z.string().optional().describe("Index UUID — when provided, lists members of this index."),
       userId: z.string().optional().describe("User ID — when provided, lists that user's index memberships. Omit to default to current user."),
@@ -52,6 +62,13 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // Mode 1: list members of an index
       if (indexId && !userId) {
+        // Enforce strict scope: when chat is index-scoped, only allow querying that index
+        if (context.indexId && indexId !== context.indexId) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query members of this index.`
+          );
+        }
+
         const result = await graphs.indexMembership.invoke({
           userId: context.userId,
           indexId,
@@ -70,38 +87,106 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       // Mode 2: list a user's memberships (indexes they belong to)
       const targetUserId = userId || context.userId;
 
-      // Guard: only allow targetUserId === context.userId, or verify shared index access for another user
-      let memberships: Awaited<ReturnType<typeof database.getIndexMemberships>>;
+      // Use userDb for own memberships, but systemDb access is implicit through shared index scope
+      let memberships: Awaited<ReturnType<typeof userDb.getIndexMemberships>>;
       if (targetUserId !== context.userId) {
-        const callerMemberships = await database.getIndexMemberships(context.userId);
+        // Cross-user access: systemDb will validate shared index membership
+        const callerMemberships = await userDb.getIndexMemberships();
         if (indexId) {
+          // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+          if (context.indexId && indexId !== context.indexId) {
+            return error(
+              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+            );
+          }
+
           const callerInIndex = callerMemberships.some((m) => m.indexId === indexId);
           if (!callerInIndex) {
             return error(
               "Unauthorized: you can only view another user's membership in an index you belong to. Provide your own userId or omit userId for your memberships.",
             );
           }
-          memberships = await database.getIndexMemberships(targetUserId);
+          // Check if target user is in the index (systemDb validates scope)
+          const isMember = await systemDb.isIndexMember(indexId, targetUserId);
+          if (isMember) {
+            return success({ isMember: true, userId: targetUserId, indexId });
+          }
+          return success({ isMember: false, userId: targetUserId, indexId, message: "User is not a member of this index." });
         } else {
-          const targetMemberships = await database.getIndexMemberships(targetUserId);
-          const callerIndexIds = new Set(callerMemberships.map((m) => m.indexId));
-          const hasOverlap = targetMemberships.some((m) => callerIndexIds.has(m.indexId));
-          if (!hasOverlap) {
+          // Strict scope enforcement: when chat is index-scoped, only check the scoped index
+          if (context.indexId) {
+            const isMember = await systemDb.isIndexMember(context.indexId, targetUserId);
+            if (isMember) {
+              return success({
+                isMember: true,
+                userId: targetUserId,
+                indexId: context.indexId,
+                _scopeRestriction: {
+                  isScoped: true,
+                  scopedToIndex: context.indexName ?? context.indexId,
+                  message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community is shown.`,
+                },
+              });
+            }
+            return success({
+              isMember: false,
+              userId: targetUserId,
+              indexId: context.indexId,
+              message: "User is not a member of this community.",
+              _scopeRestriction: {
+                isScoped: true,
+                scopedToIndex: context.indexName ?? context.indexId,
+                message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community was checked.`,
+              },
+            });
+          }
+
+          // Unscoped chat: show overlap with shared indexes (intersection of caller and target memberships)
+          const sharedIndexes: typeof callerMemberships = [];
+          for (const m of callerMemberships) {
+            if (await systemDb.isIndexMember(m.indexId, targetUserId)) {
+              sharedIndexes.push(m);
+            }
+          }
+          if (sharedIndexes.length === 0) {
             return error(
               "Unauthorized: you can only view another user's memberships if you share at least one index, or request your own memberships.",
             );
           }
-          memberships = targetMemberships;
+          // Return only the indexes that are shared
+          return success({
+            userId: targetUserId,
+            count: sharedIndexes.length,
+            memberships: sharedIndexes.map((m) => ({
+              indexId: m.indexId,
+              indexTitle: m.indexTitle,
+            })),
+            note: "Only showing shared indexes.",
+          });
         }
       } else {
-        memberships = await database.getIndexMemberships(targetUserId);
+        // Own memberships - use userDb
+        memberships = await userDb.getIndexMemberships();
+
+        // Strict scope enforcement: when chat is index-scoped, only return the scoped index membership
+        if (context.indexId && !indexId) {
+          memberships = memberships.filter((m) => m.indexId === context.indexId);
+        }
       }
 
-      // If both indexId and userId: filter to that specific membership (guard already enforced when targetUserId !== context.userId)
+      // If both indexId and userId: filter to that specific membership
       if (indexId) {
+        // Strict scope enforcement: when chat is index-scoped, only allow querying that index
+        if (context.indexId && indexId !== context.indexId) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
+          );
+        }
+
+        const callerMemberships = await userDb.getIndexMemberships();
         const callerInIndex =
           targetUserId === context.userId ||
-          (await database.getIndexMemberships(context.userId)).some((m) => m.indexId === indexId);
+          callerMemberships.some((m) => m.indexId === indexId);
         if (!callerInIndex) {
           return error(
             "Unauthorized: you can only view membership in an index you belong to.",
@@ -118,6 +203,25 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           indexTitle: match.indexTitle,
           permissions: match.permissions,
           joinedAt: match.joinedAt,
+        });
+      }
+
+      // When scoped, add clear metadata so model knows results are limited
+      if (context.indexId && targetUserId === context.userId) {
+        return success({
+          userId: targetUserId,
+          count: memberships.length,
+          memberships: memberships.map((m) => ({
+            indexId: m.indexId,
+            indexTitle: m.indexTitle,
+            permissions: m.permissions,
+            joinedAt: m.joinedAt,
+          })),
+          _scopeRestriction: {
+            isScoped: true,
+            scopedToIndex: context.indexName ?? context.indexId,
+            message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
+          },
         });
       }
 
@@ -152,6 +256,13 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
       if (!effectiveIndexId || !UUID_REGEX.test(effectiveIndexId)) {
         return error("Valid indexId required.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow updating that index
+      if (context.indexId && effectiveIndexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update this community's settings.`
+        );
       }
 
       const result = await graphs.index.invoke({
@@ -208,14 +319,21 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const deleteIndex = defineTool({
     name: "delete_index",
-    description: "Deletes an index (owner only, must be sole member).",
+    description: "Deletes an index (owner only, must be sole member). When chat is index-scoped, can only delete that index.",
     querySchema: z.object({
-      indexId: z.string().describe("Index UUID from read_indexes"),
+      indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim();
+      const indexId = query.indexId?.trim() || context.indexId;
       if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Valid indexId required.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow deleting that index
+      if (context.indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete this community.`
+        );
       }
 
       const result = await graphs.index.invoke({
@@ -233,19 +351,26 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const createIndexMembership = defineTool({
     name: "create_index_membership",
-    description: "Adds a user as a member of an index. Requires userId and indexId (UUIDs). For invite_only indexes only the owner can add members.",
+    description: "Adds a user as a member of an index. Requires userId; indexId defaults to current index when scoped. For invite_only indexes only the owner can add members.",
     querySchema: z.object({
       userId: z.string().describe("User ID to add as a member"),
-      indexId: z.string().describe("Index UUID from read_indexes"),
+      indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim();
+      const indexId = query.indexId?.trim() || context.indexId;
       const targetUserId = query.userId?.trim();
       if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
       if (!targetUserId) {
         return error("userId is required.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
+      if (context.indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only add members to this community.`
+        );
       }
 
       const result = await graphs.indexMembership.invoke({
@@ -269,5 +394,50 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readIndexes, readIndexMemberships, updateIndex, createIndex, deleteIndex, createIndexMembership] as const;
+  const deleteIndexMembership = defineTool({
+    name: "delete_index_membership",
+    description: "Removes a user from an index. Only the index owner can remove members. Cannot remove the owner themselves.",
+    querySchema: z.object({
+      userId: z.string().describe("User ID to remove from the index"),
+      indexId: z.string().optional().describe("Index UUID. Defaults to current index when scoped."),
+    }),
+    handler: async ({ context, query }) => {
+      const indexId = query.indexId?.trim() || context.indexId;
+      const targetUserId = query.userId?.trim();
+
+      if (!indexId || !UUID_REGEX.test(indexId)) {
+        return error("Valid indexId required. Use the exact UUID from read_indexes.");
+      }
+      if (!targetUserId) {
+        return error("userId is required.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, only allow that index
+      if (context.indexId && indexId !== context.indexId) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only manage members of this community.`
+        );
+      }
+
+      const result = await graphs.indexMembership.invoke({
+        userId: context.userId,
+        indexId,
+        targetUserId,
+        operationMode: 'delete' as const,
+      });
+
+      if (result.mutationResult) {
+        if (result.mutationResult.success) {
+          return success({
+            removed: true,
+            message: result.mutationResult.message,
+          });
+        }
+        return error(result.mutationResult.error || "Failed to remove member.");
+      }
+      return error("Failed to remove member.");
+    },
+  });
+
+  return [readIndexes, readIndexMemberships, updateIndex, createIndex, deleteIndex, createIndexMembership, deleteIndexMembership] as const;
 }

@@ -11,10 +11,20 @@ import { IndexGraphFactory } from "../graphs/index.graph";
 import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
 import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
 import { RedisCacheAdapter } from "../../../adapters/cache.adapter";
+import {
+  chatDatabaseAdapter,
+  createUserDatabase,
+  createSystemDatabase,
+} from "../../../adapters/database.adapter";
 import { intentQueue } from "../../../queues/intent.queue";
 import { protocolLogger } from "../support/protocol.logger";
 
-import type { ToolContext, ResolvedToolContext, ToolDeps } from "./tool.helpers";
+import {
+  type ToolContext,
+  type ResolvedToolContext,
+  type ToolDeps,
+  resolveChatContext,
+} from "./tool.helpers";
 import { error } from "./tool.helpers";
 import { createProfileTools } from "./profile.tools";
 import { createIntentTools } from "./intent.tools";
@@ -37,22 +47,20 @@ const logger = protocolLogger("ChatTools");
  * Resolves user/index identity from DB at init time.
  * Tools are created fresh for each user session to ensure proper isolation.
  */
-export async function createChatTools(deps: ToolContext) {
+export async function createChatTools(
+  deps: ToolContext,
+  preResolvedContext?: ResolvedToolContext
+) {
   const { database, embedder, scraper } = deps;
 
   // ─── Resolve context from DB ───────────────────────────────────────────────
-  const user = await database.getUser(deps.userId);
-  const indexInfo = deps.indexId ? await database.getIndex(deps.indexId) : null;
-  const isOwner = deps.indexId ? await database.isIndexOwner(deps.indexId, deps.userId) : false;
-
-  const resolvedContext: ResolvedToolContext = {
-    userId: deps.userId,
-    userName: user?.name ?? "Unknown",
-    userEmail: user?.email ?? "",
-    indexId: deps.indexId,
-    indexName: indexInfo?.title,
-    isOwner,
-  };
+  const resolvedContext =
+    preResolvedContext ??
+    await resolveChatContext({
+      database,
+      userId: deps.userId,
+      indexId: deps.indexId,
+    });
 
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
@@ -105,9 +113,21 @@ export async function createChatTools(deps: ToolContext) {
   const indexMembershipGraph = new IndexMembershipGraphFactory(database).createGraph();
   const intentIndexGraph = new IntentIndexGraphFactory(database).createGraph();
 
+  // ─── Create context-bound databases ────────────────────────────────────────
+  // Get the user's index scope (all indexes they have access to)
+  const indexScope = resolvedContext.userIndexes.map((m) => m.indexId);
+
+  // Use injected instances when provided (e.g. tests). Otherwise create from the same
+  // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
+  // update) use the same adapter as the rest of the tool pipeline.
+  const userDb = deps.userDb ?? createUserDatabase(database as Parameters<typeof createUserDatabase>[0], resolvedContext.userId);
+  const systemDb = deps.systemDb ?? createSystemDatabase(database as Parameters<typeof createSystemDatabase>[0], resolvedContext.userId, indexScope, embedder);
+
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const toolDeps: ToolDeps = {
     database,
+    userDb,
+    systemDb,
     scraper,
     embedder,
     graphs: {

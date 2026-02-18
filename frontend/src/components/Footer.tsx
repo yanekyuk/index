@@ -37,7 +37,7 @@ export default function Footer() {
           <nav aria-label="Footer navigation" className="flex gap-5 text-[13px] text-[#041729]">
             <Link href="/" className="hover:text-black transition-colors">Home</Link>
             <Link href="/blog" className="hover:text-black transition-colors">Blog</Link>
-            <Link href="/pages/about" className="hover:text-black transition-colors">About</Link>
+            <Link href="/about" className="hover:text-black transition-colors">About</Link>
             <Link href="/pages/privacy-policy" className="hover:text-black transition-colors">Privacy</Link>
             <Link href="/pages/terms-of-use" className="hover:text-black transition-colors">Terms</Link>
           </nav>

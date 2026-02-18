@@ -83,7 +83,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
               Blog
             </Link>
             <Link
-              href="/pages/about"
+              href="/about"
               className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
             >
               About
@@ -107,7 +107,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
               Blog
             </Link>
             <Link
-              href="/pages/about"
+              href="/about"
               className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
             >
               About
@@ -131,7 +131,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
               Blog
             </Link>
             <Link
-              href="/pages/about"
+              href="/about"
               className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
             >
               About

@@ -1,14 +1,37 @@
-txt/
-# backend_session.md
-protocol/temp-uploads/
-AGENTS.md
-postgres/
-.cluade
-.cursor
-.agent
+# ===================
+# IDE & Editor
+# ===================
 .vscode/
 !.vscode/index.code-workspace.default
+.cursor
+.claude
+.agent
+
+# ===================
+# Docker & Infrastructure
+# ===================
 docker-compose.yml
 env.docker
+postgres/
+
+# ===================
+# Temporary Files & Uploads
+# ===================
+protocol/temp-uploads/
+txt/
+
+# ===================
+# Documentation & Reports
+# ===================
+AGENTS.md
 *.report.md
+
+# ===================
+# Git & Version Control
+# ===================
 .worktrees/
+
+# ===================
+# Project Configuration (Zed Agent Rules)
+# ===================
+.rules

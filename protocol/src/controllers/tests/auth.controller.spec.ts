@@ -6,6 +6,8 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { AuthController } from "../auth.controller";
 import { UserDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
+import { profileService } from "../../services/profile.service";
+import { userService } from "../../services/user.service";
 
 describe("AuthController Integration", () => {
   const controller = new AuthController();
@@ -64,6 +66,119 @@ describe("AuthController Integration", () => {
 
       expect(res.status).toBe(404);
       expect(data.error).toBe("User not found");
+    });
+
+    test("should trigger background profile sync when user has name and socials but no profile", async () => {
+      await userAdapter.update(testUserId, {
+        name: "Trigger User",
+        socials: { github: "https://github.com/trigger-user" } as any,
+      });
+
+      const originalSyncProfile = profileService.syncProfile;
+      let syncCallCount = 0;
+      profileService.syncProfile = (async () => {
+        syncCallCount += 1;
+        return {};
+      }) as typeof profileService.syncProfile;
+
+      try {
+        const req = new Request("http://localhost/auth/me");
+        const res = await controller.me(req, mockUser());
+        const data = await res.json() as { user?: { id: string }; error?: string };
+
+        expect(res.status).toBe(200);
+        expect(data.user).toBeDefined();
+        expect(data.user!.id).toBe(testUserId);
+        expect(syncCallCount).toBe(1);
+      } finally {
+        profileService.syncProfile = originalSyncProfile;
+      }
+    });
+
+    test("should not trigger background profile sync when socials are missing", async () => {
+      await userAdapter.update(testUserId, {
+        name: "No Social User",
+        socials: null as any,
+      });
+
+      const originalSyncProfile = profileService.syncProfile;
+      let syncCallCount = 0;
+      profileService.syncProfile = (async () => {
+        syncCallCount += 1;
+        return {};
+      }) as typeof profileService.syncProfile;
+
+      try {
+        const req = new Request("http://localhost/auth/me");
+        const res = await controller.me(req, mockUser());
+        const data = await res.json() as { user?: { id: string }; error?: string };
+
+        expect(res.status).toBe(200);
+        expect(data.user).toBeDefined();
+        expect(data.user!.id).toBe(testUserId);
+        expect(syncCallCount).toBe(0);
+      } finally {
+        profileService.syncProfile = originalSyncProfile;
+      }
+    });
+
+    test("should not trigger background profile sync when profile already exists", async () => {
+      const originalFindWithGraph = userService.findWithGraph;
+      const originalSyncProfile = profileService.syncProfile;
+
+      let syncCallCount = 0;
+
+      userService.findWithGraph = (async () => ({
+        id: testUserId,
+        privyId: `privy:auth:${Date.now()}`,
+        email: testEmail,
+        name: "Existing Profile User",
+        intro: "Already has profile",
+        avatar: null,
+        location: "Test City",
+        socials: { linkedin: "https://linkedin.com/in/existing-user" },
+        timezone: "UTC",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        profile: {
+          id: "profile-id",
+          userId: testUserId,
+          identity: { name: "Existing Profile User", bio: "Bio", location: "Test City" },
+          narrative: { context: "Context" },
+          attributes: { interests: ["A"], skills: ["B"] },
+          embedding: [],
+          implicitIntents: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        notificationPreferences: {
+          connectionUpdates: true,
+          weeklyNewsletter: true,
+        },
+        onboarding: {},
+        lastWeeklyEmailSentAt: null,
+      })) as typeof userService.findWithGraph;
+
+      profileService.syncProfile = (async () => {
+        syncCallCount += 1;
+        return {};
+      }) as typeof profileService.syncProfile;
+
+      try {
+        const req = new Request("http://localhost/auth/me");
+        const res = await controller.me(req, mockUser());
+        const data = await res.json() as { user?: { id: string; name: string }; error?: string };
+
+        expect(res.status).toBe(200);
+        expect(data.user).toBeDefined();
+        expect(data.user!.id).toBe(testUserId);
+        expect(data.user!.name).toBe("Existing Profile User");
+        expect(syncCallCount).toBe(0);
+      } finally {
+        userService.findWithGraph = originalFindWithGraph;
+        profileService.syncProfile = originalSyncProfile;
+      }
     });
   });
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return (
-    <ClientLayout>
+    <ClientLayout hideFeedback>
       <div className="flex flex-col min-h-[calc(100vh-76px)]">
         <main className="flex-1 flex flex-col justify-end px-6 lg:px-12 pb-[80px] font-sans text-[15px] text-black">
           <div className="max-w-[960px] w-full mx-auto">

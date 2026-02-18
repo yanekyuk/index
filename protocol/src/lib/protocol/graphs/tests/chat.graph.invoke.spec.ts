@@ -51,7 +51,10 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
     getActiveIntents: noopArray,
     getIntentsInIndexForMember: async () => [],
     getUser: async (uid: string) => ({ id: uid, name: "Test User", email: "test@example.com" }),
-    getIndex: async () => null,
+    getIndex: async (indexId: string) => ({ id: indexId, title: "Test Index" }),
+    getIndexMembership: async (indexId: string, _userId: string) =>
+      ({ indexId, indexTitle: "Test Index", indexPrompt: null, permissions: [] }),
+    getIndexWithPermissions: async () => null,
     saveProfile: noop,
     createIntent: async (data: CreateIntentData) => ({
       id: `intent-${Date.now()}`,
@@ -70,6 +73,20 @@ function createMockDatabase(): ChatGraphCompositeDatabase {
     getIntentForIndexing: noopNull,
     getIndexMemberContext: noopNull,
     getOpportunitiesForUser: noopArray,
+    getOpportunity: noopNull,
+    createOpportunity: async () =>
+      ({
+        id: "opp-mock",
+        detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+        actors: [],
+        interpretation: { category: "connection", reasoning: "", confidence: 0 },
+        context: { indexId: "" },
+        confidence: "0",
+        status: "latent",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      }) as Awaited<ReturnType<ChatGraphCompositeDatabase["createOpportunity"]>>,
     isIntentAssignedToIndex: noopBool,
     assignIntentToIndex: noop,
     unassignIntentFromIndex: noop,
@@ -226,7 +243,7 @@ describe("Chat Graph invoke (Smartest)", () => {
 
   describe("Error path", () => {
     test("when agent loop throws, graph returns fallback responseText and error in state", async () => {
-      const runSpy = spyOn(ChatAgent.prototype, "run").mockRejectedValue(new Error("Agent run failed"));
+      const streamRunSpy = spyOn(ChatAgent.prototype, "streamRun").mockRejectedValue(new Error("Agent run failed"));
 
       const compiledGraph = factory.createGraph();
       const result = await runScenario(
@@ -261,7 +278,7 @@ describe("Chat Graph invoke (Smartest)", () => {
         })
       );
 
-      runSpy.mockRestore();
+      streamRunSpy.mockRestore();
 
       expectSmartest(result);
       const output = result.output as { error?: string; responseText?: string; shouldContinue?: boolean };

@@ -131,14 +131,35 @@ export class IndexMembershipGraphFactory {
         return { mutationResult: { success: false, error: "targetUserId is required." } };
       }
 
+      // Cannot remove yourself via this flow
+      if (state.targetUserId === state.userId) {
+        return { mutationResult: { success: false, error: "You cannot remove yourself. Use 'leave index' instead." } };
+      }
+
       try {
         const isOwner = await this.database.isIndexOwner(state.indexId, state.userId);
         if (!isOwner) {
           return { mutationResult: { success: false, error: "Only the index owner can remove members." } };
         }
 
-        // TODO: Implement removeMemberFromIndex in database interface
-        return { mutationResult: { success: false, error: "Member removal not yet implemented." } };
+        const result = await this.database.removeMemberFromIndex(state.indexId, state.targetUserId);
+
+        if (result.wasOwner) {
+          return { mutationResult: { success: false, error: "Cannot remove the index owner." } };
+        }
+        if (result.notMember) {
+          return { mutationResult: { success: false, error: "User is not a member of this index." } };
+        }
+        if (!result.success) {
+          return { mutationResult: { success: false, error: "Failed to remove member." } };
+        }
+
+        return {
+          mutationResult: {
+            success: true,
+            message: "Member removed from the index.",
+          },
+        };
       } catch (err) {
         logger.error("Remove member failed", { error: err });
         return { mutationResult: { success: false, error: "Failed to remove member." } };

@@ -19,6 +19,7 @@ interface ChatResponse {
 // Integration test suite for ChatController using actual DB
 describe("ChatController Integration", () => {
   let controller: ChatController;
+  const chatAdapter = new ChatDatabaseAdapter();
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new ProfileDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
@@ -27,6 +28,7 @@ describe("ChatController Integration", () => {
   /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
   let testIndexIdOther: string | null = null;
+  let unauthorizedStreamIndexId: string | null = null;
 
   beforeAll(async () => {
     const email = "test-chat-controller@example.com";
@@ -70,7 +72,7 @@ describe("ChatController Integration", () => {
   });
 
   afterAll(async () => {
-    for (const indexId of [testIndexId, testIndexIdOther]) {
+    for (const indexId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
       if (indexId) await indexAdapter.deleteIndexAndMembers(indexId);
     }
     if (testUserId) {
@@ -188,7 +190,7 @@ describe("ChatController Integration", () => {
 
     test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
       const index = await adapter.createIndex({
-        title: "Open Mock Network",
+        title: "Commons",
         prompt: "Test index for chat adapter",
       });
       testIndexId = index.id;
@@ -207,7 +209,7 @@ describe("ChatController Integration", () => {
       expect(activeIntents.length).toBeGreaterThan(0);
       await adapter.assignIntentToIndex(activeIntents[0].id, testIndexId);
 
-      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Open Mock Network");
+      const intents = await adapter.getIntentsInIndexForMember(testUserId, "Commons");
       expect(intents).toBeArray();
       expect(intents.length).toBe(1);
       expect(intents[0].payload).toBe("Looking for collaborators on a machine learning project");
@@ -429,6 +431,30 @@ describe("ChatController Integration", () => {
 
       expect(res.status).toBe(400);
       expect(data.error).toBeDefined();
+    });
+
+    test("messageStream should return 403 when scoped index is not a member index", async () => {
+      const index = await chatAdapter.createIndex({
+        title: "Unauthorized Stream Index",
+        prompt: "Index created for access validation",
+      });
+      unauthorizedStreamIndexId = index.id;
+
+      const req = new Request("http://localhost/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "hello",
+          indexId: unauthorizedStreamIndexId,
+          useCheckpointer: false,
+        }),
+      });
+
+      const res = await controller.messageStream(req, mockUser());
+      const data = (await res.json()) as { error?: string };
+
+      expect(res.status).toBe(403);
+      expect(data.error).toContain("not a member");
     });
 
     test("getSessions should return 200 with sessions array", async () => {

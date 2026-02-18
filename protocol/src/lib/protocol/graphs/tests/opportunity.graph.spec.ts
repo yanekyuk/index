@@ -115,7 +115,8 @@ function createMockGraph(deps?: {
   };
 
   const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
-  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator);
+  const queueNotification = async () => undefined;
+  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHydeGenerator, evaluator, queueNotification);
   const compiledGraph = factory.createGraph();
   return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator };
 }

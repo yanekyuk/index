@@ -96,6 +96,28 @@ export class ChatSessionService {
   }
 
   /**
+   * Validate that a user can scope chat to an index.
+   * Requires the index to exist and the user to be a member.
+   */
+  async validateIndexScope(
+    userId: string,
+    indexId: string
+  ): Promise<{ ok: true } | { ok: false; status: 403 | 404; error: string }> {
+    const normalizedIndexId = indexId.trim();
+    const index = await this.graphDb.getIndex(normalizedIndexId);
+    if (!index) {
+      return { ok: false, status: 404, error: 'Index not found' };
+    }
+
+    const isMember = await this.graphDb.isIndexMember(normalizedIndexId, userId);
+    if (!isMember) {
+      return { ok: false, status: 403, error: 'You are not a member of this index' };
+    }
+
+    return { ok: true };
+  }
+
+  /**
    * Get a session by ID, validating ownership.
    * 
    * @param sessionId - The session ID

@@ -45,6 +45,32 @@ export const evalNeeds = pgTable("eval_needs", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const userFeedback = pgTable(
+  "user_feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    feedback: text("feedback").notNull(),
+    sessionId: text("session_id"),
+    conversation: jsonb("conversation").$type<
+      Array<{ role: string; content: string }>
+    >(),
+    retryConversation: jsonb("retry_conversation").$type<
+      Array<{ role: string; content: string }>
+    >(),
+    retryStatus: text("retry_status").$type<
+      "pending" | "running" | "completed" | "error"
+    >(),
+    archived: boolean("archived").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("user_feedback_user_idx").on(table.userId),
+  })
+);
+
 export const evalScenarioResults = pgTable(
   "eval_scenario_results",
   {

@@ -192,11 +192,10 @@ describe("Chat Graph scope workflows", () => {
         { indexId: testIndexId }
       );
       expectSmartest(result);
-      const output = result.output as { responseText?: string };
+      const output = result.output as { responseText?: string; error?: string };
       expect(output.responseText).toBeDefined();
-      expect(
-        output.responseText!.toLowerCase().match(/not a member|index not found|join|see your indexes/)
-      ).toBeTruthy();
+      const message = [output.responseText, output.error].filter(Boolean).join(" ").toLowerCase();
+      expect(message.match(/not a member|index not found|join|see your indexes/)).toBeTruthy();
     }, 60000);
   });
 });

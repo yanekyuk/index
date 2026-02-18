@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 
 export interface Suggestion {
   label: string;
@@ -7,8 +7,8 @@ export interface Suggestion {
   prefill?: string;
 }
 
-// Static starter suggestions - shown on focus when no intent context
-const STATIC_SUGGESTIONS: Suggestion[] = [
+// Static starter suggestions - shown when no conversation yet (no context from backend)
+export const STATIC_SUGGESTIONS: Suggestion[] = [
   { label: 'Find collaborators', type: 'direct', followupText: 'Find collaborators for my work' },
   { label: 'Looking for investors', type: 'direct', followupText: 'Looking for investors' },
   { label: 'Seeking co-founders', type: 'direct', followupText: 'Seeking co-founders' },
@@ -17,7 +17,11 @@ const STATIC_SUGGESTIONS: Suggestion[] = [
 ];
 
 interface UseSuggestionsOptions {
-  /** Intent ID for dynamic refinement suggestions */
+  /** Context-aware suggestions from chat done event (useAIChat().suggestions) */
+  contextSuggestions?: Suggestion[] | null;
+  /** Whether there are messages in the conversation; when true and contextSuggestions exist, use them */
+  hasMessages?: boolean;
+  /** Intent ID for dynamic refinement suggestions (e.g. intent detail view) */
   intentId?: string;
   /** Selected index ID to filter/contextualize suggestions */
   indexId?: string | null;
@@ -28,56 +32,58 @@ interface UseSuggestionsOptions {
 interface UseSuggestionsResult {
   suggestions: Suggestion[];
   isLoading: boolean;
-  /** Refresh suggestions (e.g., after refinement) */
+  /** Refresh suggestions (e.g., after refinement); no-op when using context suggestions */
   refresh: () => Promise<void>;
 }
 
 export function useSuggestions({
+  contextSuggestions,
+  hasMessages = false,
   intentId,
   indexId,
   enabled = true,
 }: UseSuggestionsOptions = {}): UseSuggestionsResult {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [fetchedSuggestions, setFetchedSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchSuggestions = useCallback(async () => {
-    if (!enabled) {
-      setSuggestions([]);
-      return;
-    }
+    if (!enabled) return;
 
-    // If we have an intentId, fetch dynamic refinement suggestions (mocked for now)
     if (intentId) {
       setIsLoading(true);
       try {
-        // TODO: Replace with actual API call when ready
-        // Mock dynamic suggestions based on context
-        await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-        
+        // TODO: Replace with actual API call when intent suggestions API is ready
+        await new Promise(resolve => setTimeout(resolve, 300));
         const mockDynamicSuggestions: Suggestion[] = [
           { label: 'Add more details', type: 'prompt', prefill: 'I also want to mention that ' },
           { label: 'Be more specific', type: 'prompt', prefill: 'Specifically, I\'m looking for ' },
           { label: 'Add timeline', type: 'direct', followupText: 'This is urgent, within the next month' },
         ];
-        
-        setSuggestions(mockDynamicSuggestions);
+        setFetchedSuggestions(mockDynamicSuggestions);
       } catch (error) {
         console.error('Failed to fetch suggestions:', error);
-        setSuggestions([]);
+        setFetchedSuggestions([]);
       } finally {
         setIsLoading(false);
       }
       return;
     }
 
-    // No intentId - return static starter suggestions
-    // Optionally filter/modify based on indexId if needed
-    setSuggestions(STATIC_SUGGESTIONS);
+    setFetchedSuggestions(STATIC_SUGGESTIONS);
   }, [intentId, indexId, enabled]);
 
   useEffect(() => {
     fetchSuggestions();
   }, [fetchSuggestions]);
+
+  // Prefer context suggestions from chat done event when we have messages; otherwise static/fetched
+  const suggestions = useMemo(() => {
+    if (!enabled) return [];
+    if (hasMessages && contextSuggestions != null && contextSuggestions.length > 0) {
+      return contextSuggestions;
+    }
+    return fetchedSuggestions.length > 0 ? fetchedSuggestions : STATIC_SUGGESTIONS;
+  }, [enabled, hasMessages, contextSuggestions, fetchedSuggestions]);
 
   return {
     suggestions,

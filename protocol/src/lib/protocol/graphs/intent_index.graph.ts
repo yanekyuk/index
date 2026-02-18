@@ -175,8 +175,9 @@ export class IntentIndexGraphFactory {
 
     /**
      * Read Node: Query intent-index relationships.
-     * - By intentId: list all indexes the intent is in (owner only)
-     * - By indexId: list intents in the index (member only)
+     * - By intentId only: list all indexes the intent is in (owner only)
+     * - By indexId only: list intents in the index (member only)
+     * - By both intentId and indexId: check if specific link exists (owner only)
      */
     const readNode = async (state: typeof IntentIndexGraphState.State) => {
       const intentId = state.intentId;
@@ -184,7 +185,27 @@ export class IntentIndexGraphFactory {
       logger.info("Read intent-index links", { userId: state.userId, intentId, indexId, queryUserId: state.queryUserId });
 
       try {
-        // By intent: list all indexes for this intent
+        // By both: check if specific intent-index link exists
+        if (intentId && indexId) {
+          const intent = await this.database.getIntent(intentId);
+          if (!intent) {
+            return { readResult: { links: [], count: 0, mode: "check_link" }, error: "Intent not found." };
+          }
+          if (intent.userId !== state.userId) {
+            return { readResult: { links: [], count: 0, mode: "check_link" }, error: "You can only check links for your own intents." };
+          }
+          const isLinked = await this.database.isIntentAssignedToIndex(intentId, indexId);
+          return {
+            readResult: {
+              links: isLinked ? [{ intentId, indexId }] : [],
+              count: isLinked ? 1 : 0,
+              mode: "check_link",
+              note: isLinked ? "Intent is linked to this index." : "Intent is not linked to this index.",
+            },
+          };
+        }
+
+        // By intent only: list all indexes for this intent
         if (intentId) {
           const intent = await this.database.getIntent(intentId);
           if (!intent) {

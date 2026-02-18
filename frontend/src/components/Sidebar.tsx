@@ -23,6 +23,7 @@ import CreateIndexModal from '@/components/modals/CreateIndexModal';
 interface ChatSession {
   id: string;
   title: string | null;
+  indexId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,7 +38,7 @@ export default function Sidebar() {
   const { getAccessToken, logout } = usePrivy();
   const indexesService = useIndexes();
   const opportunitiesService = useOpportunities();
-  const { addIndex } = useIndexesState();
+  const { indexes, addIndex } = useIndexesState();
   const { success, error } = useNotifications();
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -79,7 +80,7 @@ export default function Sidebar() {
   }, [indexesService, addIndex, success, error]);
 
   const handleDiscoverClick = () => {
-    clearChat();
+    clearChat({ abortStream: false });
     router.push('/');
   };
 
@@ -290,17 +291,23 @@ export default function Sidebar() {
               ) : (
                 chatSessions.slice(0, 4).map((session) => {
                   const isSelected = currentSessionId === session.id;
+                  const sessionIndex = session.indexId ? indexes.find(i => i.id === session.indexId) : null;
                   return (
                     <button
                       key={session.id}
                       onClick={() => router.push(`/d/${session.id}`)}
-                      className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors truncate ${
+                      className={`w-full text-left py-1.5 px-2 rounded-md text-sm transition-colors flex items-center gap-1.5 ${
                         isSelected
                           ? 'bg-gray-100 text-black font-normal'
                           : 'text-black font-normal hover:bg-gray-50'
                       }`}
                     >
-                      {session.title || 'Untitled chat'}
+                      <span className="truncate flex-1">{session.title || 'Untitled chat'}</span>
+                      {sessionIndex && (
+                        <span className="shrink-0 text-[10px] text-gray-400 truncate max-w-[60px]" title={sessionIndex.title}>
+                          {sessionIndex.title}
+                        </span>
+                      )}
                     </button>
                   );
                 })

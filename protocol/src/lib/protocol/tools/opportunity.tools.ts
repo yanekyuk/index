@@ -1,18 +1,105 @@
 import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import { enrichOrCreate } from "../support/opportunity.enricher";
-import { OpportunityPresenter } from "../agents/opportunity.presenter";
 import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
-import type { EvaluatorEntity, EvaluatorInput } from "../agents/opportunity.evaluator";
+import type {
+  EvaluatorEntity,
+  EvaluatorInput,
+} from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
+import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
+/**
+ * Truncate a string for use inside JSON so the result is always valid and bounded.
+ */
+function truncateForCardText(s: string, max = MINIMAL_MAIN_TEXT_MAX_CHARS): string {
+  const raw = s.trim();
+  if (raw.length <= max) return raw || "A suggested connection.";
+  return raw.slice(0, max) + "...";
+}
+
+/**
+ * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
+ * so embedded ``` cannot close the fence prematurely.
+ */
+function sanitizeJsonForCodeFence(json: string): string {
+  return json.replace(/`/g, "\\u0060");
+}
+
+/**
+ * Build minimal opportunity card data for chat without calling the LLM presenter.
+ * Uses only required fields from the opportunity record and counterpart name/avatar
+ * so list_opportunities and discovery return quickly.
+ */
+function buildMinimalOpportunityCard(
+  opp: Opportunity,
+  viewerId: string,
+  counterpartUserId: string,
+  counterpartName: string,
+  counterpartAvatar: string | null,
+  introducerName?: string | null,
+  introducerAvatar?: string | null,
+): {
+  opportunityId: string;
+  userId: string;
+  name: string;
+  avatar: string | null;
+  mainText: string;
+  cta: string;
+  headline: string;
+  primaryActionLabel: string;
+  secondaryActionLabel: string;
+  mutualIntentsLabel: string;
+  narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
+  viewerRole: string;
+  score: number | undefined;
+  status: string;
+} {
+  const viewerActor = opp.actors.find((a) => a.userId === viewerId);
+  const viewerRole = viewerActor?.role ?? "party";
+  const introducerActor = opp.actors.find(
+    (a) => a.role === "introducer" && a.userId !== viewerId,
+  );
+  const mainText = truncateForCardText(
+    opp.interpretation?.reasoning ?? "",
+  );
+  const score =
+    typeof opp.interpretation?.confidence === "number"
+      ? opp.interpretation.confidence
+      : undefined;
+  const narratorName =
+    introducerName ?? (introducerActor ? "Someone" : "Index");
+  return {
+    opportunityId: opp.id,
+    userId: counterpartUserId,
+    name: counterpartName,
+    avatar: counterpartAvatar,
+    mainText,
+    cta: "Start a conversation to connect.",
+    headline: `Connection with ${counterpartName}`,
+    primaryActionLabel: "Start Chat",
+    secondaryActionLabel: "Skip",
+    mutualIntentsLabel: "Suggested connection",
+    narratorChip: {
+      name: narratorName,
+      text: "Based on your overlap in this community.",
+      ...(introducerActor
+        ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
+        : {}),
+    },
+    viewerRole,
+    score,
+    status: opp.status ?? "latent",
+  };
+}
+
 export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { database, graphs, embedder } = deps;
-  const presenter = new OpportunityPresenter();
+  const { database, userDb, systemDb, graphs, embedder } = deps;
 
   const createOpportunities = defineTool({
     name: "create_opportunities",
@@ -24,65 +111,152 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       "Optionally pass hint (the user's reason for the introduction).\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
-      searchQuery: z.string().optional().describe("Discovery mode: what to search for."),
-      indexId: z.string().optional().describe("Index UUID; optional when index-scoped."),
-      partyUserIds: z.array(z.string()).optional().describe("Introduction mode: user IDs to introduce (at least 2)."),
-      entities: z.array(z.object({
-        userId: z.string(),
-        profile: z.object({
-          name: z.string().optional(),
-          bio: z.string().optional(),
-          location: z.string().optional(),
-          interests: z.array(z.string()).optional(),
-          skills: z.array(z.string()).optional(),
-          context: z.string().optional(),
-        }).optional(),
-        intents: z.array(z.object({
-          intentId: z.string(),
-          payload: z.string(),
-          summary: z.string().optional(),
-        })).optional(),
-        indexId: z.string().describe("Shared index this entity's data comes from"),
-      })).optional().describe("Introduction mode: pre-gathered profiles + intents per party. Gather via read_user_profiles + read_intents before calling."),
-      hint: z.string().optional().describe("Introduction mode: the user's reason for the intro (e.g. 'both AI devs')."),
+      searchQuery: z
+        .string()
+        .optional()
+        .describe("Discovery mode: what to search for."),
+      indexId: z
+        .string()
+        .optional()
+        .describe("Index UUID; optional when index-scoped."),
+      partyUserIds: z
+        .array(z.string())
+        .optional()
+        .describe("Introduction mode: user IDs to introduce (at least 2)."),
+      entities: z
+        .array(
+          z.object({
+            userId: z.string(),
+            profile: z
+              .object({
+                name: z.string().optional(),
+                bio: z.string().optional(),
+                location: z.string().optional(),
+                interests: z.array(z.string()).optional(),
+                skills: z.array(z.string()).optional(),
+                context: z.string().optional(),
+              })
+              .optional(),
+            intents: z
+              .array(
+                z.object({
+                  intentId: z.string(),
+                  payload: z.string(),
+                  summary: z.string().optional(),
+                }),
+              )
+              .optional(),
+            indexId: z
+              .string()
+              .describe("Shared index this entity's data comes from"),
+          }),
+        )
+        .optional()
+        .describe(
+          "Introduction mode: pre-gathered profiles + intents per party. Gather via read_user_profiles + read_intents before calling.",
+        ),
+      hint: z
+        .string()
+        .optional()
+        .describe(
+          "Introduction mode: the user's reason for the intro (e.g. 'both AI devs').",
+        ),
     }),
     handler: async ({ context, query }) => {
-      const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
+      // Strict scope enforcement: when chat is index-scoped, only allow that index
+      if (
+        context.indexId &&
+        query.indexId?.trim() &&
+        query.indexId.trim() !== context.indexId
+      ) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
+        );
+      }
+
+      const effectiveIndexId =
+        (context.indexId || query.indexId?.trim()) ?? undefined;
 
       // ── Introduction mode ──
       if (query.partyUserIds && query.partyUserIds.length >= 2) {
         if (!query.entities || query.entities.length === 0) {
           return error(
             "Introduction requires pre-gathered entity data. " +
-            "First use read_index_memberships to find shared indexes, " +
-            "then read_user_profiles and read_intents for each party, " +
-            "then pass the results as entities."
+              "First use read_index_memberships to find shared indexes, " +
+              "then read_user_profiles and read_intents for each party, " +
+              "then pass the results as entities.",
           );
         }
 
         const primaryIndexId = query.entities[0]?.indexId;
         if (!primaryIndexId) {
-          return error("Each entity must include an indexId (the shared index).");
+          return error(
+            "Each entity must include an indexId (the shared index).",
+          );
+        }
+
+        // Strict scope enforcement: when chat is index-scoped, primaryIndexId must match
+        if (context.indexId && primaryIndexId !== context.indexId) {
+          return error(
+            `This chat is scoped to ${context.indexName ?? "this index"}. You can only introduce members of this community.`,
+          );
+        }
+
+        // Verify introducer (caller) is a member of the primary index
+        const introducerIsMember = await systemDb.isIndexMember(
+          primaryIndexId,
+          context.userId,
+        );
+        if (!introducerIsMember) {
+          return error(
+            "One or more users are not members of the specified community. You can only introduce members who share an index.",
+          );
+        }
+
+        // Verify all party users are members of the primary index
+        for (const userId of query.partyUserIds) {
+          if (userId === context.userId) continue; // Skip self (we know we're a member)
+          const isMember = await systemDb.isIndexMember(primaryIndexId, userId);
+          if (!isMember) {
+            return error(
+              "One or more users are not members of the specified community. You can only introduce members who share an index.",
+            );
+          }
         }
 
         // Map entities to evaluator format
-        const evaluatorEntities: EvaluatorEntity[] = query.entities.map((e) => ({
-          userId: e.userId,
-          profile: e.profile ?? {},
-          intents: e.intents,
-          indexId: e.indexId,
-        }));
+        const evaluatorEntities: EvaluatorEntity[] = query.entities.map(
+          (e) => ({
+            userId: e.userId,
+            profile: e.profile ?? {},
+            intents: e.intents,
+            indexId: e.indexId,
+          }),
+        );
 
         // Check for existing opportunity
         const partyUserIds = query.partyUserIds;
-        const exists = await database.opportunityExistsBetweenActors(partyUserIds, primaryIndexId);
+        const introducedPartyUserIds = partyUserIds.filter(
+          (uid) => uid !== context.userId,
+        );
+        if (introducedPartyUserIds.length === 0) {
+          return error(
+            "No counterpart to introduce. Provide at least one other user ID in partyUserIds (besides yourself).",
+          );
+        }
+        // Use systemDb for cross-user opportunity checks
+        const exists = await systemDb.opportunityExistsBetweenActors(
+          partyUserIds,
+          primaryIndexId,
+        );
         if (exists) {
           return error("An opportunity already exists between these people.");
         }
 
         // Run evaluator
         const evaluator = new OpportunityEvaluator();
-        const introducerUser = await database.getUser(context.userId);
+        // Use userDb for own user data
+        const introducerUser = await userDb.getUser();
         const evalInput: EvaluatorInput = {
           discovererId: context.userId,
           entities: evaluatorEntities,
@@ -93,10 +267,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
         let reasoning: string;
         let score: number;
-        let evaluatedActors: Array<{ userId: string; role: string; intentId?: string }> = [];
+        let evaluatedActors: Array<{
+          userId: string;
+          role: string;
+          intentId?: string;
+        }> = [];
 
         try {
-          const evaluated = await evaluator.invokeEntityBundle(evalInput, { minScore: 0 });
+          const evaluated = await evaluator.invokeEntityBundle(evalInput, {
+            minScore: 0,
+          });
           if (evaluated.length > 0) {
             const best = evaluated[0];
             reasoning = best.reasoning;
@@ -107,21 +287,24 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               ...(a.intentId != null ? { intentId: a.intentId } : {}),
             }));
           } else {
-            reasoning = `${introducerUser?.name ?? "A member"} believes these people should connect.` +
+            reasoning =
+              `${introducerUser?.name ?? "A member"} believes these people should connect.` +
               (query.hint ? ` Context: ${query.hint}` : "");
             score = 70;
           }
         } catch (evalErr) {
-          logger.warn("Evaluator failed, using fallback reasoning", { error: evalErr });
-          reasoning = `${introducerUser?.name ?? "A member"} believes these people should connect.` +
+          logger.warn("Evaluator failed, using fallback reasoning", {
+            error: evalErr,
+          });
+          reasoning =
+            `${introducerUser?.name ?? "A member"} believes these people should connect.` +
             (query.hint ? ` Context: ${query.hint}` : "");
           score = 70;
         }
 
-        // Build actors array
-        const requiredPartyUserIds = partyUserIds.filter((uid) => uid !== context.userId);
-        const evaluatorHasAllParties = requiredPartyUserIds.every((uid) =>
-          evaluatedActors.some((a) => a.userId === uid)
+        // Build actors array (reuse introducedPartyUserIds: party users excluding self)
+        const evaluatorHasAllParties = introducedPartyUserIds.every((uid) =>
+          evaluatedActors.some((a) => a.userId === uid),
         );
         const actors = evaluatorHasAllParties
           ? [
@@ -133,56 +316,110 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                   role: a.role as string,
                   ...(a.intentId ? { intent: a.intentId } : {}),
                 })),
-              { indexId: primaryIndexId, userId: context.userId, role: 'introducer' },
+              {
+                indexId: primaryIndexId,
+                userId: context.userId,
+                role: "introducer",
+              },
             ]
           : [
-              ...requiredPartyUserIds.map((uid) => ({ indexId: primaryIndexId, userId: uid, role: 'party' })),
-              { indexId: primaryIndexId, userId: context.userId, role: 'introducer' },
+              ...introducedPartyUserIds.map((uid) => ({
+                indexId: primaryIndexId,
+                userId: uid,
+                role: "party",
+              })),
+              {
+                indexId: primaryIndexId,
+                userId: context.userId,
+                role: "introducer",
+              },
             ];
 
         // Persist
         const confidence = score / 100;
         const data = {
           detection: {
-            source: 'manual' as const,
+            source: "manual" as const,
             createdBy: context.userId,
             createdByName: introducerUser?.name ?? undefined,
             timestamp: new Date().toISOString(),
           },
           actors,
           interpretation: {
-            category: 'collaboration' as const,
+            category: "collaboration" as const,
             reasoning,
             confidence,
-            signals: [{ type: 'curator_judgment' as const, weight: 1, detail: `Introduction by ${introducerUser?.name ?? 'a member'} via chat` }],
+            signals: [
+              {
+                type: "curator_judgment" as const,
+                weight: 1,
+                detail: `Introduction by ${introducerUser?.name ?? "a member"} via chat`,
+              },
+            ],
           },
           context: { indexId: primaryIndexId },
           confidence: String(confidence),
-          status: 'latent' as const,
+          status: "latent" as const,
         };
 
+        // Note: enrichOrCreate still uses the legacy database param for now
         const enrichment = await enrichOrCreate(database, embedder, data);
         const toCreate = enrichment.data;
         if (enrichment.enriched) {
           toCreate.status = enrichment.resolvedStatus;
         }
-        const created = await database.createOpportunity(toCreate);
+        // Use systemDb for cross-user opportunity creation
+        const created = await systemDb.createOpportunity(toCreate);
 
         if (enrichment.enriched && enrichment.expiredIds.length > 0) {
           for (const id of enrichment.expiredIds) {
-            await database.updateOpportunityStatus(id, 'expired');
+            // Use systemDb for opportunity status updates
+            await systemDb.updateOpportunityStatus(id, "expired");
           }
         }
+
+        // Build a proper ```opportunity block so the frontend can render a card (same format as list/discovery)
+        const firstPartyId = introducedPartyUserIds[0];
+        const firstEntity = query.entities?.find((e) => e.userId === firstPartyId);
+        const counterpartUser = firstPartyId
+          ? await database.getUser(firstPartyId)
+          : null;
+        const counterpartName =
+          firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
+        const cardData = {
+          opportunityId: created.id,
+          userId: firstPartyId,
+          name: counterpartName,
+          avatar:
+            counterpartUser?.avatar ??
+            (firstEntity?.profile as { avatar?: string | null } | undefined)
+              ?.avatar ??
+            null,
+          mainText: truncateForCardText(reasoning),
+          cta: "Start a conversation to connect.",
+          headline: `Connection with ${counterpartName}`,
+          primaryActionLabel: "Start Chat",
+          secondaryActionLabel: "Skip",
+          mutualIntentsLabel: "Suggested connection",
+          narratorChip: {
+            name: introducerUser?.name ?? "A member",
+            text: "Based on your overlap in this community.",
+            userId: context.userId,
+          },
+          viewerRole: "introducer",
+          score: confidence,
+          status: created.status ?? "latent",
+        };
+        const block =
+          "```opportunity\n" +
+          sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
+          "\n```";
 
         return success({
           found: true,
           count: 1,
-          opportunities: [{
-            opportunityId: created.id,
-            matchReason: reasoning,
-            score: confidence,
-            status: created.status ?? 'latent',
-          }],
+          message: `Draft introduction created. IMPORTANT: Include the following \`\`\`opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n${block}`,
+          opportunities: [{ opportunityId: created.id, matchReason: reasoning, score: confidence, status: created.status ?? "latent" }],
         });
       }
 
@@ -197,19 +434,25 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const memberResult = await graphs.indexMembership.invoke({
           userId: context.userId,
           indexId: effectiveIndexId,
-          operationMode: 'read' as const,
+          operationMode: "read" as const,
         });
         if (memberResult.error) {
           return error("Index not found or you are not a member.");
         }
         indexScope = [effectiveIndexId];
+      } else if (context.indexId) {
+        // When scoped but no explicit indexId, use the scoped index
+        indexScope = [context.indexId];
       } else {
+        // No scope - use all indexes (only in unscoped chat)
         const indexResult = await graphs.index.invoke({
           userId: context.userId,
-          operationMode: 'read' as const,
+          operationMode: "read" as const,
           showAll: true,
         });
-        indexScope = (indexResult.readResult?.memberOf || []).map((m: { indexId: string }) => m.indexId);
+        indexScope = (indexResult.readResult?.memberOf || []).map(
+          (m: { indexId: string }) => m.indexId,
+        );
       }
 
       const result = await runDiscoverFromQuery({
@@ -219,7 +462,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query: searchQuery,
         indexScope,
         limit: 5,
-        presenter,
+        minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
       });
 
       if (!result.found) {
@@ -230,10 +473,42 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // Format opportunities as code blocks for the LLM to include in its response
+      // The frontend will parse ```opportunity blocks and render them as cards
+      const opportunityBlocks = (result.opportunities ?? []).map((opp) => {
+        const cardData = {
+          opportunityId: opp.opportunityId,
+          userId: opp.userId,
+          name: opp.name,
+          avatar: opp.avatar,
+          mainText:
+            opp.homeCardPresentation?.personalizedSummary ??
+            opp.matchReason ??
+            "",
+          cta: opp.homeCardPresentation?.suggestedAction,
+          headline: opp.homeCardPresentation?.headline,
+          primaryActionLabel: opp.homeCardPresentation?.primaryActionLabel,
+          secondaryActionLabel: opp.homeCardPresentation?.secondaryActionLabel,
+          mutualIntentsLabel: opp.homeCardPresentation?.mutualIntentsLabel,
+          narratorChip: opp.narratorChip,
+          viewerRole: opp.viewerRole,
+          score: opp.score,
+          status: opp.status,
+        };
+        return (
+          "```opportunity\n" +
+          sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
+          "\n```"
+        );
+      });
+
+      // Join all opportunity blocks into a single string for the LLM to include verbatim
+      const blocksText = opportunityBlocks.join("\n\n");
+
       return success({
         found: true,
         count: result.count,
-        opportunities: result.opportunities ?? [],
+        message: `Found ${result.count} potential connection(s). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
       });
     },
   });
@@ -241,42 +516,191 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const listOpportunities = defineTool({
     name: "list_opportunities",
     description:
-      "Lists the user's opportunities (suggested connections). Returns raw opportunity data — present it conversationally. Optional indexId filter.",
+      "Lists the user's opportunities (suggested connections). Returns opportunity cards to display. When chat is index-scoped, only shows opportunities from that index.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID filter; defaults to current index when scoped."),
+      indexId: z
+        .string()
+        .optional()
+        .describe("Index UUID filter; defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? undefined;
+      // Strict scope enforcement: when chat is index-scoped, only allow that index
+      if (
+        context.indexId &&
+        query.indexId?.trim() &&
+        query.indexId.trim() !== context.indexId
+      ) {
+        return error(
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this community.`,
+        );
+      }
+
+      const effectiveIndexId =
+        (context.indexId || query.indexId?.trim()) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format.");
       }
 
-      const result = await graphs.opportunity.invoke({
-        userId: context.userId,
-        indexId: effectiveIndexId,
-        operationMode: 'read' as const,
+      // Get opportunities; use minimal card data (no LLM presenter) for fast chat response
+      const opportunities = await database.getOpportunitiesForUser(
+        context.userId,
+        {
+          indexId: effectiveIndexId,
+          limit: 10,
+        },
+      );
+
+      if (!opportunities || opportunities.length === 0) {
+        return success({
+          found: false,
+          count: 0,
+          message:
+            "You have no opportunities yet. Use create_opportunities to search for connections.",
+        });
+      }
+
+      // Batch-fetch profiles and users for all counterpart and introducer userIds to avoid N+1
+      const counterpartUserIds = new Set<string>();
+      const introducerUserIds = new Set<string>();
+      for (const opp of opportunities) {
+        const counterpartActor = opp.actors.find(
+          (a) => a.userId !== context.userId && a.role !== "introducer",
+        );
+        if (counterpartActor?.userId) counterpartUserIds.add(counterpartActor.userId);
+        const introducerActor = opp.actors.find(
+          (a) => a.role === "introducer" && a.userId !== context.userId,
+        );
+        if (introducerActor?.userId) introducerUserIds.add(introducerActor.userId);
+      }
+      const allUserIds = [
+        ...new Set([...counterpartUserIds, ...introducerUserIds]),
+      ];
+      const [profileResults, userResults] = await Promise.all([
+        Promise.all(allUserIds.map((id) => database.getProfile(id))),
+        Promise.all(allUserIds.map((id) => database.getUser(id))),
+      ]);
+      const profileMap = new Map<string, Awaited<ReturnType<typeof database.getProfile>>>();
+      const userMap = new Map<string, Awaited<ReturnType<typeof database.getUser>>>();
+      allUserIds.forEach((userId, i) => {
+        const profile = profileResults[i] ?? null;
+        const user = userResults[i] ?? null;
+        if (profile) profileMap.set(userId, profile);
+        if (user) userMap.set(userId, user);
       });
 
-      if (!result.readResult) {
-        return error("Failed to list opportunities.");
+      const opportunityBlocks: string[] = [];
+
+      for (const opp of opportunities) {
+        try {
+          const counterpartActor = opp.actors.find(
+            (a) => a.userId !== context.userId && a.role !== "introducer",
+          );
+          const counterpartUserId = counterpartActor?.userId;
+          if (!counterpartUserId) continue;
+
+          const introducerActor = opp.actors.find(
+            (a) => a.role === "introducer" && a.userId !== context.userId,
+          );
+          const createdByName = opp.detection.createdByName;
+
+          const counterpartProfile = profileMap.get(counterpartUserId) ?? null;
+          const counterpartUser = userMap.get(counterpartUserId) ?? null;
+          const introducerProfile =
+            introducerActor && !createdByName
+              ? profileMap.get(introducerActor.userId) ?? null
+              : null;
+
+          const counterpartName =
+            counterpartProfile?.identity?.name ??
+            counterpartUser?.name ??
+            "Someone";
+          const introducerName =
+            createdByName ??
+            (introducerActor ? introducerProfile?.identity?.name ?? null : null);
+          const introducerUser = introducerActor
+            ? userMap.get(introducerActor.userId) ?? null
+            : null;
+
+          const cardData = buildMinimalOpportunityCard(
+            opp,
+            context.userId,
+            counterpartUserId,
+            counterpartName,
+            counterpartUser?.avatar ?? null,
+            introducerName,
+            introducerUser?.avatar ?? null,
+          );
+
+          opportunityBlocks.push(
+            "```opportunity\n" +
+              sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
+              "\n```",
+          );
+        } catch (err) {
+          logger.warn("Skipping opportunity that failed to build minimal card", {
+            opportunityId: opp.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          continue;
+        }
       }
-      return success(result.readResult);
+
+      if (opportunityBlocks.length === 0) {
+        return success({
+          found: false,
+          count: 0,
+          message:
+            "You have no opportunities yet. Use create_opportunities to search for connections.",
+        });
+      }
+
+      // Join all opportunity blocks into a single string for the LLM to include verbatim
+      const blocksText = opportunityBlocks.join("\n\n");
+
+      return success({
+        found: true,
+        count: opportunityBlocks.length,
+        message: `You have ${opportunityBlocks.length} opportunity(ies). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+      });
     },
   });
 
   const updateOpportunity = defineTool({
     name: "update_opportunity",
     description:
-      "Updates an opportunity's status. Use 'pending' to send a draft (notifies next person). Use 'accepted'/'rejected' to respond to a received opportunity.",
+      "Updates an opportunity's status. Use 'pending' to send a draft (notifies next person). Use 'accepted'/'rejected' to respond to a received opportunity. When chat is index-scoped, can only update opportunities from that index.",
     querySchema: z.object({
-      opportunityId: z.string().describe("Opportunity ID from list_opportunities"),
-      status: z.enum(["pending", "accepted", "rejected", "expired"]).describe("New status: pending (send draft), accepted, rejected, expired"),
+      opportunityId: z
+        .string()
+        .describe("Opportunity ID from list_opportunities"),
+      status: z
+        .enum(["pending", "accepted", "rejected", "expired"])
+        .describe(
+          "New status: pending (send draft), accepted, rejected, expired",
+        ),
     }),
     handler: async ({ context, query }) => {
+      const opportunityId = query.opportunityId?.trim();
+      if (!opportunityId || !UUID_REGEX.test(opportunityId)) {
+        return error("Valid opportunityId required.");
+      }
+
+      // Strict scope enforcement: when chat is index-scoped, verify opportunity is in that index
+      if (context.indexId) {
+        const opportunity = await systemDb.getOpportunity(opportunityId);
+        if (!opportunity) {
+          return error("Opportunity not found.");
+        }
+        const opportunityIndexId = opportunity.context?.indexId;
+        if (!opportunityIndexId || opportunityIndexId !== context.indexId) {
+          return error("Opportunity not found.");
+        }
+      }
+
       const isSend = query.status === "pending";
       const result = await graphs.opportunity.invoke({
         userId: context.userId,
-        operationMode: isSend ? ('send' as const) : ('update' as const),
+        operationMode: isSend ? ("send" as const) : ("update" as const),
         opportunityId: query.opportunityId,
         ...(isSend ? {} : { newStatus: query.status }),
       });
@@ -287,10 +711,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             opportunityId: result.mutationResult.opportunityId,
             status: query.status,
             message: result.mutationResult.message,
-            ...(result.mutationResult.notified && { notified: result.mutationResult.notified }),
+            ...(result.mutationResult.notified && {
+              notified: result.mutationResult.notified,
+            }),
           });
         }
-        return error(result.mutationResult.error || "Failed to update opportunity.");
+        return error(
+          result.mutationResult.error || "Failed to update opportunity.",
+        );
       }
       return error("Failed to update opportunity.");
     },

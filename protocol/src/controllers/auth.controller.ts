@@ -2,9 +2,39 @@ import { Controller, Get, Patch, UseGuards } from '../lib/router/router.decorato
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
+import { profileService } from '../services/profile.service';
 import { log } from '../lib/log';
 
 const logger = log.controller.from('auth');
+
+function hasAtLeastOneSocial(socials: unknown): boolean {
+  if (!socials || typeof socials !== 'object') {
+    return false;
+  }
+
+  const socialRecord = socials as {
+    x?: string;
+    linkedin?: string;
+    github?: string;
+    websites?: string[];
+  };
+
+  return Boolean(
+    socialRecord.x ||
+      socialRecord.linkedin ||
+      socialRecord.github ||
+      (Array.isArray(socialRecord.websites) && socialRecord.websites.length > 0)
+  );
+}
+
+function shouldAutoGenerateProfile(user: {
+  name?: string | null;
+  socials?: unknown;
+  profile?: unknown;
+}): boolean {
+  const hasName = typeof user.name === 'string' && user.name.trim().length > 0;
+  return hasName && hasAtLeastOneSocial(user.socials) && !user.profile;
+}
 
 @Controller('/auth')
 export class AuthController {
@@ -20,6 +50,17 @@ export class AuthController {
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
+
+    if (shouldAutoGenerateProfile(fullUser)) {
+      logger.info('Auto-generating profile', { userId: user.id });
+      profileService.syncProfile(user.id).catch((error) => {
+        logger.error('Background profile sync failed', {
+          userId: user.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+
     const { profile, notificationPreferences, ...userFields } = fullUser;
     return Response.json({
       user: {

@@ -36,7 +36,7 @@ import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.grap
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { opportunityQueue } from '../queues/opportunity.queue';
 
-const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Open Mock Network from seed
+const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Commons from seed
 const DIMENSIONS = 2000;
 
 async function main() {

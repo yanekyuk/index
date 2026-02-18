@@ -41,13 +41,13 @@ const SEED_INDEXES: IndexDef[] = [
   // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
   {
     id: '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c',
-    title: 'Open Mock Network',
+    title: 'Commons',
     prompt: null,
     joinPolicy: 'anyone',
   },
   {
     id: '99999999-d64e-4ef9-8bcf-6c89815f771c',
-    title: 'Private Mock Network',
+    title: 'Vault',
     prompt: null,
     joinPolicy: 'invite_only',
   },
@@ -55,25 +55,25 @@ const SEED_INDEXES: IndexDef[] = [
   // Categorical indexes (prompts trigger LLM evaluation for intent filtering)
   {
     id: 'aaaaaaaa-0001-4000-8000-000000000001',
-    title: 'Coding & Development',
+    title: 'Stack',
     prompt: 'Software engineering, programming, coding projects, developer tools, and technical implementation',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0002-4000-8000-000000000002',
-    title: 'AI & Machine Learning',
+    title: 'Latent',
     prompt: 'Artificial intelligence, machine learning, deep learning, LLMs, neural networks, and data science',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0003-4000-8000-000000000003',
-    title: 'Design & Creative',
+    title: 'Pixel',
     prompt: 'UI/UX design, graphic design, creative projects, branding, and visual communication',
     joinPolicy: 'invite_only',
   },
   {
     id: 'aaaaaaaa-0004-4000-8000-000000000004',
-    title: 'Startup & Business',
+    title: 'Launch',
     prompt: 'Startups, entrepreneurship, business strategy, fundraising, and go-to-market',
     joinPolicy: 'anyone',
   },
@@ -81,37 +81,37 @@ const SEED_INDEXES: IndexDef[] = [
   // Non-business / lifestyle indexes
   {
     id: 'aaaaaaaa-0005-4000-8000-000000000005',
-    title: 'Art & Creativity',
+    title: 'Atelier',
     prompt: 'Visual art, illustration, music, writing, performance art, crafts, and creative projects',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0006-4000-8000-000000000006',
-    title: 'Gaming & Esports',
+    title: 'Arena',
     prompt: 'Video games, tabletop RPGs, streaming, esports, game development, and gaming community',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0007-4000-8000-000000000007',
-    title: 'Education & Learning',
+    title: 'Syllabus',
     prompt: 'Teaching, tutoring, education, learning, academic research, and knowledge sharing',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0008-4000-8000-000000000008',
-    title: 'Sports & Fitness',
+    title: 'Reps',
     prompt: 'Sports, fitness, running, cycling, climbing, swimming, coaching, and athletic activities',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0009-4000-8000-000000000009',
-    title: 'Community & Volunteering',
+    title: 'Tribe',
     prompt: 'Community organizing, volunteering, mutual aid, local initiatives, and civic engagement',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-000a-4000-8000-00000000000a',
-    title: 'Hobbies & Makers',
+    title: 'Bench',
     prompt: 'Hobbies, makers, DIY, ceramics, cooking, photography, and hands-on projects',
     joinPolicy: 'anyone',
   },
@@ -181,8 +181,11 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
       .returning({ id: users.id });
     return user!;
   } catch {
-    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, account.email)).limit(1);
-    return existing!;
+    const [byEmail] = await db.select({ id: users.id }).from(users).where(eq(users.email, account.email)).limit(1);
+    if (byEmail) return byEmail;
+    const [byPrivyId] = await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId)).limit(1);
+    if (byPrivyId) return byPrivyId;
+    throw new Error(`createUser failed for ${account.email}: insert failed and no existing user found by email or privyId`);
   }
 }
 
