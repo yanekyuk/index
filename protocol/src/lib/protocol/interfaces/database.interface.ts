@@ -1512,6 +1512,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'findOverlappingOpportunities'
   | 'getUserIndexIds'
   | 'getActiveIntents'
+  | 'getIndexIdsForIntent'
   | 'getIndex'
   | 'getIndexMemberCount'
   // Read/update/send modes

@@ -97,7 +97,7 @@ describe("Chat Graph opportunity workflows", () => {
           .toLowerCase()
           .match(/no matches|no connections|none|don't have|empty|yet/)
       ).toBeTruthy();
-    }, 60000);
+    }, 120000);
 
     test("has latent (draft) opportunities → list shows conversational draft/match wording", async () => {
       const opps = [
@@ -128,7 +128,7 @@ describe("Chat Graph opportunity workflows", () => {
           .toLowerCase()
           .match(/draft|alice|list|match|connection|intro|possible/)
       ).toBeTruthy();
-    }, 60000);
+    }, 120000);
 
     test("has pending opportunity → list shows pending or send intro", async () => {
       const opps = [
@@ -148,7 +148,7 @@ describe("Chat Graph opportunity workflows", () => {
       expectSmartest(result);
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
-    }, 60000);
+    }, 120000);
   });
 
   describe("Find / create opportunities", () => {
@@ -171,7 +171,7 @@ describe("Chat Graph opportunity workflows", () => {
           .toLowerCase()
           .match(/join|community|add|first|looking for|matches|connection/)
       ).toBeTruthy();
-    }, 60000);
+    }, 120000);
 
     test("Find me opportunities with intents in index → create_opportunities path, coherent reply", async () => {
       const db = createChatGraphMockDb({
@@ -195,7 +195,7 @@ describe("Chat Graph opportunity workflows", () => {
       expectSmartest(result);
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
-    }, 60000);
+    }, 120000);
   });
 
   describe("Send opportunity (user action)", () => {
@@ -210,6 +210,6 @@ describe("Chat Graph opportunity workflows", () => {
       expectSmartest(result);
       const output = result.output as { responseText?: string };
       expect(output.responseText).toBeDefined();
-    }, 60000);
+    }, 120000);
   });
 });

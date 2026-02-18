@@ -3,12 +3,7 @@ import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
-import { enrichOrCreate } from "../support/opportunity.enricher";
-import { OpportunityEvaluator } from "../agents/opportunity.evaluator";
-import type {
-  EvaluatorEntity,
-  EvaluatorInput,
-} from "../agents/opportunity.evaluator";
+import type { EvaluatorEntity } from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
 import type { Opportunity } from "../interfaces/database.interface";
 
@@ -119,6 +114,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Index UUID; optional when index-scoped."),
+      intentId: z
+        .string()
+        .optional()
+        .describe("Discovery mode: optional intent to use as source and for triggeredBy (e.g. from queue)."),
       partyUserIds: z
         .array(z.string())
         .optional()
@@ -148,7 +147,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               .optional(),
             indexId: z
               .string()
-              .describe("Shared index this entity's data comes from"),
+              .describe("Shared index this entity's data comes from (required for intro mode)"),
           }),
         )
         .optional()
@@ -177,7 +176,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId =
         (context.indexId || query.indexId?.trim()) ?? undefined;
 
-      // ── Introduction mode ──
+      // ── Introduction mode ── (validation and persistence via opportunity graph)
       if (query.partyUserIds && query.partyUserIds.length >= 2) {
         if (!query.entities || query.entities.length === 0) {
           return error(
@@ -195,36 +194,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        // Strict scope enforcement: when chat is index-scoped, primaryIndexId must match
-        if (context.indexId && primaryIndexId !== context.indexId) {
-          return error(
-            `This chat is scoped to ${context.indexName ?? "this index"}. You can only introduce members of this community.`,
-          );
-        }
-
-        // Verify introducer (caller) is a member of the primary index
-        const introducerIsMember = await systemDb.isIndexMember(
-          primaryIndexId,
-          context.userId,
+        const introducedPartyUserIds = query.partyUserIds.filter(
+          (uid) => uid !== context.userId,
         );
-        if (!introducerIsMember) {
+        if (introducedPartyUserIds.length === 0) {
           return error(
-            "One or more users are not members of the specified community. You can only introduce members who share an index.",
+            "No counterpart to introduce. Provide at least one other user ID in partyUserIds (besides yourself).",
           );
         }
 
-        // Verify all party users are members of the primary index
-        for (const userId of query.partyUserIds) {
-          if (userId === context.userId) continue; // Skip self (we know we're a member)
-          const isMember = await systemDb.isIndexMember(primaryIndexId, userId);
-          if (!isMember) {
-            return error(
-              "One or more users are not members of the specified community. You can only introduce members who share an index.",
-            );
-          }
-        }
-
-        // Map entities to evaluator format
         const evaluatorEntities: EvaluatorEntity[] = query.entities.map(
           (e) => ({
             userId: e.userId,
@@ -234,151 +212,29 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           }),
         );
 
-        // Check for existing opportunity
-        const partyUserIds = query.partyUserIds;
-        const introducedPartyUserIds = partyUserIds.filter(
-          (uid) => uid !== context.userId,
-        );
-        if (introducedPartyUserIds.length === 0) {
+        const result = await graphs.opportunity.invoke({
+          operationMode: "create_introduction",
+          userId: context.userId,
+          indexId: primaryIndexId,
+          introductionEntities: evaluatorEntities,
+          introductionHint: query.hint,
+          requiredIndexId: context.indexId ?? undefined,
+        });
+
+        if (result.error || !result.opportunities?.length) {
           return error(
-            "No counterpart to introduce. Provide at least one other user ID in partyUserIds (besides yourself).",
+            result.error ?? "Failed to create introduction.",
           );
         }
-        // Use systemDb for cross-user opportunity checks
-        const exists = await systemDb.opportunityExistsBetweenActors(
-          partyUserIds,
-          primaryIndexId,
-        );
-        if (exists) {
-          return error("An opportunity already exists between these people.");
-        }
 
-        // Run evaluator
-        const evaluator = new OpportunityEvaluator();
-        // Use userDb for own user data
+        const created = result.opportunities[0];
+        const reasoning =
+          created.interpretation?.reasoning ?? "A suggested connection.";
+        const confidence =
+          typeof created.interpretation?.confidence === "number"
+            ? created.interpretation.confidence
+            : parseFloat(String(created.confidence ?? 0)) || 0;
         const introducerUser = await userDb.getUser();
-        const evalInput: EvaluatorInput = {
-          discovererId: context.userId,
-          entities: evaluatorEntities,
-          introductionMode: true,
-          introducerName: introducerUser?.name ?? undefined,
-          introductionHint: query.hint ?? undefined,
-        };
-
-        let reasoning: string;
-        let score: number;
-        let evaluatedActors: Array<{
-          userId: string;
-          role: string;
-          intentId?: string;
-        }> = [];
-
-        try {
-          const evaluated = await evaluator.invokeEntityBundle(evalInput, {
-            minScore: 0,
-          });
-          if (evaluated.length > 0) {
-            const best = evaluated[0];
-            reasoning = best.reasoning;
-            score = best.score;
-            evaluatedActors = best.actors.map((a) => ({
-              userId: a.userId,
-              role: a.role,
-              ...(a.intentId != null ? { intentId: a.intentId } : {}),
-            }));
-          } else {
-            reasoning =
-              `${introducerUser?.name ?? "A member"} believes these people should connect.` +
-              (query.hint ? ` Context: ${query.hint}` : "");
-            score = 70;
-          }
-        } catch (evalErr) {
-          logger.warn("Evaluator failed, using fallback reasoning", {
-            error: evalErr,
-          });
-          reasoning =
-            `${introducerUser?.name ?? "A member"} believes these people should connect.` +
-            (query.hint ? ` Context: ${query.hint}` : "");
-          score = 70;
-        }
-
-        // Build actors array (reuse introducedPartyUserIds: party users excluding self)
-        const evaluatorHasAllParties = introducedPartyUserIds.every((uid) =>
-          evaluatedActors.some((a) => a.userId === uid),
-        );
-        const actors = evaluatorHasAllParties
-          ? [
-              ...evaluatedActors
-                .filter((a) => a.userId !== context.userId)
-                .map((a) => ({
-                  indexId: primaryIndexId,
-                  userId: a.userId,
-                  role: a.role as string,
-                  ...(a.intentId ? { intent: a.intentId } : {}),
-                })),
-              {
-                indexId: primaryIndexId,
-                userId: context.userId,
-                role: "introducer",
-              },
-            ]
-          : [
-              ...introducedPartyUserIds.map((uid) => ({
-                indexId: primaryIndexId,
-                userId: uid,
-                role: "party",
-              })),
-              {
-                indexId: primaryIndexId,
-                userId: context.userId,
-                role: "introducer",
-              },
-            ];
-
-        // Persist
-        const confidence = score / 100;
-        const data = {
-          detection: {
-            source: "manual" as const,
-            createdBy: context.userId,
-            createdByName: introducerUser?.name ?? undefined,
-            timestamp: new Date().toISOString(),
-          },
-          actors,
-          interpretation: {
-            category: "collaboration" as const,
-            reasoning,
-            confidence,
-            signals: [
-              {
-                type: "curator_judgment" as const,
-                weight: 1,
-                detail: `Introduction by ${introducerUser?.name ?? "a member"} via chat`,
-              },
-            ],
-          },
-          context: { indexId: primaryIndexId },
-          confidence: String(confidence),
-          status: "latent" as const,
-        };
-
-        // Note: enrichOrCreate still uses the legacy database param for now
-        const enrichment = await enrichOrCreate(database, embedder, data);
-        const toCreate = enrichment.data;
-        if (enrichment.enriched) {
-          toCreate.status = enrichment.resolvedStatus;
-        }
-        // Use systemDb for cross-user opportunity creation
-        const created = await systemDb.createOpportunity(toCreate);
-
-        if (enrichment.enriched && enrichment.expiredIds.length > 0) {
-          for (const id of enrichment.expiredIds) {
-            // Use systemDb for opportunity status updates
-            await systemDb.updateOpportunityStatus(id, "expired");
-          }
-        }
-
-        // Build a proper ```opportunity block so the frontend can render a card (same format as list/discovery)
         const firstPartyId = introducedPartyUserIds[0];
         const firstEntity = query.entities?.find((e) => e.userId === firstPartyId);
         const counterpartUser = firstPartyId
@@ -419,12 +275,23 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           found: true,
           count: 1,
           message: `Draft introduction created. IMPORTANT: Include the following \`\`\`opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n${block}`,
-          opportunities: [{ opportunityId: created.id, matchReason: reasoning, score: confidence, status: created.status ?? "latent" }],
+          opportunities: [
+            {
+              opportunityId: created.id,
+              matchReason: reasoning,
+              score: confidence,
+              status: created.status ?? "latent",
+            },
+          ],
         });
       }
 
       // ── Discovery mode ──
       const searchQuery = query.searchQuery?.trim() ?? "";
+
+      if (query.intentId != null && query.intentId !== "" && !UUID_REGEX.test(query.intentId.trim())) {
+        return error("Invalid intent ID format.");
+      }
 
       let indexScope: string[];
       if (effectiveIndexId) {
@@ -455,6 +322,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       }
 
+      const triggerIntentId = query.intentId?.trim() || undefined;
+      if (triggerIntentId != null && !UUID_REGEX.test(triggerIntentId)) {
+        return error("Invalid intent ID format.");
+      }
+
       const result = await runDiscoverFromQuery({
         opportunityGraph: graphs.opportunity as any, // eslint-disable-line @typescript-eslint/no-explicit-any
         database,
@@ -463,7 +335,19 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         indexScope,
         limit: 5,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
+        triggerIntentId,
       });
+
+      if (result.createIntentSuggested && result.suggestedIntentDescription) {
+        return success({
+          found: false,
+          count: 0,
+          createIntentSuggested: true,
+          suggestedIntentDescription: result.suggestedIntentDescription,
+          message:
+            "No matching opportunities for that search. Call create_intent with the suggested description, then create_opportunities again.",
+        });
+      }
 
       if (!result.found) {
         return success({

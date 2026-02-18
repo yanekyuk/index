@@ -109,6 +109,31 @@ export function deriveRolesFromStrategy(strategy: HydeStrategy): DerivedRoles {
 }
 
 /**
+ * Validates opportunity actors against the introducer rule:
+ * - If an opportunity has an introducer, it must have exactly two non-introducer actors.
+ * - If an opportunity has only two actors, neither may be the introducer.
+ *
+ * @param actors - Array of actors with at least a role (e.g. { role: string })
+ * @throws Error when the actor set is invalid
+ */
+export function validateOpportunityActors(actors: Array<{ role: string }>): void {
+  const introducerCount = actors.filter((a) => a.role === 'introducer').length;
+  const nonIntroducerCount = actors.filter((a) => a.role !== 'introducer').length;
+
+  if (actors.length === 2 && introducerCount > 0) {
+    throw new Error(
+      'An opportunity with only two actors cannot have an introducer.'
+    );
+  }
+
+  if (introducerCount > 0 && nonIntroducerCount !== 2) {
+    throw new Error(
+      'An opportunity with an introducer must have exactly two other actors.'
+    );
+  }
+}
+
+/**
  * Role-based visibility (Latent Opportunity Lifecycle).
  * A user can see an opportunity iff they are an actor and the rule below allows it.
  *

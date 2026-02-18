@@ -16,6 +16,7 @@ import {
   type HydeStrategy,
   HYDE_STRATEGY_TARGET_CORPUS,
 } from '../lib/protocol/agents/hyde.strategies';
+import type { ProfileEmbeddingSearchOptions } from '../lib/protocol/interfaces/embedder.interface';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (align with lib/protocol/interfaces/embedder.interface.ts)
@@ -41,6 +42,11 @@ export interface HydeCandidate {
   indexId: string;
   matchedStrategies?: HydeStrategy[];
 }
+
+/** Overfetch multiplier for profile-by-embedding search; indexMembers join yields multiple rows per user, so we fetch more then dedupe. */
+const OVERFETCH_MULTIPLIER = 10;
+/** Cap on overfetch rows to bound expensive queries. */
+const MAX_OVERFETCH_ROWS = 500;
 
 export interface VectorSearchResult<T> {
   item: T;
@@ -179,6 +185,26 @@ export class EmbedderAdapter {
     return this.mergeAndRankCandidates(flatResults, limit);
   }
 
+  async searchWithProfileEmbedding(
+    profileEmbedding: number[],
+    options: ProfileEmbeddingSearchOptions
+  ): Promise<HydeCandidate[]> {
+    const {
+      indexScope,
+      excludeUserId,
+      limitPerStrategy = 10,
+      limit = 20,
+      minScore = 0.5,
+    } = options;
+    const filter = { indexScope, excludeUserId };
+    const [profileResults, intentResults] = await Promise.all([
+      this.searchProfilesByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
+      this.searchIntentsByProfileEmbedding(profileEmbedding, filter, limitPerStrategy, minScore),
+    ]);
+    const flatResults = [...profileResults, ...intentResults];
+    return this.mergeAndRankCandidates(flatResults, limit);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Private: profile/intent search for HyDE
   // ─────────────────────────────────────────────────────────────────────────
@@ -190,6 +216,7 @@ export class EmbedderAdapter {
     minScore: number,
     strategy: HydeStrategy
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { hydeDocuments, indexMembers } = schema;
 
@@ -233,6 +260,7 @@ export class EmbedderAdapter {
     minScore: number,
     strategy: HydeStrategy
   ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { intents, intentIndexes } = schema;
 
@@ -263,6 +291,93 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: strategy,
+      indexId: r.indexId,
+    }));
+  }
+
+  private async searchProfilesByProfileEmbedding(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number
+  ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { userProfiles, indexMembers } = schema;
+    const conditions = [
+      inArray(indexMembers.indexId, filter.indexScope),
+      isNotNull(userProfiles.embedding),
+      sql`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
+    ];
+    // Overfetch then dedupe: indexMembers join returns multiple rows per user (user in N indexes → N rows).
+    const fetchLimit = Math.min(limit * OVERFETCH_MULTIPLIER, MAX_OVERFETCH_ROWS);
+    const results = await db
+      .select({
+        userId: userProfiles.userId,
+        similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`,
+        indexId: indexMembers.indexId,
+      })
+      .from(userProfiles)
+      .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+      .where(and(...conditions))
+      .orderBy(sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
+      .limit(fetchLimit);
+    const byUser = new Map<string, { userId: string; similarity: number; indexId: string }>();
+    for (const r of results) {
+      if (r.userId == null) continue;
+      const existing = byUser.get(r.userId);
+      if (!existing || r.similarity > existing.similarity) {
+        byUser.set(r.userId, { userId: r.userId, similarity: r.similarity, indexId: r.indexId });
+      }
+    }
+    return [...byUser.values()]
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit)
+      .map((r) => ({
+        type: 'profile' as const,
+        id: r.userId,
+        userId: r.userId,
+        score: r.similarity,
+        matchedVia: 'mirror' as HydeStrategy,
+        indexId: r.indexId,
+      }));
+  }
+
+  private async searchIntentsByProfileEmbedding(
+    embedding: number[],
+    filter: { indexScope: string[]; excludeUserId?: string },
+    limit: number,
+    minScore: number
+  ): Promise<HydeCandidate[]> {
+    if (filter.indexScope?.length === 0) return [];
+    const vectorStr = `[${embedding.join(',')}]`;
+    const { intents, intentIndexes } = schema;
+    const conditions = [
+      inArray(intentIndexes.indexId, filter.indexScope),
+      isNull(intents.archivedAt),
+      isNotNull(intents.embedding),
+      sql`1 - (${intents.embedding} <=> ${vectorStr}::vector) >= ${minScore}`,
+      ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
+    ];
+    const results = await db
+      .select({
+        id: intents.id,
+        userId: intents.userId,
+        similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
+        indexId: intentIndexes.indexId,
+      })
+      .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .where(and(...conditions))
+      .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
+      .limit(limit);
+    return results.map((r) => ({
+      type: 'intent' as const,
+      id: r.id,
+      userId: r.userId,
+      score: r.similarity,
+      matchedVia: 'mirror' as HydeStrategy,
       indexId: r.indexId,
     }));
   }

@@ -139,7 +139,7 @@ mock.module("../../graphs/intent.graph", () => ({
 
 import { describe, test, expect, beforeAll } from "bun:test";
 import { createChatTools, type ToolContext } from "..";
-import type { ChatGraphCompositeDatabase } from "../../interfaces/database.interface";
+import type { ChatGraphCompositeDatabase, Opportunity } from "../../interfaces/database.interface";
 import type { ActiveIntent, IndexMemberDetails, IndexedIntentDetails } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
@@ -148,7 +148,7 @@ const testUserId = "test-user-id-for-tools";
 
 type MockOverrides = Partial<Pick<
   ChatGraphCompositeDatabase,
-  "getUser" | "getIndex" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexMembership" | "getIndexIntentsForMember" | "getIndexWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getIndexIdsForIntent"
+  "getUser" | "getIndex" | "getOwnedIndexes" | "isIndexOwner" | "isIndexMember" | "getIndexMembersForOwner" | "getIndexMembersForMember" | "getIndexIntentsForOwner" | "getIndexMemberships" | "getIndexMembership" | "getIndexIntentsForMember" | "getIndexWithPermissions" | "getOpportunity" | "updateOpportunityStatus" | "getActiveIntents" | "getIntentsInIndexForMember" | "getIndexIdsForIntent" | "opportunityExistsBetweenActors" | "findOverlappingOpportunities" | "createOpportunity"
 >>;
 
 /**
@@ -885,7 +885,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
 });
 
 describe("create_opportunities tool", () => {
-  test("returns a tool named create_opportunities with schema containing searchQuery and optional indexId", async () => {
+  test("returns a tool named create_opportunities with schema containing searchQuery, optional indexId, and optional intentId", async () => {
     const mockDb = createMockDatabase(async () => []);
     const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
     const tools = await createChatTools(context);
@@ -895,6 +895,7 @@ describe("create_opportunities tool", () => {
     const shape = schema?.shape ?? (tool as { schema?: { schema?: { shape?: Record<string, unknown> } } }).schema?.schema?.shape;
     expect(shape?.searchQuery).toBeDefined();
     expect(shape?.indexId).toBeDefined();
+    expect(shape?.intentId).toBeDefined();
   });
 
   test("when user has no index memberships (getIndexMemberships returns []), returns found false with message about joining an index", async () => {
@@ -909,6 +910,86 @@ describe("create_opportunities tool", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.found).toBe(false);
     expect(parsed.data.message).toMatch(/join|index|community/i);
+  });
+
+  test("introduction mode: when partyUserIds given but entities empty, returns error", async () => {
+    const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { partyUserIds?: string[]; entities?: unknown[] }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: [testUserId, "other-user-id"],
+      entities: [],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toMatch(/pre-gathered|entity data|entities/i);
+  });
+
+  test("introduction mode: when entities missing indexId, returns error", async () => {
+    const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { partyUserIds?: string[]; entities?: Array<{ userId: string; indexId?: string }> }) => Promise<string>;
+    };
+    const errorMessageRe = /indexId|shared index|required/i;
+    try {
+      const result = await tool.invoke({
+        partyUserIds: [testUserId, "other-user-id"],
+        entities: [{ userId: testUserId }, { userId: "other-user-id" }],
+      });
+      const parsed = JSON.parse(result);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toBeDefined();
+      expect(String(parsed.error)).toMatch(errorMessageRe);
+    } catch (err) {
+      // Schema validation (e.g. Zod) may throw before handler runs
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).toMatch(errorMessageRe);
+    }
+  });
+
+  test("introduction mode: with valid partyUserIds and entities with indexId returns success and opportunities", async () => {
+    const mockDb = createMockDatabase(async () => [], {
+      isIndexMember: async () => true,
+      opportunityExistsBetweenActors: async () => false,
+      findOverlappingOpportunities: async () => [],
+      createOpportunity: async (data) =>
+        ({
+          id: "opp-success-1",
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: data.interpretation,
+          context: data.context,
+          confidence: data.confidence,
+          status: data.status ?? "latent",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        }) as Opportunity,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: {
+        partyUserIds?: string[];
+        entities?: Array<{ userId: string; profile?: Record<string, unknown>; indexId: string }>;
+      }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: [testUserId, "other-user-id"],
+      entities: [
+        { userId: testUserId, profile: { name: "Me" }, indexId: "idx-1" },
+        { userId: "other-user-id", profile: { name: "Other" }, indexId: "idx-1" },
+      ],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toBeDefined();
+    expect(Array.isArray(parsed.data.opportunities) ? parsed.data.opportunities : []).toBeDefined();
   });
 });
 

@@ -13,8 +13,8 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
-import { canUserSeeOpportunity } from '../lib/protocol/support/opportunity.utils';
-import { enrichOrCreate } from '../lib/protocol/support/opportunity.enricher';
+import { canUserSeeOpportunity, validateOpportunityActors } from '../lib/protocol/support/opportunity.utils';
+import { persistOpportunities } from '../lib/protocol/support/opportunity.persist';
 import type { OpportunityChatProvider, ChatChannel } from '../lib/protocol/interfaces/chat.interface';
 import { getChatProvider } from '../adapters/chat.adapter';
 import {
@@ -535,6 +535,13 @@ export class OpportunityService {
     }));
     actors.push({ indexId, userId: creatorId, role: 'introducer' });
 
+    try {
+      validateOpportunityActors(actors);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid opportunity actors';
+      return { error: message, status: 400 };
+    }
+
     const conf = data.confidence ?? 0.8;
     const opportunityData: CreateOpportunityData = {
       detection: {
@@ -555,19 +562,30 @@ export class OpportunityService {
     };
 
     const embedder = new EmbedderAdapter();
-    const enrichment = await enrichOrCreate(this.db, embedder, opportunityData);
-    const toCreate = enrichment.data;
-    if (enrichment.enriched) {
-      toCreate.status = enrichment.resolvedStatus;
-    }
-    const expireIds = enrichment.enriched ? enrichment.expiredIds : [];
-    const { created, expired } = await this.db.createOpportunityAndExpireIds(toCreate, expireIds);
+    try {
+      const { created, expired, errors } = await persistOpportunities({
+        database: this.db,
+        embedder,
+        items: [opportunityData],
+      });
 
-    this.events.emit('created', { opportunity: created });
-    for (const opp of expired) {
-      this.events.emit('expired', { opportunity: opp });
+      if (!created?.length) {
+        const message =
+          errors?.length ? (errors[0].error instanceof Error ? errors[0].error.message : String(errors[0].error)) : 'Failed to persist opportunity';
+        logger.warn('[OpportunityService] createManualOpportunity persistence failed', { errors, creatorId, indexId });
+        return { error: message, status: 500 };
+      }
+
+      this.events.emit('created', { opportunity: created[0] });
+      for (const opp of expired) {
+        this.events.emit('expired', { opportunity: opp });
+      }
+      return created[0];
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
+      logger.warn('[OpportunityService] createManualOpportunity persistence failed', { error: err, creatorId, indexId });
+      return { error: message, status: 500 };
     }
-    return created;
   }
 
   /**

@@ -274,6 +274,13 @@ describe('ChatDatabaseAdapter', () => {
     expect(assigned).toBe(true);
   });
 
+  it('should get index ids for intent', async () => {
+    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    expect(indexIds).toEqual([fixture.indexId]);
+    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    expect(empty).toEqual([]);
+  });
+
   it('should assign and unassign intent to index', async () => {
     const newIntentId = uuidv4();
     await db.insert(intents).values({
@@ -633,6 +640,13 @@ describe('IndexGraphDatabaseAdapter', () => {
 
   it('should report intent assigned to index', async () => {
     expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.indexId)).toBe(true);
+  });
+
+  it('should get index ids for intent', async () => {
+    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    expect(indexIds).toEqual([fixture.indexId]);
+    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    expect(empty).toEqual([]);
   });
 
   it('should assign and unassign intent to index', async () => {

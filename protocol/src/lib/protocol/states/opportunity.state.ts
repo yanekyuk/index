@@ -2,6 +2,7 @@ import { Annotation } from "@langchain/langgraph";
 import type { Id } from '../../../types/common.types';
 import type { OpportunityStatus, Opportunity } from '../interfaces/database.interface';
 import type { HydeStrategy } from '../interfaces/embedder.interface';
+import type { EvaluatorEntity } from '../agents/opportunity.evaluator';
 
 /**
  * Opportunity Graph State (Linear Multi-Step Workflow)
@@ -10,6 +11,14 @@ import type { HydeStrategy } from '../interfaces/embedder.interface';
  * 
  * Following the intent graph pattern with Annotation-based state management.
  */
+
+/** Asker's profile shape (embedding + optional identity/narrative/attributes). Used by sourceProfile annotation. */
+export interface SourceProfileData {
+  embedding: number[] | null;
+  identity?: { name?: string; bio?: string };
+  narrative?: { context?: string };
+  attributes?: { skills?: string[]; interests?: string[] };
+}
 
 /**
  * Indexed intent with hyde document (from prep node)
@@ -119,7 +128,13 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
   }),
-  
+
+  /** Optional intent to use as discovery source and for triggeredBy. When set, used for search text (if query empty) and persist. */
+  triggerIntentId: Annotation<Id<'intents'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   options: Annotation<OpportunityGraphOptions>({
     reducer: (curr, next) => next ?? curr,
     default: () => ({}),
@@ -128,6 +143,7 @@ export const OpportunityGraphState = Annotation.Root({
   /**
    * Operation mode controls graph flow:
    * - 'create': Existing discover pipeline (Prep → Scope → Discovery → Evaluation → Ranking → Persist)
+   * - 'create_introduction': Introduction path (validation → evaluation → persist) for chat-driven intros
    * - 'read': List opportunities filtered by userId and optionally indexId (fast path)
    * - 'update': Change opportunity status (accept, reject, etc.)
    * - 'delete': Expire/archive an opportunity
@@ -135,9 +151,33 @@ export const OpportunityGraphState = Annotation.Root({
    *
    * Defaults to 'create' for backward compatibility.
    */
-  operationMode: Annotation<'create' | 'read' | 'update' | 'delete' | 'send'>({
+  operationMode: Annotation<'create' | 'create_introduction' | 'read' | 'update' | 'delete' | 'send'>({
     reducer: (curr, next) => next ?? curr,
     default: () => 'create' as const,
+  }),
+
+  /** Introduction mode: pre-gathered entities (profiles + intents per party). */
+  introductionEntities: Annotation<EvaluatorEntity[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /** Introduction mode: optional hint from the introducer. */
+  introductionHint: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** When set (e.g. chat scope), indexId must match this. */
+  requiredIndexId: Annotation<Id<'indexes'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Set by intro_evaluation; used by persist to build manual detection and introducer actor. */
+  introductionContext: Annotation<{ createdByName?: string } | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
   }),
 
   /** Target opportunity ID for update/delete/send modes. */
@@ -171,7 +211,43 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
-  
+
+  /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */
+  discoverySource: Annotation<'intent' | 'profile'>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 'intent',
+  }),
+
+  /** Resolved intent ID used for this discovery run (when discoverySource is 'intent'). Set by intent-resolution. */
+  resolvedTriggerIntentId: Annotation<Id<'intents'> | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /** Asker's profile (from prep). Used for profile-as-source discovery and evaluation. */
+  sourceProfile: Annotation<SourceProfileData | null>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => null,
+  }),
+
+  /** Resolved intent is in at least one target index (path A vs C). */
+  resolvedIntentInIndex: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /** Create-intent signal: when true, tool should return createIntentSuggested so agent can auto-call create_intent. */
+  createIntentSuggested: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
+  /** Suggested description for create_intent when createIntentSuggested is true. */
+  suggestedIntentDescription: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
   /** HyDE embeddings per strategy (from discovery) */
   hydeEmbeddings: Annotation<Record<HydeStrategy, number[]>>({
     reducer: (curr, next) => next ?? curr,

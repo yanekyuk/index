@@ -221,5 +221,45 @@ describe("opportunity.discover", () => {
       expect(capturedInvokeArg.options).toBeDefined();
       expect((capturedInvokeArg.options as { initialStatus?: string }).initialStatus).toBe("latent");
     });
+
+    test("passes triggerIntentId to graph when provided", async () => {
+      let capturedInvokeArg: Record<string, unknown> = {};
+      const mockGraph = {
+        invoke: async (arg: Record<string, unknown>) => {
+          capturedInvokeArg = arg;
+          return { opportunities: [] };
+        },
+      };
+      await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as any,
+        database: mockDatabase,
+        userId: "u1",
+        query: "find a co-founder",
+        indexScope: ["idx1"],
+        triggerIntentId: "intent-123",
+      });
+      expect(capturedInvokeArg.triggerIntentId).toBe("intent-123");
+    });
+
+    test("returns createIntentSuggested and suggestedIntentDescription when graph returns create-intent signal", async () => {
+      const mockGraph = {
+        invoke: async () => ({
+          opportunities: [],
+          createIntentSuggested: true,
+          suggestedIntentDescription: "Looking for a technical co-founder",
+        }),
+      };
+      const result = await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as any,
+        database: mockDatabase,
+        userId: "u1",
+        query: "find a co-founder",
+        indexScope: ["idx1"],
+      });
+      expect(result.found).toBe(false);
+      expect(result.createIntentSuggested).toBe(true);
+      expect(result.suggestedIntentDescription).toBe("Looking for a technical co-founder");
+      expect(result.message).toBeDefined();
+    });
   });
 });

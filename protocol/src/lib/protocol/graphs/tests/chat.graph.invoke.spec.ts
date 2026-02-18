@@ -626,7 +626,7 @@ describe("Chat Graph invoke (Smartest)", () => {
           verification: {
             schema: chatGraphOutputSchema,
             criteria:
-              "The responseText must be helpful: either explain that the user needs to join a community/index and add intents before finding opportunities, or report no matches. It must NOT contain raw JSON or internal pipeline data.",
+              "The responseText must be helpful and guide the user toward finding opportunities. ACCEPT: (1) explaining that the user needs to join a community/index and add intents first, (2) explaining that they lack a profile or priorities and should set those up or add what they're looking for, (3) asking for more details about what they need (e.g. fundraising) so the system can match them, or (4) reporting no matches. It must NOT contain raw JSON or internal pipeline data.",
             llmVerify: true,
           },
         })

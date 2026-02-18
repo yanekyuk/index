@@ -158,7 +158,8 @@ export class IntentDatabaseAdapter {
             eq(schema.intents.userId, userId),
             isNull(schema.intents.archivedAt)
           )
-        );
+        )
+        .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
       console.error('IntentDatabaseAdapter.getActiveIntents error:', error);
@@ -690,7 +691,8 @@ export class ChatDatabaseAdapter {
             eq(schema.intents.userId, userId),
             isNull(schema.intents.archivedAt)
           )
-        );
+        )
+        .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
       console.error('ChatDatabaseAdapter.getActiveIntents error:', error);

@@ -80,6 +80,7 @@ function createMockGraph(deps?: {
         ])),
     getIndex: deps?.getIndex ?? (() => Promise.resolve({ id: 'idx-1', title: 'Test Index' })),
     getIndexMemberCount: deps?.getIndexMemberCount ?? (() => Promise.resolve(2)),
+    getIndexIdsForIntent: () => Promise.resolve(['idx-1']),
     getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
     isIndexMember: () => Promise.resolve(true),
     getOpportunity: () => Promise.resolve(null),
@@ -102,6 +103,7 @@ function createMockGraph(deps?: {
           indexId: 'idx-1',
         },
       ]),
+    searchWithProfileEmbedding: () => Promise.resolve([]),
   } as unknown as Embedder;
 
   const mockHydeGenerator = {
@@ -132,7 +134,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find a co-founder',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -143,24 +145,23 @@ describe('Opportunity Graph', () => {
       expect(searchSpy).not.toHaveBeenCalled();
     });
 
-    test('when user has no active intents, returns error and early exit', async () => {
+    test('when user has no active intents, continues to scope and discovery (no error about intents)', async () => {
       const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
       const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
-      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      const hydeSearchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find a co-founder',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain('intents');
+      expect(result.error).toBeUndefined();
       expect(result.opportunities).toEqual([]);
       expect(hydeSpy).not.toHaveBeenCalled();
-      expect(searchSpy).not.toHaveBeenCalled();
+      expect(hydeSearchSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -173,7 +174,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         indexId: 'idx-1' as Id<'indexes'>,
         options: {},
       } as OpportunityGraphInvokeInput);
@@ -189,7 +190,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput);
 
@@ -214,7 +215,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find a React developer',
+        searchQuery: 'co-founder',
         options: { limit: 5 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -240,7 +241,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -267,7 +268,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find co-founder',
+        searchQuery: 'co-founder',
         options: { minScore: 70 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -293,7 +294,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find partners',
+        searchQuery: 'co-founder',
         options: { limit: 1, minScore: 70 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -319,7 +320,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: { initialStatus: 'latent', minScore: 70 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -344,7 +345,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: { minScore: 70 },
       } as OpportunityGraphInvokeInput);
 
@@ -381,7 +382,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentee',
+        searchQuery: 'co-founder',
         options: { initialStatus: 'latent', minScore: 70 },
       } as OpportunityGraphInvokeInput);
 
@@ -422,7 +423,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: { initialStatus: 'latent', minScore: 70 },
       } as OpportunityGraphInvokeInput);
 
@@ -462,7 +463,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find collaborator',
+        searchQuery: 'co-founder',
         options: { initialStatus: 'latent', minScore: 70 },
       } as OpportunityGraphInvokeInput);
 
@@ -487,7 +488,7 @@ describe('Opportunity Graph', () => {
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find someone',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput);
 
@@ -496,22 +497,22 @@ describe('Opportunity Graph', () => {
       expect(createSpy).not.toHaveBeenCalled();
     });
 
-    test('when no active intents, full invoke does not call HyDE or search or createOpportunity', async () => {
+    test('when no active intents, full invoke does not call HyDE or createOpportunity (profile path may run)', async () => {
       const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
       const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
-      const searchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      const hydeSearchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
       const createSpy = spyOn(mockDb, 'createOpportunity');
 
       await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find someone',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput);
 
       expect(hydeSpy).not.toHaveBeenCalled();
-      expect(searchSpy).not.toHaveBeenCalled();
+      expect(hydeSearchSpy).not.toHaveBeenCalled();
       expect(createSpy).not.toHaveBeenCalled();
     });
   });
@@ -532,7 +533,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find a technical co-founder',
+        searchQuery: 'co-founder',
         options: { initialStatus: 'latent', limit: 5, minScore: 70 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -557,7 +558,7 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find unicorns',
+        searchQuery: 'co-founder',
         options: {},
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
@@ -582,12 +583,121 @@ describe('Opportunity Graph', () => {
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
-        searchQuery: 'Find mentor',
+        searchQuery: 'co-founder',
         options: { minScore: 80 },
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(result.candidates.length).toBeGreaterThanOrEqual(1);
       expect(result.opportunities).toEqual([]);
+    });
+  });
+
+  describe('create_introduction path', () => {
+    const introEntities = [
+      { userId: 'user-alice', profile: { name: 'Alice' }, indexId: 'idx-1' },
+      { userId: 'user-bob', profile: { name: 'Bob' }, indexId: 'idx-1' },
+    ];
+
+    test('with valid entities and hint returns one opportunity with manual detection and introducer actor', async () => {
+      const { compiledGraph, mockDb } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Alice and Bob should collaborate.',
+            score: 85,
+            actors: [
+              { userId: 'user-alice', role: 'peer' as const, intentId: null },
+              { userId: 'user-bob', role: 'peer' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+        introductionHint: 'both AI devs',
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeUndefined();
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].detection.source).toBe('manual');
+      expect(result.opportunities[0].detection.createdBy).toBe('user-source');
+      expect(result.opportunities[0].actors.some((a: OpportunityActor) => a.role === 'introducer' && a.userId === 'user-source')).toBe(true);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detection: expect.objectContaining({ source: 'manual', createdBy: 'user-source' }),
+          status: 'latent',
+        })
+      );
+    });
+
+    test('when requiredIndexId does not match indexId returns error', async () => {
+      const { compiledGraph } = createMockGraph();
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+        requiredIndexId: 'idx-other' as Id<'indexes'>,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('scoped');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+
+    test('when opportunityExistsBetweenActors returns true returns error', async () => {
+      const { compiledGraph, mockDb } = createMockGraph();
+      spyOn(mockDb, 'opportunityExistsBetweenActors').mockResolvedValue(true);
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('already exists');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+
+    test('when introducer is not index member returns error', async () => {
+      const { compiledGraph, mockDb } = createMockGraph();
+      spyOn(mockDb, 'isIndexMember').mockImplementation(async (indexId: string, userId: string) => {
+        if (userId === 'user-source') return false;
+        return true;
+      });
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('not members');
+      expect(result.opportunities?.length ?? 0).toBe(0);
+    });
+
+    test('when evaluator returns no results uses fallback and returns one opportunity', async () => {
+      const { compiledGraph } = createMockGraph({ evaluatorResult: [] });
+
+      const result = (await compiledGraph.invoke({
+        operationMode: 'create_introduction',
+        userId: 'user-source' as Id<'users'>,
+        indexId: 'idx-1' as Id<'indexes'>,
+        introductionEntities: introEntities,
+        introductionHint: 'both AI devs',
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities.length).toBe(1);
+      expect(result.error).toBeUndefined();
     });
   });
 });

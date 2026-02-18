@@ -104,6 +104,7 @@ describe('OpportunityQueue', () => {
           searchQuery: 'Build a SaaS',
           operationMode: 'create',
           indexId: 'idx1',
+          triggerIntentId: 'i1',
           options: { initialStatus: 'latent' },
         })
       );
