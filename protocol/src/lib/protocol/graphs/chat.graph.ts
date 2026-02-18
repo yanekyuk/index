@@ -182,8 +182,11 @@ export class ChatGraphFactory {
         currentIteration: state.iterationCount
       });
 
-      try {
-        // Create agent with current user context (async factory resolves user/index from DB)
+      const runLoop = async (): Promise<{
+        responseText: string;
+        messages: BaseMessage[];
+        iterationCount: number;
+      }> => {
         const indexId = state.indexId;
         const agent = await ChatAgent.create({
           userId: state.userId,
@@ -192,15 +195,28 @@ export class ChatGraphFactory {
           scraper,
           indexId,
         });
+        return await agent.streamRun(state.messages, config.writer);
+      };
 
-        // Run the agent loop with streaming narration via config.writer
-        const result = await agent.streamRun(state.messages, config.writer);
+      const isRetriableError = (err: unknown): boolean => {
+        const msg = err instanceof Error ? err.message : String(err);
+        const lower = msg.toLowerCase();
+        return (
+          lower === "internal server error" ||
+          lower.includes("internal server error") ||
+          lower.includes("500") ||
+          lower.includes("econnreset") ||
+          lower.includes("etimedout")
+        );
+      };
+
+      try {
+        const result = await runLoop();
         logger.debug("Agent streamRun result", {
           responseText: result.responseText,
           iterationCount: result.iterationCount,
           messageCount: result.messages.length,
         });
-
         logger.info("Agent loop complete", {
           userId: state.userId,
           iterations: result.iterationCount,
@@ -213,6 +229,38 @@ export class ChatGraphFactory {
           shouldContinue: false,
         };
       } catch (error) {
+        if (isRetriableError(error)) {
+          logger.warn("Agent loop failed with retriable error, retrying once", {
+            userId: state.userId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          try {
+            const result = await runLoop();
+            if (result) {
+              logger.info("Agent loop complete after retry", {
+                userId: state.userId,
+                iterations: result.iterationCount,
+              });
+              return {
+                messages: result.messages,
+                responseText: result.responseText,
+                iterationCount: result.iterationCount,
+                shouldContinue: false,
+              };
+            }
+          } catch (retryError) {
+            logger.error("Agent loop failed on retry", {
+              userId: state.userId,
+              error: retryError instanceof Error ? retryError.message : String(retryError)
+            });
+            return {
+              error: retryError instanceof Error ? retryError.message : "Agent loop failed",
+              responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
+              shouldContinue: false
+            };
+          }
+        }
+
         logger.error("Agent loop failed", {
           userId: state.userId,
           error: error instanceof Error ? error.message : String(error)

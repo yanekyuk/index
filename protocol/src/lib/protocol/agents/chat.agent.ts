@@ -308,9 +308,36 @@ export class ChatAgent {
 
         try {
           logger.info("Executing tool", { name: tc.name, args: tc.args });
-          const result = await tool.invoke(tc.args);
-          const resultStr =
+          let result = await tool.invoke(tc.args);
+          let resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
+
+          if (tc.name === "create_opportunities") {
+            let parsed: { success?: boolean; data?: { createIntentSuggested?: boolean; suggestedIntentDescription?: string } };
+            try {
+              parsed = JSON.parse(resultStr) as typeof parsed;
+            } catch {
+              parsed = {};
+            }
+            if (
+              parsed?.data?.createIntentSuggested &&
+              typeof parsed.data.suggestedIntentDescription === "string"
+            ) {
+              const createIntentTool = this.toolsByName.get("create_intent");
+              const createOpportunitiesTool = this.toolsByName.get("create_opportunities");
+              if (createIntentTool && createOpportunitiesTool) {
+                logger.info("Create-intent signal: auto-calling create_intent then create_opportunities");
+                await createIntentTool.invoke({
+                  description: parsed.data.suggestedIntentDescription,
+                  indexId: (tc.args as { indexId?: string }).indexId,
+                });
+                result = await createOpportunitiesTool.invoke(tc.args);
+                resultStr =
+                  typeof result === "string" ? result : JSON.stringify(result);
+              }
+            }
+          }
+
           logger.debug("Tool response", { name: tc.name, result: resultStr });
           logger.info("Tool completed", {
             name: tc.name,
@@ -516,9 +543,36 @@ export class ChatAgent {
 
           try {
             logger.info("Streaming: executing tool", { name: tc.name });
-            const result = await tool.invoke(tc.args);
-            const resultStr =
+            let result = await tool.invoke(tc.args);
+            let resultStr =
               typeof result === "string" ? result : JSON.stringify(result);
+
+            if (tc.name === "create_opportunities") {
+              let parsed: { success?: boolean; data?: { createIntentSuggested?: boolean; suggestedIntentDescription?: string } };
+              try {
+                parsed = JSON.parse(resultStr) as typeof parsed;
+              } catch {
+                parsed = {};
+              }
+              if (
+                parsed?.data?.createIntentSuggested &&
+                typeof parsed.data.suggestedIntentDescription === "string"
+              ) {
+                const createIntentTool = this.toolsByName.get("create_intent");
+                const createOpportunitiesTool = this.toolsByName.get("create_opportunities");
+                if (createIntentTool && createOpportunitiesTool) {
+                  logger.info("Streaming: create-intent signal, auto-calling create_intent then create_opportunities");
+                  await createIntentTool.invoke({
+                    description: parsed.data.suggestedIntentDescription,
+                    indexId: (tc.args as { indexId?: string }).indexId,
+                  });
+                  result = await createOpportunitiesTool.invoke(tc.args);
+                  resultStr =
+                    typeof result === "string" ? result : JSON.stringify(result);
+                }
+              }
+            }
+
             logger.info("Streaming: tool completed", {
               name: tc.name,
               resultLength: resultStr.length,
