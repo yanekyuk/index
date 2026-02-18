@@ -49,11 +49,12 @@ export default function FeedbackWidget() {
         body: JSON.stringify({
           feedback,
           sessionId: sessionId ?? undefined,
-          conversation: sessionId
-            ? messages
-                .slice(-50)
-                .map((m) => ({ role: m.role, content: m.content }))
-            : undefined,
+          conversation:
+            messages.length > 0
+              ? messages
+                  .slice(-50)
+                  .map((m) => ({ role: m.role, content: m.content }))
+              : undefined,
         }),
       });
 
@@ -103,7 +104,7 @@ export default function FeedbackWidget() {
 
           <div className="flex items-center justify-between mt-auto">
             <div className="flex items-center">
-              {sessionId && (
+              {messages.length > 0 && (
                 <span className="text-xs text-gray-400">
                   Includes conversation
                 </span>
