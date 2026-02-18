@@ -33,8 +33,7 @@ CREATE TABLE IF NOT EXISTS "eval_needs" (
   "messages" jsonb NOT NULL,
   "enabled" boolean DEFAULT true NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "eval_needs_need_id_unique" UNIQUE("need_id")
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS "eval_scenario_results" (
@@ -51,12 +50,23 @@ CREATE TABLE IF NOT EXISTS "eval_scenario_results" (
   "review_flag" text,
   "review_note" text,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "eval_scenario_results_run_scenario_unique" UNIQUE ("eval_run_id", "scenario_id")
+  "updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS "eval_runs_user_idx" ON "eval_runs" USING btree ("user_id");
 CREATE INDEX IF NOT EXISTS "eval_scenario_results_scenario_idx" ON "eval_scenario_results" USING btree ("eval_run_id", "scenario_id");
+
+DO $$ BEGIN
+  ALTER TABLE "eval_needs" ADD CONSTRAINT "eval_needs_need_id_unique" UNIQUE("need_id");
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "eval_scenario_results" ADD CONSTRAINT "eval_scenario_results_run_scenario_unique" UNIQUE ("eval_run_id", "scenario_id");
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 DO $$ BEGIN
   ALTER TABLE "eval_scenario_results" ADD CONSTRAINT "eval_scenario_results_eval_run_id_eval_runs_id_fk"
