@@ -111,15 +111,15 @@ export async function sendMessage(
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
 
-    const done = processLines(lines, state);
-    if (done) return done;
+    const result = processLines(lines, state);
+    if (result) return result;
   }
 
   // Flush remaining buffer: process every complete "data: " line so we don't miss the done event
   if (buffer) {
     const lines = buffer.split("\n");
-    const done = processLines(lines, state);
-    if (done) return done;
+    const flushed = processLines(lines, state);
+    if (flushed) return flushed;
   }
 
   return {
