@@ -936,7 +936,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
     // Empty state — no opportunities to show
     return (
-      <div className="px-6 lg:px-8 bg-[#FDFDFD] min-h-full">
+      <div className="px-6 lg:px-8 bg-white min-h-full">
         <ContentContainer className="text-left">
           <div className="mt-12 mb-6">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
@@ -1111,22 +1111,22 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               ))}
             </div>
           )}
-          <div className="mt-20 flex flex-col items-center text-center pb-12">
-            <Image
-              src="/collab.png"
-              alt="Connections illustration"
-              width={280}
-              height={245}
-              className="mb-8 opacity-80"
+          <div className="mt-0 flex flex-col items-center text-center pb-4">
+            <video
+              src="/loading.m4v"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="mb-8 w-[340px] h-[300px] object-contain"
             />
-            <h2 className="text-lg font-semibold text-gray-900 font-ibm-plex-mono mb-3">
-              No opportunities yet
+            <h2 className="text-lg font-bold text-gray-900 font-ibm-plex-mono mb-3">
+              It&apos;s quiet here, but your signal is in motion
             </h2>
-            <p className="text-sm text-[#3D3D3D] max-w-sm leading-relaxed">
-              Opportunities appear when your intents align with others in the
-              network. Create intents that describe what you&apos;re looking
-              for, and the system will surface meaningful connections when
-              there&apos;s a match.
+            <p className="text-sm font-normal text-[#3D3D3D] max-w-sm leading-relaxed font-ibm-plex-mono">
+              I&apos;m watching for the right people. While I look, you can add
+              more about what you&apos;re working on, connect your network, or
+              ask me to research someone specific.
             </p>
           </div>
         </ContentContainer>
