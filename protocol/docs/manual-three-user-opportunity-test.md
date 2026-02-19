@@ -12,17 +12,17 @@ This guide describes how to test the opportunity system **manually in the fronte
     - `bun run integration-worker` (processes queues), or
     - In-process: create intents via the CLI/API and run the opportunity-three-user script to simulate the pipeline
 - **Frontend** running (`bun run dev` in `frontend/`)
-- **Privy** configured with the app origin (e.g. `http://localhost:3000`) in [Privy Dashboard](https://dashboard.privy.io) → Configuration → Allowed origins
+- **Auth** configured with the app origin (e.g. `http://localhost:3000`) in your auth provider / Better Auth config
 
 ## Seed users (from `test-data.ts`)
 
 | Name              | Email              | Phone           | OTP (for login) |
 |-------------------|--------------------|-----------------|------------------|
-| Seren Sandikci    | test-1761@privy.io | +1 555 555 5724 | 888893           |
-| Seref Yarar       | test-9716@privy.io | +1 555 555 2920 | 670543           |
-| Yanki Ekin Yüksel | test-6285@privy.io | +1 555 555 1625 | 607027           |
+| Seren Sandikci    | test-1761@example.com | +1 555 555 5724 | 888893           |
+| Seref Yarar       | test-9716@example.com | +1 555 555 2920 | 670543           |
+| Yanki Ekin Yüksel | test-6285@example.com | +1 555 555 1625 | 607027           |
 
-These are Privy test accounts. Use **email + OTP** to log in on the frontend (enter email, request code, then enter the OTP from the table).
+Use **email + OTP** (or your auth flow) to log in on the frontend.
 
 ## One-time setup
 
@@ -52,7 +52,7 @@ These are Privy test accounts. Use **email + OTP** to log in on the frontend (en
 
 ### 1. Log in as User A (Seren Sandikci)
 
-- Email: `test-1761@privy.io`
+- Email: `test-1761@example.com`
 - When prompted, use OTP: **888893**
 - Go to **Library** → ensure you’re on **My Intents** (or create an intent if needed).
 - Create or use an intent in **Commons**:
@@ -66,14 +66,14 @@ These are Privy test accounts. Use **email + OTP** to log in on the frontend (en
 
 ### 3. Log out and log in as User B (Seref Yarar)
 
-- Log out (Privy logout in the app).
-- Log in with email: `test-9716@privy.io`, OTP: **670543**.
+- Log out in the app.
+- Log in with email: `test-9716@example.com`, OTP: **670543**.
 - Go to **Library** → **My Opportunities**.
 - Compare with User A: depending on the opportunity’s actors and status, User B may see **no** opportunities, **fewer**, or **the same** (e.g. if B is the other peer). This validates role-based visibility.
 
 ### 4. Log in as User C (Yanki Ekin Yüksel)
 
-- Log out, then log in with email: `test-6285@privy.io`, OTP: **607027**.
+- Log out, then log in with email: `test-6285@example.com`, OTP: **607027**.
 - Go to **Library** → **My Opportunities**.
 - Again compare counts and list with A and B to confirm different users see different sets per role/status.
 
@@ -86,8 +86,8 @@ These are Privy test accounts. Use **email + OTP** to log in on the frontend (en
 ## Troubleshooting
 
 - **No opportunities for any user**: Ensure intent was created in an index that has HyDE docs and that `intent-hyde` and `opportunity-discovery` jobs ran (check queues and worker logs).
-- **Privy “Origin not allowed”**: Add the frontend origin (e.g. `http://localhost:3000`) in Privy Dashboard → Allowed origins.
-- **OTP not accepted**: Use the OTP from the table; if Privy test mode differs, check Privy docs for test authentication.
+- **Auth origin**: Add the frontend origin (e.g. `http://localhost:3000`) in your auth config (e.g. Better Auth trustedOrigins).
+- **OTP not accepted**: Use the OTP from the table, or check your auth provider docs for test authentication.
 
 ## Reference
 

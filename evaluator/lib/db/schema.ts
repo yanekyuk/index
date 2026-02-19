@@ -21,7 +21,7 @@ export const evalRuns = pgTable(
   "eval_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").notNull(), // Privy user ID
+    userId: text("user_id").notNull(),
     name: text("name"),
     config: jsonb("config").$type<{ maxTurns?: number; timeoutMs?: number }>(),
     status: evalRunStatusEnum("status").notNull().default("draft"),

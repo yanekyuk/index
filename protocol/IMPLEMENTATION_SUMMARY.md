@@ -111,7 +111,7 @@ Successfully refactored the entire codebase to follow the proper three-layer arc
 **Methods**:
 - `setupDefaultPreferences(userId)` - Initialize default notification settings
 - `calculateOnboardingState(current, update)` - Pure function to merge onboarding state
-- `getPrivyUser(privyId)` - Fetch user from Privy
+- (Auth: session/user resolved via Better Auth)
 
 ### 2. Updated Controller Templates
 

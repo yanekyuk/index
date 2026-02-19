@@ -354,8 +354,7 @@ describe("ChatController Integration", () => {
     // Create test data
     const [user] = await db.insert(schema.users).values({
       email: "test@example.com",
-      name: "Test User",
-      privyId: `privy:test:${Date.now()}`
+      name: "Test User"
     }).returning();
 
     testUserId = user.id;

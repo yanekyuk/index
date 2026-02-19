@@ -3,7 +3,15 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import db from "./drizzle/drizzle";
 import * as schema from "../schemas/database.schema";
 
+// Use BETTER_AUTH_URL only when it's not localhost; otherwise infer from request.
+// Fixes prod when env was copied from dev (localhost) - request host will be correct.
+const authBaseUrl =
+  process.env.PROTOCOL_URL?.includes("localhost")
+    ? undefined
+    : process.env.PROTOCOL_URL;
+
 export const auth = betterAuth({
+  baseURL: authBaseUrl,
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: {
@@ -33,12 +41,11 @@ export const auth = betterAuth({
   },
   trustedOrigins: [
     process.env.FRONTEND_URL || "http://localhost:3000",
+    process.env.EVALUATOR_URL || "http://localhost:3002",
   ],
   advanced: {
     defaultCookieAttributes: {
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      ...(process.env.NODE_ENV !== "production" ? { allowLocalhostUnsecure: true } : {}),
     },
   },
 });

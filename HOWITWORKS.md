@@ -526,7 +526,7 @@ The Opportunity Graph orchestrates the discovery process:
 
 The protocol exposes a comprehensive REST API via a Bun.serve server on port 3001. The server uses decorator-based routing with `@Controller`, `@Get`, `@Post` annotations.
 
-**Authentication**: All endpoints require Bearer token authentication (Privy JWT):
+**Authentication**: All endpoints require Bearer token or session authentication:
 ```typescript
 Authorization: Bearer YOUR_API_TOKEN
 ```

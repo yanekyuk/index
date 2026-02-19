@@ -1,4 +1,5 @@
 import { getPostBySlug, getAllPostSlugs } from '@/lib/blog';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
@@ -21,7 +22,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     return { title: 'Post Not Found | Index Network' };
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://index.network';
+  const h = await headers();
+  const host = h.get('host');
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  const baseUrl = host ? `${proto}://${host}` : 'https://index.network';
   const imageUrl = post.image ? `${baseUrl}${post.image}` : undefined;
 
   return {

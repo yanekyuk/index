@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { X } from 'lucide-react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -18,8 +20,19 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socialProviders, setSocialProviders] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE}/auth/providers`)
+      .then((r) => r.json())
+      .then((data: { providers?: string[] }) => setSocialProviders(data.providers ?? []))
+      .catch(() => setSocialProviders([]));
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const hasSocialProviders = socialProviders.length > 0;
 
   const resetForm = () => {
     setEmail('');
@@ -72,7 +85,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setLoading(true);
     setError(null);
     try {
-      await authClient.signIn.social({ provider: 'google' });
+      await authClient.signIn.social({
+        provider: 'google',
+        callbackURL: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign in failed');
       setLoading(false);
@@ -99,28 +115,32 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           </h2>
         </div>
 
-        <button
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-            <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-          </svg>
-          Continue with Google
-        </button>
+        {hasSocialProviders && socialProviders.includes('google') && (
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+              <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+            </svg>
+            Continue with Google
+          </button>
+        )}
 
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200" />
+        {hasSocialProviders && (
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-gray-400 tracking-wider">or</span>
+            </div>
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-gray-400 tracking-wider">or</span>
-          </div>
-        </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'sign-up' && (
@@ -129,7 +149,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               placeholder="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 text-sm focus:outline-none focus:border-gray-900 transition-colors"
+              className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
             />
           )}
           <input
@@ -138,7 +158,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full px-4 py-3 border border-gray-300 text-sm focus:outline-none focus:border-gray-900 transition-colors"
+            className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
           />
           <input
             type="password"
@@ -147,7 +167,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="w-full px-4 py-3 border border-gray-300 text-sm focus:outline-none focus:border-gray-900 transition-colors"
+            className="w-full px-4 py-3 border border-gray-300 text-sm text-black focus:outline-none focus:border-gray-900 transition-colors"
           />
 
           {error && (

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
 import {
   Loader2,
   Plus,
@@ -140,7 +139,6 @@ function NeedForm({
 }
 
 function TestCasesContent() {
-  const { getAccessToken } = usePrivy();
   const [needs, setNeeds] = useState<NeedRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -151,19 +149,12 @@ function TestCasesContent() {
   const [seeding, setSeeding] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const authHeaders = useCallback(async () => {
-    const token = await getAccessToken();
-    return token
-      ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-      : null;
-  }, [getAccessToken]);
-
   const fetchNeeds = useCallback(async () => {
     setLoading(true);
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
-      const res = await fetch("/api/eval/needs", { headers });
+      const res = await fetch("/api/eval/needs", {
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setNeeds(data.needs || []);
@@ -173,7 +164,7 @@ function TestCasesContent() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, []);
 
   useEffect(() => {
     fetchNeeds();
@@ -182,9 +173,11 @@ function TestCasesContent() {
   const seedDefaults = async () => {
     setSeeding(true);
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
-      const res = await fetch("/api/eval/needs/seed", { method: "POST", headers });
+      const res = await fetch("/api/eval/needs/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
       if (res.ok) {
         await fetchNeeds();
       } else {
@@ -198,13 +191,12 @@ function TestCasesContent() {
   };
 
   const toggleEnabled = async (need: NeedRecord) => {
-    const headers = await authHeaders();
-    if (!headers) return;
     const newVal = !need.enabled;
     setNeeds((prev) => prev.map((n) => (n.id === need.id ? { ...n, enabled: newVal } : n)));
     await fetch(`/api/eval/needs/${need.id}`, {
       method: "PATCH",
-      headers,
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ enabled: newVal }),
     });
   };
@@ -213,11 +205,10 @@ function TestCasesContent() {
     if (!editDraft) return;
     setSaving(true);
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
       const res = await fetch(`/api/eval/needs/${editDraft.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           category: editDraft.category,
           question: editDraft.question,
@@ -247,11 +238,10 @@ function TestCasesContent() {
     }
     setSaving(true);
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
       const res = await fetch("/api/eval/needs", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(newDraft),
       });
       if (res.ok) {
@@ -271,9 +261,10 @@ function TestCasesContent() {
 
   const deleteNeed = async (id: string) => {
     if (!confirm("Delete this test case?")) return;
-    const headers = await authHeaders();
-    if (!headers) return;
-    const res = await fetch(`/api/eval/needs/${id}`, { method: "DELETE", headers });
+    const res = await fetch(`/api/eval/needs/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
     if (res.ok) {
       setNeeds((prev) => prev.filter((n) => n.id !== id));
       if (expandedId === id) {

@@ -15,7 +15,7 @@ async function runTests() {
     }
 
     console.log("1️⃣  Test: Live Search (Casey Harper)");
-    const objective = 'Casey Harper, "test-6285@privy.io"';
+    const objective = 'Casey Harper, "test-6285@example.com"';
 
     try {
         console.log(`Searching for: ${objective}...`);

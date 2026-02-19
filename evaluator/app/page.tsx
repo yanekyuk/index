@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import { Play, Loader2, History } from "lucide-react";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
@@ -16,7 +15,6 @@ interface RunSummary {
 }
 
 export default function EvaluatorPage() {
-  const { getAccessToken } = usePrivy();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -25,10 +23,8 @@ export default function EvaluatorPage() {
   const loadRuns = useCallback(async (autoRedirect = false) => {
     setLoadingRuns(true);
     try {
-      const token = await getAccessToken();
-      if (!token) return;
       const res = await fetch("/api/eval/runs", {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -42,7 +38,7 @@ export default function EvaluatorPage() {
     } finally {
       setLoadingRuns(false);
     }
-  }, [getAccessToken, router]);
+  }, [router]);
 
   useEffect(() => {
     loadRuns(true);
@@ -51,17 +47,10 @@ export default function EvaluatorPage() {
   const startNewRun = async () => {
     setCreating(true);
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        alert("Please log in");
-        return;
-      }
       const res = await fetch("/api/eval/runs", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

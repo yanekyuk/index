@@ -13,13 +13,13 @@ For local development, use the protocol server base URL (e.g. `http://localhost:
 
 ## Authentication
 
-All endpoints require authentication using Privy access tokens. Include the token in the `Authorization` header:
+All endpoints require authentication using a session cookie or Bearer token. Include the token in the `Authorization` header:
 
 ```bash
 Authorization: Bearer <session_token>
 ```
 
-**Note**: Users are automatically created in the Index system on first authentication. There is no separate "create member" endpoint - authentication via Privy creates the user account automatically.
+**Note**: Users are automatically created in the Index system on first authentication. There is no separate "create member" endpoint - authentication creates the user account automatically.
 
 ---
 
@@ -318,7 +318,7 @@ Here's a complete example of using all endpoints together:
 
 ```bash
 # 1. Authenticate (user is automatically created)
-# Get Privy access token from your frontend/auth flow
+# Get session token from your frontend/auth flow
 
 # 2. Join a public index
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/join \
@@ -357,7 +357,7 @@ curl -X POST https://index.network/api/discover/filter \
 ## Additional Notes
 
 ### User Creation
-Users are automatically created when they authenticate for the first time. The authentication middleware (`authenticatePrivy`) handles user creation using Privy user data. No separate user creation endpoint is needed.
+Users are automatically created when they authenticate for the first time. The authentication guard validates the session and ensures the user exists in the DB. No separate user creation endpoint is needed.
 
 ### Index Creation
 To create a new index:

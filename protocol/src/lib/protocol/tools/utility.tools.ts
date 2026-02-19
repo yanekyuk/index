@@ -51,7 +51,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
       const sections: Record<string, string> = {
         entities: `## Entity Model
 
-- **Users**: People on the platform. Authenticated via Privy (email, social, wallet).
+- **Users**: People on the platform. Authenticated via session (Better Auth).
 - **Profiles**: A user's identity — bio, skills, interests, location, social links. Generated from account data or social URLs. Has a vector embedding for semantic search.
 - **Indexes**: Communities or groups. Each has a title, optional prompt (purpose description), and a join policy (anyone or invite_only). Users join indexes as members; the creator is the owner.
 - **Index Members**: Junction between Users and Indexes. Tracks permissions, join date, auto-assign setting, and optional member prompt.

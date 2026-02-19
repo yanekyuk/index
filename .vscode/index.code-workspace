@@ -39,5 +39,67 @@
             "index": "public",
             "smartest": "test",
         }
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Index",
+                "type": "shell",
+                "command": "/bin/zsh",
+                "isBackground": true,
+                "options": { "cwd": "${workspaceFolder:Index}" },
+                "runOptions": { "runOn": "folderOpen" },
+                "presentation": {
+                    "echo": false,
+                    "reveal": "always",
+                    "panel": "dedicated"
+                }
+            },
+            {
+                "label": "Frontend",
+                "type": "shell",
+                "command": "/bin/zsh",
+                "isBackground": true,
+                "options": { "cwd": "${workspaceFolder:Frontend}" },
+                "runOptions": { "runOn": "folderOpen" },
+                "presentation": {
+                    "echo": false,
+                    "reveal": "always",
+                    "panel": "dedicated"
+                }
+            },
+            {
+                "label": "Protocol",
+                "type": "shell",
+                "command": "/bin/zsh",
+                "isBackground": true,
+                "options": { "cwd": "${workspaceFolder:Protocol}" },
+                "runOptions": { "runOn": "folderOpen" },
+                "presentation": {
+                    "echo": false,
+                    "reveal": "always",
+                    "panel": "dedicated"
+                }
+            },
+            {
+                "label": "Evaluator",
+                "type": "shell",
+                "command": "/bin/zsh",
+                "isBackground": true,
+                "options": { "cwd": "${workspaceFolder:Evaluator}" },
+                "runOptions": { "runOn": "folderOpen" },
+                "presentation": {
+                    "echo": false,
+                    "reveal": "always",
+                    "panel": "dedicated"
+                }
+            },
+            {
+                "label": "Open workspace terminals",
+                "dependsOn": ["Index", "Frontend", "Protocol", "Evaluator"],
+                "runOptions": { "runOn": "folderOpen" }
+            }
+        ]
     }
 }
