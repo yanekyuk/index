@@ -39,6 +39,18 @@ function shouldAutoGenerateProfile(user: {
 @Controller('/auth')
 export class AuthController {
   /**
+   * Returns the list of configured social auth providers (public, no auth required).
+   */
+  @Get('/providers')
+  async providers() {
+    const providers: string[] = [];
+    if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+      providers.push('google');
+    }
+    return Response.json({ providers });
+  }
+
+  /**
    * Returns the current authenticated user.
    * Response shape: { user: User } for frontend APIResponse compatibility.
    */
