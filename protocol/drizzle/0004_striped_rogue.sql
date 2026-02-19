@@ -1,1 +1,0 @@
-ALTER TABLE "index_links" ADD COLUMN "last_content_hash" text;

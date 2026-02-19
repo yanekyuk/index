@@ -1,1 +1,0 @@
-ALTER TABLE "integrations" DROP COLUMN "enable_user_attribution";

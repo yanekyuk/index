@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { usePrivy } from '@privy-io/react-auth';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useEffect, useState, useRef } from 'react';
 
 interface HeaderProps {
@@ -15,7 +15,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { login, authenticated, ready } = usePrivy();
+  const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const [isAlpha, setIsAlpha] = useState(false);
 
   const alphaParam = searchParams.get('alpha');
@@ -34,17 +34,17 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
 
   const handleLogin = () => {
     loginInitiatedRef.current = true;
-    login();
+    openLoginModal();
   };
 
   useEffect(() => {
-    if (authenticated && loginInitiatedRef.current) {
+    if (isAuthenticated && loginInitiatedRef.current) {
       loginInitiatedRef.current = false;
       router.push('/');
     }
-  }, [authenticated, router]);
+  }, [isAuthenticated, router]);
 
-  if (!ready) {
+  if (!isReady) {
     return (
       <header className="w-full py-4 px-4 flex justify-between items-center">
         <Link href="/">
@@ -74,7 +74,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
       </Link>
 
       {showHeaderButtons && (
-        authenticated ? (
+        isAuthenticated ? (
           <div className="flex items-center gap-12">
             <Link
               href="/blog"
@@ -138,7 +138,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
             </Link>
             <button
               onClick={() => {
-                if ((pathname === '/' && !authenticated) || pathname?.startsWith('/blog')) {
+                if ((pathname === '/' && !isAuthenticated) || pathname?.startsWith('/blog')) {
                   window.dispatchEvent(new CustomEvent('openWaitlistModal'));
                 } else {
                   window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank");

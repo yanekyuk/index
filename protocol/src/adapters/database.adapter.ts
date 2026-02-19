@@ -2879,7 +2879,6 @@ interface UserWithGraph {
   id: string;
   email: string | null;
   name: string | null;
-  privyId: string;
   intro: string | null;
   location: string | null;
   socials: unknown;
@@ -2961,18 +2960,7 @@ export class UserDatabaseAdapter {
   }
 
   /**
-   * Find user by Privy ID
-   */
-  async findByPrivyId(privyId: string): Promise<typeof users.$inferSelect | null> {
-    const result = await db.select()
-      .from(users)
-      .where(eq(users.privyId, privyId))
-      .limit(1);
-    return result[0] ?? null;
-  }
-
-  /**
-   * Find user by email (for test setup/teardown).
+   * Find user by email.
    */
   async findByEmail(email: string): Promise<typeof users.$inferSelect | null> {
     const result = await db.select()
@@ -2983,12 +2971,11 @@ export class UserDatabaseAdapter {
   }
 
   /**
-   * Create a user (for test setup).
+   * Create a domain user.
    */
   async create(data: {
     email: string;
     name?: string;
-    privyId: string;
     intro?: string;
     location?: string;
     socials?: Record<string, string>;
@@ -2997,7 +2984,6 @@ export class UserDatabaseAdapter {
       .values({
         email: data.email,
         name: data.name ?? data.email.split('@')[0],
-        privyId: data.privyId,
         intro: data.intro ?? null,
         location: data.location ?? null,
         socials: data.socials ?? null,

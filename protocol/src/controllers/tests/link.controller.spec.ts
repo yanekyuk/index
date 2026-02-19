@@ -26,7 +26,6 @@ describe("LinkController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Link User",
-      privyId: `privy:link:${Date.now()}`,
     });
     testUserId = user.id;
   });
@@ -41,7 +40,6 @@ describe("LinkController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:link:${Date.now()}`,
     email: testEmail,
     name: "Test Link User",
   });

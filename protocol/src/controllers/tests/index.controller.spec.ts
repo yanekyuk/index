@@ -23,7 +23,6 @@ describe("IndexController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Index User",
-      privyId: `privy:index:${Date.now()}`,
       intro: "Test",
       location: "City",
     });
@@ -37,7 +36,6 @@ describe("IndexController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:index:${Date.now()}`,
     email: testEmail,
     name: "Test Index User",
   });

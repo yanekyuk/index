@@ -9,7 +9,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
-import { usePrivy } from '@privy-io/react-auth';
+import { authClient } from '@/lib/auth-client';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
@@ -35,7 +35,6 @@ export default function Sidebar() {
   const { client, isReady, requestBrowserNotifications } = useStreamChat();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
-  const { getAccessToken, logout } = usePrivy();
   const indexesService = useIndexes();
   const opportunitiesService = useOpportunities();
   const { indexes, addIndex } = useIndexesState();
@@ -122,18 +121,17 @@ export default function Sidebar() {
     }
   };
 
-  // Fetch AI chat sessions
+  // Fetch AI chat sessions (cookie-based auth; credentials sent automatically)
   useEffect(() => {
+    if (!user?.id) return;
+
     const isInitialLoad = sessionsVersion === 0;
     const fetchSessions = async () => {
       try {
-        // Only show loading on initial load, not on refetches
         if (isInitialLoad) setLoadingSessions(true);
-        const token = await getAccessToken();
-        if (!token) return;
-        
+
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat/sessions`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         });
         if (!res.ok) throw new Error('Failed to fetch sessions');
         const data = await res.json() as { sessions: ChatSession[] };
@@ -146,7 +144,7 @@ export default function Sidebar() {
     };
 
     fetchSessions();
-  }, [sessionsVersion, getAccessToken]);
+  }, [sessionsVersion, user?.id]);
 
 
   // Track unread message count
@@ -397,7 +395,7 @@ export default function Sidebar() {
                   className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors text-sm"
                   onClick={() => {
                     setUserDropdownOpen(false);
-                    logout();
+                    authClient.signOut();
                   }}
                 >
                   <LogIn className="h-4 w-4 mr-2" />

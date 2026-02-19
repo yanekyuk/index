@@ -46,8 +46,8 @@ beforeAll(async () => {
   const profileEmbeddingIntentId = uuidv4();
 
   await db.insert(users).values([
-    { id: userAId, privyId: TEST_PREFIX + 'a', email: TEST_PREFIX + 'a@t.com', name: 'User A' },
-    { id: userBId, privyId: TEST_PREFIX + 'b', email: TEST_PREFIX + 'b@t.com', name: 'User B' },
+    { id: userAId, email: TEST_PREFIX + 'a@t.com', name: 'User A' },
+    { id: userBId, email: TEST_PREFIX + 'b@t.com', name: 'User B' },
   ]);
   await db.insert(userProfiles).values({
     userId: userAId,

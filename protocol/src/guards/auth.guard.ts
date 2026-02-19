@@ -1,49 +1,29 @@
-
-import { privyClient } from '../lib/privy';
-import { authService } from '../services/auth.service';
+import { auth } from '../lib/auth';
 
 export interface AuthenticatedUser {
   id: string;
-  privyId: string;
   email: string | null;
   name: string;
 }
 
 /**
- * AuthGuard: Validates the Request Authorization header against Privy.
- * Auto-creates user on first login via AuthService.
- * Throws an error if validation fails.
- * Returns the authenticated user object.
+ * AuthGuard: Validates the request against Better Auth session.
+ * session.user.id IS the domain user ID (unified table).
  */
 export const AuthGuard = async (req: Request): Promise<AuthenticatedUser> => {
-  const authHeader = req.headers.get('Authorization');
-  const accessToken = authHeader && authHeader.split(' ')[1];
+  const session = await auth.api.getSession({ headers: req.headers });
 
-  if (!accessToken) {
-    throw new Error('Access token required');
-  }
-
-  let claims;
-  try {
-    claims = await privyClient.verifyAuthToken(accessToken);
-  } catch (error) {
+  if (!session || !session.user) {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Access token required');
+    }
     throw new Error('Invalid or expired access token');
   }
 
-  if (!claims || !claims.userId) {
-    throw new Error('Invalid access token claims');
-  }
-
-  const user = await authService.findOrCreateByPrivyId(claims.userId);
-
-  if (user.deletedAt) {
-    throw new Error('Account deactivated');
-  }
-
   return {
-    id: user.id,
-    privyId: user.privyId,
-    email: user.email,
-    name: user.name
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
   };
 };

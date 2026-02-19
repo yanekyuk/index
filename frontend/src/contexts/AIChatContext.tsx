@@ -8,7 +8,6 @@ import React, {
   useRef,
 } from "react";
 import { usePathname } from "next/navigation";
-import { usePrivy } from "@privy-io/react-auth";
 import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import type { Suggestion } from "@/hooks/useSuggestions";
 
@@ -95,7 +94,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { getAccessToken } = usePrivy();
   const { refetchSessions } = useAIChatSessions();
   const abortControllerRef = useRef<AbortController | null>(null);
   /** When true, sendMessage will only refetch sessions on X-Session-Id and not set sessionId (used when user navigated away during stream). */
@@ -103,9 +101,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback(
     async (message: string, fileIds?: string[], attachmentNames?: string[]) => {
-      const token = await getAccessToken();
-      if (!token) return;
-
       const displayContent =
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
@@ -150,11 +145,11 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
             body: JSON.stringify(bodyPayload),
             signal: abortControllerRef.current.signal,
+            credentials: "include",
           },
         );
 
@@ -300,7 +295,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     },
-    [getAccessToken, sessionId, scopeIndexId, refetchSessions],
+    [sessionId, scopeIndexId, refetchSessions],
   );
 
   const clearChat = useCallback((options?: { abortStream?: boolean }) => {
@@ -319,60 +314,52 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loadSession = useCallback(
-    async (id: string) => {
-      const token = await getAccessToken();
-      if (!token) return;
-
-      try {
-        const base = process.env.NEXT_PUBLIC_API_URL || "";
-        const res = await fetch(`${base}/chat/session`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ sessionId: id }),
-        });
-        if (!res.ok) throw new Error("Failed to load session");
-        const data = (await res.json()) as {
-          session: {
-            id: string;
-            title?: string | null;
-            indexId?: string | null;
-          };
-          messages: Array<{
-            id: string;
-            role: string;
-            content: string;
-            createdAt: string;
-          }>;
+  const loadSession = useCallback(async (id: string) => {
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || "";
+      const res = await fetch(`${base}/chat/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ sessionId: id }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load session");
+      const data = (await res.json()) as {
+        session: {
+          id: string;
+          title?: string | null;
+          indexId?: string | null;
         };
-        setSessionId(data.session.id);
-        setSessionTitle(data.session.title?.trim() ?? null);
-        setSuggestions([]); // Session load does not return suggestions; next response will
-        // Load the session's bound index - this is the persisted scope for this conversation
-        setSessionIndexId(data.session.indexId ?? null);
-        setMessages(
-          data.messages.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.createdAt),
-            isStreaming: false,
-          })),
-        );
-      } catch (err) {
-        console.error("Load session error:", err);
-      }
-    },
-    [getAccessToken],
-  );
+        messages: Array<{
+          id: string;
+          role: string;
+          content: string;
+          createdAt: string;
+        }>;
+      };
+      setSessionId(data.session.id);
+      setSessionTitle(data.session.title?.trim() ?? null);
+      setSuggestions([]); // Session load does not return suggestions; next response will
+      // Load the session's bound index - this is the persisted scope for this conversation
+      setSessionIndexId(data.session.indexId ?? null);
+      setMessages(
+        data.messages.map((m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date(m.createdAt),
+          isStreaming: false,
+        })),
+      );
+    } catch (err) {
+      console.error("Load session error:", err);
+    }
+  }, []);
 
   const updateSessionTitle = useCallback(
     async (id: string, title: string) => {
-      const token = await getAccessToken();
-      if (!token) return false;
       const trimmed = title.trim();
       if (!trimmed) return false;
 
@@ -381,10 +368,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(`${base}/chat/session/title`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ sessionId: id, title: trimmed }),
+          credentials: "include",
         });
         if (!res.ok) return false;
         if (sessionId === id) {
@@ -397,7 +384,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     },
-    [getAccessToken, sessionId, refetchSessions],
+    [sessionId, refetchSessions],
   );
 
   return (

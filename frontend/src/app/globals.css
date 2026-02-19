@@ -95,16 +95,6 @@
   }
 } 
 
-#privy-modal-content {
-  border-radius: 0px;
-  .login-method-button, button {
-    border-radius: 0px !important;
-  }
-}
-a#protected-by-privy {
-  display: none;
-}
-
 button {
   cursor: pointer;
   font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;

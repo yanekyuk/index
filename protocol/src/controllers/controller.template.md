@@ -475,7 +475,6 @@ beforeAll(async () => {
   const user = await userService.createTestUser({
     email,
     name: "Test User",
-    privyId: `privy:${Date.now()}`,
     intro: "Test intro",
     location: "Test Location",
     socials: { x: "https://x.com/test" },
@@ -501,7 +500,6 @@ test("sync should generate a profile for a new user", async () => {
   const mockRequest = {} as Request;
   const mockUser: AuthenticatedUser = {
     id: testUserId,
-    privyId: `privy:${Date.now()}`,
     email: "test@example.com",
     name: "Test User"
   };
@@ -524,7 +522,7 @@ Tests call the same services the controller uses, plus any helpers services expo
 
 ```typescript
 test("sync should be idempotent (second run should just verify)", async () => {
-  const mockUser: AuthenticatedUser = { id: testUserId, privyId: `privy:${Date.now()}`, email: "test@example.com", name: "Test User" };
+  const mockUser: AuthenticatedUser = { id: testUserId, email: "test@example.com", name: "Test User" };
 
   await controller.sync({} as Request, mockUser);
   await controller.sync({} as Request, mockUser);

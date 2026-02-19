@@ -22,7 +22,6 @@ export interface OnboardingState {
 
 export interface User {
   id: UUID;
-  privyId: string;
   email: string | null;
   name: string;
   intro: string | null;

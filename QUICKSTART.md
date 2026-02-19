@@ -16,7 +16,7 @@ For local development, use the protocol server base URL (e.g. `http://localhost:
 All endpoints require authentication using Privy access tokens. Include the token in the `Authorization` header:
 
 ```bash
-Authorization: Bearer <privy_access_token>
+Authorization: Bearer <session_token>
 ```
 
 **Note**: Users are automatically created in the Index system on first authentication. There is no separate "create member" endpoint - authentication via Privy creates the user account automatically.
@@ -42,7 +42,7 @@ POST /api/indexes/:id/join
 **Example Request:**
 ```bash
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/join \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 
 **Example Response:**
@@ -100,7 +100,7 @@ POST /api/indexes/:id/members
 **Example Request:**
 ```bash
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/members \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "b8c3e467-4f65-44e9-9ed8-bdf749b46dc4",
@@ -159,7 +159,7 @@ POST /api/intents
 **Example Request:**
 ```bash
 curl -X POST https://index.network/api/intents \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "payload": "Looking for ML researchers to collaborate on AI research projects",
@@ -198,7 +198,7 @@ POST /api/indexes/:id/member-intents/:intentId
 **Example Request:**
 ```bash
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/member-intents/0a31709f-4120-46c5-9a30-aa94891aa378 \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 ```
 
 **Example Response:**
@@ -255,7 +255,7 @@ POST /api/discover/filter
 **Example Request:**
 ```bash
 curl -X POST https://index.network/api/discover/filter \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "intentIds": ["0a31709f-4120-46c5-9a30-aa94891aa378"],
@@ -322,11 +322,11 @@ Here's a complete example of using all endpoints together:
 
 # 2. Join a public index
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/join \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 
 # 3. Create an intent
 INTENT_RESPONSE=$(curl -X POST https://index.network/api/intents \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "payload": "Looking for ML researchers to collaborate on AI research projects",
@@ -337,11 +337,11 @@ INTENT_ID=$(echo $INTENT_RESPONSE | jq -r '.intent.id')
 
 # 4. Add intent to index
 curl -X POST https://index.network/api/indexes/5a338a89-4fc4-48d7-999e-2069ef9ee267/member-intents/$INTENT_ID \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN"
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
 
 # 5. Discover matching users
 curl -X POST https://index.network/api/discover/filter \
-  -H "Authorization: Bearer YOUR_PRIVY_TOKEN" \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"intentIds\": [\"$INTENT_ID\"],

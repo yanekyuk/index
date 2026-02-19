@@ -20,7 +20,6 @@ describe("UserController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test User Controller",
-      privyId: `privy:user-ctrl:${Date.now()}`,
       intro: "Intro",
       location: "City",
     });
@@ -33,7 +32,6 @@ describe("UserController Integration", () => {
 
   const mockAuthUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:user:${Date.now()}`,
     email: testEmail,
     name: "Test User Controller",
   });

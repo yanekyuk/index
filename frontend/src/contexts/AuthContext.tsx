@@ -1,11 +1,12 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { usePrivy, PrivyProvider } from '@privy-io/react-auth';
 import { useRouter, usePathname } from 'next/navigation';
+import { authClient } from '@/lib/auth-client';
 import { useAuthenticatedAPI } from '../lib/api';
 import { useAuthService } from '../services/auth';
 import { User, APIResponse } from '../lib/types';
+import AuthModal from '@/components/AuthModal';
 
 type AuthContextType = {
   isReady: boolean;
@@ -16,32 +17,36 @@ type AuthContextType = {
   error: string | null;
   refetchUser: () => Promise<void>;
   updateUser: (user: User) => void;
+  openLoginModal: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function AuthProviderInner({ children }: { children: ReactNode }) {
-  const {
-    ready,
-    authenticated,
-  } = usePrivy();
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const session = authClient.useSession();
 
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [userLoading, setUserLoading] = useState(false);
   const [userFetchAttempted, setUserFetchAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const api = useAuthenticatedAPI();
   const authService = useAuthService();
 
-  // Update user data directly (for optimistic updates after profile changes)
+  const ready = !session.isPending;
+  const authenticated = !!session.data?.session;
+
   const updateUser = useCallback((updatedUser: User) => {
     setUser(updatedUser);
   }, []);
 
-  // Memoized fetch user function
+  const openLoginModal = useCallback(() => {
+    setLoginModalOpen(true);
+  }, []);
+
   const fetchUser = useCallback(async () => {
     if (!authenticated || !ready) return;
 
@@ -53,10 +58,8 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       if (response.user) {
         setUser(response.user);
 
-        // Check and update timezone if needed
         const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (browserTimezone && response.user.timezone !== browserTimezone) {
-          console.log(`Updating timezone from ${response.user.timezone} to ${browserTimezone}`);
           authService.updateProfile({ timezone: browserTimezone })
             .then(updatedUser => {
               setUser(updatedUser);
@@ -77,7 +80,6 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     }
   }, [authenticated, ready, api, authService]);
 
-  // Fetch user data when authenticated
   useEffect(() => {
     if (authenticated && ready && !user && !userLoading && !userFetchAttempted) {
       fetchUser();
@@ -89,45 +91,30 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     }
   }, [authenticated, ready, user, userLoading, userFetchAttempted, fetchUser]);
 
-  // Handle navigation based on authentication status
+  // Close modal on successful auth
   useEffect(() => {
-    if (!ready) {
-      return; // Keep loading until Privy is ready
+    if (authenticated && loginModalOpen) {
+      setLoginModalOpen(false);
     }
+  }, [authenticated, loginModalOpen]);
 
-    // If authenticated, wait for user data to be loaded
-    if (authenticated && userLoading) {
-      return; // Keep loading until user data is available
-    }
+  useEffect(() => {
+    if (!ready) return;
 
-    // If authenticated but no user data and haven't attempted fetch yet
-    if (authenticated && !user && !userFetchAttempted) {
-      return; // Keep loading until user fetch is attempted
-    }
-
-    console.log('ready', ready);
-    console.log('authenticated', authenticated);
-    console.log('pathname', pathname);
+    if (authenticated && userLoading) return;
+    if (authenticated && !user && !userFetchAttempted) return;
 
     const isHomePage = pathname === '/';
-
-    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages') || pathname.startsWith('/about');
+    const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages') || pathname.startsWith('/about') || pathname.startsWith('/login');
     const isProtectedPage = pathname.startsWith('/i/');
-    // DISABLED: Removed isOnboardingPage from isProtectedPage
 
-    // Determine if we need to redirect
-    // Don't redirect authenticated users from root - they should see inbox there
     const shouldRedirectToHome = !authenticated && (isProtectedPage || (!isHomePage && !isPublicPage));
-    // DISABLED: Onboarding redirect logic
-    // const shouldRedirectOnboardingToHome = !authenticated && isOnboardingPage;
 
     if (shouldRedirectToHome) {
       router.push('/');
-      return; // Will re-evaluate when pathname changes
+      return;
     }
 
-    // Only stop loading if we're on the correct page for our auth state
-    // and user data is loaded (if authenticated) or user is not authenticated
     setIsLoading(false);
   }, [authenticated, ready, router, pathname, user, userLoading, userFetchAttempted]);
 
@@ -142,6 +129,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
         error,
         refetchUser: fetchUser,
         updateUser,
+        openLoginModal,
       }}
     >
       {isLoading ? (
@@ -166,29 +154,11 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
       ) : (
         children
       )}
+      <AuthModal
+        isOpen={loginModalOpen}
+        onClose={() => setLoginModalOpen(false)}
+      />
     </AuthContext.Provider>
-  );
-}
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-  const clientId = process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID;
-  
-  // During build time, env vars may not be available - render children without Privy
-  if (!appId || !clientId) {
-    return <>{children}</>;
-  }
-
-  return (
-    <PrivyProvider
-      appId={appId}
-      clientId={clientId}
-      config={{
-        loginMethods: ['email', 'google']
-      }}
-    >
-      <AuthProviderInner>{children}</AuthProviderInner>
-    </PrivyProvider>
   );
 }
 

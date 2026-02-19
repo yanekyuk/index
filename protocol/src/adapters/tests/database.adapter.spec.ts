@@ -50,13 +50,11 @@ beforeAll(async () => {
   await db.insert(users).values([
     {
       id: userAId,
-      privyId: TEST_PREFIX + 'privy_a_' + userAId,
       email: TEST_PREFIX + userAId + '@test.com',
       name: TEST_PREFIX + 'UserA',
     },
     {
       id: userBId,
-      privyId: TEST_PREFIX + 'privy_b_' + userBId,
       email: TEST_PREFIX + userBId + '@test.com',
       name: TEST_PREFIX + 'UserB',
     },
@@ -424,7 +422,6 @@ describe('OpportunityDatabaseAdapter', () => {
     const newUserId = uuidv4();
     await db.insert(users).values({
       id: newUserId,
-      privyId: TEST_PREFIX + newUserId,
       email: TEST_PREFIX + newUserId + '@test.com',
       name: 'NoProfile',
     });

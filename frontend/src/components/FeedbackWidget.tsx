@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
-import { usePrivy } from "@privy-io/react-auth";
 import { useAIChat } from "@/contexts/AIChatContext";
 
 export default function FeedbackWidget() {
@@ -10,7 +9,6 @@ export default function FeedbackWidget() {
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { getAccessToken } = usePrivy();
   const { sessionId, messages } = useAIChat();
 
   useEffect(() => {
@@ -33,19 +31,14 @@ export default function FeedbackWidget() {
     setIsSubmitting(true);
 
     try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error("Authentication required");
-      }
-
       const evaluatorUrl =
         process.env.NEXT_PUBLIC_EVALUATOR_URL || "http://localhost:3002";
       const response = await fetch(`${evaluatorUrl}/api/eval/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           feedback,
           sessionId: sessionId ?? undefined,

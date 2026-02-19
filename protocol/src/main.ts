@@ -15,6 +15,7 @@ import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
+import { auth } from './lib/auth';
 import { adminQueuesApp } from './controllers/queues.controller';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
@@ -126,9 +127,27 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
+    // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
+    // Our custom auth routes (/api/auth/me, /api/auth/profile/update) fall through to controllers
+    const betterAuthPaths = [
+      '/api/auth/sign-in', '/api/auth/sign-up', '/api/auth/sign-out',
+      '/api/auth/session', '/api/auth/callback', '/api/auth/error',
+      '/api/auth/get-session', '/api/auth/forget-password',
+      '/api/auth/reset-password', '/api/auth/verify-email',
+      '/api/auth/change-password', '/api/auth/change-email',
+      '/api/auth/delete-user', '/api/auth/list-sessions',
+      '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
+      '/api/auth/update-user',
+    ];
+    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
+    if (isBetterAuthRoute) {
+      const res = await auth.handler(req);
+      const newHeaders = new Headers(res.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
+    }
+
     // Iterate over controllers and routes to find a match.
-    // Optimization: could pre-compile regex or a router map.
-    // For now, simple iteration is fine for small number of routes.
 
     for (const [target, controllerDef] of RouteRegistry.getControllers()) {
       const routes = RouteRegistry.getRoutes(target);

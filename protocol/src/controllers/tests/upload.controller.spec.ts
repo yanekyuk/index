@@ -32,7 +32,6 @@ describe("UploadController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Upload User",
-      privyId: `privy:upload:${Date.now()}`,
       intro: "Test user for upload controller",
       location: "Test City",
     });
@@ -41,7 +40,6 @@ describe("UploadController Integration", () => {
     const emptyUser = await userAdapter.create({
       email: emptyListEmail,
       name: "Empty List User",
-      privyId: `privy:upload-empty:${Date.now()}`,
       intro: "User with no files",
       location: "Test City",
     });
@@ -70,7 +68,6 @@ describe("UploadController Integration", () => {
 
   const getMockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:upload:${Date.now()}`,
     email: testEmail,
     name: "Test Upload User",
   });
@@ -179,7 +176,6 @@ describe("UploadController Integration", () => {
     test("should return empty list when user has no files", async () => {
       const emptyUser: AuthenticatedUser = {
         id: emptyListUserId,
-        privyId: `privy:upload-empty:${Date.now()}`,
         email: emptyListEmail,
         name: "Empty List User",
       };
