@@ -61,6 +61,8 @@ export const userFeedback = pgTable(
     retryStatus: text("retry_status").$type<
       "pending" | "running" | "completed" | "error"
     >(),
+    aiExplanation: text("ai_explanation"),
+    issueLabels: jsonb("issue_labels").$type<string[]>(),
     archived: boolean("archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

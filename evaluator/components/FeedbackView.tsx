@@ -21,6 +21,8 @@ interface FeedbackEntry {
   retryStatus: string | null;
   archived: boolean;
   createdAt: string;
+  aiExplanation: string | null;
+  issueLabels: string[] | null;
 }
 
 export function FeedbackView({ selectedId }: { selectedId?: string }) {
@@ -244,6 +246,32 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
                 </p>
               )}
             </div>
+
+            {/* AI Analysis */}
+            {(selected.aiExplanation || (selected.issueLabels && selected.issueLabels.length > 0)) && (
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h3 className="text-base font-semibold mb-4">AI Analysis</h3>
+                
+                {selected.issueLabels && selected.issueLabels.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {selected.issueLabels.map((label, i) => (
+                      <span 
+                        key={i}
+                        className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {selected.aiExplanation && (
+                  <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                    {selected.aiExplanation}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Original conversation */}
             {selected.conversation && selected.conversation.length > 0 && (
