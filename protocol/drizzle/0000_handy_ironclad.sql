@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE TYPE "public"."chat_message_role" AS ENUM('user', 'assistant', 'system');--> statement-breakpoint
 CREATE TYPE "public"."intent_mode" AS ENUM('REFERENTIAL', 'ATTRIBUTIVE');--> statement-breakpoint
 CREATE TYPE "public"."intent_status" AS ENUM('ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED');--> statement-breakpoint
