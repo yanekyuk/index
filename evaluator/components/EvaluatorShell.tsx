@@ -1,6 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
+import { authClient } from "@/app/PrivyProviderWrapper";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -17,7 +17,9 @@ export function EvaluatorShell({
   children: React.ReactNode;
   headerExtra?: React.ReactNode;
 }) {
-  const { ready, authenticated, login, logout } = usePrivy();
+  const session = authClient.useSession();
+  const ready = !session.isPending;
+  const authenticated = !!session.data?.session;
   const pathname = usePathname();
   const router = useRouter();
 
@@ -42,7 +44,13 @@ export function EvaluatorShell({
         <h1 className="text-2xl font-semibold">Chat Evaluator</h1>
         <p className="text-gray-600">Sign in to run evaluations against the protocol API</p>
         <button
-          onClick={login}
+          onClick={() => {
+            const email = prompt("Email:");
+            const password = prompt("Password:");
+            if (email && password) {
+              authClient.signIn.email({ email, password });
+            }
+          }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Log in
@@ -80,7 +88,7 @@ export function EvaluatorShell({
         <div className="flex items-center gap-2">
           {headerExtra}
           <button
-            onClick={logout}
+            onClick={() => authClient.signOut()}
             className="text-sm text-gray-500 hover:text-gray-700"
           >
             Log out

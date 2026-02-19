@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
 import { useParams, useRouter } from "next/navigation";
 import {
   Play,
@@ -39,7 +38,6 @@ interface ScenarioState extends Scenario {
 }
 
 export default function RunPage() {
-  const { getAccessToken } = usePrivy();
   const { runId } = useParams<{ runId: string }>();
   const router = useRouter();
 
@@ -54,15 +52,12 @@ export default function RunPage() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
-  // Load run on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const token = await getAccessToken();
-        if (!token || cancelled) return;
         const res = await fetch(`/api/eval/runs/${runId}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
         });
         if (!res.ok) throw new Error("Failed to load run");
         const data = await res.json();
@@ -94,25 +89,21 @@ export default function RunPage() {
     return () => {
       cancelled = true;
     };
-  }, [runId, getAccessToken, router]);
+  }, [runId, router]);
 
   const saveReview = useCallback(
     async (
       id: string,
       payload: { reviewFlag?: ReviewFlag | null; reviewNote?: string | null }
     ) => {
-      const token = await getAccessToken();
-      if (!token) return;
       await fetch(`/api/eval/runs/${runId}/scenarios/${id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
     },
-    [runId, getAccessToken]
+    [runId]
   );
 
   const filterOptions = useMemo(() => {
@@ -206,12 +197,6 @@ export default function RunPage() {
   }, [filteredScenarios]);
 
   const runScenario = async (scenarioId: string) => {
-    const token = await getAccessToken();
-    if (!token) {
-      alert("Please log in");
-      return;
-    }
-
     setScenarios((prev) =>
       prev.map((s) =>
         s.id === scenarioId
@@ -223,10 +208,8 @@ export default function RunPage() {
     try {
       const res = await fetch("/api/eval/run", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ runId, scenarioId, apiUrl }),
       });
       const data = await res.json();
