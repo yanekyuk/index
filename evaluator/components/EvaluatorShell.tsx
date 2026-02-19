@@ -1,6 +1,6 @@
 "use client";
 
-import { authClient } from "@/app/PrivyProviderWrapper";
+import { authClient } from "@/app/AuthProviderWrapper";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 

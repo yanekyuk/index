@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePrivy } from "@privy-io/react-auth";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -25,7 +24,6 @@ interface FeedbackEntry {
 }
 
 export function FeedbackView({ selectedId }: { selectedId?: string }) {
-  const { getAccessToken } = usePrivy();
   const router = useRouter();
   const [entries, setEntries] = useState<FeedbackEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,19 +32,13 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
   const apiUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
-  const authHeaders = useCallback(async () => {
-    const token = await getAccessToken();
-    return token
-      ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
-      : null;
-  }, [getAccessToken]);
-
   const fetchFeedback = useCallback(async () => {
     setLoading(true);
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
-      const res = await fetch("/api/eval/feedback", { headers });
+      const res = await fetch("/api/eval/feedback", {
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setEntries(data.feedback || []);
@@ -56,7 +48,7 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, []);
 
   useEffect(() => {
     fetchFeedback();
@@ -71,11 +63,10 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
     );
 
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
       const res = await fetch(`/api/eval/feedback/${id}/retry`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ apiUrl }),
       });
 
@@ -136,11 +127,10 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
 
   const archiveFeedback = async (id: string) => {
     try {
-      const headers = await authHeaders();
-      if (!headers) return;
       const res = await fetch(`/api/eval/feedback/${id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ archived: true }),
       });
       if (res.ok) {

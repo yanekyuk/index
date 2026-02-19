@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { AuthProviderWrapper } from "./PrivyProviderWrapper";
+import { AuthProviderWrapper } from "./AuthProviderWrapper";
 
 export const metadata: Metadata = {
   title: "Chat Evaluator",
