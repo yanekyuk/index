@@ -18,13 +18,19 @@ export function getCorsHeaders(req: Request): Record<string, string> {
     'Access-Control-Max-Age': '86400',
   };
 
+  const origin = req.headers.get('Origin');
   if (isDev()) {
-    headers['Access-Control-Allow-Origin'] = '*';
-  } else {
-    const origin = req.headers.get('Origin') ?? '';
-    const trusted = getTrustedOrigins();
-    if (trusted.includes(origin)) {
+    if (origin) {
       headers['Access-Control-Allow-Origin'] = origin;
+      headers['Access-Control-Allow-Credentials'] = 'true';
+    }
+  } else {
+    const trusted = getTrustedOrigins();
+    const allowOrigin = origin && trusted.includes(origin)
+      ? origin
+      : process.env.FRONTEND_URL || null;
+    if (allowOrigin) {
+      headers['Access-Control-Allow-Origin'] = allowOrigin;
       headers['Access-Control-Allow-Credentials'] = 'true';
     }
   }
