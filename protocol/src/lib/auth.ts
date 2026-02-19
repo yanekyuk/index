@@ -47,7 +47,7 @@ export const auth = betterAuth({
       process.env.EVALUATOR_URL || "http://localhost:3002",
     ];
     if (isDev) {
-      return [...base, "http://localhost:*", "http://127.0.0.1:*"];
+      return [...base, "http://localhost:3000", "http://localhost:3002"];
     }
     return base;
   })(),
