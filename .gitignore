@@ -2,6 +2,7 @@
 # IDE & Editor
 # ===================
 .vscode/
+!.vscode/index.code-workspace
 !.vscode/index.code-workspace.default
 # .cursor
 .claude
