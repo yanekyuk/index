@@ -1,0 +1,49 @@
+---
+description: Protocol layering (controllers → services → adapters), interfaces, templates, and TSDoc
+globs: "protocol/**/*.ts"
+alwaysApply: false
+---
+
+# Protocol Architecture & Conventions
+
+## Layering Rules
+
+1. **Only `services` may import `adapters`.**  
+   Controllers and other layers must not depend on adapters directly.
+
+2. **`lib` implementations** that need infrastructure must receive **adapters via constructor**, following the contract defined in the corresponding `*.interface.ts` file (e.g. under `src/lib/protocol/interfaces/`). They do not import adapters; they are injected.
+
+3. **`controllers`** import and call **`services`** to perform operations. Controllers handle HTTP and delegate business logic to services (or protocol graph factories).
+
+4. **`services` must not import other `services`.** Cross-service orchestration should use events, queues, or shared lib/graph layer—not service-to-service imports.
+
+**Summary:** Controllers → Services → Adapters. Lib code depends on interfaces; adapters are injected.
+
+## Template Files
+
+Each category has a `*.template.md` with coding guidelines. Consult before adding or changing code in that layer:
+
+- `protocol/src/controllers/controller.template.md`
+- `protocol/src/services/service.template.md`
+- `protocol/src/queues/queue.template.md`
+- `protocol/src/lib/protocol/agents/agent.template.md`
+
+## TSDoc
+
+- Add **TSDoc comments** for all **classes** (summary and, when useful, `@remarks` or `@example`).
+- Add **TSDoc comments** for all **public methods** (summary, `@param`, `@returns`, `@throws` where relevant).
+
+```typescript
+/**
+ * Handles intent lifecycle and persistence.
+ * @remarks Delegates to adapters for DB and queue; does not call other services.
+ */
+export class IntentService {
+  /**
+   * Creates an intent and enqueues indexing jobs.
+   * @param input - Validated intent payload
+   * @returns The created intent with id
+   */
+  async create(input: CreateIntentInput): Promise<Intent> { ... }
+}
+```

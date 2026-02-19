@@ -63,10 +63,15 @@ interface ChatContentProps {
 /**
  * Ensure blockquote lines are always followed by a blank line so that
  * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
- * e.g. "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ * - "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ * - "> Updating...Your profile now" (no newline after "...") → "> Updating...\n\nYour profile now"
  */
 function normalizeBlockquotes(text: string): string {
-  return text.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
+  // When a blockquote line ends with "..." and more text follows on the same line (e.g. stream
+  // sent no newline), insert a blank line so the following text renders on a new line.
+  let out = text.replace(/^(>.*?\.\.\.)\s*(\S.+)$/gm, "$1\n\n$2");
+  out = out.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
+  return out;
 }
 
 /**

@@ -228,7 +228,7 @@ export const authClient = createAuthClient({
 });
 ```
 
-**Create `[frontend/src/app/api/auth/[...all]/route.ts](frontend/src/app/api/auth/[...all]/route.ts)**` for Better Auth API route.
+**Create `[frontend/src/app/api/auth/[...all]/route.ts](frontend/src/app/api/auth/[...all]/route.ts)`** for Better Auth API route.
 
 **Rewrite `[frontend/src/contexts/AuthContext.tsx](frontend/src/contexts/AuthContext.tsx)`:**
 
