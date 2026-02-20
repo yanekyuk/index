@@ -113,7 +113,7 @@ Bun.serve({
       '/api/auth/sign-in', '/api/auth/sign-up', '/api/auth/sign-out',
       '/api/auth/session', '/api/auth/callback', '/api/auth/error',
       '/api/auth/get-session', '/api/auth/forget-password',
-      '/api/auth/reset-password', '/api/auth/verify-email',
+      '/api/auth/magic-link', '/api/auth/reset-password', '/api/auth/verify-email',
       '/api/auth/change-password', '/api/auth/change-email',
       '/api/auth/delete-user', '/api/auth/list-sessions',
       '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',

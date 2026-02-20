@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { authClient } from "@/app/AuthProviderWrapper";
 import { X, ArrowLeft } from "lucide-react";
 
@@ -18,22 +18,12 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [socialProviders, setSocialProviders] = useState<string[]>([]);
   const [isSignUp, setIsSignUp] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch("/api/auth/providers")
-      .then((r) => r.json())
-      .then((data: { providers?: string[] }) =>
-        setSocialProviders(data.providers ?? [])
-      )
-      .catch(() => setSocialProviders([]));
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const hasGoogle = socialProviders.includes("google");
+  // OAuth (Google) needs callback on same domain as init; evaluator proxies to protocol, so skip
+  const hasGoogle = false;
 
   const resetForm = () => {
     setEmail("");

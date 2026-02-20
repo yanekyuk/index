@@ -7,8 +7,6 @@ import * as schema from "../schemas/database.schema";
 import { getTrustedOrigins } from "./cors";
 import { sendMagicLinkEmail } from "./email/magic-link.handler";
 
-// Use BETTER_AUTH_URL only when it's not localhost; otherwise infer from request.
-// Fixes prod when env was copied from dev (localhost) - request host will be correct.
 const authBaseUrl =
   process.env.PROTOCOL_URL?.includes("localhost")
     ? undefined
