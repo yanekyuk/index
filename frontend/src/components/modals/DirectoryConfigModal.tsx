@@ -264,7 +264,7 @@ export default function DirectoryConfigModal({
                   <select
                     value={columnMappings.email}
                     onChange={(e) => setColumnMappings({ ...columnMappings, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md font-ibm-plex-mono text-black"
+                    className="w-full h-10 px-3 py-2 border border-gray-200 rounded-sm bg-white text-sm text-gray-900 font-ibm-plex-mono transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 appearance-none cursor-pointer"
                   >
                     <option value="">Select column</option>
                     {columns.map((col) => (
@@ -291,7 +291,7 @@ export default function DirectoryConfigModal({
                     <select
                       value={columnMappings[key as keyof typeof columnMappings] || ''}
                       onChange={(e) => setColumnMappings({ ...columnMappings, [key]: e.target.value || undefined })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md font-ibm-plex-mono text-black"
+                      className="w-full h-10 px-3 py-2 border border-gray-200 rounded-sm bg-white text-sm text-gray-900 font-ibm-plex-mono transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 appearance-none cursor-pointer"
                     >
                       <option value="" className="text-black">None</option>
                       {columns.map((col) => (

@@ -286,7 +286,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                   id="timezone"
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="flex h-10 w-full rounded-sm border border-gray-400 bg-white px-3 py-2 text-md text-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-200 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                  className="flex h-10 w-full rounded-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 appearance-none cursor-pointer"
                 >
                   {Intl.supportedValuesOf('timeZone').map((tz) => (
                     <option key={tz} value={tz}>
@@ -307,57 +307,57 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-4">Socials</h3>
 
               {/* X (Twitter) */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
                   x.com/
                 </div>
                 <Input
                   id="socialX"
                   value={socialX}
                   onChange={(e) => setSocialX(e.target.value)}
-                  className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
 
               {/* LinkedIn */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
                   linkedin.com/in/
                 </div>
                 <Input
                   id="socialLinkedin"
                   value={socialLinkedin}
                   onChange={(e) => setSocialLinkedin(e.target.value)}
-                  className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
 
               {/* GitHub */}
-              <div className="flex items-center border border-gray-300">
-                <div className="px-3 py-2 bg-gray-50 text-gray-600 font-ibm-plex-mono text-sm border-r border-gray-300 whitespace-nowrap">
+              <div className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
+                <div className="px-3 py-2 bg-gray-50 text-gray-500 font-ibm-plex-mono text-sm border-r border-gray-200 whitespace-nowrap select-none">
                   github.com/
                 </div>
                 <Input
                   id="socialGithub"
                   value={socialGithub}
                   onChange={(e) => setSocialGithub(e.target.value)}
-                  className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
 
               {/* Custom Websites */}
               {websites.map((website, index) => (
-                <div key={index} className="flex items-center border border-gray-300">
+                <div key={index} className="flex items-center border border-gray-200 rounded-sm hover:border-gray-400 focus-within:border-gray-900 transition-colors duration-150">
                   <Input
                     value={website}
                     onChange={(e) => updateWebsite(index, e.target.value)}
                     placeholder="https://example.com"
-                    className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="flex-1 border-0 hover:border-0 focus:border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                   <button
                     type="button"
                     onClick={() => removeWebsite(index)}
-                    className="px-3 py-2 text-gray-500 hover:text-red-600 transition-colors border-l border-gray-300"
+                    className="px-3 py-2 text-gray-400 hover:text-red-500 transition-colors border-l border-gray-200"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -369,7 +369,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 <button
                   type="button"
                   onClick={addWebsite}
-                  className="w-full flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors font-ibm-plex-mono text-sm"
+                  className="w-full flex items-center justify-center px-3 py-2 border border-gray-200 rounded-sm text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors duration-150 font-ibm-plex-mono text-sm"
                 >
                   +
                 </button>

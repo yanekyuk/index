@@ -90,15 +90,18 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
 
   return (
     <ClientLayout>
-      {/* Sticky header - full width */}
-      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
-        <button onClick={() => router.back()} className="text-gray-600 hover:text-black transition-colors text-xl mr-2">←</button>
-        <h1 className="font-ibm-plex-mono text-lg font-bold text-black">{profileData.name}</h1>
-      </div>
-
-      {/* Scrollable content - centered */}
       <div className="px-6 lg:px-8 py-6">
         <ContentContainer className="space-y-8">
+          {/* Header with back button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="text-gray-600 hover:text-black transition-colors text-xl"
+            >
+              ←
+            </button>
+            <h1 className="font-ibm-plex-mono text-2xl font-bold text-black">{profileData.name}</h1>
+          </div>
             {/* Avatar, Name, and Social Icons */}
             <div className="flex items-start gap-4">
               <Image
@@ -109,9 +112,6 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 className="rounded-full"
               />
               <div className="flex-1 pt-2">
-                <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-1">
-                  {profileData.name}
-                </h1>
                 {profileData.location && (
                   <p className="text-sm text-gray-500 font-ibm-plex-mono">
                     {profileData.location}
