@@ -1,9 +1,11 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { magicLink } from "better-auth/plugins";
 
 import db from "./drizzle/drizzle";
 import * as schema from "../schemas/database.schema";
 import { getTrustedOrigins } from "./cors";
+import { sendMagicLinkEmail } from "./email/magic-link.handler";
 
 // Use BETTER_AUTH_URL only when it's not localhost; otherwise infer from request.
 // Fixes prod when env was copied from dev (localhost) - request host will be correct.
@@ -42,6 +44,14 @@ export const auth = betterAuth({
       : {}),
   },
   trustedOrigins: getTrustedOrigins,
+  plugins: [
+    magicLink({
+      sendMagicLink: async ({ email, url }) => {
+        await sendMagicLinkEmail(email, url);
+      },
+      expiresIn: 600,
+    }),
+  ],
   advanced: {
     trustedProxyHeaders: true,
     defaultCookieAttributes: {
