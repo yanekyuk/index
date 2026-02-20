@@ -4,7 +4,7 @@ overview: Update the chat agent's system prompt to make tool narration smarter -
 todos:
   - id: update-prompt
     content: Update narration instructions in chat.prompt.ts with semantic grouping rules
-    status: pending
+    status: done
   - id: test-scenarios
     content: "Test: connect users, find opportunities, look up person - verify blockquote behavior"
     status: pending
