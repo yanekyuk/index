@@ -138,7 +138,7 @@ function fmt(message: string, meta?: Record<string, unknown>) {
   if (!meta) return message;
   try {
     const sanitized = sanitizeForLogInternal(meta) as Record<string, unknown>;
-    const json = JSON.stringify(sanitized, null, JSON_INDENT);
+    const json = JSON.stringify(sanitized)//, null, JSON_INDENT);
     return `${message}\n${json}`;
   } catch {
     return message;
