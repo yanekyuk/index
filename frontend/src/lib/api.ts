@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+
+import { authClient } from './auth-client';
 
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -26,27 +27,20 @@ class APIClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit & {
-      accessToken?: string;
-    } = {}
+    options: RequestInit = {}
   ): Promise<T> {
-    const { accessToken, ...fetchOptions } = options;
-    
     const url = `${this.baseURL}${endpoint}`;
-    
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...(fetchOptions.headers as Record<string, string>),
+      ...(options.headers as Record<string, string>),
     };
-
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
-    }
 
     try {
       const response = await fetch(url, {
-        ...fetchOptions,
+        ...options,
         headers,
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -85,58 +79,41 @@ class APIClient {
   }
 
   // GET request
-  async get<T>(endpoint: string, accessToken?: string, options?: { signal?: AbortSignal }): Promise<T> {
+  async get<T>(endpoint: string, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'GET',
-      accessToken,
       signal: options?.signal,
     });
   }
 
   // POST request
-  async post<T>(
-    endpoint: string,
-    data?: unknown,
-    accessToken?: string
-  ): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
-      accessToken,
     });
   }
 
   // PUT request
-  async put<T>(
-    endpoint: string,
-    data?: unknown,
-    accessToken?: string
-  ): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
-      accessToken,
     });
   }
 
   // PATCH request
-  async patch<T>(
-    endpoint: string,
-    data?: unknown,
-    accessToken?: string
-  ): Promise<T> {
+  async patch<T>(endpoint: string, data?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
-      accessToken,
     });
   }
 
   // DELETE request
-  async delete<T>(endpoint: string, accessToken?: string): Promise<T> {
+  async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'DELETE',
-      accessToken,
     });
   }
 
@@ -144,13 +121,12 @@ class APIClient {
   async uploadFile<T>(
     endpoint: string,
     file: File,
-    accessToken?: string,
     additionalData?: Record<string, string>,
     fieldName: string = 'file'
   ): Promise<T> {
     const formData = new FormData();
     formData.append(fieldName, file);
-    
+
     // Add any additional form data
     if (additionalData) {
       Object.entries(additionalData).forEach(([key, value]) => {
@@ -158,15 +134,10 @@ class APIClient {
       });
     }
 
-    const headers: Record<string, string> = {};
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
-    }
-
     const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'POST',
-      headers,
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -187,26 +158,16 @@ class APIClient {
 // Default API client instance
 export const apiClient = new APIClient();
 
-// Hook for authenticated API calls
+// Hook for authenticated API calls (Better Auth cookie-based sessions)
 export function useAuthenticatedAPI() {
-  const { ready, getAccessToken } = usePrivy();
+  const session = authClient.useSession();
 
-  const makeAuthenticatedRequest = useCallback(async <T>(
-    requestFn: (accessToken: string) => Promise<T>
-  ): Promise<T> => {
+  const makeAuthenticatedRequest = useCallback(async <T>(requestFn: () => Promise<T>): Promise<T> => {
     try {
-      // Wait for Privy to be ready
-      if (!ready) {
+      if (!session.data?.session) {
         throw new APIError('Authentication system not ready', 401);
       }
-
-      // Get fresh access token for each request
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new APIError('No access token available', 401);
-      }
-
-      return await requestFn(accessToken);
+      return await requestFn();
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
@@ -216,29 +177,37 @@ export function useAuthenticatedAPI() {
         401
       );
     }
-  }, [ready, getAccessToken]);
+  }, [session.data?.session]);
 
-  return useMemo(() => ({
-    get: <T>(endpoint: string, options?: { signal?: AbortSignal }) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.get<T>(endpoint, token, options)),
-    
-    post: <T>(endpoint: string, data?: unknown) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.post<T>(endpoint, data, token)),
-    
-    put: <T>(endpoint: string, data?: unknown) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.put<T>(endpoint, data, token)),
-    
-    patch: <T>(endpoint: string, data?: unknown) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.patch<T>(endpoint, data, token)),
-    
-    delete: <T>(endpoint: string) =>
-      makeAuthenticatedRequest<T>((token) => apiClient.delete<T>(endpoint, token)),
-    
-    uploadFile: <T>(endpoint: string, file: File, additionalData?: Record<string, string>, fieldName?: string) =>
-      makeAuthenticatedRequest<T>((token) => 
-        apiClient.uploadFile<T>(endpoint, file, token, additionalData, fieldName)
-      ),
-  }), [makeAuthenticatedRequest]);
+  return useMemo(
+    () => ({
+      get: <T>(endpoint: string, options?: { signal?: AbortSignal }) =>
+        makeAuthenticatedRequest<T>(() => apiClient.get<T>(endpoint, options)),
+
+      post: <T>(endpoint: string, data?: unknown) =>
+        makeAuthenticatedRequest<T>(() => apiClient.post<T>(endpoint, data)),
+
+      put: <T>(endpoint: string, data?: unknown) =>
+        makeAuthenticatedRequest<T>(() => apiClient.put<T>(endpoint, data)),
+
+      patch: <T>(endpoint: string, data?: unknown) =>
+        makeAuthenticatedRequest<T>(() => apiClient.patch<T>(endpoint, data)),
+
+      delete: <T>(endpoint: string) =>
+        makeAuthenticatedRequest<T>(() => apiClient.delete<T>(endpoint)),
+
+      uploadFile: <T>(
+        endpoint: string,
+        file: File,
+        additionalData?: Record<string, string>,
+        fieldName?: string
+      ) =>
+        makeAuthenticatedRequest<T>(() =>
+          apiClient.uploadFile<T>(endpoint, file, additionalData, fieldName)
+        ),
+    }),
+    [makeAuthenticatedRequest]
+  );
 }
 
 // Utility function for non-authenticated requests

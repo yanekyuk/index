@@ -8,7 +8,6 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import { eq } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { indexMembers, indexes, userProfiles, users } from '../schemas/database.schema';
-import { privyClient } from '../lib/privy';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { TESTABLE_TEST_ACCOUNTS, TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
@@ -147,19 +146,7 @@ function parseArgs(): GlobalOpts {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-async function ensurePrivyIdentity(email: string): Promise<string> {
-  let privyUser = await privyClient.getUserByEmail(email);
-  if (!privyUser) {
-    privyUser = await privyClient.importUser({
-      linkedAccounts: [{ type: 'email', address: email }],
-    });
-  }
-  return privyUser.id;
-}
-
 async function createUser(account: SeedAccount): Promise<{ id: string }> {
-  const privyId = await ensurePrivyIdentity(account.email);
-
   const socials = {
     linkedin: account.linkedin ?? undefined,
     github: account.github ?? undefined,
@@ -171,7 +158,6 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
     const [user] = await db
       .insert(users)
       .values({
-        privyId,
         email: account.email,
         name: account.name,
         intro: `Test account for ${account.name}`,
@@ -183,9 +169,7 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
   } catch {
     const [byEmail] = await db.select({ id: users.id }).from(users).where(eq(users.email, account.email)).limit(1);
     if (byEmail) return byEmail;
-    const [byPrivyId] = await db.select({ id: users.id }).from(users).where(eq(users.privyId, privyId)).limit(1);
-    if (byPrivyId) return byPrivyId;
-    throw new Error(`createUser failed for ${account.email}: insert failed and no existing user found by email or privyId`);
+    throw new Error(`createUser failed for ${account.email}: insert failed and no existing user found by email`);
   }
 }
 

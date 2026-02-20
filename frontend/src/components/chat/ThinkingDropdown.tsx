@@ -1,8 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
-
 interface ThinkingStep {
   content: string;
   step?: string;
@@ -15,54 +12,45 @@ interface ThinkingDropdownProps {
 }
 
 export default function ThinkingDropdown({ thinking, isStreaming }: ThinkingDropdownProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   if (!thinking || thinking.length === 0) {
     return null;
   }
 
   return (
-    <div className="mb-2 border border-gray-200 rounded-sm overflow-hidden bg-gray-50">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-100 transition-colors text-left"
-      >
-        <div className="flex items-center gap-2">
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-gray-600" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-gray-600" />
-          )}
-          <Brain className="w-4 h-4 text-purple-600" />
-          <span className="text-sm font-medium text-gray-700 ">
-            Thinking
-            {isStreaming && (
-              <span className="ml-2 inline-block w-1.5 h-1.5 bg-purple-600 rounded-full animate-pulse" />
-            )}
-          </span>
-        </div>
-        <span className="text-xs text-gray-500 ">
-          {thinking.length} step{thinking.length !== 1 ? 's' : ''}
-        </span>
-      </button>
-      
-      {isExpanded && (
-        <div className="px-3 pb-3 space-y-2 max-h-80 overflow-y-auto">
-          {thinking.map((step, index) => (
-            <div
-              key={index}
-              className="border-l-2 border-purple-300 pl-3 py-1"
-            >
-              {step.step && (
-                <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1 ">
-                  {step.step.replace(/_/g, ' ')}
-                </div>
+    <div className="mb-4 border-l-2 border-gray-300 pl-3 space-y-2">
+      {thinking.map((step, index) => {
+        const stepName = step.step?.replace(/_/g, ' ') ?? null;
+        const isCompleted =
+          step.step?.toLowerCase() === 'completed' ||
+          step.step?.toLowerCase().startsWith('completed');
+
+        return (
+          <div key={index} className="flex items-start gap-2">
+            <span className="mt-[6px] flex-shrink-0 w-1.5 h-1.5 rounded-full bg-gray-400" />
+            <div>
+              {isCompleted ? (
+                <p className="text-sm text-gray-500">
+                  <span className="font-medium text-gray-600">Completed:</span>{' '}
+                  {step.content}
+                </p>
+              ) : (
+                <>
+                  {stepName && (
+                    <p className="text-sm font-medium text-gray-500 capitalize">
+                      {stepName}
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-500">{step.content}</p>
+                </>
               )}
-              <p className="text-sm text-gray-700 whitespace-pre-wrap ">
-                {step.content}
-              </p>
             </div>
-          ))}
+          </div>
+        );
+      })}
+      {isStreaming && (
+        <div className="flex items-center gap-2">
+          <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse" />
+          <span className="text-sm text-gray-400">Thinking…</span>
         </div>
       )}
     </div>

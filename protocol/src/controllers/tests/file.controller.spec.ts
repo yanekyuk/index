@@ -29,7 +29,6 @@ describe("FileController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test File User",
-      privyId: `privy:file:${Date.now()}`,
       intro: "Test",
       location: "City",
     });
@@ -50,7 +49,6 @@ describe("FileController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:file:${Date.now()}`,
     email: testEmail,
     name: "Test File User",
   });

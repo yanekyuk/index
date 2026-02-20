@@ -113,6 +113,7 @@ Rules:
 2. You may propose 2 or more actors per opportunity (e.g. three people who should collaborate).
 3. DEDUPLICATION: Do not suggest opportunities that duplicate Existing Opportunities.
 4. Write reasoning from an objective observer's perspective; be specific about the "Why" for each side.
+5. When in introduction mode, each opportunity must have exactly two actors — the two people being introduced. The discoverer (introducer) is added by the system and must not be included in your actors list.
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -352,6 +353,7 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
 - Even if the parties' intents or profiles don't obviously overlap, the introduction is still valid because the introducer saw the connection. Explain what the introducer likely sees in this match.
 - If explicit intents align, mention them — but frame it as supporting the introducer's judgment, not as the primary reason.${input.introductionHint ? `\nINTRODUCER'S CONTEXT: "${input.introductionHint}" — use this to inform your reasoning about why the introducer made this connection.` : ''}
 - Actors must refer ONLY to the ENTITIES below (the people being introduced). Do not include the DISCOVERER as an actor.
+- You must output exactly two actors per opportunity (the two people being introduced). The introducer is added separately; do not include them in actors.
 - Be generous with scoring (70+ for any introduction with a plausible basis, since a human made the judgment).
 `
       : '';
@@ -376,8 +378,16 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
       const result = await this.entityBundleModel.invoke(messages);
       const parsed = entityBundleResponseFormat.parse(result);
       parsedTotal = parsed.opportunities.length;
-      const filtered = parsed.opportunities.filter((op) => op.score >= minScore);
-      logger.info('[OpportunityEvaluator.invokeEntityBundle] Done', { total: parsed.opportunities.length, accepted: filtered.length });
+      const introGuard =
+        input.introductionMode
+          ? parsed.opportunities.filter((op) => op.actors.length === 2)
+          : parsed.opportunities;
+      const filtered = introGuard.filter((op) => op.score >= minScore);
+      logger.info('[OpportunityEvaluator.invokeEntityBundle] Done', {
+        total: parsed.opportunities.length,
+        afterIntroGuard: introGuard.length,
+        accepted: filtered.length,
+      });
       return filtered;
     } catch (llmError) {
       logger.error('[OpportunityEvaluator.invokeEntityBundle] Failed; returning empty opportunities.', {

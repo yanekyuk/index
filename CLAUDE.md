@@ -165,7 +165,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 **Schema Location**: `protocol/src/schemas/database.schema.ts`. The Drizzle client is in `protocol/src/lib/drizzle/drizzle.ts`.
 
 **Core Tables**:
-- `users` - User accounts (Privy authentication)
+- `users` - User accounts (Better Auth)
 - `user_profiles` - User identity with vector embeddings (2000-dim, text-embedding-3-large)
 - `intents` - User intents with vector embeddings and confidence scores
 - `indexes` - Communities/collections of related intents
@@ -211,10 +211,10 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 **Location**: API routes are defined by controller classes using decorators in `protocol/src/controllers/`. See Server Entry Point and Adapter/Controller patterns.
 
-**Authentication Pattern**: Routes use guards (e.g. `auth.guard.ts`) which validate Privy JWT tokens and create/update users in DB.
+**Authentication Pattern**: Routes use guards (e.g. `auth.guard.ts`) which validate Better Auth session and create/update users in DB.
 
 **Key Controllers and Routes**:
-- `AuthController` - Authentication (Privy integration)
+- `AuthController` - Authentication (Better Auth integration)
 - `IntentController` - Intent CRUD, generation, suggestions
 - `IndexController` - Community management and index opportunities
 - `FileController` - File uploads and processing
@@ -247,7 +247,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `src/services/` - Frontend API clients (typed fetch wrappers)
 - `src/lib/` - Utilities and shared logic
 
-**Authentication**: Privy (Web3 authentication with email, social, wallet support)
+**Authentication**: Better Auth (session-based; email, social, etc.)
 
 **UI Libraries**: Tailwind CSS, Radix UI, Lucide React, Ant Design, react-markdown
 
@@ -366,8 +366,6 @@ OPENROUTER_API_KEY=your-openrouter-api-key
 # See "OpenRouter Configuration" section above for required preset names
 
 # Authentication
-PRIVY_APP_ID=your-privy-app-id
-PRIVY_APP_SECRET=your-privy-app-secret
 
 # Server
 PORT=3001
@@ -385,9 +383,9 @@ NODE_ENV=development
 
 ### Frontend Environment Variables
 
-See `frontend/.env.example` for frontend-specific configuration (Privy app ID, API URL, etc.)
+See `frontend/.env.example` for frontend-specific configuration (Better Auth, API URL, etc.)
 
-**Privy "Origin not allowed" (`invalid_origin`)**: If login fails with this error, the app’s current origin is not in Privy’s allowed list. In the [Privy Dashboard](https://dashboard.privy.io) go to **Configuration → App settings → Domains**, then under **Allowed origins** (Web & mobile web) add the exact origin(s) you use, e.g. `http://localhost:3000` (port required for localhost). Remove localhost from allowed domains when not developing.
+**Auth origin (`invalid_origin`)**: If login fails with this error, the app’s current origin is not in the allowed list. Ensure the app origin is allowed in your Better Auth configuration (e.g. `trustedOrigins` or CORS) when developing locally.
 
 ## Testing
 
@@ -628,7 +626,6 @@ test/chat-controller
 - `drizzle-orm` / `postgres` - Database ORM and driver
 - `bullmq` / `ioredis` - Job queues and Redis client
 - `express` / `helmet` / `cors` - HTTP server
-- `@privy-io/server-auth` - Authentication
 - `zod` - Schema validation
 - `openai` - OpenAI-compatible client (used with OpenRouter)
 - `@composio/core` - Integration platform
@@ -638,7 +635,6 @@ test/chat-controller
 **Frontend**:
 - `next` - React framework
 - `react` / `react-dom` - UI library
-- `@privy-io/react-auth` - Authentication
 - `tailwindcss` - CSS framework
 - `@radix-ui/*` - Accessible UI primitives
 - `stream-chat` - Real-time chat

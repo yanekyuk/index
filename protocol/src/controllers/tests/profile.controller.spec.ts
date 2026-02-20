@@ -25,7 +25,6 @@ describe("ProfileController Integration", () => {
     const user = await userAdapter.create({
       email,
       name: "Test Profile User",
-      privyId: `privy:${Date.now()}`,
       intro: "An engineer interested in agents.",
       location: "San Francisco, CA",
       socials: { x: "https://x.com/test" },
@@ -53,7 +52,6 @@ describe("ProfileController Integration", () => {
     const mockRequest = {} as Request;
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:${Date.now()}`,
       email: "test-profile-controller@example.com",
       name: "Test Profile User"
     };
@@ -80,7 +78,6 @@ describe("ProfileController Integration", () => {
     const mockRequest = {} as Request;
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:${Date.now()}`,
       email: "test-profile-controller@example.com",
       name: "Test Profile User"
     };

@@ -29,7 +29,8 @@ Rules:
 - For type=direct: provide followupText as the exact message to send (complete sentence).
 - For type=prompt: provide prefill as the start of a sentence the user can complete (e.g. "I need help with ").
 - Suggestions must be relevant to the last exchange and natural next steps.
-- Do not repeat what the user or assistant just said; suggest logical follow-ups.`;
+- Do not repeat what the user or assistant just said; suggest logical follow-ups.
+- Voice: Calm, direct; no hype or networking clichés. Prefer words like opportunity, overlap, signal, pattern, relevant. Avoid: search, leverage, networking, match, optimize, scale.`;
 
 export interface SuggestionGeneratorInput {
   /** Last few messages (user and assistant) to derive context */

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
+import { isMissingTableError, MIGRATE_HINT } from "@/lib/db/errors";
 import { evalNeeds } from "@/lib/db/schema";
 import { CHAT_AGENT_USER_NEEDS } from "@/lib/scenarios";
 
@@ -39,6 +40,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ upserted });
   } catch (err) {
     console.error("seed needs", err);
+    if (isMissingTableError(err)) {
+      return Response.json(
+        { error: "eval_needs table does not exist", hint: MIGRATE_HINT },
+        { status: 503 }
+      );
+    }
     return Response.json({ error: "Failed to seed needs" }, { status: 500 });
   }
 }

@@ -2139,7 +2139,7 @@ Manual opportunity creation is handled directly in the controller using the Data
 // src/controllers/opportunity.controller.ts
 
 // Request, Response, Router from your HTTP server (e.g. Bun.serve or framework types)
-import { authenticatePrivy, AuthRequest } from '../middleware/auth.middleware';
+import { AuthGuard, AuthenticatedUser } from '../guards/auth.guard';
 import { OpportunityControllerDatabase } from '../lib/protocol/interfaces/database.interface';
 import { CreateOpportunityData, OpportunityActor } from '../lib/protocol/interfaces/database.interface';
 
@@ -2152,10 +2152,10 @@ export class OpportunityController {
   }
 
   private setupRoutes() {
-    this.router.post('/indexes/:indexId/opportunities', authenticatePrivy, this.createManual.bind(this));
-    this.router.get('/opportunities', authenticatePrivy, this.listForUser.bind(this));
-    this.router.get('/opportunities/:id', authenticatePrivy, this.getById.bind(this));
-    this.router.patch('/opportunities/:id/status', authenticatePrivy, this.updateStatus.bind(this));
+    this.router.post('/indexes/:indexId/opportunities', AuthGuard, this.createManual.bind(this));
+    this.router.get('/opportunities', AuthGuard, this.listForUser.bind(this));
+    this.router.get('/opportunities/:id', AuthGuard, this.getById.bind(this));
+    this.router.patch('/opportunities/:id/status', AuthGuard, this.updateStatus.bind(this));
   }
 
   /**

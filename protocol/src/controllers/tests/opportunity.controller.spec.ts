@@ -41,7 +41,6 @@ describe("OpportunityDatabaseAdapter Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Opportunity Adapter User",
-      privyId: `privy:opp-adapter:${Date.now()}`,
       intro: "Test user for opportunity adapter tests",
       location: "Test City",
     });
@@ -128,7 +127,6 @@ describe("OpportunityController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Opportunity Controller User",
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       intro: "CEO of an AI startup looking for technical talent",
       location: "San Francisco, CA",
       socials: { x: "https://x.com/testopp", linkedin: "https://linkedin.com/in/testopp" },
@@ -156,7 +154,6 @@ describe("OpportunityController Integration", () => {
     const candidate = await userAdapter.create({
       email: candidateEmail,
       name: "Test Candidate User",
-      privyId: `privy:opp-candidate:${Date.now()}`,
       intro: "Senior ML engineer with startup experience",
       location: "New York, NY",
     });
@@ -225,7 +222,6 @@ describe("OpportunityController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:opp-ctrl:${Date.now()}`,
     email: testEmail,
     name: "Test Opportunity Controller User",
   });
@@ -414,7 +410,6 @@ describe("OpportunityController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Opportunity Controller User",
     };
@@ -435,7 +430,6 @@ describe("OpportunityController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Opportunity Controller User",
     };
@@ -461,7 +455,6 @@ describe("OpportunityController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Opportunity Controller User",
     };
@@ -492,7 +485,6 @@ describe("OpportunityController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Opportunity Controller User",
     };
@@ -524,7 +516,6 @@ describe("OpportunityController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:opp-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Opportunity Controller User",
     };
@@ -562,7 +553,6 @@ describe("OpportunityController Edge Cases", () => {
     const user = await userAdapter.create({
       email: testEmailNoProfile,
       name: "Test No Profile User",
-      privyId: `privy:opp-noprofile:${Date.now()}`,
     });
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
@@ -586,7 +576,6 @@ describe("OpportunityController Edge Cases", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserIdNoProfile,
-      privyId: `privy:opp-noprofile:${Date.now()}`,
       email: testEmailNoProfile,
       name: "Test No Profile User",
     };

@@ -26,6 +26,7 @@ import OpportunityCard, {
   OpportunitySkeleton,
 } from "@/components/chat/OpportunityCardInChat";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
+import ThinkingDropdown from "@/components/chat/ThinkingDropdown";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -44,6 +45,8 @@ import { useTypewriter } from "@/hooks/useTypewriter";
  */
 const USE_HOME_API = true;
 
+const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
+
 interface PendingFile {
   id: string;
   file: File;
@@ -60,10 +63,15 @@ interface ChatContentProps {
 /**
  * Ensure blockquote lines are always followed by a blank line so that
  * subsequent non-blockquote text isn't absorbed via markdown "lazy continuation".
- * e.g. "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ * - "> Retrieving…\nHere is…" → "> Retrieving…\n\nHere is…"
+ * - "> Updating...Your profile now" (no newline after "...") → "> Updating...\n\nYour profile now"
  */
 function normalizeBlockquotes(text: string): string {
-  return text.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
+  // When a blockquote line ends with "..." and more text follows on the same line (e.g. stream
+  // sent no newline), insert a blank line so the following text renders on a new line.
+  let out = text.replace(/^(>.*?\.\.\.)\s*(\S.+)$/gm, "$1\n\n$2");
+  out = out.replace(/^(>.*)\n(?!>|\n)/gm, "$1\n\n");
+  return out;
 }
 
 /**
@@ -150,11 +158,13 @@ function AssistantMessageContent({
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void;
   onOpportunitySecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
+    counterpartName?: string,
   ) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
@@ -179,18 +189,29 @@ function AssistantMessageContent({
   const segments = parseOpportunityBlocks(displayedContent);
 
   return (
-    <div className={showCursor ? "chat-markdown-typing" : undefined}>
+    <div>
       {segments.map((segment, idx) => {
         if (segment.type === "text") {
+          const isLast = idx === segments.length - 1;
           return (
-            <ReactMarkdown key={idx} remarkPlugins={[remarkGfm]}>
-              {segment.content}
-            </ReactMarkdown>
+            <div
+              key={idx}
+              className={cn(
+                "chat-markdown max-w-none",
+                isStreaming && "chat-markdown-streaming",
+                showCursor && isLast && "chat-markdown-typing",
+              )}
+            >
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {segment.content}
+              </ReactMarkdown>
+            </div>
           );
         } else if (segment.type === "opportunity") {
           return (
             <div key={idx} className="my-3">
               <OpportunityCard
+
                 card={segment.data}
                 onPrimaryAction={onOpportunityPrimaryAction}
                 onSecondaryAction={onOpportunitySecondaryAction}
@@ -231,7 +252,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     updateSessionTitle,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
-  const { error: showError } = useNotifications();
+  const { error: showError, success: showSuccess } = useNotifications();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<PendingFile[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -421,6 +442,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       action: "accepted" | "rejected",
       fallbackUserId?: string,
       viewerRole?: string,
+      counterpartName?: string,
     ) => {
       setOpportunityActionLoading((prev) => ({
         ...prev,
@@ -452,6 +474,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             ? `?channelId=${encodeURIComponent(channelId)}`
             : "";
           router.push(`/u/${counterpartUserId}/chat${query}`);
+        } else if (action === "accepted" && isIntroducer) {
+          showSuccess(
+            "Opportunity sent",
+            `Sent to ${counterpartName || "them"}. They can accept to start the conversation.`,
+          );
         }
         setHomeViewData((prev) => {
           if (!prev) return prev;
@@ -480,7 +507,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         }));
       }
     },
-    [opportunitiesService, router, showError],
+    [opportunitiesService, router, showError, showSuccess],
   );
 
   const canSend = input.trim() || selectedFiles.length > 0;
@@ -643,7 +670,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           <MentionsTextInput
             value={input}
             onChange={setInput}
-            placeholder="What are you looking for?"
+            placeholder={CHAT_INPUT_PLACEHOLDER}
             disabled={isBusy}
             autoFocus
             inputRef={inputRef}
@@ -712,7 +739,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   <MentionsTextInput
                     value={input}
                     onChange={setInput}
-                    placeholder="What are you looking for?"
+                    placeholder={CHAT_INPUT_PLACEHOLDER}
                     disabled={isBusy}
                     autoFocus
                     inputRef={inputRef}
@@ -864,20 +891,32 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         <OpportunityCard
                           key={item.opportunityId}
                           card={item}
-                          onPrimaryAction={(oppId, userId, viewerRole) =>
+                          onPrimaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                          ) =>
                             handleHomeOpportunityAction(
                               oppId,
                               "accepted",
                               userId,
                               viewerRole,
+                              counterpartName,
                             )
                           }
-                          onSecondaryAction={(oppId, userId, viewerRole) =>
+                          onSecondaryAction={(
+                            oppId,
+                            userId,
+                            viewerRole,
+                            counterpartName,
+                          ) =>
                             handleHomeOpportunityAction(
                               oppId,
                               "rejected",
                               userId,
                               viewerRole,
+                              counterpartName,
                             )
                           }
                           isLoading={
@@ -897,7 +936,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
     // Empty state — no opportunities to show
     return (
-      <div className="px-6 lg:px-8 bg-[#FDFDFD] min-h-full">
+      <div className="px-6 lg:px-8 bg-white min-h-full">
         <ContentContainer className="text-left">
           <div className="mt-12 mb-6">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
@@ -931,7 +970,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               <MentionsTextInput
                 value={input}
                 onChange={setInput}
-                placeholder="What are you looking for?"
+                placeholder={CHAT_INPUT_PLACEHOLDER}
                 disabled={isBusy}
                 autoFocus
                 inputRef={inputRef}
@@ -1072,22 +1111,22 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               ))}
             </div>
           )}
-          <div className="mt-20 flex flex-col items-center text-center pb-12">
-            <Image
-              src="/collab.png"
-              alt="Connections illustration"
-              width={280}
-              height={245}
-              className="mb-8 opacity-80"
+          <div className="mt-0 flex flex-col items-center text-center pb-4">
+            <video
+              src="/loading.m4v"
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="mb-8 w-[340px] h-[300px] object-contain"
             />
-            <h2 className="text-lg font-semibold text-gray-900 font-ibm-plex-mono mb-3">
-              No opportunities yet
+            <h2 className="text-lg font-bold text-gray-900 font-ibm-plex-mono mb-3">
+              It&apos;s quiet here, but your signal is in motion
             </h2>
-            <p className="text-sm text-[#3D3D3D] max-w-sm leading-relaxed">
-              Opportunities appear when your intents align with others in the
-              network. Create intents that describe what you&apos;re looking
-              for, and the system will surface meaningful connections when
-              there&apos;s a match.
+            <p className="text-sm font-normal text-[#3D3D3D] max-w-sm leading-relaxed font-ibm-plex-mono">
+              I&apos;m watching for the right people. While I look, you can add
+              more about what you&apos;re working on, connect your network, or
+              ask me to research someone specific.
             </p>
           </div>
         </ContentContainer>
@@ -1184,59 +1223,67 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                 >
                   <div
                     className={cn(
-                      "max-w-[80%] rounded-sm px-3 py-2",
+                      msg.role === "user" ? "max-w-[75%]" : "max-w-[90%]",
                       msg.role === "user"
-                        ? "bg-[#041729] text-white"
-                        : "bg-gray-100 text-gray-900",
+                        ? "bg-[#FAFAFA] text-gray-900 border border-[#E8E8E8] rounded-[32px] px-4 py-1 text-sm leading-relaxed"
+                        : "text-gray-900",
                     )}
                   >
                     {msg.role === "assistant" && (
-                      <span className="text-[10px] uppercase tracking-wider text-[#4091BB]/70 mb-1 block">
+                      <span className="text-[10px] uppercase tracking-wider text-black font-bold mb-1 block">
                         Index
                       </span>
                     )}
-                    <article
-                      className={cn(
-                        "chat-markdown max-w-none",
-                        msg.role === "user" && "chat-markdown-invert",
-                        msg.isStreaming && "chat-markdown-streaming",
-                      )}
-                    >
+                    <article className="max-w-none">
                       {msg.role === "assistant" ? (
-                        <AssistantMessageContent
-                          content={msg.content}
-                          isStreaming={msg.isStreaming ?? false}
-                          onOpportunityPrimaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                          ) =>
-                            handleHomeOpportunityAction(
+                        <>
+                          {msg.thinking && msg.thinking.length > 0 && (
+                            <ThinkingDropdown
+                              thinking={msg.thinking}
+                              isStreaming={msg.isStreaming}
+                            />
+                          )}
+                          <AssistantMessageContent
+                            content={msg.content}
+                            isStreaming={msg.isStreaming ?? false}
+                            onOpportunityPrimaryAction={(
                               oppId,
-                              "accepted",
                               userId,
                               viewerRole,
-                            )
-                          }
-                          onOpportunitySecondaryAction={(
-                            oppId,
-                            userId,
-                            viewerRole,
-                          ) =>
-                            handleHomeOpportunityAction(
+                              counterpartName,
+                            ) =>
+                              handleHomeOpportunityAction(
+                                oppId,
+                                "accepted",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            onOpportunitySecondaryAction={(
                               oppId,
-                              "rejected",
                               userId,
                               viewerRole,
-                            )
-                          }
-                          opportunityLoadingMap={opportunityActionLoading}
-                          currentStatusMap={opportunityStatusMap}
-                        />
+                              counterpartName,
+                            ) =>
+                              handleHomeOpportunityAction(
+                                oppId,
+                                "rejected",
+                                userId,
+                                viewerRole,
+                                counterpartName,
+                              )
+                            }
+                            opportunityLoadingMap={opportunityActionLoading}
+                            currentStatusMap={opportunityStatusMap}
+                          />
+                        </>
                       ) : (
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {mentionsToMarkdownLinks(msg.content)}
-                        </ReactMarkdown>
+                        <div className="chat-markdown max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {mentionsToMarkdownLinks(msg.content)}
+                          </ReactMarkdown>
+                        </div>
                       )}
                     </article>
                     {msg.role === "user" &&

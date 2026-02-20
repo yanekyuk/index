@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Index, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import { usePrivy } from '@privy-io/react-auth';
-import { useIndexes, useAuth as useAuthService } from '@/contexts/APIContext';
+import { useIndexes } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { useRouter } from 'next/navigation';
@@ -39,10 +38,9 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     error: null,
   });
 
-  const { login, authenticated, ready } = usePrivy();
+  const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
-  const authService = useAuthService();
   const router = useRouter();
   const { success, error: notifyError } = useNotifications();
   const { refreshIndexes } = useIndexesState();
@@ -67,11 +65,11 @@ export default function InvitationPage({ params }: InvitationPageProps) {
         }
 
         // Check authentication status
-        if (!ready) {
-          return; // Wait for Privy to be ready
+        if (!isReady) {
+          return; // Wait for auth to be ready
         }
 
-        if (!authenticated) {
+        if (!isAuthenticated) {
           setState(prev => ({ ...prev, step: 'auth-required' }));
           return;
         }
@@ -127,15 +125,15 @@ export default function InvitationPage({ params }: InvitationPageProps) {
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.code, authenticated, ready, api, router, indexesService, authService, refreshIndexes, refetchUser]);
+  }, [resolvedParams.code, isAuthenticated, isReady, api, router, indexesService, refreshIndexes, refetchUser]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
-    if (authenticated && ready && state.step === 'auth-required') {
+    if (isAuthenticated && isReady && state.step === 'auth-required') {
       // Trigger reload to check membership
       setState(prev => ({ ...prev, step: 'loading' }));
     }
-  }, [authenticated, ready, state.step]);
+  }, [isAuthenticated, isReady, state.step]);
 
   const handleJoinIndex = async () => {
     if (!state.index) return;
@@ -168,7 +166,7 @@ export default function InvitationPage({ params }: InvitationPageProps) {
   };
 
   const handleLogin = () => {
-    login();
+    openLoginModal();
   };
 
   const renderContent = () => {

@@ -130,7 +130,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const createUserProfile = defineTool({
     name: "create_user_profile",
     description:
-      "Auto-generates (or regenerates) a profile from the user's account data (name, email, social links) via web search. Works whether or not the user already has a profile. Call with no args first; if it returns missing fields, ask the user conversationally for their full name and/or social URLs, then call again with those fields filled in.",
+      "Auto-generates (or regenerates) a profile from the user's account data (name, email, social links) via web search, or from explicit text when the user provides a short description (e.g. role, skills, location). When the user provides a profile URL in their message, pass it in the matching parameter (e.g. linkedinUrl) so that URL is used for this request, not their saved links. Works whether or not the user already has a profile. Call with no args first; if it returns missing fields, ask the user conversationally for their full name and/or social URLs, then call again with those fields filled in.",
     querySchema: z.object({
       name: z.string().optional().describe("User's full name (first and last), if provided by the user"),
       linkedinUrl: z.string().optional().describe("LinkedIn profile URL"),
@@ -138,8 +138,41 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       twitterUrl: z.string().optional().describe("X/Twitter profile URL"),
       websites: z.array(z.string()).optional().describe("Personal or portfolio website URLs"),
       location: z.string().optional().describe("User's location (city, country)"),
+      bioOrDescription: z.string().optional().describe("Explicit profile text from the user (e.g. 'software engineer, AI/ML, SF Bay Area'); creates or updates profile from this text only, no scraping"),
     }),
     handler: async ({ context, query }) => {
+      const hasBioOrDescription = !!query.bioOrDescription?.trim();
+
+      if (hasBioOrDescription) {
+        // Create/update profile from user's explicit text only; do not persist to user record
+        const result = await graphs.profile.invoke({
+          userId: context.userId,
+          operationMode: 'write' as const,
+          input: query.bioOrDescription!.trim(),
+          forceUpdate: true,
+        });
+        if (result.error) {
+          return error(result.error);
+        }
+        if (result.profile) {
+          return success({
+            created: true,
+            message: "Profile created/updated with the information you provided.",
+            profile: {
+              name: result.profile.identity.name,
+              bio: result.profile.identity.bio,
+              location: result.profile.identity.location,
+              skills: result.profile.attributes.skills,
+              interests: result.profile.attributes.interests,
+            },
+          });
+        }
+        return success({
+          created: true,
+          message: "Profile created/updated with the information you provided.",
+        });
+      }
+
       // If any user-info fields are provided, persist them to the users table first
       const hasSocials = !!(query.linkedinUrl || query.githubUrl || query.twitterUrl || (query.websites && query.websites.length));
       if (query.name || query.location || hasSocials) {
@@ -198,20 +231,21 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const updateUserProfile = defineTool({
     name: "update_user_profile",
     description:
-      "Updates the user's existing profile. Requires profileId from read_user_profiles. Use ONE call per request with all changes in action (and details if needed). For profile URLs call scrape_url first, then pass scraped content in details.",
+      "Updates the user's existing profile. For the current user's profile, profileId can be omitted and the tool will use their profile. Use ONE call per request with all changes in action (and details if needed). For profile URLs call scrape_url first, then pass scraped content in details.",
     querySchema: z.object({
-      profileId: z.string().describe("The profile id from read_user_profiles"),
+      profileId: z.string().optional().describe("Optional profile id from read_user_profiles; omit for current user's profile"),
       action: z.string().describe("What to do: one or more changes, e.g. 'update bio to X', 'add Python to skills'"),
       details: z.string().optional().describe("Additional context or pasted content"),
     }),
     handler: async ({ context, query }) => {
-      // Use profileGraph query mode to validate profile existence
+      // Use profileGraph query mode to validate profile existence and get id
       const queryResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
       if (!queryResult.readResult?.hasProfile && !queryResult.profile) {
         return error("You don't have a profile yet. Use create_user_profile first.");
       }
       const existingProfileId = queryResult.readResult?.profile?.id;
-      if (existingProfileId && existingProfileId !== query.profileId.trim()) {
+      const providedProfileId = query.profileId?.trim();
+      if (providedProfileId && existingProfileId && providedProfileId !== existingProfileId) {
         return error("Invalid profileId. Use the profile id from read_user_profiles.");
       }
 

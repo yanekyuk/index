@@ -50,13 +50,11 @@ beforeAll(async () => {
   await db.insert(users).values([
     {
       id: userAId,
-      privyId: TEST_PREFIX + 'privy_a_' + userAId,
       email: TEST_PREFIX + userAId + '@test.com',
       name: TEST_PREFIX + 'UserA',
     },
     {
       id: userBId,
-      privyId: TEST_PREFIX + 'privy_b_' + userBId,
       email: TEST_PREFIX + userBId + '@test.com',
       name: TEST_PREFIX + 'UserB',
     },
@@ -274,6 +272,13 @@ describe('ChatDatabaseAdapter', () => {
     expect(assigned).toBe(true);
   });
 
+  it('should get index ids for intent', async () => {
+    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    expect(indexIds).toEqual([fixture.indexId]);
+    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    expect(empty).toEqual([]);
+  });
+
   it('should assign and unassign intent to index', async () => {
     const newIntentId = uuidv4();
     await db.insert(intents).values({
@@ -417,7 +422,6 @@ describe('OpportunityDatabaseAdapter', () => {
     const newUserId = uuidv4();
     await db.insert(users).values({
       id: newUserId,
-      privyId: TEST_PREFIX + newUserId,
       email: TEST_PREFIX + newUserId + '@test.com',
       name: 'NoProfile',
     });
@@ -633,6 +637,13 @@ describe('IndexGraphDatabaseAdapter', () => {
 
   it('should report intent assigned to index', async () => {
     expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.indexId)).toBe(true);
+  });
+
+  it('should get index ids for intent', async () => {
+    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    expect(indexIds).toEqual([fixture.indexId]);
+    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    expect(empty).toEqual([]);
   });
 
   it('should assign and unassign intent to index', async () => {

@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
-import { usePrivy } from "@privy-io/react-auth";
 import { useAIChat } from "@/contexts/AIChatContext";
 
 export default function FeedbackWidget() {
@@ -10,7 +9,6 @@ export default function FeedbackWidget() {
   const [feedback, setFeedback] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { getAccessToken } = usePrivy();
   const { sessionId, messages } = useAIChat();
 
   useEffect(() => {
@@ -33,27 +31,23 @@ export default function FeedbackWidget() {
     setIsSubmitting(true);
 
     try {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error("Authentication required");
-      }
-
       const evaluatorUrl =
         process.env.NEXT_PUBLIC_EVALUATOR_URL || "http://localhost:3002";
       const response = await fetch(`${evaluatorUrl}/api/eval/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
         },
+        credentials: "include",
         body: JSON.stringify({
           feedback,
           sessionId: sessionId ?? undefined,
-          conversation: sessionId
-            ? messages
-                .slice(-50)
-                .map((m) => ({ role: m.role, content: m.content }))
-            : undefined,
+          conversation:
+            messages.length > 0
+              ? messages
+                  .slice(-50)
+                  .map((m) => ({ role: m.role, content: m.content }))
+              : undefined,
         }),
       });
 
@@ -103,7 +97,7 @@ export default function FeedbackWidget() {
 
           <div className="flex items-center justify-between mt-auto">
             <div className="flex items-center">
-              {sessionId && (
+              {messages.length > 0 && (
                 <span className="text-xs text-gray-400">
                   Includes conversation
                 </span>

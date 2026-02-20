@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
 import type { Index } from '@/types';
 import type { PaginatedResponse } from '@/types';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
@@ -10,32 +9,25 @@ export interface IndexListV2Response {
   pagination: { current: number; total: number; count: number; totalCount: number };
 }
 
-async function v2Fetch(
-  path: string,
-  options: RequestInit & { accessToken: string }
-): Promise<Response> {
-  const { accessToken, ...init } = options;
+async function v2Fetch(path: string, options: RequestInit = {}): Promise<Response> {
   const url = `${API_BASE_URL}${path}`;
   return fetch(url, {
-    ...init,
+    ...options,
+    credentials: 'include',
     headers: {
-      ...(init.headers as Record<string, string>),
-      Authorization: `Bearer ${accessToken}`,
+      ...(options.headers as Record<string, string>),
     },
   });
 }
 
-export function createIndexesServiceV2(getAccessToken: () => Promise<string | null>) {
+export function createIndexesServiceV2() {
   return {
     /**
      * List indexes the user is a member of (including personal index).
      * GET /indexes. "Everywhere" is not returned (static UI option).
      */
     getIndexes: async (): Promise<PaginatedResponse<Index>> => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('Not authenticated');
-
-      const res = await v2Fetch('/indexes', { method: 'GET', accessToken: token });
+      const res = await v2Fetch('/indexes', { method: 'GET' });
 
       if (!res.ok) {
         let message = res.statusText;
@@ -60,10 +52,7 @@ export function createIndexesServiceV2(getAccessToken: () => Promise<string | nu
      * GET /indexes/discovery/public
      */
     getPublicIndexes: async (): Promise<PaginatedResponse<Index>> => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('Not authenticated');
-
-      const res = await v2Fetch('/indexes/discovery/public', { method: 'GET', accessToken: token });
+      const res = await v2Fetch('/indexes/discovery/public', { method: 'GET' });
 
       if (!res.ok) {
         let message = res.statusText;
@@ -88,12 +77,8 @@ export function createIndexesServiceV2(getAccessToken: () => Promise<string | nu
      * POST /indexes/:id/join
      */
     joinPublicIndex: async (indexId: string): Promise<Index> => {
-      const token = await getAccessToken();
-      if (!token) throw new Error('Not authenticated');
-
-      const res = await v2Fetch(`/indexes/${indexId}/join`, { 
-        method: 'POST', 
-        accessToken: token,
+      const res = await v2Fetch(`/indexes/${indexId}/join`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
 
@@ -115,6 +100,5 @@ export function createIndexesServiceV2(getAccessToken: () => Promise<string | nu
 }
 
 export function useIndexesV2() {
-  const { getAccessToken } = usePrivy();
-  return useMemo(() => createIndexesServiceV2(getAccessToken), [getAccessToken]);
+  return useMemo(() => createIndexesServiceV2(), []);
 }

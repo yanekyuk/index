@@ -1,0 +1,409 @@
+---
+description: LangGraph patterns for writing smart, conditional state graphs
+globs: **/graphs/**/*.ts
+alwaysApply: false
+---
+
+# LangGraph Patterns
+
+LangGraph should be used for **complex, multi-step workflows that require conditional logic**. Don't use graphs for simple linear operations - use direct service calls instead.
+
+## When to Use Graphs
+
+### ✅ GOOD - Valid Use Cases
+
+- **Multi-step workflows with branching logic** (e.g., profile generation that conditionally scrapes, generates, or skips based on existing state)
+- **Operations with read/write separation** (e.g., fast query paths vs. full processing pipelines)
+- **Workflows requiring state accumulation** across multiple agents
+- **Complex decision trees** where routing depends on prior state
+- **Parallel processing** with map-reduce patterns (e.g., verifying multiple intents)
+
+### ❌ BAD - Don't Use Graphs For
+
+- Simple CRUD operations (use services directly)
+- Linear agent calls with no branching
+- Single LLM call with no state management
+- Workflows that can be handled by a single agent
+
+---
+
+## Graph Structure
+
+### File Organization
+
+Every graph requires **two files**:
+
+```
+{domain}.graph.ts          # Graph factory and node definitions
+{domain}.graph.state.ts    # State annotation and types
+```
+
+**Example:**
+```typescript
+chat.graph.ts          // Factory, nodes, conditional logic
+chat.graph.state.ts    // ChatGraphState annotation
+```
+
+### Factory Pattern with Dependency Injection
+
+All graphs use a factory class that:
+1. Accepts dependencies in constructor (database, embedder, agents)
+2. Provides a `createGraph()` or `compile()` method
+3. Keeps the graph stateless and testable
+
+```typescript
+// ✅ GOOD
+export class ChatGraphFactory {
+  constructor(
+    private database: ChatGraphCompositeDatabase,
+    private embedder: Embedder,
+    private scraper: Scraper
+  ) {}
+
+  public createGraph() {
+    return this.buildGraph().compile();
+  }
+
+  private buildGraph() {
+    // Graph construction here
+  }
+}
+
+// ❌ BAD - Hardcoded dependencies
+export class ChatGraph {
+  constructor() {
+    this.database = new Database(); // Don't do this
+  }
+}
+```
+
+---
+
+## State Design
+
+### Use LangGraph Annotations
+
+Define state using `Annotation.Root` with proper reducers:
+
+```typescript
+// ✅ GOOD - Structured state with reducers
+export const IntentGraphState = Annotation.Root({
+  // Input fields (required)
+  userId: Annotation<string>,
+  inputContent: Annotation<string | null>,
+  
+  // Intermediate fields (accumulated with merge)
+  inferredIntents: Annotation<InferredIntent[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+  
+  // Control fields (operation mode for conditional routing)
+  operationMode: Annotation<'create' | 'update' | 'delete'>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 'create',
+  }),
+  
+  // Output fields (overwrite per turn)
+  actions: Annotation<ReconcilerAction[]>({
+    reducer: (curr, next) => next,
+    default: () => [],
+  }),
+});
+```
+
+### State Principles
+
+1. **Input fields**: Required data to start the graph (userId, content, etc.)
+2. **Intermediate fields**: Accumulated state as graph progresses (use merge reducers)
+3. **Control fields**: Operation modes/flags that drive conditional routing
+4. **Output fields**: Final results (overwrite per turn)
+
+---
+
+## Conditional Routing (The Key Pattern)
+
+Graphs **must** use conditional edges to be "smart". Every graph should have at least one conditional routing point.
+
+### Pattern: Read/Write Separation (Fast Paths)
+
+Optimize by detecting read-only queries and skipping expensive processing:
+
+```typescript
+// ✅ GOOD - Read/write separation with fast paths
+const routeCondition = (state: typeof ChatGraphState.State): string => {
+  const target = state.routingDecision?.target || "respond";
+  const operationType = state.routingDecision?.operationType;
+  
+  log.info("[Graph:RouteCondition] Routing decision", {
+    target,
+    operationType,
+    fastPath: target.includes('_query')  // Flag fast paths
+  });
+  
+  return target;
+};
+
+workflow
+  .addConditionalEdges("router", routeCondition, {
+    intent_query: "intent_query",      // Fast path (DB read only)
+    intent_write: "intent_write",      // Full pipeline (inference + verification)
+    profile_query: "profile_query",    // Fast path
+    profile_write: "profile_write",    // Full pipeline
+    respond: "respond_direct",
+  });
+```
+
+### Pattern: Skip Expensive Operations
+
+Use operation mode to conditionally skip nodes:
+
+```typescript
+// ✅ GOOD - Conditional skipping based on operation mode
+const shouldRunInference = (state: typeof IntentGraphState.State): string => {
+  if (state.operationMode === 'delete') {
+    log.info('[Graph:Conditional] Delete mode - skipping inference, routing to reconciliation');
+    return 'reconciler';  // Skip inference entirely
+  }
+  
+  log.info('[Graph:Conditional] Running inference', {
+    operationMode: state.operationMode
+  });
+  return 'inference';
+};
+
+workflow.addConditionalEdges("prep", shouldRunInference, {
+  inference: "inference",
+  reconciler: "reconciler"
+});
+```
+
+### Pattern: State-Based Branching
+
+Branch based on existing state to avoid redundant work:
+
+```typescript
+// ✅ GOOD - Check state before deciding next step
+const checkStateCondition = (state: typeof ProfileGraphState.State) => {
+  // If forceUpdate is set with new input, re-generate profile
+  if (state.forceUpdate && state.input) {
+    return "generate_profile";
+  }
+
+  // Profile exists and has embedding
+  if (state.profile?.embedding?.length > 0) {
+    return "generate_hyde";  // Skip to next phase
+  }
+
+  // Need to scrape new data
+  return "scrape";
+};
+```
+
+---
+
+## Node Implementation
+
+### Node Function Signature
+
+```typescript
+// ✅ GOOD - Async function that accepts state, returns partial state
+const inferenceNode = async (state: typeof IntentGraphState.State) => {
+  log.info("[Graph:Inference] Starting inference", {
+    operationMode: state.operationMode,
+    hasContent: !!state.inputContent
+  });
+  
+  try {
+    const result = await agent.invoke(state.inputContent);
+    
+    log.info("[Graph:Inference] Inference complete", {
+      inferredCount: result.intents.length
+    });
+    
+    return { inferredIntents: result.intents };
+  } catch (error) {
+    log.error("[Graph:Inference] Failed", { error });
+    return { 
+      inferredIntents: [],
+      error: "Inference failed"
+    };
+  }
+};
+```
+
+### Node Best Practices
+
+1. **Logging**: Log entry with context, log exit with results
+2. **Error Handling**: Catch errors, log them, return error state (don't throw)
+3. **Partial State**: Return only the state fields you're updating
+4. **Descriptive Names**: Use `{action}Node` convention (e.g., `inferenceNode`, `routerNode`)
+5. **Type Safety**: Use `typeof GraphState.State` for parameter type
+
+---
+
+## Graph Assembly
+
+### Standard Assembly Pattern
+
+```typescript
+// ✅ GOOD - Clear assembly with proper START/END
+const workflow = new StateGraph(IntentGraphState)
+  // Add all nodes
+  .addNode("prep", prepNode)
+  .addNode("inference", inferenceNode)
+  .addNode("verification", verificationNode)
+  .addNode("reconciler", reconciliationNode)
+  .addNode("executor", executorNode)
+
+  // Define entry point
+  .addEdge(START, "prep")
+  
+  // Conditional routing (the smart part)
+  .addConditionalEdges("prep", shouldRunInference, {
+    inference: "inference",
+    reconciler: "reconciler"
+  })
+  
+  .addConditionalEdges("inference", shouldRunVerification, {
+    verification: "verification",
+    reconciler: "reconciler"
+  })
+  
+  // Linear edges
+  .addEdge("verification", "reconciler")
+  .addEdge("reconciler", "executor")
+  .addEdge("executor", END);
+
+return workflow.compile();
+```
+
+### Assembly Rules
+
+1. **Use START and END constants** from `@langchain/langgraph`
+2. **Always start with START**: `.addEdge(START, "first_node")`
+3. **Always end with END**: `.addEdge("last_node", END)`
+4. **Map all conditional branches**: Every condition result must map to a valid node name or END
+5. **Validate routing targets**: Log warnings if invalid targets detected
+
+---
+
+## Common Anti-Patterns
+
+### ❌ Linear Graph (No Conditionals)
+
+```typescript
+// ❌ BAD - No conditional routing, just use service calls
+workflow
+  .addEdge(START, "step1")
+  .addEdge("step1", "step2")
+  .addEdge("step2", "step3")
+  .addEdge("step3", END);
+
+// Use this instead:
+async function processIntent(input) {
+  const step1Result = await agent1.invoke(input);
+  const step2Result = await agent2.invoke(step1Result);
+  return await agent3.invoke(step2Result);
+}
+```
+
+### ❌ Throwing Errors in Nodes
+
+```typescript
+// ❌ BAD - Throwing errors breaks the graph
+const node = async (state) => {
+  if (!state.data) {
+    throw new Error("Missing data");  // Don't do this
+  }
+};
+
+// ✅ GOOD - Return error state
+const node = async (state) => {
+  if (!state.data) {
+    log.error("[Node] Missing required data");
+    return { error: "Missing data" };
+  }
+};
+```
+
+### ❌ Hardcoded Dependencies
+
+```typescript
+// ❌ BAD - Creating dependencies inside graph
+const workflow = new StateGraph(MyState)
+  .addNode("process", async (state) => {
+    const db = new Database();  // Don't do this
+    return await db.query(state.id);
+  });
+
+// ✅ GOOD - Inject via factory
+class MyGraphFactory {
+  constructor(private database: Database) {}
+  
+  private buildGraph() {
+    return new StateGraph(MyState)
+      .addNode("process", async (state) => {
+        return await this.database.query(state.id);
+      });
+  }
+}
+```
+
+---
+
+## Testing Graphs
+
+### Test Structure
+
+```typescript
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { IntentGraphFactory } from './intent.graph';
+import { MockDatabase } from '../../../test-utils/mock-database';
+
+describe('IntentGraph', () => {
+  let factory: IntentGraphFactory;
+  let mockDb: MockDatabase;
+  
+  beforeEach(() => {
+    mockDb = new MockDatabase();
+    factory = new IntentGraphFactory(mockDb);
+  });
+  
+  it('should skip inference for delete operations', async () => {
+    const graph = factory.createGraph();
+    
+    const result = await graph.invoke({
+      userId: 'user-1',
+      inputContent: null,
+      operationMode: 'delete',
+      targetIntentIds: ['intent-1']
+    });
+    
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0].type).toBe('expire');
+    expect(result.inferredIntents).toBeUndefined(); // Inference skipped
+  });
+  
+  it('should use fast path for query operations', async () => {
+    // Test conditional routing by checking state at different nodes
+  });
+});
+```
+
+---
+
+## Checklist
+
+Before shipping a new graph, verify:
+
+- [ ] Graph has at least one conditional edge (smart routing)
+- [ ] There's a clear reason to use a graph vs. direct service calls
+- [ ] State is defined in separate `.graph.state.ts` file
+- [ ] Factory pattern with dependency injection
+- [ ] All nodes have comprehensive logging (entry/exit)
+- [ ] Error handling returns error state (doesn't throw)
+- [ ] Conditional routing validates targets
+- [ ] Fast paths exist for read-only operations (if applicable)
+- [ ] Operation mode controls flow (create/read/update/delete)
+- [ ] Tests cover conditional routing logic

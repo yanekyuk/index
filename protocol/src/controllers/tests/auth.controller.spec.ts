@@ -22,7 +22,6 @@ describe("AuthController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Auth User",
-      privyId: `privy:auth:${Date.now()}`,
       intro: "Test intro",
       location: "Test City",
     });
@@ -35,7 +34,6 @@ describe("AuthController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:auth:${Date.now()}`,
     email: testEmail,
     name: "Test Auth User",
   });
@@ -57,7 +55,6 @@ describe("AuthController Integration", () => {
       const req = new Request("http://localhost/auth/me");
       const fakeUser: AuthenticatedUser = {
         id: "00000000-0000-0000-0000-000000000000",
-        privyId: "privy:fake",
         email: "fake@example.com",
         name: "Fake",
       };
@@ -130,7 +127,6 @@ describe("AuthController Integration", () => {
 
       userService.findWithGraph = (async () => ({
         id: testUserId,
-        privyId: `privy:auth:${Date.now()}`,
         email: testEmail,
         name: "Existing Profile User",
         intro: "Already has profile",

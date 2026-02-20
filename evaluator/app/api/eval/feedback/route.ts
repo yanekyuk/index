@@ -3,6 +3,7 @@ import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
 import { userFeedback } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
+import { analyzeFeedback } from "@/lib/feedback-analyzer";
 
 export async function POST(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
@@ -25,12 +26,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await db.insert(userFeedback).values({
-      userId,
-      feedback: body.feedback.trim(),
-      sessionId: body.sessionId ?? null,
-      conversation: body.conversation ?? null,
-    });
+    const [inserted] = await db
+      .insert(userFeedback)
+      .values({
+        userId,
+        feedback: body.feedback.trim(),
+        sessionId: body.sessionId ?? null,
+        conversation: body.conversation ?? null,
+      })
+      .returning({ id: userFeedback.id });
+
+    if (inserted) {
+      try {
+        const analysis = await analyzeFeedback(
+          body.feedback.trim(),
+          body.conversation || []
+        );
+        await db
+          .update(userFeedback)
+          .set({
+            aiExplanation: analysis.explanation,
+            issueLabels: analysis.labels,
+          })
+          .where(eq(userFeedback.id, inserted.id));
+      } catch (analysisErr) {
+        console.error("Failed to analyze feedback", analysisErr);
+        // Don't fail the request, just log the error
+      }
+    }
 
     return Response.json({ ok: true });
   } catch (err) {

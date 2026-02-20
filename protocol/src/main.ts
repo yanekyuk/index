@@ -7,14 +7,14 @@ import { IntentController } from './controllers/intent.controller';
 import { FileController } from './controllers/file.controller';
 import { LinkController } from './controllers/link.controller';
 import { OpportunityController, IndexOpportunityController } from './controllers/opportunity.controller';
-import { ChatDatabaseAdapter } from './adapters/database.adapter';
-import type { OpportunityControllerDatabase } from './lib/protocol/interfaces/database.interface';
 import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
+import { auth } from './lib/auth';
+import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
@@ -63,7 +63,6 @@ controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(FileController, new FileController());
 controllerInstances.set(LinkController, new LinkController());
-const opportunityDb: OpportunityControllerDatabase = new ChatDatabaseAdapter() as OpportunityControllerDatabase;
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController());
@@ -79,25 +78,7 @@ Bun.serve({
     const url = new URL(req.url);
     const method = req.method;
 
-    // CORS: allow explicit FRONTEND_URL, or reflect Origin for localhost/127.0.0.1 (so both work), else *
-    const origin = req.headers.get('Origin') ?? '';
-    const allowOrigin =
-      process.env.FRONTEND_URL ||
-      (origin && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) ? origin : null) ||
-      '*';
-
-    const corsHeaders: Record<string, string> = {
-      'Access-Control-Allow-Origin': allowOrigin,
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept',
-      'Access-Control-Expose-Headers': 'X-Session-Id',
-      'Access-Control-Max-Age': '86400',
-    };
-
-    // If we reflected a specific origin, allow credentials (cookies/auth headers)
-    if (allowOrigin !== '*') {
-      corsHeaders['Access-Control-Allow-Credentials'] = 'true';
-    }
+    const corsHeaders = getCorsHeaders(req);
 
     logger.info('Request', { method, path: url.pathname });
 
@@ -126,9 +107,27 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
+    // Better Auth handles its own /api/auth/* routes (sign-in, sign-up, session, etc.)
+    // Our custom auth routes (/api/auth/me, /api/auth/profile/update) fall through to controllers
+    const betterAuthPaths = [
+      '/api/auth/sign-in', '/api/auth/sign-up', '/api/auth/sign-out',
+      '/api/auth/session', '/api/auth/callback', '/api/auth/error',
+      '/api/auth/get-session', '/api/auth/forget-password',
+      '/api/auth/reset-password', '/api/auth/verify-email',
+      '/api/auth/change-password', '/api/auth/change-email',
+      '/api/auth/delete-user', '/api/auth/list-sessions',
+      '/api/auth/revoke-session', '/api/auth/revoke-other-sessions',
+      '/api/auth/update-user',
+    ];
+    const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
+    if (isBetterAuthRoute) {
+      const res = await auth.handler(req);
+      const newHeaders = new Headers(res.headers);
+      Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
+      return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
+    }
+
     // Iterate over controllers and routes to find a match.
-    // Optimization: could pre-compile regex or a router map.
-    // For now, simple iteration is fine for small number of routes.
 
     for (const [target, controllerDef] of RouteRegistry.getControllers()) {
       const routes = RouteRegistry.getRoutes(target);

@@ -3,7 +3,6 @@ import { users } from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 import { log } from './log';
 import type { IntegrationName } from './integrations/config';
-import { privyClient } from './privy';
 
 const logger = log.lib.from("lib/user-utils.ts");
 
@@ -12,59 +11,49 @@ export interface ExtractedUser {
   name: string;
   provider: IntegrationName;
   providerId: string;
-  privyId: string;
   avatar?: string;
 }
 
 export interface CreatedUser {
   id: string;
-  privyId: string;
   email: string;
   name: string;
   isNewUser: boolean;
 }
 
-// Extraction functions moved to their respective providers
-
 /**
- * Save or find a single user - similar to saveIntent pattern
+ * Save or find a single user by email
  */
 export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUser> {
   try {
-    // First check if user already exists in our database using privyId as control key
     const existingUser = await db
       .select({
         id: users.id,
-        privyId: users.privyId,
         email: users.email,
         name: users.name
       })
       .from(users)
-      .where(eq(users.privyId, extractedUser.privyId))
+      .where(eq(users.email, extractedUser.email))
       .limit(1);
     
     if (existingUser.length > 0) {
       const user = existingUser[0];
       return {
         id: user.id,
-        privyId: user.privyId,
         email: user.email,
         name: user.name,
         isNewUser: false
       };
     }
     
-    // Create user in our database
     logger.info('Creating user in database', { 
       email: extractedUser.email,
       provider: extractedUser.provider,
-      privyId: extractedUser.privyId
     });
     
     const newUser = await db
       .insert(users)
       .values({
-        privyId: extractedUser.privyId,
         email: extractedUser.email,
         name: extractedUser.name,
         intro: null,
@@ -73,7 +62,6 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
       })
       .returning({
         id: users.id,
-        privyId: users.privyId,
         email: users.email,
         name: users.name
       });
@@ -84,13 +72,9 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
       email: user.email,
       provider: extractedUser.provider 
     });
-
-    // TODO: Ensure personal index ("My Own Private Index") exists for new user
-    // index.service has been removed - need to implement alternative mechanism
     
     return {
       id: user.id,
-      privyId: user.privyId,
       email: user.email,
       name: user.name,
       isNewUser: true
@@ -103,24 +87,21 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
       error: error instanceof Error ? error.message : String(error) 
     });
     
-    // If it's a duplicate privyId error, try to find the existing user
     if (error instanceof Error && error.message.includes('23505')) {
       const existingUser = await db
         .select({
           id: users.id,
-          privyId: users.privyId,
           email: users.email,
           name: users.name
         })
         .from(users)
-        .where(eq(users.privyId, extractedUser.privyId))
+        .where(eq(users.email, extractedUser.email))
         .limit(1);
       
       if (existingUser.length > 0) {
         const user = existingUser[0];
         return {
           id: user.id,
-          privyId: user.privyId,
           email: user.email,
           name: user.name,
           isNewUser: false
@@ -134,8 +115,7 @@ export async function saveUser(extractedUser: ExtractedUser): Promise<CreatedUse
 
 /**
  * User resolver for file-based imports (CSV, etc).
- * Finds existing user by email or creates a new one via Privy.
- * Updates empty fields for existing users.
+ * Finds existing user by email or creates a new one.
  */
 export async function resolveFileUser(params: {
   email: string;
@@ -153,11 +133,9 @@ export async function resolveFileUser(params: {
   const { email, name, avatar, intro, location, socials } = params;
   
   try {
-    // Find existing user by email
     const existingUser = await db
       .select({
         id: users.id,
-        privyId: users.privyId,
         email: users.email,
         name: users.name,
         intro: users.intro,
@@ -173,7 +151,6 @@ export async function resolveFileUser(params: {
       const user = existingUser[0];
       logger.info('File import user already exists', { email, userId: user.id });
       
-      // Check if any fields need updating (only update empty fields)
       const updates: any = {};
       
       if (name && (!user.name || user.name.trim() === '')) {
@@ -189,7 +166,6 @@ export async function resolveFileUser(params: {
         updates.location = location;
       }
       
-      // Update socials if provided
       if (socials) {
         const currentSocials = (user.socials as any) || {};
         const updatedSocials = { ...currentSocials };
@@ -217,7 +193,6 @@ export async function resolveFileUser(params: {
         }
       }
       
-      // Apply updates if there are any
       if (Object.keys(updates).length > 0) {
         updates.updatedAt = new Date();
         
@@ -227,7 +202,6 @@ export async function resolveFileUser(params: {
           .where(eq(users.id, user.id))
           .returning({
             id: users.id,
-            privyId: users.privyId,
             email: users.email,
             name: users.name
           });
@@ -241,7 +215,6 @@ export async function resolveFileUser(params: {
         if (updatedUser.length > 0) {
           return {
             id: updatedUser[0].id,
-            privyId: updatedUser[0].privyId,
             email: updatedUser[0].email,
             name: updatedUser[0].name,
             isNewUser: false
@@ -251,39 +224,20 @@ export async function resolveFileUser(params: {
       
       return {
         id: user.id,
-        privyId: user.privyId,
         email: user.email,
         name: user.name,
         isNewUser: false
       };
     }
     
-    // Create new user via Privy
-    const privyUser = await privyClient.importUser({
-      linkedAccounts: [
-        {
-          type: 'email',
-          address: email,
-        },
-      ],
-      customMetadata: {
-        source: 'csv-import',
-        name
-      } as any,
-      createEthereumWallet: true
-    });
-    
-    // Save to database with all profile fields
     const createdUser = await saveUser({
       email,
       name,
       provider: 'file' as any,
       providerId: email,
-      privyId: privyUser.id,
       avatar
     });
     
-    // Update additional fields if provided
     if (intro || location || socials) {
       const updateData: any = { updatedAt: new Date() };
       if (intro) updateData.intro = intro;
@@ -307,7 +261,7 @@ export async function resolveFileUser(params: {
 
 /**
  * Generic user resolver for integration providers.
- * Finds existing user by email or creates a new one via Privy.
+ * Finds existing user by email or creates a new one.
  */
 export async function resolveIntegrationUser(params: {
   email: string;
@@ -320,11 +274,9 @@ export async function resolveIntegrationUser(params: {
   const { email, providerId, name, provider, avatar, updateEmptyFields = false } = params;
   
   try {
-    // Try to find existing user by email first
     const existingUser = await db
       .select({
         id: users.id,
-        privyId: users.privyId,
         email: users.email,
         name: users.name,
         avatar: users.avatar
@@ -336,7 +288,6 @@ export async function resolveIntegrationUser(params: {
     if (existingUser.length > 0) {
       const user = existingUser[0];
       
-      // Optionally update empty fields (for Slack which has avatars)
       if (updateEmptyFields) {
         const needsUpdate = (!user.name || user.name.trim() === '') || (avatar && !user.avatar);
         
@@ -358,7 +309,6 @@ export async function resolveIntegrationUser(params: {
               .where(eq(users.id, user.id))
               .returning({
                 id: users.id,
-                privyId: users.privyId,
                 email: users.email,
                 name: users.name
               });
@@ -374,7 +324,6 @@ export async function resolveIntegrationUser(params: {
               
               return {
                 id: updatedUser[0].id,
-                privyId: updatedUser[0].privyId,
                 email: updatedUser[0].email,
                 name: updatedUser[0].name,
                 isNewUser: false
@@ -388,36 +337,17 @@ export async function resolveIntegrationUser(params: {
       
       return {
         id: user.id,
-        privyId: user.privyId,
         email: user.email,
         name: user.name,
         isNewUser: false
       };
     }
     
-    // User doesn't exist, create new user via Privy SDK
-    const privyUser = await privyClient.importUser({
-      linkedAccounts: [
-        {
-          type: 'email',
-          address: email,
-        },
-      ],
-      customMetadata: {
-        provider,
-        providerId,
-        name
-      },
-      createEthereumWallet: true
-    });
-    
-    // Save user to database
     const createdUser = await saveUser({
       email,
       name,
       provider,
       providerId,
-      privyId: privyUser.id,
       avatar
     });
     

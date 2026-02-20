@@ -21,7 +21,7 @@ export const evalRuns = pgTable(
   "eval_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").notNull(), // Privy user ID
+    userId: text("user_id").notNull(),
     name: text("name"),
     config: jsonb("config").$type<{ maxTurns?: number; timeoutMs?: number }>(),
     status: evalRunStatusEnum("status").notNull().default("draft"),
@@ -61,6 +61,8 @@ export const userFeedback = pgTable(
     retryStatus: text("retry_status").$type<
       "pending" | "running" | "completed" | "error"
     >(),
+    aiExplanation: text("ai_explanation"),
+    issueLabels: jsonb("issue_labels").$type<string[]>(),
     archived: boolean("archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

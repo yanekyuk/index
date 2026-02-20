@@ -1,18 +1,17 @@
-import { PrivyClient } from "@privy-io/server-auth";
-
-const privyClient = new PrivyClient(
-  process.env.NEXT_PUBLIC_PRIVY_APP_ID || "",
-  process.env.PRIVY_APP_SECRET || ""
-);
+const PROTOCOL_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
 export async function getUserIdFromRequest(req: Request): Promise<string | null> {
-  const auth = req.headers.get("Authorization");
-  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  if (!token) return null;
-
   try {
-    const claims = await privyClient.verifyAuthToken(token);
-    return claims?.userId ?? null;
+    const cookie = req.headers.get("cookie");
+    if (!cookie) return null;
+
+    const res = await fetch(`${PROTOCOL_API_URL}/auth/get-session`, {
+      headers: { cookie },
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return data?.session?.userId ?? null;
   } catch {
     return null;
   }

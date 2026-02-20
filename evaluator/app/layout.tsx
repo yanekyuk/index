@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { PrivyProviderWrapper } from "./PrivyProviderWrapper";
+import { AuthProviderWrapper } from "./AuthProviderWrapper";
 
 export const metadata: Metadata = {
   title: "Chat Evaluator",
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <PrivyProviderWrapper>{children}</PrivyProviderWrapper>
+        <AuthProviderWrapper>{children}</AuthProviderWrapper>
       </body>
     </html>
   );

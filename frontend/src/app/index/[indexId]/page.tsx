@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Index, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import { usePrivy } from '@privy-io/react-auth';
 import { useIndexes } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
@@ -13,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface PublicJoinPageProps {
   params: Promise<{
@@ -38,7 +38,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
     error: null,
   });
 
-  const { login, authenticated, ready } = usePrivy();
+  const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
   const router = useRouter();
@@ -64,11 +64,11 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
         }
 
         // Check authentication status
-        if (!ready) {
-          return; // Wait for Privy to be ready
+        if (!isReady) {
+          return; // Wait for auth to be ready
         }
 
-        if (!authenticated) {
+        if (!isAuthenticated) {
           setState(prev => ({ ...prev, step: 'auth-required' }));
           return;
         }
@@ -122,15 +122,15 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
     };
 
     loadIndexAndCheckAuth();
-  }, [resolvedParams.indexId, authenticated, ready, api, router, indexesService, refreshIndexes]);
+  }, [resolvedParams.indexId, isAuthenticated, isReady, api, router, indexesService, refreshIndexes]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
-    if (authenticated && ready && state.step === 'auth-required') {
+    if (isAuthenticated && isReady && state.step === 'auth-required') {
       // Trigger reload to join the index
       setState(prev => ({ ...prev, step: 'loading' }));
     }
-  }, [authenticated, ready, state.step]);
+  }, [isAuthenticated, isReady, state.step]);
 
   const handleJoinIndex = async () => {
     if (!state.index) return;
@@ -162,7 +162,7 @@ export default function PublicJoinPage({ params }: PublicJoinPageProps) {
   };
 
   const handleLogin = () => {
-    login();
+    openLoginModal();
   };
 
   const renderContent = () => {

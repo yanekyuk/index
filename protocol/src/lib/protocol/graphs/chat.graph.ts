@@ -13,6 +13,22 @@ import { ChatStreamer } from "../streamers";
 
 const logger = protocolLogger("ChatGraphFactory");
 
+function isRetriableError(err: unknown): boolean {
+  const status =
+    (err as { status?: number }).status ?? (err as { statusCode?: number }).statusCode;
+  if (typeof status === "number" && status >= 500 && status <= 599) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("internal server error") ||
+    /\b500\b|status[: ]*500/i.test(msg) ||
+    lower.includes("econnreset") ||
+    lower.includes("etimedout")
+  );
+}
+
+const RETRY_DELAY_MS = 800;
+
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT GRAPH FACTORY (Agent Loop Architecture)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -182,8 +198,11 @@ export class ChatGraphFactory {
         currentIteration: state.iterationCount
       });
 
-      try {
-        // Create agent with current user context (async factory resolves user/index from DB)
+      const runLoop = async (): Promise<{
+        responseText: string;
+        messages: BaseMessage[];
+        iterationCount: number;
+      }> => {
         const indexId = state.indexId;
         const agent = await ChatAgent.create({
           userId: state.userId,
@@ -192,15 +211,26 @@ export class ChatGraphFactory {
           scraper,
           indexId,
         });
+        const buffer: unknown[] = [];
+        const attemptWriter = (data: unknown) => buffer.push(data);
+        const result = await agent.streamRun(state.messages, attemptWriter);
+        for (const event of buffer) {
+          try {
+            config.writer?.(event);
+          } catch {
+            /* swallow if writer is gone */
+          }
+        }
+        return result;
+      };
 
-        // Run the agent loop with streaming narration via config.writer
-        const result = await agent.streamRun(state.messages, config.writer);
+      try {
+        const result = await runLoop();
         logger.debug("Agent streamRun result", {
           responseText: result.responseText,
           iterationCount: result.iterationCount,
           messageCount: result.messages.length,
         });
-
         logger.info("Agent loop complete", {
           userId: state.userId,
           iterations: result.iterationCount,
@@ -213,6 +243,37 @@ export class ChatGraphFactory {
           shouldContinue: false,
         };
       } catch (error) {
+        if (isRetriableError(error)) {
+          logger.warn("Agent loop failed with retriable error, retrying once", {
+            userId: state.userId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+          try {
+            const result = await runLoop();
+            logger.info("Agent loop complete after retry", {
+              userId: state.userId,
+              iterations: result.iterationCount,
+            });
+            return {
+              messages: result.messages,
+              responseText: result.responseText,
+              iterationCount: result.iterationCount,
+              shouldContinue: false,
+            };
+          } catch (retryError) {
+            logger.error("Agent loop failed on retry", {
+              userId: state.userId,
+              error: retryError instanceof Error ? retryError.message : String(retryError)
+            });
+            return {
+              error: retryError instanceof Error ? retryError.message : "Agent loop failed",
+              responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
+              shouldContinue: false
+            };
+          }
+        }
+
         logger.error("Agent loop failed", {
           userId: state.userId,
           error: error instanceof Error ? error.message : String(error)

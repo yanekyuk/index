@@ -8,6 +8,7 @@ import {
   deriveRolesFromStrategy,
   canUserSeeOpportunity,
   isActionableForViewer,
+  validateOpportunityActors,
 } from '../opportunity.utils';
 
 describe('opportunity.utils', () => {
@@ -333,6 +334,57 @@ describe('opportunity.utils', () => {
           expect(isActionableForViewer(makeActors(), status, VIEWER)).toBe(false);
         });
       }
+    });
+  });
+
+  describe('validateOpportunityActors', () => {
+    test('rejects when there is an introducer but not exactly two non-introducer actors (1 introducer + 1 party)', () => {
+      const actors = [
+        { role: 'introducer' },
+        { role: 'party' },
+      ];
+      expect(() => validateOpportunityActors(actors)).toThrow(
+        /An opportunity with only two actors cannot have an introducer/
+      );
+    });
+
+    test('rejects when there is an introducer and three non-introducer actors', () => {
+      const actors = [
+        { role: 'introducer' },
+        { role: 'party' },
+        { role: 'party' },
+        { role: 'party' },
+      ];
+      expect(() => validateOpportunityActors(actors)).toThrow(
+        /An opportunity with an introducer must have exactly two other actors/
+      );
+    });
+
+    test('rejects when exactly two actors and one is introducer', () => {
+      const actors = [
+        { role: 'party' },
+        { role: 'introducer' },
+      ];
+      expect(() => validateOpportunityActors(actors)).toThrow(
+        /An opportunity with only two actors cannot have an introducer/
+      );
+    });
+
+    test('accepts three actors: two party + one introducer', () => {
+      const actors = [
+        { role: 'party' },
+        { role: 'party' },
+        { role: 'introducer' },
+      ];
+      expect(() => validateOpportunityActors(actors)).not.toThrow();
+    });
+
+    test('accepts two actors: two party (no introducer)', () => {
+      const actors = [
+        { role: 'party' },
+        { role: 'agent' },
+      ];
+      expect(() => validateOpportunityActors(actors)).not.toThrow();
     });
   });
 });

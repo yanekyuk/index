@@ -42,7 +42,6 @@ describe("ChatController Integration", () => {
     const user = await userAdapter.create({
       email,
       name: "Test Chat User",
-      privyId: `privy:chat:${Date.now()}`,
       intro: "A software developer interested in AI and distributed systems.",
       location: "New York, NY",
       socials: { x: "https://x.com/testchat" },
@@ -247,7 +246,6 @@ describe("ChatController Integration", () => {
       
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -266,7 +264,6 @@ describe("ChatController Integration", () => {
       
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -285,7 +282,6 @@ describe("ChatController Integration", () => {
       
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -309,7 +305,6 @@ describe("ChatController Integration", () => {
       
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -332,7 +327,6 @@ describe("ChatController Integration", () => {
       
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -360,7 +354,6 @@ describe("ChatController Integration", () => {
 
       const mockUser: AuthenticatedUser = {
         id: testUserId,
-        privyId: `privy:chat:${Date.now()}`,
         email: "test-chat-controller@example.com",
         name: "Test Chat User"
       };
@@ -401,7 +394,6 @@ describe("ChatController Integration", () => {
   describe("ChatController other endpoints", () => {
     const mockUser = (): AuthenticatedUser => ({
       id: testUserId,
-      privyId: `privy:chat:${Date.now()}`,
       email: "test-chat-controller@example.com",
       name: "Test Chat User",
     });

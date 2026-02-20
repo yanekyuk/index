@@ -30,6 +30,7 @@ import {
   type EvaluatorInput,
 } from '../agents/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../interfaces/database.interface';
+import { validateOpportunityActors } from '../support/opportunity.utils';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {
@@ -58,7 +59,7 @@ import type {
   ActiveIntent,
 } from '../interfaces/database.interface';
 import { selectStrategies } from '../support/opportunity.utils';
-import { enrichOrCreate } from '../support/opportunity.enricher';
+import { persistOpportunities } from '../support/opportunity.persist';
 import { injectOpportunityIntoExistingChat } from '../support/opportunity.chat-injection';
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 
@@ -122,26 +123,32 @@ export class OpportunityGraphFactory {
             logger.info('[Graph:Prep] User has no index memberships - cannot find opportunities');
             return {
               userIndexes: [] as Id<'indexes'>[],
+              sourceProfile: null,
               error: 'You need to join at least one index to find opportunities.',
             };
           }
-          const intents = await this.database.getActiveIntents(state.userId);
-          if (intents.length === 0) {
-            logger.info('[Graph:Prep] User has no active intents - cannot run discovery');
-            return {
-              userIndexes: userIndexIds,
-              error: 'You need to add some intents before finding opportunities.',
-            };
-          }
+          const [intents, profile] = await Promise.all([
+            this.database.getActiveIntents(state.userId),
+            this.database.getProfile(state.userId),
+          ]);
           const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
             intentId: intent.id,
             payload: intent.payload,
             summary: intent.summary ?? undefined,
             indexes: [],
           }));
+          const sourceProfile = profile
+            ? {
+                embedding: profile.embedding ?? null,
+                identity: profile.identity ?? undefined,
+                narrative: profile.narrative ?? undefined,
+                attributes: profile.attributes ?? undefined,
+              }
+            : null;
           return {
             userIndexes: userIndexIds,
             indexedIntents,
+            sourceProfile,
           };
         },
         { context: { userId: state.userId }, logOutput: true }
@@ -212,42 +219,176 @@ export class OpportunityGraphFactory {
     };
 
     /**
-     * Node 2: Discovery
-     * Generates HyDE embeddings and performs semantic search.
-     * Uses existing searchWithHydeEmbeddings which handles index-scoped search.
+     * Node 2: Resolve
+     * Resolves trigger intent from triggerIntentId or searchQuery vs indexedIntents;
+     * sets discoverySource, resolvedTriggerIntentId, resolvedIntentInIndex for routing (path A/B/C).
+     */
+    const resolveNode = async (state: typeof OpportunityGraphState.State) => {
+      logger.info('[Graph:Resolve] Resolving intent and index membership', {
+        triggerIntentId: state.triggerIntentId,
+        hasSearchQuery: !!state.searchQuery,
+        indexedIntentsCount: state.indexedIntents.length,
+      });
+
+      const targetIndexIds = state.targetIndexes.map((t) => t.indexId);
+
+      try {
+        let resolvedIntentId: Id<'intents'> | undefined;
+        if (state.triggerIntentId) {
+          const inIndex = await this.database.getIndexIdsForIntent(state.triggerIntentId);
+          const inTarget = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
+          resolvedIntentId = state.triggerIntentId;
+          const resolvedIntentInIndex = inTarget;
+          const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+          return {
+            resolvedTriggerIntentId: resolvedIntentId,
+            resolvedIntentInIndex,
+            discoverySource,
+          };
+        }
+
+        if (state.searchQuery?.trim() && state.indexedIntents.length > 0) {
+          const q = state.searchQuery.trim().toLowerCase();
+          const matched = state.indexedIntents.find((i) => i.payload?.toLowerCase().includes(q));
+          if (matched) {
+            resolvedIntentId = matched.intentId;
+            const inIndex = await this.database.getIndexIdsForIntent(matched.intentId);
+            const resolvedIntentInIndex = inIndex.some((id) => targetIndexIds.includes(id as Id<'indexes'>));
+            const discoverySource = resolvedIntentInIndex ? ('intent' as const) : ('profile' as const);
+            return {
+              resolvedTriggerIntentId: resolvedIntentId,
+              resolvedIntentInIndex,
+              discoverySource,
+            };
+          }
+          logger.warn('[Graph:Resolve] No intent matched search query; leaving resolvedIntentId unset', {
+            searchQuery: state.searchQuery,
+            indexedIntentsCount: state.indexedIntents.length,
+          });
+        }
+
+        return {
+          resolvedTriggerIntentId: undefined,
+          resolvedIntentInIndex: false,
+          discoverySource: 'profile' as const,
+        };
+      } catch (err) {
+        logger.error('[Graph:Resolve] Failed', {
+          triggerIntentId: state.triggerIntentId,
+          searchQuery: state.searchQuery,
+          error: err,
+        });
+        return {
+          resolvedTriggerIntentId: undefined,
+          resolvedIntentInIndex: false,
+          discoverySource: 'profile' as const,
+          error: err instanceof Error ? err.message : 'Resolve failed',
+        };
+      }
+    };
+
+    /**
+     * Node 3: Discovery
+     * Generates HyDE embeddings and performs semantic search (path A), or profile-as-source search (path B/C).
      */
     const discoveryNode = async (state: typeof OpportunityGraphState.State) => {
       logger.info('[Graph:Discovery] Starting semantic search', {
         targetIndexesCount: state.targetIndexes.length,
-        hasSearchQuery: !!state.searchQuery,
+        discoverySource: state.discoverySource,
       });
 
       try {
-        // Determine search query (user query or use first intent as fallback)
-        const searchText = state.searchQuery ?? state.indexedIntents[0]?.payload ?? '';
-        
-        if (!searchText) {
-          logger.warn('[Graph:Discovery] No search text available');
-          return { candidates: [] };
-        }
-
         if (state.targetIndexes.length === 0) {
           logger.warn('[Graph:Discovery] No target indexes for search');
           return { candidates: [] };
         }
 
-        // Determine strategies (use first index for strategy selection)
+        const limitPerStrategy = state.options.limit ?? 10;
+        const perIndexLimit = state.options.limit ?? 20;
+        const minScore = 0.5;
+
+        if (state.discoverySource === 'profile') {
+          const embedding = state.sourceProfile?.embedding ?? null;
+          const vector = Array.isArray(embedding) && embedding.length > 0 && typeof embedding[0] === 'number'
+            ? (embedding as number[])
+            : Array.isArray(embedding) && Array.isArray(embedding[0])
+              ? (embedding[0] as number[])
+              : null;
+          if (!vector || vector.length === 0) {
+            const isPathB = !state.resolvedTriggerIntentId;
+            if (isPathB && state.searchQuery?.trim()) {
+              return {
+                candidates: [],
+                createIntentSuggested: true,
+                suggestedIntentDescription: state.searchQuery.trim(),
+              };
+            }
+            return { candidates: [] };
+          }
+          const allCandidates: CandidateMatch[] = [];
+          for (const targetIndex of state.targetIndexes) {
+            const results = await this.embedder.searchWithProfileEmbedding(vector, {
+              indexScope: [targetIndex.indexId],
+              excludeUserId: state.userId,
+              limitPerStrategy,
+              limit: perIndexLimit,
+              minScore,
+            });
+            for (const result of results) {
+              if (result.type === 'intent') {
+                allCandidates.push({
+                  candidateUserId: result.userId as Id<'users'>,
+                  candidateIntentId: result.id as Id<'intents'>,
+                  indexId: targetIndex.indexId,
+                  similarity: result.score,
+                  strategy: result.matchedVia as HydeStrategy,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                });
+              } else {
+                allCandidates.push({
+                  candidateUserId: result.userId as Id<'users'>,
+                  indexId: targetIndex.indexId,
+                  similarity: result.score,
+                  strategy: result.matchedVia as HydeStrategy,
+                  candidatePayload: '',
+                  candidateSummary: undefined,
+                });
+              }
+            }
+          }
+          const byUserAndIndex = new Map<string, CandidateMatch>();
+          for (const c of allCandidates) {
+            const key = `${c.candidateUserId}:${c.indexId}`;
+            if (!byUserAndIndex.has(key) || (byUserAndIndex.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+              byUserAndIndex.set(key, c);
+            }
+          }
+          const candidates = Array.from(byUserAndIndex.values());
+          const isPathB = !state.resolvedTriggerIntentId;
+          if (candidates.length === 0 && isPathB && state.searchQuery?.trim()) {
+            return {
+              candidates: [],
+              createIntentSuggested: true,
+              suggestedIntentDescription: state.searchQuery.trim(),
+            };
+          }
+          logger.info('[Graph:Discovery] Profile-as-source discovery complete', { candidatesFound: candidates.length });
+          return { candidates };
+        }
+
+        const resolvedIntent = state.resolvedTriggerIntentId
+          ? state.indexedIntents.find((i) => i.intentId === state.resolvedTriggerIntentId)
+          : state.indexedIntents[0];
+        const searchText = state.searchQuery ?? resolvedIntent?.payload ?? '';
+        if (!searchText) {
+          logger.warn('[Graph:Discovery] No search text available for intent path');
+          return { candidates: [] };
+        }
+
         const strategies = state.options.strategies ?? selectStrategies(searchText, {
           indexId: state.targetIndexes[0].indexId,
         });
-
-        logger.info('[Graph:Discovery] Generating HyDE and searching', {
-          query: searchText.substring(0, 50),
-          strategies,
-          targetIndexesCount: state.targetIndexes.length,
-        });
-
-        // Generate HyDE embeddings (context from first index)
         const hydeResult = await this.hydeGenerator.invoke({
           sourceType: 'query',
           sourceText: searchText,
@@ -255,25 +396,17 @@ export class OpportunityGraphFactory {
           context: state.targetIndexes[0] ? { indexId: state.targetIndexes[0].indexId } : undefined,
           forceRegenerate: false,
         });
-
         const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
-        
         if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-          logger.warn('[Graph:Discovery] No HyDE embeddings generated');
           return { hydeEmbeddings: {} as Record<HydeStrategy, number[]>, candidates: [] };
         }
-
         const embeddingsMap = new Map<HydeStrategy, number[]>();
         for (const [strategy, embedding] of Object.entries(hydeEmbeddings)) {
           if (embedding?.length) {
             embeddingsMap.set(strategy as HydeStrategy, embedding);
           }
         }
-
-        const limitPerStrategy = state.options.limit ?? 10;
-        const perIndexLimit = state.options.limit ?? 20;
         const allCandidates: CandidateMatch[] = [];
-
         await Promise.all(
           state.targetIndexes.map(async (targetIndex) => {
             const results = await this.embedder.searchWithHydeEmbeddings(embeddingsMap, {
@@ -284,9 +417,7 @@ export class OpportunityGraphFactory {
               limit: perIndexLimit,
               minScore: 0.5,
             });
-            const intentResults = results.filter((r) => r.type === 'intent');
-            const profileResults = results.filter((r) => r.type === 'profile');
-            for (const result of intentResults) {
+            for (const result of results.filter((r) => r.type === 'intent')) {
               allCandidates.push({
                 candidateUserId: result.userId as Id<'users'>,
                 candidateIntentId: result.id as Id<'intents'>,
@@ -297,7 +428,7 @@ export class OpportunityGraphFactory {
                 candidateSummary: undefined,
               });
             }
-            for (const result of profileResults) {
+            for (const result of results.filter((r) => r.type === 'profile')) {
               allCandidates.push({
                 candidateUserId: result.userId as Id<'users'>,
                 indexId: targetIndex.indexId,
@@ -309,8 +440,6 @@ export class OpportunityGraphFactory {
             }
           })
         );
-
-        // Dedupe by (candidateUserId, indexId): keep one per user per index, intent wins over profile
         const byUserAndIndex = new Map<string, CandidateMatch>();
         for (const c of allCandidates) {
           const key = `${c.candidateUserId}:${c.indexId}`;
@@ -319,10 +448,7 @@ export class OpportunityGraphFactory {
           }
         }
         const candidates = Array.from(byUserAndIndex.values());
-
-        logger.info('[Graph:Discovery] Discovery complete', {
-          candidatesFound: candidates.length,
-        });
+        logger.info('[Graph:Discovery] Intent-path discovery complete', { candidatesFound: candidates.length });
         return {
           hydeEmbeddings: hydeEmbeddings as Record<HydeStrategy, number[]>,
           candidates,
@@ -492,6 +618,162 @@ export class OpportunityGraphFactory {
     };
 
     /**
+     * Node: intro_validation (create_introduction path)
+     * Validates index scope, membership for introducer and all party users, and no existing opportunity.
+     */
+    const introValidationNode = async (state: typeof OpportunityGraphState.State) => {
+      logger.info('[Graph:IntroValidation] Starting', {
+        userId: state.userId,
+        indexId: state.indexId,
+        entitiesCount: state.introductionEntities?.length ?? 0,
+      });
+
+      try {
+        const entities = state.introductionEntities ?? [];
+        const primaryIndexId = (state.indexId ?? entities[0]?.indexId) as Id<'indexes'> | undefined;
+        const partyUserIds = [...new Set(entities.map((e) => e.userId).filter((id) => id !== state.userId))];
+
+        if (!primaryIndexId || partyUserIds.length < 2) {
+          return {
+            error: 'Introduction requires indexId and at least two entities (profiles + intents per party).',
+          };
+        }
+
+        if (state.requiredIndexId && primaryIndexId !== state.requiredIndexId) {
+          return {
+            error: 'This chat is scoped to a different community. You can only introduce members of the current community.',
+          };
+        }
+
+        const introducerIsMember = await this.database.isIndexMember(primaryIndexId, state.userId);
+        if (!introducerIsMember) {
+          return {
+            error: 'One or more users are not members of the specified community. You can only introduce members who share an index.',
+          };
+        }
+        const partyMemberships = await Promise.all(
+          partyUserIds.map((userId) => this.database.isIndexMember(primaryIndexId, userId))
+        );
+        const allPartyMembers = partyMemberships.every(Boolean);
+        if (!allPartyMembers) {
+          return {
+            error: 'One or more users are not members of the specified community. You can only introduce members who share an index.',
+          };
+        }
+
+        const exists = await this.database.opportunityExistsBetweenActors(partyUserIds, primaryIndexId);
+        if (exists) {
+          return { error: 'An opportunity already exists between these people.' };
+        }
+
+        logger.info('[Graph:IntroValidation] Validation passed');
+        return {};
+      } catch (err) {
+        logger.error('[Graph:IntroValidation] Failed', {
+          userId: state.userId,
+          indexId: state.indexId,
+          error: err,
+        });
+        return {
+          error: err instanceof Error ? err.message : 'Introduction validation failed.',
+        };
+      }
+    };
+
+    /**
+     * Build fallback reasoning and actors when evaluator returns empty or throws.
+     */
+    function buildIntroFallback(
+      entities: EvaluatorEntity[],
+      state: typeof OpportunityGraphState.State,
+      primaryIndexId: Id<'indexes'>,
+      introducerName?: string
+    ): { reasoning: string; score: number; actors: EvaluatedOpportunityActor[] } {
+      const reasoning =
+        `${introducerName ?? 'A member'} believes these people should connect.` +
+        (state.introductionHint ? ` Context: ${state.introductionHint}` : '');
+      const score = 70;
+      const partyUserIds = entities.map((e) => e.userId).filter((id) => id !== state.userId);
+      const actors: EvaluatedOpportunityActor[] = partyUserIds.map((uid) => ({
+        userId: uid as Id<'users'>,
+        role: 'peer' as const,
+        indexId: primaryIndexId,
+      }));
+      return { reasoning, score, actors };
+    }
+
+    /**
+     * Node: intro_evaluation (create_introduction path)
+     * Runs entity-bundle evaluator and sets evaluatedOpportunities (one) + introductionContext.
+     */
+    const introEvaluationNode = async (state: typeof OpportunityGraphState.State) => {
+      logger.info('[Graph:IntroEvaluation] Starting', { userId: state.userId });
+
+      if (state.error) {
+        return { evaluatedOpportunities: [] };
+      }
+
+      const entities = state.introductionEntities ?? [];
+      const primaryIndexId = (state.indexId ?? entities[0]?.indexId) as Id<'indexes'> | undefined;
+      if (!primaryIndexId || entities.length < 2) {
+        return { evaluatedOpportunities: [], error: 'Missing entities or index for introduction.' };
+      }
+
+      let introducerName: string | undefined;
+      let reasoning: string;
+      let score: number;
+      let actors: EvaluatedOpportunityActor[] = [];
+
+      try {
+        const introducerUser = await this.database.getUser(state.userId);
+        introducerName = introducerUser?.name ?? undefined;
+        const input: EvaluatorInput = {
+          discovererId: state.userId,
+          entities,
+          introductionMode: true,
+          introducerName,
+          introductionHint: state.introductionHint ?? undefined,
+        };
+
+        const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
+        if (evaluated.length > 0) {
+          const best = evaluated[0];
+          reasoning = best.reasoning;
+          score = best.score;
+          actors = best.actors.map((a) => ({
+            userId: a.userId as Id<'users'>,
+            role: a.role,
+            intentId: a.intentId ?? undefined,
+            indexId: primaryIndexId,
+          }));
+        } else {
+          const fallback = buildIntroFallback(entities, state, primaryIndexId, introducerName);
+          reasoning = fallback.reasoning;
+          score = fallback.score;
+          actors = fallback.actors;
+        }
+      } catch (evalErr) {
+        logger.warn('[Graph:IntroEvaluation] Evaluator or getUser failed, using fallback', { error: evalErr });
+        const fallback = buildIntroFallback(entities, state, primaryIndexId, introducerName);
+        reasoning = fallback.reasoning;
+        score = fallback.score;
+        actors = fallback.actors;
+      }
+
+      const evaluatedOpportunity: EvaluatedOpportunity = {
+        actors,
+        score,
+        reasoning,
+      };
+
+      return {
+        evaluatedOpportunities: [evaluatedOpportunity],
+        introductionContext: { createdByName: introducerName },
+        options: { ...state.options, initialStatus: 'latent' as const },
+      };
+    };
+
+    /**
      * Node 5: Persist
      * Creates opportunities from evaluator-proposed actors (indexId, userId, role, optional intent).
      */
@@ -507,95 +789,140 @@ export class OpportunityGraphFactory {
       }
 
       try {
-        const persisted: Opportunity[] = [];
+        const itemsToPersist: CreateOpportunityData[] = [];
         const now = new Date().toISOString();
         const initialStatus = state.options.initialStatus ?? 'pending';
 
         for (const evaluated of state.evaluatedOpportunities) {
           const indexIdForActors = state.indexId ?? evaluated.actors[0]?.indexId;
-          const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
-            indexId: a.indexId ?? indexIdForActors,
-            userId: a.userId,
-            role: a.role,
-            ...(a.intentId ? { intent: a.intentId } : {}),
-          }));
-          // Do not add an "introducer" for opportunity_graph — that role is only for manual intros.
-          // Automatic discovery has no human introducer; presenter uses Index as narrator.
-          const actors: OpportunityActor[] = evaluatorActors;
+          let actors: OpportunityActor[];
+          let data: CreateOpportunityData;
 
-          // Lifecycle guard: discoverer must be patient or peer (sees first, can send).
-          // If evaluator assigned discoverer as agent, swap with a patient counterpart
-          // so the discoverer can see their own discovery at latent status.
-          const hasIntroducerActor = actors.some(a => a.role === 'introducer');
-          if (!hasIntroducerActor) {
-            const discovererIdx = actors.findIndex(a => a.userId === state.userId);
-            if (discovererIdx >= 0 && actors[discovererIdx].role === 'agent') {
-              const counterpartIdx = actors.findIndex(
-                (a, i) => i !== discovererIdx && a.role === 'patient'
-              );
-              actors[discovererIdx] = { ...actors[discovererIdx], role: 'patient' };
-              if (counterpartIdx >= 0) {
-                actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
-              }
-              logger.info('[Graph:Persist] Swapped discoverer from agent to patient for lifecycle visibility', {
-                discovererId: state.userId,
+          if (state.introductionContext) {
+            if (indexIdForActors === undefined) {
+              logger.warn('[Graph:Persist] Introduction path missing indexId; skipping opportunity', {
+                userId: state.userId,
+                actorsCount: evaluated.actors.length,
               });
+              continue;
             }
-          }
+            // Introduction path: manual detection, introducer actor, curator_judgment signal.
+            const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
+              indexId: a.indexId ?? indexIdForActors,
+              userId: a.userId,
+              role: a.role,
+              ...(a.intentId ? { intent: a.intentId } : {}),
+            }));
+            actors = [
+              ...evaluatorActors,
+              { indexId: indexIdForActors, userId: state.userId, role: 'introducer' as const },
+            ];
+            data = {
+              detection: {
+                source: 'manual',
+                createdBy: state.userId,
+                createdByName: state.introductionContext.createdByName,
+                timestamp: now,
+              },
+              actors,
+              interpretation: {
+                category: 'collaboration',
+                reasoning: evaluated.reasoning,
+                confidence: evaluated.score / 100,
+                signals: [
+                  {
+                    type: 'curator_judgment',
+                    weight: 1,
+                    detail: `Introduction by ${state.introductionContext.createdByName ?? 'a member'} via chat`,
+                  },
+                ],
+              },
+              context: { indexId: state.indexId ?? indexIdForActors },
+              confidence: String(evaluated.score / 100),
+              status: initialStatus,
+            };
+          } else {
+            // Discovery path: opportunity_graph source, no introducer, lifecycle guard for agent/patient.
+            const evaluatorActors: OpportunityActor[] = evaluated.actors.map((a: EvaluatedOpportunityActor) => ({
+              indexId: a.indexId ?? indexIdForActors,
+              userId: a.userId,
+              role: a.role,
+              ...(a.intentId ? { intent: a.intentId } : {}),
+            }));
+            actors = evaluatorActors;
 
-          const data: CreateOpportunityData = {
-            detection: {
-              source: 'opportunity_graph',
-              createdBy: 'agent-opportunity-finder',
-              triggeredBy: state.indexedIntents[0]?.intentId,
-              timestamp: now,
-            },
-            actors,
-            interpretation: {
-              category: 'collaboration',
-              reasoning: evaluated.reasoning,
-              confidence: evaluated.score / 100,
-              signals: [
-                {
-                  type: evaluated.actors.some((a) => a.intentId) ? 'intent_match' : 'profile_match',
-                  weight: evaluated.score / 100,
-                  detail: 'Entity-bundle evaluator',
-                },
-              ],
-            },
-            context: {
-              ...(state.indexId ? { indexId: state.indexId } : {}),
-            },
-            confidence: String(evaluated.score / 100),
-            status: initialStatus,
-          };
-
-          const enrichment = await enrichOrCreate(this.database, this.embedder, data);
-          const toCreate = enrichment.data;
-          if (enrichment.enriched) {
-            toCreate.status = enrichment.resolvedStatus;
-          }
-          const created = await this.database.createOpportunity(toCreate);
-          persisted.push(created);
-
-          if (enrichment.enriched && enrichment.expiredIds.length > 0) {
-            for (const id of enrichment.expiredIds) {
-              await this.database.updateOpportunityStatus(id, 'expired');
+            const hasIntroducerActor = actors.some(a => a.role === 'introducer');
+            if (!hasIntroducerActor) {
+              const discovererIdx = actors.findIndex(a => a.userId === state.userId);
+              if (discovererIdx >= 0 && actors[discovererIdx].role === 'agent') {
+                const counterpartIdx = actors.findIndex(
+                  (a, i) => i !== discovererIdx && a.role === 'patient'
+                );
+                actors[discovererIdx] = { ...actors[discovererIdx], role: 'patient' };
+                if (counterpartIdx >= 0) {
+                  actors[counterpartIdx] = { ...actors[counterpartIdx], role: 'agent' };
+                }
+                logger.info('[Graph:Persist] Swapped discoverer from agent to patient for lifecycle visibility', {
+                  discovererId: state.userId,
+                });
+              }
             }
+
+            data = {
+              detection: {
+                source: 'opportunity_graph',
+                createdBy: 'agent-opportunity-finder',
+                ...(state.discoverySource === 'intent' && state.resolvedTriggerIntentId
+                  ? { triggeredBy: state.resolvedTriggerIntentId }
+                  : {}),
+                timestamp: now,
+              },
+              actors,
+              interpretation: {
+                category: 'collaboration',
+                reasoning: evaluated.reasoning,
+                confidence: evaluated.score / 100,
+                signals: [
+                  {
+                    type: evaluated.actors.some((a) => a.intentId) ? 'intent_match' : 'profile_match',
+                    weight: evaluated.score / 100,
+                    detail: 'Entity-bundle evaluator',
+                  },
+                ],
+              },
+              context: {
+                ...(state.indexId ? { indexId: state.indexId } : {}),
+              },
+              confidence: String(evaluated.score / 100),
+              status: initialStatus,
+            };
           }
 
-          if (created.status === 'pending') {
-            await injectOpportunityIntoExistingChat(created).catch((err) => {
-              logger.warn('[Graph:Persist] Chat injection failed for opportunity', { opportunityId: created.id, error: err });
+          try {
+            validateOpportunityActors(data.actors);
+          } catch (err) {
+            logger.warn('[Graph:Persist] Skipping opportunity with invalid actors', {
+              error: err instanceof Error ? err.message : String(err),
+              opportunityReasoning: evaluated.reasoning?.slice(0, 80),
             });
+            continue;
           }
+
+          itemsToPersist.push(data);
         }
 
+        const { created: createdList } = await persistOpportunities({
+          database: this.database,
+          embedder: this.embedder,
+          items: itemsToPersist,
+          injectChat: (opp) => injectOpportunityIntoExistingChat(opp),
+        });
+
         logger.info('[Graph:Persist] Persistence complete', {
-          count: persisted.length,
+          count: createdList.length,
           status: initialStatus,
         });
-        return { opportunities: persisted };
+        return { opportunities: createdList };
       } catch (error) {
         logger.error('[Graph:Persist] Failed', { error });
         return {
@@ -906,6 +1233,7 @@ export class OpportunityGraphFactory {
       if (mode === 'update') return 'update';
       if (mode === 'delete') return 'delete_opp';
       if (mode === 'send') return 'send';
+      if (mode === 'create_introduction') return 'intro_validation';
       // 'create' is the default discovery pipeline
       return 'prep';
     };
@@ -919,12 +1247,6 @@ export class OpportunityGraphFactory {
         logger.info('[Graph:Routing] Error in prep - ending early');
         return END;
       }
-
-      if (state.indexedIntents.length === 0) {
-        logger.info('[Graph:Routing] No indexed intents - ending early');
-        return END;
-      }
-
       logger.info('[Graph:Routing] Continuing to scope');
       return 'scope';
     };
@@ -937,9 +1259,30 @@ export class OpportunityGraphFactory {
         logger.info('[Graph:Routing] No target indexes - ending early');
         return END;
       }
+      logger.info('[Graph:Routing] Continuing to resolve');
+      return 'resolve';
+    };
 
-      logger.info('[Graph:Routing] Continuing to discovery');
-      return 'discovery';
+    /**
+     * After discovery: if create-intent signal was set, end so tool can return it; else continue to evaluation.
+     */
+    const shouldContinueAfterDiscovery = (state: typeof OpportunityGraphState.State): string => {
+      if (state.createIntentSuggested) {
+        logger.info('[Graph:Routing] Create-intent suggested - ending for tool signal');
+        return END;
+      }
+      return 'evaluation';
+    };
+
+    /**
+     * After intro_validation: if validation set state.error, end early; else continue to intro_evaluation.
+     */
+    const routeAfterIntroValidation = (state: typeof OpportunityGraphState.State): string => {
+      if (state.error) {
+        logger.info('[Graph:Routing] Intro validation error - ending early');
+        return END;
+      }
+      return 'intro_evaluation';
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -950,9 +1293,12 @@ export class OpportunityGraphFactory {
       // Add all nodes
       .addNode('prep', prepNode)
       .addNode('scope', scopeNode)
+      .addNode('resolve', resolveNode)
       .addNode('discovery', discoveryNode)
       .addNode('evaluation', evaluationNode)
       .addNode('ranking', rankingNode)
+      .addNode('intro_validation', introValidationNode)
+      .addNode('intro_evaluation', introEvaluationNode)
       .addNode('persist', persistNode)
       // CRUD nodes
       .addNode('read', readNode)
@@ -963,11 +1309,19 @@ export class OpportunityGraphFactory {
       // Route by operation mode from START
       .addConditionalEdges(START, routeByMode, {
         prep: 'prep',
+        intro_validation: 'intro_validation',
         read: 'read',
         update: 'update',
         delete_opp: 'delete_opp',
         send: 'send',
       })
+
+      // Introduction path: validation -> evaluation -> persist (or END on validation error)
+      .addConditionalEdges('intro_validation', routeAfterIntroValidation, {
+        intro_evaluation: 'intro_evaluation',
+        [END]: END,
+      })
+      .addEdge('intro_evaluation', 'persist')
 
       // CRUD fast paths -> END
       .addEdge('read', END)
@@ -983,12 +1337,17 @@ export class OpportunityGraphFactory {
 
       // Conditional routing: early exit if no target indexes
       .addConditionalEdges('scope', shouldContinueAfterScope, {
-        discovery: 'discovery',
+        resolve: 'resolve',
+        [END]: END,
+      })
+      .addEdge('resolve', 'discovery')
+
+      .addConditionalEdges('discovery', shouldContinueAfterDiscovery, {
+        evaluation: 'evaluation',
         [END]: END,
       })
 
       // Linear edges for main flow
-      .addEdge('discovery', 'evaluation')
       .addEdge('evaluation', 'ranking')
       .addEdge('ranking', 'persist')
       .addEdge('persist', END);

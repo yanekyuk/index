@@ -31,6 +31,8 @@ export interface OpportunityGraphInvokeOptions {
   searchQuery: string;
   operationMode: 'create';
   indexId?: string;
+  /** Intent that triggered this job; used for search text and triggeredBy when in scope. */
+  triggerIntentId?: string;
   options: { initialStatus: 'latent' };
 }
 
@@ -137,6 +139,7 @@ export class OpportunityQueue {
       searchQuery: intent.payload,
       operationMode: 'create',
       indexId: indexIds?.[0] as Id<'indexes'> | undefined,
+      triggerIntentId: intentId,
       options: { initialStatus: 'latent' },
     };
     if (this.deps?.invokeOpportunityGraph) {

@@ -1,7 +1,7 @@
 export const TESTABLE_TEST_ACCOUNTS = [
   {
     name: 'Seren Sandikci',
-    email: 'test-1761@privy.io',
+    email: 'test-1761@example.com',
     phoneNumber: '+1 555 555 5724',
     otpCode: '888893',
     linkedin: 'https://www.linkedin.com/in/serensandikci',
@@ -11,7 +11,7 @@ export const TESTABLE_TEST_ACCOUNTS = [
   },
   {
     name: 'Seref Yarar',
-    email: 'test-9716@privy.io',
+    email: 'test-9716@example.com',
     phoneNumber: '+1 555 555 2920',
     otpCode: '670543',
     linkedin: 'https://www.linkedin.com/in/serefyarar',
@@ -21,7 +21,7 @@ export const TESTABLE_TEST_ACCOUNTS = [
   },
   {
     name: 'Yanki Ekin Yüksel',
-    email: 'test-6285@privy.io',
+    email: 'test-6285@example.com',
     phoneNumber: '+1 555 555 1625',
     otpCode: '607027',
     linkedin: 'https://linkedin.com/in/yanekyuk',

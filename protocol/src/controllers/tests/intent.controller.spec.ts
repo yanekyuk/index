@@ -29,7 +29,6 @@ describe("IntentDatabaseAdapter Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Intent Adapter User",
-      privyId: `privy:intent-adapter:${Date.now()}`,
       intro: "Test user for intent adapter tests",
       location: "Test City",
     });
@@ -156,7 +155,6 @@ describe("IntentController Integration", () => {
     const user = await userAdapter.create({
       email: testEmail,
       name: "Test Intent Controller User",
-      privyId: `privy:intent-ctrl:${Date.now()}`,
       intro: "A software engineer interested in AI and distributed systems",
       location: "San Francisco, CA",
       socials: { x: "https://x.com/testintent", github: "https://github.com/testintent" },
@@ -199,7 +197,6 @@ describe("IntentController Integration", () => {
 
   const mockUser = (): AuthenticatedUser => ({
     id: testUserId,
-    privyId: `privy:intent-ctrl:${Date.now()}`,
     email: testEmail,
     name: "Test Intent Controller User",
   });
@@ -263,7 +260,6 @@ describe("IntentController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:intent-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Intent Controller User",
     };
@@ -291,7 +287,6 @@ describe("IntentController Integration", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserId,
-      privyId: `privy:intent-ctrl:${Date.now()}`,
       email: testEmail,
       name: "Test Intent Controller User",
     };
@@ -328,7 +323,6 @@ describe("IntentController Edge Cases", () => {
     const user = await userAdapter.create({
       email: testEmailNoProfile,
       name: "Test No Profile User",
-      privyId: `privy:intent-noprofile:${Date.now()}`,
     });
     testUserIdNoProfile = user.id;
     console.log(`Created test user without profile: ${testUserIdNoProfile}`);
@@ -355,7 +349,6 @@ describe("IntentController Edge Cases", () => {
 
     const mockUser: AuthenticatedUser = {
       id: testUserIdNoProfile,
-      privyId: `privy:intent-noprofile:${Date.now()}`,
       email: testEmailNoProfile,
       name: "Test No Profile User",
     };

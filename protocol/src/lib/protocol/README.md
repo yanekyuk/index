@@ -60,7 +60,7 @@ protocol/src/lib/protocol/
 
 | Concept | Description |
 |---------|-------------|
-| **User** | Identity (Privy auth). Has one profile and many intents. Member of indexes. |
+| **User** | Identity (session auth). Has one profile and many intents. Member of indexes. |
 | **Intent** | What someone is seeking or offering. Has payload, embedding, status, semantic governance fields. Lives in indexes via intent_indexes. |
 | **Index** | A community/context. Has members with roles, optional prompt for LLM evaluation, join policy. Discovery is index-scoped. |
 | **Profile** | User's identity, narrative, skills, interests. Has vector embedding and optional HyDE embedding. Used for verification and search. |

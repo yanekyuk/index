@@ -272,10 +272,14 @@ export class HomeGraphFactory {
             const actorWithProfile = opportunity.actors.find(
               (a) => a.userId !== state.userId && a.role !== 'introducer' && !!userMap.get(a.userId)
             );
-            const otherActor = (preferredActor && userMap.get(preferredActor.userId))
+            const introducer = opportunity.actors.find((a) => a.role === 'introducer');
+            let otherActor = (preferredActor && userMap.get(preferredActor.userId))
               ? preferredActor
               : (actorWithProfile ?? preferredActor);
-            const introducer = opportunity.actors.find((a) => a.role === 'introducer');
+            // When the only other participant is the introducer (no separate party), use introducer as display counterpart so the card shows a name instead of "Unknown"
+            if (!otherActor && introducer && introducer.userId !== state.userId && introducer.userId) {
+              otherActor = { userId: introducer.userId, role: introducer.role };
+            }
             const otherUser = otherActor ? userMap.get(otherActor.userId) ?? null : null;
             const introducerCounterparts = opportunity.actors.filter(
               (a) => a.userId !== state.userId && a.role !== 'introducer'
@@ -284,9 +288,18 @@ export class HomeGraphFactory {
               .map((actor) => userMap.get(actor.userId)?.name ?? 'Unknown')
               .sort();
             // Introducer always sees both party names (e.g. "Alice ↔ Bob"), regardless of status
-            const userName = isIntroducer && participantNames.length > 0
+            let userName = isIntroducer && participantNames.length > 0
               ? participantNames.join(' ↔ ')
               : (otherUser?.name ?? 'Unknown');
+            // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
+            if ((userName === 'Unknown' || !userName?.trim()) && otherActor?.userId && db.getProfile) {
+              const profile = await db.getProfile(otherActor.userId).catch((err) => {
+                logger.debug('[HomeGraph] getProfile fallback failed', { otherActorUserId: otherActor.userId, error: err });
+                return null;
+              });
+              const profileName = profile?.identity?.name?.trim();
+              if (profileName) userName = profileName;
+            }
             const userAvatar = otherUser?.avatar ?? null;
             const reasoningSnippet =
               (typeof opportunity.interpretation?.reasoning === 'string'

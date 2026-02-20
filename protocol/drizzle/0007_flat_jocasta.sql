@@ -1,2 +1,0 @@
-ALTER TABLE "user_profiles" ADD COLUMN "embedding" vector(2000);--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "user_profiles_embedding_idx" ON "user_profiles" USING hnsw ("embedding" vector_cosine_ops);

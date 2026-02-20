@@ -492,7 +492,6 @@ export default function ChatView({ userId, userName, userAvatar, userTitle, init
                     </button>
                   </form>
                 </div>
-                <div className="pb-3 bg-white" />
               </>
             )}
           </ContentContainer>
