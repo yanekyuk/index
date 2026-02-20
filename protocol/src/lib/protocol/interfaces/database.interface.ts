@@ -5,6 +5,7 @@ import type {
   OpportunityInterpretation,
   OpportunityContext,
   UserSocials,
+  OnboardingState,
 } from '../../../schemas/database.schema';
 import type { Id } from '../../../types/common.types';
 
@@ -17,6 +18,7 @@ export interface UserRecord {
   avatar?: string | null;
   location?: string | null;
   socials?: UserSocials | null;
+  onboarding?: OnboardingState | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -395,7 +397,7 @@ export interface Database {
    * @param data - Partial user fields to update
    * @returns The updated user record or null if not found
    */
-  updateUser(userId: string, data: { name?: string; location?: string; socials?: UserSocials }): Promise<UserRecord | null>;
+  updateUser(userId: string, data: { name?: string; location?: string; socials?: UserSocials; onboarding?: OnboardingState }): Promise<UserRecord | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Pre-Graph Operations (State Population)
@@ -1151,7 +1153,7 @@ export interface UserDatabase {
   getUser(): Promise<UserRecord | null>;
 
   /** Update the authenticated user's account fields. */
-  updateUser(data: { name?: string; location?: string; socials?: UserSocials }): Promise<UserRecord | null>;
+  updateUser(data: { name?: string; location?: string; socials?: UserSocials; onboarding?: OnboardingState }): Promise<UserRecord | null>;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Intent Operations (own only, ALL intents - not index-scoped)
@@ -1502,6 +1504,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'saveHydeDocument'
   | 'getIntent'
   // IndexGraph subgraph requirements (index created intents in user's indexes)
+  | 'getPublicIndexesNotJoined'
   | 'getUserIndexIds'
   | 'getIndexMemberships'
   | 'getIndexMembership'
