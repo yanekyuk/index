@@ -49,6 +49,8 @@ export interface ResolvedToolContext {
     prompt: string | null;
   };
   scopedMembershipRole?: "owner" | "member";
+  /** True when user has not completed onboarding (onboarding.completedAt is null). */
+  isOnboarding: boolean;
 }
 
 /**
@@ -176,6 +178,7 @@ export async function resolveChatContext(params: {
     userIndexes,
     scopedIndex,
     scopedMembershipRole,
+    isOnboarding: !user.onboarding?.completedAt,
   };
 }
 
