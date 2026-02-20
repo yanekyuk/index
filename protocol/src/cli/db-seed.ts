@@ -240,6 +240,8 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent && DB_SEED_TESTER_PERSONAS.length > 0) console.log(`  Personas to seed: ${personasToSeed.length} (--personas=${personasLimit}, max ${TESTER_PERSONAS_MAX})`);
 
     // Create all indexes
+    let indexesCreated = 0;
+    let indexesExisted = 0;
     for (const idx of SEED_INDEXES) {
       try {
         await db.insert(indexes).values({
@@ -253,8 +255,9 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
             allowGuestVibeCheck: false,
           },
         });
-      } catch {
-        /* already exists */
+        indexesCreated++;
+      } catch (err) {
+        indexesExisted++;
       }
     }
 
