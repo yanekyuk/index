@@ -130,15 +130,12 @@ function isNumberArray(value: unknown): value is number[] {
   );
 }
 
-/** Indent for pretty-printed JSON in logs (2 spaces). */
-const JSON_INDENT = 2;
-
 /** Recursively redact embedding/vector arrays so they are never logged. */
 function fmt(message: string, meta?: Record<string, unknown>) {
   if (!meta) return message;
   try {
     const sanitized = sanitizeForLogInternal(meta) as Record<string, unknown>;
-    const json = JSON.stringify(sanitized, null, JSON_INDENT);
+    const json = JSON.stringify(sanitized);
     return `${message}\n${json}`;
   } catch {
     return message;
