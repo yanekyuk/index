@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
+import { SaveBarProvider } from "@/contexts/SaveBarContext";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -167,8 +168,9 @@ export default function ProfilePage() {
   const avatarSrc = avatarPreview || (user ? getAvatarUrl(user) : null);
 
   return (
-    <ClientLayout>
-      <div className="px-6 lg:px-8 py-8">
+    <SaveBarProvider visible={isDirty}>
+      <ClientLayout>
+        <div className="px-6 lg:px-8 py-8">
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-8">Profile</h1>
 
@@ -440,18 +442,21 @@ export default function ProfilePage() {
 
       {/* Sticky save bar */}
       {isDirty && (
-        <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-200 px-6 lg:px-8 py-3 flex items-center justify-between z-40">
-          <span className="text-sm text-gray-500">You have unsaved changes</span>
-          <div className="flex items-center gap-2 pr-72">
-            <Button variant="outline" onClick={handleDiscard} disabled={saving}>
-              Discard
-            </Button>
-            <Button onClick={handleSave} disabled={saving || !!avatarError}>
-              {saving ? "Saving..." : "Save Changes"}
-            </Button>
+        <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-200 z-40 px-6 lg:px-8">
+          <div className="max-w-3xl mx-auto py-3 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+            <span className="text-sm text-gray-500">You have unsaved changes</span>
+            <div className="flex items-center gap-2 justify-self-end">
+              <Button variant="outline" onClick={handleDiscard} disabled={saving}>
+                Discard
+              </Button>
+              <Button onClick={handleSave} disabled={saving || !!avatarError}>
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
-    </ClientLayout>
+      </ClientLayout>
+    </SaveBarProvider>
   );
 }
