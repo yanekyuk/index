@@ -3536,6 +3536,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
     softDeleteIndex: (indexId) => db.softDeleteIndex(indexId),
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // Public Index Discovery
+    // ─────────────────────────────────────────────────────────────────────────────
+    getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
+    joinPublicIndex: (indexId) => db.joinPublicIndex(indexId, authUserId),
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getOpportunitiesForUser: (options) => db.getOpportunitiesForUser(authUserId, options),

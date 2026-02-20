@@ -351,19 +351,16 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const createIndexMembership = defineTool({
     name: "create_index_membership",
-    description: "Adds a user as a member of an index. Requires userId; indexId defaults to current index when scoped. For invite_only indexes only the owner can add members.",
+    description: "Adds a user as a member of an index. Omit userId to join the index yourself (self-join works only for public indexes with joinPolicy 'anyone'). For invite_only indexes only the owner can add members.",
     querySchema: z.object({
-      userId: z.string().describe("User ID to add as a member"),
+      userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself."),
       indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
       const indexId = query.indexId?.trim() || context.indexId;
-      const targetUserId = query.userId?.trim();
+      const targetUserId = query.userId?.trim() || context.userId;
       if (!indexId || !UUID_REGEX.test(indexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
-      }
-      if (!targetUserId) {
-        return error("userId is required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
