@@ -1,0 +1,61 @@
+CREATE TYPE "public"."eval_run_status" AS ENUM('draft', 'running', 'completed');--> statement-breakpoint
+CREATE TYPE "public"."eval_scenario_source" AS ENUM('predefined', 'feedback', 'generated');--> statement-breakpoint
+CREATE TYPE "public"."eval_scenario_status" AS ENUM('pending', 'running', 'completed', 'error');--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "eval_run_results" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"eval_run_id" uuid NOT NULL,
+	"scenario_id" uuid NOT NULL,
+	"status" "eval_scenario_status" DEFAULT 'pending' NOT NULL,
+	"seed_data" jsonb,
+	"conversation" jsonb,
+	"result" jsonb,
+	"review_flag" text,
+	"review_note" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "eval_runs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" text NOT NULL,
+	"name" text,
+	"config" jsonb,
+	"status" "eval_run_status" DEFAULT 'draft' NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "eval_scenarios" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source" "eval_scenario_source" NOT NULL,
+	"category" text NOT NULL,
+	"need_id" text,
+	"question" text NOT NULL,
+	"expectation" text NOT NULL,
+	"message" text NOT NULL,
+	"persona_id" text,
+	"feedback_text" text,
+	"feedback_conversation" jsonb,
+	"seed_requirements" jsonb,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "eval_run_results" ADD CONSTRAINT "eval_run_results_eval_run_id_eval_runs_id_fk" FOREIGN KEY ("eval_run_id") REFERENCES "public"."eval_runs"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "eval_run_results" ADD CONSTRAINT "eval_run_results_scenario_id_eval_scenarios_id_fk" FOREIGN KEY ("scenario_id") REFERENCES "public"."eval_scenarios"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "eval_run_results_run_idx" ON "eval_run_results" USING btree ("eval_run_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "eval_run_results_scenario_idx" ON "eval_run_results" USING btree ("eval_run_id","scenario_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "eval_runs_user_idx" ON "eval_runs" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "eval_scenarios_category_idx" ON "eval_scenarios" USING btree ("category");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "eval_scenarios_source_idx" ON "eval_scenarios" USING btree ("source");

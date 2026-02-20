@@ -63,19 +63,28 @@ function processLines(
  * Uses the full response from the "done" event when present (streaming sends
  * the complete message there). Normalizes markdown the same way as the frontend
  * (e.g. blockquotes) so the evaluator sees the same content as the UI.
+ *
+ * Supports either Bearer token or cookie-based authentication.
  */
 export async function sendMessage(
   apiUrl: string,
   token: string,
-  options: { message: string; sessionId?: string }
+  options: { message: string; sessionId?: string; cookie?: string }
 ): Promise<SendMessageResult> {
   const url = `${apiUrl.replace(/\/$/, "")}/chat/stream`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (options.cookie) {
+    headers["Cookie"] = options.cookie;
+  } else {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({
       message: options.message,
       sessionId: options.sessionId,

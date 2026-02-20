@@ -7,7 +7,6 @@ import { Loader2 } from "lucide-react";
 const TABS = [
   { label: "Runs", path: "/" },
   { label: "Test Cases", path: "/cases" },
-  { label: "Feedback", path: "/feedback" },
 ] as const;
 
 export function EvaluatorShell({

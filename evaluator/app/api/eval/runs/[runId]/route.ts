@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
-import { evalRuns, evalScenarioResults } from "@/lib/db/schema";
+import { evalRuns, evalRunResults, evalScenarios } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function GET(
@@ -23,19 +23,42 @@ export async function GET(
     if (!run) return Response.json({ error: "Run not found" }, { status: 404 });
 
     const results = await db
-      .select()
-      .from(evalScenarioResults)
-      .where(eq(evalScenarioResults.evalRunId, runId))
-      .orderBy(evalScenarioResults.createdAt);
+      .select({
+        id: evalRunResults.id,
+        scenarioId: evalRunResults.scenarioId,
+        status: evalRunResults.status,
+        seedData: evalRunResults.seedData,
+        conversation: evalRunResults.conversation,
+        result: evalRunResults.result,
+        reviewFlag: evalRunResults.reviewFlag,
+        reviewNote: evalRunResults.reviewNote,
+        createdAt: evalRunResults.createdAt,
+        scenario: {
+          id: evalScenarios.id,
+          needId: evalScenarios.needId,
+          personaId: evalScenarios.personaId,
+          category: evalScenarios.category,
+          question: evalScenarios.question,
+          expectation: evalScenarios.expectation,
+          message: evalScenarios.message,
+          source: evalScenarios.source,
+        },
+      })
+      .from(evalRunResults)
+      .leftJoin(evalScenarios, eq(evalRunResults.scenarioId, evalScenarios.id))
+      .where(eq(evalRunResults.evalRunId, runId))
+      .orderBy(evalRunResults.createdAt);
 
     const scenarios = results.map((r) => ({
-      id: r.scenarioId,
-      need: r.needId,
-      needId: r.needId,
-      persona: r.personaId,
-      personaId: r.personaId,
-      message: r.message,
-      category: r.category,
+      id: r.scenario?.id ?? r.scenarioId,
+      scenarioId: r.scenarioId,
+      resultId: r.id,
+      needId: r.scenario?.needId,
+      personaId: r.scenario?.personaId,
+      category: r.scenario?.category,
+      question: r.scenario?.question,
+      message: r.scenario?.message,
+      source: r.scenario?.source,
       status: r.status,
       conversation: r.conversation,
       result: r.result,

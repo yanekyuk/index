@@ -1,11 +1,11 @@
 {
-  "id": "460d5761-78d5-433a-ab8a-9d3bde901eba",
-  "prevId": "9c7692bf-9cc5-45ab-890d-9e123e76d754",
+  "id": "447052ac-daaf-4c41-8f7b-147dd6bdaad5",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.eval_needs": {
-      "name": "eval_needs",
+    "public.eval_run_results": {
+      "name": "eval_run_results",
       "schema": "",
       "columns": {
         "id": {
@@ -15,50 +15,55 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "need_id": {
-          "name": "need_id",
-          "type": "text",
+        "eval_run_id": {
+          "name": "eval_run_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "category": {
-          "name": "category",
-          "type": "text",
+        "scenario_id": {
+          "name": "scenario_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "examples": {
-          "name": "examples",
-          "type": "jsonb",
+        "status": {
+          "name": "status",
+          "type": "eval_scenario_status",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'[]'::jsonb"
+          "default": "'pending'"
         },
-        "expected_tools": {
-          "name": "expected_tools",
+        "seed_data": {
+          "name": "seed_data",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
+          "notNull": false
         },
-        "messages": {
-          "name": "messages",
+        "conversation": {
+          "name": "conversation",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
+        "result": {
+          "name": "result",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": true,
-          "default": true
+          "notNull": false
+        },
+        "review_flag": {
+          "name": "review_flag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_note": {
+          "name": "review_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -75,18 +80,74 @@
           "default": "now()"
         }
       },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "eval_needs_need_id_unique": {
-          "name": "eval_needs_need_id_unique",
-          "nullsNotDistinct": false,
+      "indexes": {
+        "eval_run_results_run_idx": {
+          "name": "eval_run_results_run_idx",
           "columns": [
-            "need_id"
-          ]
+            {
+              "expression": "eval_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "eval_run_results_scenario_idx": {
+          "name": "eval_run_results_scenario_idx",
+          "columns": [
+            {
+              "expression": "eval_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scenario_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {
+        "eval_run_results_eval_run_id_eval_runs_id_fk": {
+          "name": "eval_run_results_eval_run_id_eval_runs_id_fk",
+          "tableFrom": "eval_run_results",
+          "tableTo": "eval_runs",
+          "columnsFrom": [
+            "eval_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "eval_run_results_scenario_id_eval_scenarios_id_fk": {
+          "name": "eval_run_results_scenario_id_eval_scenarios_id_fk",
+          "tableFrom": "eval_run_results",
+          "tableTo": "eval_scenarios",
+          "columnsFrom": [
+            "scenario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -167,8 +228,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.eval_scenario_results": {
-      "name": "eval_scenario_results",
+    "public.eval_scenarios": {
+      "name": "eval_scenarios",
       "schema": "",
       "columns": {
         "id": {
@@ -178,27 +239,10 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "eval_run_id": {
-          "name": "eval_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scenario_id": {
-          "name": "scenario_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "need_id": {
-          "name": "need_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "persona_id": {
-          "name": "persona_id",
-          "type": "text",
+        "source": {
+          "name": "source",
+          "type": "eval_scenario_source",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": true
         },
@@ -208,9 +252,21 @@
           "primaryKey": false,
           "notNull": true
         },
-        "tools": {
-          "name": "tools",
-          "type": "jsonb",
+        "need_id": {
+          "name": "need_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "question": {
+          "name": "question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expectation": {
+          "name": "expectation",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -220,37 +276,36 @@
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "eval_scenario_status",
-          "typeSchema": "public",
+        "persona_id": {
+          "name": "persona_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback_text": {
+          "name": "feedback_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedback_conversation": {
+          "name": "feedback_conversation",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seed_requirements": {
+          "name": "seed_requirements",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": "'pending'"
-        },
-        "conversation": {
-          "name": "conversation",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result": {
-          "name": "result",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "review_flag": {
-          "name": "review_flag",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "review_note": {
-          "name": "review_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -268,11 +323,11 @@
         }
       },
       "indexes": {
-        "eval_scenario_results_run_idx": {
-          "name": "eval_scenario_results_run_idx",
+        "eval_scenarios_category_idx": {
+          "name": "eval_scenarios_category_idx",
           "columns": [
             {
-              "expression": "eval_run_id",
+              "expression": "category",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -283,17 +338,11 @@
           "method": "btree",
           "with": {}
         },
-        "eval_scenario_results_scenario_idx": {
-          "name": "eval_scenario_results_scenario_idx",
+        "eval_scenarios_source_idx": {
+          "name": "eval_scenarios_source_idx",
           "columns": [
             {
-              "expression": "eval_run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "scenario_id",
+              "expression": "source",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -305,21 +354,7 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "eval_scenario_results_eval_run_id_eval_runs_id_fk": {
-          "name": "eval_scenario_results_eval_run_id_eval_runs_id_fk",
-          "tableFrom": "eval_scenario_results",
-          "tableTo": "eval_runs",
-          "columnsFrom": [
-            "eval_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -335,6 +370,15 @@
         "draft",
         "running",
         "completed"
+      ]
+    },
+    "public.eval_scenario_source": {
+      "name": "eval_scenario_source",
+      "schema": "public",
+      "values": [
+        "predefined",
+        "feedback",
+        "generated"
       ]
     },
     "public.eval_scenario_status": {

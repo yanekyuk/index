@@ -8,6 +8,11 @@ import {
   boolean,
   index,
 } from "drizzle-orm/pg-core";
+import type { SeedRequirement, GeneratedSeedData } from "../seed/seed.types";
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Enums
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const evalRunStatusEnum = pgEnum("eval_run_status", ["draft", "running", "completed"]);
 export const evalScenarioStatusEnum = pgEnum("eval_scenario_status", [
@@ -16,6 +21,50 @@ export const evalScenarioStatusEnum = pgEnum("eval_scenario_status", [
   "completed",
   "error",
 ]);
+export const evalScenarioSourceEnum = pgEnum("eval_scenario_source", [
+  "predefined",
+  "feedback",
+  "generated",
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// eval_scenarios — all test cases, any source
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const evalScenarios = pgTable(
+  "eval_scenarios",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    source: evalScenarioSourceEnum("source").notNull(),
+
+    category: text("category").notNull(),
+    needId: text("need_id"),
+
+    question: text("question").notNull(),
+    expectation: text("expectation").notNull(),
+    message: text("message").notNull(),
+    personaId: text("persona_id"),
+
+    feedbackText: text("feedback_text"),
+    feedbackConversation: jsonb("feedback_conversation").$type<
+      Array<{ role: string; content: string }>
+    >(),
+
+    seedRequirements: jsonb("seed_requirements").$type<SeedRequirement>(),
+
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    categoryIdx: index("eval_scenarios_category_idx").on(table.category),
+    sourceIdx: index("eval_scenarios_source_idx").on(table.source),
+  })
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// eval_runs — execution batches
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export const evalRuns = pgTable(
   "eval_runs",
@@ -33,64 +82,30 @@ export const evalRuns = pgTable(
   })
 );
 
-export const evalNeeds = pgTable("eval_needs", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  needId: text("need_id").notNull().unique(),
-  category: text("category").notNull(),
-  question: text("question").notNull(),
-  expectation: text("expectation").notNull().default(""),
-  messages: jsonb("messages").$type<Record<string, string>>().notNull(),
-  enabled: boolean("enabled").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// ═══════════════════════════════════════════════════════════════════════════════
+// eval_run_results — per-scenario execution results
+// ═══════════════════════════════════════════════════════════════════════════════
 
-export const userFeedback = pgTable(
-  "user_feedback",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").notNull(),
-    feedback: text("feedback").notNull(),
-    sessionId: text("session_id"),
-    conversation: jsonb("conversation").$type<
-      Array<{ role: string; content: string }>
-    >(),
-    retryConversation: jsonb("retry_conversation").$type<
-      Array<{ role: string; content: string }>
-    >(),
-    retryStatus: text("retry_status").$type<
-      "pending" | "running" | "completed" | "error"
-    >(),
-    aiExplanation: text("ai_explanation"),
-    issueLabels: jsonb("issue_labels").$type<string[]>(),
-    archived: boolean("archived").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => ({
-    userIdx: index("user_feedback_user_idx").on(table.userId),
-  })
-);
-
-export const evalScenarioResults = pgTable(
-  "eval_scenario_results",
+export const evalRunResults = pgTable(
+  "eval_run_results",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     evalRunId: uuid("eval_run_id")
       .notNull()
       .references(() => evalRuns.id, { onDelete: "cascade" }),
-    scenarioId: text("scenario_id").notNull(),
-    needId: text("need_id").notNull(),
-    personaId: text("persona_id").notNull(),
-    category: text("category").notNull(),
-    message: text("message").notNull(),
+    scenarioId: uuid("scenario_id")
+      .notNull()
+      .references(() => evalScenarios.id),
     status: evalScenarioStatusEnum("status").notNull().default("pending"),
+
+    seedData: jsonb("seed_data").$type<GeneratedSeedData>(),
+
     conversation: jsonb("conversation").$type<
       Array<{ role: "user" | "assistant"; content: string }>
     >(),
+
     result: jsonb("result").$type<{
-      verdict: string;
+      verdict: "success" | "partial" | "failure" | "blocked";
       fulfillmentScore: number;
       qualityScore: number;
       reasoning: string;
@@ -99,14 +114,15 @@ export const evalScenarioResults = pgTable(
       turns: number;
       duration: number;
     }>(),
+
     reviewFlag: text("review_flag").$type<"pass" | "fail" | "needs_review" | "skipped">(),
     reviewNote: text("review_note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    evalRunIdx: index("eval_scenario_results_run_idx").on(table.evalRunId),
-    scenarioIdx: index("eval_scenario_results_scenario_idx").on(
+    evalRunIdx: index("eval_run_results_run_idx").on(table.evalRunId),
+    scenarioIdx: index("eval_run_results_scenario_idx").on(
       table.evalRunId,
       table.scenarioId
     ),

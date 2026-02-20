@@ -3,6 +3,9 @@
  * Self-contained, no protocol imports.
  */
 
+import type { SeedRequirement } from "./seed/seed.types";
+import { DEFAULT_SEED_REQUIREMENTS } from "./seed/seed.types";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // USER PERSONAS - Communication Styles
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -167,6 +170,51 @@ export const CHAT_AGENT_USER_NEEDS: Record<string, NeedDef> = {
   META_NO_MATCHES_DIAGNOSIS: { id: "meta_no_matches_diagnosis", category: "meta", question: "Why am I not getting matches?", expectation: "Agent diagnoses the issue — checks if intents are too vague, if profile is incomplete, if I'm in the right communities, or if there's just low activity in my problem space right now. Gives specific suggestions to improve discoverability.", messages: { direct_requester: "Why am I not getting matches?", exploratory_seeker: "I haven't been seeing many matches lately... is something wrong with my setup?", technical_precise: "Diagnose my match rate — evaluate intent specificity, profile completeness, community membership, and activity levels in my problem space", vague_requester: "Nothing's happening" } },
   META_DATA_PRIVACY: { id: "meta_data_privacy", category: "meta", question: "How is my data used?", expectation: "Agent explains what data is collected, what stays private vs visible, who can see what, how matching works without exposing everything, and how data is stored/protected. Clear privacy explanation.", messages: { direct_requester: "How is my data used?", exploratory_seeker: "I want to understand what happens with my data — who sees what, and how is it stored?", technical_precise: "Explain data collection scope, privacy model, visibility controls, matching data exposure, and storage/protection practices", vague_requester: "Is my stuff private?" } },
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SEED REQUIREMENTS — per-need overrides (category defaults in seed.types.ts)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const NEED_SEED_OVERRIDES: Record<string, SeedRequirement> = {
+  PROFILE_CREATE: DEFAULT_SEED_REQUIREMENTS["profile_create"],
+  PROFILE_FROM_URL: DEFAULT_SEED_REQUIREMENTS["profile_create"],
+  PROFILE_VIEW: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_UPDATE: DEFAULT_SEED_REQUIREMENTS["profile_update"],
+  PROFILE_UPDATE_FROM_URL: DEFAULT_SEED_REQUIREMENTS["profile_update"],
+  PROFILE_SELF_VIEW: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_SUMMARIZE: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_REWRITE_BIO: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_GAP_ANALYSIS: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_PATTERN_ANALYSIS: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  PROFILE_WEAKNESS_FEEDBACK: DEFAULT_SEED_REQUIREMENTS["profile_view"],
+  INTENT_CREATE: DEFAULT_SEED_REQUIREMENTS["intent_create"],
+  INTENT_FROM_URL: DEFAULT_SEED_REQUIREMENTS["intent_create"],
+  INTENT_VIEW: DEFAULT_SEED_REQUIREMENTS["intent_view"],
+  INTENT_LIST_SIMPLE: DEFAULT_SEED_REQUIREMENTS["intent_view"],
+  INTENT_UPDATE: DEFAULT_SEED_REQUIREMENTS["intent_update"],
+  INTENT_DELETE: DEFAULT_SEED_REQUIREMENTS["intent_delete"],
+  INTENT_REMOVE_SPECIFIC: DEFAULT_SEED_REQUIREMENTS["intent_delete"],
+  INTENT_PREFERENCE_UPDATE: DEFAULT_SEED_REQUIREMENTS["intent_update"],
+  META_CAPABILITIES: DEFAULT_SEED_REQUIREMENTS["meta"],
+  META_HOW_INDEX_WORKS: DEFAULT_SEED_REQUIREMENTS["meta"],
+  META_MATCHING_LOGIC: DEFAULT_SEED_REQUIREMENTS["meta"],
+  META_NO_MATCHES_DIAGNOSIS: DEFAULT_SEED_REQUIREMENTS["meta"],
+  META_DATA_PRIVACY: DEFAULT_SEED_REQUIREMENTS["meta"],
+  NO_ACTION_NEEDED: DEFAULT_SEED_REQUIREMENTS["meta"],
+};
+
+export function getSeedRequirements(
+  category: string,
+  needId?: string | null
+): SeedRequirement {
+  if (needId && NEED_SEED_OVERRIDES[needId]) {
+    return NEED_SEED_OVERRIDES[needId];
+  }
+  return (
+    DEFAULT_SEED_REQUIREMENTS[category] ??
+    DEFAULT_SEED_REQUIREMENTS["meta"]
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCENARIO TYPE

@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1739123456789,
-      "tag": "0000_eval_tables",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1770751380025,
-      "tag": "0001_sudden_big_bertha",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1770775713343,
-      "tag": "0002_slow_anthem",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1770862800000,
-      "tag": "0003_refactor_needs",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1771905600000,
-      "tag": "0004_user_feedback",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1771466866829,
-      "tag": "0005_add_ai_explanation",
+      "when": 1771556658313,
+      "tag": "0000_amused_grim_reaper",
       "breakpoints": true
     }
   ]

@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
-import { evalRuns, evalScenarioResults } from "@/lib/db/schema";
-import { loadPregeneratedScenarios } from "@/lib/scenarios";
-import { scenarioToGenerated, runChatEvaluation } from "@/lib/evaluator";
-import { eq, and } from "drizzle-orm";
+import { evalRuns, evalRunResults, evalScenarios } from "@/lib/db/schema";
+import {
+  dbScenarioToGenerated,
+  runChatEvaluation,
+  runSeededEvaluation,
+} from "@/lib/evaluator";
+import { eq, and, inArray } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
@@ -13,14 +16,13 @@ export async function POST(req: NextRequest) {
 
   const auth = req.headers.get("Authorization");
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
-  if (!token)
-    return Response.json({ error: "Missing Authorization header" }, { status: 401 });
 
   let body: {
     scenarioId?: string;
     scenarioIds?: string[];
     runId?: string;
     apiUrl?: string;
+    useSeeding?: boolean;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -33,7 +35,14 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:3001/api";
   const runId = body.runId?.trim();
-  const scenarios = loadPregeneratedScenarios();
+  const useSeeding = body.useSeeding ?? true;
+
+  if (!useSeeding && !token) {
+    return Response.json(
+      { error: "Missing Authorization header (required when useSeeding=false)" },
+      { status: 401 }
+    );
+  }
 
   const ids = body.scenarioIds?.length
     ? body.scenarioIds
@@ -44,7 +53,6 @@ export async function POST(req: NextRequest) {
   if (ids.length === 0)
     return Response.json({ error: "Provide scenarioId or scenarioIds" }, { status: 400 });
 
-  // If runId provided, verify ownership
   if (runId) {
     const [run] = await db
       .select()
@@ -54,11 +62,18 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Run not found" }, { status: 404 });
   }
 
+  const scenarioRows = await db
+    .select()
+    .from(evalScenarios)
+    .where(inArray(evalScenarios.id, ids));
+
+  const scenarioMap = new Map(scenarioRows.map((s) => [s.id, s]));
+
   const results = [];
 
   for (const scenarioId of ids) {
-    const s = scenarios.find((x) => x.id === scenarioId);
-    if (!s) {
+    const row = scenarioMap.get(scenarioId);
+    if (!row) {
       results.push({ scenarioId, error: "Scenario not found" });
       continue;
     }
@@ -66,26 +81,30 @@ export async function POST(req: NextRequest) {
     try {
       if (runId) {
         await db
-          .update(evalScenarioResults)
+          .update(evalRunResults)
           .set({ status: "running", updatedAt: new Date() })
           .where(
             and(
-              eq(evalScenarioResults.evalRunId, runId),
-              eq(evalScenarioResults.scenarioId, scenarioId)
+              eq(evalRunResults.evalRunId, runId),
+              eq(evalRunResults.scenarioId, scenarioId)
             )
           );
       }
 
-      const generated = scenarioToGenerated(s);
-      const result = await runChatEvaluation(generated, { apiUrl, token });
+      const generated = dbScenarioToGenerated(row);
+      const result = useSeeding
+        ? await runSeededEvaluation(generated, { apiUrl })
+        : await runChatEvaluation(generated, { apiUrl, token: token! });
+
       results.push(result);
 
       if (runId) {
         await db
-          .update(evalScenarioResults)
+          .update(evalRunResults)
           .set({
             status: "completed",
             conversation: result.conversation,
+            seedData: result.seedData || null,
             result: {
               verdict: result.verdict,
               fulfillmentScore: result.fulfillmentScore,
@@ -100,8 +119,8 @@ export async function POST(req: NextRequest) {
           })
           .where(
             and(
-              eq(evalScenarioResults.evalRunId, runId),
-              eq(evalScenarioResults.scenarioId, scenarioId)
+              eq(evalRunResults.evalRunId, runId),
+              eq(evalRunResults.scenarioId, scenarioId)
             )
           );
       }
@@ -112,12 +131,12 @@ export async function POST(req: NextRequest) {
       });
       if (runId) {
         await db
-          .update(evalScenarioResults)
+          .update(evalRunResults)
           .set({ status: "error", updatedAt: new Date() })
           .where(
             and(
-              eq(evalScenarioResults.evalRunId, runId),
-              eq(evalScenarioResults.scenarioId, scenarioId)
+              eq(evalRunResults.evalRunId, runId),
+              eq(evalRunResults.scenarioId, scenarioId)
             )
           );
       }

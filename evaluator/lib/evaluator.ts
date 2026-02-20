@@ -1,6 +1,7 @@
 /**
  * Chat Agent Evaluator - API-based
  * Uses sendMessage to call protocol chat stream, SimulatedUser + NeedFulfillmentEvaluator for eval.
+ * Supports seed lifecycle: seed protocol DB -> auth -> evaluate -> cleanup.
  */
 
 import { ChatOpenAI } from "@langchain/openai";
@@ -12,6 +13,11 @@ import {
   type Scenario,
   type UserPersonaId,
 } from "./scenarios";
+import type { SeedRequirement, GeneratedSeedData } from "./seed/seed.types";
+import { resolveSeedRequirements } from "./seed/seed.types";
+import { generateSeedData } from "./seed/seed.generator";
+import { seedProtocol, cleanupSeed } from "./seed/protocol.seeder";
+import { signIn, createAuthSession } from "./seed/auth.session";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERSONA MESSAGE GENERATOR
@@ -72,6 +78,8 @@ export interface GeneratedScenario {
   need: { id: string; question: string; expectation: string };
   persona: { id: string; description: string; communicationStyle: string };
   generatedMessage: string;
+  seedRequirements?: SeedRequirement | null;
+  category?: string;
 }
 
 export function scenarioToGenerated(s: Scenario): GeneratedScenario {
@@ -88,6 +96,47 @@ export function scenarioToGenerated(s: Scenario): GeneratedScenario {
       communicationStyle: persona.communicationStyle,
     },
     generatedMessage: s.message,
+    category: s.category,
+  };
+}
+
+/**
+ * Build a GeneratedScenario from an eval_scenarios DB row.
+ */
+export function dbScenarioToGenerated(row: {
+  id: string;
+  question: string;
+  expectation: string;
+  message: string;
+  personaId?: string | null;
+  category: string;
+  needId?: string | null;
+  seedRequirements?: SeedRequirement | null;
+}): GeneratedScenario {
+  const personaKey = row.personaId as UserPersonaId | undefined;
+  const persona = personaKey ? USER_PERSONAS[personaKey] : undefined;
+
+  return {
+    id: row.id,
+    need: {
+      id: row.needId || row.category,
+      question: row.question,
+      expectation: row.expectation,
+    },
+    persona: persona
+      ? {
+          id: persona.id,
+          description: persona.description,
+          communicationStyle: persona.communicationStyle,
+        }
+      : {
+          id: "default",
+          description: "Standard user",
+          communicationStyle: "clear, conversational",
+        },
+    generatedMessage: row.message,
+    seedRequirements: row.seedRequirements,
+    category: row.category,
   };
 }
 
@@ -303,10 +352,11 @@ export interface ChatEvaluationResult {
   conversation: Array<{ role: "user" | "assistant"; content: string }>;
   durationMs: number;
   timedOut: boolean;
+  seedData?: GeneratedSeedData;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// RUN EVALUATION (API-based chat)
+// RUN EVALUATION (legacy: token-based, no seeding)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export async function runChatEvaluation(
@@ -314,6 +364,101 @@ export async function runChatEvaluation(
   options: {
     apiUrl: string;
     token: string;
+    maxTurns?: number;
+    timeoutMs?: number;
+  }
+): Promise<ChatEvaluationResult> {
+  return _runConversation(scenario, {
+    apiUrl: options.apiUrl,
+    authToken: options.token,
+    maxTurns: options.maxTurns,
+    timeoutMs: options.timeoutMs,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RUN SEEDED EVALUATION (seed → auth → evaluate → cleanup)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export async function runSeededEvaluation(
+  scenario: GeneratedScenario,
+  options: {
+    apiUrl: string;
+    maxTurns?: number;
+    timeoutMs?: number;
+  }
+): Promise<ChatEvaluationResult> {
+  const requirements = resolveSeedRequirements(
+    scenario.category || "meta",
+    scenario.need.id,
+    scenario.seedRequirements
+  );
+
+  const needsSeeding =
+    requirements.user.hasProfile ||
+    requirements.user.intentCount > 0 ||
+    requirements.network.otherUsers > 0 ||
+    requirements.indexes.count > 0;
+
+  let seedData: GeneratedSeedData | undefined;
+  let cookie: string | undefined;
+
+  try {
+    if (needsSeeding) {
+      seedData = await generateSeedData(requirements, {
+        question: scenario.need.question,
+        expectation: scenario.need.expectation,
+        category: scenario.category || "meta",
+      });
+
+      await seedProtocol(seedData, options.apiUrl);
+
+      const session = await signIn(
+        options.apiUrl,
+        seedData.testUser.email,
+        seedData.testUser.password
+      );
+      cookie = session.cookie;
+    } else {
+      const session = await createAuthSession(
+        options.apiUrl,
+        `eval-noseed-${crypto.randomUUID().slice(0, 8)}@test.indexnetwork.io`,
+        `EvalTest!${crypto.randomUUID().slice(0, 8)}`,
+        "Eval User"
+      );
+      cookie = session.cookie;
+    }
+
+    const result = await _runConversation(scenario, {
+      apiUrl: options.apiUrl,
+      cookie,
+      maxTurns: options.maxTurns,
+      timeoutMs: options.timeoutMs,
+    });
+
+    result.seedData = seedData;
+    return result;
+  } finally {
+    if (seedData) {
+      try {
+        await cleanupSeed(seedData.seedTag);
+      } catch (err) {
+        console.error("Seed cleanup failed:", err);
+      }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERNAL: conversation runner
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function _runConversation(
+  scenario: GeneratedScenario,
+  options: {
+    apiUrl: string;
+    authToken?: string;
+    cookie?: string;
     maxTurns?: number;
     timeoutMs?: number;
   }
@@ -340,10 +485,15 @@ export async function runChatEvaluation(
     turnCount++;
     fullConversation.push({ role: "user", content: currentMessage });
 
-    const result = await sendMessage(options.apiUrl, options.token, {
-      message: currentMessage,
-      sessionId,
-    });
+    const result = await sendMessage(
+      options.apiUrl,
+      options.authToken || "",
+      {
+        message: currentMessage,
+        sessionId,
+        cookie: options.cookie,
+      }
+    );
 
     if (result.error) break;
 

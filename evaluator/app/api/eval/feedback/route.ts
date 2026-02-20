@@ -1,14 +1,15 @@
 import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
-import { userFeedback } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { analyzeFeedback } from "@/lib/feedback-analyzer";
+import { evalScenarios } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { classifyFeedback } from "@/lib/seed/feedback.classifier";
 
+/**
+ * POST: Submit feedback -> LLM classifies -> creates eval_scenarios row with source="feedback"
+ */
 export async function POST(req: NextRequest) {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId)
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (await getUserIdFromRequest(req)) ?? "anonymous";
 
   let body: {
     feedback: string;
@@ -26,58 +27,52 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const [inserted] = await db
-      .insert(userFeedback)
+    const classified = await classifyFeedback(
+      body.feedback.trim(),
+      body.conversation || []
+    );
+
+    const [scenario] = await db
+      .insert(evalScenarios)
       .values({
-        userId,
-        feedback: body.feedback.trim(),
-        sessionId: body.sessionId ?? null,
-        conversation: body.conversation ?? null,
+        source: "feedback",
+        category: classified.category,
+        needId: classified.needId,
+        question: classified.question,
+        expectation: classified.expectation,
+        message: classified.message,
+        feedbackText: body.feedback.trim(),
+        feedbackConversation: body.conversation || null,
+        seedRequirements: classified.seedRequirements,
       })
-      .returning({ id: userFeedback.id });
+      .returning();
 
-    if (inserted) {
-      try {
-        const analysis = await analyzeFeedback(
-          body.feedback.trim(),
-          body.conversation || []
-        );
-        await db
-          .update(userFeedback)
-          .set({
-            aiExplanation: analysis.explanation,
-            issueLabels: analysis.labels,
-          })
-          .where(eq(userFeedback.id, inserted.id));
-      } catch (analysisErr) {
-        console.error("Failed to analyze feedback", analysisErr);
-        // Don't fail the request, just log the error
-      }
-    }
-
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, scenario });
   } catch (err) {
-    console.error("Failed to save feedback", err);
+    console.error("Failed to process feedback", err);
     return Response.json(
-      { error: "Failed to save feedback" },
+      { error: "Failed to process feedback" },
       { status: 500 }
     );
   }
 }
 
+/**
+ * GET: List feedback-sourced scenarios
+ */
 export async function GET(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
   if (!userId)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const entries = await db
+    const feedback = await db
       .select()
-      .from(userFeedback)
-      .where(eq(userFeedback.archived, false))
-      .orderBy(desc(userFeedback.createdAt));
+      .from(evalScenarios)
+      .where(eq(evalScenarios.source, "feedback"))
+      .orderBy(desc(evalScenarios.createdAt));
 
-    return Response.json({ feedback: entries });
+    return Response.json({ feedback });
   } catch (err) {
     console.error("Failed to load feedback", err);
     return Response.json(

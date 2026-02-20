@@ -10,31 +10,28 @@ import {
   ChevronDown,
   ChevronRight,
   X,
+  Sparkles,
 } from "lucide-react";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
 
-interface NeedRecord {
+interface ScenarioRecord {
   id: string;
-  needId: string;
+  source: "predefined" | "feedback" | "generated";
   category: string;
+  needId?: string | null;
   question: string;
   expectation: string;
-  messages: Record<string, string>;
+  message: string;
+  personaId?: string | null;
+  feedbackText?: string | null;
+  seedRequirements?: Record<string, unknown> | null;
   enabled: boolean;
 }
 
-const PERSONA_IDS = [
-  "direct_requester",
-  "exploratory_seeker",
-  "technical_precise",
-  "vague_requester",
-] as const;
-
-const PERSONA_LABELS: Record<string, string> = {
-  direct_requester: "Direct Requester",
-  exploratory_seeker: "Exploratory Seeker",
-  technical_precise: "Technical Precise",
-  vague_requester: "Vague Requester",
+const SOURCE_LABELS: Record<string, { label: string; className: string }> = {
+  predefined: { label: "Predefined", className: "bg-blue-100 text-blue-700" },
+  feedback: { label: "Feedback", className: "bg-orange-100 text-orange-700" },
+  generated: { label: "Generated", className: "bg-purple-100 text-purple-700" },
 };
 
 const CATEGORY_OPTIONS = [
@@ -45,19 +42,16 @@ const CATEGORY_OPTIONS = [
   "discovery",
   "url",
   "edge_case",
+  "meta",
 ];
 
-function NeedForm({
+function ScenarioForm({
   draft,
   onChange,
-  needIdEditable,
 }: {
-  draft: Omit<NeedRecord, "id"> & { id?: string };
-  onChange: (d: Omit<NeedRecord, "id"> & { id?: string }) => void;
-  needIdEditable: boolean;
+  draft: Partial<ScenarioRecord>;
+  onChange: (d: Partial<ScenarioRecord>) => void;
 }) {
-  const hasMessages = Object.values(draft.messages).some((v) => v);
-
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
@@ -69,15 +63,14 @@ function NeedForm({
             onChange={(e) =>
               onChange({ ...draft, needId: e.target.value.toUpperCase().replace(/\s+/g, "_") })
             }
-            disabled={!needIdEditable}
             placeholder="e.g. PROFILE_CREATE"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white disabled:bg-gray-50 disabled:text-gray-500"
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
           <select
-            value={draft.category}
+            value={draft.category || "profile"}
             onChange={(e) => onChange({ ...draft, category: e.target.value })}
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
           >
@@ -93,9 +86,9 @@ function NeedForm({
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Question</label>
         <textarea
-          value={draft.question}
+          value={draft.question || ""}
           onChange={(e) => onChange({ ...draft, question: e.target.value })}
-          placeholder="The user question to test, e.g. 'User wants to create their profile'"
+          placeholder="The user question to test"
           rows={2}
           className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white resize-none"
         />
@@ -104,34 +97,44 @@ function NeedForm({
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Expectation</label>
         <textarea
-          value={draft.expectation}
+          value={draft.expectation || ""}
           onChange={(e) => onChange({ ...draft, expectation: e.target.value })}
-          placeholder="What the agent should do, e.g. 'Agent should invoke profile creation and confirm success'"
+          placeholder="What the agent should do"
           rows={2}
           className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white resize-none"
         />
       </div>
 
-      {hasMessages && (
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Message</label>
+        <textarea
+          value={draft.message || ""}
+          onChange={(e) => onChange({ ...draft, message: e.target.value })}
+          placeholder="The actual user message to send"
+          rows={2}
+          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white resize-none"
+        />
+      </div>
+
+      {draft.feedbackText && (
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-2">
-            Generated Persona Messages
-            <span className="ml-1 font-normal text-gray-400">(auto-generated on save)</span>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Original Feedback
           </label>
-          <div className="space-y-2">
-            {PERSONA_IDS.map((pid) => (
-              <div key={pid}>
-                <label className="block text-xs text-gray-500 mb-0.5">
-                  {PERSONA_LABELS[pid]}
-                </label>
-                <div className="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                  {draft.messages[pid] || (
-                    <span className="text-gray-300 italic">Not generated</span>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="text-sm text-gray-600 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+            {draft.feedbackText}
           </div>
+        </div>
+      )}
+
+      {draft.seedRequirements && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Seed Requirements
+          </label>
+          <pre className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 overflow-x-auto">
+            {JSON.stringify(draft.seedRequirements, null, 2)}
+          </pre>
         </div>
       )}
     </div>
@@ -139,47 +142,52 @@ function NeedForm({
 }
 
 function TestCasesContent() {
-  const [needs, setNeeds] = useState<NeedRecord[]>([]);
+  const [scenarios, setScenarios] = useState<ScenarioRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<NeedRecord | null>(null);
+  const [editDraft, setEditDraft] = useState<ScenarioRecord | null>(null);
   const [creating, setCreating] = useState(false);
-  const [newDraft, setNewDraft] = useState<Omit<NeedRecord, "id"> | null>(null);
+  const [newDraft, setNewDraft] = useState<Partial<ScenarioRecord> | null>(null);
   const [filterCategory, setFilterCategory] = useState("all");
+  const [filterSource, setFilterSource] = useState("all");
   const [seeding, setSeeding] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const fetchNeeds = useCallback(async () => {
+  const fetchScenarios = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/eval/needs", {
+      const params = new URLSearchParams();
+      if (filterCategory !== "all") params.set("category", filterCategory);
+      if (filterSource !== "all") params.set("source", filterSource);
+      const res = await fetch(`/api/eval/scenarios?${params}`, {
         credentials: "include",
       });
       if (res.ok) {
         const data = await res.json();
-        setNeeds(data.needs || []);
+        setScenarios(data.scenarios || []);
       }
     } catch (e) {
-      console.error("Failed to fetch needs", e);
+      console.error("Failed to fetch scenarios", e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterCategory, filterSource]);
 
   useEffect(() => {
-    fetchNeeds();
-  }, [fetchNeeds]);
+    fetchScenarios();
+  }, [fetchScenarios]);
 
   const seedDefaults = async () => {
     setSeeding(true);
     try {
-      const res = await fetch("/api/eval/needs/seed", {
+      const res = await fetch("/api/eval/scenarios/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
       });
       if (res.ok) {
-        await fetchNeeds();
+        await fetchScenarios();
       } else {
         alert("Failed to seed");
       }
@@ -190,10 +198,35 @@ function TestCasesContent() {
     }
   };
 
-  const toggleEnabled = async (need: NeedRecord) => {
-    const newVal = !need.enabled;
-    setNeeds((prev) => prev.map((n) => (n.id === need.id ? { ...n, enabled: newVal } : n)));
-    await fetch(`/api/eval/needs/${need.id}`, {
+  const generateScenarios = async () => {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/eval/scenarios/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ maxScenarios: 5 }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`Generated ${data.generated} new scenarios`);
+        await fetchScenarios();
+      } else {
+        alert("Failed to generate scenarios");
+      }
+    } catch {
+      alert("Failed to generate scenarios");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleEnabled = async (scenario: ScenarioRecord) => {
+    const newVal = !scenario.enabled;
+    setScenarios((prev) =>
+      prev.map((s) => (s.id === scenario.id ? { ...s, enabled: newVal } : s))
+    );
+    await fetch(`/api/eval/scenarios/${scenario.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -205,7 +238,7 @@ function TestCasesContent() {
     if (!editDraft) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/eval/needs/${editDraft.id}`, {
+      const res = await fetch(`/api/eval/scenarios/${editDraft.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -213,11 +246,15 @@ function TestCasesContent() {
           category: editDraft.category,
           question: editDraft.question,
           expectation: editDraft.expectation,
+          message: editDraft.message,
+          needId: editDraft.needId,
         }),
       });
       if (res.ok) {
         const data = await res.json();
-        setNeeds((prev) => prev.map((n) => (n.id === data.need.id ? data.need : n)));
+        setScenarios((prev) =>
+          prev.map((s) => (s.id === data.scenario.id ? data.scenario : s))
+        );
         setEditDraft(null);
         setExpandedId(null);
       } else {
@@ -230,22 +267,25 @@ function TestCasesContent() {
     }
   };
 
-  const createNeed = async () => {
+  const createScenario = async () => {
     if (!newDraft) return;
-    if (!newDraft.needId || !newDraft.category || !newDraft.question) {
-      alert("Need ID, category, and question are required");
+    if (!newDraft.category || !newDraft.question || !newDraft.expectation) {
+      alert("Category, question, and expectation are required");
       return;
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/eval/needs", {
+      const res = await fetch("/api/eval/scenarios", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(newDraft),
+        body: JSON.stringify({
+          ...newDraft,
+          message: newDraft.message || newDraft.question,
+        }),
       });
       if (res.ok) {
-        await fetchNeeds();
+        await fetchScenarios();
         setNewDraft(null);
         setCreating(false);
       } else {
@@ -259,14 +299,14 @@ function TestCasesContent() {
     }
   };
 
-  const deleteNeed = async (id: string) => {
-    if (!confirm("Delete this test case?")) return;
-    const res = await fetch(`/api/eval/needs/${id}`, {
+  const deleteScenario = async (id: string) => {
+    if (!confirm("Delete this scenario?")) return;
+    const res = await fetch(`/api/eval/scenarios/${id}`, {
       method: "DELETE",
       credentials: "include",
     });
     if (res.ok) {
-      setNeeds((prev) => prev.filter((n) => n.id !== id));
+      setScenarios((prev) => prev.filter((s) => s.id !== id));
       if (expandedId === id) {
         setExpandedId(null);
         setEditDraft(null);
@@ -274,10 +314,8 @@ function TestCasesContent() {
     }
   };
 
-  const filtered =
-    filterCategory === "all" ? needs : needs.filter((n) => n.category === filterCategory);
-  const grouped = filtered.reduce<Record<string, NeedRecord[]>>((acc, n) => {
-    (acc[n.category] ??= []).push(n);
+  const grouped = scenarios.reduce<Record<string, ScenarioRecord[]>>((acc, s) => {
+    (acc[s.category] ??= []).push(s);
     return acc;
   }, {});
 
@@ -286,9 +324,9 @@ function TestCasesContent() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-gray-900">Test Cases</h2>
+            <h2 className="text-lg font-bold text-gray-900">Scenarios</h2>
             <span className="text-sm text-gray-500">
-              {needs.length} needs / {needs.filter((n) => n.enabled).length} enabled
+              {scenarios.length} total / {scenarios.filter((s) => s.enabled).length} enabled
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -304,6 +342,16 @@ function TestCasesContent() {
                 </option>
               ))}
             </select>
+            <select
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
+            >
+              <option value="all">All sources</option>
+              <option value="predefined">Predefined</option>
+              <option value="feedback">Feedback</option>
+              <option value="generated">Generated</option>
+            </select>
             <button
               onClick={seedDefaults}
               disabled={seeding}
@@ -314,38 +362,49 @@ function TestCasesContent() {
               ) : (
                 <DatabaseZap className="w-4 h-4" />
               )}
-              {needs.length === 0 ? "Seed defaults" : "Reset to defaults"}
+              {scenarios.length === 0 ? "Seed defaults" : "Sync predefined"}
+            </button>
+            <button
+              onClick={generateScenarios}
+              disabled={generating}
+              className="flex items-center gap-2 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 text-sm font-medium disabled:opacity-50"
+            >
+              {generating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              Generate
             </button>
             <button
               onClick={() => {
                 setCreating(true);
                 setNewDraft({
-                  needId: "",
                   category: "profile",
                   question: "",
                   expectation: "",
-                  messages: {},
+                  message: "",
                   enabled: true,
                 });
               }}
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
             >
-              <Plus className="w-4 h-4" /> Add Need
+              <Plus className="w-4 h-4" /> Add Scenario
             </button>
           </div>
         </div>
 
-        {loading && needs.length === 0 && (
+        {loading && scenarios.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-            Loading test cases...
+            Loading scenarios...
           </div>
         )}
 
-        {!loading && needs.length === 0 && (
+        {!loading && scenarios.length === 0 && (
           <div className="text-center py-16 text-gray-400">
             <DatabaseZap className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-            <p className="mb-4">No test cases yet</p>
+            <p className="mb-4">No scenarios yet</p>
             <button
               onClick={seedDefaults}
               disabled={seeding}
@@ -359,7 +418,7 @@ function TestCasesContent() {
         {creating && newDraft && (
           <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold">New Test Case</h3>
+              <h3 className="text-base font-semibold">New Scenario</h3>
               <button
                 onClick={() => {
                   setCreating(false);
@@ -370,11 +429,7 @@ function TestCasesContent() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <NeedForm
-              draft={newDraft as Omit<NeedRecord, "id"> & { id?: string }}
-              onChange={(d) => setNewDraft(d as Omit<NeedRecord, "id">)}
-              needIdEditable
-            />
+            <ScenarioForm draft={newDraft} onChange={setNewDraft} />
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => {
@@ -386,16 +441,12 @@ function TestCasesContent() {
                 Cancel
               </button>
               <button
-                onClick={createNeed}
+                onClick={createScenario}
                 disabled={saving}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
               >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                {saving ? "Generating messages..." : "Create"}
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Create
               </button>
             </div>
           </div>
@@ -409,11 +460,12 @@ function TestCasesContent() {
                 {cat.replace(/_/g, " ")} ({items.length})
               </h3>
               <div className="space-y-1">
-                {items.map((need) => {
-                  const isExpanded = expandedId === need.id;
+                {items.map((scenario) => {
+                  const isExpanded = expandedId === scenario.id;
+                  const sourceStyle = SOURCE_LABELS[scenario.source] || SOURCE_LABELS.predefined;
                   return (
                     <div
-                      key={need.id}
+                      key={scenario.id}
                       className={`bg-white rounded-lg shadow-sm border ${
                         isExpanded ? "border-blue-200" : "border-gray-100"
                       }`}
@@ -425,8 +477,8 @@ function TestCasesContent() {
                               setExpandedId(null);
                               setEditDraft(null);
                             } else {
-                              setExpandedId(need.id);
-                              setEditDraft({ ...need });
+                              setExpandedId(scenario.id);
+                              setEditDraft({ ...scenario });
                             }
                           }}
                           className="p-0.5 text-gray-400 hover:text-gray-600"
@@ -440,29 +492,34 @@ function TestCasesContent() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-900">
-                              {need.needId}
+                              {scenario.needId || scenario.question.slice(0, 40)}
                             </span>
-                            <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">
-                              {need.category.replace(/_/g, " ")}
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${sourceStyle.className}`}>
+                              {sourceStyle.label}
                             </span>
+                            {scenario.personaId && (
+                              <span className="text-xs px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">
+                                {scenario.personaId.replace(/_/g, " ").toLowerCase()}
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-gray-500 truncate mt-0.5">
-                            {need.question}
+                            {scenario.message}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => toggleEnabled(need)}
+                            onClick={() => toggleEnabled(scenario)}
                             className={`text-xs px-2 py-1 rounded-full font-medium ${
-                              need.enabled
+                              scenario.enabled
                                 ? "bg-green-100 text-green-700"
                                 : "bg-gray-100 text-gray-400"
                             }`}
                           >
-                            {need.enabled ? "Enabled" : "Disabled"}
+                            {scenario.enabled ? "Enabled" : "Disabled"}
                           </button>
                           <button
-                            onClick={() => deleteNeed(need.id)}
+                            onClick={() => deleteScenario(scenario.id)}
                             className="p-1.5 text-gray-300 hover:text-red-500"
                             title="Delete"
                           >
@@ -471,12 +528,11 @@ function TestCasesContent() {
                         </div>
                       </div>
 
-                      {isExpanded && editDraft && editDraft.id === need.id && (
+                      {isExpanded && editDraft && editDraft.id === scenario.id && (
                         <div className="px-4 pb-4 border-t border-gray-100 pt-4">
-                          <NeedForm
-                            draft={editDraft as Omit<NeedRecord, "id"> & { id?: string }}
-                            onChange={(d) => setEditDraft(d as NeedRecord)}
-                            needIdEditable={false}
+                          <ScenarioForm
+                            draft={editDraft}
+                            onChange={(d) => setEditDraft(d as ScenarioRecord)}
                           />
                           <div className="flex justify-end gap-2 mt-4">
                             <button
@@ -498,7 +554,7 @@ function TestCasesContent() {
                               ) : (
                                 <Save className="w-4 h-4" />
                               )}
-                              {saving ? "Regenerating messages..." : "Save"}
+                              Save
                             </button>
                           </div>
                         </div>

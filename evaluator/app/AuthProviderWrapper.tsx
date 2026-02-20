@@ -2,10 +2,8 @@
 
 import { createAuthClient } from "better-auth/react";
 
-const serverBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api").replace(/\/api\/?$/, '');
-
+// Use relative /api/auth so sign-in cookies are set on evaluator domain (fixes 401 on /api/eval/*)
 export const authClient = createAuthClient({
-  baseURL: serverBase,
   basePath: "/api/auth",
 });
 

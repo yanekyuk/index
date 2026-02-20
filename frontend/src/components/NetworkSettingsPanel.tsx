@@ -317,38 +317,38 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       {activeTab === 'settings' && (
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">Title</label>
+            <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Title</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-900 mb-2">Prompt</label>
+            <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
             <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
-            <p className="text-xs text-gray-500 mt-1">Guides what kind of intents people can share.</p>
+            <p className="text-xs text-gray-400 mt-1.5">Guides what kind of intents people can share.</p>
           </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); }} disabled={isSavingSettings || !hasSettingsChanged}>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); }} disabled={isSavingSettings || !hasSettingsChanged}>
               Cancel
             </Button>
-            <Button onClick={handleSaveSettings} disabled={isSavingSettings || !hasSettingsChanged || !title.trim()}>
+            <Button size="sm" onClick={handleSaveSettings} disabled={isSavingSettings || !hasSettingsChanged || !title.trim()}>
               {isSavingSettings ? 'Saving...' : 'Save'}
             </Button>
           </div>
 
-          <div className="pt-6 border-t border-gray-200">
+          <div className="pt-6 border-t border-gray-100">
             <button
               onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
-              className="flex items-center gap-2 text-sm font-medium text-red-700 hover:text-red-900 transition-colors"
+              className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
             >
               {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               Danger Zone
             </button>
             {isDangerZoneExpanded && (
-              <div className="mt-3 flex items-center justify-between p-3 border border-red-200 rounded-sm bg-red-50">
+              <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
                 <div>
-                  <p className="text-sm font-medium text-red-900">Delete this network</p>
-                  <p className="text-xs text-red-700">This action cannot be undone.</p>
+                  <p className="text-sm font-medium text-red-800">Delete this network</p>
+                  <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-100">
+                <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirmation(true)} className="border-red-200 text-red-600 hover:bg-red-100">
                   <Trash2 className="h-4 w-4 mr-1" /> Delete
                 </Button>
               </div>
@@ -358,65 +358,75 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       )}
 
       {activeTab === 'access' && (
-        <div className="space-y-6">
+        <div className="space-y-8">
+
+          {/* Who can join */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Who can join</h3>
-            <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
-                className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
               >
-                <Globe className={`h-4 w-4 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+                <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
                 <div>
                   <p className="text-sm font-medium text-black">Public</p>
-                  <p className="text-xs text-gray-500">Anyone can discover and join</p>
+                  <p className="text-xs text-gray-400">Anyone can join</p>
                 </div>
               </button>
               <button
                 type="button"
                 onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
-                className={`w-full flex items-center gap-3 p-3 border rounded-sm text-left transition-colors ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
               >
-                <Lock className={`h-4 w-4 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+                <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
                 <div>
                   <p className="text-sm font-medium text-black">Private</p>
-                  <p className="text-xs text-gray-500">Only invited people can join</p>
+                  <p className="text-xs text-gray-400">Invite only</p>
                 </div>
               </button>
             </div>
           </div>
 
+          {/* Share link */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-2">{anyoneCanJoin ? 'Network Link' : 'Invitation Link'}</h3>
-            <div className="flex items-center gap-2 p-2 border border-gray-200 rounded-sm bg-gray-50">
-              <code className="flex-1 text-xs text-gray-600 truncate">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+              {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
+            </p>
+            <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
+              <code className="flex-1 text-xs text-gray-500 truncate">
                 {anyoneCanJoin
                   ? `${typeof window !== 'undefined' ? window.location.origin : ''}/index/${index.id}`
                   : invitationLink ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}` : 'Loading...'}
               </code>
-              <button onClick={handleCopyLink} className={`p-1.5 rounded-sm transition-colors ${isCopied ? 'bg-green-100 text-green-700' : 'hover:bg-gray-200 text-gray-600'}`}>
-                {isCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+              <button onClick={handleCopyLink} className={`flex-shrink-0 p-1 rounded-sm transition-colors ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}>
+                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
 
+          {/* Members */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Members ({members.length})</h3>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto mb-3">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+              Members <span className="normal-case font-normal">({members.length})</span>
+            </p>
+            <div className="space-y-1.5 mb-3">
               {members.map((member) => (
-                <div key={member.id} className="flex items-center justify-between p-2 border border-gray-200 rounded-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium">
-                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </div>
-                    <span className="text-sm text-black">{member.name}</span>
-                    <span className="text-xs text-gray-500 px-1.5 py-0.5 bg-gray-100 rounded-sm">
-                      {member.permissions.includes('owner') ? 'Owner' : 'Member'}
-                    </span>
+                <div key={member.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors group">
+                  <div className="h-7 w-7 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
+                    {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                   </div>
+                  <span className="text-sm text-black flex-1 truncate">{member.name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium ${
+                    member.permissions.includes('owner')
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {member.permissions.includes('owner') ? 'Owner' : 'Member'}
+                  </span>
                   {!member.permissions.includes('owner') && (
-                    <button onClick={() => handleRemoveMember(member.id)} className="p-1 hover:bg-gray-100 rounded-sm text-gray-400 hover:text-red-500">
+                    <button onClick={() => handleRemoveMember(member.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-colors">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -424,35 +434,36 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               ))}
             </div>
             <div className="relative">
-              <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
               <Input
                 ref={searchInputRef}
                 placeholder="Add people by name..."
                 value={memberSearchQuery}
                 onChange={(e) => { setMemberSearchQuery(e.target.value); setShowSuggestions(e.target.value.length > 0); }}
                 onFocus={() => memberSearchQuery && setShowSuggestions(true)}
-                className="pl-10"
+                className="pl-9"
               />
               {showSuggestions && filteredSuggestions.length > 0 && (
-                <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-lg z-10 max-h-40 overflow-y-auto">
+                <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10 max-h-40 overflow-y-auto">
                   {filteredSuggestions.map((u) => (
-                    <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2 p-2 hover:bg-gray-50 text-left">
-                      <div className="h-6 w-6 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-xs">
+                    <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left">
+                      <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
                         {u.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                       </div>
-                      <span className="text-sm">{u.name}</span>
+                      <span className="text-sm text-black">{u.name}</span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
           </div>
+
         </div>
       )}
 
       {activeTab === 'integrations' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600 mb-4">Connect external services to sync data with your network.</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-6">Integrations</p>
           <div className="space-y-2">
             {integrations.map((it) => {
               const integrationDef = INTEGRATIONS.find(i => i.type === it.type);

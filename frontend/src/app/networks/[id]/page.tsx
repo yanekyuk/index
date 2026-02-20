@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
@@ -26,16 +26,15 @@ export default function NetworkDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'access' | 'integrations'>('overview');
+  const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
 
-  // Memoized function to check ownership
   const checkOwnership = useCallback(async (indexId: string, indexData?: Index) => {
     try {
       const memberSettings = await indexesService.getCurrentUserMemberSettings(indexId);
       return memberSettings.isOwner;
     } catch (err) {
       console.error('Error loading member settings:', err);
-      // Fallback to checking user.id if available
       return indexData?.user ? user?.id === indexData.user.id : false;
     }
   }, [indexesService, user?.id]);
@@ -76,17 +75,12 @@ export default function NetworkDetailPage() {
         if (updated && JSON.stringify(updated) !== JSON.stringify(network)) {
           isCheckingOwnership.current = true;
           try {
-            // First check if we can determine ownership from the data itself
-            let ownerStatus = isOwner; // Default to current state
-            
+            let ownerStatus = isOwner;
             if (updated.user && user?.id) {
-              // If we have user data, use it directly
               ownerStatus = user.id === updated.user.id;
             } else {
-              // Otherwise, make API call
               ownerStatus = await checkOwnership(network.id, updated);
             }
-            
             setNetwork(updated);
             setIsOwner(ownerStatus);
           } finally {
@@ -95,92 +89,112 @@ export default function NetworkDetailPage() {
         }
       }
     };
-    
     updateNetworkFromContext();
   }, [indexes, network, checkOwnership, user?.id, isOwner]);
 
   const handleDeleted = () => router.push('/networks');
   const handleLeft = () => router.push('/networks');
 
+  const isPublic = network?.permissions?.joinPolicy === 'anyone';
+
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-6">
-        <ContentContainer size="wide">
-          <div className="flex items-center gap-3 mb-6">
-            <button
-              type="button"
-              onClick={() => router.push('/networks')}
-              className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"
-              aria-label="Back to networks"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <h1 className="text-2xl font-bold text-black font-ibm-plex-mono truncate">
-              {loading ? 'Loading...' : network?.title || 'Network'}
-            </h1>
-          </div>
+      <div className="px-6 lg:px-8 py-8">
+        <ContentContainer>
+
+          {/* Back */}
+          <button
+            type="button"
+            onClick={() => router.push('/networks')}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-black transition-colors mb-6"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Networks
+          </button>
 
           {loading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-5 h-5 animate-spin text-gray-300" />
             </div>
           ) : notFound ? (
-            <div className="text-sm text-gray-500 py-12 text-center border border-dashed border-gray-200 rounded-sm">
-              <p className="mb-3">Network not found</p>
-              <button onClick={() => router.push('/networks')} className="text-blue-600 hover:underline text-xs">
+            <div className="py-16 text-center">
+              <p className="text-sm font-medium text-gray-700 mb-1">Network not found</p>
+              <button onClick={() => router.push('/networks')} className="text-xs text-gray-400 hover:text-black transition-colors">
                 Back to Networks
               </button>
             </div>
           ) : network ? (
-            isOwner ? (
-              <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-                <Tabs.List className="flex border-b border-gray-200 mb-6">
-                  <Tabs.Trigger 
-                    value="overview" 
-                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+            <>
+              {/* Header */}
+              <div className="flex items-start justify-between mb-8">
+                <div>
+                  <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-3">
+                    {network.title}
+                  </h1>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                      {isPublic
+                        ? <Globe className="w-3.5 h-3.5" />
+                        : <Lock className="w-3.5 h-3.5" />}
+                      {isPublic ? 'Public' : 'Private'}
+                    </span>
+                    {network._count?.members !== undefined && (
+                      <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <Users className="w-3.5 h-3.5" />
+                        {network._count.members} member{network._count.members !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {isOwner && (
+                      <span className="text-xs px-1.5 py-0.5 bg-gray-900 text-white rounded-sm font-medium">
+                        Owner
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {!isOwner && (
+                  <button
+                    onClick={() => setLeaveRequested(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-500 border border-red-200 rounded-sm hover:bg-red-50 hover:border-red-300 transition-colors"
                   >
-                    Overview
-                  </Tabs.Trigger>
-                  <Tabs.Trigger 
-                    value="settings" 
-                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                  >
-                    Settings
-                  </Tabs.Trigger>
-                  <Tabs.Trigger 
-                    value="access" 
-                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                  >
-                    Access
-                  </Tabs.Trigger>
-                  <Tabs.Trigger 
-                    value="integrations" 
-                    className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                  >
-                    Integrations
-                  </Tabs.Trigger>
-                </Tabs.List>
+                    <LogOut className="w-4 h-4" />
+                    Leave
+                  </button>
+                )}
+              </div>
 
-                <Tabs.Content value="overview">
-                  <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} />
-                </Tabs.Content>
+              {isOwner ? (
+                <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+                  <Tabs.List className="flex border-b border-gray-200 mb-8">
+                    {(['overview', 'settings', 'access', 'integrations'] as const).map((tab) => (
+                      <Tabs.Trigger
+                        key={tab}
+                        value={tab}
+                        className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold capitalize"
+                      >
+                        {tab}
+                      </Tabs.Trigger>
+                    ))}
+                  </Tabs.List>
 
-                <Tabs.Content value="settings">
-                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="settings" />
-                </Tabs.Content>
-
-                <Tabs.Content value="access">
-                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="access" />
-                </Tabs.Content>
-
-                <Tabs.Content value="integrations">
-                  <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="integrations" />
-                </Tabs.Content>
-              </Tabs.Root>
-            ) : (
-              <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} />
-            )
+                  <Tabs.Content value="overview">
+                    <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+                  </Tabs.Content>
+                  <Tabs.Content value="settings">
+                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="settings" />
+                  </Tabs.Content>
+                  <Tabs.Content value="access">
+                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="access" />
+                  </Tabs.Content>
+                  <Tabs.Content value="integrations">
+                    <NetworkSettingsPanel index={network} onDeleted={handleDeleted} activeTab="integrations" />
+                  </Tabs.Content>
+                </Tabs.Root>
+              ) : (
+                <NetworkOverviewPanel index={network} isOwner={isOwner} onLeft={handleLeft} onLeaveRequest={leaveRequested} onLeaveRequestHandled={() => setLeaveRequested(false)} />
+              )}
+            </>
           ) : null}
+
         </ContentContainer>
       </div>
     </ClientLayout>

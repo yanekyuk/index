@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
-import { evalRuns, evalScenarioResults } from "@/lib/db/schema";
+import { evalRuns, evalRunResults } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export async function PATCH(
@@ -41,12 +41,12 @@ export async function PATCH(
     }
 
     await db
-      .update(evalScenarioResults)
+      .update(evalRunResults)
       .set({ ...updates, updatedAt: new Date() })
       .where(
         and(
-          eq(evalScenarioResults.evalRunId, runId),
-          eq(evalScenarioResults.scenarioId, scenarioId)
+          eq(evalRunResults.evalRunId, runId),
+          eq(evalRunResults.scenarioId, scenarioId)
         )
       );
 

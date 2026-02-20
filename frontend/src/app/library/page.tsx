@@ -346,7 +346,7 @@ export default function LibraryPage() {
   return (
     <ClientLayout>
       <div className="px-6 lg:px-8 py-6">
-        <ContentContainer size="wide">
+        <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-6">Library</h1>
 
           <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>

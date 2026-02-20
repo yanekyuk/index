@@ -126,7 +126,7 @@ export default function WaitlistModal() {
                   id="waitlist-name"
                   value={waitlistForm.name}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
+                  className="w-full border border-gray-200 rounded-sm bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0"
                   required
                   disabled={waitlistStatus === "loading"}
                 />
@@ -141,7 +141,7 @@ export default function WaitlistModal() {
                   id="waitlist-email"
                   value={waitlistForm.email}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
+                  className="w-full border border-gray-200 rounded-sm bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0"
                   required
                   disabled={waitlistStatus === "loading"}
                 />
@@ -157,7 +157,7 @@ export default function WaitlistModal() {
                   id="waitlist-whatYouDo"
                   value={waitlistForm.whatYouDo}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm"
+                  className="w-full border border-gray-200 rounded-sm bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0"
                   disabled={waitlistStatus === "loading"}
                 />
               </div>
@@ -174,7 +174,7 @@ export default function WaitlistModal() {
                   value={waitlistForm.whoToMeet}
                   onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })}
                   rows={3}
-                  className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm resize-none"
+                  className="w-full border border-gray-200 rounded-sm bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-gray-900 focus:outline-none focus:ring-0 resize-none"
                   disabled={waitlistStatus === "loading"}
                 />
               </div>

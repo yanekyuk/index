@@ -41,8 +41,9 @@ export const auth = betterAuth({
         }
       : {}),
   },
-  trustedOrigins: getTrustedOrigins(),
+  trustedOrigins: getTrustedOrigins,
   advanced: {
+    trustedProxyHeaders: true,
     defaultCookieAttributes: {
       sameSite: "lax",
     },

@@ -14,13 +14,21 @@ import {
   Download,
   Minus,
 } from "lucide-react";
-import type { Scenario } from "@/lib/scenarios";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
 import { ConversationView } from "@/components/ConversationView";
 
 type ReviewFlag = "pass" | "fail" | "needs_review" | "skipped";
 
-interface ScenarioState extends Scenario {
+interface ScenarioState {
+  id: string;
+  scenarioId: string;
+  resultId?: string;
+  needId?: string;
+  personaId?: string;
+  message: string;
+  category: string;
+  source?: string;
+  question?: string;
   status: "pending" | "running" | "completed" | "error";
   conversation?: Array<{ role: "user" | "assistant"; content: string }>;
   result?: {
@@ -64,11 +72,15 @@ export default function RunPage() {
         if (cancelled) return;
         const list: ScenarioState[] = (data.scenarios || []).map(
           (s: Record<string, unknown>) => ({
-            id: String(s.id),
-            needId: String(s.needId ?? s.need),
-            personaId: String(s.personaId ?? s.persona),
+            id: String(s.id ?? s.scenarioId),
+            scenarioId: String(s.scenarioId ?? s.id),
+            resultId: s.resultId ? String(s.resultId) : undefined,
+            needId: s.needId ? String(s.needId) : undefined,
+            personaId: s.personaId ? String(s.personaId) : undefined,
             message: String(s.message ?? ""),
             category: String(s.category ?? ""),
+            source: s.source ? String(s.source) : undefined,
+            question: s.question ? String(s.question) : undefined,
             status: (s.status as ScenarioState["status"]) ?? "pending",
             conversation: s.conversation as ScenarioState["conversation"],
             result: s.result as ScenarioState["result"],
@@ -199,26 +211,38 @@ export default function RunPage() {
   const runScenario = async (scenarioId: string) => {
     setScenarios((prev) =>
       prev.map((s) =>
-        s.id === scenarioId
+        s.id === scenarioId || s.scenarioId === scenarioId
           ? { ...s, status: "running", conversation: [] }
           : s
       )
     );
+
+    const actualScenarioId = scenarios.find(
+      (s) => s.id === scenarioId || s.scenarioId === scenarioId
+    )?.scenarioId ?? scenarioId;
 
     try {
       const res = await fetch("/api/eval/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ runId, scenarioId, apiUrl }),
+        body: JSON.stringify({
+          runId,
+          scenarioId: actualScenarioId,
+          apiUrl,
+          useSeeding: true,
+        }),
       });
       const data = await res.json();
       const result = data.results?.[0];
 
+      const matchId = (s: ScenarioState) =>
+        s.id === scenarioId || s.scenarioId === scenarioId || s.scenarioId === actualScenarioId;
+
       if (result?.error) {
         setScenarios((prev) =>
           prev.map((s) =>
-            s.id === scenarioId ? { ...s, status: "error" } : s
+            matchId(s) ? { ...s, status: "error" } : s
           )
         );
         return;
@@ -226,7 +250,7 @@ export default function RunPage() {
 
       setScenarios((prev) =>
         prev.map((s) =>
-          s.id === scenarioId
+          matchId(s)
             ? {
                 ...s,
                 status: "completed",
@@ -248,7 +272,9 @@ export default function RunPage() {
     } catch {
       setScenarios((prev) =>
         prev.map((s) =>
-          s.id === scenarioId ? { ...s, status: "error" } : s
+          (s.id === scenarioId || s.scenarioId === scenarioId)
+            ? { ...s, status: "error" }
+            : s
         )
       );
     }

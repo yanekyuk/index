@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Compass, MessagesSquare, Settings, Loader2, ChevronDown, User as UserIcon, LogIn, Library, History } from 'lucide-react';
+import { Compass, MessagesSquare, Loader2, ChevronDown, User as UserIcon, LogOut, Library, History, Network } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -15,8 +15,6 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
-import PreferencesModal from '@/components/modals/PreferencesModal';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
 
 
@@ -44,8 +42,6 @@ export default function Sidebar() {
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [navigatingToChat, setNavigatingToChat] = useState(false);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
@@ -56,7 +52,8 @@ export default function Sidebar() {
   const isLibraryView = pathname?.startsWith('/library');
   const isNetworksView = pathname?.startsWith('/networks');
   const isHistoryView = pathname?.startsWith('/d/');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView;
+  const isProfileView = pathname?.startsWith('/profile');
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
@@ -344,88 +341,52 @@ export default function Sidebar() {
           </button>
 
           {userDropdownOpen && (
-            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-[#E9E9E9] rounded-sm z-50">
-              <div className="py-1">
+            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white border border-gray-200 rounded-lg shadow-sm z-50 overflow-hidden">
+              {/* Nav items */}
+              <div className="py-1.5">
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
-                  onClick={() => {
-                    setUserDropdownOpen(false);
-                    router.push('/networks');
-                  }}
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
+                    isNetworksView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                  onClick={() => { setUserDropdownOpen(false); router.push('/networks'); }}
                 >
-                  <Compass className="h-4 w-4 mr-2" />
+                  <Network className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   Networks
                 </button>
                 <button
-                  className={`w-full px-4 py-2 text-left flex items-center text-sm ${
-                    isLibraryView 
-                      ? 'text-gray-800 bg-gray-100 font-medium' 
-                      : 'text-gray-800 hover:bg-gray-50'
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
+                    isLibraryView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
                   }`}
-                  onClick={() => {
-                    setUserDropdownOpen(false);
-                    router.push('/library');
-                  }}
+                  onClick={() => { setUserDropdownOpen(false); router.push('/library'); }}
                 >
-                  <Library className="h-4 w-4 mr-2" />
+                  <Library className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   Library
                 </button>
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
-                  onClick={() => {
-                    setUserDropdownOpen(false);
-                    setIsProfileModalOpen(true);
-                  }}
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
+                    isProfileView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                  onClick={() => { setUserDropdownOpen(false); router.push('/profile'); }}
                 >
-                  <UserIcon className="h-4 w-4 mr-2" />
-                  Profile Settings
+                  <UserIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  Profile
                 </button>
+              </div>
+
+              {/* Logout */}
+              <div className="border-t border-gray-100 py-1.5">
                 <button
-                  className="w-full px-4 py-2 text-left text-gray-800 hover:bg-gray-50 flex items-center text-sm"
-                  onClick={() => {
-                    setUserDropdownOpen(false);
-                    setPreferencesModalOpen(true);
-                  }}
+                  className="w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+                  onClick={() => { setUserDropdownOpen(false); authClient.signOut(); }}
                 >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Preferences
-                </button>
-                <div className="border-t border-[#E9E9E9] my-1" />
-                <button
-                  className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors text-sm"
-                  onClick={() => {
-                    setUserDropdownOpen(false);
-                    authClient.signOut();
-                  }}
-                >
-                  <LogIn className="h-4 w-4 mr-2" />
-                  Logout
+                  <LogOut className="h-4 w-4 flex-shrink-0" />
+                  Log out
                 </button>
               </div>
             </div>
           )}
         </div>
       )}
-
-      {/* Profile Settings Modal */}
-      <ProfileSettingsModal
-        open={isProfileModalOpen}
-        onOpenChange={setIsProfileModalOpen}
-        user={user}
-        onUserUpdate={async () => {
-          await refetchUser();
-        }}
-      />
-
-      {/* Preferences Modal */}
-      <PreferencesModal
-        open={preferencesModalOpen}
-        onOpenChange={setPreferencesModalOpen}
-        user={user}
-        onUserUpdate={async () => {
-          await refetchUser();
-        }}
-      />
 
       {/* Create Index Modal */}
       <CreateIndexModal

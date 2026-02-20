@@ -18,6 +18,13 @@ export const createAuthService = (api: ReturnType<typeof useAuthenticatedAPI>) =
     return response.user;
   },
 
+  // Generate intro via profile sync
+  generateIntro: async (): Promise<string | null> => {
+    const result = await api.post<Record<string, unknown>>('/profiles/sync');
+    const profile = result?.profile as { identity?: { bio?: string } } | undefined;
+    return profile?.identity?.bio ?? null;
+  },
+
 
 });
 
