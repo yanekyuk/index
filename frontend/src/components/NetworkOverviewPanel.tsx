@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { LogOut, Users, Globe, Lock, User } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
@@ -15,9 +15,11 @@ interface NetworkOverviewPanelProps {
   index: Index;
   isOwner: boolean;
   onLeft?: () => void;
+  onLeaveRequest?: boolean;
+  onLeaveRequestHandled?: () => void;
 }
 
-export default function NetworkOverviewPanel({ index, isOwner, onLeft }: NetworkOverviewPanelProps) {
+export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
   const { removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -25,6 +27,13 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft }: Network
 
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+
+  useEffect(() => {
+    if (onLeaveRequest) {
+      setShowLeaveConfirmation(true);
+      onLeaveRequestHandled?.();
+    }
+  }, [onLeaveRequest, onLeaveRequestHandled]);
   
   // Intents state
   const [intents, setIntents] = useState<any[]>([]);
@@ -65,59 +74,25 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft }: Network
 
   return (
     <>
-      <div className="space-y-6">
-        {/* Network Information */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Network Information</h3>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
-              {isPublic ? <Globe className="h-4 w-4 text-gray-400" /> : <Lock className="h-4 w-4 text-gray-400" />}
-              <div>
-                <p className="text-sm font-medium text-black">{isPublic ? 'Public Network' : 'Private Network'}</p>
-                <p className="text-xs text-gray-500">{isPublic ? 'Anyone can join' : 'Invite only'}</p>
-              </div>
-            </div>
-
-            {/* Show member count only for public networks */}
-            {isPublic && index._count?.members !== undefined && (
-              <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm">
-                <Users className="h-4 w-4 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium text-black">{index._count.members} member{index._count.members !== 1 ? 's' : ''}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Leave Network (members only) - moved above intents */}
-        {!isOwner && (
-          <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Membership</h3>
-            <div className="flex items-center justify-between p-3 border border-gray-200 rounded-sm">
-              <div>
-                <p className="text-sm font-medium text-black">Leave this network</p>
-                <p className="text-xs text-gray-500">You can rejoin later if the network is public</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => setShowLeaveConfirmation(true)} className="border-red-300 text-red-700 hover:bg-red-50">
-                <LogOut className="h-4 w-4 mr-1" /> Leave
-              </Button>
-            </div>
-          </div>
-        )}
+      <div className="space-y-8">
 
         {/* My Intents */}
-        <div className="pt-6 border-t border-gray-200">
-          <h3 className="text-sm font-medium text-gray-900 mb-1">My Intents in this Network</h3>
-          <p className="text-xs text-gray-500 mb-4">
-            {intents.length} of your intent{intents.length !== 1 ? 's' : ''} in this network
-          </p>
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono">
+              My Intents
+            </p>
+            {!intentsLoading && (
+              <span className="text-xs text-gray-400">{intents.length} intent{intents.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
           <IntentList
             intents={intents}
             isLoading={intentsLoading}
             emptyMessage="You haven't shared any intents in this network yet"
           />
         </div>
+
       </div>
 
       <AlertDialog.Root open={showLeaveConfirmation} onOpenChange={setShowLeaveConfirmation}>
