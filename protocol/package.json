@@ -20,6 +20,7 @@
     "maintenance:reset-brokers": "bun ./src/cli/reset-brokers.ts",
     "maintenance:update:embeddings": "bun ./src/cli/update-embeddings.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
+    "maintenance:generate-profiles": "bun ./src/cli/generate-profiles.ts",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
     "integration-worker": "bun ./src/cli/integration-worker.ts",
     "social-worker": "bun ./src/cli/social-worker.ts",
