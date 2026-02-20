@@ -72,7 +72,7 @@ function ChatPageContent({ params }: ChatPageProps) {
   };
 
   const handleBack = () => {
-    router.back();
+    router.push('/chat');
   };
 
   if (authLoading || isLoading) {

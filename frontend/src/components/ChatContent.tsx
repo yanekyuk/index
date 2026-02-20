@@ -610,8 +610,22 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   if (!sessionLoaded) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      <div className="px-6 lg:px-8 min-h-full animate-pulse">
+        <div className="max-w-2xl mx-auto">
+          <div className="mt-12 mb-6 flex justify-center">
+            <div className="h-8 w-48 bg-gray-100 rounded-sm" />
+          </div>
+          <div className="h-14 bg-gray-100 rounded-[32px] mb-6" />
+          <div className="mt-12 space-y-3">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-3.5 h-3.5 bg-gray-100 rounded-sm" />
+              <div className="h-3 w-32 bg-gray-100 rounded-sm" />
+            </div>
+            {[1, 2].map((i) => (
+              <OpportunitySkeleton key={i} />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -867,8 +881,20 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               </div>
               <div className="pb-3 bg-white" />
               {homeViewLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <div className="animate-pulse">
+                  {[1, 2].map((s) => (
+                    <div key={s} className={s === 1 ? "mt-12" : "mt-6"}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-3.5 h-3.5 bg-gray-200 rounded-sm" />
+                        <div className="h-3 w-32 bg-gray-200 rounded-sm" />
+                      </div>
+                      <div className="space-y-3">
+                        {[1, 2].map((c) => (
+                          <OpportunitySkeleton key={c} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 homeViewData?.sections.map((section) => (

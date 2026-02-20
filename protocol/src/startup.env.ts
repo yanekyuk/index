@@ -5,8 +5,10 @@ const environment = process.env.NODE_ENV;
 const dotenvPath =
   environment === 'development'
     ? '.env.development'
-    : environment === 'test'
-      ? '.env.test'
-      : '.env';
+    : environment === 'production'
+      ? '.env.production'
+      : environment === 'test'
+        ? '.env.test'
+        : '.env';
 
 config({ path: dotenvPath });

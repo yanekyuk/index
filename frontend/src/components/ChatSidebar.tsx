@@ -61,6 +61,7 @@ export default function ChatSidebar() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
   const [deletingChat, setDeletingChat] = useState<string | null>(null);
+  const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const chatsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const getOpportunitiesRef = useRef(opportunitiesService.getOpportunities);
@@ -313,8 +314,11 @@ export default function ChatSidebar() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Recent Chats Section */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4">
+      <div className="lg:hidden px-4 py-3 min-h-[68px] flex items-center gap-3">
+        <button onClick={() => router.push('/')} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">←</button>
+        <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Messages</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono">
           Conversations
         </h3>
@@ -347,11 +351,16 @@ export default function ChatSidebar() {
                     }`}
                   >
                     <Image
-                      src={getAvatarUrl({ avatar: chat.avatar, id: chat.recipientId, name: chat.name })}
+                      src={
+                        failedAvatars.has(chat.recipientId)
+                          ? `https://api.dicebear.com/9.x/shapes/png?seed=${chat.recipientId || chat.name || 'default'}`
+                          : getAvatarUrl({ avatar: chat.avatar, id: chat.recipientId, name: chat.name })
+                      }
                       alt={chat.name}
                       width={28}
                       height={28}
                       className="rounded-full flex-shrink-0"
+                      onError={() => setFailedAvatars((prev) => new Set(prev).add(chat.recipientId))}
                     />
                     <div className="min-w-0">
                       <p className={`truncate ${isUnread ? 'text-sm font-bold text-black' : 'text-sm font-medium text-black'}`}>

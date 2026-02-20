@@ -85,12 +85,16 @@ export default function Sidebar() {
       return;
     }
 
-    // Prompt once so native browser notifications can be shown for new chat messages.
     void requestBrowserNotifications();
+
+    const isMobile = typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches;
+    if (isMobile) {
+      router.push('/chat');
+      return;
+    }
 
     setNavigatingToChat(true);
     try {
-      // Conversation definition: at least one accepted opportunity between two users.
       const acceptedOpportunities = await opportunitiesService.getOpportunities({ status: 'accepted', limit: 300 });
       const latestByRecipient = new Map<string, number>();
       for (const opportunity of acceptedOpportunities) {
