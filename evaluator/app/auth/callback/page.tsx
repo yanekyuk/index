@@ -25,24 +25,20 @@ function CallbackContent() {
 
     (async () => {
       try {
-        const res = await authClient.magicLink.verify(
-          { query: { token } },
-          {
-            onSuccess: (ctx) => {
-              const bearerToken = ctx.response.headers.get("set-auth-token");
-              if (bearerToken) {
-                localStorage.setItem("bearer_token", bearerToken);
-              }
-              router.push("/");
-            },
-            onError: (ctx) => {
-              setError(ctx.error.message || "Verification failed");
-            },
-          }
-        );
+        const res = await authClient.magicLink.verify({ query: { token } });
+        
         if (res.error) {
           setError(res.error.message || "Verification failed");
+          return;
         }
+        
+        // Store bearer token from response body (Better Auth returns it in the JSON)
+        if (res.data?.token) {
+          localStorage.setItem("bearer_token", res.data.token);
+        }
+        
+        // Use window.location for full page reload so authClient picks up the new token
+        window.location.href = "/";
       } catch (err) {
         setError(err instanceof Error ? err.message : "Verification failed");
       }
