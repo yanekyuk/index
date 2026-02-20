@@ -130,7 +130,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const createUserProfile = defineTool({
     name: "create_user_profile",
     description:
-      "Auto-generates (or regenerates) a profile from the user's account data (name, email, social links) via web search, or from explicit text when the user provides a short description (e.g. role, skills, location). When the user provides a profile URL in their message, pass it in the matching parameter (e.g. linkedinUrl) so that URL is used for this request, not their saved links. Works whether or not the user already has a profile. Call with no args first; if it returns missing fields, ask the user conversationally for their full name and/or social URLs, then call again with those fields filled in.",
+      "Auto-generates (or regenerates) a profile from the user's account data (name, email, social links) via web lookup, or from explicit text when the user provides a short description (e.g. role, skills, location). When the user provides a profile URL in their message, pass it in the matching parameter (e.g. linkedinUrl) so that URL is used for this request, not their saved links. Works whether or not the user already has a profile. Call with no args first; if it returns missing fields, ask the user conversationally for their full name and/or social URLs, then call again with those fields filled in.",
     querySchema: z.object({
       name: z.string().optional().describe("User's full name (first and last), if provided by the user"),
       linkedinUrl: z.string().optional().describe("LinkedIn profile URL"),

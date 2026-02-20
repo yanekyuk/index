@@ -104,7 +104,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "create_opportunities",
     description:
       "Creates opportunities (connections). Two modes:\n" +
-      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people via semantic search.\n" +
+      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n\n" +
@@ -113,7 +113,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       searchQuery: z
         .string()
         .optional()
-        .describe("Discovery mode: what to search for."),
+        .describe("Discovery mode: what to look for."),
       indexId: z
         .string()
         .optional()
@@ -349,7 +349,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           createIntentSuggested: true,
           suggestedIntentDescription: result.suggestedIntentDescription,
           message:
-            "No matching opportunities for that search. Call create_intent with the suggested description, then create_opportunities again.",
+            "No matching opportunities found. Call create_intent with the suggested description, then create_opportunities again.",
         });
       }
 
@@ -443,7 +443,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           found: false,
           count: 0,
           message:
-            "You have no opportunities yet. Use create_opportunities to search for connections.",
+            "You have no opportunities yet. Use create_opportunities to find connections.",
         });
       }
 
@@ -538,7 +538,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           found: false,
           count: 0,
           message:
-            "You have no opportunities yet. Use create_opportunities to search for connections.",
+            "You have no opportunities yet. Use create_opportunities to find connections.",
         });
       }
 

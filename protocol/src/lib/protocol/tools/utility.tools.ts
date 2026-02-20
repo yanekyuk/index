@@ -52,7 +52,7 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
         entities: `## Entity Model
 
 - **Users**: People on the platform. Authenticated via session (Better Auth).
-- **Profiles**: A user's identity — bio, skills, interests, location, social links. Generated from account data or social URLs. Has a vector embedding for semantic search.
+- **Profiles**: A user's identity — bio, skills, interests, location, social links. Generated from account data or social URLs. Has a vector embedding for semantic matching.
 - **Indexes**: Communities or groups. Each has a title, optional prompt (purpose description), and a join policy (anyone or invite_only). Users join indexes as members; the creator is the owner.
 - **Index Members**: Junction between Users and Indexes. Tracks permissions, join date, auto-assign setting, and optional member prompt.
 - **Intents**: What a user is looking for — wants, needs, and priorities. Each has a description (payload), summary, confidence score, and vector embedding. Intents belong to a user but are linked to indexes via IntentIndexes (many-to-many).
@@ -100,8 +100,8 @@ export function createUtilityTools(defineTool: DefineTool, deps: ToolDeps) {
         discovery: `## Discovery Mechanics
 
 - Discovery runs when an intent is created (automatic) or when create_opportunities is called explicitly.
-- The opportunity graph pipeline: Preparation (gather context) → Scope (determine indexes) → Discovery (semantic search for matching intents) → Evaluation (LLM scores relevance) → Ranking → Persist.
-- Semantic search uses HyDE embeddings to find candidate intents that complement the source intent.
+- The opportunity graph pipeline: Preparation (gather context) → Scope (determine indexes) → Discovery (semantic matching of intents) → Evaluation (LLM scores relevance) → Ranking → Persist.
+- Semantic matching uses HyDE embeddings to find candidate intents that complement the source intent.
 - The evaluator agent scores each match on relevance, complementarity, and actionability.
 - Results are persisted as opportunities with appropriate roles and presentation.
 - Background processing: after intent creation, a queue job continues looking for matches asynchronously.`,

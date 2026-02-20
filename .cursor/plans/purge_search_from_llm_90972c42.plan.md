@@ -3,17 +3,17 @@ name: Purge search from LLM
 overview: Replace every LLM-visible occurrence of the word "search" in tool descriptions, tool response messages, and documentation content with vocabulary aligned to chat.prompt.ts conventions ("look into", "find", "discover", "looking up", etc.). Internal code variables like `searchQuery` are left unchanged to avoid a 12-file rename with no user-facing benefit.
 todos:
   - id: fix-opportunity-tools
-    content: Replace 5 'search' occurrences in opportunity.tools.ts (tool description, param describe, 3 response messages)
-    status: pending
+    content: Replace 5 search occurrences in opportunity.tools.ts (tool description, param describe, 3 response messages)
+    status: completed
   - id: fix-opportunity-discover
-    content: Replace 2 'search' occurrences in opportunity.discover.ts (error messages)
-    status: pending
+    content: Replace 2 search occurrences in opportunity.discover.ts (error messages)
+    status: completed
   - id: fix-utility-tools
-    content: Replace 3 'search' occurrences in utility.tools.ts read_docs content strings
-    status: pending
+    content: Replace 3 search occurrences in utility.tools.ts read_docs content strings
+    status: completed
   - id: fix-profile-tools
-    content: Replace 1 'search' occurrence in profile.tools.ts tool description
-    status: pending
+    content: Replace 1 search occurrence in profile.tools.ts tool description
+    status: completed
 isProject: false
 ---
 

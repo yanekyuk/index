@@ -228,7 +228,7 @@ export async function runDiscoverFromQuery(
           found: false,
           count: 0,
           message:
-            "No matching opportunities found. Try a different search or create intents to improve matching.",
+            "No matching opportunities found. Try a different query or create intents to improve matching.",
         };
       }
 
@@ -410,7 +410,7 @@ export async function runDiscoverFromQuery(
     return {
       found: false,
       count: 0,
-      message: "Failed to search for opportunities. Please try again.",
+      message: "Failed to find opportunities. Please try again.",
     };
   });
 }
