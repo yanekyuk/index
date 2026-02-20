@@ -697,6 +697,23 @@ export interface Database {
   getOwnedIndexes(userId: string): Promise<OwnedIndex[]>;
 
   /**
+   * Get public indexes (joinPolicy 'anyone') that the user has not joined.
+   * Used for discovering communities available to join.
+   *
+   * @param userId - The user ID to check memberships against
+   * @returns Object containing array of public indexes with owner info
+   */
+  getPublicIndexesNotJoined(userId: string): Promise<{
+    indexes: Array<{
+      id: string;
+      title: string;
+      prompt: string | null;
+      memberCount: number;
+      owner: { id: string; name: string; avatar: string | null } | null;
+    }>;
+  }>;
+
+  /**
    * Check if user is an owner of a specific index.
    *
    * @param indexId - The index to check
@@ -1228,6 +1245,24 @@ export interface UserDatabase {
   softDeleteIndex(indexId: string): Promise<void>;
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Public Index Discovery (joinable indexes the user is not a member of)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Get public indexes (joinPolicy 'anyone') that the user has not joined. */
+  getPublicIndexesNotJoined(): Promise<{
+    indexes: Array<{
+      id: string;
+      title: string;
+      prompt: string | null;
+      memberCount: number;
+      owner: { id: string; name: string; avatar: string | null } | null;
+    }>;
+  }>;
+
+  /** Join a public index (validates joinPolicy === 'anyone'). */
+  joinPublicIndex(indexId: string): Promise<{ success: boolean; alreadyMember?: boolean }>;
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Opportunity Operations (where user is actor)
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1583,6 +1618,7 @@ export type IndexGraphDatabase = Pick<
   Database,
   | 'getIndexMemberships'
   | 'getOwnedIndexes'
+  | 'getPublicIndexesNotJoined'
   | 'isIndexOwner'
   | 'isIndexMember'
   | 'getIndex'

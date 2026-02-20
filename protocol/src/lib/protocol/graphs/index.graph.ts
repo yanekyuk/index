@@ -30,12 +30,13 @@ export class IndexGraphFactory {
       logger.info("Read indexes", { userId: state.userId, indexId: state.indexId, showAll: state.showAll });
 
       try {
-        const [allMemberships, ownedIndexes] = await Promise.all([
+        const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
           this.database.getIndexMemberships(state.userId),
           this.database.getOwnedIndexes(state.userId),
+          this.database.getPublicIndexesNotJoined(state.userId),
         ]);
 
-        // If index-scoped and not showAll, return just that index
+        // If index-scoped and not showAll, return just that index (no public indexes in scoped view)
         const scopeToCurrentIndex = state.indexId && !state.showAll;
         if (scopeToCurrentIndex) {
           const indexId = state.indexId!;
@@ -64,11 +65,21 @@ export class IndexGraphFactory {
           };
         }
 
+        // Include public indexes available to join
+        const publicIndexes = publicIndexesResult.indexes.map((idx) => ({
+          indexId: idx.id,
+          title: idx.title,
+          description: idx.prompt,
+          memberCount: idx.memberCount,
+          owner: idx.owner,
+        }));
+
         return {
           readResult: {
             memberOf: allMemberships.map((m) => ({ indexId: m.indexId, title: m.indexTitle, description: m.indexPrompt, autoAssign: m.autoAssign, joinedAt: m.joinedAt })),
             owns: ownedIndexes.map((o) => ({ indexId: o.id, title: o.title, description: o.prompt, memberCount: o.memberCount, intentCount: o.intentCount, joinPolicy: o.permissions.joinPolicy })),
-            summary: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length },
+            publicIndexes,
+            summary: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicIndexesCount: publicIndexes.length },
           },
         };
       } catch (err) {

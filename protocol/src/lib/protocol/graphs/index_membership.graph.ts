@@ -21,7 +21,9 @@ export class IndexMembershipGraphFactory {
 
     /**
      * Add Member Node: Add a user as a member of an index.
-     * Validates caller membership, join policy, and ownership for invite-only.
+     * Handles two cases:
+     * 1. Self-join (targetUserId === userId): Only allowed for public indexes (joinPolicy 'anyone')
+     * 2. Invite others (targetUserId !== userId): Requires caller to be member; owner-only for invite_only
      */
     const addMemberNode = async (state: typeof IndexMembershipGraphState.State) => {
       logger.info("Add member to index", {
@@ -40,12 +42,34 @@ export class IndexMembershipGraphFactory {
           return { mutationResult: { success: false, error: "Index not found." } };
         }
 
+        const joinPolicy = indexRecord.permissions.joinPolicy;
+        const isSelfJoin = state.targetUserId === state.userId;
+
+        if (isSelfJoin) {
+          // Self-join: only allowed for public indexes
+          if (joinPolicy !== 'anyone') {
+            return {
+              mutationResult: {
+                success: false,
+                error: "This index is invite-only. You cannot join without an invitation from an existing member.",
+              },
+            };
+          }
+
+          const result = await this.database.addMemberToIndex(state.indexId, state.targetUserId, 'member');
+          if (result.alreadyMember) {
+            return { mutationResult: { success: true, message: "You are already a member of this index." } };
+          }
+
+          return { mutationResult: { success: true, message: `You have joined "${indexRecord.title}".` } };
+        }
+
+        // Inviting others: must be a member first
         const isMember = await this.database.isIndexMember(state.indexId, state.userId);
         if (!isMember) {
           return { mutationResult: { success: false, error: "You must be a member of that index to add others." } };
         }
 
-        const joinPolicy = indexRecord.permissions.joinPolicy;
         if (joinPolicy === 'invite_only') {
           const isOwner = await this.database.isIndexOwner(state.indexId, state.userId);
           if (!isOwner) {
