@@ -265,5 +265,27 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readUserProfiles, createUserProfile, updateUserProfile] as const;
+  const completeOnboarding = defineTool({
+    name: "complete_onboarding",
+    description:
+      "Marks onboarding as complete. Call this ONLY after the user has explicitly confirmed their profile is correct. Do NOT call this until the user says 'yes', 'looks good', 'that's right', or similar confirmation.",
+    querySchema: z.object({}),
+    handler: async ({ context }) => {
+      const currentOnboarding = context.user.onboarding ?? {};
+      if (currentOnboarding.completedAt) {
+        logger.info("Onboarding already completed, skipping", { userId: context.userId });
+        return success({ message: "Onboarding already completed." });
+      }
+      await userDb.updateUser({
+        onboarding: {
+          ...currentOnboarding,
+          completedAt: new Date().toISOString(),
+        },
+      });
+      logger.info("Onboarding completed", { userId: context.userId });
+      return success({ message: "Onboarding complete." });
+    },
+  });
+
+  return [readUserProfiles, createUserProfile, updateUserProfile, completeOnboarding] as const;
 }
