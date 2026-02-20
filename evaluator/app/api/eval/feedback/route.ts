@@ -2,13 +2,11 @@ import { NextRequest } from "next/server";
 import { getUserIdFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db/drizzle";
 import { userFeedback } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { analyzeFeedback } from "@/lib/feedback-analyzer";
 
 export async function POST(req: NextRequest) {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId)
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (await getUserIdFromRequest(req)) ?? "anonymous";
 
   let body: {
     feedback: string;
