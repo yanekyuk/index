@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 const PROTOCOL_API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 const PROTOCOL_BASE = PROTOCOL_API_URL.replace(/\/api\/?$/, "");
@@ -60,10 +62,12 @@ async function proxy(
       method: req.method,
       headers,
       body: hasBody ? req.body : undefined,
+      cache: "no-store",
       ...(hasBody && { duplex: "half" as const }),
     });
 
     const newHeaders = new Headers(res.headers);
+    newHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate");
     const cookies =
       typeof res.headers.getSetCookie === "function"
         ? res.headers.getSetCookie()
