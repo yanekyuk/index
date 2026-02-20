@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Loader2, MessageSquare } from "lucide-react";
 import { useAIChat } from "@/contexts/AIChatContext";
+import { useSaveBarVisible } from "@/contexts/SaveBarContext";
 
 export default function FeedbackWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,6 +11,7 @@ export default function FeedbackWidget() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { sessionId, messages } = useAIChat();
+  const saveBarVisible = useSaveBarVisible();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -67,9 +69,9 @@ export default function FeedbackWidget() {
   return (
     <div
       ref={containerRef}
-      className={`fixed bottom-6 right-6 bg-white border border-gray-200 shadow-lg transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
-        isOpen ? "rounded-lg" : "rounded-md hover:bg-gray-50 hover:shadow-md"
-      }`}
+      className={`fixed right-6 bg-white border border-gray-200 shadow-lg transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-50 ${
+        saveBarVisible ? "bottom-20" : "bottom-6"
+      } ${isOpen ? "rounded-lg" : "rounded-md hover:bg-gray-50 hover:shadow-md"}`}
       style={{
         width: isOpen ? "388px" : "111px",
         height: isOpen ? "171px" : "39px",
