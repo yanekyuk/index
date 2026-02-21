@@ -7,8 +7,8 @@
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
 
 /**
- * Splits text into sentences (simple: split on period followed by space).
- * Does not split on abbreviations like "e.g." or "Dr.".
+ * Splits text into sentences using (?<=[.!?])\s+ (period/exclamation/question followed by whitespace).
+ * Note: splits after any such punctuation, including abbreviations like "Dr." or "e.g.".
  */
 function splitSentences(text: string): string[] {
   const trimmed = text.trim();
@@ -28,6 +28,7 @@ function splitSentences(text: string): string[] {
  * @param reasoning - Raw interpretation.reasoning (may describe both parties).
  * @param counterpartName - Display name of the suggested connection (e.g. "Alex Chen").
  * @param maxChars - Max length of returned string (default MINIMAL_MAIN_TEXT_MAX_CHARS).
+ * @returns Viewer-centric snippet mentioning the counterpart when possible; if counterpartName is empty, returns reasoning truncated to maxChars. Never null; may be "A suggested connection." when reasoning is empty.
  */
 export function viewerCentricCardSummary(
   reasoning: string,
