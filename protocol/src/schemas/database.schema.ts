@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
@@ -286,7 +286,7 @@ export const indexMembers = pgTable('index_members', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({
-  pk: { name: 'index_members_pkey', columns: [table.indexId, table.userId] }
+  pk: primaryKey({ columns: [table.indexId, table.userId] }),
 }));
 
 export const files = pgTable('files', {

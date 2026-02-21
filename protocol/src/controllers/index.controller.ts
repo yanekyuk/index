@@ -356,6 +356,22 @@ export class IndexController {
   }
 
   /**
+   * Get a public index by ID (no auth required). Only works for indexes with joinPolicy 'anyone'.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/public/:id')
+  async getPublicIndex(_req: Request, _user: unknown, params: Record<string, string>) {
+    const index = await indexService.getPublicIndexById(params.id);
+    if (!index) {
+      return new Response(JSON.stringify({ error: 'Index not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return Response.json({ index });
+  }
+
+  /**
    * Get a single index by ID with owner info and member count. Members-only.
    * IMPORTANT: This must come AFTER specific routes like /discovery/public and /:id/join.
    */

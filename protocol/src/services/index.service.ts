@@ -42,6 +42,14 @@ export class IndexService {
   }
 
   /**
+   * Get a public index by ID (no auth required). Returns null if not public.
+   */
+  async getPublicIndexById(indexId: string) {
+    logger.info('[IndexService] Getting public index by id', { indexId });
+    return this.adapter.getPublicIndexDetail(indexId);
+  }
+
+  /**
    * Get a single index by ID with owner info and member count.
    * Only members of the index can view it.
    */

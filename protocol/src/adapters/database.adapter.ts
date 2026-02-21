@@ -1783,31 +1783,20 @@ export class ChatDatabaseAdapter {
     userId: string,
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
-    const existing = await db
-      .select()
-      .from(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
-      .limit(1);
-    if (existing.length > 0) {
-      return { success: true, alreadyMember: true };
-    }
     let memberPrompt: string | null = null;
     const [indexRow] = await db.select({ prompt: indexes.prompt }).from(indexes).where(eq(indexes.id, indexId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
 
     const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
-    await db.insert(indexMembers).values({
+    const result = await db.insert(indexMembers).values({
       indexId,
       userId,
       permissions: finalPermissions,
       prompt: memberPrompt,
       autoAssign: true,
-    });
+    }).onConflictDoNothing({ target: [indexMembers.indexId, indexMembers.userId] }).returning();
 
-    // TODO: Events system removed - need to implement alternative notification mechanism
-    // for triggering member indexing when settings are updated
-
-    return { success: true, alreadyMember: false };
+    return { success: true, alreadyMember: result.length === 0 };
   }
 
   async removeMemberFromIndex(
@@ -1851,6 +1840,53 @@ export class ChatDatabaseAdapter {
    * Get a single index with owner info and member count.
    * Checks that the requesting user is a member; throws "Access denied" if not.
    */
+  async getPublicIndexDetail(indexId: string) {
+    const rows = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        permissions: indexes.permissions,
+        isPersonal: indexes.isPersonal,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const perms = row.permissions as { joinPolicy?: string } | null;
+    if (perms?.joinPolicy !== 'anyone') return null;
+
+    const memberCount = await this.getIndexMemberCount(indexId);
+
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      permissions: row.permissions,
+      isPersonal: row.isPersonal,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+      _count: { members: memberCount },
+    };
+  }
+
   async getIndexDetail(indexId: string, requestingUserId: string) {
     const rows = await db
       .select({
