@@ -56,9 +56,9 @@ describe('OpportunityEvaluator', () => {
 
   describe('invokeEntityBundle', () => {
     it('returns no opportunities when entity-bundle model returns empty (e.g. already know each other)', async () => {
-      const mockEntityBundleModel: Runnable = {
+      const mockEntityBundleModel = {
         invoke: async () => ({ opportunities: [] }),
-      };
+      } as unknown as Runnable;
       const evaluatorWithMock = new OpportunityEvaluator({
         entityBundleModel: mockEntityBundleModel,
       });
