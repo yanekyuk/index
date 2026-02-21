@@ -223,15 +223,20 @@ interface OpportunityEvaluatorOptions {
 // 4. CLASS DEFINITION
 // ──────────────────────────────────────────────────────────────
 
+/** Optional test double for entity-bundle model (avoids live LLM in unit tests). */
+export type OpportunityEvaluatorOptionsConstructor = {
+  entityBundleModel?: Runnable;
+};
+
 export class OpportunityEvaluator {
   private model: Runnable;
   private entityBundleModel: Runnable;
 
-  constructor() {
+  constructor(options?: OpportunityEvaluatorOptionsConstructor) {
     this.model = model.withStructuredOutput(responseFormat, {
       name: "opportunity_evaluator"
     });
-    this.entityBundleModel = model.withStructuredOutput(entityBundleResponseFormat, {
+    this.entityBundleModel = options?.entityBundleModel ?? model.withStructuredOutput(entityBundleResponseFormat, {
       name: "opportunity_evaluator_entity_bundle"
     });
   }
