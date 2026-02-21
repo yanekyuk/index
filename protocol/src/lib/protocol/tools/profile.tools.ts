@@ -34,7 +34,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         // Strict scope enforcement: when chat is index-scoped, only allow querying that index
         if (context.indexId && effectiveIndexId !== context.indexId) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles in this group.`
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles in this community.`
           );
         }
 
@@ -77,7 +77,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           const isInScopedIndex = await systemDb.isIndexMember(context.indexId, targetUserId);
           if (!isInScopedIndex) {
             return error(
-              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles of members in this group.`
+              `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read profiles of members in this community.`
             );
           }
         }
