@@ -80,7 +80,7 @@ function buildMinimalOpportunityCard(
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
       name: narratorName,
-      text: "Based on your overlap in this community.",
+      text: "Based on your overlap in this group.",
       ...(introducerActor
         ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
         : {}),
@@ -261,7 +261,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mutualIntentsLabel: "Suggested connection",
           narratorChip: {
             name: introducerUser?.name ?? "A member",
-            text: "Based on your overlap in this community.",
+            text: "Based on your overlap in this group.",
             userId: context.userId,
           },
           viewerRole: "introducer",

@@ -14,7 +14,7 @@ async function ensureScopedMembership(
   if (!context.indexId) return null;
   const isMember = await systemDb.isIndexMember(context.indexId, context.userId);
   if (!isMember) {
-    return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this community.`;
+    return `This chat is scoped to ${context.indexName ?? 'this index'}. You are no longer a member of this group.`;
   }
   return null;
 }
@@ -42,7 +42,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow querying that index
       if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this community.`
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from this group.`
         );
       }
 
@@ -60,7 +60,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         const isInScopedIndex = await db.isIndexMember(context.indexId, queryUserId);
         if (!isInScopedIndex) {
           return error(
-            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from members of this community.`
+            `This chat is scoped to ${context.indexName ?? 'this index'}. You can only read intents from members of this group.`
           );
         }
       }
@@ -138,7 +138,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       // Strict scope enforcement: when chat is index-scoped, only allow creating in that index
       if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
         return error(
-          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create intents in this community.`
+          `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create intents in this group.`
         );
       }
 

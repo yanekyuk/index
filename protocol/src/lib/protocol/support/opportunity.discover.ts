@@ -277,7 +277,7 @@ export async function runDiscoverFromQuery(
                 MINIMAL_MAIN_TEXT_MAX_CHARS,
               ),
             suggestedAction: "Start a conversation to connect.",
-            narratorRemark: "Based on your overlap in this community.",
+            narratorRemark: "Based on your overlap in this group.",
             primaryActionLabel: "Start Chat",
             secondaryActionLabel: "Skip",
             mutualIntentsLabel: "Suggested connection",
