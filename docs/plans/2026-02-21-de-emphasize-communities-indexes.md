@@ -152,12 +152,12 @@ git commit -m "fix(frontend): de-emphasize community/index in UI copy"
 **Files:**
 - Modify: `docs/plans/2026-02-21-de-emphasize-communities-indexes.md` (this file — add "Done" checkboxes after execution)
 
-**Step 1: Grep for remaining user-facing "community"
+**Step 1: Grep for remaining user-facing "community"**
 
 Run:
 
 ```bash
-rg -n "community|communities" --type-add 'ts:*.ts' -t ts -t tsx protocol/src frontend/src
+rg -n "community|communities" -t ts protocol/src frontend/src
 ```
 
 Review hits: protocol tool errors and prompts should say "group" where user/agent sees them; comments and internal variable names can stay. Fix any missed user-facing strings.

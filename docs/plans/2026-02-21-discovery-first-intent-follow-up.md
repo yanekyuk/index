@@ -150,11 +150,7 @@ git commit -m "docs: add verification section for discovery-first plan"
 
 Plan is saved to `docs/plans/2026-02-21-discovery-first-intent-follow-up.md`.
 
-**Worktree:** Implementation should be done in the worktree at:
-
-`/Users/aposto/Projects/index/.worktrees/feat-discovery-first-intent-follow-up`
-
-(Branch: `feat/discovery-first-intent-follow-up`. Protocol deps installed; full test run hit a Bun runtime crash in this environment; run tests locally when ready.)
+**Worktree:** Use branch `feat/discovery-first-intent-follow-up` (e.g. in a worktree at `.worktrees/feat-discovery-first-intent-follow-up`). Protocol deps installed; run tests locally when ready.
 
 **Two execution options:**
 
