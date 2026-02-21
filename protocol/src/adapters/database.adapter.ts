@@ -660,12 +660,13 @@ export class ChatDatabaseAdapter {
   /**
    * Get messages for a session
    */
-  async getSessionMessages(sessionId: string, limit: number): Promise<ChatMessage[]> {
-    const messages = await db.select()
+  async getSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
+    let query = db.select()
       .from(schema.chatMessages)
       .where(eq(schema.chatMessages.sessionId, sessionId))
-      .orderBy(schema.chatMessages.createdAt)
-      .limit(limit);
+      .orderBy(schema.chatMessages.createdAt);
+    
+    const messages = limit ? await query.limit(limit) : await query;
     
     // Cast unknown fields to proper types
     return messages.map(msg => ({

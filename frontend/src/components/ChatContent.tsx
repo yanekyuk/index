@@ -500,8 +500,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           router.push(`/u/${counterpartUserId}/chat${query}`);
         } else if (action === "accepted" && isIntroducer) {
           showSuccess(
-            "Opportunity sent",
-            `Sent to ${counterpartName || "them"}. They can accept to start the conversation.`,
+            "Introduction sent",
+            `${counterpartName || "They"} will be notified and can accept to start the conversation.`,
           );
         }
         setHomeViewData((prev) => {

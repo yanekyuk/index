@@ -136,7 +136,7 @@ export default function Sidebar() {
         });
         if (!res.ok) throw new Error('Failed to fetch sessions');
         const data = await res.json() as { sessions: ChatSession[] };
-        setChatSessions(data.sessions.slice(0, 5));
+        setChatSessions(data.sessions.slice(0, 10));
       } catch (error) {
         console.error('Failed to fetch chat sessions:', error);
       } finally {
@@ -288,7 +288,7 @@ export default function Sidebar() {
               ) : chatSessions.length === 0 ? (
                 <div className="text-sm text-gray-400 py-2">No conversations yet</div>
               ) : (
-                chatSessions.slice(0, 4).map((session) => {
+                chatSessions.slice(0, 10).map((session) => {
                   const isSelected = currentSessionId === session.id;
                   const sessionIndex = session.indexId ? indexes.find(i => i.id === session.indexId) : null;
                   return (
