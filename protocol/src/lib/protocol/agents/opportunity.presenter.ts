@@ -281,7 +281,7 @@ export class OpportunityPresenter {
     input: PresenterInput,
   ): Promise<OpportunityPresentationResult> {
     const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
+      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the group"}. It was NOT discovered automatically — a real person made this connection.\n`
       : "";
     const humanContent = `
 VIEWER (the person seeing this opportunity):
@@ -339,7 +339,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
         : "Match is based on profile and intent alignment.";
     const introContext = input.isIntroduction
-      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
+      ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the group"}. It was NOT discovered automatically — a real person made this connection.\n`
       : "";
     const humanContent = `
 VIEWER (the person seeing this opportunity):

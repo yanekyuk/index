@@ -80,7 +80,7 @@ function buildMinimalOpportunityCard(
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
       name: narratorName,
-      text: "Based on your overlap in this community.",
+      text: "Based on your overlap in this group.",
       ...(introducerActor
         ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
         : {}),
@@ -167,7 +167,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query.indexId.trim() !== context.indexId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this group.`,
         );
       }
 
@@ -261,7 +261,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mutualIntentsLabel: "Suggested connection",
           narratorChip: {
             name: introducerUser?.name ?? "A member",
-            text: "Based on your overlap in this community.",
+            text: "Based on your overlap in this group.",
             userId: context.userId,
           },
           viewerRole: "introducer",
@@ -417,7 +417,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query.indexId.trim() !== context.indexId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this community.`,
+          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this group.`,
         );
       }
 
