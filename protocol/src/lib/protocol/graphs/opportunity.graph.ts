@@ -641,14 +641,14 @@ export class OpportunityGraphFactory {
 
         if (state.requiredIndexId && primaryIndexId !== state.requiredIndexId) {
           return {
-            error: 'This chat is scoped to a different group. You can only introduce people from the current group.',
+            error: 'This chat is scoped to a different community. You can only introduce members of the current community.',
           };
         }
 
         const introducerIsMember = await this.database.isIndexMember(primaryIndexId, state.userId);
         if (!introducerIsMember) {
           return {
-            error: 'One or more users are not members of the specified group. You can only introduce people in the same group.',
+            error: 'One or more users are not members of the specified community. You can only introduce members who share an index.',
           };
         }
         const partyMemberships = await Promise.all(
@@ -657,7 +657,7 @@ export class OpportunityGraphFactory {
         const allPartyMembers = partyMemberships.every(Boolean);
         if (!allPartyMembers) {
           return {
-            error: 'One or more users are not members of the specified group. You can only introduce people in the same group.',
+            error: 'One or more users are not members of the specified community. You can only introduce members who share an index.',
           };
         }
 

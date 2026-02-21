@@ -35,8 +35,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (context.indexId && effectiveIndexId !== context.indexId) {
           return error(
             context.indexName
-              ? `This chat is scoped to ${context.indexName}. You can only read profiles in ${context.indexName}.`
-              : `This chat is scoped to this index. You can only read profiles in this group.`
+              ? `This chat is scoped to ${context.indexName}. You can only read profiles from this community.`
+              : `This chat is scoped to this index. You can only read profiles from this community.`
           );
         }
 
@@ -80,8 +80,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           if (!isInScopedIndex) {
             return error(
               context.indexName
-                ? `This chat is scoped to ${context.indexName}. You can only read profiles of members in ${context.indexName}.`
-                : `This chat is scoped to this index. You can only read profiles of members in this group.`
+                ? `This chat is scoped to ${context.indexName}. You can only read profiles of members in this community.`
+                : `This chat is scoped to this index. You can only read profiles of members in this community.`
             );
           }
         }

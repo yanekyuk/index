@@ -176,7 +176,7 @@ export async function runDiscoverFromQuery(
       found: false,
       count: 0,
       message:
-        "You need to join at least one group to discover opportunities. Use read_indexes to see available groups, or create one.",
+        "You need to join at least one index (community) to discover opportunities. Use read_indexes to see available indexes, or create one.",
     };
   }
 
@@ -277,7 +277,7 @@ export async function runDiscoverFromQuery(
                 MINIMAL_MAIN_TEXT_MAX_CHARS,
               ),
             suggestedAction: "Start a conversation to connect.",
-            narratorRemark: "Based on your overlap in this group.",
+            narratorRemark: "Based on your overlap in this community.",
             primaryActionLabel: "Start Chat",
             secondaryActionLabel: "Skip",
             mutualIntentsLabel: "Suggested connection",
