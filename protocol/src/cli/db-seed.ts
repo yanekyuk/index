@@ -10,6 +10,10 @@ import db, { closeDb } from '../lib/drizzle/drizzle';
 import { indexMembers, indexes, userProfiles, users } from '../schemas/database.schema';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
+import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
+import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
 import type { SeedProfile, TesterPersona } from './test-data';
 import type { Id } from '../types/common.types';
@@ -290,6 +294,34 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     }
     if (!silent) console.log(`  Profiles upserted: ${profilesUpserted}`);
 
+    const profileFactory = new ProfileGraphFactory(
+      new ProfileDatabaseAdapter(),
+      new EmbedderAdapter(),
+      new ScraperAdapter(),
+    );
+    if (!silent) console.log('Embedding profiles (and generating HyDE)...');
+    let embedded = 0;
+    let embedFailures = 0;
+    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
+      const userId = personaUsers[i].id;
+      const name = personasToSeed[i].name;
+      if (!silent) console.log(`  Embedding ${i + 1}/${personaUsers.length}: ${name}`);
+      try {
+        const graph = profileFactory.createGraph();
+        const result = await graph.invoke({ userId, operationMode: 'write' });
+        if (result.error) {
+          embedFailures++;
+          if (!silent) console.warn(`    Failed: ${result.error}`);
+        } else {
+          embedded++;
+        }
+      } catch (err) {
+        embedFailures++;
+        if (!silent) console.warn(`    Error: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`);
+      }
+    }
+    if (!silent) console.log(`  Profiles embedded: ${embedded}${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
+
     // Create intents for synthetic testers via intent graph (enqueues HyDE + opportunity discovery)
     if (!silent) console.log('Processing intents via intent graph...');
     let intentsProcessed = 0;
@@ -315,6 +347,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent) {
       console.log(`  ${personaUsers.length} synthetic tester users ready`);
       console.log(`  ${profilesUpserted} tester profiles upserted`);
+      console.log(`  ${embedded} profiles embedded (profile + HyDE)${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
       console.log(`  ${intentsProcessed} intents processed via graph${intentFailures > 0 ? ` (${intentFailures} failed)` : ''}`);
       console.log('\nIndexes:');
       for (const idx of SEED_INDEXES) {
