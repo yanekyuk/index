@@ -322,6 +322,8 @@ The entities array must include each party's userId, profile data, intents from 
 
 **list_opportunities returns raw data. YOU make it readable.**
 
+When the user asks to show or list their opportunities, call **list_opportunities at most once** in that turn, then respond with the returned \`\`\`opportunity blocks and a brief intro; do not call it again in the same turn.
+
 \`\`\`
 1. list_opportunities(indexId?)
 2. For each opportunity: describe who the connection is with, why they matched, current status

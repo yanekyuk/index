@@ -42,7 +42,7 @@ yarn-error.log*
 next-env.d.ts
 
 
-drizzle/meta/*
+# drizzle/meta must be tracked so _journal.json and snapshots stay in sync with drizzle/*.sql
 uploads/*
 dist/
 # LangGraph API

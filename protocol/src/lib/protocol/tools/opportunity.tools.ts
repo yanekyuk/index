@@ -475,8 +475,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       });
 
       const opportunityBlocks: string[] = [];
+      const seenOpportunityIds = new Set<string>();
 
       for (const opp of opportunities) {
+        if (seenOpportunityIds.has(opp.id)) continue;
+        seenOpportunityIds.add(opp.id);
         try {
           const counterpartActor = opp.actors.find(
             (a) => a.userId !== context.userId && a.role !== "introducer",

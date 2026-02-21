@@ -74,6 +74,19 @@ function parseOpportunityBlocks(content: string): MessageSegment[] {
   return segments;
 }
 
+/** Keep first occurrence of each opportunityId; leave other segment types unchanged. */
+function dedupeOpportunitySegments(
+  segments: MessageSegment[]
+): MessageSegment[] {
+  const seen = new Set<string>();
+  return segments.filter((seg) => {
+    if (seg.type !== "opportunity") return true;
+    if (seen.has(seg.data.opportunityId)) return false;
+    seen.add(seg.data.opportunityId);
+    return true;
+  });
+}
+
 interface SharedChatViewProps {
   token: string;
 }
@@ -174,34 +187,37 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
                       <article className="max-w-none">
                         {msg.role === "assistant" ? (
                           <div>
-                            {parseOpportunityBlocks(msg.content).map(
-                              (segment, idx) => {
-                                if (segment.type === "opportunity") {
-                                  return (
-                                    <div key={idx} className="my-3">
-                                      <OpportunityCard card={segment.data} />
-                                    </div>
-                                  );
-                                }
-                                if (segment.type === "opportunity_loading") {
-                                  return (
-                                    <div key={idx} className="my-3">
-                                      <OpportunitySkeleton />
-                                    </div>
-                                  );
-                                }
+                            {dedupeOpportunitySegments(
+                              parseOpportunityBlocks(msg.content),
+                            ).map((segment, idx) => {
+                              if (segment.type === "opportunity") {
                                 return (
                                   <div
-                                    key={idx}
-                                    className="chat-markdown max-w-none"
+                                    key={segment.data.opportunityId}
+                                    className="my-3"
                                   >
-                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                      {segment.content}
-                                    </ReactMarkdown>
+                                    <OpportunityCard card={segment.data} />
                                   </div>
                                 );
-                              },
-                            )}
+                              }
+                              if (segment.type === "opportunity_loading") {
+                                return (
+                                  <div key={`loading-${idx}`} className="my-3">
+                                    <OpportunitySkeleton />
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div
+                                  key={`text-${idx}`}
+                                  className="chat-markdown max-w-none"
+                                >
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {segment.content}
+                                  </ReactMarkdown>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div className="chat-markdown max-w-none">

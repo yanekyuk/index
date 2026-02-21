@@ -146,6 +146,19 @@ function parseOpportunityBlocks(content: string): MessageSegment[] {
   return segments;
 }
 
+/** Keep first occurrence of each opportunityId; leave other segment types unchanged. */
+function dedupeOpportunitySegments(
+  segments: MessageSegment[]
+): MessageSegment[] {
+  const seen = new Set<string>();
+  return segments.filter((seg) => {
+    if (seg.type !== "opportunity") return true;
+    if (seen.has(seg.data.opportunityId)) return false;
+    seen.add(seg.data.opportunityId);
+    return true;
+  });
+}
+
 function AssistantMessageContent({
   content,
   isStreaming,
@@ -187,8 +200,10 @@ function AssistantMessageContent({
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
 
-  // Parse opportunity blocks from the displayed content
-  const segments = parseOpportunityBlocks(displayedContent);
+  // Parse opportunity blocks from the displayed content; dedupe by opportunityId
+  const segments = dedupeOpportunitySegments(
+    parseOpportunityBlocks(displayedContent),
+  );
 
   return (
     <div>
@@ -197,7 +212,7 @@ function AssistantMessageContent({
           const isLast = idx === segments.length - 1;
           return (
             <div
-              key={idx}
+              key={`text-${idx}`}
               className={cn(
                 "chat-markdown max-w-none",
                 isStreaming && "chat-markdown-streaming",
@@ -211,9 +226,11 @@ function AssistantMessageContent({
           );
         } else if (segment.type === "opportunity") {
           return (
-            <div key={idx} className="my-3">
+            <div
+              key={segment.data.opportunityId}
+              className="my-3"
+            >
               <OpportunityCard
-
                 card={segment.data}
                 onPrimaryAction={onOpportunityPrimaryAction}
                 onSecondaryAction={onOpportunitySecondaryAction}
@@ -227,7 +244,7 @@ function AssistantMessageContent({
         } else {
           // opportunity_loading
           return (
-            <div key={idx} className="my-3">
+            <div key={`loading-${idx}`} className="my-3">
               <OpportunitySkeleton />
             </div>
           );
