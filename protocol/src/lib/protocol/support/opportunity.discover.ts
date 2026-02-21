@@ -264,7 +264,7 @@ export async function runDiscoverFromQuery(
       if (input.minimalForChat && baseEnriched.length > 0) {
         // Minimal path: no LLM, viewer-centric card text (introduce counterpart to viewer)
         const counterpartName = (n: { profile?: { identity?: { name?: string } } }) =>
-          n.profile?.identity?.name ?? "someone";
+          n.profile?.identity?.name ?? "";
         homeCardPresentations = baseEnriched.map((item) => ({
           headline: `Connection with ${counterpartName(item)}`,
           personalizedSummary:
