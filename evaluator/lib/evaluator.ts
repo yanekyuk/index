@@ -16,7 +16,7 @@ import {
 import type { SeedRequirement, GeneratedSeedData } from "./seed/seed.types";
 import { resolveSeedRequirements } from "./seed/seed.types";
 import { generateSeedData } from "./seed/seed.generator";
-import { seedProtocol, cleanupSeed } from "./seed/protocol.seeder";
+import { seedProtocol, cleanupSeed, cleanupNoseedUser } from "./seed/protocol.seeder";
 import { signIn, createAuthSession } from "./seed/auth.session";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -401,6 +401,7 @@ export async function runSeededEvaluation(
     requirements.indexes.count > 0;
 
   let seedData: GeneratedSeedData | undefined;
+  let noseedEmail: string | undefined;
   let cookie: string | undefined;
 
   try {
@@ -420,9 +421,10 @@ export async function runSeededEvaluation(
       );
       cookie = session.cookie;
     } else {
+      noseedEmail = `eval-noseed-${crypto.randomUUID().slice(0, 8)}@test.indexnetwork.io`;
       const session = await createAuthSession(
         options.apiUrl,
-        `eval-noseed-${crypto.randomUUID().slice(0, 8)}@test.indexnetwork.io`,
+        noseedEmail,
         `EvalTest!${crypto.randomUUID().slice(0, 8)}`,
         "Eval User"
       );
@@ -444,6 +446,13 @@ export async function runSeededEvaluation(
         await cleanupSeed(seedData.seedTag);
       } catch (err) {
         console.error("Seed cleanup failed:", err);
+      }
+    }
+    if (noseedEmail) {
+      try {
+        await cleanupNoseedUser(noseedEmail);
+      } catch (err) {
+        console.error("Noseed cleanup failed:", err);
       }
     }
   }

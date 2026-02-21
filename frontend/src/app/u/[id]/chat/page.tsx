@@ -104,7 +104,7 @@ function ChatPageContent({ params }: ChatPageProps) {
     <ChatView
       userId={profileData.id}
       userName={profileData.name}
-      userAvatar={getAvatarUrl(profileData)}
+      userAvatar={profileData.avatar || undefined}
       userTitle={profileData.location || undefined}
       initialChannelId={initialChannelId}
       onClose={handleClose}

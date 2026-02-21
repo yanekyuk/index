@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { authClient } from "@/app/AuthProviderWrapper";
 import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import AuthModal from "@/components/AuthModal";
 
 const TABS = [
   { label: "Runs", path: "/" },
@@ -16,6 +18,7 @@ export function EvaluatorShell({
   children: React.ReactNode;
   headerExtra?: React.ReactNode;
 }) {
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
   const session = authClient.useSession();
   const ready = !session.isPending;
   const authenticated = !!session.data?.session;
@@ -39,22 +42,22 @@ export function EvaluatorShell({
 
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
-        <h1 className="text-2xl font-semibold">Chat Evaluator</h1>
-        <p className="text-gray-600">Sign in to run evaluations against the protocol API</p>
-        <button
-          onClick={() => {
-            const email = prompt("Email:");
-            const password = prompt("Password:");
-            if (email && password) {
-              authClient.signIn.email({ email, password });
-            }
-          }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          Log in
-        </button>
-      </div>
+      <>
+        <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+          <h1 className="text-2xl font-semibold">Chat Evaluator</h1>
+          <p className="text-gray-600">Sign in to run evaluations against the protocol API</p>
+          <button
+            onClick={() => setLoginModalOpen(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Log in
+          </button>
+        </div>
+        <AuthModal
+          isOpen={loginModalOpen}
+          onClose={() => setLoginModalOpen(false)}
+        />
+      </>
     );
   }
 

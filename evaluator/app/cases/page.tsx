@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
+import { apiFetch } from "@/lib/api";
 
 interface ScenarioRecord {
   id: string;
@@ -160,9 +161,7 @@ function TestCasesContent() {
       const params = new URLSearchParams();
       if (filterCategory !== "all") params.set("category", filterCategory);
       if (filterSource !== "all") params.set("source", filterSource);
-      const res = await fetch(`/api/eval/scenarios?${params}`, {
-        credentials: "include",
-      });
+      const res = await apiFetch(`/api/eval/scenarios?${params}`);
       if (res.ok) {
         const data = await res.json();
         setScenarios(data.scenarios || []);
@@ -181,11 +180,7 @@ function TestCasesContent() {
   const seedDefaults = async () => {
     setSeeding(true);
     try {
-      const res = await fetch("/api/eval/scenarios/seed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+      const res = await apiFetch("/api/eval/scenarios/seed", { method: "POST" });
       if (res.ok) {
         await fetchScenarios();
       } else {
@@ -201,11 +196,9 @@ function TestCasesContent() {
   const generateScenarios = async () => {
     setGenerating(true);
     try {
-      const res = await fetch("/api/eval/scenarios/generate", {
+      const res = await apiFetch("/api/eval/scenarios/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ maxScenarios: 5 }),
+        json: { maxScenarios: 5 },
       });
       if (res.ok) {
         const data = await res.json();
@@ -226,11 +219,9 @@ function TestCasesContent() {
     setScenarios((prev) =>
       prev.map((s) => (s.id === scenario.id ? { ...s, enabled: newVal } : s))
     );
-    await fetch(`/api/eval/scenarios/${scenario.id}`, {
+    await apiFetch(`/api/eval/scenarios/${scenario.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ enabled: newVal }),
+      json: { enabled: newVal },
     });
   };
 
@@ -238,17 +229,15 @@ function TestCasesContent() {
     if (!editDraft) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/eval/scenarios/${editDraft.id}`, {
+      const res = await apiFetch(`/api/eval/scenarios/${editDraft.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+        json: {
           category: editDraft.category,
           question: editDraft.question,
           expectation: editDraft.expectation,
           message: editDraft.message,
           needId: editDraft.needId,
-        }),
+        },
       });
       if (res.ok) {
         const data = await res.json();
@@ -275,14 +264,12 @@ function TestCasesContent() {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/eval/scenarios", {
+      const res = await apiFetch("/api/eval/scenarios", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+        json: {
           ...newDraft,
           message: newDraft.message || newDraft.question,
-        }),
+        },
       });
       if (res.ok) {
         await fetchScenarios();
@@ -301,10 +288,7 @@ function TestCasesContent() {
 
   const deleteScenario = async (id: string) => {
     if (!confirm("Delete this scenario?")) return;
-    const res = await fetch(`/api/eval/scenarios/${id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
+    const res = await apiFetch(`/api/eval/scenarios/${id}`, { method: "DELETE" });
     if (res.ok) {
       setScenarios((prev) => prev.filter((s) => s.id !== id));
       if (expandedId === id) {

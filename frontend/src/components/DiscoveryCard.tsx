@@ -1,7 +1,6 @@
 'use client';
 
-import Image from 'next/image';
-import { getAvatarUrl } from '@/lib/file-utils';
+import UserAvatar from '@/components/UserAvatar';
 import ConnectionActions, { ConnectionAction } from '@/components/ConnectionActions';
 import SynthesisMarkdown from '@/components/SynthesisMarkdown';
 
@@ -52,12 +51,11 @@ export default function DiscoveryCard({
             onClick={onUserClick}
             className="flex-shrink-0 cursor-pointer transition-opacity hover:opacity-80"
           >
-            <Image
-              src={getAvatarUrl(user)}
-              alt={user.name}
-              width={36}
-              height={36}
-              className="rounded-full"
+            <UserAvatar
+              id={user.id}
+              name={user.name}
+              avatar={user.avatar}
+              size={36}
             />
           </button>
           <div>

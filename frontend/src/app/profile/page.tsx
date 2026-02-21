@@ -9,7 +9,7 @@ import { Loader2, Camera, ArrowUpRight, Trash2, Sparkles } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { getAvatarUrl } from "@/lib/file-utils";
+import UserAvatar from "@/components/UserAvatar";
 import { validateFiles } from "@/lib/file-validation";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -165,7 +165,6 @@ export default function ProfilePage() {
     );
   }
 
-  const avatarSrc = avatarPreview || (user ? getAvatarUrl(user) : null);
 
   return (
     <SaveBarProvider visible={isDirty}>
@@ -201,18 +200,16 @@ export default function ProfilePage() {
                 className="relative flex-shrink-0 group cursor-pointer"
               >
                 <div className="w-[72px] h-[72px] rounded-full overflow-hidden bg-gray-100">
-                  {avatarSrc ? (
+                  {avatarPreview ? (
                     <Image
-                      src={avatarSrc}
+                      src={avatarPreview}
                       alt={user?.name || "Avatar"}
                       width={72}
                       height={72}
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                      <Camera className="w-6 h-6" />
-                    </div>
+                    <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={72} />
                   )}
                 </div>
                 <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">

@@ -1,4 +1,4 @@
-import { eq, like } from "drizzle-orm";
+import { eq, like, inArray, sql } from "drizzle-orm";
 import {
   getProtocolDb,
   users,
@@ -213,6 +213,7 @@ export async function seedProtocol(
 
 /**
  * Clean up all seeded data by matching the seedTag email pattern.
+ * Deletes intent_indexes, intents, index_members, indexes, opportunities, then users + cascade.
  */
 export async function cleanupSeed(seedTag: string): Promise<void> {
   const db = getProtocolDb();
@@ -224,12 +225,45 @@ export async function cleanupSeed(seedTag: string): Promise<void> {
     .where(like(users.email, emailPattern));
 
   const userIds = seededUsers.map((u) => u.id);
-
   if (userIds.length === 0) return;
+
+  const intentRows = await db
+    .select({ id: intents.id })
+    .from(intents)
+    .where(inArray(intents.userId, userIds));
+  const intentIds = intentRows.map((r) => r.id);
+
+  if (intentIds.length > 0) {
+    await db.delete(intentIndexes).where(inArray(intentIndexes.intentId, intentIds));
+  }
 
   for (const userId of userIds) {
     await db.delete(intents).where(eq(intents.userId, userId));
+  }
+
+  const indexRows = await db
+    .select({ indexId: indexMembers.indexId })
+    .from(indexMembers)
+    .where(inArray(indexMembers.userId, userIds));
+  const indexIds = [...new Set(indexRows.map((r) => r.indexId))];
+
+  for (const userId of userIds) {
     await db.delete(indexMembers).where(eq(indexMembers.userId, userId));
+  }
+
+  for (const userId of userIds) {
+    await db
+      .delete(opportunities)
+      .where(
+        sql`EXISTS (SELECT 1 FROM jsonb_array_elements(actors) AS elem WHERE elem->>'userId' = ${userId})`
+      );
+  }
+
+  for (const indexId of indexIds) {
+    await db.delete(indexes).where(eq(indexes.id, indexId));
+  }
+
+  for (const userId of userIds) {
     await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
   }
 
@@ -238,4 +272,20 @@ export async function cleanupSeed(seedTag: string): Promise<void> {
     await db.delete(accounts).where(eq(accounts.userId, userId));
     await db.delete(users).where(eq(users.id, userId));
   }
+}
+
+/**
+ * Remove a single no-seed eval user by email (user + cascade).
+ * No-seed users have no intents/indexes/opportunities.
+ */
+export async function cleanupNoseedUser(email: string): Promise<void> {
+  const db = getProtocolDb();
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+  if (!user) return;
+
+  const userId = user.id;
+  await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+  await db.delete(sessions).where(eq(sessions.userId, userId));
+  await db.delete(accounts).where(eq(accounts.userId, userId));
+  await db.delete(users).where(eq(users.id, userId));
 }

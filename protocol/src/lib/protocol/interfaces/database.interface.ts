@@ -1504,6 +1504,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'saveHydeDocument'
   | 'getIntent'
   // IndexGraph subgraph requirements (index created intents in user's indexes)
+  | 'getPublicIndexesNotJoined'
   | 'getUserIndexIds'
   | 'getIndexMemberships'
   | 'getIndexMembership'

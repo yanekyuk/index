@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Loader2, History } from "lucide-react";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
+import { apiFetch } from "@/lib/api";
 
 interface RunSummary {
   id: string;
@@ -23,9 +24,7 @@ export default function EvaluatorPage() {
   const loadRuns = useCallback(async (autoRedirect = false) => {
     setLoadingRuns(true);
     try {
-      const res = await fetch("/api/eval/runs", {
-        credentials: "include",
-      });
+      const res = await apiFetch("/api/eval/runs");
       if (!res.ok) return;
       const data = await res.json();
       const list: RunSummary[] = data.runs || [];
@@ -47,11 +46,7 @@ export default function EvaluatorPage() {
   const startNewRun = async () => {
     setCreating(true);
     try {
-      const res = await fetch("/api/eval/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+      const res = await apiFetch("/api/eval/runs", { method: "POST" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to create run");

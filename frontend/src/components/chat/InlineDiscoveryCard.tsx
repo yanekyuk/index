@@ -1,9 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { MessageCircle, User } from 'lucide-react';
-import { getAvatarUrl } from '@/lib/file-utils';
+import UserAvatar from '@/components/UserAvatar';
 import type { DiscoveryOpportunity } from '@/contexts/AIChatContext';
 
 interface InlineDiscoveryCardProps {
@@ -12,11 +11,6 @@ interface InlineDiscoveryCardProps {
 
 export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardProps) {
   const router = useRouter();
-  const avatarUrl = getAvatarUrl({
-    id: discovery.candidateId,
-    avatar: discovery.candidateAvatar || null,
-    name: discovery.candidateName || 'User',
-  });
 
   const handleViewProfile = () => {
     router.push(`/u/${discovery.candidateId}`);
@@ -30,12 +24,11 @@ export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardPr
     <div className="bg-white border border-gray-200 rounded-lg p-4 my-2">
       <div className="flex items-start gap-3">
         <button onClick={handleViewProfile} className="flex-shrink-0">
-          <Image
-            src={avatarUrl}
-            alt={discovery.candidateName || 'User'}
-            width={40}
-            height={40}
-            className="rounded-full"
+          <UserAvatar
+            id={discovery.candidateId}
+            name={discovery.candidateName || 'User'}
+            avatar={discovery.candidateAvatar || null}
+            size={40}
           />
         </button>
         <div className="flex-1 min-w-0">

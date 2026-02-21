@@ -4,6 +4,22 @@ import { log } from '../log';
 const logger = log.lib.from('email/magic-link.handler');
 
 export async function sendMagicLinkEmail(email: string, url: string): Promise<void> {
+  let finalUrl = url;
+  try {
+    const parsed = new URL(url);
+    const callbackURL = parsed.searchParams.get('callbackURL');
+    if (callbackURL) {
+      const callbackOrigin = new URL(callbackURL).origin;
+      if (callbackOrigin !== parsed.origin) {
+        // Redirect directly to callback with token - callback page will verify via API
+        const token = parsed.searchParams.get('token');
+        finalUrl = `${callbackURL}?token=${token}`;
+        logger.info('Rewrote magic link to callback with token', { to: callbackURL });
+      }
+    }
+  } catch {
+    /* ignore */
+  }
   logger.info('Sending magic link email', { email });
 
   const html = `
@@ -12,7 +28,7 @@ export async function sendMagicLinkEmail(email: string, url: string): Promise<vo
       <p>Click the button below to sign in to Index Network.</p>
 
       <div style="margin: 24px 0;">
-        <a href="${url}" style="text-decoration: none; font-weight: bold; color: #FFFFFF; background-color: #0A0A0A; font-size: 1.1em; padding: 10px 20px; border-radius: 5px; display: inline-block;">Sign In</a>
+        <a href="${finalUrl}" style="text-decoration: none; font-weight: bold; color: #FFFFFF; background-color: #0A0A0A; font-size: 1.1em; padding: 10px 20px; border-radius: 5px; display: inline-block;">Sign In</a>
       </div>
 
       <p style="font-size: 0.9em; color: #666;">This link expires in 10 minutes. If you didn't request this, you can safely ignore this email.</p>
@@ -25,7 +41,7 @@ export async function sendMagicLinkEmail(email: string, url: string): Promise<vo
     </div>
   `;
 
-  const text = `Sign in to Index Network\n\nClick this link to sign in: ${url}\n\nThis link expires in 10 minutes. If you didn't request this, you can safely ignore this email.\n\n—Index`;
+  const text = `Sign in to Index Network\n\nClick this link to sign in: ${finalUrl}\n\nThis link expires in 10 minutes. If you didn't request this, you can safely ignore this email.\n\n—Index`;
 
   await executeSendEmail({
     to: email,

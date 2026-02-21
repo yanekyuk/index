@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Bot, Check, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { getAvatarUrl } from "@/lib/file-utils";
+import UserAvatar from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
 
 /**
@@ -199,11 +198,6 @@ export default function OpportunityCard({
   const canTakeAction = isActionableStatus(effectiveStatus);
   const statusMessage = getStatusMessage(effectiveStatus);
 
-  const avatarUrl = getAvatarUrl({
-    id: card.userId,
-    name: card.name || "User",
-    avatar: card.avatar || null,
-  });
 
   const handlePrimaryAction = async () => {
     if (onPrimaryAction) {
@@ -298,15 +292,13 @@ export default function OpportunityCard({
           }}
           aria-label={`View profile of ${card.name || "Someone"}`}
         >
-          <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-300/80 flex items-center justify-center shrink-0">
-            <Image
-              src={avatarUrl}
-              alt={card.name || "User"}
-              width={32}
-              height={32}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <UserAvatar
+            id={card.userId}
+            name={card.name || "User"}
+            avatar={card.avatar || null}
+            size={32}
+            className="shrink-0"
+          />
           <div className="min-w-0">
             <h4 className="font-bold text-gray-900 text-sm hover:underline">
               {card.name || "Someone"}
@@ -403,15 +395,10 @@ export default function OpportunityCard({
               {card.narratorChip.name === "Index" ? (
                 <Bot className="w-7 h-7 text-[#3D3D3D]" />
               ) : (
-                <Image
-                  src={getAvatarUrl({
-                    name: card.narratorChip.name,
-                    avatar: card.narratorChip.avatar ?? null,
-                  })}
-                  alt=""
-                  width={28}
-                  height={28}
-                  className="w-7 h-7 rounded-full object-cover"
+                <UserAvatar
+                  name={card.narratorChip.name}
+                  avatar={card.narratorChip.avatar ?? null}
+                  size={28}
                 />
               )}
             </div>

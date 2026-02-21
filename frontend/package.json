@@ -17,6 +17,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "antd": "^5.25.4",
     "better-auth": "^1.4.18",
+    "boring-avatars": "^2.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

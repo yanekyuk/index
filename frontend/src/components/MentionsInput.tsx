@@ -2,8 +2,7 @@
 
 import { MentionsInput as ReactMentionsInput, Mention, SuggestionDataItem } from 'react-mentions';
 import { useMentionableUsers, MentionableUser } from '@/hooks/useMentionableUsers';
-import Image from 'next/image';
-import { getAvatarUrl } from '@/lib/file-utils';
+import UserAvatar from '@/components/UserAvatar';
 
 interface MentionsInputProps {
   value: string;
@@ -93,15 +92,12 @@ function renderSuggestion(
         focused ? 'bg-gray-100' : 'bg-white'
       }`}
     >
-      <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-300 flex-shrink-0">
-        <Image
-          src={getAvatarUrl({ avatar: user.avatar, name: user.display })}
-          alt=""
-          width={24}
-          height={24}
-          className="w-full h-full object-cover"
-        />
-      </div>
+      <UserAvatar
+        name={user.display}
+        avatar={user.avatar}
+        size={24}
+        className="flex-shrink-0"
+      />
       <span className="text-sm text-gray-900 truncate">{user.display}</span>
     </div>
   );

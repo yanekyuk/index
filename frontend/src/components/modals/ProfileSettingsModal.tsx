@@ -8,9 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { X, Camera, Trash2, ImagePlus } from "lucide-react";
 import { User } from "@/lib/types";
 import { useAuth } from "@/contexts/APIContext";
-import { getAvatarUrl } from "@/lib/file-utils";
 import { validateFiles } from "@/lib/file-validation";
 import Image from "next/image";
+import UserAvatar from "@/components/UserAvatar";
 
 interface ProfileSettingsModalProps {
   open: boolean;
@@ -195,18 +195,8 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                 <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
                   {avatarPreview ? (
                     <Image src={avatarPreview} alt="Avatar preview" width={96} height={96} className="w-full h-full object-cover" />
-                  ) : user?.avatar ? (
-                    <Image
-                      src={getAvatarUrl(user)}
-                      alt="Current avatar"
-                      width={96}
-                      height={96}
-                      className="w-full h-full object-cover"
-                    />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                      <Camera className="w-8 h-8" />
-                    </div>
+                    <UserAvatar id={user?.id} name={user?.name} avatar={user?.avatar} size={96} className="w-full h-full object-cover" />
                   )}
                 </div>
                 <button

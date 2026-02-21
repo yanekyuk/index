@@ -1,12 +1,12 @@
-const PROTOCOL_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+const PROTOCOL_URL = process.env.NEXT_PUBLIC_PROTOCOL_URL || "http://localhost:3001";
 
 export async function getUserIdFromRequest(req: Request): Promise<string | null> {
   try {
-    const cookie = req.headers.get("cookie");
-    if (!cookie) return null;
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) return null;
 
-    const res = await fetch(`${PROTOCOL_API_URL}/auth/get-session`, {
-      headers: { cookie },
+    const res = await fetch(`${PROTOCOL_URL}/api/auth/get-session`, {
+      headers: { authorization: authHeader },
     });
     if (!res.ok) return null;
 

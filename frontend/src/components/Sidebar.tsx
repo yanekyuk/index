@@ -10,7 +10,7 @@ import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { authClient } from '@/lib/auth-client';
-import { getAvatarUrl } from '@/lib/file-utils';
+import UserAvatar from '@/components/UserAvatar';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { useOpportunities } from '@/contexts/APIContext';
@@ -326,12 +326,12 @@ export default function Sidebar() {
             onClick={() => setUserDropdownOpen(!userDropdownOpen)}
             className="w-full flex items-center gap-3 hover:bg-gray-50 rounded-md p-2 -m-2 transition-colors"
           >
-            <Image
-              src={getAvatarUrl(user)}
-              alt={user.name || 'User'}
-              width={40}
-              height={40}
-              className="rounded-full flex-shrink-0"
+            <UserAvatar
+              id={user.id}
+              name={user.name || 'User'}
+              avatar={user.avatar}
+              size={40}
+              className="flex-shrink-0"
             />
             <div className="flex-1 min-w-0 text-left">
               <div className="text-sm font-medium text-black truncate">

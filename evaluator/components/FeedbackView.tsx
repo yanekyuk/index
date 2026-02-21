@@ -10,6 +10,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { ConversationView } from "./ConversationView";
+import { apiFetch } from "@/lib/api";
 
 interface FeedbackEntry {
   id: string;
@@ -37,10 +38,7 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
   const fetchFeedback = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/eval/feedback", {
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
+      const res = await apiFetch("/api/eval/feedback");
       if (res.ok) {
         const data = await res.json();
         setEntries(data.feedback || []);
@@ -65,11 +63,9 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
     );
 
     try {
-      const res = await fetch(`/api/eval/feedback/${id}/retry`, {
+      const res = await apiFetch(`/api/eval/feedback/${id}/retry`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ apiUrl }),
+        json: { apiUrl },
       });
 
       const reader = res.body?.getReader();
@@ -129,11 +125,9 @@ export function FeedbackView({ selectedId }: { selectedId?: string }) {
 
   const archiveFeedback = async (id: string) => {
     try {
-      const res = await fetch(`/api/eval/feedback/${id}`, {
+      const res = await apiFetch(`/api/eval/feedback/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ archived: true }),
+        json: { archived: true },
       });
       if (res.ok) {
         setEntries((prev) => prev.filter((e) => e.id !== id));

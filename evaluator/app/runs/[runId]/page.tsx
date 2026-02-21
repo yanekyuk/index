@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { EvaluatorShell } from "@/components/EvaluatorShell";
 import { ConversationView } from "@/components/ConversationView";
+import { apiFetch } from "@/lib/api";
 
 type ReviewFlag = "pass" | "fail" | "needs_review" | "skipped";
 
@@ -54,6 +55,7 @@ export default function RunPage() {
   const [globalStatus, setGlobalStatus] = useState<"idle" | "loading" | "running" | "completed">("loading");
   const [filterPersona, setFilterPersona] = useState<string>("DIRECT_REQUESTER");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [filterSource, setFilterSource] = useState<string>("all");
   const [filterReview, setFilterReview] = useState<string>("all");
   const cancelRef = useRef(false);
   const noteDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -64,9 +66,7 @@ export default function RunPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/eval/runs/${runId}`, {
-          credentials: "include",
-        });
+        const res = await apiFetch(`/api/eval/runs/${runId}`);
         if (!res.ok) throw new Error("Failed to load run");
         const data = await res.json();
         if (cancelled) return;
@@ -108,11 +108,9 @@ export default function RunPage() {
       id: string,
       payload: { reviewFlag?: ReviewFlag | null; reviewNote?: string | null }
     ) => {
-      await fetch(`/api/eval/runs/${runId}/scenarios/${id}`, {
+      await apiFetch(`/api/eval/runs/${runId}/scenarios/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
+        json: payload,
       });
     },
     [runId]
@@ -135,6 +133,7 @@ export default function RunPage() {
     return scenarios.filter((s) => {
       if (filterPersona !== "all" && s.personaId !== filterPersona) return false;
       if (filterCategory !== "all" && s.category !== filterCategory) return false;
+      if (filterSource !== "all" && s.source !== filterSource) return false;
       if (filterReview !== "all") {
         if (filterReview === "unreviewed") {
           if (s.reviewFlag) return false;
@@ -142,11 +141,12 @@ export default function RunPage() {
       }
       return true;
     });
-  }, [scenarios, filterPersona, filterCategory, filterReview]);
+  }, [scenarios, filterPersona, filterCategory, filterSource, filterReview]);
 
   const hasActiveFilters =
     filterPersona !== "all" ||
     filterCategory !== "all" ||
+    filterSource !== "all" ||
     filterReview !== "all";
 
   const selectedScenario = scenarios.find((s) => s.id === selectedScenarioId);
@@ -222,16 +222,14 @@ export default function RunPage() {
     )?.scenarioId ?? scenarioId;
 
     try {
-      const res = await fetch("/api/eval/run", {
+      const res = await apiFetch("/api/eval/run", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+        json: {
           runId,
           scenarioId: actualScenarioId,
           apiUrl,
           useSeeding: true,
-        }),
+        },
       });
       const data = await res.json();
       const result = data.results?.[0];
@@ -338,7 +336,11 @@ export default function RunPage() {
 
     const exportData = {
       exportedAt: new Date().toISOString(),
-      filters: { persona: filterPersona, category: filterCategory },
+      filters: {
+        persona: filterPersona,
+        category: filterCategory,
+        source: filterSource,
+      },
       summary: {
         total: metrics.total,
         completed: metrics.completed,
@@ -496,6 +498,7 @@ export default function RunPage() {
                       onClick={() => {
                         setFilterPersona("DIRECT_REQUESTER");
                         setFilterCategory("all");
+                        setFilterSource("all");
                         setFilterReview("all");
                       }}
                       className="text-xs text-blue-600 hover:text-blue-800"
@@ -539,6 +542,16 @@ export default function RunPage() {
                   <option value="fail">Fail</option>
                   <option value="needs_review">Needs Review</option>
                   <option value="skipped">Skipped</option>
+                </select>
+                <select
+                  value={filterSource}
+                  onChange={(e) => setFilterSource(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded-md px-2 py-1.5 bg-white"
+                >
+                  <option value="all">All sources</option>
+                  <option value="predefined">Predefined</option>
+                  <option value="feedback">Feedback</option>
+                  <option value="generated">Generated</option>
                 </select>
               </div>
 

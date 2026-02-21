@@ -2,12 +2,11 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import Image from 'next/image';
 import { MoreHorizontal, Trash2, Loader2 } from 'lucide-react';
+import UserAvatar from '@/components/UserAvatar';
 import { useStreamChat } from '@/contexts/StreamChatContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useOpportunities, useUsers } from '@/contexts/APIContext';
-import { getAvatarUrl } from '@/lib/file-utils';
 import { Channel, type Event as StreamEvent } from 'stream-chat';
 
 interface RecentChat {
@@ -61,7 +60,6 @@ export default function ChatSidebar() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
   const [deletingChat, setDeletingChat] = useState<string | null>(null);
-  const [failedAvatars, setFailedAvatars] = useState<Set<string>>(new Set());
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const chatsRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const getOpportunitiesRef = useRef(opportunitiesService.getOpportunities);
@@ -350,17 +348,12 @@ export default function ChatSidebar() {
                           : 'text-gray-700 hover:text-black'
                     }`}
                   >
-                    <Image
-                      src={
-                        failedAvatars.has(chat.recipientId)
-                          ? `https://api.dicebear.com/9.x/shapes/png?seed=${chat.recipientId || chat.name || 'default'}`
-                          : getAvatarUrl({ avatar: chat.avatar, id: chat.recipientId, name: chat.name })
-                      }
-                      alt={chat.name}
-                      width={28}
-                      height={28}
-                      className="rounded-full flex-shrink-0"
-                      onError={() => setFailedAvatars((prev) => new Set(prev).add(chat.recipientId))}
+                    <UserAvatar
+                      id={chat.recipientId}
+                      name={chat.name}
+                      avatar={chat.avatar}
+                      size={28}
+                      className="flex-shrink-0"
                     />
                     <div className="min-w-0">
                       <p className={`truncate ${isUnread ? 'text-sm font-bold text-black' : 'text-sm font-medium text-black'}`}>

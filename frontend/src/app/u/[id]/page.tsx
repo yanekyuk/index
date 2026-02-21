@@ -2,11 +2,10 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useUsers } from "@/contexts/APIContext";
-import { getAvatarUrl } from "@/lib/file-utils";
+import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
@@ -104,12 +103,11 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
           </div>
             {/* Avatar, Name, and Social Icons */}
             <div className="flex items-start gap-4">
-              <Image
-                src={getAvatarUrl(profileData)}
-                alt={profileData.name}
-                width={80}
-                height={80}
-                className="rounded-full"
+              <UserAvatar
+                id={profileData.id}
+                name={profileData.name}
+                avatar={profileData.avatar}
+                size={80}
               />
               <div className="flex-1 pt-2">
                 {profileData.location && (

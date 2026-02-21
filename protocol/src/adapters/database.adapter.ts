@@ -1123,7 +1123,7 @@ export class ChatDatabaseAdapter {
         createdAt: row.createdAt,
         permissions: row.permissions,
         memberCount: Number(countResult?.count ?? 0),
-        user: ownerMember ? {
+        owner: ownerMember ? {
           id: ownerMember.userId,
           name: ownerMember.userName,
           avatar: ownerMember.userAvatar,
@@ -2183,6 +2183,7 @@ export class ProfileDatabaseAdapter {
 
     if (data.name !== undefined) updateFields.name = data.name;
     if (data.location !== undefined) updateFields.location = data.location;
+    if (data.onboarding !== undefined) updateFields.onboarding = data.onboarding;
 
     if (data.socials) {
       // Merge with existing socials instead of overwriting
@@ -2215,7 +2216,7 @@ export class ProfileDatabaseAdapter {
       avatar: updated.avatar,
       location: updated.location,
       socials: updated.socials as { x?: string; linkedin?: string; github?: string; websites?: string[] } | null,
-      onboarding: updated.onboarding as OnboardingState | null,
+      onboarding: (updated as { onboarding?: unknown }).onboarding as OnboardingState | null,
     };
   }
 
