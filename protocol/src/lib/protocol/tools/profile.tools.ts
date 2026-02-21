@@ -141,7 +141,11 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       bioOrDescription: z.string().optional().describe("Explicit profile text from the user (e.g. 'software engineer, AI/ML, SF Bay Area'); creates or updates profile from this text only, no scraping"),
     }),
     handler: async ({ context, query }) => {
-      const isOnboarding = !context.user.onboarding?.completedAt;
+      const onboarding = context.user.onboarding;
+      const isOnboarding =
+        !!onboarding &&
+        (onboarding.flow != null || onboarding.currentStep != null) &&
+        !onboarding.completedAt;
       if (isOnboarding) {
         const existing = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
         if (existing.readResult?.hasProfile && existing.readResult.profile) {
