@@ -2,7 +2,7 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import OpportunityCard, { parseOpportunityBlocks } from "./OpportunityCard";
+import OpportunityCard, { OpportunitySkeleton, parseOpportunityBlocks } from "./OpportunityCard";
 
 function AssistantContent({ content }: { content: string }) {
   const segments = parseOpportunityBlocks(content);
@@ -20,6 +20,12 @@ function AssistantContent({ content }: { content: string }) {
           return (
             <div key={idx} className="my-3">
               <OpportunityCard card={segment.data} />
+            </div>
+          );
+        } else if (segment.type === "opportunity_loading") {
+          return (
+            <div key={idx} className="my-3">
+              <OpportunitySkeleton />
             </div>
           );
         }

@@ -6,6 +6,10 @@ import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import OpportunityCard, {
+  type OpportunityCardData,
+  OpportunitySkeleton,
+} from "@/components/chat/OpportunityCardInChat";
 
 interface SharedMessage {
   id: string;
@@ -18,6 +22,56 @@ interface SharedSession {
   id: string;
   title: string | null;
   createdAt: string;
+}
+
+type MessageSegment =
+  | { type: "text"; content: string }
+  | { type: "opportunity"; data: OpportunityCardData }
+  | { type: "opportunity_loading" };
+
+function parseOpportunityBlocks(content: string): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  const regex = /```opportunity\s*\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      const textBefore = content.slice(lastIndex, match.index);
+      if (textBefore.trim()) {
+        segments.push({ type: "text", content: textBefore });
+      }
+    }
+
+    try {
+      const data = JSON.parse(match[1].trim()) as OpportunityCardData;
+      if (data.opportunityId && data.userId) {
+        segments.push({ type: "opportunity", data });
+      } else {
+        segments.push({ type: "text", content: match[0] });
+      }
+    } catch {
+      segments.push({ type: "text", content: match[0] });
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  const remaining = content.slice(lastIndex);
+  const partialMatch = remaining.match(/```opportunity/);
+  if (partialMatch) {
+    const textBefore = remaining.slice(0, partialMatch.index!);
+    if (textBefore.trim()) segments.push({ type: "text", content: textBefore });
+    segments.push({ type: "opportunity_loading" });
+  } else if (remaining.trim()) {
+    segments.push({ type: "text", content: remaining });
+  }
+
+  if (segments.length === 0 && content.trim()) {
+    segments.push({ type: "text", content });
+  }
+
+  return segments;
 }
 
 interface SharedChatViewProps {
@@ -118,11 +172,44 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
                         </span>
                       )}
                       <article className="max-w-none">
-                        <div className="chat-markdown max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                          </ReactMarkdown>
-                        </div>
+                        {msg.role === "assistant" ? (
+                          <div>
+                            {parseOpportunityBlocks(msg.content).map(
+                              (segment, idx) => {
+                                if (segment.type === "opportunity") {
+                                  return (
+                                    <div key={idx} className="my-3">
+                                      <OpportunityCard card={segment.data} />
+                                    </div>
+                                  );
+                                }
+                                if (segment.type === "opportunity_loading") {
+                                  return (
+                                    <div key={idx} className="my-3">
+                                      <OpportunitySkeleton />
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="chat-markdown max-w-none"
+                                  >
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                      {segment.content}
+                                    </ReactMarkdown>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                        ) : (
+                          <div className="chat-markdown max-w-none">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
+                        )}
                       </article>
                     </div>
                   </div>

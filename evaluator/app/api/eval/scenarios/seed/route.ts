@@ -4,6 +4,7 @@ import { db } from "@/lib/db/drizzle";
 import { evalScenarios } from "@/lib/db/schema";
 import { CHAT_AGENT_USER_NEEDS, USER_PERSONAS, type UserPersonaId, getSeedRequirements } from "@/lib/scenarios";
 import { eq, and } from "drizzle-orm";
+import { addScenariosToActiveRuns } from "@/lib/runs";
 
 /**
  * Bulk-upsert predefined scenarios from CHAT_AGENT_USER_NEEDS into eval_scenarios.
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
     const entries = Object.entries(CHAT_AGENT_USER_NEEDS);
     const personaIds = Object.keys(USER_PERSONAS) as UserPersonaId[];
     let upserted = 0;
+    const newScenarioIds: string[] = [];
 
     for (const [needKey, need] of entries) {
       for (const personaId of personaIds) {
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
             })
             .where(eq(evalScenarios.id, existing[0].id));
         } else {
-          await db.insert(evalScenarios).values({
+          const [inserted] = await db.insert(evalScenarios).values({
             source: "predefined",
             category: need.category,
             needId: needKey,
@@ -63,12 +65,15 @@ export async function POST(req: NextRequest) {
             message,
             personaId,
             seedRequirements,
-          });
+          }).returning({ id: evalScenarios.id });
+          if (inserted) newScenarioIds.push(inserted.id);
         }
 
         upserted++;
       }
     }
+
+    await addScenariosToActiveRuns(newScenarioIds);
 
     return Response.json({ upserted });
   } catch (err) {

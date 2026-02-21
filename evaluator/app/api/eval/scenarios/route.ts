@@ -5,6 +5,7 @@ import { evalScenarios } from "@/lib/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { generatePersonaMessages } from "@/lib/evaluator";
 import { getSeedRequirements } from "@/lib/scenarios";
+import { addScenariosToActiveRuns } from "@/lib/runs";
 
 export async function GET(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
@@ -79,6 +80,8 @@ export async function POST(req: NextRequest) {
         seedRequirements,
       })
       .returning();
+
+    await addScenariosToActiveRuns([scenario.id]);
 
     return Response.json({ scenario });
   } catch (err) {

@@ -4,6 +4,7 @@ import { db } from "@/lib/db/drizzle";
 import { evalScenarios, evalRunResults } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { orderNewScenarios } from "@/lib/seed/scenario.orderer";
+import { addScenariosToActiveRuns } from "@/lib/runs";
 
 /**
  * LLM generates new scenarios based on evaluation results and coverage gaps.
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
         .returning();
       if (inserted) created.push(inserted);
     }
+
+    await addScenariosToActiveRuns(created.map((s) => s.id));
 
     return Response.json({
       generated: created.length,

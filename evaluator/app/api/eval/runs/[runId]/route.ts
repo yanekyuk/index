@@ -64,6 +64,7 @@ export async function GET(
       result: r.result,
       reviewFlag: r.reviewFlag,
       reviewNote: r.reviewNote,
+      seedData: r.seedData ?? null,
     }));
 
     return Response.json({
