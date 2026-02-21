@@ -114,6 +114,7 @@ Rules:
 3. DEDUPLICATION: Do not suggest opportunities that duplicate Existing Opportunities.
 4. Write reasoning from an objective observer's perspective; be specific about the "Why" for each side.
 5. When in introduction mode, each opportunity must have exactly two actors — the two people being introduced. The discoverer (introducer) is added by the system and must not be included in your actors list.
+6. ALREADY KNOW EACH OTHER: Do NOT suggest an opportunity if the entities clearly already know each other. Examples: co-founders of the same company, same team at the same organization, same employer, or any relationship that is obviously existing from their profiles (bio, context). When in doubt, if both profiles mention the same company/org/team in a way that implies they work together, return an empty list for that pair.
 `;
 
 // ──────────────────────────────────────────────────────────────
