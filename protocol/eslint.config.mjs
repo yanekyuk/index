@@ -10,6 +10,17 @@ export default [
     plugins: {
       '@typescript-eslint': tseslint,
     },
-    rules: {},
+    rules: {
+      // Disallow explicit any (e.g. `: any`, `as any`)
+      '@typescript-eslint/no-explicit-any': 'error',
+      // Disallow unused variables; ignore names starting with _
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
+    },
   },
 ];
