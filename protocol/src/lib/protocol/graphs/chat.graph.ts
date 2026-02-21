@@ -211,16 +211,15 @@ export class ChatGraphFactory {
           scraper,
           indexId,
         });
-        const buffer: unknown[] = [];
-        const attemptWriter = (data: unknown) => buffer.push(data);
-        const result = await agent.streamRun(state.messages, attemptWriter);
-        for (const event of buffer) {
+        // Direct streaming writer - emit events immediately instead of buffering
+        const directWriter = (data: unknown) => {
           try {
-            config.writer?.(event);
+            config.writer?.(data);
           } catch {
             /* swallow if writer is gone */
           }
-        }
+        };
+        const result = await agent.streamRun(state.messages, directWriter);
         return result;
       };
 

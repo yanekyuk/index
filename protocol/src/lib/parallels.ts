@@ -36,7 +36,14 @@ export async function extractUrlContent(url: string): Promise<string | null> {
     if (extract.results && extract.results.length > 0) {
       const result = extract.results[0];
       // Access content from result - check common property names
-      const content = (result as any).content || (result as any).excerpts?.[0] || (result as any).excerpt || (result as any).markdown || null;
+      interface ExtractResultShape {
+        content?: string;
+        excerpts?: string[];
+        excerpt?: string;
+        markdown?: string;
+      }
+      const r = result as ExtractResultShape;
+      const content = r.content ?? r.excerpts?.[0] ?? r.excerpt ?? r.markdown ?? null;
       logger.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
       return content;
     }
@@ -385,11 +392,11 @@ Generate intents naturally, you decide how many intents to generate (typically 3
     
     // Varied link collection messages
     const linkMessages = [
-      (count: number, total: number) => `Found ${count} interesting things about you...`,
-      (count: number, total: number) => `Reading through ${count} profiles...`,
-      (count: number, total: number) => `Checking out ${count} links...`,
-      (count: number, total: number) => `Scanned ${count} sources so far...`,
-      (count: number, total: number) => `Going through ${count} pages about you...`,
+      (count: number, _total: number) => `Found ${count} interesting things about you...`,
+      (count: number, _total: number) => `Reading through ${count} profiles...`,
+      (count: number, _total: number) => `Checking out ${count} links...`,
+      (count: number, _total: number) => `Scanned ${count} sources so far...`,
+      (count: number, _total: number) => `Going through ${count} pages about you...`,
     ];
     let linkMessageIndex = 0;
     let finalStageIndex = 0;
@@ -431,22 +438,22 @@ Generate intents naturally, you decide how many intents to generate (typically 3
             clearInterval(linkBatchInterval);
             clearInterval(finalStageInterval);
             if (event.output) {
-              const output = event.output as any;
-              const content = output.content || output;
-              
-              const intro = content.intro && 
+              type RunContentShape = { intro?: string; location?: string; intents?: Array<{ intent?: string; confidence?: string; date?: string }> };
+              const output = event.output as { content?: RunContentShape } | RunContentShape;
+              const content = (output && typeof output === 'object' && 'content' in output ? output.content : output) as RunContentShape | null | undefined;
+              const intro = content?.intro && 
                             content.intro !== 'Intro unavailable' && 
                             content.intro.trim() !== '' ? content.intro : null;
-              
-              const location = content.location && 
+              const location = content?.location && 
                                content.location !== 'Location unavailable' && 
                                content.location.trim() !== '' ? content.location : null;
-              
-              const intents: GeneratedIntent[] = (content.intents || []).map((i: any) => ({
-                intent: i.intent,
-                confidence: i.confidence || 'medium',
-                date: i.date || new Date().toISOString().split('T')[0],
-              }));
+              const intents: GeneratedIntent[] = (content?.intents ?? [])
+                .map((i: { intent?: string; confidence?: string; date?: string }) => ({
+                  intent: (i.intent ?? '').trim(),
+                  confidence: (i.confidence as 'low' | 'medium' | 'high') || 'medium',
+                  date: i.date ?? new Date().toISOString().split('T')[0],
+                }))
+                .filter((i) => i.intent !== '');
 
               finalResult = { intro, location, intents };
               onEvent?.({ type: 'result', data: finalResult });
@@ -484,10 +491,11 @@ Generate intents naturally, you decide how many intents to generate (typically 3
       
       clearInterval(linkBatchInterval);
       clearInterval(finalStageInterval);
-    } catch (streamError: any) {
+    } catch (streamError: unknown) {
       clearInterval(linkBatchInterval);
       clearInterval(finalStageInterval);
-      logger.error('Error streaming events', { error: streamError.message });
+      const msg = streamError instanceof Error ? streamError.message : String(streamError);
+      logger.error('Error streaming events', { error: msg });
       // Fallback to result endpoint if streaming fails
       if (!hasCompleted) {
         try {
@@ -496,30 +504,31 @@ Generate intents naturally, you decide how many intents to generate (typically 3
           });
           
           if (result?.output) {
-            const output = result.output as any;
-            const content = output.content || output;
-            
-            const intro = content.intro && 
+            type RunContentShape = { intro?: string; location?: string; intents?: Array<{ intent?: string; confidence?: string; date?: string }> };
+            const output = result.output as { content?: RunContentShape } | RunContentShape;
+            const content = (output && typeof output === 'object' && 'content' in output ? output.content : output) as RunContentShape | null | undefined;
+            const intro = content?.intro && 
                           content.intro !== 'Intro unavailable' && 
                           content.intro.trim() !== '' ? content.intro : null;
-            
-            const location = content.location && 
+            const location = content?.location && 
                              content.location !== 'Location unavailable' && 
                              content.location.trim() !== '' ? content.location : null;
-            
-            const intents: GeneratedIntent[] = (content.intents || []).map((i: any) => ({
-              intent: i.intent,
-              confidence: i.confidence || 'medium',
-              date: i.date || new Date().toISOString().split('T')[0],
-            }));
+            const intents: GeneratedIntent[] = (content?.intents ?? [])
+              .map((i: { intent?: string; confidence?: string; date?: string }) => ({
+                intent: (i.intent ?? '').trim(),
+                confidence: (i.confidence as 'low' | 'medium' | 'high') || 'medium',
+                date: i.date ?? new Date().toISOString().split('T')[0],
+              }))
+              .filter((i) => i.intent !== '');
 
             finalResult = { intro, location, intents };
             onEvent?.({ type: 'result', data: finalResult });
             return finalResult;
           }
-        } catch (resultError: any) {
-          logger.error('Failed to get result after stream error', { error: resultError.message });
-          onEvent?.({ type: 'error', message: resultError.message || 'Had trouble finishing up. Could you try again?' });
+        } catch (resultError: unknown) {
+          const errMsg = resultError instanceof Error ? resultError.message : String(resultError);
+          logger.error('Failed to get result after stream error', { error: errMsg });
+          onEvent?.({ type: 'error', message: errMsg || 'Had trouble finishing up. Could you try again?' });
           return null;
         }
       }

@@ -5,6 +5,10 @@ import { indexService } from '../services/index.service';
 
 const logger = log.controller.from('index');
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 @Controller('/indexes')
 export class IndexController {
   /**
@@ -87,9 +91,10 @@ export class IndexController {
         metadataKeys: [],
         pagination: { page: 1, limit: members.length, total: members.length, totalPages: 1 },
       });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -115,9 +120,10 @@ export class IndexController {
       const role = body.permissions?.includes('admin') ? 'admin' as const : 'member' as const;
       const result = await indexService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -136,21 +142,22 @@ export class IndexController {
       await indexService.removeMember(params.id, params.memberId, user.id);
       logger.info('Member removed from index', { indexId: params.id, memberId: params.memberId });
       return Response.json({ success: true });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (err?.message === 'Member not found') {
-        return new Response(JSON.stringify({ error: err.message }), {
+      if (msg === 'Member not found') {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (err?.message === 'Cannot remove yourself from the index') {
-        return new Response(JSON.stringify({ error: err.message }), {
+      if (msg === 'Cannot remove yourself from the index') {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -175,9 +182,10 @@ export class IndexController {
       const result = await indexService.updateIndex(params.id, user.id, body);
       logger.info('Index updated', { indexId: params.id });
       return Response.json({ index: result });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -197,9 +205,10 @@ export class IndexController {
       const result = await indexService.updatePermissions(params.id, user.id, body);
       logger.info('Permissions updated for index', { indexId: params.id });
       return Response.json({ index: result });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -230,9 +239,10 @@ export class IndexController {
       await indexService.deleteIndex(params.id, user.id);
       logger.info('Index deleted', { indexId: params.id, userId: user.id });
       return Response.json({ success: true });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -252,15 +262,16 @@ export class IndexController {
       const index = await indexService.joinPublicIndex(params.id, user.id);
       logger.info('User joined public index', { indexId: params.id, userId: user.id });
       return Response.json({ index });
-    } catch (err: any) {
-      if (err?.message?.includes('not found')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('not found')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (err?.message?.includes('not public')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+      if (msg.includes('not public')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -280,9 +291,10 @@ export class IndexController {
       const settings = await indexService.getMemberSettings(params.id, user.id);
       logger.info('Member settings retrieved', { indexId: params.id, userId: user.id });
       return Response.json(settings);
-    } catch (err: any) {
-      if (err?.message?.includes('Not a member')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Not a member')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -302,9 +314,10 @@ export class IndexController {
       const intents = await indexService.getMyIntentsInIndex(params.id, user.id);
       logger.info('My intents retrieved for index', { indexId: params.id, userId: user.id, count: intents.length });
       return Response.json({ intents });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied') || err?.message?.includes('Not a member')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied') || msg.includes('Not a member')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -324,15 +337,16 @@ export class IndexController {
       await indexService.leaveIndex(params.id, user.id);
       logger.info('User left index', { indexId: params.id, userId: user.id });
       return Response.json({ success: true });
-    } catch (err: any) {
-      if (err?.message?.includes('not found') || err?.message?.includes('not a member')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('not found') || msg.includes('not a member')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      if (err?.message?.includes('Cannot leave')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+      if (msg.includes('Cannot leave')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -357,9 +371,10 @@ export class IndexController {
         });
       }
       return Response.json({ index });
-    } catch (err: any) {
-      if (err?.message?.includes('Access denied')) {
-        return new Response(JSON.stringify({ error: err.message }), {
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      if (msg.includes('Access denied')) {
+        return new Response(JSON.stringify({ error: msg }), {
           status: 403,
           headers: { 'Content-Type': 'application/json' },
         });

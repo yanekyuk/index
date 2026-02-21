@@ -1,7 +1,4 @@
 import { UUID, PaginationInfo } from './common.types';
-import { User } from './users.types';
-import { Index } from './indexes.types';
-import { Intent, IntentStake } from './intents.types';
 
 // Generic API Response wrapper
 export interface APIResponse<T> {

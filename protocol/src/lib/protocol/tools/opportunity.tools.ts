@@ -2,21 +2,13 @@ import { z } from "zod";
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
+import { viewerCentricCardSummary } from "../support/opportunity.card-text";
 import { runDiscoverFromQuery } from "../support/opportunity.discover";
 import type { EvaluatorEntity } from "../agents/opportunity.evaluator";
 import { protocolLogger } from "../support/protocol.logger";
 import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
-
-/**
- * Truncate a string for use inside JSON so the result is always valid and bounded.
- */
-function truncateForCardText(s: string, max = MINIMAL_MAIN_TEXT_MAX_CHARS): string {
-  const raw = s.trim();
-  if (raw.length <= max) return raw || "A suggested connection.";
-  return raw.slice(0, max) + "...";
-}
 
 /**
  * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
@@ -60,8 +52,10 @@ function buildMinimalOpportunityCard(
   const introducerActor = opp.actors.find(
     (a) => a.role === "introducer" && a.userId !== viewerId,
   );
-  const mainText = truncateForCardText(
+  const mainText = viewerCentricCardSummary(
     opp.interpretation?.reasoning ?? "",
+    counterpartName,
+    MINIMAL_MAIN_TEXT_MAX_CHARS,
   );
   const score =
     typeof opp.interpretation?.confidence === "number"
@@ -255,7 +249,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             (firstEntity?.profile as { avatar?: string | null } | undefined)
               ?.avatar ??
             null,
-          mainText: truncateForCardText(reasoning),
+          mainText: viewerCentricCardSummary(
+            reasoning,
+            counterpartName,
+            MINIMAL_MAIN_TEXT_MAX_CHARS,
+          ),
           cta: "Start a conversation to connect.",
           headline: `Connection with ${counterpartName}`,
           primaryActionLabel: `Send to ${counterpartName || "them"}`,

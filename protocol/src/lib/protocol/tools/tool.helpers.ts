@@ -178,7 +178,7 @@ export async function resolveChatContext(params: {
     userIndexes,
     scopedIndex,
     scopedMembershipRole,
-    isOnboarding: !user.onboarding?.completedAt,
+    isOnboarding: !(user.onboarding?.completedAt),
   };
 }
 

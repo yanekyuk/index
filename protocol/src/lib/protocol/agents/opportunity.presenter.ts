@@ -12,6 +12,7 @@ import type { Runnable } from "@langchain/core/runnables";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
+import { viewerCentricCardSummary } from "../support/opportunity.card-text";
 import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 
@@ -445,11 +446,14 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
 /**
  * Gather all context needed for the presenter from the database.
  * Fetches viewer profile, viewer intents, other party profile(s), and index in parallel.
+ *
+ * @param displayCounterpartUserId - When set (e.g. for home card), only this counterpart is included in otherPartyContext so the presenter writes about the person on the card. Omitted for introducer view (card shows both parties).
  */
 export async function gatherPresenterContext(
   database: PresenterDatabase,
   opportunity: Opportunity,
   viewerId: string,
+  displayCounterpartUserId?: string,
 ): Promise<PresenterInput> {
   const myActor = opportunity.actors.find((a) => a.userId === viewerId);
   if (!myActor) {
@@ -458,7 +462,14 @@ export async function gatherPresenterContext(
 
   const isIntroducer = myActor.role === "introducer";
   const otherActors = opportunity.actors.filter((a) => a.userId !== viewerId);
-  const otherPartyIds = [...new Set(otherActors.map((a) => a.userId))];
+  let otherPartyIds = [...new Set(otherActors.map((a) => a.userId))];
+  if (
+    displayCounterpartUserId &&
+    !isIntroducer &&
+    otherPartyIds.includes(displayCounterpartUserId)
+  ) {
+    otherPartyIds = [displayCounterpartUserId];
+  }
 
   const contextIndexId = opportunity.context?.indexId;
 
@@ -589,10 +600,19 @@ export async function gatherPresenterContext(
     }
   }
 
+  const counterpartName =
+    otherPartyIds.length === 1 && otherProfiles[0]
+      ? (otherProfiles[0] as { identity?: { name?: string } })?.identity?.name?.trim()
+      : undefined;
+  const matchReasoning =
+    counterpartName && interp.reasoning
+      ? viewerCentricCardSummary(interp.reasoning, counterpartName, 400)
+      : interp.reasoning;
+
   const result: PresenterInput = {
     viewerContext,
     otherPartyContext,
-    matchReasoning: interp.reasoning,
+    matchReasoning,
     category: interp.category ?? "connection",
     confidence:
       typeof interp.confidence === "number"

@@ -58,7 +58,7 @@ export interface UpdateIndexRequest {
   };
 }
 
-export interface IndexSummary<TIntent = any> {
+export interface IndexSummary<TIntent = unknown> {
   totalIntents: number;
   exampleIntents: TIntent[];
   members: UserSummary[];

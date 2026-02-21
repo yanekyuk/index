@@ -16,13 +16,13 @@ This guide describes how to test the opportunity system **manually in the fronte
 
 ## Seed users (from `test-data.ts`)
 
-| Name              | Email              | Phone           | OTP (for login) |
-|-------------------|--------------------|-----------------|------------------|
-| Seren Sandikci    | test-1761@example.com | +1 555 555 5724 | 888893           |
-| Seref Yarar       | test-9716@example.com | +1 555 555 2920 | 670543           |
-| Yanki Ekin Yüksel | test-6285@example.com | +1 555 555 1625 | 607027           |
+| Name        | Email                              |
+|-------------|------------------------------------|
+| Alex Chen   | seed-tester-1@index-network.test   |
+| Jordan Lee  | seed-tester-2@index-network.test   |
+| Sam Rivera  | seed-tester-3@index-network.test   |
 
-Use **email + OTP** (or your auth flow) to log in on the frontend.
+Login: use your auth flow (e.g. magic link to the email above, or dev token/CLI flow if configured). The seed script does not set a password or OTP; if using Better Auth with magic link or email OTP, use the addresses above.
 
 ## One-time setup
 
@@ -50,10 +50,10 @@ Use **email + OTP** (or your auth flow) to log in on the frontend.
 
 ## Manual test flow
 
-### 1. Log in as User A (Seren Sandikci)
+### 1. Log in as User A (Alex Chen)
 
-- Email: `test-1761@example.com`
-- When prompted, use OTP: **888893**
+- Email: `seed-tester-1@index-network.test`
+- Use your auth flow (e.g. magic link or password if you set one for this email).
 - Go to **Library** → ensure you’re on **My Intents** (or create an intent if needed).
 - Create or use an intent in **Commons**:
   - Go to the index page for Commons (e.g. from **Networks** or **Library**), or create an intent that’s assigned to that index.
@@ -64,16 +64,16 @@ Use **email + OTP** (or your auth flow) to log in on the frontend.
 - Go to **Library** → **My Opportunities** tab.
 - You should see opportunities where User A is an actor (e.g. as patient or introducer). Count and list are from `GET /opportunities` (role-based visibility: e.g. patient sees latent; agent may only see after status change).
 
-### 3. Log out and log in as User B (Seref Yarar)
+### 3. Switch to User B (Jordan Lee)
 
-- Log out in the app.
-- Log in with email: `test-9716@example.com`, OTP: **670543**.
+- Sign out of the app.
+- Sign in with email: `seed-tester-2@index-network.test` (use your auth flow, e.g. magic link).
 - Go to **Library** → **My Opportunities**.
 - Compare with User A: depending on the opportunity’s actors and status, User B may see **no** opportunities, **fewer**, or **the same** (e.g. if B is the other peer). This validates role-based visibility.
 
-### 4. Log in as User C (Yanki Ekin Yüksel)
+### 4. Log in as User C (Sam Rivera)
 
-- Log out, then log in with email: `test-6285@example.com`, OTP: **607027**.
+- Log out, then log in with email: `seed-tester-3@index-network.test` (use your auth flow, e.g. magic link).
 - Go to **Library** → **My Opportunities**.
 - Again compare counts and list with A and B to confirm different users see different sets per role/status.
 
@@ -87,11 +87,10 @@ Use **email + OTP** (or your auth flow) to log in on the frontend.
 
 - **No opportunities for any user**: Ensure intent was created in an index that has HyDE docs and that `intent-hyde` and `opportunity-discovery` jobs ran (check queues and worker logs).
 - **Auth origin**: Add the frontend origin (e.g. `http://localhost:3000`) in your auth config (e.g. Better Auth trustedOrigins).
-- **OTP not accepted**: Use the OTP from the table, or check your auth provider docs for test authentication.
 
 ## Reference
 
 - Seed script: `protocol/src/cli/db-seed.ts`
-- Test accounts: `protocol/src/cli/test-data.ts` (`TESTABLE_TEST_ACCOUNTS`)
+- Test users: first 3 seeded personas (`seed-tester-1@index-network.test`, `seed-tester-2@index-network.test`, `seed-tester-3@index-network.test`) from `protocol/src/cli/test-data.ts` (`TESTER_PERSONAS`)
 - Opportunity API: `GET /opportunities` (list for current user), `GET /opportunities/:id` (detail with presentation)
 - Visibility rules: `protocol/src/lib/protocol/docs/Latent Opportunity Lifecycle.md`

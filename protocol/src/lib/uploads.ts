@@ -12,7 +12,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
-import { getUploadsPath, getTempPath } from './paths';
+
+import { getUploadsPath } from './paths';
+import {
+  FILE_SIZE_LIMITS,
+  MAX_FILES_PER_UPLOAD,
+  UploadType,
+  UploadContext,
+  ValidationResult,
+  validateFileTypeByMetadata,
+  validateFileSizeByBytes,
+  validateFileCountByNumber,
+  validateFileByMetadata,
+  validateFilesByMetadata,
+  isFileExtensionSupported,
+  FALLBACK_TEXT_EXTENSIONS,
+} from './uploads.config';
 
 // Type extension for requests with generated file ID
 declare global {
@@ -22,23 +37,6 @@ declare global {
     }
   }
 }
-import {
-  FILE_SIZE_LIMITS,
-  MAX_FILES_PER_UPLOAD,
-  SUPPORTED_FILE_TYPES,
-  GENERAL_ALLOWED_TYPES,
-  UploadType,
-  UploadContext,
-  ValidationResult,
-  validateFileTypeByMetadata,
-  validateFileSizeByBytes,
-  validateFileCountByNumber,
-  validateFileByMetadata,
-  validateFilesByMetadata,
-  getSupportedFileExtensions,
-  isFileExtensionSupported,
-  FALLBACK_TEXT_EXTENSIONS,
-} from './uploads.config';
 
 // ----- Thin Validation Adapters -----
 
@@ -62,13 +60,19 @@ export const validateFileUploads = (files: Express.Multer.File[], uploadType: Up
 
 // ----- Multer Filters -----
 
+/** Map UploadContext to the validation type used by validateFileType (both discovery and library use general). */
+function uploadContextToUploadType(_uploadContext: UploadContext): UploadType {
+  return 'general';
+}
+
 export function createFileFilter(uploadContext: UploadContext) {
-  return (req: any, file: Express.Multer.File, cb: any) => {
-    const validation = validateFileType(file, 'general');
+  const uploadType = uploadContextToUploadType(uploadContext);
+  return (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    const validation = validateFileType(file, uploadType);
     if (validation.isValid) {
       cb(null, true);
     } else {
-      cb(new Error(validation.message), false);
+      cb(new Error(validation.message ?? 'File type not allowed'));
     }
   };
 }
@@ -122,7 +126,7 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
 
       if (Array.isArray(response) && response.length > 0) {
         const content = response
-          .map((element: any) => element.text || '')
+          .map((element: { text?: string }) => element.text ?? '')
           .filter((text: string) => text.trim())
           .join('\n\n');
         return { content, error: null };

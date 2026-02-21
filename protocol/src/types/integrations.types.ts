@@ -44,7 +44,7 @@ export interface AvailableIntegrationType {
   type: string;
   name: string;
   toolkit: string;
-  capabilities?: any;
+  capabilities?: Record<string, unknown>;
 }
 
 export interface ConnectIntegrationRequest {

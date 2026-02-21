@@ -4,6 +4,7 @@
  */
 
 import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray, ilike, notInArray } from 'drizzle-orm';
+
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
@@ -101,7 +102,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, chatSessions, chatMessages, userNotificationSettings, userProfiles, files, links } = schema;
+const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -329,8 +330,9 @@ export class IntentDatabaseAdapter {
     } else {
       conditions.push(isNull(schema.intents.archivedAt));
     }
-    if (options.sourceType) {
-      conditions.push(eq(schema.intents.sourceType, options.sourceType as any));
+    const validSourceTypes: SourceType[] = ['file', 'integration', 'link', 'discovery_form', 'enrichment'];
+    if (options.sourceType && validSourceTypes.includes(options.sourceType as SourceType)) {
+      conditions.push(eq(schema.intents.sourceType, options.sourceType as SourceType));
     }
     const where = and(...conditions);
 
@@ -426,6 +428,7 @@ export class IntentDatabaseAdapter {
       avatar: user.avatar ?? null,
       location: user.location ?? null,
       socials: user.socials ?? null,
+      onboarding: user.onboarding ?? null,
     };
   }
 
@@ -1779,7 +1782,6 @@ export class ChatDatabaseAdapter {
     userId: string,
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
-    const logger = log.lib.from('database.adapter');
     const existing = await db
       .select()
       .from(indexMembers)
@@ -2201,13 +2203,18 @@ export class ProfileDatabaseAdapter {
 
     if (data.socials) {
       // Merge with existing socials instead of overwriting
-      const existingSocials = (current as any).socials ?? {};
+      const existingSocials = current.socials ?? {};
       const merged = { ...existingSocials };
       if (data.socials.x !== undefined) merged.x = data.socials.x;
       if (data.socials.linkedin !== undefined) merged.linkedin = data.socials.linkedin;
       if (data.socials.github !== undefined) merged.github = data.socials.github;
       if (data.socials.websites !== undefined) merged.websites = data.socials.websites;
       updateFields.socials = merged;
+    }
+
+    if (data.onboarding !== undefined) {
+      const existingOnboarding = current.onboarding ?? {};
+      updateFields.onboarding = { ...existingOnboarding, ...data.onboarding };
     }
 
     const result = await db.update(schema.users)
@@ -2613,7 +2620,6 @@ export class OpportunityDatabaseAdapter {
         sql`${opportunities.actors} @> ${JSON.stringify([{ intent: intentId }])}::jsonb`
       );
     if (rows.length === 0) return 0;
-    const ids = rows.map((r) => r.id);
     const updated = await db
       .update(opportunities)
       .set({ status: 'expired', updatedAt: new Date() })
@@ -3446,16 +3452,7 @@ import type { VectorStore } from '../lib/protocol/interfaces/embedder.interface'
 import type {
   UserDatabase,
   SystemDatabase,
-  CreateIntentData,
-  UpdateIntentData,
   SimilarIntent,
-  SimilarIntentSearchOptions,
-  OpportunityQueryOptions,
-  OpportunityStatus,
-  CreateOpportunityData,
-  HydeSourceType,
-  CreateHydeDocumentData,
-  UpdateIndexSettingsData,
 } from '../lib/protocol/interfaces/database.interface';
 
 /**

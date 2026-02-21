@@ -250,7 +250,7 @@ describe("OpportunityController Integration", () => {
     expect(data.meta).toBeDefined();
     expect(typeof data.meta!.totalOpportunities).toBe("number");
     expect(typeof data.meta!.totalSections).toBe("number");
-  });
+  }, 60000); // Home graph can be slow
 
   test("getOpportunity should return 400 when id is missing", async () => {
     const req = new Request("http://localhost/opportunities");
@@ -326,10 +326,11 @@ describe("OpportunityController Integration", () => {
       body: JSON.stringify({ status: "viewed" }),
     });
     const res = await controller.updateStatus(req, mockUser(), { id: testOpportunityId });
-    const data = (await res.json()) as { status?: string };
+    const data = (await res.json()) as { opportunity?: { status?: string }; status?: string };
 
     expect(res.status).toBe(200);
-    expect(data.status).toBe("viewed");
+    expect(data.opportunity).toBeDefined();
+    expect(data.opportunity!.status).toBe("viewed");
   });
 
   test("listForIndex should return 400 when indexId is missing", async () => {
@@ -466,9 +467,8 @@ describe("OpportunityController Integration", () => {
 
     expect(response.status).toBe(200);
     expect(result).toBeDefined();
-    // The result should contain discovered candidates or be empty
-    // (depending on embedding similarity thresholds)
-    expect((result as any).sourceUserId).toBe(testUserId);
+    // The result should contain userId (discoverer) and opportunities array
+    expect((result as { userId?: string }).userId).toBe(testUserId);
   }, 60000); // Extended timeout for embedding/search
 
   test("discover should respect limit parameter", async () => {

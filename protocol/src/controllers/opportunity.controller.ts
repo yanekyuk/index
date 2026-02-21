@@ -4,7 +4,6 @@ import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { queueOpportunityNotification } from '../queues/notification.queue';
 import { log } from '../lib/log';
-import type { OpportunityStatus } from '../lib/protocol/interfaces/database.interface';
 
 const logger = log.controller.from('opportunity');
 

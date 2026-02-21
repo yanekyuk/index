@@ -20,6 +20,7 @@ import {
   type HomeCardPresenterInput,
 } from "../agents/opportunity.presenter";
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
+import { viewerCentricCardSummary } from "./opportunity.card-text";
 import { protocolLogger, withCallLogging } from "./protocol.logger";
 
 const logger = protocolLogger("OpportunityDiscover");
@@ -261,20 +262,27 @@ export async function runDiscoverFromQuery(
         | undefined;
 
       if (input.minimalForChat && baseEnriched.length > 0) {
-        // Minimal path: no LLM, static labels and match reason only
-        homeCardPresentations = baseEnriched.map((item) => ({
-          headline: `Connection with ${item.profile?.identity?.name ?? "someone"}`,
-          personalizedSummary:
-            truncateForChat(
-              item.opportunity.interpretation?.reasoning ?? "",
-              MINIMAL_MAIN_TEXT_MAX_CHARS,
-            ) ?? "A suggested connection.",
-          suggestedAction: "Start a conversation to connect.",
-          narratorRemark: "Based on your overlap in this community.",
-          primaryActionLabel: "Start Chat",
-          secondaryActionLabel: "Skip",
-          mutualIntentsLabel: "Suggested connection",
-        }));
+        // Minimal path: no LLM, viewer-centric card text (introduce counterpart to viewer)
+        const counterpartName = (n: {
+          profile?: { identity?: { name?: string } } | null;
+        }) => n.profile?.identity?.name ?? "";
+        homeCardPresentations = baseEnriched.map((item) => {
+          const name = counterpartName(item);
+          return {
+            headline: `Connection with ${name}`,
+            personalizedSummary:
+              viewerCentricCardSummary(
+                item.opportunity.interpretation?.reasoning ?? "",
+                name,
+                MINIMAL_MAIN_TEXT_MAX_CHARS,
+              ),
+            suggestedAction: "Start a conversation to connect.",
+            narratorRemark: "Based on your overlap in this community.",
+            primaryActionLabel: "Start Chat",
+            secondaryActionLabel: "Skip",
+            mutualIntentsLabel: "Suggested connection",
+          };
+        });
         presenterContexts = baseEnriched.map((item) => ({
           introducerName: item.opportunity.detection.createdByName ?? undefined,
         })) as MinimalPresenterContext[];

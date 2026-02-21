@@ -73,7 +73,7 @@ export class AuthController {
       });
     }
 
-    const { profile, notificationPreferences, ...userFields } = fullUser;
+    const { profile: _profile, notificationPreferences, ...userFields } = fullUser;
     return Response.json({
       user: {
         ...userFields,
@@ -103,7 +103,7 @@ export class AuthController {
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
-    const { profile, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
+    const { profile: _profileOut, notificationPreferences: prefs, ...userFieldsOut } = fullUser;
     return Response.json({
       user: { ...userFieldsOut, notificationPreferences: prefs },
     });

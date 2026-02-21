@@ -3,13 +3,17 @@ import { users } from '../schemas/database.schema';
 import { eq } from 'drizzle-orm';
 import { log } from './log';
 import type { IntegrationName } from './integrations/config';
+import type { UserSocials } from '../types/users.types';
 
 const logger = log.lib.from("lib/user-utils.ts");
+
+/** Provider for integration-backed users; 'file' is used for file-import-created users (not in INTEGRATIONS). */
+export type UserProvider = IntegrationName | 'file';
 
 export interface ExtractedUser {
   email: string;
   name: string;
-  provider: IntegrationName;
+  provider: UserProvider;
   providerId: string;
   avatar?: string;
 }
@@ -151,7 +155,7 @@ export async function resolveFileUser(params: {
       const user = existingUser[0];
       logger.info('File import user already exists', { email, userId: user.id });
       
-      const updates: any = {};
+      const updates: Record<string, unknown> = {};
       
       if (name && (!user.name || user.name.trim() === '')) {
         updates.name = name;
@@ -167,7 +171,7 @@ export async function resolveFileUser(params: {
       }
       
       if (socials) {
-        const currentSocials = (user.socials as any) || {};
+        const currentSocials = (user.socials as UserSocials | null) ?? {};
         const updatedSocials = { ...currentSocials };
         let socialsChanged = false;
         
@@ -233,13 +237,13 @@ export async function resolveFileUser(params: {
     const createdUser = await saveUser({
       email,
       name,
-      provider: 'file' as any,
+      provider: 'file',
       providerId: email,
       avatar
     });
     
     if (intro || location || socials) {
-      const updateData: any = { updatedAt: new Date() };
+      const updateData: Record<string, unknown> = { updatedAt: new Date() };
       if (intro) updateData.intro = intro;
       if (location) updateData.location = location;
       if (socials) updateData.socials = socials;
@@ -292,7 +296,7 @@ export async function resolveIntegrationUser(params: {
         const needsUpdate = (!user.name || user.name.trim() === '') || (avatar && !user.avatar);
         
         if (needsUpdate) {
-          const updateData: any = {};
+          const updateData: Record<string, unknown> = {};
           if (!user.name || user.name.trim() === '') {
             updateData.name = name;
           }

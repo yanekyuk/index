@@ -141,14 +141,44 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
       bioOrDescription: z.string().optional().describe("Explicit profile text from the user (e.g. 'software engineer, AI/ML, SF Bay Area'); creates or updates profile from this text only, no scraping"),
     }),
     handler: async ({ context, query }) => {
+      const onboarding = context.user.onboarding;
+      const isOnboarding =
+        !!onboarding &&
+        (onboarding.flow != null || onboarding.currentStep != null) &&
+        !onboarding.completedAt;
+      if (isOnboarding) {
+        const existing = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
+        if (existing.readResult?.hasProfile && existing.readResult.profile) {
+          const p = existing.readResult.profile;
+          return success({
+            alreadyExists: true,
+            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use update_user_profile().",
+            profile: {
+              name: p.name,
+              bio: p.bio,
+              location: p.location,
+              skills: p.skills,
+              interests: p.interests,
+            },
+          });
+        }
+      }
+
       const hasBioOrDescription = !!query.bioOrDescription?.trim();
 
       if (hasBioOrDescription) {
         // Create/update profile from user's explicit text only; do not persist to user record
+        // Include name and location in the input if provided so the ProfileGenerator can use them
+        const inputParts: string[] = [];
+        if (query.name) inputParts.push(`Name: ${query.name}`);
+        if (query.location) inputParts.push(`Location: ${query.location}`);
+        inputParts.push(query.bioOrDescription!.trim());
+        const profileInput = inputParts.join('\n');
+        
         const result = await graphs.profile.invoke({
           userId: context.userId,
           operationMode: 'write' as const,
-          input: query.bioOrDescription!.trim(),
+          input: profileInput,
           forceUpdate: true,
         });
         if (result.error) {

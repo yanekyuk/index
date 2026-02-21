@@ -1,5 +1,4 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
-import { log } from '../lib/log';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import { fileService } from '../services/file.service';
 import { getUploadsPath } from '../lib/paths';
@@ -10,8 +9,6 @@ import busboy from 'busboy';
 import path from 'path';
 import * as fs from 'fs';
 import type { FileRecord } from '../types';
-
-const logger = log.controller.from('file');
 
 type ParsedFile = { filename: string; mimeType: string; buffer: Buffer };
 

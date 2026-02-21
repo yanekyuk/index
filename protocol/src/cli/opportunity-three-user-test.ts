@@ -18,13 +18,12 @@
  */
 import dotenv from 'dotenv';
 import path from 'path';
+import { eq, inArray } from 'drizzle-orm';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.development') });
 
-import { eq, inArray } from 'drizzle-orm';
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import { TESTABLE_TEST_ACCOUNTS } from './test-data';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -32,9 +31,10 @@ import type { HydeGraphDatabase, OpportunityGraphDatabase } from '../lib/protoco
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
-import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { opportunityQueue } from '../queues/opportunity.queue';
+
+import { TESTER_PERSONAS } from './test-data';
 
 const INDEX_ID = '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c'; // Commons from seed
 const DIMENSIONS = 2000;
@@ -42,7 +42,7 @@ const DIMENSIONS = 2000;
 async function main() {
   console.log('=== Three-user opportunity test ===\n');
 
-  const emails = TESTABLE_TEST_ACCOUNTS.map((a) => a.email);
+  const emails = TESTER_PERSONAS.slice(0, 3).map((a) => a.email);
   const userRows = await db
     .select({ id: schema.users.id, email: schema.users.email, name: schema.users.name })
     .from(schema.users)
