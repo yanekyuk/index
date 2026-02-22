@@ -5,6 +5,7 @@
  */
 
 import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
+import { stripUuids } from "./opportunity.sanitize";
 
 /**
  * Splits text into sentences using (?<=[.!?])\s+ (period/exclamation/question followed by whitespace).
@@ -35,7 +36,7 @@ export function viewerCentricCardSummary(
   counterpartName: string,
   maxChars: number = MINIMAL_MAIN_TEXT_MAX_CHARS,
 ): string {
-  const raw = reasoning.trim();
+  const raw = stripUuids(reasoning);
   if (!raw) return "A suggested connection.";
 
   const name = counterpartName.trim();

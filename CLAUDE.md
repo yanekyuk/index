@@ -112,7 +112,7 @@ The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, c
 
 All agents extend `BaseLangChainAgent` which wraps LangChain's ChatOpenAI model (configured for OpenRouter). Agents use Zod schemas for structured output validation.
 
-**LangGraph Patterns** (see `.rules` for full details):
+**LangGraph Patterns** (see `.cursor/rules/langgraph-patterns.mdc` for full details):
 
 - Use graphs only for **complex, multi-step workflows with conditional logic**
 - Don't use graphs for simple CRUD or linear agent calls
@@ -252,6 +252,24 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 **UI Libraries**: Tailwind CSS, Radix UI, Lucide React, Ant Design, react-markdown
 
 ## Important Patterns & Conventions
+
+### Protocol Layering Rules
+
+Strict layering: **Controllers -> Services -> Adapters**. Violations cause tight coupling and testing pain.
+
+1. **Only `services` may import `adapters`.** Controllers and other layers must not depend on adapters directly.
+2. **`lib` implementations** that need infrastructure must receive **adapters via constructor injection**, following the contract defined in `src/lib/protocol/interfaces/*.interface.ts`. They do not import adapters; they are injected.
+3. **`controllers`** import and call **`services`** (or protocol graph factories) to perform operations. Controllers handle HTTP and delegate business logic.
+4. **`services` must not import other `services`.** Cross-service orchestration should use events, queues, or the shared lib/graph layer.
+
+### Template Files
+
+Each layer has a `*.template.md` with coding guidelines. Consult before adding or changing code:
+
+- `protocol/src/controllers/controller.template.md`
+- `protocol/src/services/service.template.md`
+- `protocol/src/queues/queue.template.md`
+- `protocol/src/lib/protocol/agents/agent.template.md`
 
 ### Adapter Pattern
 
@@ -406,9 +424,15 @@ bun test path/to/test.ts   # Specific test file
 - E2E tests: Test full API workflows
 - Smoke tests: Test external integrations (crawl4ai, etc.)
 
-**Bun Test Standards** (see `.rules` for full details):
+**Bun Test Standards** (see `.cursor/rules/bun-test-standards.mdc` for full details):
 
-- Load environment variables at the top of test files (`dotenv` with `.env.development`)
+- Load environment variables at the top of test files before other imports:
+  ```typescript
+  import { config } from "dotenv";
+  config({ path: '.env.development', override: true });
+
+  import { describe, expect, it } from "bun:test";
+  ```
 - Import test utilities from `bun:test` (destructured: `describe`, `expect`, `it`, etc.)
 - Group related tests with descriptive `describe` blocks
 - Write clear, specific test descriptions explaining behavior and expected outcome
@@ -417,10 +441,12 @@ bun test path/to/test.ts   # Specific test file
   - Agent inference: 30000ms
   - Graph operations: 60000ms
   - LLM operations: 120000ms
-- Use lifecycle hooks (`beforeAll`, `afterAll`) with proper cleanup
+- Use lifecycle hooks (`beforeAll`, `afterAll`) with proper cleanup — always clean up DB records in `afterAll`
 - Make assertions specific (not just `.toBeTruthy()`)
-- Mock external dependencies for isolation
+- Mock external dependencies for isolation; use `mock()` from `bun:test` for function mocking
 - Test both success and error paths
+- Use realistic, representative test data (not minimal stubs)
+- Use test modifiers when appropriate: `it.skip()`, `it.todo()`, `it.only()`, `it.failing()`
 
 ## Database Workflow
 
@@ -535,7 +561,7 @@ All files in the protocol directory should follow the pattern: `{domain}.{purpos
 - `main.ts` - Application entry points
 - Single-purpose utility files at root level (e.g., `constants.ts`, `types.ts`)
 
-See `.rules` for full details and examples.
+See `.cursor/rules/file-naming-convention.mdc` for full details and examples.
 
 ### Import Ordering
 
@@ -557,6 +583,26 @@ import { something } from "../something";
 import { local } from "./nearby";
 ```
 
+### TSDoc
+
+- Add **TSDoc comments** for all **classes** (summary and, when useful, `@remarks` or `@example`)
+- Add **TSDoc comments** for all **public methods** (summary, `@param`, `@returns`, `@throws` where relevant)
+
+```typescript
+/**
+ * Handles intent lifecycle and persistence.
+ * @remarks Delegates to adapters for DB and queue; does not call other services.
+ */
+export class IntentService {
+  /**
+   * Creates an intent and enqueues indexing jobs.
+   * @param input - Validated intent payload
+   * @returns The created intent with id
+   */
+  async create(input: CreateIntentInput): Promise<Intent> { ... }
+}
+```
+
 ### Agents
 
 - Extend `BaseLangChainAgent` for consistency
@@ -572,11 +618,13 @@ import { local } from "./nearby";
 - Emit events after successful operations
 - Return typed results
 - Use Drizzle for type-safe queries
+- **Must not import other services** — use events, queues, or shared lib for cross-service orchestration
 
 ### Controllers
 
 - Controllers handle HTTP (request/response) and delegate business logic to services or protocol graphs
 - They may accept adapters (database, queue) via constructor injection for testability
+- **Must not import adapters directly** — only services may import adapters
 
 ### API Routes
 
@@ -664,12 +712,3 @@ test/chat-controller
 - `stream-chat` - Real-time chat
 - `react-markdown` - Markdown rendering
 
-## Convex Guidelines (from .cursor/rules)
-
-**Note**: The project includes Convex guidelines in `.cursor/rules/convex_rules.mdc`. While this codebase doesn't currently use Convex, the file contains patterns for:
-- Function syntax and registration
-- Schema design with validators
-- Query/mutation/action patterns
-- TypeScript best practices
-
-These guidelines are preserved for reference but don't apply to the current Drizzle-based architecture.

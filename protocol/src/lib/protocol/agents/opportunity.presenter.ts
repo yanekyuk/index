@@ -16,6 +16,7 @@ import { viewerCentricCardSummary } from "../support/opportunity.card-text";
 import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 import { Timed } from "../../performance";
+import { stripUuids } from "../support/opportunity.sanitize";
 
 /**
  * Minimal database interface required by gatherPresenterContext.
@@ -311,6 +312,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
       ];
       const result = await this.invokeWithTimeout(this.model, messages);
       const parsed = responseFormat.parse(result);
+      parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
       return parsed.presentation;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -324,7 +326,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
       );
       return {
         headline: "A promising connection",
-        personalizedSummary: input.matchReasoning.slice(0, 300),
+        personalizedSummary: stripUuids(input.matchReasoning.slice(0, 300)),
         suggestedAction: "Take a look and decide whether to reach out.",
       };
     }
@@ -372,6 +374,8 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       ];
       const result = await this.invokeWithTimeout(this.homeCardModel, messages);
       const parsed = homeCardResponseFormat.parse(result);
+      parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
+      parsed.presentation.narratorRemark = stripUuids(parsed.presentation.narratorRemark);
       return parsed.presentation;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -386,7 +390,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       const isIntroducer = input.viewerRole === "introducer";
       return {
         headline: "A promising connection",
-        personalizedSummary: input.matchReasoning.slice(0, 300),
+        personalizedSummary: stripUuids(input.matchReasoning.slice(0, 300)),
         suggestedAction: isIntroducer
           ? "Share this introduction to get things started."
           : "Take a look and decide whether to reach out.",
@@ -612,7 +616,7 @@ export async function gatherPresenterContext(
   const matchReasoning =
     counterpartName && interp.reasoning
       ? viewerCentricCardSummary(interp.reasoning, counterpartName, 400)
-      : interp.reasoning;
+      : stripUuids(interp.reasoning);
 
   const result: PresenterInput = {
     viewerContext,

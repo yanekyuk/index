@@ -7,6 +7,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import type { HydeStrategy } from "./hyde.strategies";
 import type { OpportunityStatus } from "../interfaces/database.interface";
 import { Timed } from "../../performance";
+import { stripUuids } from "../support/opportunity.sanitize";
 
 const logger = protocolLogger("OpportunityEvaluator");
 
@@ -326,6 +327,7 @@ export class OpportunityEvaluator {
 
       const mappedOpportunities = output.opportunities.map((op: Opportunity) => ({
         ...op,
+        reasoning: stripUuids(op.reasoning),
         candidateId: candidateUserId,
       }));
 
@@ -387,6 +389,9 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
     try {
       const result = await this.entityBundleModel.invoke(messages);
       const parsed = entityBundleResponseFormat.parse(result);
+      for (const op of parsed.opportunities) {
+        op.reasoning = stripUuids(op.reasoning);
+      }
       parsedTotal = parsed.opportunities.length;
       const introGuard =
         input.introductionMode
