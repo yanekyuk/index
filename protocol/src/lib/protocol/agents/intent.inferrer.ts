@@ -3,6 +3,7 @@ import { HumanMessage, SystemMessage, BaseMessage } from "@langchain/core/messag
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
+import { Timed } from "../../performance";
 
 const logger = protocolLogger("ExplicitIntentInferrer");
 
@@ -150,6 +151,7 @@ export class ExplicitIntentInferrer {
    * @param profileContext - The formatted profile context string.
    * @param options - Options controlling inference behavior (fallback, operation mode, conversation context).
    */
+  @Timed()
   public async invoke(
     content: string | null,
     profileContext: string,

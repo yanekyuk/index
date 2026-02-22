@@ -3,6 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { log } from "../../log";
+import { Timed } from "../../performance";
 
 // ──────────────────────────────────────────────────────────────
 // Response schema
@@ -110,6 +111,7 @@ export class IntentIndexer {
    * @param sourceName - Optional source name for context (e.g. file, link).
    * @returns Structured output with indexScore, memberScore, and reasoning, or null on error.
    */
+  @Timed()
   public async invoke(
     intent: string,
     indexPrompt: string | null,
@@ -157,6 +159,7 @@ export class IntentIndexer {
    * Alias for invoke. Evaluates the appropriateness of an intent for a given index and member context.
    * Kept for compatibility with callers (e.g. Index Graph) that use evaluate().
    */
+  @Timed()
   public async evaluate(
     intent: string,
     indexPrompt: string | null,

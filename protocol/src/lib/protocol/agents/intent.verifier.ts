@@ -3,6 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
+import { Timed } from "../../performance";
 
 const logger = protocolLogger("SemanticVerifier");
 
@@ -127,6 +128,7 @@ export class SemanticVerifier {
    * @param content - The user's raw utterance.
    * @param context - The User Profile as a JSON string.
    */
+  @Timed()
   public async invoke(content: string, context: string) {
     logger.info(`[SemanticVerifier.invoke] Verifying: "${content.substring(0, 30)}..."`);
 

@@ -2,6 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
+import { Timed } from "../../performance";
 
 const logger = protocolLogger("IntentClarifier");
 
@@ -102,6 +103,7 @@ export class IntentClarifier {
     );
   }
 
+  @Timed()
   public async invoke(
     description: string,
     profileContext: string,

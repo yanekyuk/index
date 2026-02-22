@@ -3,6 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
+import { Timed } from "../../performance";
 
 const logger = protocolLogger("IntentReconciler");
 
@@ -147,6 +148,7 @@ export class IntentReconciler {
    * @param inferredIntentsFormatted - Formatted string of inferred intents.
    * @param activeIntentsContext - Formatted string of active intents.
    */
+  @Timed()
   public async invoke(inferredIntentsFormatted: string, activeIntentsContext: string) {
     logger.info(`[IntentReconciler.invoke] Reconciling intents...`);
 
