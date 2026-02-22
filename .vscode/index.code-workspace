@@ -24,8 +24,12 @@
         }
     ],
     "settings": {
-        // Activate the theme (optional if you already selected it manually)
+        "workbench.colorTheme": "Claude Dark",
         "workbench.iconTheme": "material-icon-theme",
+        "editor.fontFamily": "'JetBrains Mono', 'IBM Plex Mono','Fira Code','Source Code Pro', monospace",
+        "editor.fontLigatures": true,
+        "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font', 'IBM Plex Mono', monospace",
+        "terminal.integrated.fontLigatures.enabled": true,
         // Map specific Root Folder Names (case-sensitive) to Icon Names
         "material-icon-theme.rootFolders.associations": {
             "Index": "core", // Maps "Index" to the 'core' icon
