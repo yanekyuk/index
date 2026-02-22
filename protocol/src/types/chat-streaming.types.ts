@@ -20,7 +20,9 @@ export type ChatStreamEventType =
   | "tool_end"
   | "agent_thinking"
   // Streaming narration events
-  | "tool_activity";
+  | "tool_activity"
+  // Internal response tracking events
+  | "response_complete";
 
 /**
  * Base interface for all chat stream events.
@@ -231,6 +233,16 @@ export interface ToolActivityEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Internal event carrying the agent's authoritative final response text.
+ * Emitted by the streamer after the graph completes. Not forwarded to the frontend SSE stream.
+ */
+export interface ResponseCompleteEvent extends ChatStreamEventBase {
+  type: "response_complete";
+  /** The agent's final response text (from the last iteration only) */
+  response: string;
+}
+
+/**
  * Union type of all chat stream events.
  */
 export type ChatStreamEvent =
@@ -247,7 +259,9 @@ export type ChatStreamEvent =
   | ToolEndEvent
   | AgentThinkingEvent
   // Streaming narration events
-  | ToolActivityEvent;
+  | ToolActivityEvent
+  // Internal response tracking events
+  | ResponseCompleteEvent;
 
 /**
  * Formats a chat stream event as an SSE message. If JSON.stringify throws (e.g. circular ref,
@@ -492,4 +506,18 @@ export function createToolActivityEvent(
     success,
     summary,
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INTERNAL RESPONSE TRACKING EVENT CREATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a formatted response complete event.
+ */
+export function createResponseCompleteEvent(
+  sessionId: string,
+  response: string,
+): ResponseCompleteEvent {
+  return createStreamEvent<ResponseCompleteEvent>("response_complete", sessionId, { response });
 }
