@@ -48,7 +48,8 @@
             "adapters": "database",
             "index": "public",
             "smartest": "test",
-        }
+        },
+        "claudeCode.preferredLocation": "sidebar"
     },
     "tasks": {
         "version": "2.0.0",
