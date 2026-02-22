@@ -23,6 +23,7 @@ import { HomeCategorizerAgent } from '../agents/home.categorizer';
 import { canUserSeeOpportunity, isActionableForViewer } from '../support/opportunity.utils';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { protocolLogger } from '../support/protocol.logger';
+import { timed } from '../../performance';
 
 const logger = protocolLogger('HomeGraph');
 
@@ -188,51 +189,54 @@ export class HomeGraphFactory {
     const categorizer = new HomeCategorizerAgent();
 
     const loadOpportunitiesNode = async (state: typeof HomeGraphState.State) => {
-      if (!state.userId) {
-        return { error: 'userId is required' };
-      }
-      try {
-        const fetchLimit = Math.min(150, Math.max(state.limit * 3, state.limit));
-        const options: { limit?: number; indexId?: string } = {
-          limit: fetchLimit,
-        };
-        if (state.indexId) options.indexId = state.indexId;
-        const raw = await this.database.getOpportunitiesForUser(state.userId, options);
-        const visible = raw.filter((opp) =>
-          canUserSeeOpportunity(opp.actors, opp.status, state.userId)
-        );
-        const visibleForFeed = visible.filter((opp) =>
-          isActionableForViewer(opp.actors, opp.status, state.userId)
-        );
-        const expired = raw.filter(
-          (opp) =>
-            opp.status === 'expired' && canUserSeeOpportunity(opp.actors, opp.status, state.userId)
-        );
-        const sorted = [...visibleForFeed].sort((a, b) => {
-          const confA = getConfidence(a);
-          const confB = getConfidence(b);
-          if (confB !== confA) return confB - confA;
-          const aTime = safeParseDate(a.updatedAt);
-          const bTime = safeParseDate(b.updatedAt);
-          return bTime - aTime;
-        });
-        const seenUserIds = new Set<string>();
-        const deduped = sorted.filter((opp) => {
-          const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
-          const hasOverlap = [...counterpartIds].some((id) => seenUserIds.has(id));
-          if (hasOverlap) return false;
-          for (const id of counterpartIds) seenUserIds.add(id);
-          return true;
-        });
-        const opportunities = deduped.slice(0, state.limit);
-        return { opportunities, expired };
-      } catch (e) {
-        logger.error('HomeGraph loadOpportunities failed', { error: e });
-        return { error: 'Failed to load opportunities', opportunities: [], expired: [] };
-      }
+      return timed("HomeGraph.loadOpportunities", async () => {
+        if (!state.userId) {
+          return { error: 'userId is required' };
+        }
+        try {
+          const fetchLimit = Math.min(150, Math.max(state.limit * 3, state.limit));
+          const options: { limit?: number; indexId?: string } = {
+            limit: fetchLimit,
+          };
+          if (state.indexId) options.indexId = state.indexId;
+          const raw = await this.database.getOpportunitiesForUser(state.userId, options);
+          const visible = raw.filter((opp) =>
+            canUserSeeOpportunity(opp.actors, opp.status, state.userId)
+          );
+          const visibleForFeed = visible.filter((opp) =>
+            isActionableForViewer(opp.actors, opp.status, state.userId)
+          );
+          const expired = raw.filter(
+            (opp) =>
+              opp.status === 'expired' && canUserSeeOpportunity(opp.actors, opp.status, state.userId)
+          );
+          const sorted = [...visibleForFeed].sort((a, b) => {
+            const confA = getConfidence(a);
+            const confB = getConfidence(b);
+            if (confB !== confA) return confB - confA;
+            const aTime = safeParseDate(a.updatedAt);
+            const bTime = safeParseDate(b.updatedAt);
+            return bTime - aTime;
+          });
+          const seenUserIds = new Set<string>();
+          const deduped = sorted.filter((opp) => {
+            const counterpartIds = getUniqueCounterpartUserIds(opp, state.userId);
+            const hasOverlap = [...counterpartIds].some((id) => seenUserIds.has(id));
+            if (hasOverlap) return false;
+            for (const id of counterpartIds) seenUserIds.add(id);
+            return true;
+          });
+          const opportunities = deduped.slice(0, state.limit);
+          return { opportunities, expired };
+        } catch (e) {
+          logger.error('HomeGraph loadOpportunities failed', { error: e });
+          return { error: 'Failed to load opportunities', opportunities: [], expired: [] };
+        }
+      });
     };
 
     const generateCardTextNode = async (state: typeof HomeGraphState.State) => {
+      return timed("HomeGraph.generateCardText", async () => {
       logger.info('[HomeGraph:generateCardText] entry', { opportunitiesLength: state.opportunities.length, userId: state.userId });
       if (state.opportunities.length === 0) {
         logger.info('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
@@ -383,71 +387,76 @@ export class HomeGraphFactory {
         cards,
         meta: { totalOpportunities: state.opportunities.length, totalSections: 0 },
       };
+      });
     };
 
     const categorizeDynamicallyNode = async (state: typeof HomeGraphState.State) => {
-      logger.info('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
-      if (state.cards.length === 0) {
-        logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
-        return { sectionProposals: [] };
-      }
-      const categorizerInput = state.cards.map((c) => ({
-        index: c._cardIndex,
-        headline: c.headline,
-        mainText: c.mainText,
-        name: c.name,
-        viewerRole:
-          c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
-            ? 'introducer'
-            : undefined,
-        opportunityStatus:
-          c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
-            ? 'pending'
-            : undefined,
-      }));
-      const { sections } = await categorizer.categorize(categorizerInput);
-      const proposals: HomeSectionProposal[] = sections.map((s) => ({
-        ...s,
-        itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
-      }));
-      logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
-      return { sectionProposals: proposals };
+      return timed("HomeGraph.categorizeDynamically", async () => {
+        logger.info('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
+        if (state.cards.length === 0) {
+          logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
+          return { sectionProposals: [] };
+        }
+        const categorizerInput = state.cards.map((c) => ({
+          index: c._cardIndex,
+          headline: c.headline,
+          mainText: c.mainText,
+          name: c.name,
+          viewerRole:
+            c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
+              ? 'introducer'
+              : undefined,
+          opportunityStatus:
+            c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
+              ? 'pending'
+              : undefined,
+        }));
+        const { sections } = await categorizer.categorize(categorizerInput);
+        const proposals: HomeSectionProposal[] = sections.map((s) => ({
+          ...s,
+          itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
+        }));
+        logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
+        return { sectionProposals: proposals };
+      });
     };
 
     const normalizeAndSortNode = async (state: typeof HomeGraphState.State) => {
-      const cards = state.cards;
-      const proposals = state.sectionProposals;
-      logger.info('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
-      if (cards.length === 0) {
-        logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
-        return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
-      }
-      const usedIndices = new Set<number>();
-      const sections: HomeSection[] = proposals.map((p) => {
-        const iconName = resolveHomeSectionIcon(p.iconName);
-        const items: HomeSectionItem[] = p.itemIndices
-          .filter((i) => i >= 0 && i < cards.length && !usedIndices.has(i))
-          .slice(0, MAX_ITEMS_PER_SECTION)
-          .map((i) => {
-            usedIndices.add(i);
-            const card = cards[i];
-            const { _cardIndex, ...rest } = card;
-            return rest;
-          });
-        return {
-          id: p.id,
-          title: p.title,
-          subtitle: p.subtitle,
-          iconName,
-          items,
+      return timed("HomeGraph.normalizeAndSort", async () => {
+        const cards = state.cards;
+        const proposals = state.sectionProposals;
+        logger.info('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
+        if (cards.length === 0) {
+          logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
+          return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
+        }
+        const usedIndices = new Set<number>();
+        const sections: HomeSection[] = proposals.map((p) => {
+          const iconName = resolveHomeSectionIcon(p.iconName);
+          const items: HomeSectionItem[] = p.itemIndices
+            .filter((i) => i >= 0 && i < cards.length && !usedIndices.has(i))
+            .slice(0, MAX_ITEMS_PER_SECTION)
+            .map((i) => {
+              usedIndices.add(i);
+              const card = cards[i];
+              const { _cardIndex, ...rest } = card;
+              return rest;
+            });
+          return {
+            id: p.id,
+            title: p.title,
+            subtitle: p.subtitle,
+            iconName,
+            items,
+          };
+        });
+        const meta = {
+          totalOpportunities: state.opportunities.length,
+          totalSections: sections.length,
         };
+        logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
+        return { sections, meta };
       });
-      const meta = {
-        totalOpportunities: state.opportunities.length,
-        totalSections: sections.length,
-      };
-      logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
-      return { sections, meta };
     };
 
     const graph = new StateGraph(HomeGraphState)

@@ -10,6 +10,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import { chatSessionService } from "../../../services/chat.service";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "../support/chat.utils";
 import { ChatStreamer } from "../streamers";
+import { timed } from "../../performance";
 
 const logger = protocolLogger("ChatGraphFactory");
 
@@ -192,98 +193,100 @@ export class ChatGraphFactory {
       state: typeof ChatGraphState.State,
       config: LangGraphRunnableConfig
     ) => {
-      logger.info("Agent loop starting", {
-        userId: state.userId,
-        messageCount: state.messages.length,
-        currentIteration: state.iterationCount
-      });
-
-      const runLoop = async (): Promise<{
-        responseText: string;
-        messages: BaseMessage[];
-        iterationCount: number;
-      }> => {
-        const indexId = state.indexId;
-        const agent = await ChatAgent.create({
+      return timed("ChatGraph.agentLoop", async () => {
+        logger.info("Agent loop starting", {
           userId: state.userId,
-          database,
-          embedder,
-          scraper,
-          indexId,
+          messageCount: state.messages.length,
+          currentIteration: state.iterationCount
         });
-        // Direct streaming writer - emit events immediately instead of buffering
-        const directWriter = (data: unknown) => {
-          try {
-            config.writer?.(data);
-          } catch {
-            /* swallow if writer is gone */
+
+        const runLoop = async (): Promise<{
+          responseText: string;
+          messages: BaseMessage[];
+          iterationCount: number;
+        }> => {
+          const indexId = state.indexId;
+          const agent = await ChatAgent.create({
+            userId: state.userId,
+            database,
+            embedder,
+            scraper,
+            indexId,
+          });
+          // Direct streaming writer - emit events immediately instead of buffering
+          const directWriter = (data: unknown) => {
+            try {
+              config.writer?.(data);
+            } catch {
+              /* swallow if writer is gone */
+            }
+          };
+          const result = await agent.streamRun(state.messages, directWriter);
+          return result;
+        };
+
+        try {
+          const result = await runLoop();
+          logger.debug("Agent streamRun result", {
+            responseText: result.responseText,
+            iterationCount: result.iterationCount,
+            messageCount: result.messages.length,
+          });
+          logger.info("Agent loop complete", {
+            userId: state.userId,
+            iterations: result.iterationCount,
+            responseLength: result.responseText.length
+          });
+          return {
+            messages: result.messages,
+            responseText: result.responseText,
+            iterationCount: result.iterationCount,
+            shouldContinue: false,
+          };
+        } catch (error) {
+          if (isRetriableError(error)) {
+            logger.warn("Agent loop failed with retriable error, retrying once", {
+              userId: state.userId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+            await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            try {
+              const result = await runLoop();
+              logger.info("Agent loop complete after retry", {
+                userId: state.userId,
+                iterations: result.iterationCount,
+              });
+              return {
+                messages: result.messages,
+                responseText: result.responseText,
+                iterationCount: result.iterationCount,
+                shouldContinue: false,
+              };
+            } catch (retryError) {
+              logger.error("Agent loop failed on retry", {
+                userId: state.userId,
+                error: retryError instanceof Error ? retryError.message : String(retryError)
+              });
+              return {
+                error: retryError instanceof Error ? retryError.message : "Agent loop failed",
+                responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
+                shouldContinue: false
+              };
+            }
           }
-        };
-        const result = await agent.streamRun(state.messages, directWriter);
-        return result;
-      };
 
-      try {
-        const result = await runLoop();
-        logger.debug("Agent streamRun result", {
-          responseText: result.responseText,
-          iterationCount: result.iterationCount,
-          messageCount: result.messages.length,
-        });
-        logger.info("Agent loop complete", {
-          userId: state.userId,
-          iterations: result.iterationCount,
-          responseLength: result.responseText.length
-        });
-        return {
-          messages: result.messages,
-          responseText: result.responseText,
-          iterationCount: result.iterationCount,
-          shouldContinue: false,
-        };
-      } catch (error) {
-        if (isRetriableError(error)) {
-          logger.warn("Agent loop failed with retriable error, retrying once", {
+          logger.error("Agent loop failed", {
             userId: state.userId,
             error: error instanceof Error ? error.message : String(error)
           });
-          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
-          try {
-            const result = await runLoop();
-            logger.info("Agent loop complete after retry", {
-              userId: state.userId,
-              iterations: result.iterationCount,
-            });
-            return {
-              messages: result.messages,
-              responseText: result.responseText,
-              iterationCount: result.iterationCount,
-              shouldContinue: false,
-            };
-          } catch (retryError) {
-            logger.error("Agent loop failed on retry", {
-              userId: state.userId,
-              error: retryError instanceof Error ? retryError.message : String(retryError)
-            });
-            return {
-              error: retryError instanceof Error ? retryError.message : "Agent loop failed",
-              responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
-              shouldContinue: false
-            };
-          }
+
+          return {
+            error: error instanceof Error ? error.message : "Agent loop failed",
+            responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
+            shouldContinue: false
+          };
         }
-
-        logger.error("Agent loop failed", {
-          userId: state.userId,
-          error: error instanceof Error ? error.message : String(error)
-        });
-
-        return {
-          error: error instanceof Error ? error.message : "Agent loop failed",
-          responseText: "I apologize, but I encountered an issue processing your request. Please try again.",
-          shouldContinue: false
-        };
-      }
+      });
     };
 
     // ─────────────────────────────────────────────────────────────────────────

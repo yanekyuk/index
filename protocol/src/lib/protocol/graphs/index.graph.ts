@@ -2,6 +2,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { IndexGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
+import { timed } from "../../performance";
 
 import { IndexGraphState } from "../states/index.state";
 
@@ -27,177 +28,185 @@ export class IndexGraphFactory {
      * Read Node: List indexes the user belongs to and owns.
      */
     const readNode = async (state: typeof IndexGraphState.State) => {
-      logger.info("Read indexes", { userId: state.userId, indexId: state.indexId, showAll: state.showAll });
+      return timed("IndexGraph.read", async () => {
+        logger.info("Read indexes", { userId: state.userId, indexId: state.indexId, showAll: state.showAll });
 
-      try {
-        const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
-          this.database.getIndexMemberships(state.userId),
-          this.database.getOwnedIndexes(state.userId),
-          this.database.getPublicIndexesNotJoined(state.userId),
-        ]);
+        try {
+          const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
+            this.database.getIndexMemberships(state.userId),
+            this.database.getOwnedIndexes(state.userId),
+            this.database.getPublicIndexesNotJoined(state.userId),
+          ]);
 
-        // If index-scoped and not showAll, return just that index (no public indexes in scoped view)
-        const scopeToCurrentIndex = state.indexId && !state.showAll;
-        if (scopeToCurrentIndex) {
-          const indexId = state.indexId!;
-          const isMember = await this.database.isIndexMember(indexId, state.userId);
-          if (!isMember) {
+          // If index-scoped and not showAll, return just that index (no public indexes in scoped view)
+          const scopeToCurrentIndex = state.indexId && !state.showAll;
+          if (scopeToCurrentIndex) {
+            const indexId = state.indexId!;
+            const isMember = await this.database.isIndexMember(indexId, state.userId);
+            if (!isMember) {
+              return {
+                readResult: {
+                  memberOf: [],
+                  owns: [],
+                  summary: { memberOfCount: 0, ownsCount: 0, scopeNote: "Index not found or you are not a member." },
+                },
+              };
+            }
+            const membership = allMemberships.find((m) => m.indexId === indexId);
+            const owned = ownedIndexes.find((o) => o.id === indexId);
             return {
               readResult: {
-                memberOf: [],
-                owns: [],
-                summary: { memberOfCount: 0, ownsCount: 0, scopeNote: "Index not found or you are not a member." },
+                memberOf: membership
+                  ? [{ indexId: membership.indexId, title: membership.indexTitle, description: membership.indexPrompt, autoAssign: membership.autoAssign, joinedAt: membership.joinedAt }]
+                  : [],
+                owns: owned
+                  ? [{ indexId: owned.id, title: owned.title, description: owned.prompt, memberCount: owned.memberCount, intentCount: owned.intentCount, joinPolicy: owned.permissions.joinPolicy }]
+                  : [],
+                summary: { memberOfCount: membership ? 1 : 0, ownsCount: owned ? 1 : 0, scopeNote: "Showing current index. Use showAll: true for all indexes." },
               },
             };
           }
-          const membership = allMemberships.find((m) => m.indexId === indexId);
-          const owned = ownedIndexes.find((o) => o.id === indexId);
+
+          // Include public indexes available to join
+          const publicIndexes = publicIndexesResult.indexes.map((idx) => ({
+            indexId: idx.id,
+            title: idx.title,
+            description: idx.prompt,
+            memberCount: idx.memberCount,
+            owner: idx.owner,
+          }));
+
           return {
             readResult: {
-              memberOf: membership
-                ? [{ indexId: membership.indexId, title: membership.indexTitle, description: membership.indexPrompt, autoAssign: membership.autoAssign, joinedAt: membership.joinedAt }]
-                : [],
-              owns: owned
-                ? [{ indexId: owned.id, title: owned.title, description: owned.prompt, memberCount: owned.memberCount, intentCount: owned.intentCount, joinPolicy: owned.permissions.joinPolicy }]
-                : [],
-              summary: { memberOfCount: membership ? 1 : 0, ownsCount: owned ? 1 : 0, scopeNote: "Showing current index. Use showAll: true for all indexes." },
+              memberOf: allMemberships.map((m) => ({ indexId: m.indexId, title: m.indexTitle, description: m.indexPrompt, autoAssign: m.autoAssign, joinedAt: m.joinedAt })),
+              owns: ownedIndexes.map((o) => ({ indexId: o.id, title: o.title, description: o.prompt, memberCount: o.memberCount, intentCount: o.intentCount, joinPolicy: o.permissions.joinPolicy })),
+              publicIndexes,
+              summary: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicIndexesCount: publicIndexes.length },
             },
           };
+        } catch (err) {
+          logger.error("Read indexes failed", { error: err });
+          return { error: "Failed to fetch index information." };
         }
-
-        // Include public indexes available to join
-        const publicIndexes = publicIndexesResult.indexes.map((idx) => ({
-          indexId: idx.id,
-          title: idx.title,
-          description: idx.prompt,
-          memberCount: idx.memberCount,
-          owner: idx.owner,
-        }));
-
-        return {
-          readResult: {
-            memberOf: allMemberships.map((m) => ({ indexId: m.indexId, title: m.indexTitle, description: m.indexPrompt, autoAssign: m.autoAssign, joinedAt: m.joinedAt })),
-            owns: ownedIndexes.map((o) => ({ indexId: o.id, title: o.title, description: o.prompt, memberCount: o.memberCount, intentCount: o.intentCount, joinPolicy: o.permissions.joinPolicy })),
-            publicIndexes,
-            summary: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicIndexesCount: publicIndexes.length },
-          },
-        };
-      } catch (err) {
-        logger.error("Read indexes failed", { error: err });
-        return { error: "Failed to fetch index information." };
-      }
+      });
     };
 
     /**
      * Create Node: Create a new index and add user as owner.
      */
     const createNode = async (state: typeof IndexGraphState.State) => {
-      logger.info("Create index", { userId: state.userId, createInput: state.createInput });
+      return timed("IndexGraph.create", async () => {
+        logger.info("Create index", { userId: state.userId, createInput: state.createInput });
 
-      if (!state.createInput?.title?.trim()) {
-        return { mutationResult: { success: false, error: "Title is required." } };
-      }
-
-      let createdIndexId: string | undefined;
-      try {
-        const index = await this.database.createIndex({
-          title: state.createInput.title.trim(),
-          prompt: state.createInput.prompt?.trim() || undefined,
-          joinPolicy: state.createInput.joinPolicy,
-        });
-        createdIndexId = index.id;
-
-        const added = await this.database.addMemberToIndex(index.id, state.userId, 'owner');
-        if (!added.success) {
-          logger.error("addMemberToIndex failed; cleaning up orphaned index", { indexId: index.id });
-          try { await this.database.softDeleteIndex(index.id); } catch {}
-          return { mutationResult: { success: false, error: "Failed to set you as owner. Index was not created." } };
+        if (!state.createInput?.title?.trim()) {
+          return { mutationResult: { success: false, error: "Title is required." } };
         }
 
-        return {
-          mutationResult: {
-            success: true,
-            indexId: index.id,
-            title: index.title,
-            message: `Index "${index.title}" created. You are the owner.`,
-          },
-        };
-      } catch (err) {
-        logger.error("Create index failed", { error: err });
-        if (createdIndexId) {
-          try { await this.database.softDeleteIndex(createdIndexId); } catch {}
+        let createdIndexId: string | undefined;
+        try {
+          const index = await this.database.createIndex({
+            title: state.createInput.title.trim(),
+            prompt: state.createInput.prompt?.trim() || undefined,
+            joinPolicy: state.createInput.joinPolicy,
+          });
+          createdIndexId = index.id;
+
+          const added = await this.database.addMemberToIndex(index.id, state.userId, 'owner');
+          if (!added.success) {
+            logger.error("addMemberToIndex failed; cleaning up orphaned index", { indexId: index.id });
+            try { await this.database.softDeleteIndex(index.id); } catch {}
+            return { mutationResult: { success: false, error: "Failed to set you as owner. Index was not created." } };
+          }
+
+          return {
+            mutationResult: {
+              success: true,
+              indexId: index.id,
+              title: index.title,
+              message: `Index "${index.title}" created. You are the owner.`,
+            },
+          };
+        } catch (err) {
+          logger.error("Create index failed", { error: err });
+          if (createdIndexId) {
+            try { await this.database.softDeleteIndex(createdIndexId); } catch {}
+          }
+          return { mutationResult: { success: false, error: "Failed to create index." } };
         }
-        return { mutationResult: { success: false, error: "Failed to create index." } };
-      }
+      });
     };
 
     /**
      * Update Node: Update index settings (owner only).
      */
     const updateNode = async (state: typeof IndexGraphState.State) => {
-      const indexId = state.indexId;
-      logger.info("Update index", { userId: state.userId, indexId, updateInput: state.updateInput });
+      return timed("IndexGraph.update", async () => {
+        const indexId = state.indexId;
+        logger.info("Update index", { userId: state.userId, indexId, updateInput: state.updateInput });
 
-      if (!indexId) {
-        return { mutationResult: { success: false, error: "indexId is required for update." } };
-      }
-
-      try {
-        const isOwner = await this.database.isIndexOwner(indexId, state.userId);
-        if (!isOwner) {
-          return { mutationResult: { success: false, error: "You can only modify indexes you own." } };
+        if (!indexId) {
+          return { mutationResult: { success: false, error: "indexId is required for update." } };
         }
 
-        await this.database.updateIndexSettings(indexId, state.userId, state.updateInput ?? {});
+        try {
+          const isOwner = await this.database.isIndexOwner(indexId, state.userId);
+          if (!isOwner) {
+            return { mutationResult: { success: false, error: "You can only modify indexes you own." } };
+          }
 
-        return {
-          mutationResult: {
-            success: true,
-            indexId,
-            message: "Index settings updated.",
-          },
-        };
-      } catch (err) {
-        logger.error("Update index failed", { error: err });
-        return { mutationResult: { success: false, error: "Failed to update index." } };
-      }
+          await this.database.updateIndexSettings(indexId, state.userId, state.updateInput ?? {});
+
+          return {
+            mutationResult: {
+              success: true,
+              indexId,
+              message: "Index settings updated.",
+            },
+          };
+        } catch (err) {
+          logger.error("Update index failed", { error: err });
+          return { mutationResult: { success: false, error: "Failed to update index." } };
+        }
+      });
     };
 
     /**
      * Delete Node: Soft-delete an index (owner only, sole member).
      */
     const deleteNode = async (state: typeof IndexGraphState.State) => {
-      const indexId = state.indexId;
-      logger.info("Delete index", { userId: state.userId, indexId });
+      return timed("IndexGraph.delete", async () => {
+        const indexId = state.indexId;
+        logger.info("Delete index", { userId: state.userId, indexId });
 
-      if (!indexId) {
-        return { mutationResult: { success: false, error: "indexId is required for delete." } };
-      }
-
-      try {
-        const isOwner = await this.database.isIndexOwner(indexId, state.userId);
-        if (!isOwner) {
-          return { mutationResult: { success: false, error: "You can only delete indexes you own." } };
+        if (!indexId) {
+          return { mutationResult: { success: false, error: "indexId is required for delete." } };
         }
 
-        const count = await this.database.getIndexMemberCount(indexId);
-        if (count > 1) {
-          return { mutationResult: { success: false, error: "Cannot delete index with other members. Remove members first." } };
+        try {
+          const isOwner = await this.database.isIndexOwner(indexId, state.userId);
+          if (!isOwner) {
+            return { mutationResult: { success: false, error: "You can only delete indexes you own." } };
+          }
+
+          const count = await this.database.getIndexMemberCount(indexId);
+          if (count > 1) {
+            return { mutationResult: { success: false, error: "Cannot delete index with other members. Remove members first." } };
+          }
+
+          await this.database.softDeleteIndex(indexId);
+
+          return {
+            mutationResult: {
+              success: true,
+              indexId,
+              message: "Index deleted.",
+            },
+          };
+        } catch (err) {
+          logger.error("Delete index failed", { error: err });
+          return { mutationResult: { success: false, error: "Failed to delete index." } };
         }
-
-        await this.database.softDeleteIndex(indexId);
-
-        return {
-          mutationResult: {
-            success: true,
-            indexId,
-            message: "Index deleted.",
-          },
-        };
-      } catch (err) {
-        logger.error("Delete index failed", { error: err });
-        return { mutationResult: { success: false, error: "Failed to delete index." } };
-      }
+      });
     };
 
     // --- CONDITIONAL ROUTING ---
