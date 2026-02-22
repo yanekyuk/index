@@ -62,10 +62,10 @@ export const SOFT_ITERATION_LIMIT = 8;
 export const HARD_ITERATION_LIMIT = 12;
 
 /**
- * Extract plain text from an AIMessageChunk (string content or text blocks).
+ * Extract plain text from message content (string or structured block array).
+ * Filters to only `type: "text"` blocks, discarding tool metadata.
  */
-function extractTextFromChunk(chunk: AIMessageChunk): string {
-  const content = chunk.content;
+function extractTextContent(content: string | Array<Record<string, unknown>>): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -74,6 +74,13 @@ function extractTextFromChunk(chunk: AIMessageChunk): string {
       .join("");
   }
   return "";
+}
+
+/**
+ * Extract plain text from an AIMessageChunk (string content or text blocks).
+ */
+function extractTextFromChunk(chunk: AIMessageChunk): string {
+  return extractTextContent(chunk.content as string | Array<Record<string, unknown>>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -261,10 +268,9 @@ export class ChatAgent {
     }
 
     // No tool calls - agent is responding
-    const responseText =
-      typeof response.content === "string"
-        ? response.content
-        : JSON.stringify(response.content);
+    const responseText = extractTextContent(
+      response.content as string | Array<Record<string, unknown>>,
+    );
     logger.debug("Agent produced response (raw)", {
       iteration: iterationCount,
       responseText,
@@ -446,10 +452,9 @@ export class ChatAgent {
     ];
 
     const forcedResponse = await this.model.invoke(forceResponseMessages);
-    const responseText =
-      typeof forcedResponse.content === "string"
-        ? forcedResponse.content
-        : JSON.stringify(forcedResponse.content);
+    const responseText = extractTextContent(
+      forcedResponse.content as string | Array<Record<string, unknown>>,
+    );
     logger.debug("Agent forced response", { responseText });
 
     return {
