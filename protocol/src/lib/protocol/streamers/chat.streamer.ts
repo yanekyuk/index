@@ -5,6 +5,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import type { ChatStreamEvent } from "../../../types/chat-streaming.types";
 import {
   createErrorEvent,
+  createResponseCompleteEvent,
   createStatusEvent,
   createTokenEvent,
 } from "../../../types/chat-streaming.types";
@@ -160,16 +161,6 @@ export class ChatStreamer {
             yield createTokenEvent(sessionId, event.content);
           }
 
-          // Forward iteration_start so the controller can reset its
-          // response accumulator — only the final iteration's text
-          // should be persisted.
-          if (event.type === "iteration_start") {
-            yield createStatusEvent(
-              sessionId,
-              `__iteration_start:${event.iteration}`,
-            );
-          }
-
           // tool_activity "end" events are logged but not forwarded to
           // the frontend — the LLM's own text provides the narration.
           if (event.type === "tool_activity") {
@@ -199,11 +190,15 @@ export class ChatStreamer {
             );
           }
 
+          // Yield the agent's authoritative response text so the
+          // controller can persist it without relying on token accumulation.
+          const responseText = typeof agentOutput?.responseText === "string"
+            ? (agentOutput.responseText as string)
+            : "";
+          yield createResponseCompleteEvent(sessionId, responseText);
+
           logger.info("Agent loop complete (updates)", {
-            responseLength:
-              typeof agentOutput?.responseText === "string"
-                ? (agentOutput.responseText as string).length
-                : 0,
+            responseLength: responseText.length,
           });
         }
       }
