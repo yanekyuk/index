@@ -1,0 +1,91 @@
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { v4 as uuidv4 } from 'uuid';
+
+interface S3StorageConfig {
+  endpoint?: string;
+  region?: string;
+  credentials: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
+  bucket: string;
+  baseUrl?: string;
+}
+
+/**
+ * S3-compatible storage adapter.
+ * Structurally aligns with the protocol Storage interface.
+ */
+export class S3StorageAdapter {
+  private client: S3Client;
+  private bucket: string;
+  private baseUrl: string;
+
+  constructor(config: S3StorageConfig) {
+    this.bucket = config.bucket;
+    this.baseUrl = config.baseUrl ?? '/storage';
+    this.client = new S3Client({
+      endpoint: config.endpoint,
+      region: config.region || 'auto',
+      credentials: config.credentials,
+      forcePathStyle: false,
+    });
+  }
+
+  /**
+   * Generate the storage URL for a given key.
+   */
+  getUrl(key: string): string {
+    return `${this.baseUrl}/${key}`;
+  }
+
+  /**
+   * Upload a buffer to S3.
+   * @returns The URL to access the uploaded file
+   */
+  async uploadBuffer(buffer: Buffer, key: string, contentType: string): Promise<string> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    });
+    await this.client.send(command);
+    return this.getUrl(key);
+  }
+
+  /**
+   * Upload an avatar image to S3.
+   * @returns The URL to access the avatar
+   */
+  async uploadAvatar(
+    buffer: Buffer,
+    userId: string,
+    extension: string,
+    contentType: string,
+  ): Promise<string> {
+    const key = `avatars/${userId}/${uuidv4()}.${extension}`;
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+
+  /**
+   * Upload a base64-encoded image to S3.
+   * @returns The URL to access the image
+   */
+  async uploadBase64Image(base64Image: string, folder: string = 'feedback'): Promise<string> {
+    const matches = base64Image.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
+    let buffer: Buffer;
+    let contentType = 'image/png';
+
+    if (matches && matches.length === 3) {
+      contentType = matches[1];
+      buffer = Buffer.from(matches[2], 'base64');
+    } else {
+      buffer = Buffer.from(base64Image, 'base64');
+    }
+
+    const extension = contentType.split('/')[1] || 'png';
+    const key = `${folder}/${uuidv4()}.${extension}`;
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+}
