@@ -1,7 +1,5 @@
 # lib/redis, Cache, and Email Queue Refactor — Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Eliminate `lib/redis.ts` by splitting it into cache adapter and BullMQ module, consolidate the email queue into a template-conforming class, and remove dead code.
 
 **Architecture:** Redis connection management splits into two owners — `adapters/cache.adapter.ts` owns `getRedisClient()` for caching, `lib/bullmq/bullmq.ts` owns `getBullMQConnection()` for queue connections. The email queue becomes a class-based file in `queues/` using QueueFactory.

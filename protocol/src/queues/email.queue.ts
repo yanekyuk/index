@@ -57,13 +57,12 @@ export class EmailQueue {
     data: EmailJobData,
     options?: AddEmailJobOptions
   ): Promise<Job<EmailJobData>> {
-    const priority = options?.priority ?? 1;
     const job = await this.queue.add('send_email', data, {
-      priority: priority > 0 ? priority : undefined,
+      priority: options?.priority,
       jobId: options?.jobId,
     });
     this.queueLogger.debug(`[EmailQueue] Job added with ID: ${job.id}`, {
-      priority,
+      priority: options?.priority,
       jobId: options?.jobId,
     });
     return job;
@@ -102,7 +101,7 @@ export class EmailQueue {
     });
     this.worker.on('completed', (job) => {
       if (job) {
-        this.logger.info('Email job sent', { jobId: job.id, to: job.data.to });
+        this.logger.info('Email job sent', { jobId: job.id });
       }
     });
     this.worker.on('error', (err) => {

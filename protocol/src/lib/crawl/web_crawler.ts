@@ -1,9 +1,11 @@
 import crypto from 'crypto';
+
 import { log } from '../../lib/log';
 import type { IntegrationFile } from '../../lib/integrations';
 
-const logger = log.lib.from("lib/crawl/web_crawler.ts");
 import { extractUrlContent } from '../parallel/parallel';
+
+const logger = log.lib.from("lib/crawl/web_crawler.ts");
 
 type CrawlResult = {
   files: IntegrationFile[];

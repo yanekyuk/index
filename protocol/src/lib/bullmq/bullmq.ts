@@ -15,6 +15,7 @@ function getBullMQConnection(): RedisOptions {
 
   if (redisUrl) {
     const url = new URL(redisUrl);
+    const useTls = url.protocol === 'rediss:';
     return {
       host: url.hostname,
       port: parseInt(url.port) || 6379,
@@ -24,6 +25,7 @@ function getBullMQConnection(): RedisOptions {
       maxRetriesPerRequest: null,
       lazyConnect: false,
       enableReadyCheck: false,
+      ...(useTls && { tls: {} }),
     };
   }
 
@@ -31,6 +33,7 @@ function getBullMQConnection(): RedisOptions {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379'),
     password: process.env.REDIS_PASSWORD || undefined,
+    username: process.env.REDIS_USERNAME || undefined,
     db: parseInt(process.env.REDIS_DB || '0'),
     maxRetriesPerRequest: null,
     lazyConnect: false,

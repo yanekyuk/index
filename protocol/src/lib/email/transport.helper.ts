@@ -1,5 +1,7 @@
 import { Resend } from 'resend';
+
 import { emailQueue } from '../../queues/email.queue';
+
 import { log } from '../log';
 
 const logger = log.lib.from("lib/email/transport.helper.ts");
