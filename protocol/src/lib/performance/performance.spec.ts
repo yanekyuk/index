@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { getStats, recordTiming, resetStats } from "./performance.aggregator";
+import { timed } from "./performance.wrapper";
 
 describe("performance aggregator", () => {
   beforeEach(() => {
@@ -39,5 +40,37 @@ describe("performance aggregator", () => {
     resetStats();
     const stats = getStats();
     expect(Object.keys(stats).length).toBe(0);
+  });
+});
+
+describe("timed wrapper", () => {
+  beforeEach(() => {
+    resetStats();
+  });
+
+  it("records duration and returns result", async () => {
+    const result = await timed("test.op", async () => {
+      await new Promise((r) => setTimeout(r, 50));
+      return 42;
+    });
+
+    expect(result).toBe(42);
+    const stats = getStats();
+    expect(stats["test.op"].count).toBe(1);
+    expect(stats["test.op"].p50).toBeGreaterThanOrEqual(40);
+  });
+
+  it("records duration and rethrows on error", async () => {
+    const err = new Error("boom");
+    try {
+      await timed("test.fail", async () => {
+        throw err;
+      });
+      expect(true).toBe(false); // should not reach
+    } catch (e) {
+      expect(e).toBe(err);
+    }
+    const stats = getStats();
+    expect(stats["test.fail"].count).toBe(1);
   });
 });
