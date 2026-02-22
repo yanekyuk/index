@@ -160,6 +160,16 @@ export class ChatStreamer {
             yield createTokenEvent(sessionId, event.content);
           }
 
+          // Forward iteration_start so the controller can reset its
+          // response accumulator — only the final iteration's text
+          // should be persisted.
+          if (event.type === "iteration_start") {
+            yield createStatusEvent(
+              sessionId,
+              `__iteration_start:${event.iteration}`,
+            );
+          }
+
           // tool_activity "end" events are logged but not forwarded to
           // the frontend — the LLM's own text provides the narration.
           if (event.type === "tool_activity") {

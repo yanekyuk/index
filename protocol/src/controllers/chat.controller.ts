@@ -325,8 +325,16 @@ export class ChatController {
             if (event) {
               controller.enqueue(encoder.encode(formatSSEEvent(event)));
 
-              // Accumulate response for persistence
-              if (event.type === "token") {
+              // Accumulate response for persistence.
+              // Reset on each new agent iteration so only the final
+              // iteration's text is persisted (intermediate iterations
+              // produce narration that the model restates afterward).
+              if (
+                event.type === "status" &&
+                event.message.startsWith("__iteration_start:")
+              ) {
+                fullResponse = "";
+              } else if (event.type === "token") {
                 fullResponse += event.content;
               } else if (event.type === "routing") {
                 routingDecision = {

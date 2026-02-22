@@ -190,6 +190,23 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                 const event = JSON.parse(line.slice(6));
 
                 switch (event.type) {
+                  case "status":
+                    // When a new agent iteration starts, reset the
+                    // accumulated content so only the final iteration's
+                    // text is shown.  Intermediate narration (before tool
+                    // calls) would otherwise be duplicated.
+                    if (
+                      event.message?.startsWith("__iteration_start:")
+                    ) {
+                      setMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === assistantMessageId
+                            ? { ...msg, content: "" }
+                            : msg,
+                        ),
+                      );
+                    }
+                    break;
                   case "thinking":
                     // Legacy: kept for backward compat with old sessions
                     setMessages((prev) =>
