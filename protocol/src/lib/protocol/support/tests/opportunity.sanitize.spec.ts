@@ -40,4 +40,34 @@ describe('stripUuids', () => {
     expect(stripUuids('a  e037ca5a-d5ce-426e-80d1-37660a6a1221  b'))
       .toBe('a b');
   });
+
+  test('cleans up parens with only "and" filler after UUID removal', () => {
+    expect(stripUuids('Name (e037ca5a-d5ce-426e-80d1-37660a6a1221 and e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
+      .toBe('Name end');
+  });
+
+  test('cleans up parens with comma filler after UUID removal', () => {
+    expect(stripUuids('Name (e037ca5a-d5ce-426e-80d1-37660a6a1221, e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
+      .toBe('Name end');
+  });
+
+  test('cleans up parens with "from" and comma filler after UUID removal', () => {
+    expect(stripUuids('Name (from e037ca5a-d5ce-426e-80d1-37660a6a1221, e037ca5a-d5ce-426e-80d1-37660a6a1222) end'))
+      .toBe('Name end');
+  });
+
+  test('preserves parens with meaningful content after UUID removal', () => {
+    expect(stripUuids('Name (CEO, e037ca5a-d5ce-426e-80d1-37660a6a1221) end'))
+      .toBe('Name (CEO) end');
+  });
+
+  test('does not strip "and"/"from" in parens without UUIDs', () => {
+    expect(stripUuids('Name (CEO and CTO) end'))
+      .toBe('Name (CEO and CTO) end');
+  });
+
+  test('does not strip "from" in parens without UUIDs', () => {
+    expect(stripUuids('Name (from NY) end'))
+      .toBe('Name (from NY) end');
+  });
 });
