@@ -6,7 +6,7 @@ import { userService } from '../services/user.service';
 import { addEmailJob } from '../lib/email/queue/email.queue';
 import { opportunityNotificationTemplate } from '../lib/email/templates/opportunity-notification.template';
 import { emitOpportunityNotification } from '../lib/notification-events';
-import { getRedisClient } from '../lib/redis';
+import { getRedisClient } from '../adapters/cache.adapter';
 
 /** BullMQ queue name for opportunity notification jobs. */
 export const QUEUE_NAME = 'notification-queue';

@@ -7,7 +7,7 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { getRedisClient } from '../../lib/redis';
+import { getRedisClient } from '../cache.adapter';
 import { RedisCacheAdapter } from '../cache.adapter';
 
 const KEY_PREFIX = 'protocol:';
