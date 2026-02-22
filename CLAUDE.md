@@ -419,10 +419,12 @@ Tests use `bun test` framework. Test files are located in:
 **Run tests**:
 ```bash
 cd protocol
-bun test                    # Run all tests
+bun test path/to/test.ts   # Run specific test file (PREFERRED)
 bun test --watch           # Watch mode
-bun test path/to/test.ts   # Specific test file
+bun test                    # Run ALL tests (slow — avoid unless necessary)
 ```
+
+**Important**: Always target specific test files affected by your changes rather than running the full suite. `bun test` in protocol is slow. Use `bun test path/to/specific.spec.ts` instead.
 
 **Test Categories**:
 - Integration tests: Test agent interactions with services
