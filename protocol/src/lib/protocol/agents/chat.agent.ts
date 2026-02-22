@@ -511,6 +511,10 @@ export class ChatAgent {
         pastSoftLimit: iterationCount >= SOFT_ITERATION_LIMIT,
       });
 
+      // Reset per-iteration accumulator so only the last iteration's
+      // text is returned as the response.
+      fullResponseText = "";
+
       // ── Stream the model response token-by-token ──────────────────────
       let accumulated: AIMessageChunk | undefined;
       let iterationText = "";
@@ -677,6 +681,8 @@ export class ChatAgent {
     // ── Hard limit: force a response ──────────────────────────────────────
     logger.warn("Streaming: hit hard iteration limit", { iterationCount });
 
+    fullResponseText = "";
+
     const forceMessages = [
       ...messages,
       new SystemMessage(
@@ -684,7 +690,6 @@ export class ChatAgent {
       ),
     ];
 
-    let forcedText = "";
     let forcedAccumulated: AIMessageChunk | undefined;
     const forceStream = await this.model.stream(forceMessages);
     for await (const chunk of forceStream) {
@@ -694,7 +699,6 @@ export class ChatAgent {
       const textPart = extractTextFromChunk(chunk);
       if (textPart) {
         emit({ type: "text_chunk", content: textPart });
-        forcedText += textPart;
         fullResponseText += textPart;
       }
     }
