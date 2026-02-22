@@ -12,6 +12,7 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
+import { XmtpController } from './controllers/xmtp.controller';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { auth } from './lib/auth';
@@ -77,7 +78,7 @@ const storageAdapter = new S3StorageAdapter({
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
-controllerInstances.set(ChatController, new ChatController(getChatProvider()));
+controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(FileController, new FileController());
@@ -86,6 +87,7 @@ controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController(storageAdapter));
 controllerInstances.set(UserController, new UserController());
+controllerInstances.set(XmtpController, new XmtpController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 

@@ -49,3 +49,5 @@ dist/
 .langgraph_api
 
 email-debug.md
+
+xmtp-dev*

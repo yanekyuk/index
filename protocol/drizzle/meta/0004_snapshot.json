@@ -1,6 +1,6 @@
 {
-  "id": "1e9c7475-620c-430c-92d8-c457fc08d6c7",
-  "prevId": "2516d958-1175-450e-8dfd-ef65d281cc3f",
+  "id": "8157e0eb-bc58-416d-af5e-1e0c2cd48f9b",
+  "prevId": "c34f72d1-8e04-43bc-a15a-3acc8dd1e98f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -397,6 +397,60 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hidden_conversations": {
+      "name": "hidden_conversations",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hidden_at": {
+          "name": "hidden_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hidden_conversations_user_id_users_id_fk": {
+          "name": "hidden_conversations_user_id_users_id_fk",
+          "tableFrom": "hidden_conversations",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "hidden_conversations_user_id_conversation_id_pk": {
+          "name": "hidden_conversations_user_id_conversation_id_pk",
+          "columns": [
+            "user_id",
+            "conversation_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -1618,24 +1672,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "agent_wallet_address": {
-          "name": "agent_wallet_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "agent_wallet_encrypted_key": {
-          "name": "agent_wallet_encrypted_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "agent_xmtp_inbox_id": {
-          "name": "agent_xmtp_inbox_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -1682,13 +1718,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "wallet_address"
-          ]
-        },
-        "users_agent_wallet_address_unique": {
-          "name": "users_agent_wallet_address_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "agent_wallet_address"
           ]
         }
       },

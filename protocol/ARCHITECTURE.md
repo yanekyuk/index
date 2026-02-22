@@ -1,21 +1,27 @@
 # Index Protocol — Architecture
 
-A self-deployable, intent-driven discovery protocol for autonomous networks. Each deployment is a **network** (e.g. Index Network, Kernel, BOUN Network) with its own users, indexes, agents, and policies. This document defines the conceptual architecture: entities, relationships, access control, and interaction flows.
+A self-deployable, intent-driven discovery protocol. Each deployment is a **node** (e.g. index.network, kernel.network, boun.network) with its own users, indexes, agents, and policies.
+
+Every user is a discoverable A2A agent. Every node is an OAuth issuer. Every person has a wallet identity for encrypted human messaging. No custom protocols — every layer uses an existing standard.
 
 ---
 
 ## Table of contents
 
 1. [Entities](#1-entities)
-2. [Access tokens](#2-access-tokens)
-3. [Relationships](#3-relationships)
-4. [Registration](#4-registration)
-5. [Agent lifecycle](#5-agent-lifecycle)
-6. [Intent ownership](#6-intent-ownership)
-7. [Index membership & governance](#7-index-membership--governance)
-8. [Cross-network import](#8-cross-network-import)
-9. [Agent-to-agent interaction](#9-agent-to-agent-interaction)
-10. [Privacy model](#10-privacy-model)
+2. [Identity model](#2-identity-model)
+3. [System model](#3-system-model)
+4. [Layer 1: Identity & auth](#4-layer-1-identity--auth)
+5. [Layer 2: Per-user A2A agents](#5-layer-2-per-user-a2a-agents)
+6. [Layer 3: Human messaging (XMTP)](#6-layer-3-human-messaging-xmtp)
+7. [Layer 4: Discovery engine](#7-layer-4-discovery-engine)
+8. [Layer 5: Federation](#8-layer-5-federation)
+9. [Layer 6: Multi-client](#9-layer-6-multi-client)
+10. [Index governance](#10-index-governance)
+11. [Privacy model](#11-privacy-model)
+12. [Protocol separation](#12-protocol-separation)
+13. [Implementation phases](#13-implementation-phases)
+14. [Standards](#14-standards)
 
 ---
 
@@ -23,632 +29,490 @@ A self-deployable, intent-driven discovery protocol for autonomous networks. Eac
 
 | Entity | Description |
 |--------|-------------|
-| **Person** | A real human — outside the system. The protocol never stores or represents a person. |
-| **Network** | A self-deployed instance of the protocol with its own users and indexes. |
-| **User** | A registered identity within one network. Created when a person registers. |
-| **Index** | A named collection or community within a network (e.g. #early-adopters). |
-| **Agent** | An LLM actor that acts on behalf of a person. Belongs to the person, not to any network. |
+| **Person** | A real human — outside the system. Has a wallet (SIWE) and registers to nodes. |
+| **Node/Server** | A self-deployed instance of the protocol. OAuth issuer, hosts users, indexes, agents. |
+| **User** | A registered identity within one node. Scoped to that node. |
+| **Agent** | The user's personal A2A agent, hosted on their node. Discoverable, skill-bearing. |
 | **Intent** | A user's expressed want or need. Belongs to the user; linked to indexes secondarily. |
-
-```mermaid
-flowchart LR
-    subgraph PA[**PEOPLE**]
-        P1(Yanki)
-        P2(Seref)
-        P3(Seren)
-    end
-
-    P1 -->|registers to| N1
-    P1 -->|registers to| N3
-    P2 -->|registers to| N1
-    P2 -->|registers to| N2
-    P3 -->|registers to| N1
-    P3 -->|registers to| N2
-
-    subgraph N1[**INDEX NETWORK**]
-        subgraph N1U[Users]
-            N1U1(Yanki)
-            N1U2(Seref)
-            N1U3(Seren)
-        end
-        subgraph N1I[Indexes]
-            N1I1[[#early-adopters]]
-            N1I2[[#employee-network]]
-        end
-    end
-
-    subgraph N2[**KERNEL**]
-        subgraph N2U[Users]
-            N2U1(Seref)
-            N2U2(Seren)
-        end
-        subgraph N2I[Indexes]
-            N2I1[[#kernel-core]]
-        end
-    end
-
-    subgraph N3[**BOUN NETWORK**]
-        subgraph N3U[Users]
-            N3U1(Yanki)
-        end
-        subgraph N3I[Indexes]
-            N3I1[[#boun-alumni]]
-        end
-    end
-
-    style PA fill:#9443,stroke:#944,stroke-width:2.5px
-    style N1 fill:#4943,stroke:#494,stroke-width:2.5px
-    style N2 fill:#4943,stroke:#494,stroke-width:2.5px
-    style N3 fill:#4943,stroke:#494,stroke-width:2.5px
-    style N1U fill:#4993,stroke:#499,stroke-width:2px
-    style N2U fill:#4993,stroke:#499,stroke-width:2px
-    style N3U fill:#4993,stroke:#499,stroke-width:2px
-    style N1I fill:#9943,stroke:#994,stroke-width:2px
-    style N2I fill:#9943,stroke:#994,stroke-width:2px
-    style N3I fill:#9943,stroke:#994,stroke-width:2px
-```
-
-A person may register to multiple networks with the same or different identity — that choice is the person's, not the protocol's. Each resulting user is an independent entity scoped to its network.
-
----
-
-## 2. Access tokens
-
-Three token types enforce layered access control. Each is issued by a different authority.
-
-| Token | Issued by | Purpose | Multiplicity |
-|-------|-----------|---------|--------------|
-| **NAT** | Network | Connect to the network | One per network |
-| **UAT** | User | Act as that user | Multiple per user (e.g. per agent/device); individually revocable |
-| **IAT** | Index | Operate within that index | Multiple per (user, index); revocable by index or user |
-
-### Access scope ladder
-
-```mermaid
-flowchart TB
-    subgraph SCOPE[**Access scope**]
-        direction TB
-        S1[NAT — connect to network]
-        S2[NAT + UAT — act as user]
-        S3[NAT + UAT + IAT — operate in index]
-        S1 --> S2 --> S3
-    end
-
-    subgraph ISSUER[**Who issues**]
-        direction TB
-        I1(Network issues NAT)
-        I2(User issues UAT)
-        I3(Index issues IAT)
-    end
-
-    I1 -.-> S1
-    I2 -.-> S2
-    I3 -.-> S3
-
-    style SCOPE fill:#4993,stroke:#499,stroke-width:2.5px
-    style ISSUER fill:#9493,stroke:#949,stroke-width:2.5px
-```
-
-**Key design choice**: The network issues only NAT — it cannot issue UAT or IAT. This limits what a network admin can access or leak. The user controls user-level access; the index controls index-level access.
-
----
-
-## 3. Relationships
+| **Index** | A community/context where intents are shared and matched. Can span nodes via federation. |
+| **Opportunity** | A match between users discovered by AI analyzing intent compatibility within an index. |
 
 ```mermaid
 erDiagram
     PERSON ||--o{ AGENT : "has"
     PERSON ||--o{ USER : "registers as"
-    NETWORK ||--o{ USER : "has"
-    NETWORK ||--o{ INDEX : "has"
+    NODE ||--o{ USER : "has"
+    NODE ||--o{ INDEX : "has"
     USER ||--o{ INTENT : "owns"
     INTENT }o--o{ INDEX : "linked to"
     AGENT }o--o{ NAT : "holds"
     AGENT }o--o{ UAT : "holds"
     AGENT }o--o{ IAT : "holds"
-    NETWORK ||--o{ NAT : "issues"
+    NODE ||--o{ NAT : "issues"
     USER ||--o{ UAT : "issues"
     INDEX ||--o{ IAT : "issues"
 ```
 
-- A **network** has many users and many indexes.
-- A **user** belongs to exactly one network and owns intents.
+- A **node** has many users and many indexes.
+- A **user** belongs to exactly one node and owns intents.
 - **Intents** belong to the user first; linkage to indexes is a secondary association.
-- A **person** (outside the system) has agents and registers as users (one per network).
-- An **agent** accumulates tokens (NAT, UAT, IAT) for multiple networks, users, and indexes.
+- A **person** (outside the system) has agents and registers as users (one per node).
+- An **agent** accumulates tokens (NAT, UAT, IAT) for multiple nodes, users, and indexes.
+
+A person may register to multiple nodes with the same or different identity — that choice is the person's, not the protocol's. Each resulting user is an independent entity scoped to its node.
 
 ---
 
-## 4. Registration
+## 2. Identity model
 
-When a person registers to a network, the network creates a user and issues a NAT. The user can then issue UATs to their agents. Index access comes separately via IAT.
+A person has two identity layers:
+
+```
+Person (Seref)
+├── Wallet (0xABC...DEF) — global, via SIWE/ERC-4361
+│   └── XMTP inbox — encrypted human messaging, opportunity intros
+│
+├── User @ index.network — local identity
+│   ├── A2A Agent @ /u/seref/.well-known/agent-card.json
+│   ├── PAT: ixn_pat_abc123...
+│   └── Intents (owned, linked to local indexes)
+│
+└── User @ kernel.network — separate local identity
+    ├── A2A Agent @ /u/seref/.well-known/agent-card.json
+    ├── PAT: krn_pat_xyz789...
+    └── Intents (owned, linked to local indexes)
+```
+
+The **wallet** is the global cross-node identity. **Users** are node-local identities. Better Auth + SIWE plugin links them — a person authenticates to a node (creating a user) and optionally links their wallet (enabling XMTP).
+
+---
+
+## 3. System model
 
 ```mermaid
-sequenceDiagram
-    participant Person as Person (Seref)
-    participant Net as Kernel Network
-    participant User as Seref@Kernel
-    participant Agent as Seref's Agent
-    participant Idx as #kernel-core
+graph TB
+    subgraph nodeA ["index.network (Node A)"]
+        OAuthA["OAuth Issuer"]
+        AliceAgent["Alice's Agent"]
+        BobAgent["Bob's Agent"]
+        IdxCommons["Index: Commons"]
+    end
 
-    Person->>Net: Register (identity of choice)
-    Net->>User: Create user
-    Net-->>Person: NAT issued
+    subgraph nodeB ["kernel.network (Node B)"]
+        OAuthB["OAuth Issuer"]
+        CarolAgent["Carol's Agent"]
+        IdxResearch["Index: AI Researchers"]
+    end
 
-    Person->>Agent: Hand over NAT
-    User->>Agent: Issue UAT
+    subgraph clients [Clients]
+        Browser[Browser]
+        Desktop[Desktop]
+        Telegram[Telegram Bot]
+        ExtAgent[External Agent]
+    end
 
-    Note over Agent: Agent now holds NAT + UAT for Kernel
+    subgraph xmtp [XMTP Network]
+        HumanMsg["Human ↔ Human msgs"]
+        BotIntros["Opportunity intros"]
+    end
 
-    Agent->>Idx: Request access (or admin invites)
-    Idx-->>Agent: IAT issued
+    AliceAgent -->|"local member"| IdxCommons
+    BobAgent -->|"local member"| IdxCommons
+    AliceAgent -->|"remote member"| IdxResearch
+    CarolAgent -->|"local member"| IdxResearch
 
-    Note over Agent: Agent now holds NAT + UAT + IAT
-    Note over Agent: Can operate in #kernel-core
+    clients -->|"PAT + A2A"| AliceAgent
+    clients -->|"PAT + A2A"| BobAgent
+
+    nodeA <-->|"A2A federation"| nodeB
+    AliceAgent -.->|"wallet"| xmtp
+    CarolAgent -.->|"wallet"| xmtp
+```
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    index.network (Node A)                     │
+│                                                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │
+│  │ OAuth Issuer │  │ A2A Gateway │  │     REST API         │ │
+│  │              │  │             │  │    (transitional)     │ │
+│  │ /oauth/*     │  │ /u/:id/a2a  │  │    /api/*            │ │
+│  └──────┬───────┘  └──────┬──────┘  └─────────┬────────────┘ │
+│         │                 │                    │              │
+│         └─────────────────┼────────────────────┘              │
+│                           │                                   │
+│              ┌────────────▼──────────────┐                    │
+│              │     Auth Guard (JWT)      │                    │
+│              │   PAT → user + scopes     │                    │
+│              └────────────┬──────────────┘                    │
+│                           │                                   │
+│              ┌────────────▼──────────────┐                    │
+│              │   Per-User A2A Agents     │                    │
+│              │   (skill routing → core)  │                    │
+│              └────────────┬──────────────┘                    │
+│                           │                                   │
+│              ┌────────────▼──────────────┐                    │
+│              │   Services / LangGraph    │                    │
+│              │   (unchanged core)        │                    │
+│              └────────────┬──────────────┘                    │
+│                           │                                   │
+│         ┌─────────────────┼──────────────────┐                │
+│    ┌────▼─────┐   ┌──────▼───────┐   ┌──────▼──────┐        │
+│    │PostgreSQL │   │    Redis     │   │  OpenRouter  │        │
+│    │ +pgvector │   │   (BullMQ)  │   │    (LLM)    │        │
+│    └──────────┘   └──────────────┘   └─────────────┘        │
+└──────────────────────────────────────────────────────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │ XMTP Network │  (external, decentralized)
+                    │  human msgs  │
+                    │  intros/notif │
+                    └─────────────┘
 ```
 
 ---
 
-## 5. Agent lifecycle
+## 4. Layer 1: Identity & auth
 
-An agent exists **globally** — independent of any network. A person creates an agent; it starts with no tokens and accumulates them over time. One agent can hold tokens for multiple networks.
+Each node is an **OAuth issuer**. PATs are the single auth mechanism for all clients.
+
+```
+POST /oauth/token { email, password } → { pat: "ixn_pat_abc123..." }
+```
+
+| Client | Auth |
+|--------|------|
+| Browser | PAT (in memory) |
+| Desktop app | PAT (in config) |
+| Telegram bot | PAT (in bot config) |
+| External A2A agent | PAT (Authorization header) |
+| Remote federated server | OAuth token exchange / JWKS verification |
+
+Better Auth handles user management (email/password, social login, SIWE for wallet-based identity). PATs are an additional token layer on top for client-agnostic authentication.
+
+### Token model
+
+Three conceptual token types enforce layered access control:
+
+| Token | Issued by | Purpose | OAuth implementation |
+|-------|-----------|---------|---------------------|
+| **NAT** | Node | Connect to the node | OAuth client registration (`client_id`) |
+| **UAT** | User | Act as that user | PAT or access token (`scope: "user"`) |
+| **IAT** | Index | Operate within that index | Scoped token via token exchange (`scope: "index:<id>"`) |
+
+### Access scope ladder
 
 ```mermaid
 flowchart TB
-    subgraph PERSON[**PERSON — Seref**]
-        AG[Agent]
+    subgraph SCOPE["Access scope"]
+        direction TB
+        S1["NAT — connect to node"]
+        S2["NAT + UAT — act as user"]
+        S3["NAT + UAT + IAT — operate in index"]
+        S1 --> S2 --> S3
     end
 
-    PERSON -->|creates| AG
-
-    subgraph WALLET[**TOKEN WALLET**]
-        T1[NAT — Index Network]
-        T2[UAT — Seref@Index]
-        T3[IAT — #early-adopters]
-        T4[NAT — Kernel]
-        T5[UAT — Seref@Kernel]
-        T6[IAT — #kernel-core]
+    subgraph ISSUER["Who issues"]
+        direction TB
+        I1("Node issues NAT")
+        I2("User issues UAT")
+        I3("Index issues IAT")
     end
 
-    AG -->|holds| WALLET
-
-    subgraph N1[**INDEX NETWORK**]
-        N1U(Seref)
-        N1I[[#early-adopters]]
-    end
-
-    subgraph N2[**KERNEL**]
-        N2U(Seref)
-        N2I[[#kernel-core]]
-    end
-
-    T1 -.->|connect| N1
-    T2 -.->|act as| N1U
-    T3 -.->|operate in| N1I
-    T4 -.->|connect| N2
-    T5 -.->|act as| N2U
-    T6 -.->|operate in| N2I
-
-    style PERSON fill:#9443,stroke:#944,stroke-width:2.5px
-    style WALLET fill:#9493,stroke:#949,stroke-width:2.5px
-    style N1 fill:#4943,stroke:#494,stroke-width:2.5px
-    style N2 fill:#4943,stroke:#494,stroke-width:2.5px
-    style N1I fill:#9943,stroke:#994,stroke-width:2px
-    style N2I fill:#9943,stroke:#994,stroke-width:2px
+    I1 -.-> S1
+    I2 -.-> S2
+    I3 -.-> S3
 ```
 
-### Token revocation
+**Key design choice**: The node issues only NAT — it cannot issue UAT or IAT. This limits what a node admin can access or leak. The user controls user-level access; the index controls index-level access.
 
-A revoked token removes access in that scope only — other scopes are unaffected. There is no notification mechanism; the agent discovers revocation when a request fails.
+Cross-node trust: when a user from `index.network` interacts with `kernel.network`, the remote server verifies the user's identity via standard OAuth discovery (JWKS) or A2A Agent Card signatures.
 
-```mermaid
-sequenceDiagram
-    participant Admin as Index Admin
-    participant Idx as #early-adopters
-    participant Agent as Seref's Agent
+---
 
-    Note over Agent: Holds NAT + UAT + IAT
-    Agent->>Idx: Read intents (IAT)
-    Idx-->>Agent: Intents returned
+## 5. Layer 2: Per-user A2A agents
 
-    Admin->>Idx: Revoke Seref's IAT
-    Note over Idx: IAT invalidated
+Every user IS a discoverable agent:
 
-    Agent->>Idx: Read intents (revoked IAT)
-    Idx-->>Agent: Access denied
+```
+GET  /u/{userId}/.well-known/agent-card.json   → Agent Card (public)
+POST /u/{userId}/a2a                           → A2A endpoint (authenticated)
+```
 
-    Note over Agent: Still holds NAT + UAT
-    Note over Agent: Can operate at user level
-    Note over Agent: Cannot operate in #early-adopters
+The Agent Card is dynamically generated from the user's profile.
+
+### Skills
+
+| Skill | Purpose | Response |
+|-------|---------|----------|
+| `chat` | Multi-turn conversational AI with the user's agent | Streaming (SSE) |
+| `intents` | List, get, process user intents | Instant or Task |
+| `opportunities` | Discover, list, propose opportunities | Instant or Task |
+| `profile` | View user profile | Instant |
+| `indexes` | List user's public index memberships | Instant |
+| `federation` | Sync shared intents to remote indexes | Push Notification |
+
+### Request model
+
+Every A2A request has two identities:
+
+- **Caller**: The agent/user making the request (resolved from PAT)
+- **Target**: The user whose agent is being addressed (resolved from URL path)
+
+### What A2A handles
+
+- Agent discovery ("what can you do?")
+- Structured skill invocation ("create this intent", "find opportunities")
+- Task lifecycle (submitted → working → completed)
+- Streaming responses (SSE for chat)
+- Federation push notifications (intent sync)
+
+### What A2A does NOT handle
+
+- Human-to-human conversations (→ XMTP)
+- Encrypted messaging (→ XMTP)
+- Cross-node identity (→ wallet/SIWE)
+
+---
+
+## 6. Layer 3: Human messaging (XMTP)
+
+XMTP for all human messaging. Server-side clients (Node SDK) for both user and agent wallets. Independent from A2A.
+
+| Concern | Solution |
+|---------|----------|
+| Transport | Decentralized XMTP network |
+| Encryption | End-to-end (MLS protocol) |
+| Identity | Wallet address via SIWE |
+| Consent | Built into XMTP protocol |
+| Infrastructure | None to host (decentralized) |
+
+### What flows through XMTP
+
+| Flow | Example |
+|------|---------|
+| Human ↔ Human | Seref messages Yanki after seeing an opportunity |
+| Bot → Human | Index Bot sends opportunity introduction to both parties |
+| Notification → Human | "You have 3 new opportunities this week" |
+
+### What does NOT flow through XMTP
+
+- Agent skill invocation (→ A2A)
+- Intent CRUD (→ A2A)
+- Federation sync (→ A2A)
+
+### How XMTP connects to the system
+
+```
+Opportunity detected by broker
+  → OpportunityService creates opportunity record
+  → NotificationAgent composes introduction message
+  → Sends via XMTP to both parties' wallet addresses
+  → Both users see it in their XMTP inbox (any XMTP client)
+  → They can reply to each other directly (E2E encrypted)
+```
+
+The Index Bot is an XMTP agent with its own wallet. It bridges the discovery engine and human messaging.
+
+---
+
+## 7. Layer 4: Discovery engine
+
+The existing LangGraph-based AI pipeline. A2A wraps it — it doesn't replace it.
+
+- **IntentGraph**: Extract, infer, verify, reconcile intents from content
+- **OpportunityGraph**: Match intents across users within an index, score compatibility
+- **HyDE Generator**: Create hypothetical document embeddings for multi-strategy semantic search
+- **ChatGraph**: ReAct-style conversational agent with tool use
+- **ProfileGraph**: Generate user profiles from identity signals
+
+---
+
+## 8. Layer 5: Federation
+
+Users can join indexes on remote nodes. When they do, they choose which intents to share with that index.
+
+### Data replication
+
+| Data | Replicated | Reason |
+|------|-----------|--------|
+| Selected intent payloads | Yes | Needed for opportunity context |
+| Intent embeddings (2000-dim) | Yes | Needed for vector search |
+| Profile summary | Yes (Agent Card) | Display in member list |
+| Unshared intents | No | User didn't opt in |
+| Full profile details | No | Query via A2A on demand |
+| Chat history | No | Private to home node |
+
+### Sync protocol
+
+**Primary: A2A Push Notifications (webhooks)**
+
+The home node pushes events to the remote index's node when shared data changes:
+
+```
+intent-shared      → User shares a new intent with remote index
+intent-updated     → User edits a shared intent
+intent-revoked     → User un-shares an intent
+member-left        → User leaves the remote index
+```
+
+**Direction**: Index owner registers a webhook. Home node posts events to it. One webhook per node pair per index (not per user).
+
+**Fallback: Bulk pull**
+
+For recovery after downtime or initial sync:
+
+```
+Remote → Home: "Give me all shared intents for members of index X from your node, since timestamp Y"
+```
+
+### Sync topology
+
+The **index owner pulls** (or receives pushes), not individual users:
+
+```
+kernel.network owns "AI Researchers" index
+  - 3 members from index.network
+  - 2 members from dao.network
+  - 5 local members
+
+Sync channels: 2 (one per remote node), not 5 (one per remote user)
 ```
 
 ---
 
-## 6. Intent ownership
+## 9. Layer 6: Multi-client
 
-Intents belong to the **user** — not to an index. Linking an intent to an index is a secondary association based on user or index preferences. Retrieving a user's intents (via NAT + UAT) returns all of that user's intents, regardless of index linkage.
+PATs + A2A make every client surface equal:
 
-```mermaid
-flowchart LR
-    subgraph NET[**INDEX NETWORK**]
-        subgraph USER[**Seref**]
-            I1[Intent A]
-            I2[Intent B]
-            I3[Intent C]
-            I4[Intent D]
-        end
-
-        subgraph INDEXES[**INDEXES**]
-            EA[[#early-adopters]]
-            EN[[#employee-network]]
-        end
-
-        I1 -.->|linked| EA
-        I2 -.->|linked| EA
-        I3 -.->|linked| EN
-        I4 -.->|unscoped| I4
-    end
-
-    R1[NAT + UAT] ==>|retrieves all 4 intents| USER
-    R2[NAT + UAT + IAT for #early-adopters] ==>|retrieves A, B only| EA
-
-    style NET fill:#4943,stroke:#494,stroke-width:2.5px
-    style USER fill:#4993,stroke:#499,stroke-width:2.5px
-    style INDEXES fill:#9943,stroke:#994,stroke-width:2.5px
-    style R1 fill:#9493,stroke:#949,stroke-width:2px
-    style R2 fill:#9493,stroke:#949,stroke-width:2px
 ```
+Browser     → PAT → user's A2A agent → services
+Desktop     → PAT → user's A2A agent → services
+Telegram    → PAT → user's A2A agent → services
+CLI         → PAT → user's A2A agent → services
+Ext Agent   → PAT → user's A2A agent → services
+```
+
+The frontend (Next.js) is one client among many. Over time, it migrates from REST to A2A (hybrid approach — one service at a time, REST deprecated gradually).
 
 ---
 
-## 7. Index membership & governance
+## 10. Index governance
 
-### Admin model
-
-An index has **one or more admins** (the creator is the first). Admins can issue IATs, revoke access, manage policies, and grant/revoke admin role to other users.
+Three access modes, controlled by index admins (the creator is the first admin).
 
 ### Access modes
 
-Each index is configured by its admins with one of three modes:
+| Mode | Flow |
+|------|------|
+| **Open-access** | Any user with NAT+UAT joins freely → IAT issued |
+| **Request-based** | User requests → admin approves → IAT issued |
+| **Invite-only** | Admin invites → user accepts → IAT issued |
 
-```mermaid
-flowchart LR
-    subgraph INVITE[**Invite-only**]
-        direction TB
-        A1[Admin] -->|issues IAT| U1[User]
-    end
+### Admin capabilities
 
-    subgraph REQUEST[**Request-based**]
-        direction TB
-        U2[User] -->|requests access| A2[Admin]
-        A2 -->|approves: issues IAT| U2
-    end
-
-    subgraph OPEN[**Open-access**]
-        direction TB
-        U3[User with NAT+UAT] -->|obtains IAT| I3[Index]
-    end
-
-    style INVITE fill:#F993,stroke:#F99,stroke-width:2.5px
-    style REQUEST fill:#99F3,stroke:#99F,stroke-width:2.5px
-    style OPEN fill:#9F93,stroke:#9F9,stroke-width:2.5px
-```
-
-| Mode | Description |
-|------|-------------|
-| **Invite-only** | Admin grants access; users cannot request. |
-| **Request-based** | User requests; admin approves or denies. |
-| **Open-access** | Any user with NAT+UAT can obtain IAT. |
-
-### Governance structure
-
-```mermaid
-flowchart TB
-    subgraph IDX[**#early-adopters**]
-        subgraph ADMINS[Admins]
-            AD1(Yanki)
-            AD2(Seren)
-        end
-        subgraph MEMBERS[Members]
-            M1(Yanki — admin)
-            M2(Seren — admin)
-            M3(Seref — member)
-        end
-        MODE[Access mode: request-based]
-    end
-
-    subgraph ACTIONS[**Admin capabilities**]
-        A1[Issue IAT]
-        A2[Revoke IAT]
-        A3[Grant/revoke admin]
-        A4[Change access mode]
-    end
-
-    ADMINS --> ACTIONS
-
-    style IDX fill:#9943,stroke:#994,stroke-width:2.5px
-    style ADMINS fill:#F993,stroke:#F99,stroke-width:2px
-    style MEMBERS fill:#4993,stroke:#499,stroke-width:2px
-    style ACTIONS fill:#9493,stroke:#949,stroke-width:2.5px
-```
+- Issue/revoke IATs
+- Approve/deny access requests
+- Invite members
+- Grant/revoke admin to other members
+- Change access mode
 
 ### IAT revocation effect
 
-When a user's IAT is revoked, their intents are **unlinked** from that index (no longer visible or discoverable in it) but still belong to the user and can be linked to other indexes.
-
-```mermaid
-sequenceDiagram
-    participant Admin as Index Admin
-    participant Idx as #early-adopters
-    participant User as Seref
-
-    Note over User: Member with 3 linked intents
-
-    Admin->>Idx: Revoke Seref's IAT
-
-    Note over Idx: Unlink all of Seref's intents
-    Idx-->>Idx: Intent A — unlinked
-    Idx-->>Idx: Intent B — unlinked
-    Idx-->>Idx: Intent C — unlinked
-
-    Note over User: Intents A, B, C still belong to Seref
-    Note over User: Can link them to other indexes
-```
+When a user's IAT is revoked:
+1. IAT invalidated
+2. User's intents unlinked from that index (no longer visible or discoverable in it)
+3. Intents still belong to the user and can be linked to other indexes
+4. User's NAT + UAT remain valid — can still operate at user level
 
 ---
 
-## 8. Cross-network import
+## 11. Privacy model
 
-A user (or their agent) can import their own data from another network. This is always **user-initiated** — networks cannot pull data from each other unilaterally.
-
-Import creates a **copy with provenance**: an independent snapshot with source metadata. No automatic sync; the user can re-import later if desired. Imported intents arrive **unscoped** on the target network.
-
-### Import flow
-
-```mermaid
-sequenceDiagram
-    participant Agent as Seref's Agent
-    participant Kernel as Kernel Network
-    participant Index as Index Network
-
-    Note over Agent: Holds NAT+UAT for both networks
-
-    Agent->>Kernel: Import my data from Index Network
-    Note over Agent: Provides NAT(Index) + UAT(Seref@Index)
-
-    Kernel->>Index: Request user data (NAT + UAT)
-    Note over Index: Validates NAT + UAT
-
-    Index-->>Kernel: User profile + all intents
-
-    Note over Kernel: Creates independent copy
-    Note over Kernel: Attaches provenance metadata
-
-    Kernel-->>Agent: Import complete
-
-    Note over Agent: Intents arrive unscoped on Kernel
-    Agent->>Kernel: Link intents to #kernel-core (IAT)
-```
-
-### What moves during import
-
-```mermaid
-flowchart LR
-    subgraph SRC[**INDEX NETWORK — source**]
-        subgraph SU[Seref]
-            I1[Intent A]
-            I2[Intent B]
-            I3[Intent C]
-        end
-        subgraph SI[Indexes]
-            EA[[#early-adopters]]
-            EN[[#employee-network]]
-        end
-        I1 -.->|linked| EA
-        I2 -.->|linked| EA
-        I3 -.->|linked| EN
-    end
-
-    SU ==>|copy via NAT+UAT| TU
-
-    subgraph TGT[**KERNEL — target**]
-        subgraph TU[Seref]
-            I1C["Intent A (copy)"]
-            I2C["Intent B (copy)"]
-            I3C["Intent C (copy)"]
-        end
-        subgraph TI[Indexes]
-            KC[[#kernel-core]]
-        end
-        I1C -.->|linked later| KC
-    end
-
-    style SRC fill:#4943,stroke:#494,stroke-width:2.5px
-    style TGT fill:#4943,stroke:#494,stroke-width:2.5px
-    style SU fill:#4993,stroke:#499,stroke-width:2px
-    style TU fill:#4993,stroke:#499,stroke-width:2px
-    style SI fill:#9943,stroke:#994,stroke-width:2px
-    style TI fill:#9943,stroke:#994,stroke-width:2px
-```
-
-### Provenance metadata
-
-Each imported intent carries source tracking:
-
-| Field | Example |
-|-------|---------|
-| `source_network` | `index-network` |
-| `source_user` | `seref@index` |
-| `original_timestamp` | `2026-01-15T10:30:00Z` |
-| `import_timestamp` | `2026-02-19T14:00:00Z` |
-
----
-
-## 9. Agent-to-agent interaction
-
-Agent interaction happens **within a single network only**. Cross-network is limited to user-initiated import.
-
-### Layered discovery
-
-```mermaid
-flowchart TB
-    subgraph NET[**INDEX NETWORK**]
-        subgraph DISC[**Network-level — NAT+UAT**]
-            AG1["Seref's Agent"]
-            AG2["Yanki's Agent"]
-            AG3["Seren's Agent"]
-            AG1 <-->|visible| AG2
-            AG2 <-->|visible| AG3
-            AG1 <-->|visible| AG3
-        end
-
-        subgraph IDX1[**#early-adopters — IAT**]
-            AG1I["Seref's Agent"]
-            AG2I["Yanki's Agent"]
-        end
-
-        subgraph IDX2[**#employee-network — IAT**]
-            AG2E["Yanki's Agent"]
-            AG3E["Seren's Agent"]
-        end
-    end
-
-    AG1I <-->|collaborate| AG2I
-    AG2E <-->|collaborate| AG3E
-
-    style NET fill:#4943,stroke:#494,stroke-width:2.5px
-    style DISC fill:#4993,stroke:#499,stroke-width:2.5px
-    style IDX1 fill:#9943,stroke:#994,stroke-width:2.5px
-    style IDX2 fill:#9943,stroke:#994,stroke-width:2.5px
-```
-
-- **Network level** (NAT+UAT): agents see that other agents exist on the same network.
-- **Index level** (IAT): agents that share an index can collaborate on index-scoped data.
-
-### Intent-mediated interaction
-
-Agents create intents; brokers detect semantic matches between users' intents and surface opportunities. This is asynchronous and indirect.
-
-```mermaid
-sequenceDiagram
-    participant SA as Seref's Agent
-    participant Net as Network
-    participant Broker as Broker
-    participant YA as Yanki's Agent
-
-    SA->>Net: Create intent "Looking for co-founder"
-    Note over Net: Stored under Seref
-
-    YA->>Net: Create intent "Available as technical co-founder"
-    Note over Net: Stored under Yanki
-
-    Net->>Broker: New intents detected
-    Broker->>Broker: Semantic matching
-
-    Broker-->>SA: Opportunity: Yanki matches
-    Broker-->>YA: Opportunity: Seref matches
-
-    Note over SA,YA: Agents act on the opportunity
-```
-
-### Direct messaging
-
-Agents can also send messages to each other directly within a network. This is a distinct channel from intent matching.
-
-```mermaid
-sequenceDiagram
-    participant SA as Seref's Agent
-    participant Net as Network
-    participant YA as Yanki's Agent
-
-    Note over SA,YA: Both hold NAT+UAT
-
-    SA->>Net: Message to Yanki's Agent
-    Note over Net: Validates tokens
-    Net-->>YA: Message delivered
-
-    YA->>Net: Reply to Seref's Agent
-    Net-->>SA: Reply delivered
-
-    Note over SA,YA: Independent of intent matching
-```
-
----
-
-## 10. Privacy model
-
-Privacy is enforced through **separation of issuance authority**. No single entity can access all data.
-
-```mermaid
-flowchart TB
-    subgraph NET_SCOPE[**Network scope**]
-        NS1[User list]
-        NS2[Index list]
-        NS3[NAT validity]
-    end
-
-    subgraph USER_SCOPE[**User scope**]
-        US1[User profile]
-        US2[User intents — all]
-        US3[UAT management]
-    end
-
-    subgraph INDEX_SCOPE[**Index scope**]
-        IS1[Index membership]
-        IS2[Linked intents]
-        IS3[IAT management]
-    end
-
-    NET[Network admin] -->|can see| NET_SCOPE
-    NET -.->|cannot see| USER_SCOPE
-    NET -.->|cannot see| INDEX_SCOPE
-
-    USR[User] -->|controls| USER_SCOPE
-    IDX[Index admin] -->|controls| INDEX_SCOPE
-
-    style NET_SCOPE fill:#4943,stroke:#494,stroke-width:2.5px
-    style USER_SCOPE fill:#4993,stroke:#499,stroke-width:2.5px
-    style INDEX_SCOPE fill:#9943,stroke:#994,stroke-width:2.5px
-    style NET fill:#4943,stroke:#494,stroke-width:2px
-    style USR fill:#4993,stroke:#499,stroke-width:2px
-    style IDX fill:#9943,stroke:#994,stroke-width:2px
-```
+Privacy is enforced through separation of issuance authority. No single entity can access all data.
 
 | Authority | Can see | Cannot see |
 |-----------|---------|------------|
-| **Network** | User list, index list, NAT validity | User intents, index membership, index content |
+| **Node** | User list, index list, NAT validity | User intents, index membership, index content |
 | **User** | Own profile, own intents, own UATs | Other users' intents, index membership of others |
 | **Index admin** | Index membership, linked intents, IATs | Other indexes' data, users' unlinked intents |
+| **XMTP** | Nothing (E2E encrypted) | Message content (only endpoints see it) |
 
 **Responsibility assignment**:
-- The **network** is responsible for network-level data (user identities, index names).
+- The **node** is responsible for node-level data (user identities, index names).
 - The **index owner** is responsible for the privacy of users who are members of that index and all index-scoped data.
 - The **user** controls their own profile, intents, and which agents get UAT.
+- **XMTP messages** are E2E encrypted — not even the node can read them.
 
 ---
 
-## Identification strings
+## 12. Protocol separation
 
-The protocol uses hierarchical identifiers as a **conceptual convention** (not a wire format):
-
-| Pattern | Example | Meaning |
-|---------|---------|---------|
-| `network:user:index` | `index:seref:early-adopters` | Agent acting in a specific scope |
-| `index:user` | `early-adopters:seref` | User membership in an index |
-| `index:user:intent_id` | `early-adopters:seref:abc123` | Intent scoped to an index |
-
-Exact syntax is implementation-defined.
+```
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│  OAuth/PATs          "Who are you? What can you access?"│
+│  ─────────           Identity + authorization           │
+│                      Underneath everything              │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  A2A                 "What can you do? Do this task."   │
+│  ───                 Discovery + skill invocation       │
+│                      Agent ↔ Agent, Client ↔ Agent      │
+│                      Federation sync                    │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  XMTP                "Let's talk, securely."            │
+│  ────                Encrypted human messaging          │
+│                      Human ↔ Human, Bot → Human         │
+│                      Opportunity introductions          │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  LangGraph           "Think, match, discover."          │
+│  ────────            AI orchestration (unchanged)       │
+│                      Intents, opportunities, chat       │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Color conventions
+## 13. Implementation phases
 
-All diagrams use consistent colors:
+| Phase | What | Depends on |
+|-------|------|------------|
+| **1** | **Foundation** (Done) | — |
+| | Better Auth, unified user table | |
+| **2** | **PAT System** | Phase 1 |
+| | `personal_access_tokens` table, token CRUD, replace cookies | |
+| **3** | **Per-User A2A Agents** | Phase 2 |
+| | AgentCard per user, A2A executor, skill routing, TaskStore | |
+| **4** | **OAuth Issuer** | Phase 2 |
+| | JWKS endpoint, JWT-based PATs, cross-node verification | |
+| **5** | **Federation** | Phase 3, 4 |
+| | Remote index membership, intent replication, push notifications, bulk pull | |
+| **6** | **XMTP Messaging** | Phase 1 (independent track) |
+| | SIWE plugin for Better Auth, XMTP server-side messaging (done), Index Bot as XMTP agent | |
+| **7** | **Multi-Client + Frontend Migration** | Phase 3 |
+| | Frontend REST → A2A migration, Telegram bot, desktop client | |
 
-| Color | Hex | Entity |
-|-------|-----|--------|
-| Red | `#9443` | People (outside system) |
-| Green | `#4943` | Networks |
-| Teal | `#4993` | Users |
-| Yellow | `#9943` | Indexes |
-| Purple | `#9493` | Intents / Tokens |
+Phase 6 (XMTP) can run in parallel with Phases 2-5. It only needs Better Auth (Phase 1) for the SIWE wallet link.
+
+---
+
+## 14. Standards
+
+| Concern | Standard | Why |
+|---------|----------|-----|
+| Agent interop | A2A (Google/Linux Foundation) | Discovery, skills, streaming, push notifications — all in one spec |
+| Auth | OAuth 2.0 + PATs | Industry standard, works across nodes |
+| Identity | Better Auth + SIWE (ERC-4361) | Self-hosted, wallet-compatible |
+| Human messaging | XMTP (MLS) | E2E encrypted, decentralized, consent built-in |
+| AI orchestration | LangGraph / LangChain | Existing, proven, stays as-is |
+| Database | PostgreSQL + pgvector + Drizzle ORM | Existing, stays as-is |
+| Embeddings | OpenRouter (text-embedding-3-large, 2000-dim) | Existing, stays as-is |
+
+No custom protocols. Every layer uses an existing standard. The value is in the composition: intent-driven discovery across a federated agent network.

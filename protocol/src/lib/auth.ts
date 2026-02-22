@@ -6,6 +6,7 @@ import db from "./drizzle/drizzle";
 import * as schema from "../schemas/database.schema";
 import { getTrustedOrigins } from "./cors";
 import { sendMagicLinkEmail } from "./email/magic-link.handler";
+import { ensureUserWallets } from "../services/wallet.service";
 
 export const auth = betterAuth({
   baseURL: process.env.PROTOCOL_URL,
@@ -19,6 +20,17 @@ export const auth = betterAuth({
       verification: schema.verifications,
     },
   }),
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          try {
+            await ensureUserWallets(user.id);
+          } catch (_) { /* wallet generation failure shouldn't block registration */ }
+        },
+      },
+    },
+  },
   basePath: "/api/auth",
   emailAndPassword: { enabled: true },
   user: {

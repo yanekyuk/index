@@ -506,15 +506,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           [opportunityId]: effectiveStatus,
         }));
 
-        // Only redirect to chat for non-introducer accepts (introducers don't get a chat)
         const counterpartUserId =
-          result.chat?.counterpartUserId ?? fallbackUserId;
+          result.counterpartUserId ?? fallbackUserId;
         if (action === "accepted" && !isIntroducer && counterpartUserId) {
-          const channelId = result.chat?.channelId;
-          const query = channelId
-            ? `?channelId=${encodeURIComponent(channelId)}`
-            : "";
-          router.push(`/u/${counterpartUserId}/chat${query}`);
+          router.push(`/u/${counterpartUserId}/chat`);
         } else if (action === "accepted" && isIntroducer) {
           showSuccess(
             "Introduction sent",

@@ -1,6 +1,6 @@
 {
-  "id": "1e9c7475-620c-430c-92d8-c457fc08d6c7",
-  "prevId": "2516d958-1175-450e-8dfd-ef65d281cc3f",
+  "id": "c34f72d1-8e04-43bc-a15a-3acc8dd1e98f",
+  "prevId": "1e9c7475-620c-430c-92d8-c457fc08d6c7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1618,24 +1618,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "agent_wallet_address": {
-          "name": "agent_wallet_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "agent_wallet_encrypted_key": {
-          "name": "agent_wallet_encrypted_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "agent_xmtp_inbox_id": {
-          "name": "agent_xmtp_inbox_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -1682,13 +1664,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "wallet_address"
-          ]
-        },
-        "users_agent_wallet_address_unique": {
-          "name": "users_agent_wallet_address_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "agent_wallet_address"
           ]
         }
       },

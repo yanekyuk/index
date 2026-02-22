@@ -79,10 +79,7 @@ export type OpportunityStatus = 'latent' | 'pending' | 'viewed' | 'accepted' | '
 
 export interface OpportunityStatusUpdateResponse {
   opportunity: OpportunityListItem | null;
-  chat?: {
-    channelId: string;
-    counterpartUserId: string;
-  };
+  counterpartUserId?: string;
 }
 
 export interface OpportunityPresentation {

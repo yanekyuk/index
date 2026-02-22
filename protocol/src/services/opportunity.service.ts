@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../lib/protocol/interfaces/database.interface';
-import { OpportunityPresenter, gatherPresenterContext } from '../lib/protocol/agents/opportunity.presenter';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
@@ -15,41 +14,14 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity, validateOpportunityActors } from '../lib/protocol/support/opportunity.utils';
 import { persistOpportunities } from '../lib/protocol/support/opportunity.persist';
-import type { OpportunityChatProvider, ChatChannel } from '../lib/protocol/interfaces/chat.interface';
-import { getChatProvider } from '../adapters/chat.adapter';
-import {
-  getDirectChannelId,
-  ensureStreamUsers,
-  ensureIndexBotUser,
-  sendBotMessage,
-  channelHasMessageForOpportunity,
-  getChannelIntroOpportunityIds,
-  addChannelIntroOpportunityId,
-} from '../lib/protocol/support/chat-provider.utils';
 
 const logger = log.service.from("OpportunityService");
 
-interface AcceptedOpportunityChannelMeta {
-  opportunityId: string;
-  acceptedAt: string;
-}
-
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
-  chat?: {
-    channelId: string;
-    counterpartUserId: string;
-    acceptedOpportunities?: AcceptedOpportunityChannelMeta[];
-  };
+  counterpartUserId?: string;
 }
 
-function toIso(value: Date | string | null | undefined): string {
-  const fallback = () => new Date().toISOString();
-  if (!value) return fallback();
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback();
-  return date.toISOString();
-}
 
 /** Events emitted after opportunity lifecycle changes (e.g. create, expire). */
 export type OpportunityCreatedPayload = { opportunity: Opportunity };
@@ -80,7 +52,6 @@ export class OpportunityServiceEvents extends EventEmitter {
  */
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
-  private chatProvider: OpportunityChatProvider | null;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
@@ -88,10 +59,8 @@ export class OpportunityService {
 
   constructor(
     database?: OpportunityControllerDatabase,
-    chatProvider?: OpportunityChatProvider | null,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
-    this.chatProvider = chatProvider ?? getChatProvider();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -292,139 +261,11 @@ export class OpportunityService {
       return { opportunity: updated };
     }
 
-    // Accept all sibling opportunities between the same actor pair in one transaction (targeted query + bulk update).
     await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
-
-    const acceptedBetweenActors = await this.db.getAcceptedOpportunitiesBetweenActors(userId, counterpart.userId);
-    const acceptedOpportunitiesMeta: AcceptedOpportunityChannelMeta[] = acceptedBetweenActors.map((candidate) => ({
-      opportunityId: candidate.id,
-      acceptedAt: toIso(candidate.updatedAt),
-    }));
-
-    const chatProvider = this.chatProvider;
-    const channelId = getDirectChannelId(userId, counterpart.userId);
-
-    if (!chatProvider) {
-      logger.warn('[OpportunityService] Chat provider not configured; skipping chat activation', {
-        opportunityId,
-        channelId,
-      });
-      return {
-        opportunity: updated,
-        chat: {
-          channelId,
-          counterpartUserId: counterpart.userId,
-          acceptedOpportunities: acceptedOpportunitiesMeta,
-        },
-      };
-    }
-
-    const [accepterUser, counterpartUser] = await Promise.all([
-      this.db.getUser(userId),
-      this.db.getUser(counterpart.userId),
-    ]);
-    await ensureStreamUsers(chatProvider, [
-      { id: userId, name: accepterUser?.name, image: accepterUser?.avatar ?? undefined },
-      { id: counterpart.userId, name: counterpartUser?.name, image: counterpartUser?.avatar ?? undefined },
-    ]);
-    await ensureIndexBotUser(chatProvider);
-
-    let channel: ChatChannel;
-    let existingMessages: unknown[] = [];
-
-    const existingChannels = await chatProvider.queryChannels(
-      { type: 'messaging', id: channelId },
-      {},
-      { state: true, watch: false, messages: { limit: 50 } },
-    );
-
-    if (existingChannels.length > 0) {
-      channel = existingChannels[0];
-      existingMessages = channel.state?.messages ?? [];
-    } else {
-      channel = chatProvider.channel('messaging', channelId, {
-        members: [userId, counterpart.userId],
-        pending: false,
-        created_by_id: userId,
-      });
-      try {
-        await channel.create?.();
-      } catch (error) {
-        logger.debug('[OpportunityService] Stream channel create failed', { opportunityId, channelId, error });
-      }
-    }
-
-    try {
-      await channel.updatePartial({
-        set: {
-          pending: false,
-          acceptedOpportunities: acceptedOpportunitiesMeta,
-        },
-        unset: ['requestedBy'],
-      });
-    } catch (error) {
-      logger.warn('[OpportunityService] Failed to update channel partial', { opportunityId, channelId, error });
-    }
-
-    try {
-      // Same idempotency signal as reinjection (opportunity.chat-injection): channel.data.introOpportunityIds.
-      // Fall back to recent-message scan for legacy channels that may not have metadata yet.
-      const introOpportunityIds = getChannelIntroOpportunityIds(channel);
-      const introExists =
-        introOpportunityIds.includes(opportunityId) ||
-        channelHasMessageForOpportunity(existingMessages, opportunityId);
-      if (!introExists) {
-        let introText: string;
-        let presentation: { headline: string; personalizedSummary: string; suggestedAction: string } | undefined;
-        try {
-          const context = await gatherPresenterContext(this.db, opp, userId);
-          const presenter = new OpportunityPresenter();
-          const result = await presenter.present(context);
-          presentation = result;
-          introText = `**${result.headline}**\n\n${result.personalizedSummary}\n\n${result.suggestedAction}`;
-        } catch (presenterError) {
-          logger.warn('[OpportunityService] Presenter failed; using fallback intro', {
-            opportunityId,
-            channelId,
-            error: presenterError,
-          });
-          const counterpartUser = await this.db.getUser(counterpart.userId);
-          introText = [
-            `Index intro: you are now connected with ${counterpartUser?.name ?? 'this member'}.`,
-            `Accepted opportunities between you: ${acceptedOpportunitiesMeta.length}.`,
-            'Start by sharing what you are currently working on and what help you need.',
-          ].join('\n');
-        }
-
-        logger.info('[OpportunityService] Sending Index intro message', { opportunityId, channelId });
-        await sendBotMessage(channel, {
-          type: 'system',
-          text: introText,
-          introType: 'opportunity_intro',
-          opportunityId,
-          ...(presentation && { presentation }),
-          acceptedOpportunityIds: acceptedOpportunitiesMeta.map((item) => item.opportunityId),
-          acceptedAt: toIso(updated.updatedAt),
-        });
-        await addChannelIntroOpportunityId(channel, opportunityId);
-        logger.info('[OpportunityService] Index intro message sent', { opportunityId, channelId });
-      }
-    } catch (error) {
-      logger.error('[OpportunityService] Failed to send Index intro message; rethrowing', {
-        error,
-        opportunityId,
-        channelId,
-      });
-      throw error;
-    }
 
     return {
       opportunity: updated,
-      chat: {
-        channelId,
-        counterpartUserId: counterpart.userId,
-        acceptedOpportunities: acceptedOpportunitiesMeta,
-      },
+      counterpartUserId: counterpart.userId,
     };
   }
 

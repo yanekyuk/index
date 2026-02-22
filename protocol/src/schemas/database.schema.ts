@@ -86,6 +86,12 @@ export const users = pgTable('users', {
   onboarding: json('onboarding').$type<OnboardingState>().default({}),
   timezone: text('timezone').default('UTC'),
   lastWeeklyEmailSentAt: timestamp('last_weekly_email_sent_at'),
+
+  // XMTP wallet
+  walletAddress: text('wallet_address').unique(),
+  walletEncryptedKey: text('wallet_encrypted_key'),
+  xmtpInboxId: text('xmtp_inbox_id'),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -476,6 +482,18 @@ export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
     fields: [chatMessages.sessionId],
     references: [chatSessions.id],
   }),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Hidden conversations (persistent chat deletion)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const hiddenConversations = pgTable('hidden_conversations', {
+  userId: text('user_id').notNull().references(() => users.id),
+  conversationId: text('conversation_id').notNull(),
+  hiddenAt: timestamp('hidden_at').defaultNow().notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.conversationId] }),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════

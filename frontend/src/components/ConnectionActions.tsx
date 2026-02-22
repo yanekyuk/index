@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useStreamChat } from "@/contexts/StreamChatContext";
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
@@ -40,12 +39,8 @@ export default function ConnectionActions({
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const { success, error } = useNotifications();
-  const { openChat, isReady: isChatReady } = useStreamChat();
 
-  // Handle message button click - navigates to chat page
-  // The chat view will show appropriate notice for non-connected users
   const handleMessage = () => {
-    openChat(userId, userName, userAvatar);
     router.push(`/u/${userId}/chat`);
   };
 
@@ -163,16 +158,14 @@ export default function ConnectionActions({
 
   return (
     <div className="flex items-center gap-2">
-      {isChatReady && (
-        <button
-          onClick={handleMessage}
-          disabled={disabled || connectionStatus === 'pending_sent'}
-          className="justify-center cursor-pointer rounded-[2px] font-medium font-sans ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-[#041729] text-white hover:bg-[#0a2d4a] h-7 px-2.5 text-xs flex items-center gap-2"
-          style={{ borderRadius: '2px' }}
-        >
-          {getMessageButtonLabel()}
-        </button>
-      )}
+      <button
+        onClick={handleMessage}
+        disabled={disabled || connectionStatus === 'pending_sent'}
+        className="justify-center cursor-pointer rounded-[2px] font-medium font-sans ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-[#041729] text-white hover:bg-[#0a2d4a] h-7 px-2.5 text-xs flex items-center gap-2"
+        style={{ borderRadius: '2px' }}
+      >
+        {getMessageButtonLabel()}
+      </button>
       {renderActions()}
     </div>
   );

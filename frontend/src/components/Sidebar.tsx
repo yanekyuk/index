@@ -6,7 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Compass, MessagesSquare, Loader2, ChevronDown, User as UserIcon, LogOut, Library, History, Network } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useStreamChat } from '@/contexts/StreamChatContext';
+import { useXMTP } from '@/contexts/XMTPContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { authClient } from '@/lib/auth-client';
@@ -30,7 +30,7 @@ export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, updateUser, refetchUser } = useAuthContext();
-  const { client, isReady, requestBrowserNotifications } = useStreamChat();
+  const { isConnected: isReady, totalUnreadCount: xmtpUnreadCount } = useXMTP();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const indexesService = useIndexes();
@@ -46,7 +46,6 @@ export default function Sidebar() {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const unreadRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMessagesView = pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/'));
   const isLibraryView = pathname?.startsWith('/library');
@@ -85,7 +84,7 @@ export default function Sidebar() {
       return;
     }
 
-    void requestBrowserNotifications();
+    // Browser notifications will be handled by XMTP context
 
     const isMobile = typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches;
     if (isMobile) {
@@ -148,62 +147,10 @@ export default function Sidebar() {
   }, [sessionsVersion, user?.id]);
 
 
-  // Track unread message count
+  // Sync unread count from XMTP context
   useEffect(() => {
-    if (!isReady || !client) return;
-
-    const fetchUnreadCount = async () => {
-      try {
-        const channels = await client.queryChannels(
-          {
-            type: 'messaging',
-            members: { $in: [client.userID || ''] },
-          },
-          {},
-          { limit: 50, watch: false, state: true }
-        );
-        const total = channels.reduce((sum, channel) => sum + channel.countUnread(), 0);
-        setTotalUnreadCount(total);
-      } catch (error) {
-        console.error('Failed to fetch unread count:', error);
-      }
-    };
-
-    void fetchUnreadCount();
-
-    // Stream emits total_unread_count on many events; prefer that, with API fallback.
-    const scheduleUnreadRefresh = () => {
-      if (unreadRefreshTimerRef.current) return;
-      unreadRefreshTimerRef.current = setTimeout(() => {
-        unreadRefreshTimerRef.current = null;
-        void fetchUnreadCount();
-      }, 250);
-    };
-    const handleEvent = (event?: { total_unread_count?: number; type?: string }) => {
-      if (typeof event?.total_unread_count === 'number') {
-        setTotalUnreadCount(event.total_unread_count);
-        return;
-      }
-      scheduleUnreadRefresh();
-    };
-    client.on('message.new', handleEvent);
-    client.on('notification.message_new', handleEvent);
-    client.on('message.read', handleEvent);
-    client.on('notification.mark_read', handleEvent);
-    client.on('notification.mark_unread', handleEvent);
-
-    return () => {
-      if (unreadRefreshTimerRef.current) {
-        clearTimeout(unreadRefreshTimerRef.current);
-        unreadRefreshTimerRef.current = null;
-      }
-      client.off('message.new', handleEvent);
-      client.off('notification.message_new', handleEvent);
-      client.off('message.read', handleEvent);
-      client.off('notification.mark_read', handleEvent);
-      client.off('notification.mark_unread', handleEvent);
-    };
-  }, [isReady, client]);
+    setTotalUnreadCount(xmtpUnreadCount);
+  }, [xmtpUnreadCount]);
 
   // Close menus when clicking outside
   useEffect(() => {
