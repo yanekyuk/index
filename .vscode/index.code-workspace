@@ -17,6 +17,10 @@
         {
             "name": "Evaluator",
             "path": "../evaluator"
+        },
+        {
+            "name": "Worktrees",
+            "path": "../.worktrees"
         }
     ],
     "settings": {
@@ -26,7 +30,9 @@
         "material-icon-theme.rootFolders.associations": {
             "Index": "core", // Maps "Index" to the 'core' icon
             "Frontend": "client", // Maps "Frontend" to the 'client' icon
-            "Protocol": "api" // Maps "Protocol" to the 'api' icon
+            "Protocol": "api", // Maps "Protocol" to the 'api' icon
+            "Evaluator": "test",
+            "Worktrees": "git"
         },
         "material-icon-theme.folders.associations": {
             "protocol": "core",
