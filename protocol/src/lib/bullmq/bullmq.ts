@@ -1,14 +1,44 @@
 import { Queue, Worker, QueueEvents, Job, Processor, WorkerOptions, QueueOptions, JobsOptions } from 'bullmq';
-import { getRedisClient } from '../redis';
+import type { RedisOptions } from 'ioredis';
+
 import { log } from '../log';
 
 const logger = log.lib.from("bullmq");
-const redisClient = getRedisClient();
 
-const SHARED_REDIS_OPTS = {
-  ...redisClient.options,
-  maxRetriesPerRequest: null,
-};
+/**
+ * Get BullMQ-compatible Redis connection options.
+ * BullMQ requires maxRetriesPerRequest: null (for blocking commands)
+ * and lazyConnect: false (workers need active connection to receive jobs).
+ */
+function getBullMQConnection(): RedisOptions {
+  const redisUrl = process.env.REDIS_URL;
+
+  if (redisUrl) {
+    const url = new URL(redisUrl);
+    return {
+      host: url.hostname,
+      port: parseInt(url.port) || 6379,
+      password: url.password || undefined,
+      username: url.username || undefined,
+      db: url.pathname ? parseInt(url.pathname.slice(1)) || 0 : 0,
+      maxRetriesPerRequest: null,
+      lazyConnect: false,
+      enableReadyCheck: false,
+    };
+  }
+
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: parseInt(process.env.REDIS_DB || '0'),
+    maxRetriesPerRequest: null,
+    lazyConnect: false,
+    enableReadyCheck: false,
+  };
+}
+
+const SHARED_REDIS_OPTS = getBullMQConnection();
 
 const DEFAULT_JOB_OPTS: JobsOptions = {
   attempts: 3,
