@@ -163,9 +163,13 @@ export default function OpportunityCard({ card }: { card: OpportunityCardData })
     <div className={`rounded-md p-4 ${getCardWrapperClass(card.status)}`}>
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-gray-300/80 flex items-center justify-center shrink-0 text-xs font-semibold text-gray-600">
-            {getInitials(card.name)}
-          </div>
+          {card.avatar ? (
+            <img src={card.avatar} alt={card.name || ""} className="w-8 h-8 rounded-full shrink-0 object-cover" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 text-xs font-semibold text-white overflow-hidden">
+              {getInitials(card.name)}
+            </div>
+          )}
           <div className="min-w-0">
             <h4 className="font-bold text-gray-900 text-sm">
               {card.name || "Someone"}
@@ -207,9 +211,13 @@ export default function OpportunityCard({ card }: { card: OpportunityCardData })
               {card.narratorChip.name === "Index" ? (
                 <Bot className="w-7 h-7 text-[#3D3D3D]" />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-gray-300/80 flex items-center justify-center text-[10px] font-semibold text-gray-600">
-                  {getInitials(card.narratorChip.name)}
-                </div>
+                {card.narratorChip.avatar ? (
+                  <img src={card.narratorChip.avatar} alt={card.narratorChip.name} className="w-7 h-7 rounded-full object-cover" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-[10px] font-semibold text-white overflow-hidden">
+                    {getInitials(card.narratorChip.name)}
+                  </div>
+                )}
               )}
             </div>
             <span className="text-[13px] text-[#3D3D3D]">
