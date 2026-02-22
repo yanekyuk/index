@@ -6,6 +6,7 @@ import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
 import type { HydeStrategy } from "./hyde.strategies";
 import type { OpportunityStatus } from "../interfaces/database.interface";
+import { Timed } from "../../performance";
 
 const logger = protocolLogger("OpportunityEvaluator");
 
@@ -249,6 +250,7 @@ export class OpportunityEvaluator {
    * @param options - Config (minScore, valid types, etc).
    * @returns A sorted list of high-value `Opportunity` objects.
    */
+  @Timed()
   public async invoke(
     sourceProfileContext: string,
     candidates: CandidateProfile[],
@@ -338,6 +340,7 @@ export class OpportunityEvaluator {
   /**
    * Entity-bundle entry point (C3): single LLM call with all entities, returns 0..N opportunities with actors.
    */
+  @Timed()
   public async invokeEntityBundle(
     input: EvaluatorInput,
     options: { minScore?: number } = {}

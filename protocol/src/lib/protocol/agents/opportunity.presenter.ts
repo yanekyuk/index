@@ -15,6 +15,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import { viewerCentricCardSummary } from "../support/opportunity.card-text";
 import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
+import { Timed } from "../../performance";
 
 /**
  * Minimal database interface required by gatherPresenterContext.
@@ -277,6 +278,7 @@ export class OpportunityPresenter {
   /**
    * Generate personalized presentation for a single opportunity.
    */
+  @Timed()
   public async present(
     input: PresenterInput,
   ): Promise<OpportunityPresentationResult> {
@@ -331,6 +333,7 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
   /**
    * Generate full home-card display contract (headline, body, narrator remark, action labels, mutual-intent label).
    */
+  @Timed()
   public async presentHomeCard(
     input: HomeCardPresenterInput,
   ): Promise<HomeCardPresentationResult> {
@@ -402,6 +405,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
   /**
    * Process multiple opportunities in parallel with bounded concurrency.
    */
+  @Timed()
   public async presentBatch(
     inputs: PresenterInput[],
     options?: { concurrency?: number },
@@ -422,6 +426,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
    * Process multiple opportunities as home cards in parallel with bounded concurrency.
    * Returns full home-card display contracts (headline, body, narrator remark, action labels, mutual-intent label).
    */
+  @Timed()
   public async presentHomeCardBatch(
     inputs: HomeCardPresenterInput[],
     options?: { concurrency?: number },
