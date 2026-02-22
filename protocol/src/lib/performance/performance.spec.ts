@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { getStats, recordTiming, resetStats } from "./performance.aggregator";
 import { timed } from "./performance.wrapper";
+import { Timed } from "./performance.decorator";
 
 describe("performance aggregator", () => {
   beforeEach(() => {
@@ -72,5 +73,65 @@ describe("timed wrapper", () => {
     }
     const stats = getStats();
     expect(stats["test.fail"].count).toBe(1);
+  });
+});
+
+describe("Timed decorator", () => {
+  beforeEach(() => {
+    resetStats();
+  });
+
+  it("records as ClassName.methodName and preserves return value", async () => {
+    class TestAgent {
+      @Timed()
+      async invoke(x: number): Promise<number> {
+        return x * 2;
+      }
+    }
+
+    const agent = new TestAgent();
+    const result = await agent.invoke(5);
+
+    expect(result).toBe(10);
+    const stats = getStats();
+    expect(stats["TestAgent.invoke"]).toBeDefined();
+    expect(stats["TestAgent.invoke"].count).toBe(1);
+  });
+
+  it("preserves this context", async () => {
+    class TestService {
+      private multiplier = 3;
+
+      @Timed()
+      async compute(x: number): Promise<number> {
+        return x * this.multiplier;
+      }
+    }
+
+    const svc = new TestService();
+    const result = await svc.compute(4);
+
+    expect(result).toBe(12);
+    const stats = getStats();
+    expect(stats["TestService.compute"].count).toBe(1);
+  });
+
+  it("records on error and rethrows", async () => {
+    class Failing {
+      @Timed()
+      async run(): Promise<void> {
+        throw new Error("fail");
+      }
+    }
+
+    const f = new Failing();
+    try {
+      await f.run();
+      expect(true).toBe(false);
+    } catch (e: any) {
+      expect(e.message).toBe("fail");
+    }
+    const stats = getStats();
+    expect(stats["Failing.run"].count).toBe(1);
   });
 });
