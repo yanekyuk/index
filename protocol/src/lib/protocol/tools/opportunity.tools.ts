@@ -83,7 +83,7 @@ function buildMinimalOpportunityCard(
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
       name: narratorName,
-      text: narratorRemarkFromReasoning(reasoning, counterpartName),
+      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
       ...(introducerActor
         ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
         : {}),
@@ -265,7 +265,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mutualIntentsLabel: "Suggested connection",
           narratorChip: {
             name: introducerUser?.name ?? "A member",
-            text: narratorRemarkFromReasoning(reasoning, counterpartName),
+            text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
             userId: context.userId,
           },
           viewerRole: "introducer",

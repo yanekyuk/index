@@ -115,78 +115,147 @@ const FALLBACK_REMARK = "A potential connection worth exploring.";
  * Used by the minimal (no-LLM) card path so each card gets a unique remark
  * instead of the same static text.
  *
+ * Extracts domain keywords (e.g. "AI", "design", "machine learning") from the
+ * reasoning and frames them in a short template like "Shared interest in AI and design."
+ *
  * @param reasoning - Raw interpretation.reasoning text.
- * @param counterpartName - Display name of the counterpart (excluded from the remark).
- * @returns A short remark (max ~80 chars) suitable for the narrator chip.
+ * @param counterpartName - Display name of the counterpart (stripped from output).
+ * @param viewerName - Optional display name of the viewer (stripped from output).
+ * @returns A short remark (max ~80 chars) suitable for the narrator chip. Never truncated with "...".
  */
 export function narratorRemarkFromReasoning(
   reasoning: string,
   counterpartName: string,
+  viewerName?: string,
 ): string {
   const raw = stripUuids(reasoning).trim();
   if (!raw) return FALLBACK_REMARK;
 
-  // Extract a short clause that captures the *why* of the match.
-  // Strategy: find key matching phrases and distill into a short remark.
-  const sentences = splitSentences(raw);
-  const cpName = counterpartName.trim();
-  const cpLower = cpName.toLowerCase();
-  const cpFirst = cpName.split(/\s+/)[0]?.toLowerCase();
-
-  // Remove sentences that are just about a person's identity (starts with their name).
-  // We want the "why" not the "who".
-  const whySentences = sentences.filter((s) => {
-    const sl = s.toLowerCase();
-    // Skip sentences that start with the counterpart's name (identity descriptions)
-    if (cpLower && sl.startsWith(cpLower)) return false;
-    if (cpFirst && cpFirst.length > 1 && sl.startsWith(cpFirst)) return false;
-    return true;
-  });
-
-  // Look for sentences with matching-signal keywords
-  const matchSignals =
-    /\b(both|complementary|overlap|shared|mutual|align|match|collaborat|connect|similar|common|together|synerg|fit|looking for|seeking|needs?)\b/i;
-  const signalSentence = (whySentences.length > 0 ? whySentences : sentences).find(
-    (s) => matchSignals.test(s),
-  );
-
-  const sourceSentence = signalSentence ?? whySentences[0] ?? sentences[0];
-  if (!sourceSentence) return FALLBACK_REMARK;
-
-  // Clean: remove names so the remark is about the relationship, not the person
-  let remark = sourceSentence;
-  if (cpName) {
-    // Remove full name and first name references
-    remark = remark.replace(new RegExp(escapeRegex(cpName), "gi"), "").trim();
-    if (cpFirst && cpFirst.length > 1) {
-      // Only replace standalone first name (word boundary)
-      remark = remark.replace(new RegExp(`\\b${escapeRegex(cpFirst)}\\b`, "gi"), "").trim();
+  // Strip all person names from the text so we work only with topics.
+  let cleaned = raw;
+  for (const name of [counterpartName, viewerName]) {
+    if (!name?.trim()) continue;
+    const full = name.trim();
+    cleaned = cleaned.replace(new RegExp(escapeRegex(full), "gi"), "").trim();
+    const first = full.split(/\s+/)[0];
+    if (first && first.length > 1) {
+      cleaned = cleaned.replace(new RegExp(`\\b${escapeRegex(first)}\\b`, "gi"), "").trim();
     }
   }
 
-  // Clean up artifacts from name removal (leading commas, double spaces, etc.)
-  remark = remark
-    .replace(/^[\s,;:–—-]+/, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // Extract domain/topic noun phrases from the cleaned text.
+  // Match multi-word capitalized phrases (e.g. "AI operations toolkit") and
+  // known domain terms.
+  const domainTerms = extractDomainTerms(cleaned);
 
-  // Lowercase the first letter if it was mid-sentence before name removal
-  if (remark.length > 0) {
-    remark = remark[0].toLowerCase() + remark.slice(1);
+  if (domainTerms.length > 0) {
+    // Build "Shared interest in X and Y." or "Overlap in X, Y, and Z."
+    const prefixes = [
+      "Shared interest in",
+      "Overlap in",
+      "Common ground in",
+      "Aligned on",
+      "Mutual interest in",
+    ];
+    // Pick prefix deterministically based on first term's char code
+    const prefixIdx = domainTerms[0].charCodeAt(0) % prefixes.length;
+    const prefix = prefixes[prefixIdx];
+    const joined = joinTerms(domainTerms, NARRATOR_MAX_CHARS - prefix.length - 2); // -2 for " " and "."
+    const remark = `${prefix} ${joined}.`;
+    if (remark.length <= NARRATOR_MAX_CHARS) return remark;
   }
 
-  // Prefix to make it narrator-style
-  remark = `Spotted ${remark}`;
-
-  // Clean double periods
-  remark = remark.replace(/\.{2,}/g, ".").trim();
-
-  // Truncate to max chars
-  if (remark.length > NARRATOR_MAX_CHARS) {
-    remark = remark.slice(0, NARRATOR_MAX_CHARS - 3).trimEnd() + "...";
+  // Fallback: try to extract a short relationship phrase
+  const relationshipMatch = cleaned.match(
+    /\b(complementary skills|shared expertise|overlapping intents|similar interests|strong match|mutual fit|potential collaboration|looking for (?:a |an )?[\w\s]{3,20})\b/i,
+  );
+  if (relationshipMatch) {
+    const phrase = relationshipMatch[0];
+    const remark = `Spotted ${phrase.toLowerCase()}.`;
+    if (remark.length <= NARRATOR_MAX_CHARS) return remark;
   }
 
-  return remark;
+  return FALLBACK_REMARK;
+}
+
+/**
+ * Extracts domain/topic terms from text by matching known patterns:
+ * - Acronyms (AI, ML, UX, API)
+ * - Multi-word domain phrases (machine learning, game development)
+ * - Capitalized proper nouns that look like topics
+ */
+function extractDomainTerms(text: string): string[] {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+
+  // Known domain phrases (order matters — longer first)
+  const knownPhrases = [
+    /\b(machine learning|artificial intelligence|software development|game development|web development|data science|deep learning|natural language processing|computer vision|cloud computing|mobile development|product design|user experience|graphic design|character design|frontend development|backend development|full[- ]stack)\b/gi,
+    /\b(AI|ML|UX|UI|API|NLP|SaaS|DevOps|React|Node|Python|TypeScript|JavaScript)\b/g,
+  ];
+
+  for (const pattern of knownPhrases) {
+    for (const match of text.matchAll(pattern)) {
+      const term = match[1] ?? match[0];
+      const key = term.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        // Preserve case for short acronyms/proper nouns; lowercase multi-word phrases
+        if (term.length <= 5 && /^[A-Z]/.test(term)) {
+          terms.push(term); // Keep React, AI, ML, etc. as-is
+        } else {
+          terms.push(key);
+        }
+      }
+    }
+  }
+
+  // If no known phrases found, look for capitalized noun-like words
+  // (skip common English words and articles)
+  if (terms.length === 0) {
+    const skipWords = new Set([
+      "the", "a", "an", "is", "are", "was", "were", "has", "have", "had",
+      "both", "they", "their", "this", "that", "with", "from", "for",
+      "and", "but", "not", "can", "could", "would", "should", "may",
+      "into", "also", "very", "strong", "match", "between", "users",
+      "based", "making", "looking", "seeking", "one", "other",
+      "complementary", "potential", "interested", "collaborate",
+      "someone", "skills", "expertise", "experience",
+    ]);
+    const words = text.match(/\b[a-zA-Z]{3,}\b/g) ?? [];
+    for (const w of words) {
+      const key = w.toLowerCase();
+      if (!skipWords.has(key) && !seen.has(key)) {
+        // Pick content words that are likely domain-relevant
+        if (/ing$|tion$|ment$|ist$|er$|or$|ics$|tic$/.test(key) || key.length >= 6) {
+          seen.add(key);
+          terms.push(key);
+          if (terms.length >= 3) break;
+        }
+      }
+    }
+  }
+
+  return terms.slice(0, 3); // Max 3 terms
+}
+
+/** Joins terms into "X, Y, and Z" form, dropping terms if too long. */
+function joinTerms(terms: string[], maxLen: number): string {
+  if (terms.length === 1) return terms[0];
+  // Try all terms first
+  for (let count = terms.length; count >= 1; count--) {
+    const subset = terms.slice(0, count);
+    let joined: string;
+    if (subset.length === 1) {
+      joined = subset[0];
+    } else if (subset.length === 2) {
+      joined = `${subset[0]} and ${subset[1]}`;
+    } else {
+      joined = `${subset.slice(0, -1).join(", ")}, and ${subset[subset.length - 1]}`;
+    }
+    if (joined.length <= maxLen) return joined;
+  }
+  return terms[0].slice(0, maxLen);
 }
 
 function escapeRegex(s: string): string {

@@ -112,7 +112,7 @@ describe("narratorRemarkFromReasoning", () => {
   it("keeps the remark under 80 characters", () => {
     const reasoning =
       "Yankı Ekin Yüksel is interested in AI in software development and could potentially collaborate with Elena Petrova, an applied AI researcher building an AI operations toolkit and looking for technical collaborators in the machine learning space.";
-    const result = narratorRemarkFromReasoning(reasoning, "Elena Petrova");
+    const result = narratorRemarkFromReasoning(reasoning, "Elena Petrova", "Yankı Ekin Yüksel");
     expect(result.length).toBeLessThanOrEqual(80);
   });
 
@@ -142,10 +142,35 @@ describe("narratorRemarkFromReasoning", () => {
     expect(result).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
   });
 
-  it("does not start with the counterpart's name", () => {
+  it("does not include the counterpart's name", () => {
     const reasoning =
       "Alex Chen has strong React skills. The viewer needs a frontend developer.";
     const result = narratorRemarkFromReasoning(reasoning, "Alex Chen");
-    expect(result).not.toMatch(/^Alex/i);
+    expect(result.toLowerCase()).not.toContain("alex chen");
+    expect(result.toLowerCase()).not.toContain("alex");
+  });
+
+  it("does not include the viewer's name when provided", () => {
+    const reasoning =
+      "Yankı Ekin Yüksel is interested in AI in software development and could potentially collaborate with Elena Petrova, an applied AI researcher.";
+    const result = narratorRemarkFromReasoning(reasoning, "Elena Petrova", "Yankı Ekin Yüksel");
+    expect(result.toLowerCase()).not.toContain("yankı");
+    expect(result.toLowerCase()).not.toContain("elena");
+  });
+
+  it("produces a complete sentence without trailing ...", () => {
+    const reasoning =
+      "Yankı Ekin Yüksel is actively seeking to recruit developers for a game development studio. Yuki Tanaka is a visual artist and illustrator.";
+    const result = narratorRemarkFromReasoning(reasoning, "Yuki Tanaka", "Yankı Ekin Yüksel");
+    expect(result).not.toMatch(/\.\.\.$/);
+    expect(result.length).toBeLessThanOrEqual(80);
+  });
+
+  it("extracts domain-relevant content from reasoning", () => {
+    const reasoning =
+      "Both users share deep expertise in AI and machine learning, making them strong collaborators.";
+    const result = narratorRemarkFromReasoning(reasoning, "Alex Chen");
+    // Should mention the domain (AI, machine learning) or the relationship type
+    expect(result.toLowerCase()).toMatch(/ai|machine learning|expertise|collaborat/);
   });
 });

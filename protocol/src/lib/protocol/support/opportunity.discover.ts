@@ -308,7 +308,7 @@ export async function runDiscoverFromQuery(
                 viewerName,
               ),
             suggestedAction: "Start a conversation to connect.",
-            narratorRemark: narratorRemarkFromReasoning(reasoning, name),
+            narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
             primaryActionLabel: "Start Chat",
             secondaryActionLabel: "Skip",
             mutualIntentsLabel: "Suggested connection",
