@@ -72,6 +72,11 @@ bun run lint                                # Run ESLint
 ```bash
 # Install dependencies for all workspaces
 bun install
+
+# Git worktrees
+bun run worktree:list                       # List worktrees and their setup status
+bun run worktree:setup <name>               # Symlink node_modules & .env files into a worktree
+bun run worktree:dev <name>                 # Run all dev servers from a worktree (auto-setups if needed)
 ```
 
 ## Architecture Overview
@@ -645,6 +650,20 @@ export class IntentService {
 ## Git Workflow
 
 Follow these conventions for version control operations.
+
+### Worktrees
+
+Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `node_modules/` and `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`).
+
+```bash
+# After creating a worktree (e.g., via `git worktree add .worktrees/feat-foo dev`)
+bun run worktree:setup feat-foo
+
+# Run all dev servers (protocol + frontend + evaluator) from a worktree
+bun run worktree:dev feat-foo
+```
+
+`worktree:dev` auto-runs setup if the worktree hasn't been set up yet. Use `bun run worktree:list` to see available worktrees and whether they've been set up.
 
 ### Conventional Commits
 
