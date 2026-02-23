@@ -1,3 +1,4 @@
+import { mkdirSync } from 'fs';
 import path from 'path';
 import { Client, type Signer } from '@xmtp/node-sdk';
 import { toBytes } from 'viem';
@@ -14,6 +15,7 @@ const logger = log.lib.from('xmtp.adapter');
 
 const XMTP_ENV = (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev';
 const XMTP_DB_DIR = path.resolve(import.meta.dir, '../../.xmtp');
+mkdirSync(XMTP_DB_DIR, { recursive: true });
 
 function createSignerFromKey(privateKey: `0x${string}`): Signer {
   const account = privateKeyToAccount(privateKey);
