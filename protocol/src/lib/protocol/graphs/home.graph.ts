@@ -43,7 +43,7 @@ export type HomeGraphInvokeResult = {
 };
 
 const MAX_ITEMS_PER_SECTION = 20;
-const PRESENTATION_CONCURRENCY = 5;
+const PRESENTATION_CONCURRENCY = 50;
 const MAX_REASONING_SNIPPET_LENGTH = 240;
 
 /**

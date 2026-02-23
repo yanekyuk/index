@@ -19,6 +19,7 @@ postgres/
 # Temporary Files & Uploads
 # ===================
 protocol/temp-uploads/
+protocol/.xmtp/
 txt/
 
 # ===================

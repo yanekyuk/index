@@ -404,7 +404,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setHomeViewLoading(true);
     setHomeViewError(null);
     opportunitiesService
-      .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 50 })
+      .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 5 })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
