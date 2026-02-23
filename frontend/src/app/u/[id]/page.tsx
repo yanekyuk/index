@@ -75,7 +75,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
 
   return (
     <ClientLayout>
-      <div className="px-6 lg:px-8 py-6">
+      <div className="px-6 lg:px-8 py-6 pb-20">
         <ContentContainer className="space-y-8">
 
           <button onClick={() => router.back()} className="text-gray-600 hover:text-black transition-colors text-xl">
@@ -134,7 +134,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
           )}
 
           {/* Shared Networks */}
-          <div>
+          {false && <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
             <div className="flex flex-wrap gap-2">
               {[
@@ -147,10 +147,10 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 </Link>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* You're the connector — only shown when viewing someone else's profile */}
-          {user?.id !== resolvedParams.id && (
+          {false && user?.id !== resolvedParams.id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-0.5">You&apos;re the connector</h3>
               <p className="text-xs text-gray-400 mb-3">Intros you could make with {profileData.name.split(' ')[0]}</p>
@@ -205,7 +205,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
           )}
 
           {/* Shared ways of thinking */}
-          <div>
+          {false && <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Shared ways of thinking</h3>
             <div className="space-y-1.5">
               {[
@@ -217,16 +217,16 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 <p key={item} className="text-sm text-gray-700">{item}</p>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Affiliations */}
-          <div>
+          {false && <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Affiliations</h3>
             <div className="space-y-3">
               {[
-                { label: 'Backed By', items: ['Y Combinator S22', 'Multicoin Capital'] },
-                { label: 'Worked In', items: ['Index Network', 'Arçelik', 'Papara'] },
-                { label: 'Events', items: ['ETHDenver 2024', 'Istanbul Blockchain Week 2023', 'Solana Breakpoint 2023'] },
+                { label: 'Backed By', items: ['Frachtis', 'dlab', 'Blueyard', 'Mesh'] },
+                { label: 'Worked In', items: ['Index Network', 'Gowit', 'Aposto'] },
+                { label: 'Events', items: ['Devconnect Buenos Aires', 'Token2049', 'New York TechWeek'] },
               ].map((group) => (
                 <div key={group.label} className="flex items-start gap-3">
                   <p className="text-xs text-gray-400 w-20 flex-shrink-0 pt-0.5">{group.label}</p>
@@ -240,7 +240,7 @@ export default function UserProfilePage({ params }: UserProfilePageProps) {
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
 
         </ContentContainer>
       </div>
