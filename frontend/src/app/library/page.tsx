@@ -12,6 +12,7 @@ import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import IntentList from "@/components/IntentList";
+import NegotiationList from "@/components/NegotiationList";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 
@@ -59,7 +60,7 @@ export default function LibraryPage() {
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<'intents' | 'connections' | 'files' | 'links'>('intents');
+  const [activeTab, setActiveTab] = useState<'intents' | 'negotiations' | 'connections' | 'files' | 'links'>('intents');
   const [isLoading, setIsLoading] = useState(true);
   const tabDescriptions = {
     intents: {
@@ -68,6 +69,13 @@ export default function LibraryPage() {
         "Things that your agent thinks you might be looking for, inferred from your activity. Review them and remove anything that doesn’t feel right.",
       privacy:
         "AI agents use these to surface opportunities and only match when there’s mutual intent."
+    },
+    negotiations: {
+      title: "Negotiations",
+      description:
+        "Your agent negotiates with other agents to coordinate discovery. They continuously align on intent, timing, trust, value, and data sharing before any connection is made.",
+      privacy:
+        "Negotiations are private between participating agents. You see only your side."
     },
     connections: {
       title: "Connections",
@@ -387,6 +395,12 @@ export default function LibraryPage() {
                 <span className="ml-2 text-xs text-gray-500">({links.length})</span>
               )}
             </Tabs.Trigger>
+            <Tabs.Trigger 
+              value="negotiations" 
+              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+            >
+              Negotiations
+            </Tabs.Trigger>
           </Tabs.List>
           <div className="mb-6 space-y-1">
             <div className="text-sm text-gray-700">
@@ -412,6 +426,11 @@ export default function LibraryPage() {
                 className="w-full"
               />
             )}
+          </Tabs.Content>
+
+          {/* Negotiations Tab */}
+          <Tabs.Content value="negotiations" className="w-full">
+            <NegotiationList />
           </Tabs.Content>
 
           {/* Connections (Integrations) Tab */}
