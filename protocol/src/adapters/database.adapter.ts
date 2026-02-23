@@ -9,6 +9,8 @@ import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
 import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
 import type { Id } from '../types/common.types';
+import type { MessagingStore } from '../lib/xmtp';
+import { generateWallet, decryptKey } from '../lib/xmtp';
 import { log } from '../lib/log';
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
@@ -3491,6 +3493,97 @@ import type {
   SystemDatabase,
   SimilarIntent,
 } from '../lib/protocol/interfaces/database.interface';
+
+const messagingLogger = log.lib.from('messaging.db');
+
+/**
+ * Drizzle-backed implementation of the MessagingStore interface.
+ * Provides wallet management, conversation visibility, and user resolution for XMTP.
+ */
+export class MessagingDatabaseAdapter implements MessagingStore {
+  constructor(private readonly masterKey: Buffer) {}
+
+  async getWalletKey(userId: string) {
+    const [user] = await db.select({
+      walletEncryptedKey: schema.users.walletEncryptedKey,
+      walletAddress: schema.users.walletAddress,
+    }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+
+    if (!user?.walletEncryptedKey || !user.walletAddress) return null;
+    return {
+      privateKey: decryptKey(user.walletEncryptedKey, this.masterKey),
+      walletAddress: user.walletAddress,
+    };
+  }
+
+  async ensureWallet(userId: string) {
+    const [user] = await db.select({ walletAddress: schema.users.walletAddress })
+      .from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    if (!user) { messagingLogger.warn('[ensureWallet] User not found', { userId }); return; }
+    if (user.walletAddress) return;
+
+    const w = generateWallet(this.masterKey);
+    await db.update(schema.users).set({
+      walletAddress: w.address,
+      walletEncryptedKey: w.encryptedKey,
+    }).where(eq(schema.users.id, userId));
+    messagingLogger.info('[ensureWallet] Wallet generated', { userId });
+  }
+
+  async setInboxId(userId: string, inboxId: string) {
+    await db.update(schema.users).set({ xmtpInboxId: inboxId }).where(eq(schema.users.id, userId));
+  }
+
+  async getPublicInfo(userId: string) {
+    const [user] = await db.select({
+      walletAddress: schema.users.walletAddress,
+      xmtpInboxId: schema.users.xmtpInboxId,
+    }).from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+    return user ?? null;
+  }
+
+  async getHiddenConversations(userId: string) {
+    return db.select({
+      conversationId: schema.hiddenConversations.conversationId,
+      hiddenAt: schema.hiddenConversations.hiddenAt,
+    }).from(schema.hiddenConversations).where(eq(schema.hiddenConversations.userId, userId));
+  }
+
+  async getHiddenAt(userId: string, conversationId: string) {
+    const [row] = await db.select({ hiddenAt: schema.hiddenConversations.hiddenAt })
+      .from(schema.hiddenConversations)
+      .where(and(
+        eq(schema.hiddenConversations.userId, userId),
+        eq(schema.hiddenConversations.conversationId, conversationId),
+      ))
+      .limit(1);
+    return row?.hiddenAt ?? null;
+  }
+
+  async hideConversation(userId: string, conversationId: string) {
+    await db.insert(schema.hiddenConversations)
+      .values({ userId, conversationId })
+      .onConflictDoUpdate({
+        target: [schema.hiddenConversations.userId, schema.hiddenConversations.conversationId],
+        set: { hiddenAt: new Date() },
+      });
+  }
+
+  async resolveUsersByInboxIds(inboxIds: string[]) {
+    const matched = await db.select({
+      id: schema.users.id,
+      name: schema.users.name,
+      avatar: schema.users.avatar,
+      xmtpInboxId: schema.users.xmtpInboxId,
+    }).from(schema.users).where(inArray(schema.users.xmtpInboxId, inboxIds));
+
+    const map = new Map<string, { id: string; name: string; avatar: string | null }>();
+    for (const u of matched) {
+      if (u.xmtpInboxId) map.set(u.xmtpInboxId, { id: u.id, name: u.name, avatar: u.avatar });
+    }
+    return map;
+  }
+}
 
 /**
  * Creates a UserDatabase bound to the authenticated user.

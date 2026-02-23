@@ -1,4 +1,5 @@
-import type { MessagingAdapter } from '../adapters/messaging.adapter';
+import { MessagingAdapter, type MessagingAdapterConfig } from '../adapters/messaging.adapter';
+import type { MessagingStore } from '../lib/xmtp';
 import { extractText } from '../lib/xmtp';
 import { log } from '../lib/log';
 
@@ -25,7 +26,11 @@ export interface Message {
  * Handles conversation listing, message filtering, send orchestration, and streaming.
  */
 export class MessagingService {
-  constructor(private readonly adapter: MessagingAdapter) {}
+  private readonly adapter: MessagingAdapter;
+
+  constructor(store: MessagingStore, config: MessagingAdapterConfig) {
+    this.adapter = new MessagingAdapter(store, config);
+  }
 
   /** List conversations for a user with hidden-message filtering and peer resolution. */
   async listConversations(userId: string): Promise<ConversationSummary[]> {
