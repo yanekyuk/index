@@ -733,6 +733,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           </Button>
         </form>
       </div>
+      <div className="py-2"></div>
     </>
   );
 
@@ -907,6 +908,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   </Button>
                 </form>
               </div>
+              <div className="py-2"></div>
                       {homeViewLoading ? (
                 <div className="animate-pulse">
                   {[1, 2].map((s) => (
@@ -1142,6 +1144,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               </Button>
             </form>
           </div>
+          <div className="py-2"></div>
               {selectedFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {selectedFiles.map(({ id, file }) => (

@@ -240,6 +240,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                 </button>
               </form>
             </div>
+            <div className="bg-white py-2"></div>
           </ContentContainer>
         </div>
       </div>
