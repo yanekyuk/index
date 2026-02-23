@@ -51,7 +51,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         const ctx = await getChatContext(userId);
         if (!mounted) return;
         setChatContext(ctx);
-        const gid = initialGroupId ?? ctx?.groupId ?? null;
+        const gid = initialGroupId ?? null;
         setGroupId(gid);
         if (gid) {
           await loadMessages(gid, 50);
