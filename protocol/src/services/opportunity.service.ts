@@ -430,6 +430,34 @@ export class OpportunityService {
   }
 
   /**
+   * Get chat context for a conversation between two users.
+   * Returns accepted opportunities shared between them and peer user info.
+   *
+   * @param userId - The authenticated user ID
+   * @param peerUserId - The peer user ID
+   * @returns Opportunity cards and peer info for chat context
+   */
+  async getChatContext(userId: string, peerUserId: string) {
+    logger.info('[OpportunityService] Getting chat context', { userId, peerUserId });
+
+    const [rows, peerUser] = await Promise.all([
+      this.db.getAcceptedOpportunitiesBetweenActors(userId, peerUserId),
+      this.db.getUser(peerUserId),
+    ]);
+
+    const opportunityCards = rows.map((opp) => ({
+      opportunityId: opp.id,
+      headline: opp.interpretation?.reasoning?.substring(0, 80) ?? 'Connection opportunity',
+      summary: opp.interpretation?.reasoning ?? '',
+      peerName: peerUser?.name ?? 'Someone',
+      peerAvatar: peerUser?.avatar ?? null,
+      acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
+    }));
+
+    return { opportunities: opportunityCards };
+  }
+
+  /**
    * Check if user has permission to create opportunities in an index.
    * 
    * @param creatorId - User creating the opportunity

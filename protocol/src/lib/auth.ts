@@ -6,7 +6,13 @@ import db from "./drizzle/drizzle";
 import * as schema from "../schemas/database.schema";
 import { getTrustedOrigins } from "./cors";
 import { sendMagicLinkEmail } from "./email/magic-link.handler";
-import { ensureUserWallets } from "../services/wallet.service";
+
+let _ensureWallet: ((userId: string) => Promise<void>) | null = null;
+
+/** Register the wallet-creation hook (called from main.ts after messaging store is ready). */
+export function setWalletHook(fn: (userId: string) => Promise<void>) {
+  _ensureWallet = fn;
+}
 
 export const PROTOCOL_URL =
   process.env.PROTOCOL_URL || `http://localhost:${process.env.PORT || 3001}`;
@@ -29,7 +35,7 @@ export const auth = betterAuth({
       create: {
         after: async (user) => {
           try {
-            await ensureUserWallets(user.id);
+            if (_ensureWallet) await _ensureWallet(user.id);
           } catch (_) { /* wallet generation failure shouldn't block registration */ }
         },
       },

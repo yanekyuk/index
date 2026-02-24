@@ -60,7 +60,6 @@ import type {
 } from '../interfaces/database.interface';
 import { selectStrategies } from '../support/opportunity.utils';
 import { persistOpportunities } from '../support/opportunity.persist';
-import { injectOpportunityIntoExistingChat } from '../support/opportunity.chat-injection';
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 
@@ -933,7 +932,6 @@ export class OpportunityGraphFactory {
             database: this.database,
             embedder: this.embedder,
             items: itemsToPersist,
-            injectChat: (opp) => injectOpportunityIntoExistingChat(opp),
           });
 
           logger.info('[Graph:Persist] Persistence complete', {
@@ -1226,10 +1224,6 @@ export class OpportunityGraphFactory {
           for (const recipient of recipients) {
             await notifier(opp.id, recipient.userId, 'high');
           }
-
-          await injectOpportunityIntoExistingChat({ ...opp, status: 'pending' }).catch((err) => {
-            logger.warn('[Graph:Send] Chat injection failed for opportunity', { opportunityId: opp.id, error: err });
-          });
 
           const recipientIds = recipients.map((a: OpportunityActor) => a.userId);
           return {

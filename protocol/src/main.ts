@@ -11,10 +11,13 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
-import { XmtpController } from './controllers/xmtp.controller';
+import { MessagingController } from './controllers/messaging.controller';
+import { MessagingDatabaseAdapter } from './adapters/database.adapter';
+import { MessagingService } from './services/messaging.service';
+import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
-import { auth } from './lib/auth';
+import { auth, setWalletHook } from './lib/auth';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { getStats } from './lib/performance';
@@ -74,6 +77,21 @@ const storageAdapter = new S3StorageAdapter({
   bucket: process.env.S3_BUCKET,
 });
 
+const walletMasterKeyHex = process.env.WALLET_ENCRYPTION_KEY;
+if (!walletMasterKeyHex || walletMasterKeyHex.length !== 64) {
+  logger.error('WALLET_ENCRYPTION_KEY must be a 64-char hex string (32 bytes)');
+  process.exit(1);
+}
+const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
+
+const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
+setWalletHook((userId) => messagingStore.ensureWallet(userId));
+const messagingService = new MessagingService(messagingStore, {
+  xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',
+  xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
+  walletMasterKey,
+});
+
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
@@ -86,7 +104,7 @@ controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController(storageAdapter));
 controllerInstances.set(UserController, new UserController());
-controllerInstances.set(XmtpController, new XmtpController());
+controllerInstances.set(MessagingController, new MessagingController(messagingService));
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 

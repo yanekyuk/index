@@ -51,7 +51,11 @@ export function XMTPProvider({ children }: { children: ReactNode }) {
 
   const getChatContext = useCallback(async (peerUserId: string): Promise<XmtpChatContext | null> => {
     try {
-      return await serviceRef.current.getChatContext(peerUserId);
+      const [oppCtx, dmResult] = await Promise.all([
+        serviceRef.current.getChatContext(peerUserId),
+        serviceRef.current.findDm(peerUserId).catch(() => ({ groupId: null })),
+      ]);
+      return { ...oppCtx, groupId: dmResult.groupId };
     } catch (err) {
       console.error('[XMTPContext] Failed to get chat context:', err);
       return null;
