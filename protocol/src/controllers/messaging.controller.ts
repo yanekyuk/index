@@ -95,8 +95,13 @@ export class MessagingController {
       return Response.json({ error: 'conversationId is required' }, { status: 400 });
     }
 
-    await this.messagingService.hideConversation(user.id, body.conversationId);
-    return Response.json({ success: true });
+    try {
+      await this.messagingService.hideConversation(user.id, body.conversationId);
+      return Response.json({ success: true });
+    } catch (err: any) {
+      logger.error('[deleteConversation] Error', { userId: user.id, error: err.message });
+      return Response.json({ error: err.message }, { status: 500 });
+    }
   }
 
   @Post('/find-dm')
@@ -113,8 +118,13 @@ export class MessagingController {
       return Response.json({ error: 'peerUserId is required' }, { status: 400 });
     }
 
-    const groupId = await this.messagingService.findExistingDm(user.id, body.peerUserId);
-    return Response.json({ groupId });
+    try {
+      const groupId = await this.messagingService.findExistingDm(user.id, body.peerUserId);
+      return Response.json({ groupId });
+    } catch (err: any) {
+      logger.error('[findDm] Error', { userId: user.id, error: err.message });
+      return Response.json({ error: err.message }, { status: 500 });
+    }
   }
 
   @Post('/peer-info')
@@ -131,12 +141,16 @@ export class MessagingController {
       return Response.json({ error: 'userId is required' }, { status: 400 });
     }
 
-    const info = await this.messagingService.getPeerInfo(body.userId);
-    if (!info) {
-      return Response.json({ error: 'User not found' }, { status: 404 });
+    try {
+      const info = await this.messagingService.getPeerInfo(body.userId);
+      if (!info) {
+        return Response.json({ error: 'User not found' }, { status: 404 });
+      }
+      return Response.json(info);
+    } catch (err: any) {
+      logger.error('[peerInfo] Error', { userId: body.userId, error: err.message });
+      return Response.json({ error: err.message }, { status: 500 });
     }
-
-    return Response.json(info);
   }
 
   @Get('/stream')
@@ -148,6 +162,7 @@ export class MessagingController {
       const encoder = new TextEncoder();
       const identityEvent = `data: ${JSON.stringify({ type: 'identity', inboxId })}\n\n`;
 
+      let cancelled = false;
       const wrappedStream = new ReadableStream({
         start(controller) {
           const tryEnqueue = (chunk: Uint8Array) => { try { controller.enqueue(chunk); } catch {} };
@@ -156,13 +171,17 @@ export class MessagingController {
           tryEnqueue(encoder.encode(identityEvent));
           const reader = stream.getReader();
           function pump() {
+            if (cancelled) { tryClose(); return; }
             reader.read().then(({ done, value }) => {
-              if (done) { tryClose(); return; }
+              if (done || cancelled) { tryClose(); return; }
               tryEnqueue(value);
               pump();
             }).catch(() => tryClose());
           }
           pump();
+        },
+        cancel() {
+          cancelled = true;
         },
       });
 

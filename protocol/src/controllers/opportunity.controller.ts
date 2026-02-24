@@ -55,8 +55,13 @@ export class OpportunityController {
       return Response.json({ error: 'peerUserId query param is required' }, { status: 400 });
     }
 
-    const result = await opportunityService.getChatContext(user.id, peerUserId);
-    return Response.json(result);
+    try {
+      const result = await opportunityService.getChatContext(user.id, peerUserId);
+      return Response.json(result);
+    } catch (err: any) {
+      logger.error('[getChatContext] Error', { userId: user.id, error: err.message });
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
   }
 
   /**
