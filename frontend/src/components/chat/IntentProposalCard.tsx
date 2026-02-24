@@ -4,6 +4,12 @@ import { useState } from "react";
 import { Check, Lightbulb, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Format a speech act type for display (e.g. "DIRECTIVE" -> "Directive"). */
+function formatSpeechActType(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+}
+
+/** Data shape for an intent proposal returned by the create_intent chat tool. */
 export interface IntentProposalData {
   proposalId: string;
   description: string;
@@ -16,10 +22,10 @@ interface IntentProposalCardProps {
   card: IntentProposalData;
   onApprove?: (proposalId: string, description: string, indexId?: string) => void | Promise<void>;
   onReject?: (proposalId: string) => void | Promise<void>;
-  isLoading?: boolean;
   currentStatus?: "pending" | "created" | "rejected";
 }
 
+/** Skeleton loader for intent proposal cards during streaming. */
 export function IntentProposalSkeleton() {
   return (
     <div className="bg-[#F8F8F8] rounded-md p-4 animate-pulse">
@@ -39,39 +45,50 @@ export function IntentProposalSkeleton() {
   );
 }
 
+/**
+ * Interactive card for consent-based intent creation in chat.
+ * Shows description, confidence, approve/reject buttons with in-place status transitions.
+ */
 export default function IntentProposalCard({
   card,
   onApprove,
   onReject,
-  isLoading = false,
   currentStatus,
 }: IntentProposalCardProps) {
   const [actionTaken, setActionTaken] = useState<"created" | "rejected" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"approve" | "reject" | null>(null);
   const [actionError, setActionError] = useState(false);
 
   const effectiveStatus = currentStatus ?? (actionTaken ? actionTaken : "pending");
   const canTakeAction = effectiveStatus === "pending";
+  const hasActions = !actionTaken && canTakeAction && (onApprove || onReject);
 
   const handleApprove = async () => {
-    if (onApprove) {
+    if (onApprove && !pendingAction) {
       setActionError(false);
+      setPendingAction("approve");
       try {
         await onApprove(card.proposalId, card.description, card.indexId);
         setActionTaken("created");
       } catch {
         setActionError(true);
+      } finally {
+        setPendingAction(null);
       }
     }
   };
 
   const handleReject = async () => {
-    if (onReject) {
+    if (onReject && !pendingAction) {
       setActionError(false);
+      setPendingAction("reject");
       try {
         await onReject(card.proposalId);
         setActionTaken("rejected");
       } catch {
         setActionError(true);
+      } finally {
+        setPendingAction(null);
       }
     }
   };
@@ -106,26 +123,27 @@ export default function IntentProposalCard({
             Proposed Intent
           </span>
         </div>
-        {canTakeAction && (
+        {hasActions && (
           <div className="flex gap-1.5 shrink-0">
             {onApprove && (
               <button
                 type="button"
-                disabled={isLoading}
+                disabled={pendingAction !== null}
+                aria-label={`Create intent: ${card.description}`}
                 className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handleApprove}
               >
-                {isLoading ? "Creating..." : "Create Intent"}
+                {pendingAction === "approve" ? "Creating..." : "Create Intent"}
               </button>
             )}
             {onReject && (
               <button
                 type="button"
-                disabled={isLoading}
+                disabled={pendingAction !== null}
                 className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium hover:bg-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={handleReject}
               >
-                Skip
+                {pendingAction === "reject" ? "Skipping..." : "Skip"}
               </button>
             )}
           </div>
@@ -149,7 +167,7 @@ export default function IntentProposalCard({
         "text-[14px] leading-relaxed",
         effectiveStatus === "rejected" ? "text-gray-400" : "text-[#3D3D3D]",
       )}>
-        &ldquo;{card.description}&rdquo;
+        &ldquo;{card.description || "No description provided"}&rdquo;
       </p>
 
       {/* Metadata */}
@@ -163,7 +181,7 @@ export default function IntentProposalCard({
           )}
           {card.confidence != null && card.speechActType && <span>&middot;</span>}
           {card.speechActType && (
-            <span>{card.speechActType.charAt(0) + card.speechActType.slice(1).toLowerCase()}</span>
+            <span>{formatSpeechActType(card.speechActType)}</span>
           )}
         </div>
       )}
