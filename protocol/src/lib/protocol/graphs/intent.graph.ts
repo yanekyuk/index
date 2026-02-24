@@ -718,6 +718,10 @@ export class IntentGraphFactory {
      */
     const shouldRunVerification = (state: typeof IntentGraphState.State): string => {
       if (state.inferredIntents.length === 0) {
+        if (state.operationMode === 'propose') {
+          logger.info('Propose mode with no inferred intents - exiting early');
+          return '__end__';
+        }
         logger.info('No intents to verify - skipping verification, routing to reconciliation');
         return 'reconciler';
       }
@@ -769,7 +773,8 @@ export class IntentGraphFactory {
       // After inference: decide if we need verification (skip if no intents)
       .addConditionalEdges("inference", shouldRunVerification, {
         verification: "verification",
-        reconciler: "reconciler"
+        reconciler: "reconciler",
+        __end__: END,
       })
       
       // After verification: propose mode exits early; others continue to reconciliation
