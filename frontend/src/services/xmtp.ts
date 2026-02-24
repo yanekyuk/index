@@ -19,8 +19,7 @@ export interface XmtpPeerInfo {
   xmtpInboxId: string | null;
 }
 
-export interface XmtpChatContext {
-  groupId: string | null;
+export interface ChatContextResponse {
   opportunities: {
     opportunityId: string;
     headline: string;
@@ -31,6 +30,10 @@ export interface XmtpChatContext {
   }[];
 }
 
+export interface XmtpChatContext extends ChatContextResponse {
+  groupId: string | null;
+}
+
 export const createXmtpService = (api: {
   get: <T>(endpoint: string) => Promise<T>;
   post: <T>(endpoint: string, data?: unknown) => Promise<T>;
@@ -39,7 +42,7 @@ export const createXmtpService = (api: {
     api.get<{ conversations: XmtpConversation[] }>('/xmtp/conversations'),
 
   getChatContext: (peerUserId: string) =>
-    api.get<XmtpChatContext>(`/xmtp/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`),
+    api.get<ChatContextResponse>(`/opportunities/chat-context?peerUserId=${encodeURIComponent(peerUserId)}`),
 
   getMessages: (groupId: string, limit?: number) =>
     api.post<{ messages: XmtpMessage[] }>('/xmtp/messages', { groupId, limit }),
@@ -49,6 +52,9 @@ export const createXmtpService = (api: {
 
   getPeerInfo: (userId: string) =>
     api.post<XmtpPeerInfo>('/xmtp/peer-info', { userId }),
+
+  findDm: (peerUserId: string) =>
+    api.post<{ groupId: string | null }>('/xmtp/find-dm', { peerUserId }),
 
   deleteConversation: (conversationId: string) =>
     api.post<{ success: boolean }>('/xmtp/conversations/delete', { conversationId }),

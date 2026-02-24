@@ -82,6 +82,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       );
       if (!groupId && newGroupId) {
         setGroupId(newGroupId);
+        loadMessages(newGroupId, 50);
       }
       inputRef.current?.focus();
     } catch (err) {
