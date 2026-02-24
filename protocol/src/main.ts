@@ -11,7 +11,6 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
-import { MessagingDatabaseAdapter } from './adapters/database.adapter';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { auth } from './lib/auth';
@@ -73,15 +72,6 @@ const storageAdapter = new S3StorageAdapter({
   },
   bucket: process.env.S3_BUCKET,
 });
-
-const walletMasterKeyHex = process.env.WALLET_ENCRYPTION_KEY;
-if (!walletMasterKeyHex || walletMasterKeyHex.length !== 64) {
-  logger.error('WALLET_ENCRYPTION_KEY must be a 64-char hex string (32 bytes)');
-  process.exit(1);
-}
-const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
-
-const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
 
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());

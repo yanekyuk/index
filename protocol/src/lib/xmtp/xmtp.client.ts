@@ -42,30 +42,6 @@ export async function createXmtpClient(
 }
 
 /**
- * Find an existing DM conversation by peer inbox ID.
- * @param client - An initialized XMTP Client.
- * @param peerInboxId - The XMTP inbox ID of the peer.
- * @returns The conversation ID if found, or null.
- */
-export async function findDm(client: Client, peerInboxId: string): Promise<string | null> {
-  await client.conversations.syncAll();
-  const dm = await client.conversations.getDmByInboxId(peerInboxId);
-  return dm?.id ?? null;
-}
-
-/**
- * Create a DM conversation with a peer.
- * @param client - An initialized XMTP Client.
- * @param peerInboxId - The XMTP inbox ID of the peer.
- * @returns The newly created conversation ID.
- */
-export async function createDm(client: Client, peerInboxId: string): Promise<string> {
-  await client.conversations.syncAll();
-  const dm = await client.conversations.createDm(peerInboxId);
-  return dm.id;
-}
-
-/**
  * Extract text content from an XMTP message.
  * @param msg - A decoded XMTP message object.
  * @returns The text content, or an empty string if not a text message.
