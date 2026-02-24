@@ -2115,7 +2115,7 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number }
+    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
@@ -2449,7 +2449,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number }
+    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
@@ -2457,21 +2457,29 @@ export class OpportunityDatabaseAdapter {
       OR ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'peer' }])}::jsonb
       OR (
         ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'patient' }])}::jsonb
-        AND (${opportunities.status} != 'latent' OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
       )
       OR (
         ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'agent' }])}::jsonb
         AND (
           ${opportunities.status} IN ('accepted', 'rejected', 'expired')
-          OR (${opportunities.status} != 'latent' AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+          OR (${opportunities.status} NOT IN ('latent', 'draft') AND NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
         )
       )
       OR (
         ${opportunities.actors} @> ${JSON.stringify([{ userId, role: 'party' }])}::jsonb
-        AND (${opportunities.status} != 'latent' OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
+        AND (${opportunities.status} NOT IN ('latent', 'draft') OR NOT (${opportunities.actors} @> '[{"role":"introducer"}]'::jsonb))
       )
     )`;
     const conditions = [visibilityGuard];
+    // Draft visibility: without conversationId exclude all draft; with conversationId include draft only for that session
+    if (options?.conversationId == null) {
+      conditions.push(sql`${opportunities.status} != 'draft'`);
+    } else {
+      conditions.push(
+        sql`(${opportunities.status} != 'draft' OR (${opportunities.context}->>'conversationId') = ${options.conversationId})`
+      );
+    }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.indexId) conditions.push(sql`${opportunities.context}->>'indexId' = ${options.indexId}`);
     let q = db

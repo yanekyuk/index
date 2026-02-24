@@ -351,6 +351,8 @@ export interface OpportunityQueryOptions {
   role?: string;
   limit?: number;
   offset?: number;
+  /** When set, include draft opportunities for this chat session. When unset, exclude all draft opportunities (e.g. home view, API). */
+  conversationId?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
