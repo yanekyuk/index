@@ -100,7 +100,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
   const createOpportunities = defineTool({
     name: "create_opportunities",
     description:
-      "Creates opportunities (connections). Two modes:\n" +
+      "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
+      "Two modes:\n" +
       "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
