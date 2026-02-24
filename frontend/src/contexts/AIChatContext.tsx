@@ -31,6 +31,20 @@ export interface DiscoveryOpportunity {
  */
 export type { OpportunityCardData } from "@/components/chat/OpportunityCardInChat";
 
+/** Per-turn debug meta (graph + tool calls) for copy debug. */
+export interface DebugTurnMeta {
+  graph: string;
+  iterations: number;
+  tools: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    resultSummary: string;
+    success: boolean;
+    /** Internal steps (subgraphs, subtasks) when tool reports debugSteps. */
+    steps?: Array<{ step: string; detail?: string }>;
+  }>;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -57,6 +71,8 @@ interface AIChatContextType {
   setScopeIndexId: (indexId: string | null) => void;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
+  /** Per-turn debug meta (one entry per assistant message, null for loaded history). */
+  debugMetaByTurn: (DebugTurnMeta | null)[];
   isLoading: boolean;
   sendMessage: (
     message: string,
@@ -94,6 +110,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [debugMetaByTurn, setDebugMetaByTurn] = useState<(DebugTurnMeta | null)[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { refetchSessions } = useAIChatSessions();
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -264,6 +281,16 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
+                  case "debug_meta":
+                    setDebugMetaByTurn((prev) => [
+                      ...prev,
+                      {
+                        graph: event.graph ?? "",
+                        iterations: event.iterations ?? 0,
+                        tools: event.tools ?? [],
+                      },
+                    ]);
+                    break;
                 }
               } catch (e) {
                 console.error("Failed to parse SSE event:", e);
@@ -304,6 +331,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     }
     setMessages([]);
     setSuggestions([]);
+    setDebugMetaByTurn([]);
     setSessionId(null);
     setSessionTitle(null);
     setSessionIndexId(null); // Clear session-bound index so new chat can use UI selection
@@ -341,6 +369,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           isStreaming: false,
         })),
       );
+      const assistantCount = data.messages.filter((m) => m.role === "assistant").length;
+      setDebugMetaByTurn(Array(assistantCount).fill(null));
     } catch (err) {
       console.error("Load session error:", err);
     }
@@ -379,6 +409,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         scopeIndexId,
         setScopeIndexId: setScopeIndexIdOverride,
         suggestions,
+        debugMetaByTurn,
         isLoading,
         sendMessage,
         clearChat,

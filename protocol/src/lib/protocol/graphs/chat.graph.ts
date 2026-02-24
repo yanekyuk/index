@@ -200,11 +200,7 @@ export class ChatGraphFactory {
           currentIteration: state.iterationCount
         });
 
-        const runLoop = async (): Promise<{
-          responseText: string;
-          messages: BaseMessage[];
-          iterationCount: number;
-        }> => {
+        const runLoop = async () => {
           const indexId = state.indexId;
           const agent = await ChatAgent.create({
             userId: state.userId,
@@ -243,6 +239,7 @@ export class ChatGraphFactory {
             responseText: result.responseText,
             iterationCount: result.iterationCount,
             shouldContinue: false,
+            debugMeta: result.debugMeta,
           };
         } catch (error) {
           if (isRetriableError(error)) {
@@ -262,6 +259,7 @@ export class ChatGraphFactory {
                 responseText: result.responseText,
                 iterationCount: result.iterationCount,
                 shouldContinue: false,
+                debugMeta: result.debugMeta,
               };
             } catch (retryError) {
               logger.error("Agent loop failed on retry", {

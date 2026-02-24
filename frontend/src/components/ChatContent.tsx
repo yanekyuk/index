@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   Share2,
   Check,
+  Bug,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -314,6 +315,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeIndexId,
     sessionIndexId,
     updateSessionTitle,
+    debugMetaByTurn,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess } = useNotifications();
@@ -331,6 +333,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const sessionIdRef = useRef(sessionId);
   const [isIndexDropdownOpen, setIsIndexDropdownOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [debugCopied, setDebugCopied] = useState(false);
 
   const handleShare = useCallback(async () => {
     if (!sessionId) return;
@@ -344,6 +347,40 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       showError("Failed to create share link");
     }
   }, [sessionId, showError]);
+
+  const handleCopyDebug = useCallback(async () => {
+    const exportedAt = new Date().toISOString();
+    const exportMessages = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    const assistantIndices = messages
+      .map((msg, i) => (msg.role === "assistant" ? i : -1))
+      .filter((i) => i >= 0);
+    const turns = assistantIndices.map((msgIdx, idx) => {
+      const meta = debugMetaByTurn[idx] ?? null;
+      return {
+        messageIndex: msgIdx,
+        graph: meta?.graph ?? null,
+        iterations: meta?.iterations ?? null,
+        tools: meta?.tools ?? null,
+      };
+    });
+    const payload = {
+      sessionId: sessionId ?? null,
+      exportedAt,
+      messages: exportMessages,
+      turns,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    try {
+      await navigator.clipboard.writeText(json);
+      setDebugCopied(true);
+      setTimeout(() => setDebugCopied(false), 2000);
+    } catch {
+      showError("Failed to copy debug to clipboard");
+    }
+  }, [messages, debugMetaByTurn, sessionId, showError]);
 
   // Keep ref in sync with sessionId
   useEffect(() => {
@@ -1372,6 +1409,19 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     <Check className="h-4 w-4 text-green-500" />
                   ) : (
                     <Share2 className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCopyDebug}
+                  title={debugCopied ? "Copied!" : "Copy debug (conversation + meta)"}
+                  className="shrink-0 p-1 rounded text-gray-500 hover:text-[#4091BB] hover:bg-gray-100 focus:outline-none"
+                  aria-label="Copy debug"
+                >
+                  {debugCopied ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Bug className="h-4 w-4" />
                   )}
                 </button>
               </>

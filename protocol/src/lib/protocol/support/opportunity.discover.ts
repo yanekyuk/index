@@ -98,6 +98,12 @@ export interface FormattedDiscoveryCandidate {
   };
 }
 
+/** One step for debug visibility (subgraph/subtask). */
+export interface DiscoverDebugStep {
+  step: string;
+  detail?: string;
+}
+
 export interface DiscoverResult {
   found: boolean;
   count: number;
@@ -107,6 +113,8 @@ export interface DiscoverResult {
   createIntentSuggested?: boolean;
   /** Description to pass to create_intent when createIntentSuggested is true. */
   suggestedIntentDescription?: string;
+  /** Internal steps for copy-debug (select_strategies, opportunity_graph, enrich, etc.). */
+  debugSteps?: DiscoverDebugStep[];
 }
 
 /**
@@ -183,6 +191,8 @@ export async function runDiscoverFromQuery(
     };
   }
 
+  const debugSteps: DiscoverDebugStep[] = [];
+
   // When query is empty, the opportunity graph uses the user's intents in scope (indexedIntents[0].payload) and derives strategies from that
   const queryOrEmpty = query?.trim() ?? "";
   const options: OpportunityGraphOptions = {
@@ -192,6 +202,10 @@ export async function runDiscoverFromQuery(
   };
   if (queryOrEmpty) {
     options.strategies = selectStrategiesFromQuery(queryOrEmpty);
+    debugSteps.push({
+      step: "select_strategies",
+      detail: (options.strategies ?? []).join(", "),
+    });
   }
 
   return withCallLogging(
@@ -229,18 +243,24 @@ export async function runDiscoverFromQuery(
           suggestedIntentDescription: result.suggestedIntentDescription,
           message:
             "No matching opportunities; add an intent with the suggested description to improve discovery.",
+          debugSteps,
         };
       }
 
       const opportunities: Opportunity[] = Array.isArray(result.opportunities)
         ? result.opportunities
         : [];
+      debugSteps.push({
+        step: "opportunity_graph",
+        detail: `${opportunities.length} opportunity(ies)`,
+      });
       if (opportunities.length === 0) {
         return {
           found: false,
           count: 0,
           message:
             "No matching opportunities found. Try a different query or create intents to improve matching.",
+          debugSteps,
         };
       }
 
@@ -265,6 +285,10 @@ export async function runDiscoverFromQuery(
           };
         }),
       );
+      debugSteps.push({
+        step: "enrich_profiles",
+        detail: `${baseEnriched.length} profile(s)`,
+      });
 
       // Batch-fetch user records (candidates + introducers) for name/avatar fallback.
       // Moved before presentation so name fallback and viewerName are available.
@@ -425,11 +449,16 @@ export async function runDiscoverFromQuery(
           };
         },
       );
+      debugSteps.push({
+        step: "format_cards",
+        detail: `${enriched.length} card(s)`,
+      });
 
       return {
         found: true,
         count: enriched.length,
         opportunities: enriched,
+        debugSteps,
       };
     },
     { context: { userId }, logOutput: false },

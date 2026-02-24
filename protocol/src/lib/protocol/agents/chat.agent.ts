@@ -5,7 +5,6 @@ import {
   ToolMessage,
   AIMessageChunk,
 } from "@langchain/core/messages";
-import { concat } from "@langchain/core/utils/stream";
 import {
   createChatTools,
   type ToolContext,
@@ -14,6 +13,8 @@ import {
 import { resolveChatContext } from "../tools/tool.helpers";
 import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt";
 import { protocolLogger } from "../support/protocol.logger";
+import { sanitizeForDebugMeta } from "../support/debug-meta.sanitizer";
+import type { DebugMetaToolCall } from "../../../types/chat-streaming.types";
 import { Timed } from "../../performance";
 
 const logger = protocolLogger("ChatAgent");
@@ -487,6 +488,7 @@ export class ChatAgent {
     responseText: string;
     messages: BaseMessage[];
     iterationCount: number;
+    debugMeta: { graph: string; iterations: number; tools: DebugMetaToolCall[] };
   }> {
     const emit = (event: AgentStreamEvent) => {
       try {
@@ -499,6 +501,7 @@ export class ChatAgent {
     let messages = initialMessages;
     let iterationCount = 0;
     let fullResponseText = "";
+    const toolsDebug: DebugMetaToolCall[] = [];
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
       const systemContent = buildSystemContent(this.resolvedContext);
@@ -522,8 +525,8 @@ export class ChatAgent {
 
       const stream = await this.model.stream(fullMessages);
       for await (const chunk of stream) {
-        // Accumulate full message (text + tool_calls)
-        accumulated = accumulated ? concat(accumulated, chunk) : chunk;
+        // Accumulate using AIMessageChunk.concat() so tool_call_chunks merge and tool_calls is populated
+        accumulated = accumulated ? accumulated.concat(chunk) : chunk;
 
         // Emit text content tokens to the user immediately
         const textPart = extractTextFromChunk(chunk);
@@ -565,6 +568,12 @@ export class ChatAgent {
               success: false,
               error: `Unknown tool: ${tc.name}`,
             });
+            toolsDebug.push({
+              name: tc.name,
+              args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
+              resultSummary: "Unknown tool",
+              success: false,
+            });
             emit({
               type: "tool_activity",
               phase: "end",
@@ -600,15 +609,43 @@ export class ChatAgent {
             });
 
             // Build brief summary for the activity event. Prefer tool-provided
-            // top-level summary to avoid coupling the agent to tool response shape.
+            // summary. Tools use success(data) → { success: true, data: { ... } }, so read from data when present.
             let summary = "Done";
+            let debugSteps: Array<{ step: string; detail?: string }> | undefined;
             try {
-              const parsed = JSON.parse(resultStr) as { summary?: string };
-              summary = parsed.summary ?? "Done";
+              const parsed = JSON.parse(resultStr) as {
+                success?: boolean;
+                data?: {
+                  summary?: string;
+                  debugSteps?: Array<{ step: string; detail?: string }>;
+                };
+                summary?: string;
+                debugSteps?: Array<{ step: string; detail?: string }>;
+              };
+              const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
+              summary = payload.summary ?? parsed.summary ?? "Done";
+              const rawSteps = payload.debugSteps ?? parsed.debugSteps;
+              if (Array.isArray(rawSteps) && rawSteps.length > 0) {
+                const maxDetail = 300;
+                debugSteps = rawSteps.map((s) => ({
+                  step: String(s.step ?? "").slice(0, 100),
+                  detail:
+                    s.detail != null
+                      ? String(s.detail).slice(0, maxDetail)
+                      : undefined,
+                }));
+              }
             } catch {
               /* not JSON, keep default */
             }
 
+            toolsDebug.push({
+              name: tc.name,
+              args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
+              resultSummary: summary,
+              success: true,
+              ...(debugSteps?.length ? { steps: debugSteps } : {}),
+            });
             emit({
               type: "tool_activity",
               phase: "end",
@@ -628,6 +665,12 @@ export class ChatAgent {
             logger.error("Streaming: tool failed", {
               name: tc.name,
               error: errMsg,
+            });
+            toolsDebug.push({
+              name: tc.name,
+              args: sanitizeForDebugMeta(tc.args) as Record<string, unknown>,
+              resultSummary: errMsg,
+              success: false,
             });
             emit({
               type: "tool_activity",
@@ -676,6 +719,7 @@ export class ChatAgent {
         responseText: fullResponseText,
         messages,
         iterationCount,
+        debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
       };
     }
 
@@ -693,7 +737,7 @@ export class ChatAgent {
     const forceStream = await this.model.stream(forceMessages);
     for await (const chunk of forceStream) {
       forcedAccumulated = forcedAccumulated
-        ? concat(forcedAccumulated, chunk)
+        ? forcedAccumulated.concat(chunk)
         : chunk;
       const textPart = extractTextFromChunk(chunk);
       if (textPart) {
@@ -709,6 +753,7 @@ export class ChatAgent {
         ...(forcedAccumulated ? [forcedAccumulated] : []),
       ],
       iterationCount,
+      debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
     };
   }
 }
