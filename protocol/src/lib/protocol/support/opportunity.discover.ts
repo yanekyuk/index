@@ -53,6 +53,8 @@ export interface DiscoverInput {
    * Sets homeCardPresentation and narratorChip from static labels and match reason.
    */
   minimalForChat?: boolean;
+  /** When set (e.g. from chat), create opportunities as draft with context.conversationId = chatSessionId. */
+  chatSessionId?: string;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -169,6 +171,7 @@ export async function runDiscoverFromQuery(
     indexScope,
     limit = 5,
     triggerIntentId,
+    chatSessionId,
   } = input;
 
   if (indexScope.length === 0) {
@@ -184,7 +187,8 @@ export async function runDiscoverFromQuery(
   const queryOrEmpty = query?.trim() ?? "";
   const options: OpportunityGraphOptions = {
     limit,
-    initialStatus: "latent",
+    initialStatus: chatSessionId ? "draft" : "latent",
+    ...(chatSessionId ? { conversationId: chatSessionId } : {}),
   };
   if (queryOrEmpty) {
     options.strategies = selectStrategiesFromQuery(queryOrEmpty);
@@ -211,6 +215,13 @@ export async function runDiscoverFromQuery(
       });
 
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
+        if (chatSessionId) {
+          return {
+            found: false,
+            count: 0,
+            message: "No matching opportunities found. Try a different query.",
+          };
+        }
         return {
           found: false,
           count: 0,

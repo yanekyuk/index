@@ -131,11 +131,13 @@ export class ChatStreamer {
         userId: string;
         messages: BaseMessage[];
         indexId?: string;
+        sessionId?: string;
       } = {
         userId: input.userId,
         messages: input.messages,
       };
       if (input.indexId) initialState.indexId = input.indexId;
+      initialState.sessionId = sessionId;
 
       // Use graph.stream() with custom + updates modes.
       // Custom events come from config.writer() inside agentLoopNode.

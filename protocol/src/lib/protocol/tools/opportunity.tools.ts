@@ -343,6 +343,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         limit: 5,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
+        ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
       });
 
       if (result.createIntentSuggested && result.suggestedIntentDescription) {

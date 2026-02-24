@@ -212,6 +212,7 @@ export class ChatGraphFactory {
             embedder,
             scraper,
             indexId,
+            sessionId: state.sessionId,
           });
           // Direct streaming writer - emit events immediately instead of buffering
           const directWriter = (data: unknown) => {
