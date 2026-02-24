@@ -39,6 +39,32 @@ export class OpportunityController {
   }
 
   /**
+   * GET /opportunities/chat-context — get shared accepted opportunities between the
+   * authenticated user and a peer, used as context for chat conversations.
+   *
+   * @param req - Must include `peerUserId` query parameter
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with opportunity cards for the chat context
+   */
+  @Get('/chat-context')
+  @UseGuards(AuthGuard)
+  async getChatContext(req: Request, user: AuthenticatedUser) {
+    const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
+    const peerUserId = url.searchParams.get('peerUserId');
+    if (!peerUserId) {
+      return Response.json({ error: 'peerUserId query param is required' }, { status: 400 });
+    }
+
+    try {
+      const result = await opportunityService.getChatContext(user.id, peerUserId);
+      return Response.json(result);
+    } catch (err: any) {
+      logger.error('[getChatContext] Error', { userId: user.id, error: err.message });
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
+  }
+
+  /**
    * GET /opportunities/home — home view with dynamic sections (LLM-categorized, presenter text, Lucide icons).
    */
   @Get('/home')
