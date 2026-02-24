@@ -585,6 +585,7 @@ If Sentry is configured (`SENTRY_DSN`):
 ### TypeScript
 
 - Strict mode enabled
+- **Do not use `any`** — use proper types or `unknown` and narrow as needed. ESLint enforces `@typescript-eslint/no-explicit-any`.
 - All agents use Zod schemas for validation
 - Prefer type inference from Drizzle schema over manual types
 - Use `Id<'tableName'>` type from `_generated/dataModel` for document IDs
