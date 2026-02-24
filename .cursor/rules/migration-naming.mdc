@@ -43,3 +43,51 @@ When generating a new migration:
 3. Edit `drizzle/meta/_journal.json`: change the `tag` for that entry to match
 4. `bun run db:migrate`
 5. Verify: `bun run db:generate` should report "No schema changes"
+
+## Making schema changes (full workflow)
+
+1. Edit schema in `protocol/src/schemas/database.schema.ts`
+2. Generate migration: `bun run db:generate`
+3. Rename migration file and update journal `tag` as above
+4. Review generated SQL in `drizzle/`
+5. Apply: `bun run db:migrate`
+6. Verify: `bun run db:studio` to inspect changes
+
+## Why migrations get out of sync
+
+Drizzle stays in sync when (1) `drizzle/meta/_journal.json` lists every migration in order and (2) the `__drizzle_migrations` table in the DB matches what's been applied. Things break when:
+
+- **Journal and files diverge** — A new `.sql` file is added but `_journal.json` is not updated. **Rule:** Every file in `drizzle/*.sql` must have a matching entry in `drizzle/meta/_journal.json` (same order; `tag` = filename without `.sql`).
+- **Applying SQL outside Drizzle** — Running SQL by hand or via `db:apply-schema` does not insert into `__drizzle_migrations`. **Rule:** Prefer `bun run db:migrate`; if you run SQL manually, insert the corresponding row(s) into `__drizzle_migrations`.
+- **pgvector** — Drizzle does not emit `CREATE EXTENSION vector`; the first migration must include it. The `maintenance:fix-migrations` script injects it when regenerating from scratch.
+
+## Making db:migrate the single source of truth
+
+- Same DB as the app: run `bun run db:migrate` from `protocol/` (uses same `DATABASE_URL` as app).
+- Fresh DB: run `bun run db:migrate` once to apply all migrations.
+- Existing DB set up with db:apply-schema or manual SQL: run `bun run db:migrate` to apply any not yet in `__drizzle_migrations`; if the DB is missing a column, sync journal and files then run again or apply missing SQL and insert into `__drizzle_migrations`.
+
+## Fixing ruined migrations
+
+If local migrations are corrupted or out of sync:
+
+```bash
+cd protocol
+bun run maintenance:fix-migrations
+```
+
+For a remote DB (e.g. Neon):
+
+```bash
+bun run maintenance:reset-remote-db -- --confirm
+bun run db:migrate
+```
+
+## Common operations
+
+```bash
+bun run db:studio    # View current database state
+bun run db:flush     # Flush all data (development only)
+bun run db:migrate   # Apply pending migrations
+bun run db:seed      # Seed sample data
+```

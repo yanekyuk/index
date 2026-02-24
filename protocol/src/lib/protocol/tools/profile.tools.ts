@@ -11,22 +11,93 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
   const readUserProfiles = defineTool({
     name: "read_user_profiles",
     description:
-      "Fetches user profiles. In an index-scoped chat, no args returns the current user's profile. With `userId`: returns that user's profile. With `indexId`: returns profiles of all members in that index. Outside an index-scoped chat, `userId` or `indexId` is required.",
+      "Find or read user profiles. When the user asks to find, look up, or learn about a specific person by name, use `query` — this is the primary way to look up people by name. With `query`: finds members by name (case-insensitive) across the user's indexes (or a specific index if `indexId` also provided). With `userId`: returns that user's profile. With `indexId` alone: returns profiles of all members in that index. In an index-scoped chat, no args returns the current user's profile. Outside an index-scoped chat, at least one parameter is required.",
     querySchema: z.object({
       userId: z.string().optional().describe("Optional user ID to fetch a specific user's profile"),
       indexId: z.string().optional().describe("Optional index ID to fetch profiles of all members in that index"),
+      query: z.string().optional().describe("Name to find (case-insensitive substring match). Searches across the user's indexes, or within a specific index if indexId is also provided."),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = query.indexId?.trim() || undefined;
       const targetUserId = query.userId?.trim() || undefined;
+      const nameQuery = query.query?.trim() || undefined;
 
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
         return error("Invalid index ID format. Use the exact UUID from read_indexes.");
       }
 
+      // --- Name search mode: query provided → find members by name ---
+      if (nameQuery) {
+        const pattern = nameQuery.toLowerCase();
+        const MAX_RESULTS = 20;
+        // When chat is index-scoped, restrict name search to that index
+        const searchIndexId = effectiveIndexId || context.indexId || undefined;
+
+        let candidates: Array<{ userId: string; name: string; avatar: string | null }>;
+
+        if (searchIndexId) {
+          // Scoped to a specific index
+          if (context.indexId && searchIndexId !== context.indexId) {
+            return error(
+              context.indexName
+                ? `This chat is scoped to ${context.indexName}. You can only look up people in this community.`
+                : `This chat is scoped to this index. You can only look up people in this community.`
+            );
+          }
+          const callerIsMember = await systemDb.isIndexMember(searchIndexId, context.userId);
+          if (!callerIsMember) {
+            return error("You can only look up people in indexes you are a member of.");
+          }
+          const members = await systemDb.getIndexMembers(searchIndexId);
+          candidates = members.map((m) => ({ userId: m.userId, name: m.name, avatar: m.avatar ?? null }));
+        } else {
+          // Search across all user's indexes
+          candidates = await systemDb.getMembersFromScope();
+        }
+
+        logger.info("Name search candidates", {
+          query: nameQuery,
+          pattern,
+          candidateCount: candidates.length,
+          userId: context.userId,
+        });
+
+        // Filter by name (case-insensitive substring), exclude self
+        const matched = candidates
+          .filter((c) => c.userId !== context.userId && c.name.toLowerCase().includes(pattern))
+          .slice(0, MAX_RESULTS);
+
+        if (matched.length === 0) {
+          return success({ query: nameQuery, matchCount: 0, profiles: [], message: "No members found matching that name." });
+        }
+
+        // Fetch full profiles for matches
+        const profiles = await Promise.all(
+          matched.map(async (m) => {
+            const profile = await systemDb.getProfile(m.userId);
+            return {
+              userId: m.userId,
+              name: m.name,
+              hasProfile: !!profile,
+              profile: profile
+                ? {
+                    name: profile.identity.name,
+                    bio: profile.identity.bio,
+                    location: profile.identity.location,
+                    skills: profile.attributes.skills,
+                    interests: profile.attributes.interests,
+                  }
+                : undefined,
+            };
+          })
+        );
+
+        return success({ query: nameQuery, matchCount: profiles.length, profiles });
+      }
+
       // Guard: when chat is NOT index-scoped and no userId/indexId provided, disallow
       if (!effectiveIndexId && !targetUserId && !context.indexId) {
-        return error("Please provide a userId or indexId. Outside of an index-scoped chat, read_user_profiles requires at least one of these parameters. To read your own profile, pass your own userId.");
+        return error("Please provide a userId, indexId, or query. Outside of an index-scoped chat, read_user_profiles requires at least one of these parameters. To read your own profile, pass your own userId.");
       }
 
       // --- Mode 3: indexId provided → fetch all member profiles ---

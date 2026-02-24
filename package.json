@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "bun@1.2.20",
   "scripts": {
-    "dev": "bun run dev:protocol & bun run dev:frontend & bun run dev:evaluator",
+    "dev": "bash scripts/dev.sh",
     "dev:evaluator": "cd evaluator && bun run dev",
     "dev:frontend": "cd frontend && bun run dev",
     "dev:protocol": "cd protocol && bun run dev",
@@ -17,6 +17,7 @@
     "test": "cd protocol && bun test",
     "worktree:setup": "bash scripts/worktree-setup.sh",
     "worktree:list": "bash scripts/worktree-list.sh",
-    "worktree:dev": "bash scripts/worktree-dev.sh"
+    "worktree:dev": "bash scripts/worktree-dev.sh",
+    "worktree:build": "bash scripts/worktree-build.sh"
   }
 }
