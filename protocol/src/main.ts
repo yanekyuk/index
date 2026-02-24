@@ -17,7 +17,7 @@ import { MessagingService } from './services/messaging.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
-import { auth, setWalletHook } from './lib/auth';
+import { auth } from './lib/auth';
 import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { getStats } from './lib/performance';
@@ -85,7 +85,6 @@ if (!walletMasterKeyHex || walletMasterKeyHex.length !== 64) {
 const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
 
 const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
-setWalletHook((userId) => messagingStore.ensureWallet(userId));
 const messagingService = new MessagingService(messagingStore, {
   xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',
   xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),

@@ -7,13 +7,6 @@ import * as schema from "../schemas/database.schema";
 import { getTrustedOrigins } from "./cors";
 import { sendMagicLinkEmail } from "./email/magic-link.handler";
 
-let _ensureWallet: ((userId: string) => Promise<void>) | null = null;
-
-/** Register the wallet-creation hook (called from main.ts after messaging store is ready). */
-export function setWalletHook(fn: (userId: string) => Promise<void>) {
-  _ensureWallet = fn;
-}
-
 export const PROTOCOL_URL =
   process.env.PROTOCOL_URL || `http://localhost:${process.env.PORT || 3001}`;
 
@@ -30,17 +23,6 @@ export const auth = betterAuth({
       jwks: schema.jwks,
     },
   }),
-  databaseHooks: {
-    user: {
-      create: {
-        after: async (user) => {
-          try {
-            if (_ensureWallet) await _ensureWallet(user.id);
-          } catch (_) { /* wallet generation failure shouldn't block registration */ }
-        },
-      },
-    },
-  },
   basePath: "/api/auth",
   emailAndPassword: { enabled: true },
   user: {
