@@ -239,6 +239,15 @@ describe("createChatTools", () => {
     expect(tools.find((t: { name: string }) => t.name === "read_indexes")).toBeDefined();
     expect(tools.find((t: { name: string }) => t.name === "read_index_memberships")).toBeDefined();
   });
+
+  test("does not include list_opportunities (chat only proposes opportunities from create_opportunities; home shows the rest)", async () => {
+    const mockDb = createMockDatabase(async () => []);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    expect(tools.find((t: { name: string }) => t.name === "list_opportunities")).toBeUndefined();
+    expect(tools.find((t: { name: string }) => t.name === "create_opportunities")).toBeDefined();
+    expect(tools.find((t: { name: string }) => t.name === "update_opportunity")).toBeDefined();
+  });
 });
 
 const testIndexId = "a1b2c3d4-0000-4000-8000-000000000001";
@@ -1028,6 +1037,38 @@ describe("update_opportunity tool (send via status pending)", () => {
     expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, "pending");
   });
 
+  test("when opportunity is draft and user is actor, status pending promotes to pending and returns success", async () => {
+    const draftOpportunity = {
+      id: opportunityId,
+      status: "draft" as const,
+      actors: [
+        { indexId: "idx-1", userId: testUserId, role: "party" as const },
+        { indexId: "idx-1", userId: "other-user-id", role: "party" as const },
+      ],
+      detection: { source: "opportunity_graph" as const, timestamp: new Date().toISOString() },
+      interpretation: { category: "collaboration", reasoning: "Match", confidence: 0.8 },
+      context: { indexId: "idx-1" },
+      confidence: "0.8",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+    const updateStatusSpy = mock(async () => null);
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunity: async () => draftOpportunity,
+      updateOpportunityStatus: updateStatusSpy,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
+    const result = await tool.invoke({ opportunityId, status: "pending" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.opportunityId).toBe(opportunityId);
+    expect(parsed.data.status).toBe("pending");
+    expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, "pending");
+  });
+
   test("when opportunity not found, returns error", async () => {
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => null,
@@ -1041,7 +1082,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     expect(parsed.error).toMatch(/Opportunity not found|not found|Valid opportunityId/i);
   });
 
-  test("when opportunity status is not latent, returns error", async () => {
+  test("when opportunity status is not latent or draft (e.g. already pending), returns error", async () => {
     const pendingOpportunity = {
       id: opportunityId,
       status: "pending" as const,

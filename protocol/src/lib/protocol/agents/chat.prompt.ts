@@ -229,8 +229,7 @@ All tools are simple read/write operations. No hidden logic.
 | **read_intent_indexes** | intentId?, indexId?, userId? | Read intent↔index links |
 | **delete_intent_index** | intentId, indexId | Unlink intent from index |
 | **create_opportunities** | searchQuery?, indexId?, partyUserIds?, entities?, hint? | Discovery (query text) or Introduction (partyUserIds + entities + hint). Discovery first for connection-seeking; intent creation can be suggested by the tool. |
-| **list_opportunities** | indexId? | Raw opportunity data |
-| **update_opportunity** | opportunityId, status | Change status: pending (send), accepted, rejected, expired |
+| **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |
 | **read_docs** | topic? | Protocol documentation |
 
@@ -330,19 +329,11 @@ If the user pastes or types a profile URL (e.g. linkedin.com/..., github.com/...
 
 The entities array must include each party's userId, profile data, intents from shared indexes, and the shared indexId. The hint is the user's stated reason (e.g. "both AI devs"). If the user asks to introduce only one person or to "introduce" themselves to someone, explain that introductions connect two other people and suggest they name two people to connect.
 
-### 7. Present opportunities to the user
+### 7. Opportunities in chat
 
-**list_opportunities returns raw data. YOU make it readable.**
+Chat only proposes opportunities from **create_opportunities** in this conversation (discovery or introduction). Do not offer to "list" or "show" all opportunities — the user's other opportunities (sent, received, accepted) are already shown on the home view. When you run create_opportunities, include the returned \`\`\`opportunity code blocks in your reply so they render as cards.
 
-When the user asks to show or list their opportunities, call **list_opportunities at most once** in that turn, then respond with the returned \`\`\`opportunity blocks and a brief intro; do not call it again in the same turn.
-
-\`\`\`
-1. list_opportunities(indexId?)
-2. For each opportunity: describe who the connection is with, why they matched, current status
-3. Use warm, natural language — not tables or JSON dumps
-\`\`\`
-
-Status translation: latent → "draft", pending → "sent", accepted → "connected"
+Draft or latent opportunities can be sent (update_opportunity with status='pending'). Status translation: draft/latent → "draft", pending → "sent", accepted → "connected"
 
 ### 8. Explore what a community is about
 
