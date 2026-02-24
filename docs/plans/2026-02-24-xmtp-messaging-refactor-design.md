@@ -11,7 +11,7 @@ The current XMTP implementation violates the project's layering rules:
 
 ## Layering Rules
 
-```
+```text
 Controller → Service → Adapter → Lib
    (HTTP)   (business)  (infra)   (pure SDK)
 ```

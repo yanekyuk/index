@@ -13,6 +13,12 @@ const logger = log.controller.from('messaging');
 export class MessagingController {
   constructor(private readonly messagingService: MessagingService) {}
 
+  /**
+   * GET /xmtp/conversations — list all conversations for the authenticated user.
+   *
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with conversations array
+   */
   @Get('/conversations')
   @UseGuards(AuthGuard)
   async listConversations(_req: Request, user: AuthenticatedUser) {
@@ -25,6 +31,13 @@ export class MessagingController {
     }
   }
 
+  /**
+   * POST /xmtp/messages — get messages for a conversation.
+   *
+   * @param req - Must include `groupId` in JSON body; optional `limit`
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with messages array, or 404 if conversation not found
+   */
   @Post('/messages')
   @UseGuards(AuthGuard)
   async getMessages(req: Request, user: AuthenticatedUser) {
@@ -51,6 +64,13 @@ export class MessagingController {
     }
   }
 
+  /**
+   * POST /xmtp/send — send a message. Creates DM if needed.
+   *
+   * @param req - Must include `text` and either `groupId` or `peerUserId` in JSON body
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with `success` and `groupId`
+   */
   @Post('/send')
   @UseGuards(AuthGuard)
   async sendMessage(req: Request, user: AuthenticatedUser) {
@@ -81,6 +101,13 @@ export class MessagingController {
     }
   }
 
+  /**
+   * POST /xmtp/conversations/delete — hide a conversation for the user.
+   *
+   * @param req - Must include `conversationId` in JSON body
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with `success: true`
+   */
   @Post('/conversations/delete')
   @UseGuards(AuthGuard)
   async deleteConversation(req: Request, user: AuthenticatedUser) {
@@ -104,6 +131,13 @@ export class MessagingController {
     }
   }
 
+  /**
+   * POST /xmtp/find-dm — find an existing DM conversation with a peer.
+   *
+   * @param req - Must include `peerUserId` in JSON body
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON with `groupId` (string or null)
+   */
   @Post('/find-dm')
   @UseGuards(AuthGuard)
   async findDm(req: Request, user: AuthenticatedUser) {
@@ -127,6 +161,12 @@ export class MessagingController {
     }
   }
 
+  /**
+   * POST /xmtp/peer-info — get public XMTP identity info for a user.
+   *
+   * @param req - Must include `userId` in JSON body
+   * @returns JSON with `walletAddress` and `xmtpInboxId`, or 404 if user not found
+   */
   @Post('/peer-info')
   @UseGuards(AuthGuard)
   async peerInfo(req: Request, _user: AuthenticatedUser) {
@@ -153,6 +193,12 @@ export class MessagingController {
     }
   }
 
+  /**
+   * GET /xmtp/stream — SSE stream for real-time messages.
+   *
+   * @param user - Authenticated user from AuthGuard
+   * @returns SSE event stream with identity event followed by message events
+   */
   @Get('/stream')
   @UseGuards(AuthGuard)
   async streamMessages(_req: Request, user: AuthenticatedUser) {
