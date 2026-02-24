@@ -19,6 +19,14 @@ alwaysApply: false
 
 **Summary:** Controllers → Services → Adapters. Lib code depends on interfaces; adapters are injected.
 
+## Adapter Pattern
+
+Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
+
+## Controller and Decorator Routing
+
+The API uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
+
 ## Template Files
 
 Each category has a `*.template.md` with coding guidelines. Consult before adding or changing code in that layer:

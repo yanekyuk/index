@@ -1,0 +1,51 @@
+---
+description: TypeScript, agents, services, controllers, API routes, and database code conventions
+globs: "protocol/**/*.ts"
+alwaysApply: false
+---
+
+# Protocol Code Style
+
+## TypeScript
+
+- Strict mode enabled
+- All agents use Zod schemas for validation
+- Prefer type inference from Drizzle schema over manual types
+- Use `Id<'tableName'>` type from `_generated/dataModel` for document IDs
+
+## Agents
+
+- Extend `BaseLangChainAgent` for consistency
+- Define input/output as Zod schemas
+- Set appropriate temperature per agent type
+- Use Langfuse middleware for tracing
+- Keep agents pure (no direct DB access) — let services handle persistence
+
+## Services
+
+- Encapsulate business logic; handle database transactions
+- Emit events after successful operations; return typed results
+- Use Drizzle for type-safe queries
+- **Must not import other services** — use events, queues, or shared lib for cross-service orchestration
+
+## Controllers
+
+- Handle HTTP (request/response) and delegate business logic to services or protocol graph factories
+- May accept adapters (database, queue) via constructor injection for testability
+- **Must not import adapters directly** — only services may import adapters
+
+## API Routes
+
+- Use guard functions for authentication (e.g. `AuthGuard`)
+- Validate input with Zod schemas where needed
+- Handle errors with try/catch and proper HTTP status codes
+- Return consistent JSON responses or Response objects
+
+## Database
+
+- Canonical schema and table definitions live in `src/schemas/database.schema.ts`; import from there (not from `lib/schema`)
+- Use Drizzle's query builder for type safety
+- Define relations in schema for automatic joins
+- Create indexes for frequently queried columns
+- Use vector similarity for semantic search
+- Prefer soft deletes (deletedAt) over hard deletes
