@@ -389,6 +389,35 @@ export class IntentDatabaseAdapter {
   }
 
   /**
+   * Finds an intent by sourceId and userId (e.g. for idempotent proposal confirmation).
+   * @param sourceId - The source identifier (e.g. proposalId from chat).
+   * @param userId - The owning user's ID.
+   * @returns The intent id if found, otherwise null.
+   * @throws May throw database/query errors.
+   */
+  async getIntentBySourceId(sourceId: string, userId: string): Promise<{ id: string } | null> {
+    const rows = await db.select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(
+        eq(schema.intents.sourceId, sourceId),
+        eq(schema.intents.userId, userId),
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Associates an intent with an index (inserts intent_indexes row).
+   * @param intentId - The intent identifier.
+   * @param indexId - The index identifier.
+   * @returns Promise that resolves when the row is inserted.
+   * @throws May throw on database insertion errors (db.insert/schema.intentIndexes).
+   */
+  async assignIntentToIndex(intentId: string, indexId: string): Promise<void> {
+    await db.insert(schema.intentIndexes).values({ intentId, indexId });
+  }
+
+  /**
    * Delete all intents for a user (for test teardown).
    */
   async deleteByUserId(userId: string): Promise<void> {

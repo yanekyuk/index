@@ -109,9 +109,8 @@ export class EmailQueue {
     });
   }
 
-  private async handleSendEmail(data: EmailJobData): Promise<any> {
-    const result = await executeSendEmail(data);
-    return result;
+  private async handleSendEmail(data: EmailJobData): Promise<void> {
+    await executeSendEmail(data);
   }
 }
 

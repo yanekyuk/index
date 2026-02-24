@@ -185,8 +185,9 @@ export class IntentGraphFactory {
         // Only allow for create operations without explicit content
         const allowProfileFallback = state.operationMode === 'create' && !state.inputContent;
 
-        // Cast operationMode to exclude 'read' (inference node is never called in read mode)
-        const inferrerMode = state.operationMode === 'read' ? 'create' : state.operationMode;
+        // Cast operationMode: 'read' and 'propose' map to 'create' for the inferrer
+        // (inference node is never called in read mode; propose behaves like create for inference)
+        const inferrerMode = (state.operationMode === 'read' || state.operationMode === 'propose') ? 'create' : state.operationMode;
         const result = await inferrer.invoke(
           state.inputContent || null,
           state.userProfile,
@@ -717,6 +718,10 @@ export class IntentGraphFactory {
      */
     const shouldRunVerification = (state: typeof IntentGraphState.State): string => {
       if (state.inferredIntents.length === 0) {
+        if (state.operationMode === 'propose') {
+          logger.info('Propose mode with no inferred intents - exiting early');
+          return '__end__';
+        }
         logger.info('No intents to verify - skipping verification, routing to reconciliation');
         return 'reconciler';
       }
@@ -751,6 +756,7 @@ export class IntentGraphFactory {
       // - CREATE:  prep → inference → verification → reconciler → executor → END
       // - UPDATE:  prep → inference → reconciliation → executor → END (skips verification if no new intents)
       // - DELETE:  prep → reconciliation → executor → END (skips inference and verification)
+      // - PROPOSE: prep → inference → verification → END (no reconciliation/execution, no DB writes)
       .addEdge(START, "prep")
       
       // After prep: read mode → query; else inference or reconciler
@@ -767,11 +773,21 @@ export class IntentGraphFactory {
       // After inference: decide if we need verification (skip if no intents)
       .addConditionalEdges("inference", shouldRunVerification, {
         verification: "verification",
-        reconciler: "reconciler"
+        reconciler: "reconciler",
+        __end__: END,
       })
       
-      // Verification always goes to reconciliation
-      .addEdge("verification", "reconciler")
+      // After verification: propose mode exits early; others continue to reconciliation
+      .addConditionalEdges("verification", (state: typeof IntentGraphState.State) => {
+        if (state.operationMode === 'propose') {
+          logger.info('Propose mode - stopping after verification, skipping reconciliation');
+          return '__end__';
+        }
+        return 'reconciler';
+      }, {
+        reconciler: "reconciler",
+        __end__: END,
+      })
       
       // Reconciliation always goes to executor
       .addEdge("reconciler", "executor")

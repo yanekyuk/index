@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
@@ -5,6 +7,18 @@ import { intentService } from '../services/intent.service';
 import { userService } from '../services/user.service';
 
 const logger = log.controller.from('intent');
+
+const ConfirmSchema = z.object({
+  proposalId: z.string().min(1, 'proposalId is required'),
+  description: z.string().min(1, 'description is required'),
+  indexId: z.string().optional(),
+});
+const RejectSchema = z.object({
+  proposalId: z.string().min(1, 'proposalId is required'),
+});
+const ProposalStatusesSchema = z.object({
+  proposalIds: z.array(z.string().min(1)).default([]),
+});
 
 @Controller('/intents')
 export class IntentController {
@@ -37,6 +51,93 @@ export class IntentController {
       })),
       pagination: result.pagination,
     });
+  }
+
+  /**
+   * Confirm a proposed intent from chat. Directly persists the pre-verified
+   * intent (embedding + DB insert) without re-running the full intent graph.
+   * @param req - Request with body `{ proposalId: string; description: string; indexId?: string }`
+   * @param user - Authenticated user from AuthGuard
+   * @returns The created intent
+   */
+  @Post('/confirm')
+  @UseGuards(AuthGuard)
+  async confirm(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = ConfirmSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const { proposalId, description, indexId } = parsed.data;
+
+    logger.info('Intent confirm requested', { userId: user.id, proposalId });
+
+    try {
+      const created = await intentService.createFromProposal(user.id, description, proposalId, indexId);
+
+      return Response.json({
+        success: true,
+        proposalId,
+        intentId: created.id,
+      });
+    } catch (err) {
+      logger.error('Intent confirm failed', { userId: user.id, proposalId, error: err });
+      return Response.json({ error: 'Failed to process intent confirmation' }, { status: 500 });
+    }
+  }
+
+  /**
+   * Reject a proposed intent from chat. Logs the rejection for analytics.
+   * @param req - Request with body `{ proposalId: string }`
+   * @param user - Authenticated user from AuthGuard
+   * @returns Acknowledgement with the proposal ID
+   */
+  @Post('/reject')
+  @UseGuards(AuthGuard)
+  async reject(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = RejectSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const { proposalId } = parsed.data;
+
+    logger.info('Intent proposal rejected', { userId: user.id, proposalId });
+
+    return Response.json({
+      success: true,
+      proposalId,
+    });
+  }
+
+  /**
+   * Batch-check proposal statuses. Returns which proposalIds have been confirmed.
+   * @param req - Request with body `{ proposalIds: string[] }`
+   * @param user - Authenticated user from AuthGuard
+   * @returns Map of proposalId -> status
+   */
+  @Post('/proposals/status')
+  @UseGuards(AuthGuard)
+  async proposalStatuses(req: Request, user: AuthenticatedUser) {
+    const raw = await req.json().catch(() => ({}));
+    const parsed = ProposalStatusesSchema.safeParse(raw);
+    if (!parsed.success) {
+      return Response.json(
+        { error: 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+    const { proposalIds } = parsed.data;
+
+    const statuses = await intentService.getProposalStatuses(user.id, proposalIds);
+
+    return Response.json({ statuses });
   }
 
   /**

@@ -27,6 +27,10 @@ import OpportunityCard, {
   type OpportunityCardData,
   OpportunitySkeleton,
 } from "@/components/chat/OpportunityCardInChat";
+import IntentProposalCard, {
+  type IntentProposalData,
+  IntentProposalSkeleton,
+} from "@/components/chat/IntentProposalCard";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import ThinkingDropdown from "@/components/chat/ThinkingDropdown";
 import { ContentContainer } from "@/components/layout";
@@ -84,17 +88,17 @@ function normalizeBlockquotes(text: string): string {
 type MessageSegment =
   | { type: "text"; content: string }
   | { type: "opportunity"; data: OpportunityCardData }
-  | { type: "opportunity_loading" };
+  | { type: "opportunity_loading" }
+  | { type: "intent_proposal"; data: IntentProposalData }
+  | { type: "intent_proposal_loading" };
 
-function parseOpportunityBlocks(content: string): MessageSegment[] {
+function parseAllBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
-  // Match ```opportunity followed by JSON and closing ```
-  const regex = /```opportunity\s*\n([\s\S]*?)```/g;
+  const regex = /```(opportunity|intent_proposal)\s*\n([\s\S]*?)\n```/g;
   let lastIndex = 0;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    // Add text before this match
     if (match.index > lastIndex) {
       const textBefore = content.slice(lastIndex, match.index);
       if (textBefore.trim()) {
@@ -102,36 +106,51 @@ function parseOpportunityBlocks(content: string): MessageSegment[] {
       }
     }
 
-    // Try to parse the opportunity JSON
+    const blockType = match[1];
     try {
-      const jsonStr = match[1].trim();
-      const data = JSON.parse(jsonStr) as OpportunityCardData;
-      // Ensure required fields exist
-      if (data.opportunityId && data.userId) {
-        segments.push({ type: "opportunity", data });
+      const jsonStr = match[2].trim();
+      const data = JSON.parse(jsonStr);
+
+      if (blockType === "opportunity" && data.opportunityId && data.userId) {
+        segments.push({ type: "opportunity", data: data as OpportunityCardData });
+      } else if (
+        blockType === "intent_proposal" &&
+        data.proposalId &&
+        (typeof data.description === "string" || !("description" in data))
+      ) {
+        segments.push({ type: "intent_proposal", data: data as IntentProposalData });
       } else {
-        // Invalid opportunity data, treat as text
         segments.push({ type: "text", content: match[0] });
       }
     } catch {
-      // Invalid JSON, treat as regular code block
       segments.push({ type: "text", content: match[0] });
     }
 
     lastIndex = match.index + match[0].length;
   }
 
-  // Check for partial block at the end (start of block found but no closing triple backticks)
   const remainingContent = content.slice(lastIndex);
-  const partialStartMatch = remainingContent.match(/```opportunity/);
+  const partialOpp = remainingContent.match(/```opportunity/);
+  const partialIntent = remainingContent.match(/```intent_proposal/);
 
-  if (partialStartMatch) {
-    const partialIndex = partialStartMatch.index!;
+  let partialMatch: RegExpMatchArray | null = null;
+  if (partialOpp && partialIntent) {
+    partialMatch = partialOpp.index! <= partialIntent.index! ? partialOpp : partialIntent;
+  } else {
+    partialMatch = partialOpp ?? partialIntent;
+  }
+
+  if (partialMatch) {
+    const partialIndex = partialMatch.index!;
     const textBefore = remainingContent.slice(0, partialIndex);
     if (textBefore.trim()) {
       segments.push({ type: "text", content: textBefore });
     }
-    segments.push({ type: "opportunity_loading" });
+    const isOpp = partialMatch === partialOpp;
+    segments.push(isOpp
+      ? { type: "opportunity_loading" as const }
+      : { type: "intent_proposal_loading" as const }
+    );
   } else if (lastIndex < content.length) {
     const remaining = content.slice(lastIndex);
     if (remaining.trim()) {
@@ -139,7 +158,6 @@ function parseOpportunityBlocks(content: string): MessageSegment[] {
     }
   }
 
-  // If no segments found, return the whole content as text
   if (segments.length === 0 && content.trim()) {
     segments.push({ type: "text", content });
   }
@@ -147,15 +165,20 @@ function parseOpportunityBlocks(content: string): MessageSegment[] {
   return segments;
 }
 
-/** Keep first occurrence of each opportunityId; leave other segment types unchanged. */
-function dedupeOpportunitySegments(
-  segments: MessageSegment[]
-): MessageSegment[] {
-  const seen = new Set<string>();
+function dedupeSegments(segments: MessageSegment[]): MessageSegment[] {
+  const seenOpps = new Set<string>();
+  const seenProposals = new Set<string>();
   return segments.filter((seg) => {
-    if (seg.type !== "opportunity") return true;
-    if (seen.has(seg.data.opportunityId)) return false;
-    seen.add(seg.data.opportunityId);
+    if (seg.type === "opportunity") {
+      if (seenOpps.has(seg.data.opportunityId)) return false;
+      seenOpps.add(seg.data.opportunityId);
+      return true;
+    }
+    if (seg.type === "intent_proposal") {
+      if (seenProposals.has(seg.data.proposalId)) return false;
+      seenProposals.add(seg.data.proposalId);
+      return true;
+    }
     return true;
   });
 }
@@ -167,6 +190,9 @@ function AssistantMessageContent({
   onOpportunitySecondaryAction,
   opportunityLoadingMap,
   currentStatusMap,
+  onIntentProposalApprove,
+  onIntentProposalReject,
+  intentProposalStatusMap,
 }: {
   content: string;
   isStreaming: boolean;
@@ -185,6 +211,9 @@ function AssistantMessageContent({
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
   currentStatusMap?: Record<string, string>;
+  onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
+  onIntentProposalReject?: (proposalId: string) => void;
+  intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
 }) {
   const { text: displayedContent, isAnimating } = useTypewriter(
     normalizeBlockquotes(mentionsToMarkdownLinks(content)),
@@ -201,10 +230,8 @@ function AssistantMessageContent({
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
 
-  // Parse opportunity blocks from the displayed content; dedupe by opportunityId
-  const segments = dedupeOpportunitySegments(
-    parseOpportunityBlocks(displayedContent),
-  );
+  // Parse opportunity and intent_proposal blocks from the displayed content; dedupe
+  const segments = dedupeSegments(parseAllBlocks(displayedContent));
 
   return (
     <div>
@@ -242,11 +269,28 @@ function AssistantMessageContent({
               />
             </div>
           );
-        } else {
-          // opportunity_loading
+        } else if (segment.type === "opportunity_loading") {
           return (
             <div key={`loading-${idx}`} className="my-3">
               <OpportunitySkeleton />
+            </div>
+          );
+        } else if (segment.type === "intent_proposal") {
+          return (
+            <div key={segment.data.proposalId} className="my-3">
+              <IntentProposalCard
+                card={segment.data}
+                onApprove={onIntentProposalApprove}
+                onReject={onIntentProposalReject}
+                currentStatus={intentProposalStatusMap?.[segment.data.proposalId]}
+              />
+            </div>
+          );
+        } else {
+          // intent_proposal_loading
+          return (
+            <div key={`intent-loading-${idx}`} className="my-3">
+              <IntentProposalSkeleton />
             </div>
           );
         }
@@ -318,7 +362,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const ids = new Set<string>();
     for (const msg of messages) {
       if (msg.role === "assistant" && msg.content) {
-        const segments = parseOpportunityBlocks(msg.content);
+        const segments = parseAllBlocks(msg.content);
         for (const seg of segments) {
           if (seg.type === "opportunity" && seg.data.opportunityId) {
             ids.add(seg.data.opportunityId);
@@ -364,6 +408,52 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [, setHomeViewError] = useState<string | null>(null);
   const [opportunityActionLoading, setOpportunityActionLoading] =
     useState<Record<string, boolean>>({});
+
+  // Intent proposal status tracking
+  const [intentProposalStatusMap, setIntentProposalStatusMap] = useState<
+    Record<string, "pending" | "created" | "rejected">
+  >({});
+
+  // Stable list of proposal IDs from assistant messages
+  const proposalIdsArray = useMemo(() => {
+    const ids = new Set<string>();
+    for (const msg of messages) {
+      if (msg.role === "assistant" && msg.content) {
+        const segments = parseAllBlocks(msg.content);
+        for (const seg of segments) {
+          if (seg.type === "intent_proposal" && seg.data.proposalId) {
+            ids.add(seg.data.proposalId);
+          }
+        }
+      }
+    }
+    return [...ids].sort();
+  }, [messages]);
+
+  const proposalIdsKey = proposalIdsArray.join(",");
+
+  // Fetch confirmed proposal statuses from server on chat load
+  useEffect(() => {
+    const ids = proposalIdsKey ? proposalIdsKey.split(",") : [];
+    if (ids.length === 0) return;
+
+    const fetchStatuses = async () => {
+      try {
+        const res = await apiClient.post<{ statuses: Record<string, "created"> }>(
+          "/intents/proposals/status",
+          { proposalIds: ids },
+        );
+        if (res.statuses && Object.keys(res.statuses).length > 0) {
+          setIntentProposalStatusMap((prev) => ({ ...prev, ...res.statuses }));
+        }
+      } catch {
+        // Non-critical — cards will default to pending
+      }
+    };
+
+    const timeoutId = setTimeout(fetchStatuses, 200);
+    return () => clearTimeout(timeoutId);
+  }, [proposalIdsKey]);
 
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
@@ -537,6 +627,30 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       }
     },
     [opportunitiesService, router, showError, showSuccess],
+  );
+
+  const handleIntentProposalApprove = useCallback(
+    async (proposalId: string, description: string, indexId?: string) => {
+      try {
+        await apiClient.post("/intents/confirm", { proposalId, description, indexId });
+        setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
+      } catch (err) {
+        throw err; // Card's inline error UI handles display
+      }
+    },
+    [],
+  );
+
+  const handleIntentProposalReject = useCallback(
+    async (proposalId: string) => {
+      try {
+        await apiClient.post("/intents/reject", { proposalId });
+        setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
+      } catch (err) {
+        throw err; // Card's inline error UI handles display
+      }
+    },
+    [],
   );
 
   const canSend = input.trim() || selectedFiles.length > 0;
@@ -1345,6 +1459,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             }
                             opportunityLoadingMap={opportunityActionLoading}
                             currentStatusMap={opportunityStatusMap}
+                            onIntentProposalApprove={handleIntentProposalApprove}
+                            onIntentProposalReject={handleIntentProposalReject}
+                            intentProposalStatusMap={intentProposalStatusMap}
                           />
                         </>
                       ) : (

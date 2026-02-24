@@ -1,10 +1,20 @@
 import { z } from "zod";
-import type { DefineTool, ToolDeps } from "./tool.helpers";
-import { success, error, UUID_REGEX } from "./tool.helpers";
-import type { ExecutionResult } from "../states/intent.state";
+
+import type { ExecutionResult, VerifiedIntent } from "../states/intent.state";
 import { protocolLogger } from "../support/protocol.logger";
 
+import type { DefineTool, ToolDeps } from "./tool.helpers";
+import { success, error, UUID_REGEX } from "./tool.helpers";
+
 const logger = protocolLogger("ChatTools:Intent");
+
+/**
+ * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
+ * so embedded ``` cannot close the fence prematurely.
+ */
+function sanitizeJsonForCodeFence(json: string): string {
+  return json.replace(/`/g, "\\u0060");
+}
 
 /** When context is index-scoped, verifies the caller is still a member of that index. Returns error message or null. */
 async function ensureScopedMembership(
@@ -123,7 +133,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
   const createIntent = defineTool({
     name: "create_intent",
     description:
-      "Creates a new intent (what the user is looking for). Pass a clear, concept-based description. If indexId is provided, the intent is linked to that index. Background discovery is triggered automatically after creation. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
+      "Proposes a new intent for the user to approve. Returns a proposal widget (intent_proposal code block) that you MUST include verbatim in your response. The user will see an interactive card and can approve or skip. Pass a clear, concept-based description. The orchestrator should handle URL scraping and vagueness checks BEFORE calling this tool.",
     querySchema: z.object({
       description: z.string().describe("The intent in conceptual terms (scrape URLs and check specificity before calling)"),
       indexId: z.string().optional().describe("Index UUID to link the intent to. Defaults to current index when scoped."),
@@ -135,7 +145,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Description is required.");
       }
 
-      // Strict scope enforcement: when chat is index-scoped, only allow creating in that index
+      // Strict scope enforcement
       if (context.indexId && query.indexId?.trim() && query.indexId.trim() !== context.indexId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only create intents in this community.`
@@ -148,62 +158,45 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       const profileResult = await graphs.profile.invoke({ userId: context.userId, operationMode: 'query' as const });
       const userProfile = profileResult.profile ? JSON.stringify(profileResult.profile) : "";
 
+      // Run inference + verification only (propose mode — no DB persistence)
       const result = await graphs.intent.invoke({
         userId: context.userId,
         userProfile,
         inputContent: query.description,
-        operationMode: 'create' as const,
+        operationMode: 'propose' as const,
         ...(effectiveIndexId ? { indexId: effectiveIndexId } : {}),
       });
-      logger.debug("Intent graph response", { result });
+      logger.debug("Intent graph propose response", { result });
 
-      // Process created intents
-      const created = (result.executionResults || [])
-        .filter((r: ExecutionResult): r is ExecutionResult & { intentId: string } => r.actionType === 'create' && r.success && !!r.intentId)
-        .map((r: ExecutionResult & { intentId: string }) => ({
-          id: r.intentId,
-          description: (r.payload ?? query.description) ?? ''
-        }));
-
-      // Link to provided index (force-assign when explicit)
-      if (created.length > 0 && effectiveIndexId) {
-        for (const intent of created) {
-          try {
-            await graphs.intentIndex.invoke({
-              userId: context.userId,
-              indexId: effectiveIndexId,
-              intentId: intent.id,
-              operationMode: 'create' as const,
-              skipEvaluation: true,
-            });
-          } catch (e) {
-            logger.warn("Index assignment failed", { intentId: intent.id, indexId: effectiveIndexId });
-          }
-        }
+      const verified = result.verifiedIntents || [];
+      if (verified.length === 0) {
+        return error("Could not extract a clear intent. Try being more specific.");
       }
 
-      if (created.length > 0) {
-        return success({
-          created: true,
-          intents: created,
-          ...(effectiveIndexId && { linkedToIndex: effectiveIndexId }),
-        });
-      }
+      // Build intent_proposal code fences for each verified intent
+      const proposalBlocks = verified.map((v: VerifiedIntent) => {
+        const proposalId = crypto.randomUUID();
+        const data = {
+          proposalId,
+          description: v.description,
+          ...(effectiveIndexId ? { indexId: effectiveIndexId } : {}),
+          confidence: v.score != null ? Math.round(v.score * 100) / 100 : null,
+          speechActType: v.verification?.classification ?? null,
+        };
+        return (
+          "```intent_proposal\n" +
+          sanitizeJsonForCodeFence(JSON.stringify(data)) +
+          "\n```"
+        );
+      });
 
-      // Handle reconciliation: intent graph may update existing similar intents
-      const updated = (result.executionResults || [])
-        .filter((r: ExecutionResult): r is ExecutionResult & { intentId: string } => r.actionType === 'update' && r.success && !!r.intentId)
-        .map((r: ExecutionResult & { intentId: string }) => r.intentId);
+      const blocksText = proposalBlocks.join("\n\n");
 
-      if (updated.length > 0) {
-        return success({ created: false, updated: true, intentIds: updated });
-      }
-
-      if (result.inferredIntents?.length > 0) {
-        return success({ created: false, message: "Similar intent already exists." });
-      }
-
-      return error("Could not extract a clear intent. Try being more specific.");
+      return success({
+        proposed: true,
+        count: verified.length,
+        message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
+      });
     },
   });
 

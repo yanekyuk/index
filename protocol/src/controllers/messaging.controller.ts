@@ -25,9 +25,10 @@ export class MessagingController {
     try {
       const conversations = await this.messagingService.listConversations(user.id);
       return Response.json({ conversations });
-    } catch (err: any) {
-      logger.error('[listConversations] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 503 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[listConversations] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 503 });
     }
   }
 
@@ -55,12 +56,13 @@ export class MessagingController {
     try {
       const messages = await this.messagingService.getMessages(user.id, body.groupId, body.limit);
       return Response.json({ messages });
-    } catch (err: any) {
-      if (err.message === 'Conversation not found') {
-        return Response.json({ error: err.message }, { status: 404 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === 'Conversation not found') {
+        return Response.json({ error: message }, { status: 404 });
       }
-      logger.error('[getMessages] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 503 });
+      logger.error('[getMessages] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 503 });
     }
   }
 
@@ -95,9 +97,10 @@ export class MessagingController {
         text: body.text.trim(),
       });
       return Response.json({ success: true, groupId });
-    } catch (err: any) {
-      logger.error('[sendMessage] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 500 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[sendMessage] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
     }
   }
 
@@ -125,9 +128,10 @@ export class MessagingController {
     try {
       await this.messagingService.hideConversation(user.id, body.conversationId);
       return Response.json({ success: true });
-    } catch (err: any) {
-      logger.error('[deleteConversation] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 500 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[deleteConversation] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
     }
   }
 
@@ -155,9 +159,10 @@ export class MessagingController {
     try {
       const groupId = await this.messagingService.findExistingDm(user.id, body.peerUserId);
       return Response.json({ groupId });
-    } catch (err: any) {
-      logger.error('[findDm] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 500 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[findDm] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
     }
   }
 
@@ -187,9 +192,10 @@ export class MessagingController {
         return Response.json({ error: 'User not found' }, { status: 404 });
       }
       return Response.json(info);
-    } catch (err: any) {
-      logger.error('[peerInfo] Error', { userId: body.userId, error: err.message });
-      return Response.json({ error: err.message }, { status: 500 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[peerInfo] Error', { userId: body.userId, error: message });
+      return Response.json({ error: message }, { status: 500 });
     }
   }
 
@@ -238,9 +244,10 @@ export class MessagingController {
           Connection: 'keep-alive',
         },
       });
-    } catch (err: any) {
-      logger.error('[streamMessages] Error', { userId: user.id, error: err.message });
-      return Response.json({ error: err.message }, { status: 503 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[streamMessages] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 503 });
     }
   }
 }
