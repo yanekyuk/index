@@ -6,42 +6,49 @@
       "idx": 0,
       "version": "7",
       "when": 1739962800000,
-      "tag": "0000_handy_ironclad",
+      "tag": "0000_initial_schema",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
       "when": 1740050000000,
-      "tag": "0001_zippy_lady_ursula",
+      "tag": "0001_add_chat_session_share_token",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
       "when": 1771741718439,
-      "tag": "0002_flashy_millenium_guard",
+      "tag": "0002_add_user_wallet_xmtp_columns",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
       "when": 1771789220268,
-      "tag": "0003_perfect_bishop",
+      "tag": "0003_drop_agent_wallet_columns",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
       "when": 1771791941332,
-      "tag": "0004_numerous_shen",
+      "tag": "0004_create_hidden_conversations",
       "breakpoints": true
     },
     {
       "idx": 5,
       "version": "7",
       "when": 1771796059152,
-      "tag": "0005_hard_kat_farrell",
+      "tag": "0005_create_jwks",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771900000000,
+      "tag": "0006_add_index_members_pk",
       "breakpoints": true
     }
   ]

@@ -457,13 +457,39 @@ bun test                    # Run ALL tests (slow — avoid unless necessary)
 
 ## Database Workflow
 
+### Migration Naming Convention
+
+Drizzle generates random names like `0002_flashy_millenium_guard.sql`. **Always rename** generated migrations to descriptive names before committing.
+
+**Format**: `{NNNN}_{action}_{target}[_{detail}].sql`
+
+| Component | Description | Examples |
+|-----------|-------------|---------|
+| `NNNN` | Zero-padded sequence number | `0000`, `0001`, `0012` |
+| `action` | What the migration does | `initial`, `add`, `drop`, `create`, `alter`, `rename` |
+| `target` | Table or feature affected | `users`, `chat_session`, `index_members` |
+| `detail` | Optional specifics | `share_token`, `wallet_columns`, `pk` |
+
+**Examples**:
+```
+0000_initial_schema.sql
+0001_add_chat_session_share_token.sql
+0002_add_user_wallet_xmtp_columns.sql
+0003_drop_agent_wallet_columns.sql
+0004_create_hidden_conversations.sql
+0006_add_index_members_pk.sql
+```
+
+**After renaming**: Update the `tag` field in `drizzle/meta/_journal.json` to match (tag = filename without `.sql`). Snapshot files stay as `{NNNN}_snapshot.json`.
+
 ### Making Schema Changes
 
 1. **Edit schema**: Modify `protocol/src/schemas/database.schema.ts`
 2. **Generate migration**: `bun run db:generate`
-3. **Review migration**: Check `drizzle/` directory for generated SQL
-4. **Apply migration**: `bun run db:migrate`
-5. **Verify**: `bun run db:studio` to inspect changes
+3. **Rename migration**: Rename the generated `.sql` file and update the journal `tag`
+4. **Review migration**: Check `drizzle/` directory for generated SQL
+5. **Apply migration**: `bun run db:migrate`
+6. **Verify**: `bun run db:studio` to inspect changes
 
 ### Why migrations get out of sync
 

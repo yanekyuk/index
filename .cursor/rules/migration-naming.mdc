@@ -1,0 +1,45 @@
+---
+description: Migration file naming convention - descriptive names instead of Drizzle random names
+globs: protocol/drizzle/**/*.sql
+alwaysApply: false
+---
+
+# Migration Naming Convention
+
+Drizzle auto-generates random names (e.g. `0002_flashy_millenium_guard.sql`). **Always rename** migrations to descriptive names before committing.
+
+## Format
+
+`{NNNN}_{action}_{target}[_{detail}].sql`
+
+- **NNNN**: Zero-padded sequence number (`0000`, `0001`, `0012`)
+- **action**: What the migration does (`initial`, `add`, `drop`, `create`, `alter`, `rename`)
+- **target**: Table or feature affected (`users`, `chat_session`, `index_members`)
+- **detail** (optional): Specific column or constraint (`share_token`, `wallet_columns`, `pk`)
+
+## Examples
+
+```
+0000_initial_schema.sql
+0001_add_chat_session_share_token.sql
+0002_add_user_wallet_xmtp_columns.sql
+0003_drop_agent_wallet_columns.sql
+0004_create_hidden_conversations.sql
+0005_create_jwks.sql
+0006_add_index_members_pk.sql
+```
+
+## After Renaming
+
+1. Update the `tag` field in `drizzle/meta/_journal.json` to match (tag = filename without `.sql`)
+2. **Do NOT rename snapshot files** — Drizzle expects them as `{NNNN}_snapshot.json`
+
+## Checklist
+
+When generating a new migration:
+
+1. `bun run db:generate`
+2. Rename the generated `.sql` file: `mv drizzle/0007_random_name.sql drizzle/0007_descriptive_name.sql`
+3. Edit `drizzle/meta/_journal.json`: change the `tag` for that entry to match
+4. `bun run db:migrate`
+5. Verify: `bun run db:generate` should report "No schema changes"
