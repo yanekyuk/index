@@ -106,6 +106,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
 
+      // A new sendMessage call is always intentional — reset the skip flag
+      // so the session ID from the response header is captured correctly.
+      // (clearChat with abortStream:false sets this flag for in-flight streams
+      // that should finish silently, but it must not carry over to new calls.)
+      skipSessionUpdateForRequestRef.current = false;
+
       // Add user message (include attachment names for display)
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
