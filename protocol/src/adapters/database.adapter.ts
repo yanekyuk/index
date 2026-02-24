@@ -389,6 +389,21 @@ export class IntentDatabaseAdapter {
   }
 
   /**
+   * Find an intent by its sourceId (e.g. proposalId) and userId.
+   * Used to check if a chat proposal has already been confirmed.
+   */
+  async getIntentBySourceId(sourceId: string, userId: string): Promise<{ id: string } | null> {
+    const rows = await db.select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(and(
+        eq(schema.intents.sourceId, sourceId),
+        eq(schema.intents.userId, userId),
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  /**
    * Delete all intents for a user (for test teardown).
    */
   async deleteByUserId(userId: string): Promise<void> {

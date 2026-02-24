@@ -410,6 +410,47 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     Record<string, "pending" | "created" | "rejected">
   >({});
 
+  // Stable list of proposal IDs from assistant messages
+  const proposalIdsArray = useMemo(() => {
+    const ids = new Set<string>();
+    for (const msg of messages) {
+      if (msg.role === "assistant" && msg.content) {
+        const segments = parseAllBlocks(msg.content);
+        for (const seg of segments) {
+          if (seg.type === "intent_proposal" && seg.data.proposalId) {
+            ids.add(seg.data.proposalId);
+          }
+        }
+      }
+    }
+    return [...ids].sort();
+  }, [messages]);
+
+  const proposalIdsKey = proposalIdsArray.join(",");
+
+  // Fetch confirmed proposal statuses from server on chat load
+  useEffect(() => {
+    const ids = proposalIdsKey ? proposalIdsKey.split(",") : [];
+    if (ids.length === 0) return;
+
+    const fetchStatuses = async () => {
+      try {
+        const res = await apiClient.post<{ statuses: Record<string, "created"> }>(
+          "/intents/proposals/status",
+          { proposalIds: ids },
+        );
+        if (res.statuses && Object.keys(res.statuses).length > 0) {
+          setIntentProposalStatusMap((prev) => ({ ...prev, ...res.statuses }));
+        }
+      } catch {
+        // Non-critical — cards will default to pending
+      }
+    };
+
+    const timeoutId = setTimeout(fetchStatuses, 200);
+    return () => clearTimeout(timeoutId);
+  }, [proposalIdsKey]);
+
   // Index filter
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();

@@ -112,8 +112,59 @@ export class IntentService {
   }
 
   /**
+   * Create an intent directly from a confirmed chat proposal.
+   * Bypasses the full intent graph (no LLM re-inference/verification).
+   * Generates embedding, inserts into DB, and enqueues HyDE job.
+   *
+   * @param userId - The user ID
+   * @param description - The pre-verified intent description
+   * @param proposalId - The proposal ID (stored as sourceId for status tracking)
+   * @param indexId - Optional index to associate the intent with
+   * @returns The created intent record
+   */
+  async createFromProposal(userId: string, description: string, proposalId: string, _indexId?: string) {
+    logger.info('[IntentService] Creating intent from proposal', { userId, proposalId });
+
+    const embedding = await this.embedder.generate(description) as number[];
+
+    const created = await this.adapter.createIntent({
+      userId,
+      payload: description,
+      embedding,
+      sourceType: 'discovery_form',
+      sourceId: proposalId,
+    });
+
+    // Enqueue HyDE generation asynchronously (non-blocking)
+    await intentQueue.addGenerateHydeJob({ intentId: created.id, userId });
+
+    return created;
+  }
+
+  /**
+   * Check which proposal IDs have been confirmed (have a matching intent).
+   *
+   * @param userId - The user ID
+   * @param proposalIds - Array of proposal IDs to check
+   * @returns Map of proposalId -> "created"
+   */
+  async getProposalStatuses(userId: string, proposalIds: string[]): Promise<Record<string, 'created'>> {
+    if (proposalIds.length === 0) return {};
+
+    const result: Record<string, 'created'> = {};
+    // Query intents where sourceId matches any proposalId and user owns them
+    for (const pid of proposalIds) {
+      const intent = await this.adapter.getIntentBySourceId(pid, userId);
+      if (intent) {
+        result[pid] = 'created';
+      }
+    }
+    return result;
+  }
+
+  /**
    * Archive an intent.
-   * 
+   *
    * @param intentId - The intent ID
    * @param userId - The user ID (for ownership verification)
    * @returns Result with success flag and optional error
