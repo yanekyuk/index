@@ -20,6 +20,7 @@ export interface XmtpPeerInfo {
 }
 
 export interface XmtpChatContext {
+  groupId: string | null;
   opportunities: {
     opportunityId: string;
     headline: string;
@@ -48,6 +49,9 @@ export const createXmtpService = (api: {
 
   getPeerInfo: (userId: string) =>
     api.post<XmtpPeerInfo>('/xmtp/peer-info', { userId }),
+
+  findDm: (peerUserId: string) =>
+    api.post<{ groupId: string | null }>('/xmtp/find-dm', { peerUserId }),
 
   deleteConversation: (conversationId: string) =>
     api.post<{ success: boolean }>('/xmtp/conversations/delete', { conversationId }),

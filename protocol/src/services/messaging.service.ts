@@ -156,6 +156,15 @@ export class MessagingService {
     return resolvedGroupId;
   }
 
+  /** Find an existing DM conversation with a peer (read-only, no creation). */
+  async findExistingDm(userId: string, peerUserId: string): Promise<string | null> {
+    try {
+      return await this.adapter.findExistingDm(userId, peerUserId);
+    } catch {
+      return null;
+    }
+  }
+
   /** Hide a conversation for a user. */
   async hideConversation(userId: string, conversationId: string): Promise<void> {
     const store = this.adapter.getStore();

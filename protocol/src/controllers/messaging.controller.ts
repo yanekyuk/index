@@ -99,6 +99,24 @@ export class MessagingController {
     return Response.json({ success: true });
   }
 
+  @Post('/find-dm')
+  @UseGuards(AuthGuard)
+  async findDm(req: Request, user: AuthenticatedUser) {
+    let body: { peerUserId?: string };
+    try {
+      body = (await req.json()) as { peerUserId?: string };
+    } catch {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    if (!body.peerUserId) {
+      return Response.json({ error: 'peerUserId is required' }, { status: 400 });
+    }
+
+    const groupId = await this.messagingService.findExistingDm(user.id, body.peerUserId);
+    return Response.json({ groupId });
+  }
+
   @Post('/peer-info')
   @UseGuards(AuthGuard)
   async peerInfo(req: Request, _user: AuthenticatedUser) {
