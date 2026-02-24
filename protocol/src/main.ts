@@ -11,7 +11,6 @@ import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
-import { MessagingController } from './controllers/messaging.controller';
 import { MessagingDatabaseAdapter } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
 import path from 'path';
@@ -103,7 +102,6 @@ controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UploadController, new UploadController(storageAdapter));
 controllerInstances.set(UserController, new UserController());
-controllerInstances.set(MessagingController, new MessagingController(messagingService));
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
