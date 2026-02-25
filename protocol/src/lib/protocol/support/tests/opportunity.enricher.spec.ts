@@ -1,9 +1,9 @@
 /**
  * Tests for opportunity enricher: enrichOrCreate, overlap detection, semantic relatedness, and merge.
  *
- * Overlap contract: findOverlappingOpportunities(actorUserIds) is expected to return only
- * opportunities whose set of non-introducer actor userIds equals actorUserIds exactly.
- * The DB adapter implements this via exact set matching; mocks in these tests simulate that.
+ * Overlap contract: findOverlappingOpportunities(actorUserIds) returns opportunities
+ * whose non-introducer actors contain all given actorUserIds (containment match).
+ * E.g. [A, B] matches an opportunity with actors [A, B, C].
  */
 import { config } from 'dotenv';
 config({ path: '.env.test' });

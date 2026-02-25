@@ -586,6 +586,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
 
       expect(createSpy).not.toHaveBeenCalled();
+      expect(result.opportunities.length).toBe(0);
       expect(result.existingBetweenActors.length).toBe(1);
       expect(result.existingBetweenActors[0].candidateUserId).toBe('user-bob');
       expect(result.existingBetweenActors[0].existingStatus).toBe('pending');
