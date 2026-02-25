@@ -131,20 +131,16 @@ function mergeActors(
 }
 
 /**
- * Merge interpretation: combined reasoning snippet, max confidence, merged signals.
+ * Merge interpretation: single reasoning (new data only), max confidence, merged signals.
+ * We use only the new opportunity's reasoning to avoid repetitive concatenation when
+ * multiple overlapping opportunities share the same or similar text (e.g. same pair
+ * across indexes), which previously produced long duplicated paragraphs in chat cards.
  */
 function mergeInterpretation(
   newData: CreateOpportunityData,
   existingList: Opportunity[]
 ): OpportunityInterpretation {
-  const allReasonings = [
-    newData.interpretation.reasoning,
-    ...existingList.map((o) => o.interpretation?.reasoning ?? ''),
-  ].filter(Boolean);
-  const reasoning =
-    allReasonings.length > 1
-      ? allReasonings.join(' ')
-      : newData.interpretation.reasoning;
+  const reasoning = newData.interpretation.reasoning;
 
   let maxConf =
     typeof newData.interpretation.confidence === 'number'

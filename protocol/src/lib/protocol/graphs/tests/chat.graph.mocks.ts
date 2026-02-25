@@ -231,6 +231,8 @@ export function createChatGraphMockDb(
     createOpportunity: async () => mockOpportunity({ currentUserId: "system" }) as Opportunity,
     getOpportunity: noopNull,
     opportunityExistsBetweenActors: async () => false,
+    getOpportunityBetweenActors: async () => null,
+    findOverlappingOpportunities: async () => [],
     updateOpportunityStatus: noopNull,
     getHydeDocument: noopNull,
     getHydeDocumentsForSource: noopArray,

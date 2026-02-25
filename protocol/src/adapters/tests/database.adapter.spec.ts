@@ -603,6 +603,57 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(forPeerB.some((o) => o.id === created.id)).toBe(true);
     });
   });
+
+  describe('draft visibility (getOpportunitiesForUser)', () => {
+    it('without conversationId excludes draft opportunities', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
+        context: { indexId: fixture.indexId, conversationId: 'chat-session-1' },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const list = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      expect(list.some((o) => o.id === created.id)).toBe(false);
+    });
+
+    it('with conversationId includes draft only for that session', async () => {
+      const conv1 = 'conv-session-1';
+      const conv2 = 'conv-session-2';
+      const draft1 = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Draft 1', confidence: 0.8 },
+        context: { indexId: fixture.indexId, conversationId: conv1 },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const draft2 = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Draft 2', confidence: 0.8 },
+        context: { indexId: fixture.indexId, conversationId: conv2 },
+        confidence: '0.8',
+        status: 'draft',
+      });
+      const forConv1 = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, conversationId: conv1 });
+      const forConv2 = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, conversationId: conv2 });
+      expect(forConv1.some((o) => o.id === draft1.id)).toBe(true);
+      expect(forConv1.some((o) => o.id === draft2.id)).toBe(false);
+      expect(forConv2.some((o) => o.id === draft2.id)).toBe(true);
+      expect(forConv2.some((o) => o.id === draft1.id)).toBe(false);
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

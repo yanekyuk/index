@@ -53,6 +53,8 @@ export interface DiscoverInput {
    * Sets homeCardPresentation and narratorChip from static labels and match reason.
    */
   minimalForChat?: boolean;
+  /** When set (e.g. from chat), create opportunities as draft with context.conversationId = chatSessionId. */
+  chatSessionId?: string;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -102,11 +104,26 @@ export interface DiscoverDebugStep {
   detail?: string;
 }
 
+/** One existing connection (no new opportunity created; user already has one with this person). */
+export interface ExistingConnection {
+  userId: string;
+  name: string;
+  status?: string;
+  opportunityId?: string;
+}
+
+/** Statuses for which an existing connection may be shown as a card; others (pending, viewed, accepted, rejected, expired) are only mentioned in text. */
+const EXISTING_CONNECTION_CARD_STATUSES = ['draft', 'latent'] as const;
+
 export interface DiscoverResult {
   found: boolean;
   count: number;
   message?: string;
   opportunities?: FormattedDiscoveryCandidate[];
+  /** Existing connections eligible for card display (draft or latent only). Others are mention-only. */
+  existingConnections?: ExistingConnection[];
+  /** All existing connections for mention text (e.g. "You already have a connection with: X (pending), Y (draft)."). */
+  existingConnectionsForMention?: ExistingConnection[];
   /** When true, the chat agent should call create_intent(suggestedIntentDescription) and retry discovery. */
   createIntentSuggested?: boolean;
   /** Description to pass to create_intent when createIntentSuggested is true. */
@@ -177,6 +194,7 @@ export async function runDiscoverFromQuery(
     indexScope,
     limit = 5,
     triggerIntentId,
+    chatSessionId,
   } = input;
 
   if (indexScope.length === 0) {
@@ -194,7 +212,8 @@ export async function runDiscoverFromQuery(
   const queryOrEmpty = query?.trim() ?? "";
   const options: OpportunityGraphOptions = {
     limit,
-    initialStatus: "latent",
+    initialStatus: chatSessionId ? "draft" : "latent",
+    ...(chatSessionId ? { conversationId: chatSessionId } : {}),
   };
   if (queryOrEmpty) {
     options.strategies = selectStrategiesFromQuery(queryOrEmpty);
@@ -225,6 +244,13 @@ export async function runDiscoverFromQuery(
       });
 
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
+        if (chatSessionId) {
+          return {
+            found: false,
+            count: 0,
+            message: "No matching opportunities found. Try a different query.",
+          };
+        }
         return {
           found: false,
           count: 0,
@@ -236,14 +262,62 @@ export async function runDiscoverFromQuery(
         };
       }
 
-      const opportunities: Opportunity[] = Array.isArray(result.opportunities)
+      let opportunities: Opportunity[] = Array.isArray(result.opportunities)
         ? result.opportunities
         : [];
+      const rawExistingBetweenActors = Array.isArray(result.existingBetweenActors)
+        ? result.existingBetweenActors
+        : [];
+      // Enrich existing-between-actors with names so the tool can say "You already have a connection with X (pending)."
+      const existingConnections: ExistingConnection[] = await Promise.all(
+        rawExistingBetweenActors.map(async (item) => {
+          const user = await database.getUser(item.candidateUserId);
+          return {
+            userId: item.candidateUserId,
+            name: user?.name ?? "Someone",
+            ...(item.existingStatus ? { status: item.existingStatus } : {}),
+            ...(item.existingOpportunityId ? { opportunityId: item.existingOpportunityId } : {}),
+          };
+        }),
+      );
+      if (existingConnections.length > 0) {
+        logger.info("[runDiscoverFromQuery] Skipped duplicates; existing connections", {
+          count: existingConnections.length,
+          userIds: existingConnections.map((c) => c.userId),
+        });
+      }
+      // Only expose existing connections as cards when status is in EXISTING_CONNECTION_CARD_STATUSES (draft, latent); others are mention-only.
+      const existingConnectionsForCards = existingConnections.filter((c) =>
+        c.status != null && EXISTING_CONNECTION_CARD_STATUSES.includes(c.status as typeof EXISTING_CONNECTION_CARD_STATUSES[number])
+      );
+      // Chat discovery: when we have chatSessionId we just invoked the graph; all result.opportunities
+      // were created in this call and belong to this session. Do not filter by status: the enricher
+      // may set status to pending/latent when merging with related opportunities, so filtering to
+      // "draft" would incorrectly drop them.
+      if (chatSessionId && (result.opportunities?.length ?? 0) > 0) {
+        logger.info("[runDiscoverFromQuery] Chat session opportunities from graph", {
+          count: opportunities.length,
+          statuses: opportunities.map((o) => o.status),
+        });
+      }
       debugSteps.push({
         step: "opportunity_graph",
-        detail: `${opportunities.length} opportunity(ies)`,
+        detail: `${opportunities.length} opportunity(ies)${existingConnections.length > 0 ? `, ${existingConnections.length} existing` : ""}`,
       });
       if (opportunities.length === 0) {
+        if (existingConnections.length > 0) {
+          return {
+            found: true,
+            count: 0,
+            message:
+              "No new opportunities created; you already have a connection with: " +
+              existingConnections.map((c) => `${c.name}${c.status ? ` (${c.status})` : ""}`).join(", ") +
+              ". View on your home page.",
+            existingConnections: existingConnectionsForCards,
+            existingConnectionsForMention: existingConnections,
+            debugSteps,
+          };
+        }
         return {
           found: false,
           count: 0,
@@ -430,7 +504,7 @@ export async function runDiscoverFromQuery(
                 item.opportunity.interpretation?.reasoning ?? "",
               ) ?? "",
             score: item.confidence,
-            status: item.opportunity.status,
+            status: chatSessionId ? "draft" : item.opportunity.status,
             viewerRole: item.viewerRole,
             ...(presentations?.[idx] && { presentation: presentations[idx] }),
             ...(homeCard && { homeCardPresentation: homeCard }),
@@ -447,6 +521,8 @@ export async function runDiscoverFromQuery(
         found: true,
         count: enriched.length,
         opportunities: enriched,
+        ...(existingConnectionsForCards.length > 0 ? { existingConnections: existingConnectionsForCards } : {}),
+        ...(existingConnections.length > 0 ? { existingConnectionsForMention: existingConnections } : {}),
         debugSteps,
       };
     },

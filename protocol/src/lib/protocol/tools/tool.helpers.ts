@@ -51,6 +51,8 @@ export interface ResolvedToolContext {
   scopedMembershipRole?: "owner" | "member";
   /** True when user has not completed onboarding (onboarding.completedAt is null). */
   isOnboarding: boolean;
+  /** Chat session ID when tools are used in a chat; used for draft opportunities (context.conversationId). */
+  sessionId?: string;
 }
 
 /**
@@ -72,6 +74,8 @@ export interface ToolContext {
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   indexId?: string;
+  /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
+  sessionId?: string;
 }
 
 /**
@@ -100,8 +104,10 @@ export async function resolveChatContext(params: {
   >;
   userId: string;
   indexId?: string;
+  /** Chat session ID for draft opportunities (stored as context.conversationId). */
+  sessionId?: string;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, indexId } = params;
+  const { database, userId, indexId, sessionId } = params;
 
   const [user, rawProfile, userIndexes] = await Promise.all([
     database.getUser(userId),
@@ -179,6 +185,7 @@ export async function resolveChatContext(params: {
     scopedIndex,
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
+    ...(sessionId !== undefined ? { sessionId } : {}),
   };
 }
 

@@ -171,6 +171,8 @@ export interface EvaluatorInput {
   introducerName?: string;
   /** Optional hint/context from the introducer about why these people should meet. */
   introductionHint?: string;
+  /** Optional discovery query (e.g. from chat). When set, only suggest opportunities where candidates clearly match this request. */
+  discoveryQuery?: string;
 }
 
 const ActorSchema = z.object({
@@ -369,6 +371,12 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
 - Be generous with scoring (70+ for any introduction with a plausible basis, since a human made the judgment).
 `
       : '';
+    const discoveryQueryPart = input.discoveryQuery?.trim()
+      ? `\nDISCOVERY REQUEST: The user asked: "${input.discoveryQuery.trim()}"
+
+Only suggest opportunities where the candidates clearly match this request. Down-rank or exclude candidates who do not fit (e.g. if the user asked for visual artists, do not suggest people who are only engineers or product designers unless they are also visual artists). Score relevance to the request as well as general match quality.
+`
+      : '';
     const entitiesBlock = input.entities.map((e) => {
       const intentsPart = e.intents?.length
         ? `\n  INTENTS:\n${e.intents.map((i) => `    - ${i.intentId}: ${i.payload}`).join('\n')}`
@@ -380,7 +388,7 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
   RAG SCORE: ${e.ragScore ?? '—'}
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
-    const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
+    const humanContent = `DISCOVERER: ${input.discovererId}${introModePart}${discoveryQueryPart}\n\nENTITIES:\n${entitiesBlock}${existingPart}`;
     const messages = [
       new SystemMessage(entityBundleSystemPrompt),
       new HumanMessage(humanContent),

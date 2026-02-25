@@ -107,6 +107,8 @@ export interface OpportunityGraphOptions {
   hydeDescription?: string;
   /** Existing opportunities summary for evaluator deduplication */
   existingOpportunities?: string;
+  /** Chat session ID for draft opportunities; stored as context.conversationId for visibility filtering. */
+  conversationId?: string;
 }
 
 /**
@@ -277,6 +279,17 @@ export const OpportunityGraphState = Annotation.Root({
   /** Final ranked and persisted opportunities */
   opportunities: Annotation<Opportunity[]>({
     reducer: (curr, next) => next,
+    default: () => [],
+  }),
+
+  /** Discovery path: pairs skipped because an opportunity already exists between viewer and candidate (no duplicate created). */
+  existingBetweenActors: Annotation<Array<{
+    candidateUserId: Id<'users'>;
+    indexId: Id<'indexes'>;
+    existingOpportunityId?: Id<'opportunities'>;
+    existingStatus?: OpportunityStatus;
+  }>>({
+    reducer: (curr, next) => next ?? curr,
     default: () => [],
   }),
   

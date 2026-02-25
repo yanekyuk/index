@@ -222,6 +222,28 @@ describe("opportunity.discover", () => {
       expect((capturedInvokeArg.options as { initialStatus?: string }).initialStatus).toBe("latent");
     });
 
+    test("invokes opportunity graph with initialStatus 'draft' and conversationId when chatSessionId provided", async () => {
+      let capturedInvokeArg: Record<string, unknown> = {};
+      const mockGraph = {
+        invoke: async (arg: Record<string, unknown>) => {
+          capturedInvokeArg = arg;
+          return { opportunities: [] };
+        },
+      };
+      await runDiscoverFromQuery({
+        opportunityGraph: mockGraph as any,
+        database: mockDatabase,
+        userId: "u1",
+        query: "find a co-founder",
+        indexScope: ["idx1"],
+        chatSessionId: "session-abc",
+      });
+      expect(capturedInvokeArg.options).toBeDefined();
+      const options = capturedInvokeArg.options as { initialStatus?: string; conversationId?: string };
+      expect(options.initialStatus).toBe("draft");
+      expect(options.conversationId).toBe("session-abc");
+    });
+
     test("passes triggerIntentId to graph when provided", async () => {
       let capturedInvokeArg: Record<string, unknown> = {};
       const mockGraph = {

@@ -56,11 +56,12 @@ export async function createChatTools(
   // ─── Resolve context from DB ───────────────────────────────────────────────
   const resolvedContext =
     preResolvedContext ??
-    await resolveChatContext({
+    (await resolveChatContext({
       database,
       userId: deps.userId,
       indexId: deps.indexId,
-    });
+      sessionId: deps.sessionId,
+    }));
 
   // ─── Tool wrapper ──────────────────────────────────────────────────────────
   /**
@@ -147,11 +148,17 @@ export async function createChatTools(
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
 
+  // Chat only proposes opportunities from the conversation (create_opportunities).
+  // Other opportunities are shown on the home view; do not give the agent list_opportunities.
+  const opportunityToolsForChat = opportunityTools.filter(
+    (t) => (t as { name: string }).name !== "list_opportunities"
+  );
+
   return [
     ...profileTools,
     ...intentTools,
     ...indexTools,
-    ...opportunityTools,
+    ...opportunityToolsForChat,
     ...utilityTools,
   ];
 }

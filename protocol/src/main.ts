@@ -27,12 +27,21 @@ import { opportunityQueue } from './queues/opportunity.queue';
 import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
+import { profileQueue } from './queues/profile.queue';
+import { IndexMembershipEvents } from './events/index_membership.event';
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();
 notificationQueue.startWorker();
+profileQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
+
+IndexMembershipEvents.onMemberAdded = (userId: string) => {
+  profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
+    log.job.from('IndexMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
+  });
+};
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const GLOBAL_PREFIX = '/api';

@@ -10,6 +10,9 @@ import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
+/** Markdown code fence (three backticks). Avoids embedding ``` in string literals so TS parser stays in sync. */
+const CODE_FENCE = String.fromCharCode(96, 96, 96);
+
 /**
  * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
  * so embedded ``` cannot close the fence prematurely.
@@ -53,6 +56,9 @@ function buildMinimalOpportunityCard(
   const introducerActor = opp.actors.find(
     (a) => a.role === "introducer" && a.userId !== viewerId,
   );
+  const viewerIsIntroducer = opp.actors.some(
+    (a) => a.role === "introducer" && a.userId === viewerId,
+  );
   const reasoning = opp.interpretation?.reasoning ?? "";
   const mainText = viewerCentricCardSummary(
     reasoning,
@@ -64,8 +70,9 @@ function buildMinimalOpportunityCard(
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
       : undefined;
-  const narratorName =
-    introducerName ?? (introducerActor ? "Someone" : "Index");
+  const narratorName = viewerIsIntroducer
+    ? "You"
+    : introducerName ?? (introducerActor ? "Someone" : "Index");
   const primaryActionLabel =
     viewerRole === "introducer"
       ? `Send to ${counterpartName || "them"}`
@@ -84,9 +91,11 @@ function buildMinimalOpportunityCard(
     narratorChip: {
       name: narratorName,
       text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(introducerActor
-        ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-        : {}),
+      ...(viewerIsIntroducer
+        ? { userId: viewerId, avatar: null }
+        : introducerActor
+          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
+          : {}),
     },
     viewerRole,
     score,
@@ -178,8 +187,24 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId =
         (context.indexId || query.indexId?.trim()) ?? undefined;
 
+      // Derive partyUserIds from entities when agent passes entities but omits partyUserIds (intro mode).
+      // Only derive when all entities share the same indexId to prevent cross-index introductions.
+      const partyUserIdsFromEntities =
+        query.entities &&
+        query.entities.length >= 2 &&
+        query.entities.every((e) => e.userId && e.indexId) &&
+        new Set(query.entities.map((e) => e.indexId)).size === 1
+          ? [...new Set(query.entities.map((e) => e.userId))]
+          : undefined;
+      const effectivePartyUserIds =
+        query.partyUserIds && query.partyUserIds.length >= 2
+          ? query.partyUserIds
+          : (partyUserIdsFromEntities?.length ?? 0) >= 2
+            ? partyUserIdsFromEntities
+            : undefined;
+
       // ── Introduction mode ── (validation and persistence via opportunity graph)
-      if (query.partyUserIds && query.partyUserIds.length >= 2) {
+      if (effectivePartyUserIds && effectivePartyUserIds.length >= 2) {
         if (!query.entities || query.entities.length === 0) {
           return error(
             "Introduction requires pre-gathered entity data. " +
@@ -196,7 +221,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        const introducedPartyUserIds = query.partyUserIds.filter(
+        const introducedPartyUserIds = effectivePartyUserIds.filter(
           (uid) => uid !== context.userId,
         );
         if (introducedPartyUserIds.length === 0) {
@@ -221,6 +246,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           introductionEntities: evaluatorEntities,
           introductionHint: query.hint,
           requiredIndexId: context.indexId ?? undefined,
+          options: {
+            initialStatus: "draft" as const,
+            ...(context.sessionId ? { conversationId: context.sessionId } : {}),
+          },
         });
 
         if (result.error || !result.opportunities?.length) {
@@ -244,6 +273,23 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           : null;
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
+
+        const viewerIsParty = effectivePartyUserIds.includes(context.userId);
+        const viewerRole = viewerIsParty ? "party" : "introducer";
+        const primaryActionLabel = viewerIsParty
+          ? "Start Chat"
+          : `Send to ${counterpartName || "them"}`;
+        const narratorChip = viewerIsParty
+          ? {
+              name: "Index",
+              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+            }
+          : {
+              name: "You",
+              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+              userId: context.userId,
+            };
+
         const cardData = {
           opportunityId: created.id,
           userId: firstPartyId,
@@ -261,33 +307,33 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ),
           cta: "Start a conversation to connect.",
           headline: `Connection with ${counterpartName}`,
-          primaryActionLabel: `Send to ${counterpartName || "them"}`,
+          primaryActionLabel,
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
-          narratorChip: {
-            name: introducerUser?.name ?? "A member",
-            text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
-            userId: context.userId,
-          },
-          viewerRole: "introducer",
+          narratorChip,
+          viewerRole,
           score: confidence,
-          status: created.status ?? "latent",
+          status: created.status ?? "draft",
         };
         const block =
-          "```opportunity\n" +
+          CODE_FENCE + "opportunity\n" +
           sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-          "\n```";
+          "\n" + CODE_FENCE;
 
         return success({
           found: true,
           count: 1,
-          message: `Draft introduction created. IMPORTANT: Include the following \`\`\`opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n${block}`,
+          message:
+            "Draft introduction created. IMPORTANT: Include the following " +
+            CODE_FENCE +
+            "opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n" +
+            block,
           opportunities: [
             {
               opportunityId: created.id,
               matchReason: reasoning,
               score: confidence,
-              status: created.status ?? "latent",
+              status: created.status ?? "draft",
             },
           ],
         });
@@ -347,6 +393,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         limit: 5,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
+        ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
       });
 
       const allDebugSteps = [
@@ -375,8 +422,24 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // Found but only existing connections (no new opportunities created)
+      const forMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
+      if ((result.opportunities?.length ?? 0) === 0 && forMention.length > 0) {
+        return success({
+          found: true,
+          count: 0,
+          message:
+            result.message ??
+            "No new opportunities created; you already have a connection with: " +
+              forMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
+              ". View on your home page.",
+          existingConnections: result.existingConnections,
+          debugSteps: allDebugSteps,
+        });
+      }
+
       // Format opportunities as code blocks for the LLM to include in its response
-      // The frontend will parse ```opportunity blocks and render them as cards
+      // The frontend will parse opportunity code blocks and render them as cards
       const opportunityBlocks = (result.opportunities ?? []).map((opp) => {
         const cardData = {
           opportunityId: opp.opportunityId,
@@ -398,19 +461,32 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           status: opp.status,
         };
         return (
-          "```opportunity\n" +
+          CODE_FENCE + "opportunity\n" +
           sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-          "\n```"
+          "\n" + CODE_FENCE
         );
       });
 
       // Join all opportunity blocks into a single string for the LLM to include verbatim
       const blocksText = opportunityBlocks.join("\n\n");
+      let message =
+        "Found " +
+        result.count +
+        " potential connection(s). IMPORTANT: Include the following " + CODE_FENCE + "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
+        blocksText;
+      const existingForMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
+      if (existingForMention.length > 0) {
+        message +=
+          "\n\nYou already have a connection with: " +
+          existingForMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
+          ". View on your home page.";
+      }
 
       return success({
         found: true,
         count: result.count,
-        message: `Found ${result.count} potential connection(s). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+        message,
+        ...(result.existingConnections?.length ? { existingConnections: result.existingConnections } : {}),
         debugSteps: allDebugSteps,
       });
     },
@@ -434,7 +510,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query.indexId.trim() !== context.indexId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this community.`,
+          "This chat is scoped to " +
+            (context.indexName ?? "this index") +
+            ". You can only list opportunities from this community.",
         );
       }
 
@@ -541,9 +619,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
 
           opportunityBlocks.push(
-            "```opportunity\n" +
+            CODE_FENCE + "opportunity\n" +
               sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-              "\n```",
+              "\n" + CODE_FENCE,
           );
         } catch (err) {
           logger.warn("Skipping opportunity that failed to build minimal card", {
@@ -569,7 +647,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       return success({
         found: true,
         count: opportunityBlocks.length,
-        message: `You have ${opportunityBlocks.length} opportunity(ies). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+        message:
+          "You have " +
+          opportunityBlocks.length +
+          " opportunity(ies). IMPORTANT: Include the following " +
+          CODE_FENCE +
+          "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
+          blocksText,
       });
     },
   });

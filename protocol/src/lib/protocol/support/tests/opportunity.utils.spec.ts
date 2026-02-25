@@ -338,14 +338,12 @@ describe('opportunity.utils', () => {
   });
 
   describe('validateOpportunityActors', () => {
-    test('rejects when there is an introducer but not exactly two non-introducer actors (1 introducer + 1 party)', () => {
+    test('accepts 1 introducer + 1 party (1:1 intro e.g. "I want to connect with X")', () => {
       const actors = [
         { role: 'introducer' },
         { role: 'party' },
       ];
-      expect(() => validateOpportunityActors(actors)).toThrow(
-        /An opportunity with only two actors cannot have an introducer/
-      );
+      expect(() => validateOpportunityActors(actors)).not.toThrow();
     });
 
     test('rejects when there is an introducer and three non-introducer actors', () => {
@@ -356,17 +354,14 @@ describe('opportunity.utils', () => {
         { role: 'party' },
       ];
       expect(() => validateOpportunityActors(actors)).toThrow(
-        /An opportunity with an introducer must have exactly two other actors/
+        /An opportunity with an introducer must have one or two other actors/
       );
     });
 
-    test('rejects when exactly two actors and one is introducer', () => {
-      const actors = [
-        { role: 'party' },
-        { role: 'introducer' },
-      ];
+    test('rejects when there is an introducer and zero non-introducer actors', () => {
+      const actors = [{ role: 'introducer' }];
       expect(() => validateOpportunityActors(actors)).toThrow(
-        /An opportunity with only two actors cannot have an introducer/
+        /An opportunity with an introducer must have one or two other actors/
       );
     });
 

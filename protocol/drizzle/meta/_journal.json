@@ -50,6 +50,13 @@
       "when": 1771900000000,
       "tag": "0006_add_index_members_pk",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771966468049,
+      "tag": "0007_add_opportunity_status_draft",
+      "breakpoints": true
     }
   ]
 }

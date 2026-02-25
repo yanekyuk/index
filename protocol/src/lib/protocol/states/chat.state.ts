@@ -82,6 +82,15 @@ export const ChatGraphState = Annotation.Root({
   }),
 
   /**
+   * Chat session ID when streaming with context. Used by tools to create draft
+   * opportunities tied to this conversation (context.conversationId).
+   */
+  sessionId: Annotation<string | undefined>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => undefined,
+  }),
+
+  /**
    * Conversation history using LangGraph's built-in message reducer.
    * Includes: HumanMessage, AIMessage, ToolMessage, SystemMessage
    * Automatically handles message appending, ID management, and ordering.
