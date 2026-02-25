@@ -38,6 +38,20 @@ function isMeaningfulProfileInput(input: string | undefined): boolean {
 }
 
 /**
+ * Returns true only when the value is a non-empty numeric vector.
+ * Used so we don't treat DB returns (e.g. pg vector as string, or empty array) as "has embedding".
+ * Ensures seed users with upserted profiles (no embedding) always get embed + HyDE.
+ */
+function hasValidProfileEmbedding(embedding: unknown): boolean {
+  if (embedding == null) return false;
+  if (!Array.isArray(embedding)) return false;
+  if (embedding.length === 0) return false;
+  const first = embedding[0];
+  if (Array.isArray(first)) return first.length > 0 && typeof first[0] === "number";
+  return typeof first === "number";
+}
+
+/**
  * Factory class to build and compile the Profile Generation Graph.
  * 
  * Flow:
@@ -125,7 +139,7 @@ export class ProfileGraphFactory {
           // Treat confirmation-only input (e.g. "Yes") as no input so we ask for info / use scraper
           const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
           const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
-          const needsProfileEmbedding = profile && (!profile.embedding || profile.embedding.length === 0);
+          const needsProfileEmbedding = profile && !hasValidProfileEmbedding(profile.embedding);
           const existingHydeDoc = await this.database.getHydeDocument('profile', state.userId, 'mirror');
           const needsHydeGeneration = !existingHydeDoc || (state.forceUpdate && hasMeaningfulInput);
           const needsHydeEmbedding = false; // Profile HyDE lives in hyde_documents; no partial "text only" state
