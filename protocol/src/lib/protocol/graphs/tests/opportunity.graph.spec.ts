@@ -66,6 +66,7 @@ function createMockGraph(deps?: {
         expiresAt: null,
       }),
     opportunityExistsBetweenActors: () => Promise.resolve(false),
+    getOpportunityBetweenActors: () => Promise.resolve(null),
     findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
     getActiveIntents:
@@ -147,11 +148,11 @@ describe('Opportunity Graph', () => {
     });
 
     test('when user has no active intents, continues to scope and discovery (no error about intents)', async () => {
-      const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
+      const { compiledGraph, mockEmbedder } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
-      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
-      const hydeSearchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      // With searchQuery, the profile/query path runs (query-based HyDE discovery). Mock empty search so we get no opportunities.
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
 
       const result = (await compiledGraph.invoke({
         userId: 'user-source' as Id<'users'>,
@@ -161,8 +162,6 @@ describe('Opportunity Graph', () => {
 
       expect(result.error).toBeUndefined();
       expect(result.opportunities).toEqual([]);
-      expect(hydeSpy).not.toHaveBeenCalled();
-      expect(hydeSearchSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -478,6 +477,103 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('Persist node: dedup via findOverlappingOpportunities', () => {
+    test('when pending opportunity exists between actors, skips creation and adds to existingBetweenActors', async () => {
+      const existingOpp: Opportunity = {
+        id: 'opp-existing-pending',
+        status: 'pending',
+        actors: [
+          { indexId: 'idx-1', userId: 'user-source', role: 'patient' as const },
+          { indexId: 'idx-1', userId: 'user-bob', role: 'agent' as const },
+        ],
+        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
+        interpretation: { category: 'collaboration', reasoning: 'Previous match', confidence: 0.8 },
+        context: {},
+        confidence: '0.8',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      };
+
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockDb, 'findOverlappingOpportunities').mockResolvedValue([existingOpp]);
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(result.opportunities.length).toBe(0);
+      expect(result.existingBetweenActors.length).toBe(1);
+      expect(result.existingBetweenActors[0].candidateUserId).toBe('user-bob');
+      expect(result.existingBetweenActors[0].existingStatus).toBe('pending');
+    });
+
+    test('when expired opportunity exists between actors, reactivates it as draft', async () => {
+      const expiredOpp: Opportunity = {
+        id: 'opp-expired',
+        status: 'expired',
+        actors: [
+          { indexId: 'idx-1', userId: 'user-source', role: 'patient' as const },
+          { indexId: 'idx-1', userId: 'user-bob', role: 'agent' as const },
+        ],
+        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
+        interpretation: { category: 'collaboration', reasoning: 'Old match', confidence: 0.7 },
+        context: { indexId: 'idx-1' },
+        confidence: '0.7',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      };
+      const reactivatedOpp: Opportunity = { ...expiredOpp, status: 'draft', updatedAt: new Date() };
+
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockDb, 'findOverlappingOpportunities').mockResolvedValue([expiredOpp]);
+      spyOn(mockDb, 'updateOpportunityStatus').mockResolvedValue(reactivatedOpp);
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(result.opportunities.length).toBe(1);
+      expect(result.opportunities[0].id).toBe('opp-expired');
+      expect(result.opportunities[0].status).toBe('draft');
+      expect(result.existingBetweenActors.length).toBe(0);
+    });
+
+    test('when no overlapping opportunity exists, creates new opportunity normally', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockDb, 'findOverlappingOpportunities').mockResolvedValue([]);
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(createSpy).toHaveBeenCalled();
+      expect(result.opportunities.length).toBe(1);
+      expect(result.existingBetweenActors.length).toBe(0);
+    });
+  });
+
   describe('Conditional routing: early exit', () => {
     test('when no index memberships, full invoke does not call HyDE or search or createOpportunity', async () => {
       const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
@@ -498,12 +594,12 @@ describe('Opportunity Graph', () => {
       expect(createSpy).not.toHaveBeenCalled();
     });
 
-    test('when no active intents, full invoke does not call HyDE or createOpportunity (profile path may run)', async () => {
-      const { compiledGraph, mockDb, mockHydeGenerator, mockEmbedder } = createMockGraph({
+    test('when no active intents, full invoke does not createOpportunity when query discovery returns no candidates', async () => {
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
         getActiveIntents: () => Promise.resolve([]),
       });
-      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
-      const hydeSearchSpy = spyOn(mockEmbedder, 'searchWithHydeEmbeddings');
+      // With searchQuery, the profile/query path runs (HyDE + search). Mock empty search so no opportunities are created.
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
       const createSpy = spyOn(mockDb, 'createOpportunity');
 
       await compiledGraph.invoke({
@@ -512,8 +608,6 @@ describe('Opportunity Graph', () => {
         options: {},
       } as OpportunityGraphInvokeInput);
 
-      expect(hydeSpy).not.toHaveBeenCalled();
-      expect(hydeSearchSpy).not.toHaveBeenCalled();
       expect(createSpy).not.toHaveBeenCalled();
     });
   });
