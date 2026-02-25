@@ -110,8 +110,8 @@ export function deriveRolesFromStrategy(strategy: HydeStrategy): DerivedRoles {
 
 /**
  * Validates opportunity actors against the introducer rule:
- * - If an opportunity has an introducer, it must have exactly two non-introducer actors.
- * - If an opportunity has only two actors, neither may be the introducer.
+ * - If an opportunity has an introducer, it must have one or two non-introducer actors
+ *   (1 = 1:1 intro e.g. "I want to connect with X"; 2 = introducer connecting two others).
  *
  * @param actors - Array of actors with at least a role (e.g. { role: string })
  * @throws Error when the actor set is invalid
@@ -120,15 +120,9 @@ export function validateOpportunityActors(actors: Array<{ role: string }>): void
   const introducerCount = actors.filter((a) => a.role === 'introducer').length;
   const nonIntroducerCount = actors.filter((a) => a.role !== 'introducer').length;
 
-  if (actors.length === 2 && introducerCount > 0) {
+  if (introducerCount > 0 && (nonIntroducerCount < 1 || nonIntroducerCount > 2)) {
     throw new Error(
-      'An opportunity with only two actors cannot have an introducer.'
-    );
-  }
-
-  if (introducerCount > 0 && nonIntroducerCount !== 2) {
-    throw new Error(
-      'An opportunity with an introducer must have exactly two other actors.'
+      'An opportunity with an introducer must have one or two other actors.'
     );
   }
 }
