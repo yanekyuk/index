@@ -247,9 +247,17 @@ export async function runDiscoverFromQuery(
         };
       }
 
-      const opportunities: Opportunity[] = Array.isArray(result.opportunities)
+      let opportunities: Opportunity[] = Array.isArray(result.opportunities)
         ? result.opportunities
         : [];
+      // Chat discovery: only return draft opportunities for this conversation (never previously-saved latent/pending).
+      if (chatSessionId) {
+        opportunities = opportunities.filter(
+          (opp) =>
+            opp.status === "draft" &&
+            (opp.context as { conversationId?: string } | null)?.conversationId === chatSessionId,
+        );
+      }
       debugSteps.push({
         step: "opportunity_graph",
         detail: `${opportunities.length} opportunity(ies)`,
@@ -441,7 +449,7 @@ export async function runDiscoverFromQuery(
                 item.opportunity.interpretation?.reasoning ?? "",
               ) ?? "",
             score: item.confidence,
-            status: item.opportunity.status,
+            status: chatSessionId ? "draft" : item.opportunity.status,
             viewerRole: item.viewerRole,
             ...(presentations?.[idx] && { presentation: presentations[idx] }),
             ...(homeCard && { homeCardPresentation: homeCard }),

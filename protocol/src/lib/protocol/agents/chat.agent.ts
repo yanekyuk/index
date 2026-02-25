@@ -183,6 +183,7 @@ export class ChatAgent {
       database: context.database,
       userId: context.userId,
       indexId: context.indexId,
+      sessionId: context.sessionId,
     });
     const tools = await createChatTools(context, resolved);
     return new ChatAgent(resolved, tools);

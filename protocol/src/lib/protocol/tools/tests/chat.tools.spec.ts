@@ -177,6 +177,7 @@ function createMockDatabase(
     archiveIntent: async () => ({ success: true }),
     getUserIndexIds: noopArray,
     getIndexMemberships: noopArray,
+    getPublicIndexesNotJoined: async () => ({ indexes: [] }),
     getIndexMembership: noopNull,
     getIndexWithPermissions: async () => null,
     getIntentForIndexing: noopNull,
@@ -990,6 +991,44 @@ describe("create_opportunities tool", () => {
     };
     const result = await tool.invoke({
       partyUserIds: [testUserId, "other-user-id"],
+      entities: [
+        { userId: testUserId, profile: { name: "Me" }, indexId: "idx-1" },
+        { userId: "other-user-id", profile: { name: "Other" }, indexId: "idx-1" },
+      ],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toBeDefined();
+    expect(Array.isArray(parsed.data.opportunities) ? parsed.data.opportunities : []).toBeDefined();
+  });
+
+  test("introduction mode: entities only (no partyUserIds) derives partyUserIds and creates opportunity", async () => {
+    const mockDb = createMockDatabase(async () => [], {
+      isIndexMember: async () => true,
+      opportunityExistsBetweenActors: async () => false,
+      findOverlappingOpportunities: async () => [],
+      createOpportunity: async (data) =>
+        ({
+          id: "opp-from-entities-only",
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: data.interpretation,
+          context: data.context,
+          confidence: data.confidence,
+          status: data.status ?? "latent",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        }) as Opportunity,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: {
+        entities?: Array<{ userId: string; profile?: Record<string, unknown>; indexId: string }>;
+      }) => Promise<string>;
+    };
+    const result = await tool.invoke({
       entities: [
         { userId: testUserId, profile: { name: "Me" }, indexId: "idx-1" },
         { userId: "other-user-id", profile: { name: "Other" }, indexId: "idx-1" },
