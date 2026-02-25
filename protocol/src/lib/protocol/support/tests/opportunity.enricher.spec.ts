@@ -410,9 +410,8 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
       expect(result.expiredIds).toContain('opp-1');
       expect(result.expiredIds).toContain('opp-2');
       expect(result.expiredIds).toHaveLength(2);
-      // Merged reasoning carries context from all three
-      expect(result.data.interpretation.reasoning).toContain('co-founder');
-      expect(result.data.interpretation.reasoning).toContain('NLP');
+      // Merged reasoning uses new data only (avoids repetitive concatenation in chat cards)
+      expect(result.data.interpretation.reasoning).toBe(MEANINGFUL.reasoning.aiMlStartup);
       expect(result.data.interpretation.reasoning).toContain('ML infrastructure');
     }
   });
@@ -607,9 +606,8 @@ describe('Opportunity enricher — cross-domain deduplication', () => {
     expect(result.enriched).toBe(true);
     if (result.enriched) {
       const r = result.data.interpretation.reasoning;
-      // Contains phrases from all three
-      expect(r).toContain('co-founder');
-      expect(r).toContain('NLP');
+      // Merged reasoning uses new data only
+      expect(r).toBe(MEANINGFUL.reasoning.aiMlStartup);
       expect(r).toContain('ML infrastructure');
       // Max confidence wins
       const conf = typeof result.data.interpretation.confidence === 'number'

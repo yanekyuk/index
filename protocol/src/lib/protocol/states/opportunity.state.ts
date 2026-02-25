@@ -281,6 +281,17 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next,
     default: () => [],
   }),
+
+  /** Discovery path: pairs skipped because an opportunity already exists between viewer and candidate (no duplicate created). */
+  existingBetweenActors: Annotation<Array<{
+    candidateUserId: Id<'users'>;
+    indexId: Id<'indexes'>;
+    existingOpportunityId?: Id<'opportunities'>;
+    existingStatus?: OpportunityStatus;
+  }>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
   
   /** Error message if any step fails */
   error: Annotation<string | undefined>({

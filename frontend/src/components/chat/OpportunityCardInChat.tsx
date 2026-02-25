@@ -46,7 +46,7 @@ export interface OpportunityCardData {
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
-const ACTIONABLE_STATUSES = new Set(["latent", "pending", "viewed"]);
+const ACTIONABLE_STATUSES = new Set(["latent", "draft", "pending", "viewed"]);
 
 /** Determine if a status allows actions. */
 function isActionableStatus(status?: string): boolean {

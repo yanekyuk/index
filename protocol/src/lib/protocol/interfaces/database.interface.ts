@@ -1046,6 +1046,19 @@ export interface Database {
   ): Promise<boolean>;
 
   /**
+   * Return one non-expired opportunity between the given actors in the index, if any.
+   * Used to avoid creating a duplicate and to surface existing opportunity id/status.
+   *
+   * @param actorIds - Array of user IDs that would be actors
+   * @param indexId - Index ID
+   * @returns The first matching opportunity's id and status, or null
+   */
+  getOpportunityBetweenActors(
+    actorIds: string[],
+    indexId: string
+  ): Promise<{ id: Id<'opportunities'>; status: OpportunityStatus } | null>;
+
+  /**
    * Find opportunities whose non-introducer actor set exactly matches the given user IDs.
    * Overlap semantics: exact actor-set equality — an opportunity is returned only if its set of
    * non-introducer actor userIds (ignoring introducers) equals the set of actorUserIds. Index-agnostic;
@@ -1405,6 +1418,9 @@ export interface SystemDatabase {
   /** Check if opportunity exists between actors in an index. */
   opportunityExistsBetweenActors(actorIds: string[], indexId: string): Promise<boolean>;
 
+  /** Return one opportunity between actors in the index (id + status), or null. */
+  getOpportunityBetweenActors(actorIds: string[], indexId: string): Promise<{ id: Id<'opportunities'>; status: OpportunityStatus } | null>;
+
   /** Find overlapping opportunities by actor set. */
   findOverlappingOpportunities(actorUserIds: Id<'users'>[], options?: { excludeStatuses?: OpportunityStatus[] }): Promise<Opportunity[]>;
 
@@ -1497,6 +1513,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'createOpportunity'
   | 'getOpportunity'
   | 'opportunityExistsBetweenActors'
+  | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
   | 'getOpportunitiesForUser'
   | 'updateOpportunityStatus'
@@ -1549,6 +1566,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getProfile'
   | 'createOpportunity'
   | 'opportunityExistsBetweenActors'
+  | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
   | 'getUserIndexIds'
   | 'getActiveIntents'

@@ -10,6 +10,9 @@ import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
+/** Markdown code fence (three backticks). Avoids embedding ``` in string literals so TS parser stays in sync. */
+const CODE_FENCE = String.fromCharCode(96, 96, 96);
+
 /**
  * Sanitize JSON string for use inside a markdown code fence (```). Escapes backticks
  * so embedded ``` cannot close the fence prematurely.
@@ -194,7 +197,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectivePartyUserIds =
         query.partyUserIds && query.partyUserIds.length >= 2
           ? query.partyUserIds
-          : partyUserIdsFromEntities?.length >= 2
+          : (partyUserIdsFromEntities?.length ?? 0) >= 2
             ? partyUserIdsFromEntities
             : undefined;
 
@@ -294,14 +297,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           status: created.status ?? "latent",
         };
         const block =
-          "```opportunity\n" +
+          CODE_FENCE + "opportunity\n" +
           sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-          "\n```";
+          "\n" + CODE_FENCE;
 
         return success({
           found: true,
           count: 1,
-          message: `Draft introduction created. IMPORTANT: Include the following \`\`\`opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n${block}`,
+          message:
+            "Draft introduction created. IMPORTANT: Include the following " +
+            CODE_FENCE +
+            "opportunity code block EXACTLY as-is in your response (it renders as an interactive card):\n\n" +
+            block,
           opportunities: [
             {
               opportunityId: created.id,
@@ -396,8 +403,24 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // Found but only existing connections (no new opportunities created)
+      const forMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
+      if ((result.opportunities?.length ?? 0) === 0 && forMention.length > 0) {
+        return success({
+          found: true,
+          count: 0,
+          message:
+            result.message ??
+            "No new opportunities created; you already have a connection with: " +
+              forMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
+              ". View on your home page.",
+          existingConnections: result.existingConnections,
+          debugSteps: allDebugSteps,
+        });
+      }
+
       // Format opportunities as code blocks for the LLM to include in its response
-      // The frontend will parse ```opportunity blocks and render them as cards
+      // The frontend will parse opportunity code blocks and render them as cards
       const opportunityBlocks = (result.opportunities ?? []).map((opp) => {
         const cardData = {
           opportunityId: opp.opportunityId,
@@ -419,19 +442,32 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           status: opp.status,
         };
         return (
-          "```opportunity\n" +
+          CODE_FENCE + "opportunity\n" +
           sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-          "\n```"
+          "\n" + CODE_FENCE
         );
       });
 
       // Join all opportunity blocks into a single string for the LLM to include verbatim
       const blocksText = opportunityBlocks.join("\n\n");
+      let message =
+        "Found " +
+        result.count +
+        " potential connection(s). IMPORTANT: Include the following " + CODE_FENCE + "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
+        blocksText;
+      const existingForMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
+      if (existingForMention.length > 0) {
+        message +=
+          "\n\nYou already have a connection with: " +
+          existingForMention.map((c) => c.name + (c.status ? " (" + c.status + ")" : "")).join(", ") +
+          ". View on your home page.";
+      }
 
       return success({
         found: true,
         count: result.count,
-        message: `Found ${result.count} potential connection(s). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+        message,
+        ...(result.existingConnections?.length ? { existingConnections: result.existingConnections } : {}),
         debugSteps: allDebugSteps,
       });
     },
@@ -455,7 +491,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         query.indexId.trim() !== context.indexId
       ) {
         return error(
-          `This chat is scoped to ${context.indexName ?? "this index"}. You can only list opportunities from this community.`,
+          "This chat is scoped to " +
+            (context.indexName ?? "this index") +
+            ". You can only list opportunities from this community.",
         );
       }
 
@@ -562,9 +600,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
 
           opportunityBlocks.push(
-            "```opportunity\n" +
+            CODE_FENCE + "opportunity\n" +
               sanitizeJsonForCodeFence(JSON.stringify(cardData)) +
-              "\n```",
+              "\n" + CODE_FENCE,
           );
         } catch (err) {
           logger.warn("Skipping opportunity that failed to build minimal card", {
@@ -590,7 +628,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       return success({
         found: true,
         count: opportunityBlocks.length,
-        message: `You have ${opportunityBlocks.length} opportunity(ies). IMPORTANT: Include the following \`\`\`opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n${blocksText}`,
+        message:
+          "You have " +
+          opportunityBlocks.length +
+          " opportunity(ies). IMPORTANT: Include the following " +
+          CODE_FENCE +
+          "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
+          blocksText,
       });
     },
   });
