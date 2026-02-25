@@ -11,6 +11,7 @@ import { indexMembers, indexes, userProfiles, users } from '../schemas/database.
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { profileService } from '../services/profile.service';
+import { profileQueue } from '../queues/profile.queue';
 import type { Id } from '../types/common.types';
 
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
@@ -291,6 +292,16 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       if (!silent) console.log(`  Profile ${i + 1}/${personaUsers.length}: ${personasToSeed[i].name}`);
     }
     if (!silent) console.log(`  Profiles upserted: ${profilesUpserted}`);
+
+    if (!silent) console.log('Enqueueing profile HyDE jobs for index members...');
+    for (const user of personaUsers) {
+      try {
+        await profileQueue.addEnsureProfileHydeJob({ userId: user.id });
+      } catch (err) {
+        if (!silent) console.warn(`  Failed to enqueue ensure_profile_hyde for ${user.id}:`, err);
+      }
+    }
+    if (!silent) console.log(`  Enqueued ${personaUsers.length} profile HyDE job(s). Run workers (e.g. bun run dev) to process them.`);
 
     if (!silent) console.log('Embedding profiles (and generating HyDE)...');
     for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {

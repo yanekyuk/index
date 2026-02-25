@@ -158,7 +158,13 @@ flowchart TB
 
 ---
 
-## 5. Intent graph create path (detail)
+## 5. Profile HyDE coverage (discovery)
+
+Chat discovery (query-based path) searches **profile HyDE** in `hyde_documents` (sourceType `'profile'`) joined with index members. So index members need profile HyDE rows to be discoverable. When a user is **added to an index**, we enqueue an `ensure_profile_hyde` job (profile queue) so their profile HyDE is generated or updated. See [Discovery Coverage (Option C) plan](../../docs/plans/2026-02-24-discovery-coverage-option-c.md).
+
+---
+
+## 6. Intent graph create path (detail)
 
 For reference, the intent graph node flow when `operationMode: 'create'`.
 
