@@ -303,6 +303,7 @@ export class OpportunityGraphFactory {
         logger.info('[Graph:Discovery] Starting semantic search', {
           targetIndexesCount: state.targetIndexes.length,
           discoverySource: state.discoverySource,
+          searchQueryPreview: state.searchQuery?.trim().slice(0, 60) ?? '(none)',
         });
 
         try {
@@ -322,19 +323,15 @@ export class OpportunityGraphFactory {
               : Array.isArray(embedding) && Array.isArray(embedding[0])
                 ? (embedding[0] as number[])
                 : null;
-            const chatQueryPath = state.options.conversationId && state.searchQuery?.trim();
+            // When no viewer profile embedding but we have a search query, run query-based HyDE so e.g. "visual artists" finds people via profile HyDE
             if (!vector || vector.length === 0) {
-              if (chatQueryPath) {
+              if (state.searchQuery?.trim()) {
+                logger.info('[Graph:Discovery] Profile source, no vector, has searchQuery → running query HyDE path', {
+                  searchQuery: state.searchQuery.trim().substring(0, 80),
+                });
                 const queryCandidates = await runQueryHydeDiscovery();
+                logger.info('[Graph:Discovery] Query HyDE path complete', { candidatesFound: queryCandidates.length });
                 return { candidates: queryCandidates };
-              }
-              const isPathB = !state.resolvedTriggerIntentId;
-              if (isPathB && state.searchQuery?.trim()) {
-                return {
-                  candidates: [],
-                  createIntentSuggested: true,
-                  suggestedIntentDescription: state.searchQuery.trim(),
-                };
               }
               return { candidates: [] };
             }
@@ -380,16 +377,9 @@ export class OpportunityGraphFactory {
             const candidates = Array.from(byUserAndIndex.values());
             const isPathB = !state.resolvedTriggerIntentId;
             if (candidates.length === 0 && isPathB && state.searchQuery?.trim()) {
-              if (chatQueryPath) {
-                const queryCandidates = await runQueryHydeDiscovery();
-                logger.info('[Graph:Discovery] Chat query fallback complete', { candidatesFound: queryCandidates.length });
-                return { candidates: queryCandidates };
-              }
-              return {
-                candidates: [],
-                createIntentSuggested: true,
-                suggestedIntentDescription: state.searchQuery.trim(),
-              };
+              const queryCandidates = await runQueryHydeDiscovery();
+              logger.info('[Graph:Discovery] Profile search returned 0, query HyDE fallback complete', { candidatesFound: queryCandidates.length });
+              return { candidates: queryCandidates };
             }
             logger.info('[Graph:Discovery] Profile-as-source discovery complete', { candidatesFound: candidates.length });
             return { candidates };
@@ -401,6 +391,7 @@ export class OpportunityGraphFactory {
             const strategies = state.options.strategies ?? selectStrategies(searchText, {
               indexId: state.targetIndexes[0].indexId,
             });
+            logger.info('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80), strategies });
             const hydeResult = await self.hydeGenerator.invoke({
               sourceType: 'query',
               sourceText: searchText,
@@ -409,6 +400,13 @@ export class OpportunityGraphFactory {
               forceRegenerate: false,
             });
             const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
+            const embeddingKeys = hydeEmbeddings ? Object.keys(hydeEmbeddings) : [];
+            logger.info('[Graph:Discovery] HyDE generator result', {
+              strategyCount: embeddingKeys.length,
+              strategies: embeddingKeys,
+              hasMirror: embeddingKeys.includes('mirror'),
+              hasReciprocal: embeddingKeys.includes('reciprocal'),
+            });
             if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) return [];
             const embeddingsMap = new Map<HydeStrategy, number[]>();
             for (const [strategy, emb] of Object.entries(hydeEmbeddings)) {
@@ -448,6 +446,13 @@ export class OpportunityGraphFactory {
                 }
               })
             );
+            const profileCount = all.filter((c) => !c.candidateIntentId).length;
+            const intentCount = all.filter((c) => c.candidateIntentId).length;
+            logger.info('[Graph:Discovery] searchWithHydeEmbeddings raw results', {
+              total: all.length,
+              fromProfile: profileCount,
+              fromIntent: intentCount,
+            });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
               const key = `${c.candidateUserId}:${c.indexId}`;
@@ -870,7 +875,7 @@ export class OpportunityGraphFactory {
      */
     const persistNode = async (state: typeof OpportunityGraphState.State) => {
       return timed("OpportunityGraph.persist", async () => {
-        logger.info('[Graph:Persist] Starting persistence', {
+        logger.info('[Graph:Persist] Starting persistence (dedup-v2)', {
           opportunitiesToCreate: state.evaluatedOpportunities.length,
           initialStatus: state.options.initialStatus ?? 'pending',
         });
@@ -882,6 +887,13 @@ export class OpportunityGraphFactory {
 
         try {
           const itemsToPersist: CreateOpportunityData[] = [];
+          const reactivatedOpportunities: Opportunity[] = [];
+          const existingBetweenActors: Array<{
+            candidateUserId: Id<'users'>;
+            indexId: Id<'indexes'>;
+            existingOpportunityId?: Id<'opportunities'>;
+            existingStatus?: string;
+          }> = [];
           const now = new Date().toISOString();
           const initialStatus = state.options.initialStatus ?? 'pending';
 
@@ -889,6 +901,13 @@ export class OpportunityGraphFactory {
             const indexIdForActors = state.indexId ?? evaluated.actors[0]?.indexId;
             let actors: OpportunityActor[];
             let data: CreateOpportunityData;
+
+            logger.info('[Graph:Persist:PathSelect]', {
+              isIntroduction: !!state.introductionContext,
+              stateUserId: state.userId,
+              stateIndexId: state.indexId,
+              evaluatedActorUserIds: evaluated.actors.map(a => a.userId),
+            });
 
             if (state.introductionContext) {
               if (indexIdForActors === undefined) {
@@ -963,6 +982,53 @@ export class OpportunityGraphFactory {
                 }
               }
 
+              // Index-agnostic dedup: find ANY existing opportunity between these users,
+              // regardless of which index it was created in or whether context.indexId is set.
+              const candidateUserId = evaluated.actors.find((a) => a.userId !== state.userId)?.userId;
+              logger.info('[Graph:Persist:Dedup] Checking overlapping opportunities', {
+                stateUserId: state.userId,
+                candidateUserId: candidateUserId ?? 'NONE',
+                evaluatedActors: evaluated.actors.map(a => ({ userId: a.userId, role: a.role })),
+              });
+              const overlapping = candidateUserId
+                ? await this.database.findOverlappingOpportunities(
+                    [state.userId as Id<'users'>, candidateUserId as Id<'users'>],
+                  )
+                : [];
+              logger.info('[Graph:Persist:Dedup] findOverlappingOpportunities result', {
+                count: overlapping.length,
+                results: overlapping.map(o => ({ id: o.id, status: o.status, actors: o.actors?.map((a: OpportunityActor) => ({ userId: a.userId, role: a.role })) })),
+              });
+
+              if (overlapping.length > 0) {
+                const existing = overlapping[0];
+                const existingIndexId = (existing.context?.indexId ?? state.indexId ?? state.userIndexes?.[0] ?? '') as Id<'indexes'>;
+
+                if (existing.status === 'expired') {
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  if (reactivated) {
+                    logger.info('[Graph:Persist] Reactivated expired opportunity as draft', {
+                      opportunityId: existing.id,
+                      candidateUserId,
+                    });
+                    reactivatedOpportunities.push(reactivated);
+                  }
+                } else if (candidateUserId) {
+                  existingBetweenActors.push({
+                    candidateUserId: candidateUserId as Id<'users'>,
+                    indexId: existingIndexId,
+                    existingOpportunityId: existing.id as Id<'opportunities'>,
+                    existingStatus: existing.status,
+                  });
+                  logger.info('[Graph:Persist] Skipping duplicate; opportunity already exists between actors', {
+                    candidateUserId,
+                    existingStatus: existing.status,
+                    existingOpportunityId: existing.id,
+                  });
+                }
+                continue;
+              }
+
               data = {
                 detection: {
                   source: 'opportunity_graph',
@@ -1013,15 +1079,20 @@ export class OpportunityGraphFactory {
             items: itemsToPersist,
           });
 
+          const allOpportunities = [...reactivatedOpportunities, ...createdList];
+
           logger.info('[Graph:Persist] Persistence complete', {
-            count: createdList.length,
+            created: createdList.length,
+            reactivated: reactivatedOpportunities.length,
+            existingBetweenActorsCount: existingBetweenActors.length,
             status: initialStatus,
           });
-          return { opportunities: createdList };
+          return { opportunities: allOpportunities, existingBetweenActors };
         } catch (error) {
           logger.error('[Graph:Persist] Failed', { error });
           return {
             opportunities: [],
+            existingBetweenActors: [],
             error: 'Failed to persist opportunities.',
           };
         }

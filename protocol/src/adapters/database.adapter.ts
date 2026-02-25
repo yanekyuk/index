@@ -2167,6 +2167,12 @@ export class ChatDatabaseAdapter {
   async opportunityExistsBetweenActors(actorIds: string[], indexId: string): Promise<boolean> {
     return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, indexId);
   }
+  async getOpportunityBetweenActors(
+    actorIds: string[],
+    indexId: string
+  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' } | null> {
+    return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, indexId);
+  }
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
     options?: { excludeStatuses?: ('latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[] }
@@ -2661,6 +2667,30 @@ export class OpportunityDatabaseAdapter {
     return rows.length > 0;
   }
 
+  async getOpportunityBetweenActors(
+    actorIds: string[],
+    indexId: string
+  ): Promise<{ id: Id<'opportunities'>; status: (typeof opportunities.$inferSelect)['status'] } | null> {
+    if (actorIds.length === 0) return null;
+    const expired = 'expired';
+    const conditions = [
+      sql`${opportunities.context}->>'indexId' = ${indexId}`,
+      ne(opportunities.status, expired),
+    ];
+    for (const actorId of actorIds) {
+      conditions.push(
+        sql`${opportunities.actors} @> ${JSON.stringify([{ userId: actorId }])}::jsonb`
+      );
+    }
+    const rows = await db
+      .select({ id: opportunities.id, status: opportunities.status })
+      .from(opportunities)
+      .where(and(...conditions))
+      .limit(1);
+    const row = rows[0];
+    return row ? { id: row.id as Id<'opportunities'>, status: row.status } : null;
+  }
+
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
     options?: { excludeStatuses?: ('latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired')[] }
@@ -2683,12 +2713,20 @@ export class OpportunityDatabaseAdapter {
         WHERE elem->>'role' IS DISTINCT FROM 'introducer' AND elem->>'userId' IS NOT NULL AND elem->>'userId' != ''
       ) sub
     ) = ARRAY[${sql.join(sortedActorUserIds.map((uid) => sql`${uid}`), sql`, `)}]::text[]`;
+    console.log('[DB:findOverlappingOpportunities] query', {
+      sortedActorUserIds,
+      excludeStatuses: mergedExcludeStatuses,
+    });
     const rows = await db
       .select()
       .from(opportunities)
       .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
       .orderBy(desc(opportunities.updatedAt));
     const result = rows.map(toOpportunityRow);
+    console.log('[DB:findOverlappingOpportunities] result', {
+      count: result.length,
+      rows: result.map(r => ({ id: r.id, status: r.status, actors: r.actors?.map((a: { userId: string; role: string }) => ({ userId: a.userId, role: a.role })) })),
+    });
     return result;
   }
 
@@ -3897,6 +3935,10 @@ export function createSystemDatabase(
     opportunityExistsBetweenActors: (actorIds, indexId) => {
       verifyScope(indexId);
       return db.opportunityExistsBetweenActors(actorIds, indexId);
+    },
+    getOpportunityBetweenActors: (actorIds, indexId) => {
+      verifyScope(indexId);
+      return db.getOpportunityBetweenActors(actorIds, indexId);
     },
     findOverlappingOpportunities: (actorUserIds, options) => db.findOverlappingOpportunities(actorUserIds, options),
     expireOpportunitiesByIntent: (intentId) => db.expireOpportunitiesByIntent(intentId),
