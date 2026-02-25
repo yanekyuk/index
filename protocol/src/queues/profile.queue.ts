@@ -122,7 +122,7 @@ export class ProfileQueue {
       this.logger.info('[ProfileHyde] Ensured profile HyDE for user', { userId });
     } catch (err) {
       this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, error: err });
-      // Do not throw: BullMQ will retry per job options
+      throw err;
     }
   }
 }

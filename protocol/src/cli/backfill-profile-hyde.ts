@@ -66,10 +66,15 @@ async function main(): Promise<void> {
 }
 
 main()
-  .then(() => closeDb())
+  .then(async () => {
+    await Promise.all([closeDb(), profileQueue.queue.close()]);
+  })
   .catch(async (e: unknown) => {
     const msg = e instanceof Error ? e.message : `${e}`;
     console.error('backfill-profile-hyde error:', msg);
-    await closeDb();
+    await Promise.all([
+      closeDb().catch(() => {}),
+      profileQueue.queue.close().catch(() => {}),
+    ]);
     process.exit(1);
   });

@@ -286,7 +286,7 @@ export async function runDiscoverFromQuery(
           userIds: existingConnections.map((c) => c.userId),
         });
       }
-      // Only expose existing connections as cards when status is draft or expired; others are mention-only.
+      // Only expose existing connections as cards when status is in EXISTING_CONNECTION_CARD_STATUSES (draft, latent); others are mention-only.
       const existingConnectionsForCards = existingConnections.filter((c) =>
         c.status != null && EXISTING_CONNECTION_CARD_STATUSES.includes(c.status as typeof EXISTING_CONNECTION_CARD_STATUSES[number])
       );

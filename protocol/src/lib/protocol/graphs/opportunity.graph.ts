@@ -389,7 +389,7 @@ export class OpportunityGraphFactory {
             const searchText = state.searchQuery?.trim() ?? '';
             if (!searchText) return [];
             const strategies = state.options.strategies ?? selectStrategies(searchText, {
-              indexId: state.targetIndexes[0].indexId,
+              indexId: state.targetIndexes[0] ? state.targetIndexes[0].indexId : undefined,
             });
             logger.info('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80), strategies });
             const hydeResult = await self.hydeGenerator.invoke({

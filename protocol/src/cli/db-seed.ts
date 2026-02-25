@@ -294,14 +294,16 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     if (!silent) console.log(`  Profiles upserted: ${profilesUpserted}`);
 
     if (!silent) console.log('Enqueueing profile HyDE jobs for index members...');
+    let successfulEnqueues = 0;
     for (const user of personaUsers) {
       try {
         await profileQueue.addEnsureProfileHydeJob({ userId: user.id });
+        successfulEnqueues++;
       } catch (err) {
         if (!silent) console.warn(`  Failed to enqueue ensure_profile_hyde for ${user.id}:`, err);
       }
     }
-    if (!silent) console.log(`  Enqueued ${personaUsers.length} profile HyDE job(s). Run workers (e.g. bun run dev) to process them.`);
+    if (!silent) console.log(`  Enqueued ${successfulEnqueues} profile HyDE job(s). Run workers (e.g. bun run dev) to process them.`);
 
     if (!silent) console.log('Embedding profiles (and generating HyDE)...');
     for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {

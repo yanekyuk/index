@@ -1037,7 +1037,16 @@ describe("create_opportunities tool", () => {
     const parsed = JSON.parse(result);
     expect(parsed.success).toBe(true);
     expect(parsed.data).toBeDefined();
-    expect(Array.isArray(parsed.data.opportunities) ? parsed.data.opportunities : []).toBeDefined();
+    expect(Array.isArray(parsed.data.opportunities)).toBe(true);
+    expect(parsed.data.opportunities.length).toBe(1);
+    const opp = parsed.data.opportunities[0];
+    expect(opp.id).toBe("opp-from-entities-only");
+    expect(opp.actors).toBeDefined();
+    expect(opp.actors.some((a: { userId: string }) => a.userId === testUserId)).toBe(true);
+    expect(opp.actors.some((a: { userId: string }) => a.userId === "other-user-id")).toBe(true);
+    expect(opp.detection).toBeDefined();
+    expect(opp.interpretation).toBeDefined();
+    expect(opp.confidence).toBeDefined();
   });
 });
 

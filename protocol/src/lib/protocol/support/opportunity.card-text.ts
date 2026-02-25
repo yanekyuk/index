@@ -73,7 +73,7 @@ export function viewerCentricCardSummary(
     if (cleanIdx !== -1) {
       const result = sentences.slice(cleanIdx).join(" ").trim();
       const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-      return replaceViewerNameWithYou(out, viewerName);
+      return replaceViewerNameWithYou(out, viewerName, [name]);
     }
 
     // Second pass: sentence mentions counterpart but starts with viewer (compound sentence).
@@ -93,7 +93,7 @@ export function viewerCentricCardSummary(
         const rest = sentences.slice(compoundIdx + 1).join(" ").trim();
         const result = rest ? `${extracted} ${rest}` : extracted;
         const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
-        return replaceViewerNameWithYou(out, viewerName);
+        return replaceViewerNameWithYou(out, viewerName, [name]);
       }
     }
   }
@@ -102,7 +102,7 @@ export function viewerCentricCardSummary(
   const idx = sentences.findIndex(hasCounterpartName);
   if (idx === -1) {
     const out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
-    return replaceViewerNameWithYou(out, viewerName);
+    return replaceViewerNameWithYou(out, viewerName, [name]);
   }
 
   const fromCounterpart = sentences.slice(idx).join(" ").trim();
@@ -110,7 +110,7 @@ export function viewerCentricCardSummary(
     fromCounterpart.length <= maxChars
       ? fromCounterpart
       : fromCounterpart.slice(0, maxChars) + "...";
-  return replaceViewerNameWithYou(out, viewerName);
+  return replaceViewerNameWithYou(out, viewerName, [name]);
 }
 
 /** Max length for narrator chip text (matches LLM presenter schema). */
@@ -273,20 +273,28 @@ function escapeRegex(s: string): string {
 /**
  * Replaces viewer's name with "you"/"your" so the card addresses the viewer in second person.
  * Applied to mainText when viewerName is provided.
+ * @param otherNames - Other actor names in the card; first-name replacement is
+ *   skipped when the viewer's first name matches any other actor's first name.
  */
-function replaceViewerNameWithYou(text: string, viewerName?: string): string {
+function replaceViewerNameWithYou(text: string, viewerName?: string, otherNames?: string[]): string {
   if (!viewerName?.trim()) return text;
   const full = viewerName.trim();
   const first = full.split(/\s+/)[0];
   let out = text;
   // Possessive: "Yankı's" → "your", "Yankı Ekin Yüksel's" → "your"
   out = out.replace(new RegExp(`\\b${escapeRegex(full)}'s\\b`, "gi"), "your");
-  if (first && first.length > 1) {
+
+  const otherFirstNames = (otherNames ?? [])
+    .map(n => n.trim().split(/\s+/)[0]?.toLowerCase())
+    .filter(Boolean);
+  const firstNameCollides = first && otherFirstNames.includes(first.toLowerCase());
+
+  if (first && first.length > 1 && !firstNameCollides) {
     out = out.replace(new RegExp(`\\b${escapeRegex(first)}'s\\b`, "gi"), "your");
   }
   // Standalone: full name then first name so we don't break "Yankı Ekin Yüksel"
   out = out.replace(new RegExp(`\\b${escapeRegex(full)}\\b`, "gi"), "you");
-  if (first && first.length > 1) {
+  if (first && first.length > 1 && !firstNameCollides) {
     out = out.replace(new RegExp(`\\b${escapeRegex(first)}\\b`, "gi"), "you");
   }
   return out;

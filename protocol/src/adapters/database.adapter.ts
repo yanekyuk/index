@@ -1829,7 +1829,11 @@ export class ChatDatabaseAdapter {
     }).onConflictDoNothing({ target: [indexMembers.indexId, indexMembers.userId] }).returning();
 
     if (result.length > 0) {
-      IndexMembershipEvents.onMemberAdded(userId, indexId);
+      try {
+        IndexMembershipEvents.onMemberAdded(userId, indexId);
+      } catch (err) {
+        console.error('[addMemberToIndex] Event hook failed (non-fatal)', { indexId, userId, error: err });
+      }
     }
     return { success: true, alreadyMember: result.length === 0 };
   }

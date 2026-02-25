@@ -188,10 +188,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         (context.indexId || query.indexId?.trim()) ?? undefined;
 
       // Derive partyUserIds from entities when agent passes entities but omits partyUserIds (intro mode).
+      // Only derive when all entities share the same indexId to prevent cross-index introductions.
       const partyUserIdsFromEntities =
         query.entities &&
         query.entities.length >= 2 &&
-        query.entities.every((e) => e.indexId)
+        query.entities.every((e) => e.userId && e.indexId) &&
+        new Set(query.entities.map((e) => e.indexId)).size === 1
           ? [...new Set(query.entities.map((e) => e.userId))]
           : undefined;
       const effectivePartyUserIds =
