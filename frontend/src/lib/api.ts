@@ -267,11 +267,6 @@ export function useAuthenticatedAPI() {
   );
 }
 
-// Utility function for non-authenticated requests (public endpoints)
-export const publicApi = {
-  get: <T>(endpoint: string) => apiClient.getPublic<T>(endpoint),
-};
-
 // Legacy alias - uses authenticated requests, may fail if not logged in
 export const api = {
   get: <T>(endpoint: string) => apiClient.get<T>(endpoint),
