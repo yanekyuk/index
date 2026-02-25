@@ -38,6 +38,36 @@ function isMeaningfulProfileInput(input: string | undefined): boolean {
 }
 
 /**
+ * Returns true only when the value is a fully valid numeric vector (flat or nested).
+ * Used so we don't treat DB returns (e.g. pg vector as string, or empty/partial array) as "has embedding".
+ * Ensures callers re-embed when vectors contain non-number or NaN/Infinity.
+ */
+function hasValidProfileEmbedding(embedding: unknown): boolean {
+  if (embedding == null) return false;
+  if (!Array.isArray(embedding)) return false;
+  if (embedding.length === 0) return false;
+  const first = embedding[0];
+  if (Array.isArray(first)) {
+    // Nested: number[][]
+    for (let i = 0; i < embedding.length; i++) {
+      const sub = embedding[i];
+      if (!Array.isArray(sub) || sub.length === 0) return false;
+      for (let j = 0; j < sub.length; j++) {
+        const v = sub[j];
+        if (typeof v !== "number" || !Number.isFinite(v)) return false;
+      }
+    }
+    return true;
+  }
+  // Flat: number[]
+  for (let i = 0; i < embedding.length; i++) {
+    const v = embedding[i];
+    if (typeof v !== "number" || !Number.isFinite(v)) return false;
+  }
+  return true;
+}
+
+/**
  * Factory class to build and compile the Profile Generation Graph.
  * 
  * Flow:
@@ -125,7 +155,7 @@ export class ProfileGraphFactory {
           // Treat confirmation-only input (e.g. "Yes") as no input so we ask for info / use scraper
           const hasMeaningfulInput = !!state.input && isMeaningfulProfileInput(state.input);
           const needsProfileGeneration = !profile || (state.forceUpdate && hasMeaningfulInput);
-          const needsProfileEmbedding = profile && (!profile.embedding || profile.embedding.length === 0);
+          const needsProfileEmbedding = profile && !hasValidProfileEmbedding(profile.embedding);
           const existingHydeDoc = await this.database.getHydeDocument('profile', state.userId, 'mirror');
           const needsHydeGeneration = !existingHydeDoc || (state.forceUpdate && hasMeaningfulInput);
           const needsHydeEmbedding = false; // Profile HyDE lives in hyde_documents; no partial "text only" state

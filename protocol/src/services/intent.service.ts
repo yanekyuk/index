@@ -175,6 +175,55 @@ export class IntentService {
   }
 
   /**
+   * Create an intent for seed data with embedding and HyDE, without running the full intent graph
+   * or enqueueing opportunity discovery. Used by db-seed to create test intents quickly without
+   * LLM inference/verification or matching test users.
+   *
+   * @param userId - The user ID
+   * @param description - The intent text (payload)
+   * @returns The created intent record
+   */
+  async createIntentForSeed(userId: string, description: string): Promise<{ id: string }> {
+    logger.info('[IntentService] Creating intent for seed', { userId });
+
+    const EMBEDDING_DIMS = 2000;
+    let embedding: number[];
+    try {
+      embedding = (await this.embedder.generate(description)) as number[];
+    } catch (err) {
+      logger.warn('[IntentService] Embedding failed (intent created with zero vector)', {
+        userId,
+        error: err,
+      });
+      embedding = new Array(EMBEDDING_DIMS).fill(0);
+    }
+
+    const sourceId = crypto.randomUUID();
+    const created = await this.adapter.createIntent({
+      userId,
+      payload: description,
+      embedding,
+      sourceType: 'discovery_form',
+      sourceId,
+    });
+
+    try {
+      await intentQueue.runGenerateHydeSync(
+        { intentId: created.id, userId },
+        { skipOpportunity: true }
+      );
+    } catch (err) {
+      logger.warn('[IntentService] HyDE sync failed for seed intent', {
+        intentId: created.id,
+        userId,
+        error: err,
+      });
+    }
+
+    return { id: created.id };
+  }
+
+  /**
    * Check which proposal IDs have been confirmed (have a matching intent).
    *
    * @param userId - The user ID

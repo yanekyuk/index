@@ -299,18 +299,17 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     const { embedded, embedFailures } = await profileService.embedTesterProfiles(personaUsers, personasToSeed);
     if (!silent) console.log(`  Profiles embedded: ${embedded}${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
 
-    // Create intents for synthetic testers via intent graph (enqueues HyDE + opportunity discovery)
-    if (!silent) console.log('Processing intents via intent graph...');
+    // Create intents with embedding + HyDE inline (no intent graph, no opportunity discovery)
+    if (!silent) console.log('Creating intents (embed + HyDE, no opportunity matching)...');
     let intentsProcessed = 0;
     let intentFailures = 0;
     for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
       const userId = personaUsers[i].id;
       const persona = personasToSeed[i];
-      const userProfileJson = JSON.stringify(persona.profile);
       if (!silent) console.log(`  Persona ${i + 1}/${personaUsers.length}: ${persona.name} — intents 1..${persona.intents.length}`);
       for (const intentText of persona.intents) {
         try {
-          await intentService.processIntent(userId, userProfileJson, intentText);
+          await intentService.createIntentForSeed(userId, intentText);
           intentsProcessed++;
         } catch (err) {
           intentFailures++;
@@ -325,13 +324,13 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       console.log(`  ${personaUsers.length} synthetic tester users ready`);
       console.log(`  ${profilesUpserted} tester profiles upserted`);
       console.log(`  ${embedded} profiles embedded (profile + HyDE)${embedFailures > 0 ? ` (${embedFailures} failed)` : ''}`);
-      console.log(`  ${intentsProcessed} intents processed via graph${intentFailures > 0 ? ` (${intentFailures} failed)` : ''}`);
+      console.log(`  ${intentsProcessed} intents created (embed + HyDE, no opportunities)${intentFailures > 0 ? ` (${intentFailures} failed)` : ''}`);
       console.log('\nIndexes:');
       for (const idx of SEED_INDEXES) {
         const label = idx.prompt ? `prompt: "${idx.prompt}"` : 'no prompt (auto-assign)';
         console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
       }
-      console.log('\nNote: Queue workers (e.g. via `bun run dev`) must be running for intent HyDE and opportunity-discovery jobs to run after seed.');
+      console.log('\nNote: Seed does not run opportunity discovery (no matching between test users).');
     }
 
     return { ok: true };

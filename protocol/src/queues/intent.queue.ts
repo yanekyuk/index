@@ -142,6 +142,22 @@ export class IntentQueue implements IntentGraphQueue {
   }
 
   /**
+   * Run HyDE generation for an intent synchronously (e.g. during db-seed).
+   * When skipOpportunity is true, does not enqueue opportunity discovery — use for seed to avoid matching test users.
+   * @param data - intentId and userId
+   * @param options - skipOpportunity: if true, do not add opportunity discovery job
+   */
+  async runGenerateHydeSync(
+    data: IntentJobData,
+    options?: { skipOpportunity?: boolean }
+  ): Promise<void> {
+    const addOpportunityJob = options?.skipOpportunity
+      ? async () => {}
+      : (this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string }) => opportunityQueue.addJob(d)));
+    await this.handleGenerateHyde(data, { addOpportunityJob });
+  }
+
+  /**
    * Start the BullMQ worker for this queue. Idempotent; call from the protocol server only.
    */
   startWorker(): void {
@@ -153,7 +169,10 @@ export class IntentQueue implements IntentGraphQueue {
     this.worker = QueueFactory.createWorker<IntentJobPayload>(QUEUE_NAME, processor);
   }
 
-  private async handleGenerateHyde(data: IntentJobData): Promise<void> {
+  private async handleGenerateHyde(
+    data: IntentJobData,
+    overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string }) => Promise<unknown> }
+  ): Promise<void> {
     const { intentId, userId } = data;
     const db = this.deps?.database ?? this.database;
     const intent = await db.getIntentForIndexing(intentId);
@@ -203,7 +222,10 @@ export class IntentQueue implements IntentGraphQueue {
       });
     }
     this.logger.info('[IntentHyde] Generated HyDE for intent', { intentId, userId });
-    const addJob = this.deps?.addOpportunityJob ?? ((d: { intentId: string; userId: string }) => opportunityQueue.addJob(d));
+    const addJob =
+      overrides?.addOpportunityJob ??
+      this.deps?.addOpportunityJob ??
+      ((d: { intentId: string; userId: string }) => opportunityQueue.addJob(d));
     await addJob({ intentId, userId }).catch((err: unknown) =>
       this.logger.error('[IntentHyde] Failed to enqueue opportunity discovery', { intentId, error: err })
     );
