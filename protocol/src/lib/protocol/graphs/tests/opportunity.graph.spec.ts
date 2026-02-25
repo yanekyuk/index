@@ -554,6 +554,43 @@ describe('Opportunity Graph', () => {
       expect(result.existingBetweenActors.length).toBe(0);
     });
 
+    test('when existing opportunity has 3 actors (viewer + candidate + third-party), dedup still detects overlap', async () => {
+      const threeActorOpp: Opportunity = {
+        id: 'opp-three-actors',
+        status: 'pending',
+        actors: [
+          { indexId: 'idx-1', userId: 'user-source', role: 'patient' as const },
+          { indexId: 'idx-1', userId: 'user-bob', role: 'agent' as const },
+          { indexId: 'idx-1', userId: 'user-alex', role: 'peer' as const },
+        ],
+        detection: { source: 'opportunity_graph' as const, timestamp: new Date().toISOString() },
+        interpretation: { category: 'collaboration', reasoning: 'Three-way match', confidence: 0.85 },
+        context: {},
+        confidence: '0.85',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      };
+
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
+      const createSpy = spyOn(mockDb, 'createOpportunity');
+      spyOn(mockDb, 'findOverlappingOpportunities').mockResolvedValue([threeActorOpp]);
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(createSpy).not.toHaveBeenCalled();
+      expect(result.existingBetweenActors.length).toBe(1);
+      expect(result.existingBetweenActors[0].candidateUserId).toBe('user-bob');
+      expect(result.existingBetweenActors[0].existingStatus).toBe('pending');
+    });
+
     test('when no overlapping opportunity exists, creates new opportunity normally', async () => {
       const { compiledGraph, mockDb, mockEmbedder } = createMockGraph();
       const createSpy = spyOn(mockDb, 'createOpportunity');

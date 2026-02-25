@@ -2703,18 +2703,16 @@ export class OpportunityDatabaseAdapter {
       mergedExcludeStatuses.length > 0
         ? notInArray(opportunities.status, mergedExcludeStatuses)
         : undefined;
-    // Exact match: opportunity's set of non-introducer userIds must equal actorUserIds (same people only)
-    const sortedActorUserIds = [...actorUserIds].sort();
-    const overlapCondition = sql`(
-      SELECT array_agg(uid ORDER BY uid)
-      FROM (
-        SELECT elem->>'userId' AS uid
-        FROM jsonb_array_elements(${opportunities.actors}) AS elem
-        WHERE elem->>'role' IS DISTINCT FROM 'introducer' AND elem->>'userId' IS NOT NULL AND elem->>'userId' != ''
-      ) sub
-    ) = ARRAY[${sql.join(sortedActorUserIds.map((uid) => sql`${uid}`), sql`, `)}]::text[]`;
+    const containmentConditions = actorUserIds.map(
+      (uid) => sql`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) elem
+        WHERE elem->>'userId' = ${uid}
+          AND elem->>'role' IS DISTINCT FROM 'introducer'
+      )`
+    );
+    const overlapCondition = and(...containmentConditions)!;
     console.log('[DB:findOverlappingOpportunities] query', {
-      sortedActorUserIds,
+      actorUserIds,
       excludeStatuses: mergedExcludeStatuses,
     });
     const rows = await db
