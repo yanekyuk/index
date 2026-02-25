@@ -2711,21 +2711,12 @@ export class OpportunityDatabaseAdapter {
       )`
     );
     const overlapCondition = and(...containmentConditions)!;
-    console.log('[DB:findOverlappingOpportunities] query', {
-      actorUserIds,
-      excludeStatuses: mergedExcludeStatuses,
-    });
     const rows = await db
       .select()
       .from(opportunities)
       .where(statusCondition ? and(statusCondition, overlapCondition) : overlapCondition)
       .orderBy(desc(opportunities.updatedAt));
-    const result = rows.map(toOpportunityRow);
-    console.log('[DB:findOverlappingOpportunities] result', {
-      count: result.length,
-      rows: result.map(r => ({ id: r.id, status: r.status, actors: r.actors?.map((a: { userId: string; role: string }) => ({ userId: a.userId, role: a.role })) })),
-    });
-    return result;
+    return rows.map(toOpportunityRow);
   }
 
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
