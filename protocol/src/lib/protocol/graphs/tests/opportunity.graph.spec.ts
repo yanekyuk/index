@@ -279,6 +279,45 @@ describe('Opportunity Graph', () => {
     });
   });
 
+  describe('Evaluation: pairwise actor normalization', () => {
+    test('when evaluator returns 3 actors, splits into pairwise opportunities (viewer + each non-viewer)', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Three-way collaboration potential.',
+            score: 85,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-bob', role: 'agent' as const, intentId: null },
+              { userId: 'third-user', role: 'peer' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+        { type: 'intent' as const, id: 'intent-third', userId: 'third-user', score: 0.85, matchedVia: 'reciprocal' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities.length).toBe(2);
+      for (const opp of result.opportunities) {
+        expect(opp.actors.length).toBe(2);
+        expect(opp.actors.some((a: OpportunityActor) => a.userId === 'user-source')).toBe(true);
+      }
+      const candidateUserIds = result.opportunities.map(
+        (opp: { actors: OpportunityActor[] }) => opp.actors.find((a: OpportunityActor) => a.userId !== 'user-source')?.userId
+      );
+      expect(candidateUserIds).toContain('user-bob');
+      expect(candidateUserIds).toContain('third-user');
+    });
+  });
+
   describe('Ranking node', () => {
     test('sorts by score and applies limit', async () => {
       const { compiledGraph, mockEmbedder } = createMockGraph({

@@ -642,7 +642,29 @@ export class OpportunityGraphFactory {
                   return realEvaluator.invokeEntityBundle(input, { minScore });
                 })();
 
-          const evaluatedOpportunities: EvaluatedOpportunity[] = opportunitiesWithActors.map((op) => ({
+          // Split multi-actor evaluator results into pairwise (viewer + candidate).
+          // Each persisted discovery opportunity should have exactly 2 actors.
+          const pairwiseOpportunities: typeof opportunitiesWithActors = [];
+          for (const op of opportunitiesWithActors) {
+            const nonViewerActors = op.actors.filter(a => a.userId !== state.userId);
+            if (nonViewerActors.length <= 1) {
+              pairwiseOpportunities.push(op);
+            } else {
+              const viewerActor = op.actors.find(a => a.userId === state.userId);
+              for (const candidate of nonViewerActors) {
+                pairwiseOpportunities.push({
+                  reasoning: op.reasoning,
+                  score: op.score,
+                  actors: [
+                    viewerActor ?? { userId: state.userId, role: 'patient' as const, intentId: null },
+                    candidate,
+                  ],
+                });
+              }
+            }
+          }
+
+          const evaluatedOpportunities: EvaluatedOpportunity[] = pairwiseOpportunities.map((op) => ({
             reasoning: op.reasoning,
             score: op.score,
             actors: op.actors.map((a) => ({
