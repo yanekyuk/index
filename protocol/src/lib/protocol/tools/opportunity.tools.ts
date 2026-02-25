@@ -244,6 +244,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           introductionEntities: evaluatorEntities,
           introductionHint: query.hint,
           requiredIndexId: context.indexId ?? undefined,
+          options: {
+            initialStatus: "draft" as const,
+            ...(context.sessionId ? { conversationId: context.sessionId } : {}),
+          },
         });
 
         if (result.error || !result.opportunities?.length) {
@@ -267,6 +271,23 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           : null;
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
+
+        const viewerIsParty = effectivePartyUserIds.includes(context.userId);
+        const viewerRole = viewerIsParty ? "party" : "introducer";
+        const primaryActionLabel = viewerIsParty
+          ? "Start Chat"
+          : `Send to ${counterpartName || "them"}`;
+        const narratorChip = viewerIsParty
+          ? {
+              name: "Index",
+              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+            }
+          : {
+              name: "You",
+              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+              userId: context.userId,
+            };
+
         const cardData = {
           opportunityId: created.id,
           userId: firstPartyId,
@@ -284,17 +305,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ),
           cta: "Start a conversation to connect.",
           headline: `Connection with ${counterpartName}`,
-          primaryActionLabel: `Send to ${counterpartName || "them"}`,
+          primaryActionLabel,
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
-          narratorChip: {
-            name: "You",
-            text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
-            userId: context.userId,
-          },
-          viewerRole: "introducer",
+          narratorChip,
+          viewerRole,
           score: confidence,
-          status: created.status ?? "latent",
+          status: created.status ?? "draft",
         };
         const block =
           CODE_FENCE + "opportunity\n" +
@@ -314,7 +331,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               opportunityId: created.id,
               matchReason: reasoning,
               score: confidence,
-              status: created.status ?? "latent",
+              status: created.status ?? "draft",
             },
           ],
         });
