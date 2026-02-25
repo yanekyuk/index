@@ -27,20 +27,24 @@ class APIClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { skipAuth?: boolean } = {}
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
-    const token = await getJwtToken();
+    const { skipAuth, ...fetchOptions } = options;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      ...(options.headers as Record<string, string>),
+      ...(fetchOptions.headers as Record<string, string>),
     };
+
+    if (!skipAuth) {
+      const token = await getJwtToken();
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     try {
       const response = await fetch(url, {
-        ...options,
+        ...fetchOptions,
         headers,
       });
 
@@ -84,6 +88,15 @@ class APIClient {
     return this.request<T>(endpoint, {
       method: 'GET',
       signal: options?.signal,
+    });
+  }
+
+  // GET request without authentication (for public endpoints)
+  async getPublic<T>(endpoint: string, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'GET',
+      signal: options?.signal,
+      skipAuth: true,
     });
   }
 
@@ -254,7 +267,12 @@ export function useAuthenticatedAPI() {
   );
 }
 
-// Utility function for non-authenticated requests
+// Utility function for non-authenticated requests (public endpoints)
+export const publicApi = {
+  get: <T>(endpoint: string) => apiClient.getPublic<T>(endpoint),
+};
+
+// Legacy alias - uses authenticated requests, may fail if not logged in
 export const api = {
   get: <T>(endpoint: string) => apiClient.get<T>(endpoint),
   post: <T>(endpoint: string, data?: unknown) => apiClient.post<T>(endpoint, data),

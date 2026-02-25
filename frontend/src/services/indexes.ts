@@ -324,7 +324,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 export const indexesService = {
   // Get index by share code (public access, no auth required)
   getIndexByShareCode: async (code: string): Promise<Index> => {
-    const response = await apiClient.get<APIResponse<Index>>(`/indexes/share/${code}`);
+    const response = await apiClient.getPublic<APIResponse<Index>>(`/indexes/share/${code}`);
     if (!response.index) {
       throw new Error('Index not found');
     }
@@ -333,7 +333,7 @@ export const indexesService = {
 
   // Get public index by ID (public access, no auth required - only works for public indexes)
   getPublicIndexById: async (id: string): Promise<Index> => {
-    const response = await apiClient.get<APIResponse<Index>>(`/indexes/public/${id}`);
+    const response = await apiClient.getPublic<APIResponse<Index>>(`/indexes/public/${id}`);
     if (!response.index) {
       throw new Error('Index not found');
     }
