@@ -198,12 +198,13 @@ export class IntentService {
       embedding = new Array(EMBEDDING_DIMS).fill(0);
     }
 
+    const sourceId = crypto.randomUUID();
     const created = await this.adapter.createIntent({
       userId,
       payload: description,
       embedding,
       sourceType: 'discovery_form',
-      sourceId: 'seed',
+      sourceId,
     });
 
     try {
