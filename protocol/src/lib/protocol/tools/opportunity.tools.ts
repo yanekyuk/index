@@ -53,6 +53,9 @@ function buildMinimalOpportunityCard(
   const introducerActor = opp.actors.find(
     (a) => a.role === "introducer" && a.userId !== viewerId,
   );
+  const viewerIsIntroducer = opp.actors.some(
+    (a) => a.role === "introducer" && a.userId === viewerId,
+  );
   const reasoning = opp.interpretation?.reasoning ?? "";
   const mainText = viewerCentricCardSummary(
     reasoning,
@@ -64,8 +67,9 @@ function buildMinimalOpportunityCard(
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
       : undefined;
-  const narratorName =
-    introducerName ?? (introducerActor ? "Someone" : "Index");
+  const narratorName = viewerIsIntroducer
+    ? "You"
+    : introducerName ?? (introducerActor ? "Someone" : "Index");
   const primaryActionLabel =
     viewerRole === "introducer"
       ? `Send to ${counterpartName || "them"}`
@@ -84,9 +88,11 @@ function buildMinimalOpportunityCard(
     narratorChip: {
       name: narratorName,
       text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(introducerActor
-        ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-        : {}),
+      ...(viewerIsIntroducer
+        ? { userId: viewerId, avatar: null }
+        : introducerActor
+          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
+          : {}),
     },
     viewerRole,
     score,
@@ -178,8 +184,22 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const effectiveIndexId =
         (context.indexId || query.indexId?.trim()) ?? undefined;
 
+      // Derive partyUserIds from entities when agent passes entities but omits partyUserIds (intro mode).
+      const partyUserIdsFromEntities =
+        query.entities &&
+        query.entities.length >= 2 &&
+        query.entities.every((e) => e.indexId)
+          ? [...new Set(query.entities.map((e) => e.userId))]
+          : undefined;
+      const effectivePartyUserIds =
+        query.partyUserIds && query.partyUserIds.length >= 2
+          ? query.partyUserIds
+          : partyUserIdsFromEntities?.length >= 2
+            ? partyUserIdsFromEntities
+            : undefined;
+
       // ── Introduction mode ── (validation and persistence via opportunity graph)
-      if (query.partyUserIds && query.partyUserIds.length >= 2) {
+      if (effectivePartyUserIds && effectivePartyUserIds.length >= 2) {
         if (!query.entities || query.entities.length === 0) {
           return error(
             "Introduction requires pre-gathered entity data. " +
@@ -196,7 +216,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        const introducedPartyUserIds = query.partyUserIds.filter(
+        const introducedPartyUserIds = effectivePartyUserIds.filter(
           (uid) => uid !== context.userId,
         );
         if (introducedPartyUserIds.length === 0) {
@@ -265,7 +285,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
           narratorChip: {
-            name: introducerUser?.name ?? "A member",
+            name: "You",
             text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
             userId: context.userId,
           },

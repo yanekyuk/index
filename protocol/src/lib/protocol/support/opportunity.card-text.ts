@@ -43,7 +43,8 @@ export function viewerCentricCardSummary(
 
   const name = counterpartName.trim();
   if (!name) {
-    return raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    const out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    return replaceViewerNameWithYou(out, viewerName);
   }
 
   const sentences = splitSentences(raw);
@@ -71,8 +72,8 @@ export function viewerCentricCardSummary(
     );
     if (cleanIdx !== -1) {
       const result = sentences.slice(cleanIdx).join(" ").trim();
-      if (result.length <= maxChars) return result;
-      return result.slice(0, maxChars) + "...";
+      const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+      return replaceViewerNameWithYou(out, viewerName);
     }
 
     // Second pass: sentence mentions counterpart but starts with viewer (compound sentence).
@@ -91,8 +92,8 @@ export function viewerCentricCardSummary(
         const extracted = sentence.slice(cpIdx).trim();
         const rest = sentences.slice(compoundIdx + 1).join(" ").trim();
         const result = rest ? `${extracted} ${rest}` : extracted;
-        if (result.length <= maxChars) return result;
-        return result.slice(0, maxChars) + "...";
+        const out = result.length <= maxChars ? result : result.slice(0, maxChars) + "...";
+        return replaceViewerNameWithYou(out, viewerName);
       }
     }
   }
@@ -100,12 +101,16 @@ export function viewerCentricCardSummary(
   // Fallback: original logic without viewer awareness
   const idx = sentences.findIndex(hasCounterpartName);
   if (idx === -1) {
-    return raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    const out = raw.length <= maxChars ? raw : raw.slice(0, maxChars) + "...";
+    return replaceViewerNameWithYou(out, viewerName);
   }
 
   const fromCounterpart = sentences.slice(idx).join(" ").trim();
-  if (fromCounterpart.length <= maxChars) return fromCounterpart;
-  return fromCounterpart.slice(0, maxChars) + "...";
+  const out =
+    fromCounterpart.length <= maxChars
+      ? fromCounterpart
+      : fromCounterpart.slice(0, maxChars) + "...";
+  return replaceViewerNameWithYou(out, viewerName);
 }
 
 /** Max length for narrator chip text (matches LLM presenter schema). */
@@ -263,4 +268,26 @@ function joinTerms(terms: string[], maxLen: number): string {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Replaces viewer's name with "you"/"your" so the card addresses the viewer in second person.
+ * Applied to mainText when viewerName is provided.
+ */
+function replaceViewerNameWithYou(text: string, viewerName?: string): string {
+  if (!viewerName?.trim()) return text;
+  const full = viewerName.trim();
+  const first = full.split(/\s+/)[0];
+  let out = text;
+  // Possessive: "Yankı's" → "your", "Yankı Ekin Yüksel's" → "your"
+  out = out.replace(new RegExp(`\\b${escapeRegex(full)}'s\\b`, "gi"), "your");
+  if (first && first.length > 1) {
+    out = out.replace(new RegExp(`\\b${escapeRegex(first)}'s\\b`, "gi"), "your");
+  }
+  // Standalone: full name then first name so we don't break "Yankı Ekin Yüksel"
+  out = out.replace(new RegExp(`\\b${escapeRegex(full)}\\b`, "gi"), "you");
+  if (first && first.length > 1) {
+    out = out.replace(new RegExp(`\\b${escapeRegex(first)}\\b`, "gi"), "you");
+  }
+  return out;
 }

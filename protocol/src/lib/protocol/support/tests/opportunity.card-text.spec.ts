@@ -94,6 +94,20 @@ describe("viewerCentricCardSummary", () => {
     expect(result).toContain("Elena Petrova");
     expect(result).not.toMatch(/^Yankı/);
   });
+
+  it("replaces viewer name with you/your so card addresses viewer in second person", () => {
+    const reasoning =
+      "Given Yankı's interest in game development and shadow puppetry, Yuki Tanaka is a strong match. She is a visual artist and illustrator with a focus on character design.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Yuki Tanaka",
+      500,
+      "Yankı Ekin Yüksel",
+    );
+    expect(result).toContain("your interest");
+    expect(result).not.toContain("Yankı's");
+    expect(result).toContain("Yuki Tanaka");
+  });
 });
 
 describe("narratorRemarkFromReasoning", () => {
