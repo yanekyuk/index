@@ -10,6 +10,15 @@ function formatSpeechActType(type: string): string {
   return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
 }
 
+/**
+ * Intent proposal confidence may be 0-1 (from tool) or 0-100 (when LLM rewrites the block).
+ * Normalize to a 0-100 display percentage.
+ */
+function confidenceToPercent(confidence: number): number {
+  const pct = confidence > 1 ? confidence : confidence * 100;
+  return Math.round(Math.min(100, Math.max(0, pct)));
+}
+
 /** Data shape for an intent proposal returned by the create_intent chat tool. */
 export interface IntentProposalData {
   proposalId: string;
@@ -178,7 +187,7 @@ export default function IntentProposalCard({
           effectiveStatus === "rejected" ? "text-gray-300" : "text-gray-400",
         )}>
           {card.confidence != null && (
-            <span>Confidence: {Math.round(card.confidence * 100)}%</span>
+            <span>Confidence: {confidenceToPercent(card.confidence)}%</span>
           )}
           {card.confidence != null && card.speechActType && <span>&middot;</span>}
           {card.speechActType && (
