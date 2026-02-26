@@ -102,7 +102,6 @@ export class NotificationQueue {
    * @param data - Job payload
    */
   async processJob(name: string, data: NotificationJobData): Promise<void> {
-    this.queueLogger.info(`[NotificationProcessor] Processing job (${name})`);
     switch (name) {
       case 'process_opportunity_notification':
         await this.processOpportunityNotification(data);

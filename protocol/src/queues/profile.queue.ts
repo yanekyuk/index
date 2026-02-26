@@ -84,7 +84,6 @@ export class ProfileQueue {
    * @param data - Job payload
    */
   async processJob(name: string, data: ProfileJobPayload): Promise<void> {
-    this.queueLogger.info(`[ProfileProcessor] Processing job (${name})`);
     switch (name) {
       case 'ensure_profile_hyde':
         await this.handleEnsureProfileHyde(data);

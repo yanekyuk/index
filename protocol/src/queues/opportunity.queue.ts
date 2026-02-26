@@ -104,7 +104,6 @@ export class OpportunityQueue {
    * @param data - Job payload
    */
   async processJob(name: string, data: OpportunityJobData): Promise<void> {
-    this.queueLogger.info(`[OpportunityProcessor] Processing job (${name})`);
     switch (name) {
       case 'discover_opportunities':
         await this.handleDiscoverOpportunities(data);

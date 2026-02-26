@@ -63,9 +63,8 @@ export class MyQueue {
     return this.queue.add(name, data, { jobId: options?.jobId, priority: options?.priority });
   }
 
-  /** Run job handler (for testing with injected deps). */
+  /** Run job handler (for testing with injected deps). Log only in the worker (one line with job id + name). */
   async processJob(name: string, data: MyJobData): Promise<void> {
-    this.queueLogger.info(`[MyProcessor] Processing job (${name})`);
     switch (name) {
       case 'process':
         await this.handleProcess(data);
@@ -242,6 +241,7 @@ Queues are **interface adapters**: they receive work (job payloads) and **orches
 ### 5. Dependencies (dependency inversion)
 - **Depend on abstractions**: Deps and default collaborators should be typed as interfaces or `Pick<Adapter, 'method'>`, not as concrete classes in the type of the field (implementation can still be the real adapter when `deps` is omitted).
 - Use `log` from `../lib/log` (e.g. `log.job.from('MyJob')`, `log.queue.from('MyQueue')`); no `console.log`.
+- **Job processing log**: Log once per job in the worker only: `this.queueLogger.info(\`[XProcessor] Processing job ${job.id} (${job.name})\`)`. Do not log in `processJob()` so all queues have one consistent line per job.
 
 ### 6. Workers only in the server
 - Only the protocol server (e.g. `main.ts`) should call `startWorker()` or `startCrons()`.

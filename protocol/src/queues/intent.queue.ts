@@ -128,7 +128,6 @@ export class IntentQueue implements IntentGraphQueue {
    * @param data - Job payload
    */
   async processJob(name: string, data: IntentJobPayload): Promise<void> {
-    this.queueLogger.info(`[IntentProcessor] Processing job (${name})`);
     switch (name) {
       case 'generate_hyde':
         await this.handleGenerateHyde(data as IntentJobData);

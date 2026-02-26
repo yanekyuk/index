@@ -74,7 +74,6 @@ export class EmailQueue {
    * @param data - Email payload
    */
   async processJob(name: string, data: EmailJobData): Promise<void> {
-    this.queueLogger.info(`[EmailProcessor] Processing job (${name})`);
     switch (name) {
       case 'send_email':
         await this.handleSendEmail(data);
