@@ -390,7 +390,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: context.userId,
         query: searchQuery,
         indexScope,
-        limit: 5,
+        limit: 20,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),

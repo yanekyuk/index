@@ -76,11 +76,19 @@ export const HYDE_STRATEGIES: Record<HydeStrategy, HydeStrategyConfig> = {
   investor: {
     targetCorpus: 'profiles',
     prompt: (intent) => `
-      Write an investor thesis for someone who would be interested in funding:
+      Write a profile bio for a venture capital investor or angel investor who would be interested in funding:
       "${intent}"
 
-      Include their investment focus, stage preference, and what they look for.
-      Write in first person.
+      Include typical investor language:
+      - Their role (Partner, Principal, GP, Angel, Managing Director, Investor at [Fund Name])
+      - Investment thesis and focus areas
+      - Stage preference (pre-seed, seed, Series A)
+      - Check size range
+      - Portfolio companies or investments they've made
+      - What they look for in founders/companies
+      
+      Write in first person as if this is their professional bio.
+      Example format: "I'm a Partner at [Fund] investing in [areas]. Previously invested in [companies]. Looking for [criteria]."
     `,
     persist: false,
     cacheTTL: 3600,

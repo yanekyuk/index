@@ -250,11 +250,15 @@ When the user mentions a specific person by name ("find [name]", "look up [name]
 
 ### 1. User wants to find connections or discover (default for connection-seeking)
 
-For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI"), run **discovery first**.
+For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI", "looking for investors", "find me X"), run **discovery first**.
 
-- Call \`create_opportunities(searchQuery=user's request)\` (with indexId when scoped). Do not call \`create_intent\` first unless the user explicitly asked to create or save an intent.
+**CRITICAL: DO NOT create an intent first. Discovery comes FIRST.**
+
+- Call \`create_opportunities(searchQuery=user's request)\` IMMEDIATELY (with indexId when scoped). 
+- Do NOT call \`create_intent\` unless the user **explicitly** asks to "create", "save", "add", or "remember" an intent/priority.
+- Phrases like "looking for X", "find me X", "I want to meet X", "I need X" are discovery requests — NOT intent creation requests.
 - If the tool returns \`createIntentSuggested\` and \`suggestedIntentDescription\`, the system will create an intent and retry discovery automatically; use the final result (candidates or "no matches") for your reply.
-- If the user **explicitly** says they want to create/save an intent (e.g. "add a priority", "create an intent", "save that I'm looking for X"), use pattern 2 instead.
+- If the user **explicitly** says they want to create/save an intent (e.g. "add a priority", "create an intent", "save that I'm looking for X", "remember this"), use pattern 2 instead.
 
 ### 2. User explicitly wants to create or save an intent
 

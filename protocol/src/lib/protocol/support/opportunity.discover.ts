@@ -102,6 +102,8 @@ export interface FormattedDiscoveryCandidate {
 export interface DiscoverDebugStep {
   step: string;
   detail?: string;
+  /** Structured data for rich display (e.g., candidate counts, scores). */
+  data?: Record<string, unknown>;
 }
 
 /** One existing connection (no new opportunity created; user already has one with this person). */
@@ -112,8 +114,8 @@ export interface ExistingConnection {
   opportunityId?: string;
 }
 
-/** Statuses for which an existing connection may be shown as a card; others (pending, viewed, accepted, rejected, expired) are only mentioned in text. */
-const EXISTING_CONNECTION_CARD_STATUSES = ['draft', 'latent'] as const;
+/** Statuses for which an existing connection may be shown as a card; others (viewed, accepted, rejected, expired) are only mentioned in text. */
+const EXISTING_CONNECTION_CARD_STATUSES = ['draft', 'latent', 'pending'] as const;
 
 export interface DiscoverResult {
   found: boolean;
@@ -154,11 +156,13 @@ export function selectStrategiesFromQuery(query: string): HydeStrategy[] {
     base.push("mentor");
   }
   if (
-    /investor|invest|funding|raise|seed|series|vc|capital|back (us|me|this)/.test(
+    /investor|invest|funding|raise|seed|series|vc|capital|back (us|me|this)|fund|angel|pre-?seed|venture/.test(
       q,
     )
   ) {
     base.push("investor");
+    // Investors often provide mentorship too
+    if (!base.includes("mentor")) base.push("mentor");
   }
   if (
     /co-?founder|collaborator|partner|peer|build together|work together|collaborat/.test(
@@ -243,6 +247,16 @@ export async function runDiscoverFromQuery(
         options,
       });
 
+      // Extract trace from graph and append to debugSteps
+      const graphTrace = result.trace || [];
+      for (const t of graphTrace) {
+        debugSteps.push({
+          step: t.node,
+          detail: t.detail,
+          ...(t.data ? { data: t.data } : {}),
+        });
+      }
+
       if (result.createIntentSuggested && result.suggestedIntentDescription) {
         if (chatSessionId) {
           return {
@@ -286,10 +300,29 @@ export async function runDiscoverFromQuery(
           userIds: existingConnections.map((c) => c.userId),
         });
       }
-      // Only expose existing connections as cards when status is in EXISTING_CONNECTION_CARD_STATUSES (draft, latent); others are mention-only.
+      // Only expose existing connections as cards when status is in EXISTING_CONNECTION_CARD_STATUSES (draft, latent, pending); others are mention-only.
       const existingConnectionsForCards = existingConnections.filter((c) =>
         c.status != null && EXISTING_CONNECTION_CARD_STATUSES.includes(c.status as typeof EXISTING_CONNECTION_CARD_STATUSES[number])
       );
+      
+      // Fetch full opportunity data for existing connections that should be shown as cards
+      // and merge them with the newly created opportunities
+      if (existingConnectionsForCards.length > 0) {
+        const existingOpps = await Promise.all(
+          existingConnectionsForCards
+            .filter((c) => c.opportunityId)
+            .map((c) => database.getOpportunity(c.opportunityId!))
+        );
+        const validExistingOpps = existingOpps.filter((o): o is Opportunity => o != null);
+        if (validExistingOpps.length > 0) {
+          logger.info("[runDiscoverFromQuery] Including existing opportunities as cards", {
+            count: validExistingOpps.length,
+            ids: validExistingOpps.map((o) => o.id),
+          });
+          opportunities = [...opportunities, ...validExistingOpps];
+        }
+      }
+      
       // Chat discovery: when we have chatSessionId we just invoked the graph; all result.opportunities
       // were created in this call and belong to this session. Do not filter by status: the enricher
       // may set status to pending/latent when merging with related opportunities, so filtering to
