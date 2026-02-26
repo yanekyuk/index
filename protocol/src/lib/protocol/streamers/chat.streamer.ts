@@ -9,9 +9,13 @@ import type {
 import {
   createDebugMetaEvent,
   createErrorEvent,
+  createIterationStartEvent,
+  createLlmStartEvent,
+  createLlmEndEvent,
   createResponseCompleteEvent,
   createStatusEvent,
   createTokenEvent,
+  createToolActivityEvent,
 } from "../../../types/chat-streaming.types";
 import type { AgentStreamEvent } from "../agents/chat.agent";
 
@@ -163,17 +167,47 @@ export class ChatStreamer {
         if (mode === "custom") {
           const event = chunk as AgentStreamEvent;
 
+          if (event.type === "iteration_start") {
+            yield createIterationStartEvent(sessionId, event.iteration);
+          }
+
+          if (event.type === "llm_start") {
+            yield createLlmStartEvent(sessionId, event.iteration);
+          }
+
           if (event.type === "text_chunk" && event.content) {
             yield createTokenEvent(sessionId, event.content);
           }
 
-          // tool_activity "end" events are logged but not forwarded to
-          // the frontend — the LLM's own text provides the narration.
+          if (event.type === "llm_end") {
+            yield createLlmEndEvent(
+              sessionId,
+              event.iteration,
+              event.hasToolCalls,
+              event.toolNames,
+            );
+          }
+
           if (event.type === "tool_activity") {
-            logger.debug("Tool activity", {
-              name: event.name,
-              success: event.success,
-            });
+            logger.debug("Tool activity", { name: event.name, phase: event.phase });
+            if (event.phase === "start") {
+              yield createToolActivityEvent(
+                sessionId,
+                event.name,
+                event.name,
+                "start",
+              );
+            } else {
+              yield createToolActivityEvent(
+                sessionId,
+                event.name,
+                event.name,
+                "end",
+                event.success,
+                event.summary,
+                event.steps,
+              );
+            }
           }
         }
 

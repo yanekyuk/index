@@ -35,17 +35,29 @@ export type StreamWriter = (data: unknown) => void;
 /**
  * Events emitted by `streamRun()` via the writer callback.
  *
- * - `text_chunk`    — a token (or group of tokens) of model text to stream
- * - `tool_activity` — emitted when a tool finishes (for logging / analytics)
+ * - `iteration_start` — new agent loop iteration begins
+ * - `llm_start`       — LLM begins generating response
+ * - `text_chunk`      — a token (or group of tokens) of model text
+ * - `llm_end`         — LLM finished generating (may have tool calls)
+ * - `tool_activity`   — tool starts or finishes execution
  */
 export type AgentStreamEvent =
+  | { type: "iteration_start"; iteration: number }
+  | { type: "llm_start"; iteration: number }
   | { type: "text_chunk"; content: string }
+  | { type: "llm_end"; iteration: number; hasToolCalls: boolean; toolNames?: string[] }
+  | {
+      type: "tool_activity";
+      phase: "start";
+      name: string;
+    }
   | {
       type: "tool_activity";
       phase: "end";
       name: string;
       success: boolean;
       summary?: string;
+      steps?: Array<{ step: string; detail?: string }>;
     };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -505,6 +517,8 @@ export class ChatAgent {
     const toolsDebug: DebugMetaToolCall[] = [];
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
+      emit({ type: "iteration_start", iteration: iterationCount });
+
       const systemContent = buildSystemContent(this.resolvedContext);
       const fullMessages: BaseMessage[] = [
         new SystemMessage(systemContent),
@@ -521,6 +535,8 @@ export class ChatAgent {
       });
 
       // ── Stream the model response token-by-token ──────────────────────
+      emit({ type: "llm_start", iteration: iterationCount });
+
       let accumulated: AIMessageChunk | undefined;
       let iterationText = "";
 
@@ -549,6 +565,13 @@ export class ChatAgent {
       // ── Check for tool calls ──────────────────────────────────────────
       const toolCalls = accumulated.tool_calls || [];
 
+      emit({
+        type: "llm_end",
+        iteration: iterationCount,
+        hasToolCalls: toolCalls.length > 0,
+        toolNames: toolCalls.length > 0 ? toolCalls.map((tc) => tc.name) : undefined,
+      });
+
       if (toolCalls.length > 0) {
         logger.info("Streaming: agent made tool calls", {
           iteration: iterationCount,
@@ -563,6 +586,8 @@ export class ChatAgent {
           result: string;
         }> = [];
         for (const tc of toolCalls) {
+          emit({ type: "tool_activity", phase: "start", name: tc.name });
+
           const tool = this.toolsByName.get(tc.name);
           if (!tool) {
             const errResult = JSON.stringify({
@@ -612,16 +637,18 @@ export class ChatAgent {
             // Build brief summary for the activity event. Prefer tool-provided
             // summary. Tools use success(data) → { success: true, data: { ... } }, so read from data when present.
             let summary = "Done";
-            let debugSteps: Array<{ step: string; detail?: string }> | undefined;
+            type StepData = Record<string, unknown>;
+            type DebugStep = { step: string; detail?: string; data?: StepData };
+            let debugSteps: DebugStep[] | undefined;
             try {
               const parsed = JSON.parse(resultStr) as {
                 success?: boolean;
                 data?: {
                   summary?: string;
-                  debugSteps?: Array<{ step: string; detail?: string }>;
+                  debugSteps?: DebugStep[];
                 };
                 summary?: string;
-                debugSteps?: Array<{ step: string; detail?: string }>;
+                debugSteps?: DebugStep[];
               };
               const payload = parsed.success && parsed.data != null ? parsed.data : parsed;
               summary = payload.summary ?? parsed.summary ?? "Done";
@@ -634,6 +661,7 @@ export class ChatAgent {
                     s.detail != null
                       ? String(s.detail).slice(0, maxDetail)
                       : undefined,
+                  ...(s.data && typeof s.data === "object" ? { data: s.data } : {}),
                 }));
               }
             } catch {
@@ -653,6 +681,7 @@ export class ChatAgent {
               name: tc.name,
               success: true,
               summary,
+              steps: debugSteps,
             });
 
             toolResults.push({

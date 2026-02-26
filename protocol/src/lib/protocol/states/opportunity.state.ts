@@ -330,4 +330,16 @@ export const OpportunityGraphState = Annotation.Root({
     reducer: (curr, next) => next,
     default: () => undefined,
   }),
+
+  // ─── Trace Output ───
+
+  /**
+   * Accumulated trace entries from each graph node.
+   * Used for observability: surfaces internal processing steps (search query, HyDE strategies,
+   * candidates found, evaluation results) to the frontend.
+   */
+  trace: Annotation<Array<{ node: string; detail?: string; data?: Record<string, unknown> }>>({
+    reducer: (curr, next) => [...curr, ...(next || [])],
+    default: () => [],
+  }),
 });

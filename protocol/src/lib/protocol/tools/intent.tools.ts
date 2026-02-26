@@ -169,8 +169,17 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       logger.debug("Intent graph propose response", { result });
 
       const verified = result.verifiedIntents || [];
+      
+      // Extract trace from graph and convert to debugSteps
+      const trace = result.trace || [];
+      const debugSteps = trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
+        step: t.node,
+        detail: t.detail,
+        ...(t.data ? { data: t.data } : {}),
+      }));
+      
       if (verified.length === 0) {
-        return error("Could not extract a clear intent. Try being more specific.");
+        return error("Could not extract a clear intent. Try being more specific.", debugSteps);
       }
 
       // Build intent_proposal code fences for each verified intent
@@ -196,6 +205,7 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
         proposed: true,
         count: verified.length,
         message: `IMPORTANT: Include the following \`\`\`intent_proposal code blocks EXACTLY as-is in your response (they render as interactive cards for the user to approve or skip):\n\n${blocksText}`,
+        debugSteps,
       });
     },
   });

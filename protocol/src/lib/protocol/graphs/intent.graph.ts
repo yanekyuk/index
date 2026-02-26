@@ -161,7 +161,13 @@ export class IntentGraphFactory {
           operationMode: state.operationMode
         });
 
-        return { activeIntents: formattedActiveIntents };
+        return {
+          activeIntents: formattedActiveIntents,
+          trace: [{
+            node: "prep",
+            detail: `Fetched ${activeIntents.length} active intent(s)`,
+          }],
+        };
       });
     };
 
@@ -203,7 +209,18 @@ export class IntentGraphFactory {
           operationMode: state.operationMode
         });
 
-        return { inferredIntents: result.intents };
+        const descriptions = result.intents.map(i => i.description).slice(0, 3);
+        const truncated = result.intents.length > 3 ? `... +${result.intents.length - 3} more` : "";
+
+        return {
+          inferredIntents: result.intents,
+          trace: [{
+            node: "inference",
+            detail: result.intents.length === 0
+              ? "No intents extracted"
+              : `Extracted ${result.intents.length}: ${descriptions.map(d => `"${d.slice(0, 50)}${d.length > 50 ? '...' : ''}"`).join(", ")}${truncated}`,
+          }],
+        };
       });
     };
 
@@ -297,7 +314,40 @@ export class IntentGraphFactory {
           operationMode: state.operationMode
         });
 
-        return { verifiedIntents: verified };
+        // Build trace entries with Felicity scores for each verified intent
+        const traceEntries = verified.map(v => {
+          const fs = v.verification?.felicity_scores;
+          const entropy = v.verification?.semantic_entropy;
+          const classification = v.verification?.classification;
+          return {
+            node: "verification",
+            detail: `"${v.description.slice(0, 40)}${v.description.length > 40 ? '...' : ''}" → ${classification}`,
+            data: fs ? {
+              clarity: fs.clarity,
+              authority: fs.authority,
+              sincerity: fs.sincerity,
+              entropy: entropy != null ? Math.round(entropy * 100) / 100 : undefined,
+              classification,
+              score: v.score,
+            } : undefined,
+          };
+        });
+
+        // Add summary trace if some intents were filtered out
+        const dropped = intents.length - verified.length;
+        if (dropped > 0) {
+          traceEntries.unshift({
+            node: "verification",
+            detail: `Verified ${verified.length}/${intents.length} (${dropped} filtered as invalid)`,
+          });
+        } else if (verified.length > 0) {
+          traceEntries.unshift({
+            node: "verification",
+            detail: `Verified ${verified.length} intent(s)`,
+          });
+        }
+
+        return { verifiedIntents: verified, trace: traceEntries };
       });
     };
 
@@ -318,7 +368,10 @@ export class IntentGraphFactory {
         if (state.operationMode === 'delete') {
           if (!state.targetIntentIds || state.targetIntentIds.length === 0) {
             logger.warn("Delete mode with no target IDs");
-            return { actions: [] };
+            return {
+              actions: [],
+              trace: [{ node: "reconciler", detail: "Delete mode with no target IDs" }],
+            };
           }
 
           logger.info("Delete mode - generating expire actions", {
@@ -331,14 +384,23 @@ export class IntentGraphFactory {
             reasoning: 'User requested deletion'
           }));
 
-          return { actions };
+          return {
+            actions,
+            trace: [{
+              node: "reconciler",
+              detail: `Actions: expire=${actions.length}`,
+            }],
+          };
         }
 
         // Standard reconciliation for create/update operations
         const candidates = state.verifiedIntents;
         if (candidates.length === 0) {
           logger.info("No verified intents to reconcile");
-          return { actions: [] };
+          return {
+            actions: [],
+            trace: [{ node: "reconciler", detail: "No intents to reconcile" }],
+          };
         }
 
         // Format candidates for the Reconciler Prompt
@@ -360,7 +422,19 @@ export class IntentGraphFactory {
           operationMode: state.operationMode
         });
 
-        return { actions: result.actions };
+        // Count actions by type
+        const counts = { create: 0, update: 0, expire: 0 };
+        for (const a of result.actions) {
+          if (a.type in counts) counts[a.type as keyof typeof counts]++;
+        }
+
+        return {
+          actions: result.actions,
+          trace: [{
+            node: "reconciler",
+            detail: `Actions: create=${counts.create}, update=${counts.update}, expire=${counts.expire}`,
+          }],
+        };
       });
     };
 

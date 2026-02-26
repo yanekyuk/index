@@ -241,8 +241,15 @@ export function success<T>(data: T): string {
   return JSON.stringify({ success: true, data });
 }
 
-export function error(message: string): string {
-  return JSON.stringify({ success: false, error: message });
+export function error(
+  message: string,
+  debugSteps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>
+): string {
+  return JSON.stringify({
+    success: false,
+    error: message,
+    ...(debugSteps?.length ? { debugSteps } : {}),
+  });
 }
 
 /** Return needsClarification for missing required fields. */

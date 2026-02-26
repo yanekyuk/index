@@ -21,6 +21,10 @@ export type ChatStreamEventType =
   | "agent_thinking"
   // Streaming narration events
   | "tool_activity"
+  // Agent loop trace events
+  | "iteration_start"
+  | "llm_start"
+  | "llm_end"
   // Internal response tracking events
   | "response_complete"
   // Debug meta (per-turn graph/tool usage for copy debug)
@@ -216,6 +220,36 @@ export interface AgentThinkingEvent extends ChatStreamEventBase {
   toolsUsed: string[];
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AGENT LOOP TRACE EVENTS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Iteration start event - emitted when a new agent loop iteration begins.
+ */
+export interface IterationStartEvent extends ChatStreamEventBase {
+  type: "iteration_start";
+  iteration: number;
+}
+
+/**
+ * LLM start event - emitted when the LLM begins generating a response.
+ */
+export interface LlmStartEvent extends ChatStreamEventBase {
+  type: "llm_start";
+  iteration: number;
+}
+
+/**
+ * LLM end event - emitted when the LLM finishes generating (may include tool calls).
+ */
+export interface LlmEndEvent extends ChatStreamEventBase {
+  type: "llm_end";
+  iteration: number;
+  hasToolCalls: boolean;
+  toolNames?: string[];
+}
+
 /**
  * Tool activity event - inline narration of tool execution.
  * Sent as the agent streams its response, replacing the old ThinkingDropdown.
@@ -232,6 +266,8 @@ export interface ToolActivityEvent extends ChatStreamEventBase {
   success?: boolean;
   /** Brief result summary (present when phase === 'end') */
   summary?: string;
+  /** Internal steps executed by this tool (present when phase === 'end') */
+  steps?: DebugMetaStep[];
 }
 
 /**
@@ -250,6 +286,15 @@ export interface ResponseCompleteEvent extends ChatStreamEventBase {
 export interface DebugMetaStep {
   step: string;
   detail?: string;
+  /** Structured data for rich display (e.g., Felicity scores, classification). */
+  data?: {
+    clarity?: number;
+    authority?: number;
+    sincerity?: number;
+    entropy?: number;
+    classification?: string;
+    score?: number;
+  };
 }
 
 /**
@@ -292,6 +337,10 @@ export type ChatStreamEvent =
   | AgentThinkingEvent
   // Streaming narration events
   | ToolActivityEvent
+  // Agent loop trace events
+  | IterationStartEvent
+  | LlmStartEvent
+  | LlmEndEvent
   // Internal response tracking events
   | ResponseCompleteEvent
   // Debug meta
@@ -519,6 +568,50 @@ export function createAgentThinkingEvent(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// AGENT LOOP TRACE EVENT CREATORS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Creates a formatted iteration start event.
+ */
+export function createIterationStartEvent(
+  sessionId: string,
+  iteration: number,
+): IterationStartEvent {
+  return createStreamEvent<IterationStartEvent>("iteration_start", sessionId, {
+    iteration,
+  });
+}
+
+/**
+ * Creates a formatted LLM start event.
+ */
+export function createLlmStartEvent(
+  sessionId: string,
+  iteration: number,
+): LlmStartEvent {
+  return createStreamEvent<LlmStartEvent>("llm_start", sessionId, {
+    iteration,
+  });
+}
+
+/**
+ * Creates a formatted LLM end event.
+ */
+export function createLlmEndEvent(
+  sessionId: string,
+  iteration: number,
+  hasToolCalls: boolean,
+  toolNames?: string[],
+): LlmEndEvent {
+  return createStreamEvent<LlmEndEvent>("llm_end", sessionId, {
+    iteration,
+    hasToolCalls,
+    toolNames,
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // STREAMING NARRATION EVENT CREATORS
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -532,6 +625,7 @@ export function createToolActivityEvent(
   phase: "start" | "end",
   success?: boolean,
   summary?: string,
+  steps?: DebugMetaStep[],
 ): ToolActivityEvent {
   return createStreamEvent<ToolActivityEvent>("tool_activity", sessionId, {
     toolName,
@@ -539,6 +633,7 @@ export function createToolActivityEvent(
     phase,
     success,
     summary,
+    steps,
   });
 }
 

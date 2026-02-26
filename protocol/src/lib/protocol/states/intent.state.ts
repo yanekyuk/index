@@ -159,6 +159,18 @@ export const IntentGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
+  // --- Trace Output ---
+
+  /**
+   * Accumulated trace entries from each graph node.
+   * Used for observability: surfaces internal processing steps (inference,
+   * verification with Felicity scores, reconciliation) to the frontend.
+   */
+  trace: Annotation<Array<{ node: string; detail?: string; data?: Record<string, unknown> }>>({
+    reducer: (curr, next) => [...curr, ...(next || [])],
+    default: () => [],
+  }),
+
   // --- Read Mode Fields ---
 
   /**

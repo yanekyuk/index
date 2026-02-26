@@ -12,12 +12,6 @@ import { useAIChatSessions } from "@/contexts/AIChatSessionsContext";
 import { apiClient } from "@/lib/api";
 import type { Suggestion } from "@/hooks/useSuggestions";
 
-interface ThinkingStep {
-  content: string;
-  step?: string;
-  timestamp: Date;
-}
-
 export interface DiscoveryOpportunity {
   candidateId: string;
   candidateName?: string;
@@ -45,15 +39,48 @@ export interface DebugTurnMeta {
   }>;
 }
 
+export interface ToolCallStep {
+  step: string;
+  detail?: string;
+  /** Structured data for rich display (e.g., Felicity scores, classification). */
+  data?: {
+    clarity?: number;
+    authority?: number;
+    sincerity?: number;
+    entropy?: number;
+    classification?: string;
+    score?: number;
+  };
+}
+
+export type TraceEventType =
+  | "iteration_start"
+  | "llm_start"
+  | "llm_end"
+  | "tool_start"
+  | "tool_end";
+
+export interface TraceEvent {
+  type: TraceEventType;
+  timestamp: number;
+  iteration?: number;
+  name?: string;
+  status?: "running" | "success" | "error";
+  summary?: string;
+  steps?: ToolCallStep[];
+  hasToolCalls?: boolean;
+  toolNames?: string[];
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
-  thinking?: ThinkingStep[];
   attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
+  traceEvents?: TraceEvent[];
 }
 
 interface AIChatContextType {
@@ -205,25 +232,31 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                 const event = JSON.parse(line.slice(6));
 
                 switch (event.type) {
-                  case "thinking":
-                    // Legacy: kept for backward compat with old sessions
+                  case "iteration_start":
                     setMessages((prev) =>
                       prev.map((msg) => {
-                        if (msg.id === assistantMessageId) {
-                          const newThinkingStep: ThinkingStep = {
-                            content: event.content,
-                            step: event.step,
-                            timestamp: new Date(event.timestamp),
-                          };
-                          return {
-                            ...msg,
-                            thinking: [
-                              ...(msg.thinking || []),
-                              newThinkingStep,
-                            ],
-                          };
-                        }
-                        return msg;
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || [])];
+                        traceEvents.push({
+                          type: "iteration_start",
+                          timestamp: Date.now(),
+                          iteration: event.iteration,
+                        });
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  case "llm_start":
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || [])];
+                        traceEvents.push({
+                          type: "llm_start",
+                          timestamp: Date.now(),
+                          iteration: event.iteration,
+                        });
+                        return { ...msg, traceEvents };
                       }),
                     );
                     break;
@@ -236,8 +269,50 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
-                  // tool_activity events are intentionally not rendered;
-                  // the LLM's own streamed text provides the narration.
+                  case "llm_end":
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || [])];
+                        traceEvents.push({
+                          type: "llm_end",
+                          timestamp: Date.now(),
+                          iteration: event.iteration,
+                          hasToolCalls: event.hasToolCalls,
+                          toolNames: event.toolNames,
+                        });
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  case "tool_activity": {
+                    const now = Date.now();
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || [])];
+                        if (event.phase === "start") {
+                          traceEvents.push({
+                            type: "tool_start",
+                            timestamp: now,
+                            name: event.toolName,
+                            status: "running",
+                          });
+                        } else {
+                          traceEvents.push({
+                            type: "tool_end",
+                            timestamp: now,
+                            name: event.toolName,
+                            status: event.success ? "success" : "error",
+                            summary: event.summary,
+                            steps: event.steps,
+                          });
+                        }
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
                   case "done":
                     setMessages((prev) =>
                       prev.map((msg) => {

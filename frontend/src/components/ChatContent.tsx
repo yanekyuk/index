@@ -33,7 +33,7 @@ import IntentProposalCard, {
   IntentProposalSkeleton,
 } from "@/components/chat/IntentProposalCard";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
-import ThinkingDropdown from "@/components/chat/ThinkingDropdown";
+import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -46,7 +46,6 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { HomeViewSection } from "@/services/opportunities";
 import { DynamicIcon, type IconName } from "lucide-react/dynamic";
-import { useTypewriter } from "@/hooks/useTypewriter";
 
 /**
  * When true, use GET /opportunities/home for dynamic sections; when false, use static/mock data.
@@ -65,8 +64,7 @@ interface ChatContentProps {
 }
 
 /**
- * Sub-component for assistant message content so React hooks (useTypewriter)
- * can be called per-message inside the .map() loop.
+ * Sub-component for assistant message content.
  */
 /**
  * Ensure blockquote lines are always followed by a blank line so that
@@ -216,18 +214,13 @@ function AssistantMessageContent({
   onIntentProposalReject?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
 }) {
-  const { text: displayedContent, isAnimating } = useTypewriter(
-    normalizeBlockquotes(mentionsToMarkdownLinks(content)),
-    isStreaming,
-    22, // ms per character during streaming
-    8, // ms per character catch-up after stream ends
-  );
+  const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
-  // Show cursor while streaming (even before first token) or during catch-up
-  const showCursor = isStreaming || isAnimating;
+  // Show cursor while streaming (before content arrives)
+  const showCursor = isStreaming;
 
   // No text yet — render a standalone blinking cursor
-  if (!displayedContent && showCursor) {
+  if (!displayedContent && isStreaming) {
     return <span className="inline-block w-2 h-4 bg-current animate-pulse" />;
   }
 
@@ -1502,9 +1495,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     <article className="max-w-none">
                       {msg.role === "assistant" ? (
                         <>
-                          {msg.thinking && msg.thinking.length > 0 && (
-                            <ThinkingDropdown
-                              thinking={msg.thinking}
+                          {msg.traceEvents && msg.traceEvents.length > 0 && (
+                            <ToolCallsDisplay
+                              traceEvents={msg.traceEvents}
                               isStreaming={msg.isStreaming}
                             />
                           )}
