@@ -120,6 +120,12 @@ function parseAllBlocks(content: string): MessageSegment[] {
         (typeof data.description === "string" || !("description" in data))
       ) {
         segments.push({ type: "intent_proposal", data: data as IntentProposalData });
+      } else if (blockType === "intent_proposal") {
+        // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
+        segments.push({
+          type: "text",
+          content: "This proposal couldn't be loaded as a card. Ask again to add this as a priority.",
+        });
       } else {
         segments.push({ type: "text", content: match[0] });
       }
