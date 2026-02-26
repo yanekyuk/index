@@ -1,5 +1,5 @@
 ---
-title: "Intent Is the New Search"
+title: "Intent is the New Search"
 date: "2026-02-26"
 description: "On declaring what you're trying to do clearly enough that the right people can route themselves to you."
 image: "search.jpg"
