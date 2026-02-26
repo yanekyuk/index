@@ -17,6 +17,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
   const router = useRouter();
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const [isAlpha, setIsAlpha] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const alphaParam = searchParams.get('alpha');
 
@@ -61,100 +62,109 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
     );
   }
 
-  return (
-    <header className="w-full pt-4 pb-4 flex justify-between items-center">
-      <Link href="/">
-        <Image
-          src="/logos/logo-black-full.svg"
-          alt="Index Network"
-          width={200}
-          height={36}
-          className="object-contain"
-        />
-      </Link>
+  const ctaButton = isAuthenticated ? (
+    <button
+      onClick={() => router.push('/')}
+      className="bg-[#041729] text-white rounded-[2px] px-3 sm:px-5 py-2 sm:py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
+    >
+      Go to App
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+      </svg>
+    </button>
+  ) : isAlpha ? (
+    <button
+      onClick={handleLogin}
+      className="bg-[#041729] text-white rounded-[2px] px-3 sm:px-5 py-2 sm:py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
+    >
+      Login
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+      </svg>
+    </button>
+  ) : (
+    <button
+      onClick={() => {
+        if ((pathname === '/' && !isAuthenticated) || pathname?.startsWith('/blog')) {
+          window.dispatchEvent(new CustomEvent('openWaitlistModal'));
+        } else {
+          window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank");
+        }
+      }}
+      className="bg-[#041729] text-white rounded-[2px] px-3 sm:px-5 py-2 sm:py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
+    >
+      <span className="sm:hidden">Join</span>
+      <span className="hidden sm:inline">Join the waitlist</span>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+      </svg>
+    </button>
+  );
 
-      {showHeaderButtons && (
-        isAuthenticated ? (
-          <div className="flex items-center gap-12">
-            <Link
-              href="/blog"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
+  return (
+    <div className="relative">
+      <header className="w-full pt-4 pb-4 flex justify-between items-center">
+        <Link href="/">
+          <Image
+            src="/logos/logo-black-full.svg"
+            alt="Index Network"
+            width={200}
+            height={36}
+            className="object-contain w-[140px] sm:w-[180px] md:w-[200px]"
+          />
+        </Link>
+
+        {showHeaderButtons && (
+          <div className="flex items-center gap-3 sm:gap-8 md:gap-12">
+            {/* Desktop nav links */}
+            <Link href="/blog" className="hidden sm:block font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase">
               Blog
             </Link>
-            <Link
-              href="/about"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
+            <Link href="/about" className="hidden sm:block font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase">
               About
             </Link>
+
+            {ctaButton}
+
+            {/* Mobile hamburger */}
             <button
-              onClick={() => router.push('/')}
-              className="bg-[#041729] text-white rounded-[2px] px-5 py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
+              className="sm:hidden p-1 text-[#041729]"
+              aria-label="Open menu"
+              onClick={() => setMobileMenuOpen(o => !o)}
             >
-              Go to App
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+              {mobileMenuOpen ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
             </button>
           </div>
-        ) : isAlpha ? (
-          <div className="flex items-center gap-12">
-            <Link
-              href="/blog"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/about"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
-              About
-            </Link>
-            <button
-              onClick={handleLogin}
-              className="bg-[#041729] text-white rounded-[2px] px-5 py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
-            >
-              Login
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-12">
-            <Link
-              href="/blog"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
-              Blog
-            </Link>
-            <Link
-              href="/about"
-              className="font-sans text-sm text-black hover:text-gray-600 transition-colors font-medium uppercase"
-            >
-              About
-            </Link>
-            <button
-              onClick={() => {
-                if ((pathname === '/' && !isAuthenticated) || pathname?.startsWith('/blog')) {
-                  window.dispatchEvent(new CustomEvent('openWaitlistModal'));
-                } else {
-                  window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank");
-                }
-              }}
-              className="bg-[#041729] text-white rounded-[2px] px-5 py-3 font-semibold text-sm inline-flex items-center gap-2 transition-all hover:bg-[#0a2d4a] hover:-translate-y-[1px] uppercase tracking-wider cursor-pointer"
-            >
-              <span className="lg:hidden">Join</span>
-              <span className="hidden lg:inline">Join the waitlist</span>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </button>
-          </div>
-        )
+        )}
+      </header>
+
+      {/* Mobile dropdown menu */}
+      {mobileMenuOpen && showHeaderButtons && (
+        <nav className="sm:hidden absolute top-full left-0 right-0 bg-white border-t border-gray-200 shadow-md z-50 flex flex-col py-2">
+          <Link
+            href="/blog"
+            className="px-4 py-3 font-sans text-sm text-black hover:bg-gray-50 transition-colors font-medium uppercase"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Blog
+          </Link>
+          <Link
+            href="/about"
+            className="px-4 py-3 font-sans text-sm text-black hover:bg-gray-50 transition-colors font-medium uppercase"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            About
+          </Link>
+        </nav>
       )}
-    </header>
+    </div>
   );
 }

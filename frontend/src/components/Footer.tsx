@@ -34,7 +34,7 @@ export default function Footer() {
       <div className="max-w-[1200px] mx-auto flex flex-col gap-3">
         {/* Top row: page links left, newsletter + social right */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <nav aria-label="Footer navigation" className="flex gap-5 text-[13px] text-[#041729]">
+          <nav aria-label="Footer navigation" className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-[#041729]">
             <Link href="/" className="hover:text-black transition-colors">Home</Link>
             <Link href="/blog" className="hover:text-black transition-colors">Blog</Link>
             <Link href="/about" className="hover:text-black transition-colors">About</Link>
@@ -42,7 +42,7 @@ export default function Footer() {
             <Link href="/pages/terms-of-use" className="hover:text-black transition-colors">Terms</Link>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
             {/* Newsletter inline */}
             <form className="flex items-center gap-2" aria-label="Newsletter subscription" onSubmit={handleSubscribe}>
               <label htmlFor="footer-newsletter-email" className="sr-only">Email address</label>
@@ -53,7 +53,7 @@ export default function Footer() {
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="bg-white border border-gray-300 text-black px-3 py-[7px] text-xs focus:outline-none focus:border-black transition-colors placeholder:text-gray-400 w-48 rounded-sm font-sans"
+                className="bg-white border border-gray-300 text-black px-3 py-[7px] text-xs focus:outline-none focus:border-black transition-colors placeholder:text-gray-400 w-full sm:w-48 rounded-sm font-sans"
                 required
                 aria-required="true"
                 disabled={subscribeStatus === "loading"}
@@ -61,7 +61,7 @@ export default function Footer() {
               <button
                 type="submit"
                 disabled={subscribeStatus === "loading"}
-                className="bg-[#041729] text-white hover:bg-[#0a2d4a] uppercase tracking-wider text-xs px-3 py-[7px] rounded-[2px] transition-colors font-sans font-semibold border-none disabled:opacity-50"
+                className="bg-[#041729] text-white hover:bg-[#0a2d4a] uppercase tracking-wider text-xs px-3 py-[7px] rounded-[2px] transition-colors font-sans font-semibold border-none disabled:opacity-50 shrink-0"
               >
                 {subscribeStatus === "loading" ? "..." : subscribeStatus === "success" ? "Done!" : "Subscribe"}
               </button>
