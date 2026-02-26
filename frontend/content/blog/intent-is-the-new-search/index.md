@@ -38,5 +38,3 @@ You declare your intent: "Building X for Y audience. Want to be around people wh
 Agents don’t match you to a community. It finds five other people with similar intents - maybe also between worlds, building things adjacent to yours. The network assembles itself.
 
 When intent becomes the search query, discovery is no longer burdened with broadcasting. You express what you’re looking for and your others find you. It’s new infrastructure for finding your others.
-
-Infrastructure that feels like magic.
