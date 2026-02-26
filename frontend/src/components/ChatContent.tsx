@@ -908,7 +908,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           </Button>
         </form>
       </div>
-      <div className="py-2"></div>
+      <div className="py-2 bg-white"></div>
     </>
   );
 
