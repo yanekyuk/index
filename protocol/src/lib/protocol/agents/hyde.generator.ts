@@ -1,17 +1,13 @@
 /**
  * HyDE Generator Agent: pure LLM agent for generating hypothetical documents
- * in the target corpus voice. Used by the HyDE graph for cache-aware generation.
+ * in the target corpus voice. Uses free-text lens labels instead of enum strategies.
  */
 
 import { BaseLangChainAgent } from '../../langchain/langchain';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import {
-  type HydeStrategy,
-  type HydeContext,
-  HYDE_STRATEGIES,
-  type HydeTargetCorpus,
-} from './hyde.strategies';
+import { HYDE_CORPUS_PROMPTS } from './hyde.strategies';
+import type { HydeTargetCorpus } from './lens.inferrer';
 import { Timed } from "../../performance";
 
 const SYSTEM_PROMPT = `You are a Hypothetical Document Generator for semantic search.
@@ -34,6 +30,19 @@ export interface HydeGeneratorOutput {
   text: string;
 }
 
+export interface HydeGenerateInput {
+  /** Original intent or query text. */
+  sourceText: string;
+  /** Free-text lens label from LensInferrer (e.g. "crypto infra VC"). */
+  lens: string;
+  /** Which corpus voice to generate in. */
+  corpus: HydeTargetCorpus;
+}
+
+/**
+ * Generates hypothetical documents in a target corpus voice for semantic search.
+ * Uses free-text lens labels (from LensInferrer) instead of enum strategies.
+ */
 export class HydeGenerator extends BaseLangChainAgent {
   constructor(options?: { preset?: string; temperature?: number }) {
     super({
@@ -44,16 +53,14 @@ export class HydeGenerator extends BaseLangChainAgent {
   }
 
   /**
-   * Generate a hypothetical document for the given source text and strategy.
+   * Generate a hypothetical document for the given source text and lens.
+   *
+   * @param input - Source text, lens label, and target corpus
+   * @returns Generated hypothetical document text
    */
   @Timed()
-  async generate(
-    sourceText: string,
-    strategy: HydeStrategy,
-    context?: HydeContext
-  ): Promise<HydeGeneratorOutput> {
-    const config = HYDE_STRATEGIES[strategy];
-    const promptText = config.prompt(sourceText, context);
+  async generate(input: HydeGenerateInput): Promise<HydeGeneratorOutput> {
+    const promptText = HYDE_CORPUS_PROMPTS[input.corpus](input.sourceText, input.lens);
 
     const messages = [
       new SystemMessage(SYSTEM_PROMPT),
@@ -65,20 +72,5 @@ export class HydeGenerator extends BaseLangChainAgent {
     const text = parsed?.hypotheticalDocument ?? '';
 
     return { text };
-  }
-
-  /** Target corpus for this strategy (profiles vs intents). */
-  static getTargetCorpus(strategy: HydeStrategy): HydeTargetCorpus {
-    return HYDE_STRATEGIES[strategy].targetCorpus;
-  }
-
-  /** Whether this strategy's output should be persisted to DB (vs ephemeral cache). */
-  static shouldPersist(strategy: HydeStrategy): boolean {
-    return HYDE_STRATEGIES[strategy].persist;
-  }
-
-  /** Cache TTL in seconds for non-persisted strategies; undefined if persisted. */
-  static getCacheTTL(strategy: HydeStrategy): number | undefined {
-    return HYDE_STRATEGIES[strategy].cacheTTL;
   }
 }
