@@ -232,6 +232,40 @@ async function enrichOpportunities(
   });
   const viewerName = viewerUser?.name ?? undefined;
 
+  // Retry name resolution for candidates whose name is still missing.
+  // The profile or user record may not have been ready on the first fetch
+  // (e.g. profile generation still in flight). One retry covers transient gaps.
+  const missingNameIds = baseEnriched
+    .map((item) => item.candidateUserId)
+    .filter((id) => id && !nameByUserId.get(id) && !baseEnriched.find((b) => b.candidateUserId === id && b.profile?.identity?.name));
+  if (missingNameIds.length > 0) {
+    const retried = await Promise.all(
+      missingNameIds.map(async (id) => {
+        const [profile, user] = await Promise.all([
+          database.getProfile(id),
+          database.getUser(id),
+        ]);
+        return { id, profile, user };
+      }),
+    );
+    for (const r of retried) {
+      const name = r.profile?.identity?.name ?? r.user?.name ?? null;
+      if (name) nameByUserId.set(r.id, name);
+      // Also update the baseEnriched profile so counterpartName picks it up
+      if (r.profile) {
+        const item = baseEnriched.find((b) => b.candidateUserId === r.id);
+        if (item && !item.profile) item.profile = r.profile;
+      }
+      if (r.user?.avatar && !avatarByUserId.get(r.id)) {
+        avatarByUserId.set(r.id, r.user.avatar);
+      }
+    }
+    logger.info("[enrichOpportunities] Retried name lookup for candidates with missing names", {
+      attempted: missingNameIds.length,
+      resolved: retried.filter((r) => r.profile?.identity?.name ?? r.user?.name).length,
+    });
+  }
+
   let presentations: OpportunityPresentationResult[] | undefined;
   let homeCardPresentations: HomeCardPresentationResult[] | undefined;
   let presenterContexts:
@@ -248,7 +282,7 @@ async function enrichOpportunities(
       const name = counterpartName(item);
       const reasoning = item.opportunity.interpretation?.reasoning ?? "";
       return {
-        headline: `Connection with ${name}`,
+        headline: name ? `Connection with ${name}` : "Suggested connection",
         personalizedSummary:
           viewerCentricCardSummary(
             reasoning,

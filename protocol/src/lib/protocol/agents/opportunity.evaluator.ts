@@ -395,10 +395,17 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
       const intentsPart = e.intents?.length
         ? `\n  INTENTS:\n${e.intents.map((i) => `    - ${i.intentId}: ${i.payload}`).join('\n')}`
         : '';
+      // Mask the discoverer's name so the LLM cannot leak it into reasoning.
+      // The system prompt already says "use third-party references", but the LLM
+      // ignores this when the actual name is visible. Masking it forces role-based
+      // language ("the source user is looking…" instead of "Alice is looking…").
+      const displayName = e.userId === input.discovererId
+        ? '(source user)'
+        : (e.profile.name ?? '');
       return `
   USER: ${e.userId}
   INDEX: ${e.indexId}
-  PROFILE: Name: ${e.profile.name ?? ''} | Bio: ${e.profile.bio ?? ''} | Location: ${e.profile.location ?? ''} | Interests: ${e.profile.interests?.join(', ') ?? ''} | Skills: ${e.profile.skills?.join(', ') ?? ''} | Context: ${e.profile.context ?? ''}${intentsPart}
+  PROFILE: Name: ${displayName} | Bio: ${e.profile.bio ?? ''} | Location: ${e.profile.location ?? ''} | Interests: ${e.profile.interests?.join(', ') ?? ''} | Skills: ${e.profile.skills?.join(', ') ?? ''} | Context: ${e.profile.context ?? ''}${intentsPart}
   RAG SCORE: ${e.ragScore ?? '—'}
   MATCHED VIA: ${e.matchedVia ?? '—'}`;
     }).join('\n');
