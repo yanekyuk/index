@@ -8,6 +8,7 @@ import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.grap
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HomeGraphFactory } from '../lib/protocol/graphs/home.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -66,11 +67,13 @@ export class OpportunityService {
     if (this.db && 'getHydeDocument' in this.db) {
       const embedder: Embedder = new EmbedderAdapter();
       const cache: HydeCache = new RedisCacheAdapter();
+      const inferrer = new LensInferrer();
       const generator = new HydeGenerator();
       const compiledHydeGraph = new HydeGraphFactory(
         this.db as unknown as HydeGraphDatabase,
         embedder,
         cache,
+        inferrer,
         generator
       ).createGraph();
       const factory = new OpportunityGraphFactory(

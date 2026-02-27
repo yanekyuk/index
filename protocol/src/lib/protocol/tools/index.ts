@@ -7,6 +7,7 @@ import { ProfileGraphFactory } from "../graphs/profile.graph";
 import { OpportunityGraphFactory } from "../graphs/opportunity.graph";
 import { HydeGraphFactory } from "../graphs/hyde.graph";
 import { HydeGenerator } from "../agents/hyde.generator";
+import { LensInferrer } from "../agents/lens.inferrer";
 import { IndexGraphFactory } from "../graphs/index.graph";
 import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
 import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
@@ -98,11 +99,13 @@ export async function createChatTools(
   const intentGraph = new IntentGraphFactory(database, embedder, intentQueue).createGraph();
   const profileGraph = new ProfileGraphFactory(database, embedder, scraper).createGraph();
   const hydeCache: HydeCache = new RedisCacheAdapter();
+  const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
   const compiledHydeGraph = new HydeGraphFactory(
     database as unknown as HydeGraphDatabase,
     embedder,
     hydeCache,
+    lensInferrer,
     hydeGenerator
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(

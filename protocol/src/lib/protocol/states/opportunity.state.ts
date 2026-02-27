@@ -1,7 +1,7 @@
 import { Annotation } from "@langchain/langgraph";
 import type { Id } from '../../../types/common.types';
 import type { OpportunityStatus, Opportunity } from '../interfaces/database.interface';
-import type { HydeStrategy } from '../interfaces/embedder.interface';
+import type { Lens } from '../interfaces/embedder.interface';
 import type { EvaluatorEntity } from '../agents/opportunity.evaluator';
 
 /**
@@ -50,7 +50,8 @@ export interface CandidateMatch {
   candidateIntentId?: Id<'intents'>;
   indexId: Id<'indexes'>;
   similarity: number;
-  strategy: HydeStrategy;
+  /** Free-text lens label that produced this match. */
+  lens: string;
   candidatePayload: string;
   candidateSummary?: string;
 }
@@ -68,7 +69,8 @@ export interface EvaluatedCandidate {
   score: number; // 0-100
   reasoning: string; // Third-party analytical explanation of the match (for LLM agents)
   valencyRole: 'Agent' | 'Patient' | 'Peer';
-  strategy: HydeStrategy;
+  /** Free-text lens label that produced this match. */
+  lens: string;
 }
 
 /**
@@ -101,8 +103,8 @@ export interface OpportunityGraphOptions {
   minScore?: number;
   /** Maximum opportunities to return (default: 10) */
   limit?: number;
-  /** HyDE strategies to use (inferred if not provided) */
-  strategies?: HydeStrategy[];
+  /** Pre-inferred lenses (if not provided, lens inference runs automatically in HyDE graph) */
+  lenses?: Lens[];
   /** User's search query for HyDE generation */
   hydeDescription?: string;
   /** Existing opportunities summary for evaluator deduplication */
@@ -251,10 +253,10 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** HyDE embeddings per strategy (from discovery) */
-  hydeEmbeddings: Annotation<Record<HydeStrategy, number[]>>({
+  /** HyDE embeddings per lens label (from discovery) */
+  hydeEmbeddings: Annotation<Record<string, number[]>>({
     reducer: (curr, next) => next ?? curr,
-    default: () => ({} as Record<HydeStrategy, number[]>),
+    default: () => ({}),
   }),
   
   /** Candidate matches from semantic search (from discovery) */

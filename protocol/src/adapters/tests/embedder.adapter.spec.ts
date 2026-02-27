@@ -165,15 +165,14 @@ describe('EmbedderAdapter', () => {
   });
 
   describe('searchWithHydeEmbeddings', () => {
-    it('should merge and rank candidates from multiple strategies', async () => {
+    it('should merge and rank candidates from multiple lenses', async () => {
       const vec = makeTestVector(200);
-      const hydeEmbeddings = new Map([
-        ['mirror' as const, vec],
-        ['reciprocal' as const, vec],
-      ]);
+      const lensEmbeddings = [
+        { lens: 'React frontend developer', corpus: 'profiles' as const, embedding: vec },
+        { lens: 'early-stage startup hiring', corpus: 'intents' as const, embedding: vec },
+      ];
 
-      const results = await adapter.searchWithHydeEmbeddings(hydeEmbeddings, {
-        strategies: ['mirror', 'reciprocal'],
+      const results = await adapter.searchWithHydeEmbeddings(lensEmbeddings, {
         indexScope: [fixture.indexId],
         limitPerStrategy: 5,
         limit: 10,
@@ -194,9 +193,8 @@ describe('EmbedderAdapter', () => {
     it('should respect indexScope and excludeUserId', async () => {
       const vec = makeTestVector(300);
       const results = await adapter.searchWithHydeEmbeddings(
-        new Map([['reciprocal' as const, vec]]),
+        [{ lens: 'early-stage startup hiring', corpus: 'intents' as const, embedding: vec }],
         {
-          strategies: ['reciprocal'],
           indexScope: [fixture.indexId],
           excludeUserId: fixture.userAId,
           limit: 5,

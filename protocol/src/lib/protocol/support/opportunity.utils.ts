@@ -1,107 +1,39 @@
 /**
- * Opportunity graph utilities: HyDE strategy selection and actor role derivation.
- * Used by the opportunity graph to choose which HyDE strategies to run and to map
- * strategy matches to the new opportunity actor roles (agent / patient / peer).
- */
-
-import type { HydeStrategy } from '../agents/hyde.strategies';
-
-/** Context for selecting HyDE strategies (intent category, index, etc.). */
-export interface OpportunityStrategyContext {
-  category?: string;
-  indexId?: string;
-  customPrompt?: string;
-}
-
-/**
- * Choose which HyDE strategies to run for a given intent and context.
- * Core strategies (mirror, reciprocal) are always included when searching for opportunities.
- * Category-specific strategies can be added based on intent content or explicit category.
+ * Opportunity graph utilities: role derivation from corpus type.
+ * Used by the opportunity graph to map lens corpus to opportunity actor roles.
  *
- * @param intent - Intent payload or summary text (used for optional category inference)
- * @param context - Optional context (category, indexId)
- * @returns Array of HyDE strategy names to run
+ * With lens-based HyDE, strategy selection is handled automatically by the
+ * LensInferrer agent. This file provides corpus-to-role mapping for opportunity actors.
  */
-export function selectStrategies(
-  intent: string,
-  context?: OpportunityStrategyContext
-): HydeStrategy[] {
-  const base: HydeStrategy[] = ['mirror', 'reciprocal'];
 
-  const category = (context?.category ?? '').toLowerCase();
-  const intentLower = intent.toLowerCase();
+import type { HydeTargetCorpus } from '../agents/lens.inferrer';
 
-  // Add category/context-specific strategies
-  if (
-    category.includes('mentor') ||
-    category.includes('guidance') ||
-    intentLower.includes('mentor') ||
-    intentLower.includes('learn from')
-  ) {
-    base.push('mentor');
-  }
-  if (
-    category.includes('invest') ||
-    category.includes('funding') ||
-    intentLower.includes('investor') ||
-    intentLower.includes('raise')
-  ) {
-    base.push('investor');
-  }
-  if (
-    category.includes('collaborat') ||
-    category.includes('peer') ||
-    intentLower.includes('co-founder') ||
-    intentLower.includes('partner')
-  ) {
-    base.push('collaborator');
-  }
-  if (
-    category.includes('hire') ||
-    category.includes('job') ||
-    intentLower.includes('hiring') ||
-    intentLower.includes('looking for')
-  ) {
-    base.push('hiree');
-  }
-
-  return [...new Set(base)];
-}
-
-/** Actor roles in the new opportunity model (agent / patient / peer). */
+/** Actor roles in the opportunity model (agent / patient / peer). */
 export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
 
-/** Result of mapping a strategy to source and candidate roles. */
+/** Result of mapping a corpus to source and candidate roles. */
 export interface DerivedRoles {
   sourceRole: OpportunityActorRole;
   candidateRole: OpportunityActorRole;
 }
 
 /**
- * Map a HyDE strategy to the semantic roles of source and candidate in the opportunity.
- * - agent: can do something for the other (e.g. mentor, investor, helper).
- * - patient: needs something from the other (e.g. seeking help, seeking funding).
- * - peer: symmetric collaboration.
+ * Derive actor roles from the corpus type of a lens match.
  *
- * @param strategy - The HyDE strategy that produced the match
+ * When a candidate is found via:
+ * - "profiles" corpus → found by who they are → candidate can help → agent
+ * - "intents" corpus → found by what they need → candidate needs something → patient
+ *
+ * @param corpus - The target corpus that produced the match ('profiles' | 'intents')
  * @returns Roles for the source (intent owner) and the candidate (matched user/intent)
  */
-export function deriveRolesFromStrategy(strategy: HydeStrategy): DerivedRoles {
-  switch (strategy) {
-    case 'mirror':
+export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
+  switch (corpus) {
+    case 'profiles':
       // Source seeks someone who can help → source is patient, candidate can help → agent
       return { sourceRole: 'patient', candidateRole: 'agent' };
-    case 'reciprocal':
-      // Source offers something; candidate needs it → source is agent, candidate is patient
-      return { sourceRole: 'agent', candidateRole: 'patient' };
-    case 'mentor':
-      return { sourceRole: 'patient', candidateRole: 'agent' };
-    case 'investor':
-      return { sourceRole: 'patient', candidateRole: 'agent' };
-    case 'collaborator':
-      return { sourceRole: 'peer', candidateRole: 'peer' };
-    case 'hiree':
-      // Source is hiring → agent; candidate wants the job → patient
+    case 'intents':
+      // Source offers or needs; candidate has complementary goal → source is agent, candidate is patient
       return { sourceRole: 'agent', candidateRole: 'patient' };
     default:
       return { sourceRole: 'peer', candidateRole: 'peer' };
@@ -135,10 +67,6 @@ export function validateOpportunityActors(actors: Array<{ role: string }>): void
  * - Introducer or peer: always see.
  * - Patient or party: see if (status is not latent, or there is no introducer).
  * - Agent: see if (status is accepted/rejected/expired, or (status is not latent and there is no introducer)).
- *
- * Note: the Home feed is further gated by `isActionableForViewer` which limits
- * introducer actionability to `latent` only. This function is the broader
- * "can you see this at all" gate — matching the DB adapter's SQL visibility guard.
  */
 export function canUserSeeOpportunity(
   actors: Array<{ userId: string; role: string }>,
@@ -165,8 +93,7 @@ export function canUserSeeOpportunity(
 
 /**
  * Whether an opportunity should appear on the Home feed for the viewer (actionable = has a pending action).
- * Encodes the role-visibility matrix from the Latent Opportunity Lifecycle: only show statuses where
- * the viewer's role has an action (Send, Accept/Reject, or transitional "Go to chat").
+ * Encodes the role-visibility matrix from the Latent Opportunity Lifecycle.
  */
 export function isActionableForViewer(
   actors: Array<{ userId: string; role: string }>,

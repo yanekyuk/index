@@ -1,18 +1,19 @@
 /**
  * HyDE Generator Agent: pure LLM agent for generating hypothetical documents
- * in the target corpus voice. Used by the HyDE graph for cache-aware generation.
+ * in the target corpus voice. Uses free-text lens labels instead of enum strategies.
  */
+import { config } from "dotenv";
+config({ path: '.env.development', override: true });
 
-import { BaseLangChainAgent } from '../../langchain/langchain';
+import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import {
-  type HydeStrategy,
-  type HydeContext,
-  HYDE_STRATEGIES,
-  type HydeTargetCorpus,
-} from './hyde.strategies';
+import { HYDE_CORPUS_PROMPTS } from './hyde.strategies';
+import type { HydeTargetCorpus } from './lens.inferrer';
 import { Timed } from "../../performance";
+import { protocolLogger } from '../support/protocol.logger';
+
+const logger = protocolLogger("HydeGenerator");
 
 const SYSTEM_PROMPT = `You are a Hypothetical Document Generator for semantic search.
 
@@ -30,55 +31,62 @@ const responseFormat = z.object({
     .describe('The hypothetical document text in the target voice, suitable for embedding and retrieval'),
 });
 
+const model = new ChatOpenAI({
+  model: 'google/gemini-2.5-flash',
+  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
+});
+
 export interface HydeGeneratorOutput {
   text: string;
 }
 
-export class HydeGenerator extends BaseLangChainAgent {
-  constructor(options?: { preset?: string; temperature?: number }) {
-    super({
-      preset: options?.preset ?? 'hyde-generator',
-      responseFormat,
-      temperature: options?.temperature ?? 0.4,
+export interface HydeGenerateInput {
+  /** Original intent or query text. */
+  sourceText: string;
+  /** Free-text lens label from LensInferrer (e.g. "crypto infra VC"). */
+  lens: string;
+  /** Which corpus voice to generate in. */
+  corpus: HydeTargetCorpus;
+}
+
+/**
+ * Generates hypothetical documents in a target corpus voice for semantic search.
+ * Uses free-text lens labels (from LensInferrer) instead of enum strategies.
+ */
+export class HydeGenerator {
+  private model: any;
+
+  constructor() {
+    this.model = model.withStructuredOutput(responseFormat, {
+      name: "hyde_generator"
     });
   }
 
   /**
-   * Generate a hypothetical document for the given source text and strategy.
+   * Generate a hypothetical document for the given source text and lens.
+   *
+   * @param input - Source text, lens label, and target corpus
+   * @returns Generated hypothetical document text
    */
   @Timed()
-  async generate(
-    sourceText: string,
-    strategy: HydeStrategy,
-    context?: HydeContext
-  ): Promise<HydeGeneratorOutput> {
-    const config = HYDE_STRATEGIES[strategy];
-    const promptText = config.prompt(sourceText, context);
+  async generate(input: HydeGenerateInput): Promise<HydeGeneratorOutput> {
+    const promptText = HYDE_CORPUS_PROMPTS[input.corpus](input.sourceText, input.lens);
 
     const messages = [
       new SystemMessage(SYSTEM_PROMPT),
       new HumanMessage(promptText),
     ];
 
-    const result = await this.model.invoke({ messages }) as { structuredResponse?: { hypotheticalDocument: string } };
-    const parsed = result?.structuredResponse;
-    const text = parsed?.hypotheticalDocument ?? '';
+    const result = await this.model.invoke(messages);
+    const parsed = responseFormat.parse(result);
+    const text = parsed.hypotheticalDocument ?? '';
+
+    logger.info('Generated HyDE document', {
+      lens: input.lens,
+      corpus: input.corpus,
+      textLength: text.length,
+    });
 
     return { text };
-  }
-
-  /** Target corpus for this strategy (profiles vs intents). */
-  static getTargetCorpus(strategy: HydeStrategy): HydeTargetCorpus {
-    return HYDE_STRATEGIES[strategy].targetCorpus;
-  }
-
-  /** Whether this strategy's output should be persisted to DB (vs ephemeral cache). */
-  static shouldPersist(strategy: HydeStrategy): boolean {
-    return HYDE_STRATEGIES[strategy].persist;
-  }
-
-  /** Cache TTL in seconds for non-persisted strategies; undefined if persisted. */
-  static getCacheTTL(strategy: HydeStrategy): number | undefined {
-    return HYDE_STRATEGIES[strategy].cacheTTL;
   }
 }

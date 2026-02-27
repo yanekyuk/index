@@ -1,5 +1,5 @@
 /**
- * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search (HyDE multi-strategy).
+ * Embedder adapter: OpenRouter API with OpenAI embedding model + pgvector search (HyDE lens-based).
  * Uses the same OpenRouter + OpenAI embedder config as lib/embedder (OpenRouterGenerator).
  */
 
@@ -12,20 +12,15 @@ import {
 } from '../lib/embedder/embedder.config';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import {
-  type HydeStrategy,
-  HYDE_STRATEGY_TARGET_CORPUS,
-} from '../lib/protocol/agents/hyde.strategies';
-import type { ProfileEmbeddingSearchOptions } from '../lib/protocol/interfaces/embedder.interface';
+import type { LensEmbedding, ProfileEmbeddingSearchOptions } from '../lib/protocol/interfaces/embedder.interface';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Local types (align with lib/protocol/interfaces/embedder.interface.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type { HydeStrategy } from '../lib/protocol/agents/hyde.strategies';
+export type { LensEmbedding } from '../lib/protocol/interfaces/embedder.interface';
 
 export interface HydeSearchOptions {
-  strategies: HydeStrategy[];
   indexScope: string[];
   excludeUserId?: string;
   limitPerStrategy?: number;
@@ -38,9 +33,9 @@ export interface HydeCandidate {
   id: string;
   userId: string;
   score: number;
-  matchedVia: HydeStrategy;
+  matchedVia: string;
   indexId: string;
-  matchedStrategies?: HydeStrategy[];
+  matchedLenses?: string[];
 }
 
 export interface VectorSearchResult<T> {
@@ -134,15 +129,14 @@ export class EmbedderAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // HyDE multi-strategy search
+  // HyDE lens-based search
   // ─────────────────────────────────────────────────────────────────────────
 
   async searchWithHydeEmbeddings(
-    hydeEmbeddings: Map<HydeStrategy, number[]>,
+    lensEmbeddings: LensEmbedding[],
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]> {
     const {
-      strategies,
       indexScope,
       excludeUserId,
       limitPerStrategy = 40,
@@ -152,26 +146,24 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    const searchPromises = strategies.map(async (strategy) => {
-      const embedding = hydeEmbeddings.get(strategy);
-      if (!embedding) return [];
+    const searchPromises = lensEmbeddings.map(async (le) => {
+      if (!le.embedding?.length) return [];
 
-      const targetCorpus = HYDE_STRATEGY_TARGET_CORPUS[strategy];
-      if (targetCorpus === 'profiles') {
+      if (le.corpus === 'profiles') {
         return this.searchProfilesForHyde(
-          embedding,
+          le.embedding,
           filter,
           limitPerStrategy,
           minScore,
-          strategy
+          le.lens
         );
       }
       return this.searchIntentsForHyde(
-        embedding,
+        le.embedding,
         filter,
         limitPerStrategy,
         minScore,
-        strategy
+        le.lens
       );
     });
 
@@ -209,11 +201,8 @@ export class EmbedderAdapter {
     filter: { indexScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
-    strategy: HydeStrategy
+    lens: string
   ): Promise<HydeCandidate[]> {
-    // Search userProfiles directly with the HyDE-generated embedding.
-    // Uses DISTINCT ON (userId) in a subquery to deduplicate at the SQL level
-    // (the indexMembers join can produce multiple rows per user).
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { userProfiles, indexMembers } = schema;
@@ -225,7 +214,6 @@ export class EmbedderAdapter {
       ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
     ];
 
-    // Subquery: DISTINCT ON (userId) keeps the best match per user per cosine ordering
     const deduped = db
       .selectDistinctOn([userProfiles.userId], {
         userId: userProfiles.userId,
@@ -238,7 +226,6 @@ export class EmbedderAdapter {
       .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
       .as('deduped');
 
-    // Outer query: re-sort by similarity globally and apply limit
     const results = await db
       .select()
       .from(deduped)
@@ -250,7 +237,7 @@ export class EmbedderAdapter {
       id: r.userId,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: strategy,
+      matchedVia: lens,
       indexId: r.indexId,
     }));
   }
@@ -260,7 +247,7 @@ export class EmbedderAdapter {
     filter: { indexScope: string[]; excludeUserId?: string },
     limit: number,
     minScore: number,
-    strategy: HydeStrategy
+    lens: string
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
@@ -292,7 +279,7 @@ export class EmbedderAdapter {
       id: r.id,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: strategy,
+      matchedVia: lens,
       indexId: r.indexId,
     }));
   }
@@ -303,8 +290,6 @@ export class EmbedderAdapter {
     limit: number,
     minScore: number
   ): Promise<HydeCandidate[]> {
-    // Uses DISTINCT ON (userId) in a subquery to deduplicate at the SQL level
-    // (the indexMembers join can produce multiple rows per user).
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
     const { userProfiles, indexMembers } = schema;
@@ -315,7 +300,6 @@ export class EmbedderAdapter {
       ...(filter.excludeUserId ? [ne(userProfiles.userId, filter.excludeUserId)] : []),
     ];
 
-    // Subquery: DISTINCT ON (userId) keeps the best match per user per cosine ordering
     const deduped = db
       .selectDistinctOn([userProfiles.userId], {
         userId: userProfiles.userId,
@@ -328,7 +312,6 @@ export class EmbedderAdapter {
       .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`)
       .as('deduped');
 
-    // Outer query: re-sort by similarity globally and apply limit
     const results = await db
       .select()
       .from(deduped)
@@ -340,7 +323,7 @@ export class EmbedderAdapter {
       id: r.userId,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: 'mirror' as HydeStrategy,
+      matchedVia: 'profile-similarity',
       indexId: r.indexId,
     }));
   }
@@ -378,7 +361,7 @@ export class EmbedderAdapter {
       id: r.id,
       userId: r.userId,
       score: r.similarity,
-      matchedVia: 'mirror' as HydeStrategy,
+      matchedVia: 'profile-similarity',
       indexId: r.indexId,
     }));
   }
@@ -396,12 +379,12 @@ export class EmbedderAdapter {
 
     const scored = Array.from(byUser.entries()).map(([, matches]) => {
       const bestMatch = matches.reduce((a, b) => (a.score > b.score ? a : b));
-      const strategyBonus = (matches.length - 1) * 0.1;
-      const strategies = [...new Set(matches.map((m) => m.matchedVia))];
+      const lensBonus = (matches.length - 1) * 0.1;
+      const lenses = [...new Set(matches.map((m) => m.matchedVia))];
       return {
         ...bestMatch,
-        score: Math.min(bestMatch.score + strategyBonus, 1),
-        matchedStrategies: strategies.length > 1 ? strategies : undefined,
+        score: Math.min(bestMatch.score + lensBonus, 1),
+        matchedLenses: lenses.length > 1 ? lenses : undefined,
       };
     });
 
@@ -420,11 +403,10 @@ export class EmbedderAdapter {
   ): Promise<VectorSearchResult<unknown>[]> {
     const vectorStr = `[${embedding.join(',')}]`;
     const { hydeDocuments, indexMembers, userProfiles } = schema;
-    const strategy = 'mirror' as const;
 
     const baseConditions = [
       eq(hydeDocuments.sourceType, 'profile'),
-      eq(hydeDocuments.strategy, strategy),
+      eq(hydeDocuments.targetCorpus, 'profiles'),
       isNotNull(hydeDocuments.hydeEmbedding),
       sql`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector) >= ${minScore}`,
     ];

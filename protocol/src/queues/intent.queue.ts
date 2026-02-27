@@ -8,6 +8,7 @@ import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.inte
 import type { IntentGraphQueue } from '../lib/protocol/interfaces/queue.interface';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 import { opportunityQueue } from './opportunity.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -43,7 +44,6 @@ export interface IntentQueueDeps {
     sourceText: string;
     sourceType: string;
     sourceId: string;
-    strategies: ('mirror' | 'reciprocal')[];
     forceRegenerate: boolean;
   }) => Promise<void>;
   addOpportunityJob?: (data: { intentId: string; userId: string }) => Promise<unknown>;
@@ -205,19 +205,18 @@ export class IntentQueue implements IntentGraphQueue {
         sourceText: intent.payload,
         sourceType: 'intent',
         sourceId: intentId,
-        strategies: ['mirror', 'reciprocal'],
         forceRegenerate: true,
       });
     } else {
       const embedder = new EmbedderAdapter();
       const cache = new RedisCacheAdapter();
+      const inferrer = new LensInferrer();
       const generator = new HydeGenerator();
-      const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, generator).createGraph();
+      const hydeGraph = new HydeGraphFactory(this.graphDb, embedder, cache, inferrer, generator).createGraph();
       await hydeGraph.invoke({
         sourceText: intent.payload,
         sourceType: 'intent',
         sourceId: intentId,
-        strategies: ['mirror', 'reciprocal'],
         forceRegenerate: true,
       });
     }
