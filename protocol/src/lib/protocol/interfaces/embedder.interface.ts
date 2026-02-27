@@ -2,20 +2,25 @@
 // HyDE (Hypothetical Document Embeddings) search types
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type { HydeStrategy, HydeTargetCorpus } from '../agents/hyde.strategies';
-export { HYDE_STRATEGY_TARGET_CORPUS } from '../agents/hyde.strategies';
+export type { Lens, HydeTargetCorpus } from '../agents/lens.inferrer';
 
-import type { HydeStrategy } from '../agents/hyde.strategies';
+/** A single lens embedding ready for search. */
+export interface LensEmbedding {
+  /** Free-text lens label (e.g. "crypto infrastructure VC"). */
+  lens: string;
+  /** Which corpus to search. */
+  corpus: 'profiles' | 'intents';
+  /** 2000-dim embedding vector. */
+  embedding: number[];
+}
 
 /** Options for searchWithHydeEmbeddings (index scope, limits, min score). */
 export interface HydeSearchOptions {
-  /** Which strategies have embeddings in the map; only these are searched. */
-  strategies: HydeStrategy[];
   /** Index IDs to scope the search (members / assigned intents only). */
   indexScope: string[];
   /** Exclude this user ID from results (e.g. source intent owner). */
   excludeUserId?: string;
-  /** Max results per strategy before merge (default 10). */
+  /** Max results per lens before merge (default 10). */
   limitPerStrategy?: number;
   /** Max results after merge/rank (default 20). */
   limit?: number;
@@ -23,19 +28,20 @@ export interface HydeSearchOptions {
   minScore?: number;
 }
 
-/** Options for searchWithProfileEmbedding (no strategies; profile embedding search does not use strategy selection). */
-export type ProfileEmbeddingSearchOptions = Omit<HydeSearchOptions, 'strategies'>;
+/** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
+export type ProfileEmbeddingSearchOptions = HydeSearchOptions;
 
-/** A single candidate from HyDE search (profile or intent), with score and which strategy matched. */
+/** A single candidate from HyDE search (profile or intent), with score and which lens matched. */
 export interface HydeCandidate {
   type: 'profile' | 'intent';
   id: string;
   userId: string;
   score: number;
-  matchedVia: HydeStrategy;
+  /** Free-text lens label that produced this match. */
+  matchedVia: string;
   indexId: string;
-  /** Set after merge when user matched via multiple strategies. */
-  matchedStrategies?: HydeStrategy[];
+  /** Set after merge when user matched via multiple lenses. */
+  matchedLenses?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -64,7 +70,7 @@ export type VectorStoreOption<T> = {
 export interface VectorStore {
   /**
    * Search for similar items in the vector store.
-   * 
+   *
    * @param queryVector - The embedding vector to search for
    * @param collection - The logical name of the collection (e.g., 'profiles', 'intents')
    * @param options - generic options including limit, filter, and candidates
@@ -82,15 +88,15 @@ export interface VectorStore {
  */
 export interface Embedder extends EmbeddingGenerator, VectorStore {
   /**
-   * Multi-strategy HyDE search: run one vector search per (strategy, embedding),
-   * then merge, deduplicate by userId, and rank (boost for multiple strategy matches).
+   * Multi-lens HyDE search: run one vector search per lens embedding,
+   * then merge, deduplicate by userId, and rank (boost for multiple lens matches).
    *
-   * @param hydeEmbeddings - Map of strategy -> query embedding for that strategy
-   * @param options - strategies to use, indexScope, excludeUserId, limits, minScore
+   * @param lensEmbeddings - Array of lens embeddings to search with
+   * @param options - indexScope, excludeUserId, limits, minScore
    * @returns Deduplicated, ranked candidates (profile or intent) with scores
    */
   searchWithHydeEmbeddings(
-    hydeEmbeddings: Map<HydeStrategy, number[]>,
+    lensEmbeddings: LensEmbedding[],
     options: HydeSearchOptions
   ): Promise<HydeCandidate[]>;
 

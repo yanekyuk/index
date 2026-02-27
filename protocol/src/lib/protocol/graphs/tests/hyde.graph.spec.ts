@@ -10,16 +10,17 @@ import type { HydeGraphDatabase } from '../../interfaces/database.interface';
 import type { EmbeddingGenerator } from '../../interfaces/embedder.interface';
 import type { HydeCache } from '../../interfaces/cache.interface';
 import { HydeGenerator } from '../../agents/hyde.generator';
+import { LensInferrer } from '../../agents/lens.inferrer';
 import { EmbedderAdapter } from '../../../../adapters/embedder.adapter';
 
 describe('HydeGraph', () => {
   let mockDatabase: HydeGraphDatabase;
   let mockEmbedder: EmbeddingGenerator;
   let mockCache: HydeCache;
+  let inferrer: LensInferrer;
   let generator: HydeGenerator;
 
   const intentText = 'Looking for a React developer for a seed-stage startup.';
-  const strategies = ['mirror', 'reciprocal'] as const;
   const dummyEmbedding = [0.1, 0.2];
 
   beforeEach(() => {
@@ -59,6 +60,14 @@ describe('HydeGraph', () => {
       exists: mock(async (key: string) => key in cacheStore),
     } as unknown as HydeCache;
 
+    inferrer = new LensInferrer();
+    spyOn(inferrer, 'infer').mockResolvedValue({
+      lenses: [
+        { label: 'React frontend developer', corpus: 'profiles', reasoning: 'test reasoning' },
+        { label: 'early-stage startup hiring', corpus: 'intents', reasoning: 'test reasoning' },
+      ],
+    });
+
     generator = new HydeGenerator();
     spyOn(generator, 'generate').mockResolvedValue({
       text: 'I am an experienced React developer looking for early-stage opportunities.',
@@ -66,11 +75,12 @@ describe('HydeGraph', () => {
   });
 
   describe('E2E: Invoke with intent text returns embeddings', () => {
-    it('invoke with sourceText and strategies returns hydeEmbeddings', async () => {
+    it('invoke with sourceText returns hydeEmbeddings keyed by lens label', async () => {
       const factory = new HydeGraphFactory(
         mockDatabase,
         mockEmbedder,
         mockCache,
+        inferrer,
         generator
       );
       const graph = factory.createGraph();
@@ -79,16 +89,15 @@ describe('HydeGraph', () => {
         sourceType: 'intent',
         sourceId: 'intent-123',
         sourceText: intentText,
-        strategies: [...strategies],
       });
 
       expect(result.error).toBeUndefined();
       expect(result.hydeEmbeddings).toBeDefined();
       expect(Object.keys(result.hydeEmbeddings ?? {}).length).toBe(2);
-      expect(result.hydeEmbeddings?.mirror).toEqual(dummyEmbedding);
-      expect(result.hydeEmbeddings?.reciprocal).toEqual(dummyEmbedding);
+      expect(result.lenses).toHaveLength(2);
       expect(mockEmbedder.generate).toHaveBeenCalled();
       expect(generator.generate).toHaveBeenCalledTimes(2);
+      expect(inferrer.infer).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -98,6 +107,7 @@ describe('HydeGraph', () => {
         mockDatabase,
         mockEmbedder,
         mockCache,
+        inferrer,
         generator
       );
       const graph = factory.createGraph();
@@ -106,17 +116,16 @@ describe('HydeGraph', () => {
         sourceType: 'intent' as const,
         sourceId: 'intent-456',
         sourceText: intentText,
-        strategies: ['mirror' as const],
       };
 
       await graph.invoke(input);
-      expect(generator.generate).toHaveBeenCalledTimes(1);
+      expect(generator.generate).toHaveBeenCalledTimes(2);
 
       (generator.generate as ReturnType<typeof mock>).mockClear();
 
       const result2 = await graph.invoke(input);
 
-      expect(result2.hydeEmbeddings?.mirror).toEqual(dummyEmbedding);
+      expect(Object.keys(result2.hydeEmbeddings ?? {}).length).toBeGreaterThan(0);
       expect(generator.generate).not.toHaveBeenCalled();
     });
   });
@@ -127,6 +136,7 @@ describe('HydeGraph', () => {
         mockDatabase,
         mockEmbedder,
         mockCache,
+        inferrer,
         generator
       );
       const graph = factory.createGraph();
@@ -135,13 +145,12 @@ describe('HydeGraph', () => {
         sourceType: 'intent' as const,
         sourceId: 'intent-789',
         sourceText: intentText,
-        strategies: ['mirror' as const],
         forceRegenerate: true,
       };
 
       const result = await graph.invoke(input);
 
-      expect(result.hydeEmbeddings?.mirror).toEqual(dummyEmbedding);
+      expect(Object.keys(result.hydeEmbeddings ?? {}).length).toBeGreaterThan(0);
       expect(generator.generate).toHaveBeenCalled();
       expect(mockCache.get).not.toHaveBeenCalled();
       expect(mockDatabase.getHydeDocument).not.toHaveBeenCalled();
@@ -151,6 +160,10 @@ describe('HydeGraph', () => {
   describe('Smartest: graph with real LLM and embedder', () => {
     const hydeGraphOutputSchema = z.object({
       hydeEmbeddings: z.record(z.string(), z.array(z.number())),
+      lenses: z.array(z.object({
+        label: z.string(),
+        corpus: z.enum(['profiles', 'intents']),
+      })),
       error: z.string().optional(),
     });
 
@@ -196,8 +209,9 @@ describe('HydeGraph', () => {
             type: 'graph',
             factory: () => {
               const generator = new HydeGenerator();
+              const inferrer = new LensInferrer();
               const embedder = new EmbedderAdapter();
-              const factory = new HydeGraphFactory(mockDb, embedder, mockCache, generator);
+              const factory = new HydeGraphFactory(mockDb, embedder, mockCache, inferrer, generator);
               return factory.createGraph();
             },
             invoke: async (instance, resolvedInput) => {
@@ -206,7 +220,6 @@ describe('HydeGraph', () => {
                 sourceType: 'intent',
                 sourceId: 'intent-smartest',
                 sourceText: input.sourceText,
-                strategies: ['mirror'],
               });
             },
             input: { sourceText: '@fixtures.sourceText' },
@@ -214,7 +227,8 @@ describe('HydeGraph', () => {
           verification: {
             schema: hydeGraphOutputSchema,
             criteria:
-              'hydeEmbeddings must contain at least one strategy (e.g. mirror) with a non-empty array of numbers. ' +
+              'hydeEmbeddings must contain at least one lens label key with a non-empty array of numbers. ' +
+              'lenses must contain at least one lens with a label and corpus. ' +
               'HyDE document text should be in first person and describe an ideal match for the source intent.',
             llmVerify: false,
           },
@@ -222,10 +236,14 @@ describe('HydeGraph', () => {
       );
 
       expectSmartest(result);
-      const output = result.output as { hydeEmbeddings?: Record<string, number[]> };
-      expect(output?.hydeEmbeddings?.mirror).toBeDefined();
-      expect(Array.isArray(output?.hydeEmbeddings?.mirror)).toBe(true);
-      expect((output?.hydeEmbeddings?.mirror ?? []).length).toBeGreaterThan(0);
+      const output = result.output as { hydeEmbeddings?: Record<string, number[]>; lenses?: Array<{ label: string }> };
+      expect(output?.lenses).toBeDefined();
+      expect((output?.lenses ?? []).length).toBeGreaterThan(0);
+      const firstLensLabel = output?.lenses?.[0]?.label;
+      if (firstLensLabel) {
+        expect(output?.hydeEmbeddings?.[firstLensLabel]).toBeDefined();
+        expect(Array.isArray(output?.hydeEmbeddings?.[firstLensLabel])).toBe(true);
+      }
     }, 70000);
   });
 });

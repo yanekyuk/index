@@ -51,26 +51,23 @@ export type OpportunityEvaluatorLike = {
     actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }>;
   }>>;
 };
-import type { Embedder, HydeStrategy } from '../interfaces/embedder.interface';
+import type { Embedder, LensEmbedding } from '../interfaces/embedder.interface';
 import type {
   CreateOpportunityData,
   Opportunity,
   OpportunityActor,
   ActiveIntent,
 } from '../interfaces/database.interface';
-import { selectStrategies } from '../support/opportunity.utils';
 import { persistOpportunities } from '../support/opportunity.persist';
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 
 const logger = protocolLogger('OpportunityGraph');
 
-/** Input shape for the HyDE generator invoke call (query-based embedding). */
+/** Input shape for the HyDE graph invoke call (query-based embedding). */
 export interface HydeGeneratorInvokeInput {
   sourceType: 'query';
   sourceText: string;
-  strategies: HydeStrategy[];
-  context?: { indexId: string };
   forceRegenerate?: boolean;
 }
 
@@ -90,9 +87,10 @@ export class OpportunityGraphFactory {
     private database: OpportunityGraphDatabase,
     private embedder: Embedder,
     private hydeGenerator: {
-      invoke: (input: HydeGeneratorInvokeInput) => Promise<{ 
+      invoke: (input: HydeGeneratorInvokeInput) => Promise<{
         hydeEmbeddings: Record<string, number[]>;
-        hydeDocuments?: Record<string, { hydeText?: string; strategy?: string }>;
+        lenses?: Array<{ label: string; corpus: 'profiles' | 'intents' }>;
+        hydeDocuments?: Record<string, { hydeText?: string; lens?: string }>;
       }>;
     },
     private optionalEvaluator?: OpportunityEvaluatorLike,
@@ -356,15 +354,15 @@ export class OpportunityGraphFactory {
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
               
-              // Compute per-strategy stats from deduped candidates
-              const strategyStats: Record<string, { count: number; avgSimilarity: number }> = {};
+              // Compute per-lens stats from deduped candidates
+              const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
               for (const c of queryCandidates) {
-                const s = c.strategy || 'unknown';
-                if (!strategyStats[s]) strategyStats[s] = { count: 0, avgSimilarity: 0 };
-                strategyStats[s].count++;
-                strategyStats[s].avgSimilarity += c.similarity;
+                const s = c.lens || 'unknown';
+                if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
+                lensStats[s].count++;
+                lensStats[s].avgSimilarity += c.similarity;
               }
-              for (const s of Object.values(strategyStats)) {
+              for (const s of Object.values(lensStats)) {
                 s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
               }
 
@@ -373,7 +371,7 @@ export class OpportunityGraphFactory {
                 detail: `HyDE search → ${queryCandidates.length} candidate(s) from query path`,
                 data: {
                   candidateCount: queryCandidates.length,
-                  byStrategy: strategyStats,
+                  byLens: lensStats,
                   searchQuery: state.searchQuery?.trim().slice(0, 80),
                   durationMs: Date.now() - startTime,
                 },
@@ -396,7 +394,7 @@ export class OpportunityGraphFactory {
                       candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
                       indexId: targetIndex.indexId,
                       similarity: result.score,
-                      strategy: result.matchedVia as HydeStrategy,
+                      lens: result.matchedVia,
                       candidatePayload: '',
                       candidateSummary: undefined,
                     });
@@ -453,7 +451,7 @@ export class OpportunityGraphFactory {
                     candidateIntentId: result.id as Id<'intents'>,
                     indexId: targetIndex.indexId,
                     similarity: result.score,
-                    strategy: result.matchedVia as HydeStrategy,
+                    lens: result.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
                   });
@@ -462,7 +460,7 @@ export class OpportunityGraphFactory {
                     candidateUserId: result.userId as Id<'users'>,
                     indexId: targetIndex.indexId,
                     similarity: result.score,
-                    strategy: result.matchedVia as HydeStrategy,
+                    lens: result.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
                   });
@@ -487,15 +485,15 @@ export class OpportunityGraphFactory {
             const profileContext = state.sourceProfile?.narrative?.context;
             const profileSummary = profileBio || profileContext || '(profile embedding)';
 
-            // Compute per-strategy stats from deduped candidates
-            const strategyStats: Record<string, { count: number; avgSimilarity: number }> = {};
+            // Compute per-lens stats from deduped candidates
+            const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
             for (const c of candidates) {
-              const s = c.strategy || 'unknown';
-              if (!strategyStats[s]) strategyStats[s] = { count: 0, avgSimilarity: 0 };
-              strategyStats[s].count++;
-              strategyStats[s].avgSimilarity += c.similarity;
+              const s = c.lens || 'unknown';
+              if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
+              lensStats[s].count++;
+              lensStats[s].avgSimilarity += c.similarity;
             }
-            for (const s of Object.values(strategyStats)) {
+            for (const s of Object.values(lensStats)) {
               s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
             }
 
@@ -505,7 +503,7 @@ export class OpportunityGraphFactory {
               data: {
                 source: "profile",
                 candidateCount: candidates.length,
-                byStrategy: strategyStats,
+                byLens: lensStats,
                 durationMs: Date.now() - startTime,
               },
             });
@@ -525,11 +523,11 @@ export class OpportunityGraphFactory {
             for (const c of sortedCandidates) {
               traceEntries.push({
                 node: "match",
-                detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.strategy}`,
+                detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.lens}`,
                 data: {
                   userId: c.candidateUserId,
                   similarity: Math.round(c.similarity * 100),
-                  strategy: c.strategy,
+                  lens: c.lens,
                   hasIntent: !!c.candidateIntentId,
                 },
               });
@@ -544,33 +542,32 @@ export class OpportunityGraphFactory {
           async function runQueryHydeDiscovery(): Promise<CandidateMatch[]> {
             const searchText = state.searchQuery?.trim() ?? '';
             if (!searchText) return [];
-            const strategies = state.options.strategies ?? selectStrategies(searchText, {
-              indexId: state.targetIndexes[0] ? state.targetIndexes[0].indexId : undefined,
-            });
-            logger.info('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80), strategies });
+            logger.info('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
             const hydeResult = await self.hydeGenerator.invoke({
               sourceType: 'query',
               sourceText: searchText,
-              strategies,
-              context: state.targetIndexes[0] ? { indexId: state.targetIndexes[0].indexId } : undefined,
               forceRegenerate: false,
             });
             const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
+            const lenses = hydeResult.lenses ?? [];
             const embeddingKeys = hydeEmbeddings ? Object.keys(hydeEmbeddings) : [];
             logger.info('[Graph:Discovery] HyDE generator result', {
-              strategyCount: embeddingKeys.length,
-              strategies: embeddingKeys,
+              lensCount: embeddingKeys.length,
+              lenses: embeddingKeys,
             });
             if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) return [];
-            const embeddingsMap = new Map<HydeStrategy, number[]>();
-            for (const [strategy, emb] of Object.entries(hydeEmbeddings)) {
-              if (emb?.length) embeddingsMap.set(strategy as HydeStrategy, emb);
+            const lensMap = new Map(lenses.map(l => [l.label, l]));
+            const lensEmbeddings: LensEmbedding[] = [];
+            for (const [label, emb] of Object.entries(hydeEmbeddings)) {
+              if (emb?.length) {
+                const lens = lensMap.get(label);
+                lensEmbeddings.push({ lens: label, corpus: lens?.corpus ?? 'profiles', embedding: emb });
+              }
             }
             const all: CandidateMatch[] = [];
             await Promise.all(
               state.targetIndexes.map(async (targetIndex) => {
-                const results = await self.embedder.searchWithHydeEmbeddings(embeddingsMap, {
-                  strategies,
+                const results = await self.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                   indexScope: [targetIndex.indexId],
                   excludeUserId: state.userId,
                   limitPerStrategy,
@@ -583,7 +580,7 @@ export class OpportunityGraphFactory {
                     candidateIntentId: r.id as Id<'intents'>,
                     indexId: targetIndex.indexId,
                     similarity: r.score,
-                    strategy: r.matchedVia as HydeStrategy,
+                    lens: r.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
                   });
@@ -593,7 +590,7 @@ export class OpportunityGraphFactory {
                     candidateUserId: r.userId as Id<'users'>,
                     indexId: targetIndex.indexId,
                     similarity: r.score,
-                    strategy: r.matchedVia as HydeStrategy,
+                    lens: r.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
                   });
@@ -626,31 +623,28 @@ export class OpportunityGraphFactory {
             return { candidates: [] };
           }
 
-          const strategies = state.options.strategies ?? selectStrategies(searchText, {
-            indexId: state.targetIndexes[0].indexId,
-          });
           const hydeResult = await this.hydeGenerator.invoke({
             sourceType: 'query',
             sourceText: searchText,
-            strategies,
-            context: state.targetIndexes[0] ? { indexId: state.targetIndexes[0].indexId } : undefined,
             forceRegenerate: false,
           });
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
+          const lenses = hydeResult.lenses ?? [];
           if (!hydeEmbeddings || Object.keys(hydeEmbeddings).length === 0) {
-            return { hydeEmbeddings: {} as Record<HydeStrategy, number[]>, candidates: [] };
+            return { hydeEmbeddings: {} as Record<string, number[]>, candidates: [] };
           }
-          const embeddingsMap = new Map<HydeStrategy, number[]>();
-          for (const [strategy, embedding] of Object.entries(hydeEmbeddings)) {
-            if (embedding?.length) {
-              embeddingsMap.set(strategy as HydeStrategy, embedding);
+          const lensMap = new Map(lenses.map(l => [l.label, l]));
+          const lensEmbeddings: LensEmbedding[] = [];
+          for (const [label, emb] of Object.entries(hydeEmbeddings)) {
+            if (emb?.length) {
+              const lens = lensMap.get(label);
+              lensEmbeddings.push({ lens: label, corpus: lens?.corpus ?? 'profiles', embedding: emb });
             }
           }
           const allCandidates: CandidateMatch[] = [];
           await Promise.all(
             state.targetIndexes.map(async (targetIndex) => {
-              const results = await this.embedder.searchWithHydeEmbeddings(embeddingsMap, {
-                strategies,
+              const results = await this.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                 indexScope: [targetIndex.indexId],
                 excludeUserId: state.userId,
                 limitPerStrategy,
@@ -663,7 +657,7 @@ export class OpportunityGraphFactory {
                   candidateIntentId: result.id as Id<'intents'>,
                   indexId: targetIndex.indexId,
                   similarity: result.score,
-                  strategy: result.matchedVia as HydeStrategy,
+                  lens: result.matchedVia,
                   candidatePayload: '',
                   candidateSummary: undefined,
                 });
@@ -673,7 +667,7 @@ export class OpportunityGraphFactory {
                   candidateUserId: result.userId as Id<'users'>,
                   indexId: targetIndex.indexId,
                   similarity: result.score,
-                  strategy: result.matchedVia as HydeStrategy,
+                  lens: result.matchedVia,
                   candidatePayload: '',
                   candidateSummary: undefined,
                 });
@@ -689,20 +683,20 @@ export class OpportunityGraphFactory {
           }
           const candidates = Array.from(byUserAndIndex.values());
           logger.info('[Graph:Discovery] Intent-path discovery complete', { candidatesFound: candidates.length });
-          const usedStrategies = Object.keys(hydeEmbeddings);
+          const usedLenses = Object.keys(hydeEmbeddings);
 
           // Build trace with individual candidate similarity scores
           const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
 
-          // Compute per-strategy stats from deduped candidates
-          const strategyStats: Record<string, { count: number; avgSimilarity: number }> = {};
+          // Compute per-lens stats from deduped candidates
+          const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
           for (const c of candidates) {
-            const s = c.strategy || 'unknown';
-            if (!strategyStats[s]) strategyStats[s] = { count: 0, avgSimilarity: 0 };
-            strategyStats[s].count++;
-            strategyStats[s].avgSimilarity += c.similarity;
+            const s = c.lens || 'unknown';
+            if (!lensStats[s]) lensStats[s] = { count: 0, avgSimilarity: 0 };
+            lensStats[s].count++;
+            lensStats[s].avgSimilarity += c.similarity;
           }
-          for (const s of Object.values(strategyStats)) {
+          for (const s of Object.values(lensStats)) {
             s.avgSimilarity = s.count > 0 ? Math.round((s.avgSimilarity / s.count) * 1000) / 1000 : 0;
           }
 
@@ -711,9 +705,9 @@ export class OpportunityGraphFactory {
             detail: `Query: "${searchText.slice(0, 50)}${searchText.length > 50 ? '...' : ''}" → ${candidates.length} candidate(s)`,
             data: {
               query: searchText.slice(0, 100),
-              strategies: usedStrategies,
+              lenses: usedLenses,
               candidateCount: candidates.length,
-              byStrategy: strategyStats,
+              byLens: lensStats,
               durationMs: Date.now() - startTime,
             },
           });
@@ -721,13 +715,13 @@ export class OpportunityGraphFactory {
           // Show the HyDE-generated hypothetical documents used for search
           const hydeDocuments = hydeResult.hydeDocuments;
           if (hydeDocuments) {
-            for (const [strategy, doc] of Object.entries(hydeDocuments)) {
+            for (const [lens, doc] of Object.entries(hydeDocuments)) {
               if (doc?.hydeText) {
                 traceEntries.push({
                   node: "hyde_query",
-                  detail: `[${strategy}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
+                  detail: `[${lens}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
                   data: {
-                    strategy,
+                    lens,
                     hydeText: doc.hydeText,
                   },
                 });
@@ -740,18 +734,18 @@ export class OpportunityGraphFactory {
           for (const c of sortedCandidates) {
             traceEntries.push({
               node: "match",
-              detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.strategy}`,
+              detail: `Similarity ${Math.round(c.similarity * 100)}% via ${c.lens}`,
               data: {
                 userId: c.candidateUserId,
                 similarity: Math.round(c.similarity * 100),
-                strategy: c.strategy,
+                lens: c.lens,
                 hasIntent: !!c.candidateIntentId,
               },
             });
           }
 
           return {
-            hydeEmbeddings: hydeEmbeddings as Record<HydeStrategy, number[]>,
+            hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
             candidates,
             trace: traceEntries,
           };
@@ -848,7 +842,7 @@ export class OpportunityGraphFactory {
                     : undefined,
                 indexId: c.indexId,
                 ragScore: c.similarity * 100,
-                matchedVia: c.strategy,
+                matchedVia: c.lens,
               };
             })
           );

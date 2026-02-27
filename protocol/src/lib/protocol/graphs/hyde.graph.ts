@@ -1,55 +1,83 @@
 /**
- * HyDE Graph: cache-aware hypothetical document generation.
+ * HyDE Graph: cache-aware hypothetical document generation with lens inference.
  *
- * Flow: check_cache → (generate_missing if needed) → embed → cache_results.
- * Constructor injects Database, Embedder, Cache, HydeGenerator.
+ * Flow: infer_lenses → check_cache → (generate_missing if needed) → embed → cache_results.
+ * Constructor injects Database, Embedder, Cache, LensInferrer, HydeGenerator.
  */
 
 import { StateGraph, START, END } from '@langchain/langgraph';
 import { createHash } from 'crypto';
 import { HydeGraphState, type HydeDocumentState } from '../states/hyde.state';
-import type { HydeStrategy } from '../agents/hyde.strategies';
+import { LensInferrer } from '../agents/lens.inferrer';
 import { HydeGenerator } from '../agents/hyde.generator';
 import type { HydeGraphDatabase } from '../interfaces/database.interface';
 import type { EmbeddingGenerator } from '../interfaces/embedder.interface';
 import type { HydeCache } from '../interfaces/cache.interface';
+import { HYDE_DEFAULT_CACHE_TTL } from '../agents/hyde.strategies';
 import { protocolLogger } from '../support/protocol.logger';
 import { timed } from '../../performance';
 
 const logger = protocolLogger("HyDEGraphFactory");
 
-/** Build cache key: hyde:sourceType:sourceKey:strategy. For query, sourceKey is hash of sourceText. */
+/** Hash a lens label to a short key for cache/DB indexing. */
+function lensHash(label: string): string {
+  return createHash('sha256').update(label.toLowerCase().trim()).digest('hex').slice(0, 16);
+}
+
+/** Build cache key for a specific lens. */
 function cacheKey(
   sourceType: string,
   sourceId: string | undefined,
   sourceText: string,
-  strategy: string
+  lens: string,
 ): string {
-  const key =
-    sourceId ??
-    `q:${createHash('sha256').update(sourceText).digest('hex').slice(0, 16)}`;
-  return `hyde:${sourceType}:${key}:${strategy}`;
+  const entityKey =
+    sourceId ?? `q:${createHash('sha256').update(sourceText).digest('hex').slice(0, 16)}`;
+  return `hyde:${sourceType}:${entityKey}:${lensHash(lens)}`;
 }
 
 /**
  * Factory for the HyDE generation graph.
- * Injects Database, Embedder, Cache, and HydeGenerator.
+ * Injects Database, Embedder, Cache, LensInferrer, and HydeGenerator.
  */
 export class HydeGraphFactory {
   constructor(
     private database: HydeGraphDatabase,
     private embedder: EmbeddingGenerator,
     private cache: HydeCache,
-    private generator: HydeGenerator
+    private inferrer: LensInferrer,
+    private generator: HydeGenerator,
   ) {}
 
   createGraph() {
     const self = this;
 
+    /** Node 1: Infer lenses from source text + optional profile context. */
+    const inferLensesNode = async (state: typeof HydeGraphState.State) => {
+      return timed("HydeGraph.inferLenses", async () => {
+        const { sourceText, profileContext, maxLenses } = state;
+
+        logger.info('Inferring lenses', { sourceTextLength: sourceText.length, hasProfileContext: !!profileContext });
+
+        const result = await self.inferrer.infer({
+          sourceText,
+          profileContext,
+          maxLenses,
+        });
+
+        logger.info('Lenses inferred', {
+          count: result.lenses.length,
+          lenses: result.lenses.map(l => ({ label: l.label, corpus: l.corpus })),
+        });
+
+        return { lenses: result.lenses };
+      });
+    };
+
+    /** Node 2: Check cache/DB for existing HyDE docs matching inferred lenses. */
     const checkCacheNode = async (state: typeof HydeGraphState.State) => {
       return timed("HydeGraph.checkCache", async () => {
-        const { sourceType, sourceId, sourceText, strategies, forceRegenerate } =
-          state;
+        const { sourceType, sourceId, sourceText, lenses, forceRegenerate } = state;
 
         if (forceRegenerate) {
           logger.info('Force regenerate - skipping cache');
@@ -58,31 +86,27 @@ export class HydeGraphFactory {
 
         const cached: Record<string, HydeDocumentState> = {};
 
-        for (const strategy of strategies) {
-          const key = cacheKey(
-            sourceType,
-            sourceId ?? undefined,
-            sourceText,
-            strategy
-          );
+        for (const lens of lenses) {
+          const key = cacheKey(sourceType, sourceId ?? undefined, sourceText, lens.label);
 
           const fromCache = await self.cache.get<HydeDocumentState>(key);
           if (fromCache?.hydeText && fromCache.hydeEmbedding?.length) {
-            logger.info('Cache hit', { strategy });
-            cached[strategy] = fromCache;
+            logger.info('Cache hit', { lens: lens.label });
+            cached[lens.label] = fromCache;
             continue;
           }
 
-          if (sourceId && HydeGenerator.shouldPersist(strategy)) {
+          // For entity sources, check DB for persisted docs
+          if (sourceId) {
             const fromDb = await self.database.getHydeDocument(
               sourceType,
               sourceId,
-              strategy
+              lensHash(lens.label),
             );
             if (fromDb) {
-              logger.info('DB hit', { strategy });
-              cached[strategy] = {
-                strategy: strategy as HydeStrategy,
+              logger.info('DB hit', { lens: lens.label });
+              cached[lens.label] = {
+                lens: lens.label,
                 targetCorpus: fromDb.targetCorpus as 'profiles' | 'intents',
                 hydeText: fromDb.hydeText,
                 hydeEmbedding: fromDb.hydeEmbedding,
@@ -93,50 +117,47 @@ export class HydeGraphFactory {
 
         logger.info('Check cache done', {
           found: Object.keys(cached).length,
-          requested: strategies.length,
+          requested: lenses.length,
         });
         return { hydeDocuments: cached };
       });
     };
 
+    /** Conditional: decide whether to generate or skip to embed. */
     const shouldGenerate = (state: typeof HydeGraphState.State): string => {
-      const { strategies, hydeDocuments } = state;
-      const missing = strategies.filter((s) => !hydeDocuments[s]);
+      const { lenses, hydeDocuments } = state;
+      const missing = lenses.filter((l) => !hydeDocuments[l.label]);
       if (missing.length > 0) {
-        logger.info('Need to generate', { missing });
+        logger.info('Need to generate', { missing: missing.map(l => l.label) });
         return 'generate';
       }
-      logger.info('All strategies cached, skipping generation');
+      logger.info('All lenses cached, skipping generation');
       return 'skip';
     };
 
-    const generateMissingNode = async (
-      state: typeof HydeGraphState.State
-    ) => {
+    /** Node 3: Generate HyDE documents for lenses not in cache. */
+    const generateMissingNode = async (state: typeof HydeGraphState.State) => {
       return timed("HydeGraph.generateMissing", async () => {
-        const { sourceText, strategies, hydeDocuments, context } = state;
-        const missing = strategies.filter((s) => !hydeDocuments[s]);
+        const { sourceText, lenses, hydeDocuments } = state;
+        const missing = lenses.filter((l) => !hydeDocuments[l.label]);
 
         logger.info('Generating HyDE documents', {
           count: missing.length,
-          strategies: missing,
+          lenses: missing.map(l => l.label),
         });
 
         const generated: Record<string, HydeDocumentState> = {};
 
         await Promise.all(
-          missing.map(async (strategy) => {
-            const out = await self.generator.generate(
+          missing.map(async (lens) => {
+            const out = await self.generator.generate({
               sourceText,
-              strategy as HydeStrategy,
-              context
-            );
-            const targetCorpus = HydeGenerator.getTargetCorpus(
-              strategy as HydeStrategy
-            );
-            generated[strategy] = {
-              strategy: strategy as HydeStrategy,
-              targetCorpus,
+              lens: lens.label,
+              corpus: lens.corpus,
+            });
+            generated[lens.label] = {
+              lens: lens.label,
+              targetCorpus: lens.corpus,
               hydeText: out.text,
               hydeEmbedding: [],
             };
@@ -147,22 +168,23 @@ export class HydeGraphFactory {
       });
     };
 
+    /** Node 4: Embed all HyDE documents that don't have embeddings yet. */
     const embedNode = async (state: typeof HydeGraphState.State) => {
       return timed("HydeGraph.embed", async () => {
         const { hydeDocuments } = state;
-        const strategies = Object.keys(hydeDocuments);
-        const toEmbed: { strategy: string; doc: HydeDocumentState }[] = [];
+        const lensLabels = Object.keys(hydeDocuments);
+        const toEmbed: { label: string; doc: HydeDocumentState }[] = [];
         const updated: Record<string, HydeDocumentState> = {};
         const hydeEmbeddings: Record<string, number[]> = {};
 
-        for (const strategy of strategies) {
-          const doc = hydeDocuments[strategy];
+        for (const label of lensLabels) {
+          const doc = hydeDocuments[label];
           if (!doc) continue;
           if (doc.hydeEmbedding?.length) {
-            updated[strategy] = doc;
-            hydeEmbeddings[strategy] = doc.hydeEmbedding;
+            updated[label] = doc;
+            hydeEmbeddings[label] = doc.hydeEmbedding;
           } else {
-            toEmbed.push({ strategy, doc });
+            toEmbed.push({ label, doc });
           }
         }
 
@@ -175,10 +197,10 @@ export class HydeGraphFactory {
             : [embeddings as number[]];
 
           for (let i = 0; i < toEmbed.length; i++) {
-            const { strategy, doc } = toEmbed[i];
+            const { label, doc } = toEmbed[i];
             const embedding = embeddingArray[i] ?? [];
-            updated[strategy] = { ...doc, hydeEmbedding: embedding };
-            hydeEmbeddings[strategy] = embedding;
+            updated[label] = { ...doc, hydeEmbedding: embedding };
+            hydeEmbeddings[label] = embedding;
           }
         }
 
@@ -186,32 +208,24 @@ export class HydeGraphFactory {
       });
     };
 
+    /** Node 5: Cache results in Redis; persist to DB for entity sources. */
     const cacheResultsNode = async (state: typeof HydeGraphState.State) => {
       return timed("HydeGraph.cacheResults", async () => {
         const { sourceType, sourceId, sourceText, hydeDocuments } = state;
 
-        for (const strategy of Object.keys(hydeDocuments)) {
-          const doc = hydeDocuments[strategy];
+        for (const label of Object.keys(hydeDocuments)) {
+          const doc = hydeDocuments[label];
           if (!doc) continue;
 
-          const key = cacheKey(
-            sourceType,
-            sourceId ?? undefined,
-            sourceText,
-            strategy
-          );
-          const ttl = HydeGenerator.getCacheTTL(strategy as HydeStrategy);
+          const key = cacheKey(sourceType, sourceId ?? undefined, sourceText, label);
+          await self.cache.set(key, doc, { ttl: HYDE_DEFAULT_CACHE_TTL });
 
-          await self.cache.set(key, doc, ttl ? { ttl } : undefined);
-
-          if (
-            sourceId &&
-            HydeGenerator.shouldPersist(strategy as HydeStrategy)
-          ) {
+          // Persist to DB for entity sources (intent/profile)
+          if (sourceId) {
             await self.database.saveHydeDocument({
               sourceType,
               sourceId,
-              strategy,
+              strategy: lensHash(label),
               targetCorpus: doc.targetCorpus,
               hydeText: doc.hydeText,
               hydeEmbedding: doc.hydeEmbedding,
@@ -227,11 +241,13 @@ export class HydeGraphFactory {
     };
 
     const workflow = new StateGraph(HydeGraphState)
+      .addNode('infer_lenses', inferLensesNode)
       .addNode('check_cache', checkCacheNode)
       .addNode('generate_missing', generateMissingNode)
       .addNode('embed', embedNode)
       .addNode('cache_results', cacheResultsNode)
-      .addEdge(START, 'check_cache')
+      .addEdge(START, 'infer_lenses')
+      .addEdge('infer_lenses', 'check_cache')
       .addConditionalEdges('check_cache', shouldGenerate, {
         generate: 'generate_missing',
         skip: 'embed',

@@ -32,6 +32,7 @@ import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
 import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 import { opportunityQueue } from '../queues/opportunity.queue';
 
 import { TESTER_PERSONAS } from './test-data';
@@ -93,13 +94,13 @@ async function main() {
   // Run HyDE for the intent (no queue; direct invoke)
   const embedder: Embedder = new EmbedderAdapter();
   const cache: HydeCache = new RedisCacheAdapter();
+  const inferrer = new LensInferrer();
   const generator = new HydeGenerator();
-  const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, generator).createGraph();
+  const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
   await hydeGraph.invoke({
     sourceText: intentPayload,
     sourceType: 'intent',
     sourceId: created.id,
-    strategies: ['mirror', 'reciprocal'],
     forceRegenerate: true,
   });
   console.log('HyDE generated for intent');

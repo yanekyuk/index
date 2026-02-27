@@ -11,6 +11,7 @@ import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 
 /** BullMQ queue name for opportunity discovery jobs. */
 export const QUEUE_NAME = 'opportunity-discovery-queue';
@@ -147,11 +148,13 @@ export class OpportunityQueue {
     } else {
       const embedder: Embedder = new EmbedderAdapter();
       const cache: HydeCache = new RedisCacheAdapter();
+      const inferrer = new LensInferrer();
       const generator = new HydeGenerator();
       const hydeGraph = new HydeGraphFactory(
         this.graphDb as HydeGraphDatabase,
         embedder,
         cache,
+        inferrer,
         generator
       ).createGraph();
       const opportunityGraph = new OpportunityGraphFactory(

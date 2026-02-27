@@ -4,7 +4,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
-import type { HydeStrategy } from "./hyde.strategies";
+import type { Lens } from "./lens.inferrer";
 import type { OpportunityStatus } from "../interfaces/database.interface";
 import { Timed } from "../../performance";
 import { stripUuids } from "../support/opportunity.sanitize";
@@ -220,8 +220,8 @@ interface OpportunityEvaluatorOptions {
   minScore?: number;
   limit?: number;
   hydeDescription?: string;
-  /** When set (e.g. from chat discovery), HyDE runs only these strategies instead of inferring from intent. */
-  strategies?: HydeStrategy[];
+  /** Pre-inferred lenses (if not provided, lens inference runs automatically in HyDE graph). */
+  lenses?: Lens[];
   existingOpportunities?: string;
   candidates?: CandidateProfile[]; // For direct evaluation
   filter?: Record<string, unknown>;

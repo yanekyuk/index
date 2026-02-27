@@ -902,12 +902,12 @@ export interface Database {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Get a HyDE document by source and strategy.
+   * Get a HyDE document by source and strategy/lens hash.
    * Returns the first matching document when multiple target corpuses exist.
    *
    * @param sourceType - 'intent' | 'profile' | 'query'
    * @param sourceId - Source entity ID (e.g. intent ID, user ID)
-   * @param strategy - Strategy name (e.g. 'mirror', 'reciprocal', 'mentor')
+   * @param strategy - Lens hash (SHA-256 of lens label) or legacy strategy name
    * @returns The HyDE document or null if not found
    */
   getHydeDocument(
@@ -929,7 +929,7 @@ export interface Database {
   ): Promise<HydeDocument[]>;
 
   /**
-   * Save a HyDE document (upsert by sourceType + sourceId + strategy + targetCorpus).
+   * Save a HyDE document (upsert by sourceType + sourceId + strategy/lensHash + targetCorpus).
    *
    * @param data - HyDE document data
    * @returns The saved HyDE document

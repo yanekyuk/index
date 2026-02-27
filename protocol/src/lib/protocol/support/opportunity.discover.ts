@@ -1,9 +1,10 @@
 /**
  * Run discovery from an ad-hoc query (e.g. chat "find me a mentor", "who needs a React developer").
  *
- * Uses selectStrategiesFromQuery to pick HyDE strategies, invokes the opportunity
- * graph with the query as sourceText and those strategies, then returns
- * formatted candidates (enriched with profile name/bio) for chat display.
+ * Invokes the opportunity graph with the query as sourceText. The HyDE graph's
+ * LensInferrer automatically infers search lenses from the query, replacing the
+ * old hardcoded strategy selection. Returns formatted candidates (enriched with
+ * profile name/bio) for chat display.
  *
  * Used by the create_opportunities chat tool.
  */
@@ -11,7 +12,6 @@
 import type { Opportunity, ChatGraphCompositeDatabase } from "../interfaces/database.interface";
 import type { Cache } from "../interfaces/cache.interface";
 import type { OpportunityGraphOptions, CandidateMatch } from "../states/opportunity.state";
-import type { HydeStrategy } from "../agents/hyde.strategies";
 import {
   OpportunityPresenter,
   gatherPresenterContext,
@@ -140,54 +140,6 @@ export interface DiscoverResult {
     evaluated: number;
     remaining: number;
   };
-}
-
-/**
- * Infer HyDE strategies from a free-text discovery query so the opportunity graph
- * runs the right strategy mix (e.g. mentor vs hiree). Used when chat tools call
- * runDiscoverFromQuery with a user query like "find me a mentor" or
- * "who needs a React developer".
- *
- * @param query - User's free-text discovery query
- * @returns Array of HyDE strategy names to run
- */
-export function selectStrategiesFromQuery(query: string): HydeStrategy[] {
-  const base: HydeStrategy[] = ["mirror", "reciprocal"];
-  const q = (query ?? "").toLowerCase().trim();
-  if (!q) return base;
-
-  if (
-    /mentor|guide|guidance|learn from|advice from|someone to teach|teach me/.test(
-      q,
-    )
-  ) {
-    base.push("mentor");
-  }
-  if (
-    /investor|invest|funding|raise|seed|series|vc|capital|back (us|me|this)|fund|angel|pre-?seed|venture/.test(
-      q,
-    )
-  ) {
-    base.push("investor");
-    // Investors often provide mentorship too
-    if (!base.includes("mentor")) base.push("mentor");
-  }
-  if (
-    /co-?founder|collaborator|partner|peer|build together|work together|collaborat/.test(
-      q,
-    )
-  ) {
-    base.push("collaborator");
-  }
-  if (
-    /hire|hiring|who needs|looking for (a |an )?(developer|engineer|designer|react|frontend|backend)|job|role|position|developer needed|engineer needed/.test(
-      q,
-    )
-  ) {
-    base.push("hiree");
-  }
-
-  return [...new Set(base)];
 }
 
 /** Input for the shared enrichment helper. */
@@ -429,8 +381,8 @@ interface CachedDiscoverySession {
 
 /**
  * Run discovery from an ad-hoc query (e.g. "find me a mentor", "who needs a React developer").
- * Selects HyDE strategies from the query, invokes the opportunity graph, and returns
- * formatted candidates suitable for chat display.
+ * The HyDE graph's LensInferrer automatically infers search lenses from the query.
+ * Invokes the opportunity graph and returns formatted candidates suitable for chat display.
  */
 export async function runDiscoverFromQuery(
   input: DiscoverInput,
@@ -457,20 +409,14 @@ export async function runDiscoverFromQuery(
 
   const debugSteps: DiscoverDebugStep[] = [];
 
-  // When query is empty, the opportunity graph uses the user's intents in scope (indexedIntents[0].payload) and derives strategies from that
+  // When query is empty, the opportunity graph uses the user's intents in scope (indexedIntents[0].payload)
+  // Lens inference is handled automatically by the HyDE graph's LensInferrer
   const queryOrEmpty = query?.trim() ?? "";
   const options: OpportunityGraphOptions = {
     limit,
     initialStatus: chatSessionId ? "draft" : "latent",
     ...(chatSessionId ? { conversationId: chatSessionId } : {}),
   };
-  if (queryOrEmpty) {
-    options.strategies = selectStrategiesFromQuery(queryOrEmpty);
-    debugSteps.push({
-      step: "select_strategies",
-      detail: (options.strategies ?? []).join(", "),
-    });
-  }
 
   return withCallLogging(
     logger,

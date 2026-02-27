@@ -3,8 +3,10 @@
  * profile context and infers 1-N search lenses, each tagged with a target corpus.
  * Replaces the hardcoded HydeStrategy enum and regex-based selectStrategiesFromQuery.
  */
+import { config } from "dotenv";
+config({ path: '.env.development', override: true });
 
-import { BaseLangChainAgent } from '../../langchain/langchain';
+import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { Timed } from "../../performance";
@@ -57,19 +59,24 @@ const responseFormat = z.object({
   })).min(1).max(5).describe('Inferred search lenses'),
 });
 
+const model = new ChatOpenAI({
+  model: 'google/gemini-2.5-flash',
+  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
+});
+
+const logger = protocolLogger("LensInferrer");
+
 /**
  * Infers search lenses from source text and optional profile context.
  * Each lens represents a search perspective tagged with a target corpus
  * (profiles or intents) for downstream HyDE document generation.
  */
-const logger = protocolLogger("LensInferrer");
+export class LensInferrer {
+  private model: any;
 
-export class LensInferrer extends BaseLangChainAgent {
-  constructor(options?: { preset?: string; temperature?: number }) {
-    super({
-      preset: options?.preset ?? 'lens-inferrer',
-      responseFormat,
-      temperature: options?.temperature ?? 0.3,
+  constructor() {
+    this.model = model.withStructuredOutput(responseFormat, {
+      name: "lens_inferrer"
     });
   }
 
@@ -101,11 +108,9 @@ export class LensInferrer extends BaseLangChainAgent {
     ];
 
     try {
-      const result = await this.model.invoke({ messages }) as {
-        structuredResponse?: { lenses: Lens[] };
-      };
-
-      const lenses = (result?.structuredResponse?.lenses ?? []).slice(0, maxLenses);
+      const result = await this.model.invoke(messages);
+      const parsed = responseFormat.parse(result);
+      const lenses = parsed.lenses.slice(0, maxLenses);
 
       logger.info('Lenses inferred', {
         count: lenses.length,

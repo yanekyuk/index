@@ -2,13 +2,18 @@
  * HyDE Generator Agent: pure LLM agent for generating hypothetical documents
  * in the target corpus voice. Uses free-text lens labels instead of enum strategies.
  */
+import { config } from "dotenv";
+config({ path: '.env.development', override: true });
 
-import { BaseLangChainAgent } from '../../langchain/langchain';
+import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { HYDE_CORPUS_PROMPTS } from './hyde.strategies';
 import type { HydeTargetCorpus } from './lens.inferrer';
 import { Timed } from "../../performance";
+import { protocolLogger } from '../support/protocol.logger';
+
+const logger = protocolLogger("HydeGenerator");
 
 const SYSTEM_PROMPT = `You are a Hypothetical Document Generator for semantic search.
 
@@ -24,6 +29,11 @@ const responseFormat = z.object({
   hypotheticalDocument: z
     .string()
     .describe('The hypothetical document text in the target voice, suitable for embedding and retrieval'),
+});
+
+const model = new ChatOpenAI({
+  model: 'google/gemini-2.5-flash',
+  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
 });
 
 export interface HydeGeneratorOutput {
@@ -43,12 +53,12 @@ export interface HydeGenerateInput {
  * Generates hypothetical documents in a target corpus voice for semantic search.
  * Uses free-text lens labels (from LensInferrer) instead of enum strategies.
  */
-export class HydeGenerator extends BaseLangChainAgent {
-  constructor(options?: { preset?: string; temperature?: number }) {
-    super({
-      preset: options?.preset ?? 'hyde-generator',
-      responseFormat,
-      temperature: options?.temperature ?? 0.4,
+export class HydeGenerator {
+  private model: any;
+
+  constructor() {
+    this.model = model.withStructuredOutput(responseFormat, {
+      name: "hyde_generator"
     });
   }
 
@@ -67,9 +77,15 @@ export class HydeGenerator extends BaseLangChainAgent {
       new HumanMessage(promptText),
     ];
 
-    const result = await this.model.invoke({ messages }) as { structuredResponse?: { hypotheticalDocument: string } };
-    const parsed = result?.structuredResponse;
-    const text = parsed?.hypotheticalDocument ?? '';
+    const result = await this.model.invoke(messages);
+    const parsed = responseFormat.parse(result);
+    const text = parsed.hypotheticalDocument ?? '';
+
+    logger.info('Generated HyDE document', {
+      lens: input.lens,
+      corpus: input.corpus,
+      textLength: text.length,
+    });
 
     return { text };
   }
