@@ -158,13 +158,18 @@ export class MessagingService {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // XMTP node-bindings can throw with sync summary as error message (e.g. "synced 1 messages, 0 failed 1 succeeded from cursor Some(...)").
-      // Treat that as success so we return 200 and the frontend can update.
-      if (/synced \d+ messages?, \d+ failed \d+ succeeded/.test(msg)) {
-        logger.info('[sendMessage] XMTP threw sync summary as error; treating as success', {
-          userId,
-          groupId: resolvedGroupId,
-        });
-        return resolvedGroupId;
+      // Only treat as success when failed === 0 and succeeded > 0; otherwise rethrow.
+      const match = msg.match(/synced \d+ messages?, (\d+) failed (\d+) succeeded/);
+      if (match) {
+        const failed = parseInt(match[1], 10);
+        const succeeded = parseInt(match[2], 10);
+        if (failed === 0 && succeeded > 0) {
+          logger.info('[sendMessage] XMTP threw sync summary as error; treating as success', {
+            userId,
+            groupId: resolvedGroupId,
+          });
+          return resolvedGroupId;
+        }
       }
       throw err;
     }
