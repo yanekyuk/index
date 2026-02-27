@@ -148,12 +148,26 @@ export class MessagingService {
 
     if (!resolvedGroupId) throw new Error('groupId or peerUserId is required');
 
-    await client.conversations.syncAll();
-    const conversation = await client.conversations.getConversationById(resolvedGroupId);
-    if (!conversation) throw new Error('Conversation not found');
+    try {
+      await client.conversations.syncAll();
+      const conversation = await client.conversations.getConversationById(resolvedGroupId);
+      if (!conversation) throw new Error('Conversation not found');
 
-    await conversation.sendText(params.text.trim());
-    return resolvedGroupId;
+      await conversation.sendText(params.text.trim());
+      return resolvedGroupId;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // XMTP node-bindings can throw with sync summary as error message (e.g. "synced 1 messages, 0 failed 1 succeeded from cursor Some(...)").
+      // Treat that as success so we return 200 and the frontend can update.
+      if (/synced \d+ messages?, \d+ failed \d+ succeeded/.test(msg)) {
+        logger.info('[sendMessage] XMTP threw sync summary as error; treating as success', {
+          userId,
+          groupId: resolvedGroupId,
+        });
+        return resolvedGroupId;
+      }
+      throw err;
+    }
   }
 
   /** Find an existing DM conversation with a peer (read-only, no creation). */
