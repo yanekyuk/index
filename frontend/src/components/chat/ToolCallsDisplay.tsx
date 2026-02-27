@@ -311,7 +311,7 @@ function RunningTimer({ startedAt }: { startedAt: number }) {
   useEffect(() => {
     const interval = setInterval(() => {
       setElapsed(Date.now() - startedAt);
-    }, 50);
+    }, 100);
     return () => clearInterval(interval);
   }, [startedAt]);
 
@@ -551,7 +551,7 @@ export function ToolCallsDisplay({
                     <div className="bg-gray-950 border-l-2 border-gray-700 ml-4 py-1">
                       {event.steps!.map((step, stepIdx) => {
                         const isCandidate = step.step === "candidate" || step.step === "match";
-                        const isFelicity = step.data && ("clarity" in step.data || "classification" in step.data);
+                        const isFelicity = !isCandidate && step.data && ("clarity" in step.data || "classification" in step.data);
                         const isSearchQuery = step.step === "search_query" || step.step === "hyde_query";
 
                         return (

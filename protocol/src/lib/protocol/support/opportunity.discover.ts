@@ -263,7 +263,7 @@ async function enrichOpportunities(
   }
   const candidateUserIds = [
     ...new Set([
-      ...baseEnriched.map((item) => item.candidateUserId),
+      ...baseEnriched.map((item) => item.candidateUserId).filter(Boolean),
       ...introducerUserIds,
     ]),
   ];
