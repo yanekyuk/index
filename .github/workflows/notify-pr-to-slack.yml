@@ -1,0 +1,22 @@
+# Publish changelog to Slack when a PR is merged into dev or main.
+# Requires: GitHub repo secret SLACK_WEBHOOK_URL (webhook URL for the Slack automation).
+name: Changelog to Slack
+on:
+  pull_request:
+    types: [closed]
+    branches: [dev, main]
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    steps:
+      - name: Send changelog to Slack
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "description": "Merged to ${{ github.event.pull_request.base.ref }}\n\n*${{ github.event.pull_request.title }}*\nAuthor: ${{ github.event.pull_request.user.login }}\n${{ github.event.pull_request.html_url }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
