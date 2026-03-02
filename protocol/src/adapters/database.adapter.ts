@@ -14,6 +14,8 @@ import { generateWallet, decryptKey } from '../lib/xmtp';
 import { log } from '../lib/log';
 import { IndexMembershipEvents } from '../events/index_membership.event';
 
+const logger = log.lib.from('database.adapter');
+
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
   id: string;
@@ -166,7 +168,7 @@ export class IntentDatabaseAdapter {
         .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
-      console.error('IntentDatabaseAdapter.getActiveIntents error:', error);
+      logger.error('IntentDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -201,7 +203,7 @@ export class IntentDatabaseAdapter {
       if (!created) throw new Error('Insert did not return a row');
       return created;
     } catch (error: unknown) {
-      console.error('IntentDatabaseAdapter.createIntent error:', error);
+      logger.error('IntentDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -234,7 +236,7 @@ export class IntentDatabaseAdapter {
         });
       return updated ?? null;
     } catch (error: unknown) {
-      console.error('IntentDatabaseAdapter.updateIntent error:', error);
+      logger.error('IntentDatabaseAdapter.updateIntent error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -248,7 +250,7 @@ export class IntentDatabaseAdapter {
       if (!archived) return { success: false, error: 'Intent not found' };
       return { success: true };
     } catch (error: unknown) {
-      console.error('IntentDatabaseAdapter.archiveIntent error:', error);
+      logger.error('IntentDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -315,7 +317,7 @@ export class IntentDatabaseAdapter {
         );
       return result;
     } catch (error: unknown) {
-      console.error('IntentDatabaseAdapter.getIntentsInIndexForMember error:', error);
+      logger.error('IntentDatabaseAdapter.getIntentsInIndexForMember error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -746,7 +748,7 @@ export class ChatDatabaseAdapter {
         .orderBy(desc(schema.intents.createdAt));
       return result;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.getActiveIntents error:', error);
+      logger.error('ChatDatabaseAdapter.getActiveIntents error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -813,7 +815,7 @@ export class ChatDatabaseAdapter {
         );
       return result;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.getIntentsInIndexForMember error:', error);
+      logger.error('ChatDatabaseAdapter.getIntentsInIndexForMember error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -886,7 +888,7 @@ export class ChatDatabaseAdapter {
       if (!created) throw new Error('Insert did not return a row');
       return created;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.createIntent error:', error);
+      logger.error('ChatDatabaseAdapter.createIntent error', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -919,7 +921,7 @@ export class ChatDatabaseAdapter {
         });
       return updated ?? null;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.updateIntent error:', error);
+      logger.error('ChatDatabaseAdapter.updateIntent error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -933,7 +935,7 @@ export class ChatDatabaseAdapter {
       if (!archived) return { success: false, error: 'Intent not found' };
       return { success: true };
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.archiveIntent error:', error);
+      logger.error('ChatDatabaseAdapter.archiveIntent error', { error: error instanceof Error ? error.message : String(error) });
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -960,7 +962,7 @@ export class ChatDatabaseAdapter {
         );
       return result;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.getIndexMemberships error:', error);
+      logger.error('ChatDatabaseAdapter.getIndexMemberships error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -989,7 +991,7 @@ export class ChatDatabaseAdapter {
         .limit(1);
       return result[0] ?? null;
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.getIndexMembership error:', error);
+      logger.error('ChatDatabaseAdapter.getIndexMembership error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -1207,7 +1209,7 @@ export class ChatDatabaseAdapter {
         );
       return result.map((r) => r.indexId);
     } catch (error: unknown) {
-      console.error('ChatDatabaseAdapter.getUserIndexIds error:', error);
+      logger.error('ChatDatabaseAdapter.getUserIndexIds error', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -1832,7 +1834,7 @@ export class ChatDatabaseAdapter {
       try {
         IndexMembershipEvents.onMemberAdded(userId, indexId);
       } catch (err) {
-        console.error('[addMemberToIndex] Event hook failed (non-fatal)', { indexId, userId, error: err });
+        logger.warn('addMemberToIndex event hook failed (non-fatal)', { indexId, userId, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return { success: true, alreadyMember: result.length === 0 };
