@@ -55,7 +55,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           candidates = await systemDb.getMembersFromScope();
         }
 
-        logger.info("Name search candidates", {
+        logger.verbose("Name search candidates", {
           query: nameQuery,
           pattern,
           candidateCount: candidates.length,
@@ -293,7 +293,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           ...(query.location ? { location: query.location } : {}),
           ...(hasSocials ? { socials: socialsUpdate } : {}),
         });
-        logger.info("Updated user record before profile generation", { userId: context.userId });
+        logger.verbose("Updated user record before profile generation", { userId: context.userId });
       }
 
       // Invoke profile graph in generate mode (uses user table data + Parallels searchUser)
@@ -378,7 +378,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context }) => {
       const currentOnboarding = context.user.onboarding ?? {};
       if (currentOnboarding.completedAt) {
-        logger.info("Onboarding already completed, skipping", { userId: context.userId });
+        logger.verbose("Onboarding already completed, skipping", { userId: context.userId });
         return success({ message: "Onboarding already completed." });
       }
       await userDb.updateUser({

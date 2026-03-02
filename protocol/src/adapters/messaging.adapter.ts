@@ -250,7 +250,7 @@ export class MessagingAdapter {
     if (!client) return null;
 
     const dmId = await createDm(client, peerInfo.xmtpInboxId);
-    logger.info('[getOrCreateDm] DM ready', { dmId, userAId, userBId });
+    logger.verbose('[getOrCreateDm] DM ready', { dmId, userAId, userBId });
     return dmId;
   }
 }

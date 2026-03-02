@@ -118,7 +118,7 @@ export class IntentIndexer {
     memberPrompt: string | null,
     sourceName?: string | null
   ): Promise<IntentIndexerOutput | null> {
-    logger.info("[IntentIndexer.invoke] Evaluating intent");
+    logger.verbose("[IntentIndexer.invoke] Evaluating intent");
 
     const contextParts: string[] = [];
     if (sourceName) contextParts.push(`Source: ${sourceName}`);
@@ -144,7 +144,7 @@ export class IntentIndexer {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result) as IntentIndexerOutput;
 
-      logger.info("[IntentIndexer.invoke] Evaluation complete", {
+      logger.verbose("[IntentIndexer.invoke] Evaluation complete", {
         indexScore: output.indexScore,
         memberScore: output.memberScore,
       });

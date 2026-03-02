@@ -57,7 +57,7 @@ export class HydeQueue {
    */
   async cleanupExpiredHyde(): Promise<number> {
     const db = this.deps?.database ?? this.database;
-    this.logger.info('[HydeJob:Cleanup] Starting expired HyDE cleanup');
+    this.logger.verbose('[HydeJob:Cleanup] Starting expired HyDE cleanup');
     const deletedCount = await db.deleteExpiredHydeDocuments();
     this.logger.info(`[HydeJob:Cleanup] Deleted ${deletedCount} expired HyDE documents`);
     return deletedCount;
@@ -69,10 +69,10 @@ export class HydeQueue {
    */
   async refreshStaleHyde(): Promise<number> {
     const db = this.deps?.database ?? this.database;
-    this.logger.info('[HydeJob:Refresh] Starting stale HyDE refresh');
+    this.logger.verbose('[HydeJob:Refresh] Starting stale HyDE refresh');
     const staleThreshold = new Date(Date.now() - STALE_HYDE_DAYS_MS);
     const staleDocuments = await db.getStaleHydeDocuments(staleThreshold);
-    this.logger.info(`[HydeJob:Refresh] Found ${staleDocuments.length} stale HyDE documents`);
+    this.logger.verbose(`[HydeJob:Refresh] Found ${staleDocuments.length} stale HyDE documents`);
 
     const embedder = new EmbedderAdapter();
     const cache = new RedisCacheAdapter();

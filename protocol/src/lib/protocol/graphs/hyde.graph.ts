@@ -61,7 +61,7 @@ export class HydeGraphFactory {
       return timed("HydeGraph.inferLenses", async () => {
         const { sourceText, profileContext, maxLenses } = state;
 
-        logger.info('Inferring lenses', { sourceTextLength: sourceText.length, hasProfileContext: !!profileContext });
+        logger.verbose('Inferring lenses', { sourceTextLength: sourceText.length, hasProfileContext: !!profileContext });
 
         try {
           const result = await self.inferrer.infer({
@@ -70,7 +70,7 @@ export class HydeGraphFactory {
             maxLenses,
           });
 
-          logger.info('Lenses inferred', {
+          logger.verbose('Lenses inferred', {
             count: result.lenses.length,
             lenses: result.lenses.map(l => ({ label: l.label, corpus: l.corpus })),
           });
@@ -89,7 +89,7 @@ export class HydeGraphFactory {
         const { sourceType, sourceId, sourceText, lenses, forceRegenerate } = state;
 
         if (forceRegenerate) {
-          logger.info('Force regenerate - skipping cache');
+          logger.verbose('Force regenerate - skipping cache');
           return { hydeDocuments: {} };
         }
 
@@ -100,7 +100,7 @@ export class HydeGraphFactory {
 
           const fromCache = await self.cache.get<HydeDocumentState>(key);
           if (fromCache?.hydeText && fromCache.hydeEmbedding?.length) {
-            logger.info('Cache hit', { lens: lens.label });
+            logger.verbose('Cache hit', { lens: lens.label });
             cached[lens.label] = fromCache;
             continue;
           }
@@ -113,7 +113,7 @@ export class HydeGraphFactory {
               lensHash(lens.label, lens.corpus),
             );
             if (fromDb) {
-              logger.info('DB hit', { lens: lens.label });
+              logger.verbose('DB hit', { lens: lens.label });
               cached[lens.label] = {
                 lens: lens.label,
                 targetCorpus: fromDb.targetCorpus as 'profiles' | 'intents',
@@ -124,7 +124,7 @@ export class HydeGraphFactory {
           }
         }
 
-        logger.info('Check cache done', {
+        logger.verbose('Check cache done', {
           found: Object.keys(cached).length,
           requested: lenses.length,
         });
@@ -137,10 +137,10 @@ export class HydeGraphFactory {
       const { lenses, hydeDocuments } = state;
       const missing = lenses.filter((l) => !hydeDocuments[l.label]);
       if (missing.length > 0) {
-        logger.info('Need to generate', { missing: missing.map(l => l.label) });
+        logger.verbose('Need to generate', { missing: missing.map(l => l.label) });
         return 'generate';
       }
-      logger.info('All lenses cached, skipping generation');
+      logger.verbose('All lenses cached, skipping generation');
       return 'skip';
     };
 
@@ -150,7 +150,7 @@ export class HydeGraphFactory {
         const { sourceText, lenses, hydeDocuments } = state;
         const missing = lenses.filter((l) => !hydeDocuments[l.label]);
 
-        logger.info('Generating HyDE documents', {
+        logger.verbose('Generating HyDE documents', {
           count: missing.length,
           lenses: missing.map(l => l.label),
         });
@@ -198,7 +198,7 @@ export class HydeGraphFactory {
         }
 
         if (toEmbed.length > 0) {
-          logger.info('Embedding documents', { count: toEmbed.length });
+          logger.verbose('Embedding documents', { count: toEmbed.length });
           const texts = toEmbed.map((t) => t.doc.hydeText);
           const embeddings = await self.embedder.generate(texts);
           const embeddingArray = Array.isArray(embeddings[0])
@@ -242,7 +242,7 @@ export class HydeGraphFactory {
           }
         }
 
-        logger.info('Cached results', {
+        logger.verbose('Cached results', {
           count: Object.keys(hydeDocuments).length,
         });
         return {};

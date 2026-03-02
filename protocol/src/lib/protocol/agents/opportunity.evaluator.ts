@@ -266,10 +266,10 @@ export class OpportunityEvaluator {
   ): Promise<Opportunity[]> {
     const minScore = options.minScore || 70;
 
-    logger.info(`[OpportunityEvaluator.invoke] Analyzing ${candidates.length} candidates...`);
+    logger.verbose(`[OpportunityEvaluator.invoke] Analyzing ${candidates.length} candidates...`);
 
     if (candidates.length === 0) {
-      logger.info('[OpportunityEvaluator] No candidates provided.');
+      logger.verbose('[OpportunityEvaluator] No candidates provided.');
       return [];
     }
 
@@ -291,7 +291,7 @@ export class OpportunityEvaluator {
 
     // Sort by score and take top 1
     const out = opportunities.sort((a, b) => b.score - a.score).slice(0, 1);
-    logger.info('[OpportunityEvaluator.invoke] Done', { accepted: out.length });
+    logger.verbose('[OpportunityEvaluator.invoke] Done', { accepted: out.length });
     return out;
   }
 
@@ -341,7 +341,7 @@ export class OpportunityEvaluator {
       return mappedOpportunities;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      logger.info(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
+      logger.warn(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
       return [];
     }
   }
@@ -358,7 +358,7 @@ export class OpportunityEvaluator {
     const returnAll = options.returnAll ?? false;
     const totalEntities = input.entities?.length ?? 0;
     if (!input.entities?.length) {
-      logger.info('[OpportunityEvaluator.invokeEntityBundle] No entities.');
+      logger.verbose('[OpportunityEvaluator.invokeEntityBundle] No entities.');
       return [];
     }
     const existingPart = input.existingOpportunities
@@ -427,7 +427,7 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
           ? parsed.opportunities.filter((op) => op.actors.length === 2)
           : parsed.opportunities;
       const filtered = introGuard.filter((op) => op.score >= minScore);
-      logger.info('[OpportunityEvaluator.invokeEntityBundle] Done', {
+      logger.verbose('[OpportunityEvaluator.invokeEntityBundle] Done', {
         total: parsed.opportunities.length,
         afterIntroGuard: introGuard.length,
         accepted: filtered.length,

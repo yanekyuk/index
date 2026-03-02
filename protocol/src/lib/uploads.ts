@@ -13,6 +13,7 @@ import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
 
+import { log } from './log';
 import { getUploadsPath } from './paths';
 import {
   FILE_SIZE_LIMITS,
@@ -28,6 +29,8 @@ import {
   isFileExtensionSupported,
   FALLBACK_TEXT_EXTENSIONS,
 } from './uploads.config';
+
+const logger = log.lib.from('uploads');
 
 // Type extension for requests with generated file ID
 declare global {
@@ -135,7 +138,7 @@ export async function loadFileContent(filePath: string): Promise<{ content: stri
       }
     }
   } catch (error) {
-    console.warn(`UnstructuredClient failed for ${path.basename(filePath)}, trying fallback:`, error instanceof Error ? error.message : 'Unknown error');
+    logger.warn('UnstructuredClient failed, trying fallback', { fileName: path.basename(filePath), error: error instanceof Error ? error.message : 'Unknown error' });
   }
 
   try {
@@ -175,7 +178,7 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
   for (const file of files) {
     if (!isFileSupported(file.path)) {
       const error = `Skipping unsupported file: ${file.originalname}`;
-      console.log(error);
+      logger.verbose('Skipping unsupported file', { error });
       errors.push(error);
       continue;
     }
@@ -184,7 +187,7 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
       contentParts.push(`=== ${file.originalname} ===\n${result.content.substring(0, 5000)}`);
     } else if (result.error) {
       const error = `Failed to process ${file.originalname}: ${result.error}`;
-      console.warn(error);
+      logger.warn('Failed to process file', { error });
       errors.push(error);
     }
   }
@@ -203,7 +206,7 @@ export async function cleanupUploadedFiles(files: Express.Multer.File[]): Promis
       try {
         await fs.promises.unlink(file.path);
       } catch (error) {
-        console.warn(`Failed to cleanup file ${file.path}:`, error);
+        logger.warn('Failed to cleanup file', { filePath: file.path, error: error instanceof Error ? error.message : String(error) });
       }
     })
   );

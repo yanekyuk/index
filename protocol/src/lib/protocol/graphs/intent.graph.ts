@@ -134,7 +134,7 @@ export class IntentGraphFactory {
      */
     const prepNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.prep", async () => {
-        logger.info("Starting preparation phase", {
+        logger.verbose("Starting preparation phase", {
           operationMode: state.operationMode,
           hasContent: !!state.inputContent,
           targetIntentIds: state.targetIntentIds,
@@ -156,7 +156,7 @@ export class IntentGraphFactory {
           .map(i => `ID: ${i.id}, Description: ${i.payload}, Summary: ${i.summary || 'N/A'}`)
           .join('\n') || "No active intents.";
 
-        logger.info("Fetched active intents", {
+        logger.verbose("Fetched active intents", {
           count: activeIntents.length,
           operationMode: state.operationMode
         });
@@ -179,7 +179,7 @@ export class IntentGraphFactory {
      */
     const inferenceNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.inference", async () => {
-        logger.info("Starting inference", {
+        logger.verbose("Starting inference", {
           operationMode: state.operationMode,
           hasContent: !!state.inputContent,
           contentPreview: state.inputContent?.substring(0, 50),
@@ -204,7 +204,7 @@ export class IntentGraphFactory {
           }
         );
 
-        logger.info("Inference complete", {
+        logger.verbose("Inference complete", {
           inferredCount: result.intents.length,
           operationMode: state.operationMode
         });
@@ -233,17 +233,17 @@ export class IntentGraphFactory {
       return timed("IntentGraph.verification", async () => {
         const intents = state.inferredIntents;
 
-        logger.info("Starting verification", {
+        logger.verbose("Starting verification", {
           operationMode: state.operationMode,
           intentCount: intents.length
         });
 
         if (intents.length === 0) {
-          logger.info("No intents to verify");
+          logger.verbose("No intents to verify");
           return { verifiedIntents: [] };
         }
 
-        logger.info(`Verifying ${intents.length} intents in parallel...`);
+        logger.verbose(`Verifying ${intents.length} intents in parallel...`);
 
         // Parallel Execution
         const verificationResults = await Promise.all(
@@ -255,7 +255,7 @@ export class IntentGraphFactory {
               if (isVague(description, verdict.semantic_entropy, verdict.felicity_scores.clarity)) {
                 const enrichedDescription = enrichVagueIntentWithProfile(description, state.userProfile);
                 if (enrichedDescription !== description) {
-                  logger.info("Enriched vague intent using profile context", {
+                  logger.verbose("Enriched vague intent using profile context", {
                     before: description,
                     after: enrichedDescription,
                   });
@@ -308,7 +308,7 @@ export class IntentGraphFactory {
 
         // Filter out nulls
         const verified = verificationResults.filter((i): i is VerifiedIntent => i !== null);
-        logger.info(`Verification complete`, {
+        logger.verbose(`Verification complete`, {
           passed: verified.length,
           total: intents.length,
           operationMode: state.operationMode
@@ -360,7 +360,7 @@ export class IntentGraphFactory {
      */
     const reconciliationNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.reconciliation", async () => {
-        logger.info("Starting reconciliation", {
+        logger.verbose("Starting reconciliation", {
           operationMode: state.operationMode,
           verifiedIntentCount: state.verifiedIntents.length,
           targetIntentIds: state.targetIntentIds
@@ -376,7 +376,7 @@ export class IntentGraphFactory {
             };
           }
 
-          logger.info("Delete mode - generating expire actions", {
+          logger.verbose("Delete mode - generating expire actions", {
             targetIds: state.targetIntentIds
           });
 
@@ -398,7 +398,7 @@ export class IntentGraphFactory {
         // Standard reconciliation for create/update operations
         const candidates = state.verifiedIntents;
         if (candidates.length === 0) {
-          logger.info("No verified intents to reconcile");
+          logger.verbose("No verified intents to reconcile");
           return {
             actions: [],
             trace: [{ node: "reconciler", detail: "No intents to reconcile" }],
@@ -412,14 +412,14 @@ export class IntentGraphFactory {
           `  Verification: ${c.verification?.classification} (Flags: ${c.verification?.flags.join(', ') || 'None'})`
         ).join('\n');
 
-        logger.info("Invoking reconciler agent", {
+        logger.verbose("Invoking reconciler agent", {
           candidateCount: candidates.length,
           operationMode: state.operationMode
         });
 
         const result = await reconciler.invoke(formattedCandidates, state.activeIntents);
 
-        logger.info("Reconciliation complete", {
+        logger.verbose("Reconciliation complete", {
           actionCount: result.actions.length,
           operationMode: state.operationMode
         });
@@ -463,7 +463,7 @@ export class IntentGraphFactory {
           return { executionResults: [] };
         }
 
-        logger.info(`Executing ${actions.length} actions...`);
+        logger.verbose(`Executing ${actions.length} actions...`);
         const results: ExecutionResult[] = [];
         const verifiedIntentByPayload = new Map<string, VerifiedIntent>();
         for (const verifiedIntent of state.verifiedIntents) {
@@ -495,7 +495,7 @@ export class IntentGraphFactory {
                   flatEmbedding = Array.isArray(embedding?.[0])
                     ? (embedding as number[][])[0]
                     : (embedding as number[]);
-                  logger.info("Generated embedding for new intent", { dimensions: flatEmbedding?.length });
+                  logger.verbose("Generated embedding for new intent", { dimensions: flatEmbedding?.length });
                 } catch (embErr) {
                   logger.error("Failed to generate embedding for intent (continuing without)", { error: embErr });
                 }
@@ -523,7 +523,7 @@ export class IntentGraphFactory {
               });
 
               results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
-              logger.info(`Created intent: ${created.id}`);
+              logger.verbose(`Created intent: ${created.id}`);
               this.intentQueue?.addGenerateHydeJob({ intentId: created.id, userId: state.userId }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );
@@ -547,7 +547,7 @@ export class IntentGraphFactory {
                   flatEmbedding = Array.isArray(embedding?.[0])
                     ? (embedding as number[][])[0]
                     : (embedding as number[]);
-                  logger.info("Generated embedding for updated intent", { intentId: updateAction.id, dimensions: flatEmbedding?.length });
+                  logger.verbose("Generated embedding for updated intent", { intentId: updateAction.id, dimensions: flatEmbedding?.length });
                 } catch (embErr) {
                   logger.error("Failed to generate embedding for intent update (continuing without)", { error: embErr });
                 }
@@ -574,7 +574,7 @@ export class IntentGraphFactory {
                 payload: sanitizedPayload,
                 error: updated ? undefined : 'Intent not found'
               });
-              logger.info(`Updated intent: ${updateAction.id}`);
+              logger.verbose(`Updated intent: ${updateAction.id}`);
               if (updated) {
                 this.intentQueue?.addGenerateHydeJob({ intentId: updateAction.id, userId: state.userId }).catch((err) =>
                   logger.error('Failed to enqueue intent HyDE job', { intentId: updateAction.id, error: err })
@@ -590,7 +590,7 @@ export class IntentGraphFactory {
                 intentId: expireAction.id,
                 error: result.error
               });
-              logger.info(`Archived intent: ${expireAction.id}`);
+              logger.verbose(`Archived intent: ${expireAction.id}`);
               if (result.success) {
                 this.intentQueue?.addDeleteHydeJob({ intentId: expireAction.id }).catch((err) =>
                   logger.error('Failed to enqueue intent HyDE delete job', { intentId: expireAction.id, error: err })
@@ -622,7 +622,7 @@ export class IntentGraphFactory {
      */
     const queryNode = async (state: typeof IntentGraphState.State) => {
       return timed("IntentGraph.query", async () => {
-        logger.info("Starting query (read mode)", {
+        logger.verbose("Starting query (read mode)", {
           userId: state.userId,
           indexId: state.indexId,
           queryUserId: state.queryUserId,
@@ -764,7 +764,7 @@ export class IntentGraphFactory {
         return '__end__';
       }
       if (state.operationMode === 'read') {
-        logger.info('Read mode - routing to query (fast path)');
+        logger.verbose('Read mode - routing to query (fast path)');
         return 'query';
       }
       return shouldRunInference(state);
@@ -776,11 +776,11 @@ export class IntentGraphFactory {
      */
     const shouldRunInference = (state: typeof IntentGraphState.State): string => {
       if (state.operationMode === 'delete') {
-        logger.info('Delete mode - skipping inference, routing to reconciliation');
+        logger.verbose('Delete mode - skipping inference, routing to reconciliation');
         return 'reconciler';
       }
       
-      logger.info('Running inference', {
+      logger.verbose('Running inference', {
         operationMode: state.operationMode
       });
       return 'inference';
@@ -795,25 +795,25 @@ export class IntentGraphFactory {
     const shouldRunVerification = (state: typeof IntentGraphState.State): string => {
       if (state.inferredIntents.length === 0) {
         if (state.operationMode === 'propose') {
-          logger.info('Propose mode with no inferred intents - exiting early');
+          logger.verbose('Propose mode with no inferred intents - exiting early');
           return '__end__';
         }
-        logger.info('No intents to verify - skipping verification, routing to reconciliation');
+        logger.verbose('No intents to verify - skipping verification, routing to reconciliation');
         return 'reconciler';
       }
       
       if (state.operationMode === 'update') {
-        logger.info('Update mode with new intents - running verification');
+        logger.verbose('Update mode with new intents - running verification');
         return 'verification';
       }
       
       if (state.operationMode === 'create') {
-        logger.info('Create mode - running verification');
+        logger.verbose('Create mode - running verification');
         return 'verification';
       }
       
       // Default to verification for safety
-      logger.info('Default routing to verification');
+      logger.verbose('Default routing to verification');
       return 'verification';
     };
 
@@ -856,7 +856,7 @@ export class IntentGraphFactory {
       // After verification: propose mode exits early; others continue to reconciliation
       .addConditionalEdges("verification", (state: typeof IntentGraphState.State) => {
         if (state.operationMode === 'propose') {
-          logger.info('Propose mode - stopping after verification, skipping reconciliation');
+          logger.verbose('Propose mode - stopping after verification, skipping reconciliation');
           return '__end__';
         }
         return 'reconciler';

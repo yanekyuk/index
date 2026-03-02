@@ -41,7 +41,7 @@ export class ProfileService {
    * @returns Graph execution result with profile data
    */
   async syncProfile(userId: string): Promise<Record<string, unknown>> {
-    logger.info('[ProfileService] Syncing profile', { userId });
+    logger.verbose('[ProfileService] Syncing profile', { userId });
 
     const graph = this.factory.createGraph();
     const result = await graph.invoke({ userId });

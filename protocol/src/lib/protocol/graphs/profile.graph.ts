@@ -114,7 +114,7 @@ export class ProfileGraphFactory {
           };
         }
 
-        logger.info("Checking profile state...", {
+        logger.verbose("Checking profile state...", {
           userId: state.userId,
           operationMode: state.operationMode,
           forceUpdate: state.forceUpdate
@@ -125,7 +125,7 @@ export class ProfileGraphFactory {
 
           // Query mode: Just return the profile (fast path)
           if (state.operationMode === 'query') {
-            logger.info("🚀 Query mode - returning existing profile (fast path)", {
+            logger.verbose("🚀 Query mode - returning existing profile (fast path)", {
               hasProfile: !!profile
             });
             const profileWithId = profile ? await this.database.getProfileByUserId(state.userId) : null;
@@ -168,7 +168,7 @@ export class ProfileGraphFactory {
           let missingUserInfo: string[] = [];
 
           if (willNeedScraping) {
-            logger.info("Will need scraping - checking user information...");
+            logger.verbose("Will need scraping - checking user information...");
 
             const user = await this.database.getUser(state.userId);
 
@@ -220,7 +220,7 @@ export class ProfileGraphFactory {
                 missingUserInfo.push('location'); // Nice to have
               }
 
-              logger.info("⚠️ Insufficient user information for scraping", {
+              logger.verbose("⚠️ Insufficient user information for scraping", {
                 hasSocials,
                 hasMeaningfulName,
                 hasLocation,
@@ -228,7 +228,7 @@ export class ProfileGraphFactory {
                 missingUserInfo
               });
             } else {
-              logger.info("✅ Sufficient user information for scraping", {
+              logger.verbose("✅ Sufficient user information for scraping", {
                 hasSocials,
                 hasMeaningfulName,
                 hasLocation,
@@ -237,7 +237,7 @@ export class ProfileGraphFactory {
             }
           }
 
-          logger.info("📊 State detection complete", {
+          logger.verbose("📊 State detection complete", {
             hasProfile: !!profile,
             needsProfileGeneration,
             needsProfileEmbedding,
@@ -280,11 +280,11 @@ export class ProfileGraphFactory {
     const scrapeNode = async (state: typeof ProfileGraphState.State) => {
       return timed("ProfileGraph.scrape", async () => {
         if (state.input && isMeaningfulProfileInput(state.input)) {
-          logger.info("Meaningful input already provided - skipping scrape");
+          logger.verbose("Meaningful input already provided - skipping scrape");
           return {};
         }
 
-        logger.info("Starting web scrape...", {
+        logger.verbose("Starting web scrape...", {
           userId: state.userId
         });
 
@@ -330,7 +330,7 @@ export class ProfileGraphFactory {
             objective += 'Search for professional information and background about this person.';
           }
 
-          logger.info("Constructed scraping objective", {
+          logger.verbose("Constructed scraping objective", {
             hasSocials: socialParts.length > 0,
             hasLocation: !!user.location,
             objectivePreview: objective.substring(0, 100)
@@ -338,7 +338,7 @@ export class ProfileGraphFactory {
 
           const scrapedData = await this.scraper.scrape(objective);
 
-          logger.info("✅ Scrape complete", {
+          logger.verbose("✅ Scrape complete", {
             dataLength: scrapedData?.length || 0
           });
 
@@ -366,7 +366,7 @@ export class ProfileGraphFactory {
     // ─────────────────────────────────────────────────────────
     const autoGenerateNode = async (state: typeof ProfileGraphState.State) => {
       return timed("ProfileGraph.autoGenerate", async () => {
-        logger.info("Starting auto-generate via Parallels searchUser", {
+        logger.verbose("Starting auto-generate via Parallels searchUser", {
           userId: state.userId,
         });
 
@@ -402,7 +402,7 @@ export class ProfileGraphFactory {
           const hasMeaningfulName = request.name && request.name.trim() !== '' && !request.name.includes('@') && request.name.split(/\s+/).filter(Boolean).length >= 2;
 
           if (!hasSocials && !hasMeaningfulName) {
-            logger.info("Insufficient user info for auto-generate", { userId: state.userId });
+            logger.verbose("Insufficient user info for auto-generate", { userId: state.userId });
             return {
               needsUserInfo: true,
               missingUserInfo: [
@@ -412,7 +412,7 @@ export class ProfileGraphFactory {
             };
           }
 
-          logger.info("Calling Parallels searchUser", {
+          logger.verbose("Calling Parallels searchUser", {
             hasName: !!request.name,
             hasEmail: !!request.email,
             hasSocials,
@@ -447,7 +447,7 @@ export class ProfileGraphFactory {
           }
 
           const combinedInput = inputParts.join('\n\n');
-          logger.info("Auto-generate input ready", {
+          logger.verbose("Auto-generate input ready", {
             sourceCount: inputParts.length,
             inputLength: combinedInput.length,
           });
@@ -480,7 +480,7 @@ export class ProfileGraphFactory {
           };
         }
 
-        logger.info("Starting profile generation...", {
+        logger.verbose("Starting profile generation...", {
           hasExistingProfile: !!state.profile,
           isUpdate: state.forceUpdate,
           inputLength: state.input.length
@@ -491,12 +491,12 @@ export class ProfileGraphFactory {
           let inputWithContext = state.input;
           if (state.profile && state.forceUpdate) {
             inputWithContext = `EXISTING PROFILE:\n${JSON.stringify(state.profile, null, 2)}\n\nUSER REQUEST:\n${state.input}\n\nApply the user's request to the existing profile. Preserve existing data unless the user asks to change or remove it. You may add, update, or remove skills and interests as requested. Output the full updated profile.`;
-            logger.info("Merging with existing profile");
+            logger.verbose("Merging with existing profile");
           }
 
           const result = await profileGenerator.invoke(inputWithContext);
 
-          logger.info("✅ Profile generated successfully", {
+          logger.verbose("✅ Profile generated successfully", {
             name: result.output.identity.name,
             skillsCount: result.output.attributes.skills.length,
             interestsCount: result.output.attributes.interests.length
@@ -536,7 +536,7 @@ export class ProfileGraphFactory {
           };
         }
 
-        logger.info("Starting profile embedding...", {
+        logger.verbose("Starting profile embedding...", {
           userId: state.userId
         });
 
@@ -554,21 +554,21 @@ export class ProfileGraphFactory {
             '## Skills', profile.attributes.skills.join(', ')
           ].join('\n');
 
-          logger.info("Generating embedding...", {
+          logger.verbose("Generating embedding...", {
             textLength: textToEmbed.length
           });
 
           const embedding = await this.embedder.generate(textToEmbed);
           profile.embedding = embedding;
 
-          logger.info("Saving profile to DB...", {
+          logger.verbose("Saving profile to DB...", {
             userId: state.userId,
             embeddingDimensions: Array.isArray(embedding[0]) ? embedding[0].length : embedding.length
           });
 
           await this.database.saveProfile(state.userId, profile);
 
-          logger.info("✅ Profile saved successfully");
+          logger.verbose("✅ Profile saved successfully");
 
           return {
             profile,
@@ -599,7 +599,7 @@ export class ProfileGraphFactory {
           };
         }
 
-        logger.info("Starting HyDE generation...", {
+        logger.verbose("Starting HyDE generation...", {
           userId: state.userId,
           profileName: state.profile.identity.name
         });
@@ -608,7 +608,7 @@ export class ProfileGraphFactory {
           const profileString = JSON.stringify(state.profile, null, 2);
           const result = await hydeGenerator.invoke(profileString);
 
-          logger.info("✅ HyDE generated successfully", {
+          logger.verbose("✅ HyDE generated successfully", {
             descriptionLength: result.textToEmbed.length
           });
 
@@ -640,7 +640,7 @@ export class ProfileGraphFactory {
           };
         }
 
-        logger.info("Starting HyDE embedding...", {
+        logger.verbose("Starting HyDE embedding...", {
           userId: state.userId,
           descriptionLength: state.hydeDescription.length
         });
@@ -653,7 +653,7 @@ export class ProfileGraphFactory {
             ? (hydeEmbedding as number[][])[0]
             : (hydeEmbedding as number[]);
 
-          logger.info("Saving HyDE to hyde_documents...", {
+          logger.verbose("Saving HyDE to hyde_documents...", {
             userId: state.userId,
             embeddingDimensions: flatHydeEmbedding.length
           });
@@ -692,20 +692,20 @@ export class ProfileGraphFactory {
     const checkStateCondition = (state: typeof ProfileGraphState.State): string => {
       // Query mode: Return immediately (fast path)
       if (state.operationMode === 'query') {
-        logger.info("Query mode - ending (fast path)");
+        logger.verbose("Query mode - ending (fast path)");
         return END;
       }
 
       // Generate mode: use Parallels searchUser to auto-generate
       if (state.operationMode === 'generate') {
-        logger.info("Generate mode - routing to auto_generate");
+        logger.verbose("Generate mode - routing to auto_generate");
         return "auto_generate";
       }
 
       // Check if user information is insufficient for scraping
       // Return early so chat graph can request the missing information
       if (state.needsUserInfo) {
-        logger.info("⚠️ Insufficient user info - requesting from user", {
+        logger.verbose("⚠️ Insufficient user info - requesting from user", {
           missingInfo: state.missingUserInfo
         });
         return END;
@@ -715,34 +715,34 @@ export class ProfileGraphFactory {
       if (state.needsProfileGeneration) {
         // Only use provided input if it's meaningful (not just "Yes" / confirmation)
         if (state.input && isMeaningfulProfileInput(state.input)) {
-          logger.info("Profile generation needed with meaningful input provided");
+          logger.verbose("Profile generation needed with meaningful input provided");
           return "generate_profile";
         } else {
-          logger.info("Profile generation needed - scraping first (no meaningful input)");
+          logger.verbose("Profile generation needed - scraping first (no meaningful input)");
           return "scrape";
         }
       }
 
       // Profile exists but missing embedding
       if (state.needsProfileEmbedding) {
-        logger.info("Profile embedding needed");
+        logger.verbose("Profile embedding needed");
         return "embed_save_profile";
       }
 
       // Profile and embedding exist, check hyde
       if (state.needsHydeGeneration) {
-        logger.info("HyDE generation needed");
+        logger.verbose("HyDE generation needed");
         return "generate_hyde";
       }
 
       // Hyde exists but missing embedding
       if (state.needsHydeEmbedding) {
-        logger.info("HyDE embedding needed");
+        logger.verbose("HyDE embedding needed");
         return "embed_save_hyde";
       }
 
       // Everything exists and is up to date
-      logger.info("All components exist - ending");
+      logger.verbose("All components exist - ending");
       return END;
     };
 
@@ -752,17 +752,17 @@ export class ProfileGraphFactory {
     const afterProfileEmbeddingCondition = (state: typeof ProfileGraphState.State): string => {
       // If profile was just generated/updated, regenerate hyde
       if (state.needsHydeGeneration || state.forceUpdate) {
-        logger.info("Profile updated - regenerating HyDE");
+        logger.verbose("Profile updated - regenerating HyDE");
         return "generate_hyde";
       }
 
       // Check if hyde embedding is missing
       if (state.needsHydeEmbedding) {
-        logger.info("HyDE embedding needed");
+        logger.verbose("HyDE embedding needed");
         return "embed_save_hyde";
       }
 
-      logger.info("Profile complete - ending");
+      logger.verbose("Profile complete - ending");
       return END;
     };
 
@@ -771,7 +771,7 @@ export class ProfileGraphFactory {
      * Always embed after generating hyde.
      */
     const afterHydeGenerationCondition = (state: typeof ProfileGraphState.State): string => {
-      logger.info("HyDE generated - proceeding to embedding");
+      logger.verbose("HyDE generated - proceeding to embedding");
       return "embed_save_hyde";
     };
 
@@ -841,7 +841,7 @@ export class ProfileGraphFactory {
       // Hyde embedding -> END (linear)
       .addEdge("embed_save_hyde", END);
 
-    logger.info("Graph built successfully");
+    logger.verbose("Graph built successfully");
     return workflow.compile();
   }
 }

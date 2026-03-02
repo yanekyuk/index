@@ -151,7 +151,7 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
   const objective = options?.objective?.trim() || 'all';
 
   try {
-    logger.info('Extracting URL content', { url, hasObjective: !!options?.objective });
+    logger.verbose('Extracting URL content', { url, hasObjective: !!options?.objective });
 
     for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
       try {
@@ -167,13 +167,13 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
           },
         });
 
-        logger.info('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
+        logger.verbose('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
 
         if (extract.results && extract.results.length > 0) {
           const result = extract.results[0];
           // Access content from result - check common property names
           const content = (result as any).content || (result as any).excerpts?.[0] || (result as any).excerpt || (result as any).markdown || null;
-          logger.info('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
+          logger.verbose('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
           return content;
         }
 

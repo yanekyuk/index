@@ -1,4 +1,4 @@
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+type LogLevel = 'verbose' | 'debug' | 'info' | 'warn' | 'error';
 
 /** Named context for styled logs (emoji + color). */
 export type LogContext =
@@ -15,7 +15,7 @@ export type LogContext =
   | 'server'
   | 'lib';
 
-const order: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
+const order: Record<LogLevel, number> = { verbose: 5, debug: 10, info: 20, warn: 30, error: 40 };
 
 const RESET = '\x1b[0m';
 
@@ -96,7 +96,7 @@ const CONTEXT_STYLES: Record<LogContext, { emoji: string; color: string }> = {
 
 function envLevel(): LogLevel {
   const v = (process.env.LOG_LEVEL || '').toLowerCase();
-  if (v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v;
+  if (v === 'verbose' || v === 'debug' || v === 'info' || v === 'warn' || v === 'error') return v;
   if (process.env.DEBUG === '1' || process.env.DEBUG === 'true') return 'debug';
   return process.env.NODE_ENV === 'development' ? 'debug' : 'info';
 }
@@ -192,6 +192,7 @@ function wrapWithContext(
 type LogMethod = (message: string, meta?: Record<string, unknown>) => void;
 
 export type LoggerWithSource = {
+  verbose: LogMethod;
   debug: LogMethod;
   info: LogMethod;
   warn: LogMethod;
@@ -203,6 +204,12 @@ function createLogger(
   source?: string
 ): LoggerWithSource {
   return {
+    verbose(message: string, meta?: Record<string, unknown>) {
+      if (!shouldLogByContext(context) || !shouldLog('verbose')) return;
+      const line = fmt(message, meta);
+      const { start, end } = wrapWithContext(context, source, line);
+      console.debug(start + line + end);
+    },
     debug(message: string, meta?: Record<string, unknown>) {
       if (!shouldLogByContext(context) || !shouldLog('debug')) return;
       const line = fmt(message, meta);

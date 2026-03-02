@@ -70,7 +70,7 @@ export class ChatStreamer {
       maxContextMessages = 20,
       indexId,
     } = input;
-    logger.info("Starting context-aware streaming", {
+    logger.verbose("Starting context-aware streaming", {
       userId,
       sessionId,
       maxContextMessages,
@@ -89,7 +89,7 @@ export class ChatStreamer {
       // Add current message
       const allMessages = [...previousMessages, new HumanMessage(message)];
 
-      logger.info("Context prepared", {
+      logger.verbose("Context prepared", {
         previousCount: previousMessages.length,
         totalCount: allMessages.length,
       });
@@ -252,7 +252,7 @@ export class ChatStreamer {
             );
           }
 
-          logger.info("Agent loop complete (updates)", {
+          logger.verbose("Agent loop complete (updates)", {
             responseLength: responseText.length,
           });
         }

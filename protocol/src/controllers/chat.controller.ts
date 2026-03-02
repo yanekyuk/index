@@ -203,7 +203,7 @@ export class ChatController {
       ? await chatSessionService.getCheckpointer()
       : undefined;
     if (useCheckpointer && checkpointer) {
-      logger.info("PostgresSaver checkpointer initialized", { sessionId });
+      logger.verbose("PostgresSaver checkpointer initialized", { sessionId });
     }
 
     // 4. Create SSE stream

@@ -3,12 +3,16 @@
  * All embedding generation in the app should go through OpenRouter with this model for consistency.
  */
 import OpenAI from 'openai';
+
+import { log } from '../log';
 import {
   OPENROUTER_EMBEDDING_BASE_URL,
   OPENROUTER_EMBEDDING_DIMENSIONS,
   OPENROUTER_EMBEDDING_MODEL,
 } from './embedder.config';
 import { EmbeddingGenerator } from './embedder.types';
+
+const logger = log.lib.from('embedder.generator');
 
 export class OpenRouterGenerator implements EmbeddingGenerator {
   private openai: OpenAI;
@@ -55,7 +59,7 @@ export class OpenRouterGenerator implements EmbeddingGenerator {
         return response.data[0].embedding;
       }
     } catch (error) {
-      console.error('Error generating embedding:', error);
+      logger.error('Error generating embedding', { error: error instanceof Error ? error.message : String(error) });
       throw new Error(`Failed to generate embedding: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

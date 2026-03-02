@@ -46,7 +46,7 @@ export class IntentService {
     userProfile: string,
     content?: string
   ): Promise<Record<string, unknown>> {
-    logger.info('[IntentService] Processing intent', { userId });
+    logger.verbose('[IntentService] Processing intent', { userId });
 
     const graph = this.factory.createGraph();
     const result = await graph.invoke(
@@ -78,7 +78,7 @@ export class IntentService {
     const limit = Math.min(100, Math.max(1, options.limit || 20));
     const archived = options.archived ?? false;
 
-    logger.info('[IntentService] Listing intents', { userId, page, limit, archived });
+    logger.verbose('[IntentService] Listing intents', { userId, page, limit, archived });
 
     const { rows, total } = await this.adapter.listIntents(userId, {
       page,
@@ -106,7 +106,7 @@ export class IntentService {
    * @returns Intent record or null if not found or unauthorized
    */
   async getById(intentId: string, userId: string) {
-    logger.info('[IntentService] Getting intent by ID', { intentId, userId });
+    logger.verbose('[IntentService] Getting intent by ID', { intentId, userId });
     
     return this.adapter.getIntentById(intentId, userId);
   }
@@ -125,7 +125,7 @@ export class IntentService {
    * @returns The created or existing intent record (at least { id }).
    */
   async createFromProposal(userId: string, description: string, proposalId: string, indexId?: string) {
-    logger.info('[IntentService] Creating intent from proposal', { userId, proposalId });
+    logger.verbose('[IntentService] Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
     if (existing) {
@@ -184,7 +184,7 @@ export class IntentService {
    * @returns The created intent record
    */
   async createIntentForSeed(userId: string, description: string): Promise<{ id: string }> {
-    logger.info('[IntentService] Creating intent for seed', { userId });
+    logger.verbose('[IntentService] Creating intent for seed', { userId });
 
     const EMBEDDING_DIMS = 2000;
     let embedding: number[];
@@ -252,7 +252,7 @@ export class IntentService {
    * @returns Result with success flag and optional error
    */
   async archive(intentId: string, userId: string) {
-    logger.info('[IntentService] Archiving intent', { intentId, userId });
+    logger.verbose('[IntentService] Archiving intent', { intentId, userId });
 
     // Verify ownership
     const owned = await this.adapter.isOwnedByUser(intentId, userId);

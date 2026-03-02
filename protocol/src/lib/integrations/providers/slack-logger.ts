@@ -1,3 +1,7 @@
+import { log } from '../../log';
+
+const logger = log.lib.from('slack-logger');
+
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const RENDER_INTERVAL_MS = 200;
 
@@ -8,7 +12,7 @@ class TerminalRenderer {
   update(text: string): void {
     if (!process.stdout.isTTY) {
       if (text !== this.lastSnapshot) {
-        console.log(text);
+        logger.verbose('Slack integration snapshot', { text });
         this.lastSnapshot = text;
       }
       return;

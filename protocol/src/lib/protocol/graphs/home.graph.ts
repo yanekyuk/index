@@ -238,9 +238,9 @@ export class HomeGraphFactory {
 
     const generateCardTextNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.generateCardText", async () => {
-      logger.info('[HomeGraph:generateCardText] entry', { opportunitiesLength: state.opportunities.length, userId: state.userId });
+      logger.verbose('[HomeGraph:generateCardText] entry', { opportunitiesLength: state.opportunities.length, userId: state.userId });
       if (state.opportunities.length === 0) {
-        logger.info('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
+        logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: 0, totalSections: 0 });
         return { cards: [], meta: { totalOpportunities: 0, totalSections: 0 } };
       }
       const db = this.database as PresenterDatabase;
@@ -383,7 +383,7 @@ export class HomeGraphFactory {
         );
         cards.push(...chunkCards);
       }
-      logger.info('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
+      logger.verbose('[HomeGraph:generateCardText] exit', { totalOpportunities: state.opportunities.length, totalSections: 0 });
       return {
         cards,
         meta: { totalOpportunities: state.opportunities.length, totalSections: 0 },
@@ -393,9 +393,9 @@ export class HomeGraphFactory {
 
     const categorizeDynamicallyNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.categorizeDynamically", async () => {
-        logger.info('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
+        logger.verbose('[HomeGraph:categorizeDynamically] entry', { cardsLength: state.cards.length });
         if (state.cards.length === 0) {
-          logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
+          logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
           return { sectionProposals: [] };
         }
         const categorizerInput = state.cards.map((c) => ({
@@ -417,7 +417,7 @@ export class HomeGraphFactory {
           ...s,
           itemIndices: s.itemIndices.filter((i) => i >= 0 && i < state.cards.length),
         }));
-        logger.info('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
+        logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: proposals.length });
         return { sectionProposals: proposals };
       });
     };
@@ -426,9 +426,9 @@ export class HomeGraphFactory {
       return timed("HomeGraph.normalizeAndSort", async () => {
         const cards = state.cards;
         const proposals = state.sectionProposals;
-        logger.info('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
+        logger.verbose('[HomeGraph:normalizeAndSort] entry', { cardsLength: cards.length, proposalsLength: proposals.length });
         if (cards.length === 0) {
-          logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
+          logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: 0, totalSections: 0 });
           return { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } };
         }
         const usedIndices = new Set<number>();
@@ -455,7 +455,7 @@ export class HomeGraphFactory {
           totalOpportunities: state.opportunities.length,
           totalSections: sections.length,
         };
-        logger.info('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
+        logger.verbose('[HomeGraph:normalizeAndSort] exit', { totalOpportunities: meta.totalOpportunities, totalSections: meta.totalSections });
         return { sections, meta };
       });
     };

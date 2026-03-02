@@ -23,7 +23,7 @@ export class UserController {
     if (uniqueIds.length === 0) {
       return Response.json({ users: [] });
     }
-    logger.info('Batch get users requested', { count: uniqueIds.length });
+    logger.verbose('Batch get users requested', { count: uniqueIds.length });
     const rows = await userService.findByIds(uniqueIds);
     const users = rows.map((row) => ({
       id: row.id,
@@ -41,7 +41,7 @@ export class UserController {
   @Get('/:userId')
   @UseGuards(AuthGuard)
   async getUser(_req: Request, _user: AuthenticatedUser, params: { userId: string }) {
-    logger.info('Get user requested', { userId: params.userId });
+    logger.verbose('Get user requested', { userId: params.userId });
     const user = await userService.findById(params.userId);
     if (!user) {
       return Response.json({ error: 'User not found' }, { status: 404 });

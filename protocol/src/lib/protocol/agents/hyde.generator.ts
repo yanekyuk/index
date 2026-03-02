@@ -74,7 +74,7 @@ export class HydeGenerator {
     const parsed = responseFormat.parse(result);
     const text = parsed.hypotheticalDocument ?? '';
 
-    logger.info('Generated HyDE document', {
+    logger.verbose('Generated HyDE document', {
       lens: input.lens,
       corpus: input.corpus,
       textLength: text.length,
