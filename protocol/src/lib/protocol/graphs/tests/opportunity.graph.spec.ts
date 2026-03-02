@@ -17,6 +17,7 @@ import type {
 } from '../../interfaces/database.interface';
 import type { Embedder } from '../../interfaces/embedder.interface';
 import type { EvaluatedOpportunityWithActors } from '../../agents/opportunity.evaluator';
+import type { ProfileDocument } from '../../agents/profile.generator';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
@@ -249,6 +250,125 @@ describe('Opportunity Graph', () => {
       expect(result.candidates.length).toBe(1);
       expect(result.candidates[0].candidateUserId).toBe('user-bob');
       expect(result.candidates[0].candidateIntentId).toBeUndefined();
+    });
+  });
+
+  describe('Evaluation node: userId dedup', () => {
+    test('when same user appears via multiple indexes, evaluates them only once (deduped by userId)', async () => {
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        getUserIndexIds: () => Promise.resolve(['idx-1', 'idx-2'] as Id<'indexes'>[]),
+        getIndex: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+        getIndexMemberCount: () => Promise.resolve(5),
+        evaluatorResult: [
+          {
+            reasoning: 'Bob is a great match.',
+            score: 88,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-bob', role: 'agent' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+
+      // Same user appears in two indexes from search results
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-bob-1', userId: 'user-bob', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+        { type: 'intent' as const, id: 'intent-bob-2', userId: 'user-bob', score: 0.85, matchedVia: 'mirror' as const, indexId: 'idx-2' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'co-founder',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // Should have deduped to 1 candidate (user-bob), not 2
+      const candidateTraceEntries = result.trace.filter(
+        (t: { node: string; data?: Record<string, unknown> }) =>
+          t.node === 'candidate' && t.data?.userId === 'user-bob'
+      );
+      expect(candidateTraceEntries.length).toBe(1);
+      expect(result.opportunities.length).toBe(1);
+    });
+  });
+
+  describe('Evaluation node: early termination', () => {
+    test('when search is query-driven and remaining candidates have no query-sourced entries, remainingCandidates is empty', async () => {
+      // 5 query candidates come through HyDE search → tagged 'query'
+      // 25 profile candidates come through profile search → tagged 'profile-similarity'
+      // With EVAL_BATCH_SIZE=25, batch 1 gets all 5 query + 20 profile
+      // Remaining 5 are all profile-similarity → should be cleared
+      const dummyProfileEmbedding = new Array(2000).fill(0.1);
+      const queryCandidates = Array.from({ length: 5 }, (_, i) => ({
+        type: 'intent' as const,
+        id: `intent-query-${i}`,
+        userId: `user-query-${i}`,
+        score: 0.9 - i * 0.01,
+        matchedVia: 'Painters' as const,
+        indexId: 'idx-1',
+      }));
+      const profileCandidates = Array.from({ length: 25 }, (_, i) => ({
+        type: 'profile' as const,
+        id: `user-profile-${i}`,
+        userId: `user-profile-${i}`,
+        score: 0.6 - i * 0.005,
+        matchedVia: 'profile-similarity' as const,
+        indexId: 'idx-1',
+      }));
+
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [],
+        getProfile: {
+          userId: 'user-source',
+          embedding: dummyProfileEmbedding,
+          identity: { name: 'Test User', bio: 'Test bio', location: 'Remote' },
+          narrative: { context: 'Test narrative' },
+          attributes: { interests: ['painting'], skills: ['art'] },
+        } satisfies ProfileDocument,
+      });
+
+      // HyDE search returns query candidates (tagged 'query' in discovery node)
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(queryCandidates);
+      // Profile search returns profile candidates (tagged 'profile-similarity' in discovery node)
+      spyOn(mockEmbedder, 'searchWithProfileEmbedding').mockResolvedValue(profileCandidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'painters',
+        options: { minScore: 50 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // All query candidates consumed in batch 1, remaining are profile-only
+      // Early termination should clear remainingCandidates
+      expect(result.remainingCandidates.length).toBe(0);
+    });
+
+    test('when remaining candidates still have query-sourced entries, remainingCandidates is preserved', async () => {
+      // Create 30 query candidates — after batch of 25, 5 remain with discoverySource='query'
+      const allQueryCandidates = Array.from({ length: 30 }, (_, i) => ({
+        type: 'intent' as const,
+        id: `intent-q-${i}`,
+        userId: `user-q-${i}`,
+        score: 0.95 - i * 0.01,
+        matchedVia: 'Painters' as const,
+        indexId: 'idx-1',
+      }));
+
+      const { compiledGraph, mockEmbedder } = createMockGraph({
+        evaluatorResult: [],
+      });
+
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue(allQueryCandidates);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'painters',
+        options: { minScore: 50 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // 5 query-sourced candidates remain — pagination should be preserved
+      expect(result.remainingCandidates.length).toBe(5);
     });
   });
 

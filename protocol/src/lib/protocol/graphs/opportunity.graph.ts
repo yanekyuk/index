@@ -328,10 +328,10 @@ export class OpportunityGraphFactory {
 
           // Search limits - fixed values for candidate retrieval
           // (The options.limit controls final output, not search pool)
-          const limitPerStrategy = 40;
+          const limitPerStrategy = 30;
           const perIndexLimit = 80;
-          // Similarity threshold for recall (0.40 = 40% similarity)
-          const minScore = 0.40;
+          // Similarity threshold for recall (0.30 = 30% similarity)
+          const minScore = 0.3;
 
           if (state.discoverySource === 'profile') {
             const embedding = state.sourceProfile?.embedding ?? null;
@@ -397,6 +397,7 @@ export class OpportunityGraphFactory {
                       lens: result.matchedVia,
                       candidatePayload: '',
                       candidateSummary: undefined,
+                      discoverySource: 'profile-similarity' as const,
                     });
                   }
                 }
@@ -454,6 +455,7 @@ export class OpportunityGraphFactory {
                     lens: result.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
+                    discoverySource: 'profile-similarity' as const,
                   });
                 } else {
                   allCandidates.push({
@@ -463,6 +465,7 @@ export class OpportunityGraphFactory {
                     lens: result.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
+                    discoverySource: 'profile-similarity' as const,
                   });
                 }
               }
@@ -583,6 +586,7 @@ export class OpportunityGraphFactory {
                     lens: r.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
+                    discoverySource: 'query' as const,
                   });
                 }
                 for (const r of results.filter((x) => x.type === 'profile')) {
@@ -593,6 +597,7 @@ export class OpportunityGraphFactory {
                     lens: r.matchedVia,
                     candidatePayload: '',
                     candidateSummary: undefined,
+                    discoverySource: 'query' as const,
                   });
                 }
               })
@@ -660,6 +665,7 @@ export class OpportunityGraphFactory {
                   lens: result.matchedVia,
                   candidatePayload: '',
                   candidateSummary: undefined,
+                  discoverySource: 'query' as const,
                 });
               }
               for (const result of results.filter((r) => r.type === 'profile')) {
@@ -670,6 +676,7 @@ export class OpportunityGraphFactory {
                   lens: result.matchedVia,
                   candidatePayload: '',
                   candidateSummary: undefined,
+                  discoverySource: 'query' as const,
                 });
               }
             })
@@ -780,13 +787,47 @@ export class OpportunityGraphFactory {
         const sortedCandidates = [...state.candidates]
           .sort((a, b) => b.similarity - a.similarity);
 
-        const batchToEvaluate = sortedCandidates.slice(0, EVAL_BATCH_SIZE);
-        const remaining = sortedCandidates.slice(EVAL_BATCH_SIZE);
+        // Dedup by userId — keep the entry with highest similarity (first after sort)
+        const seenUserIds = new Set<string>();
+        const dedupedCandidates = sortedCandidates.filter((c) => {
+          if (seenUserIds.has(c.candidateUserId)) return false;
+          seenUserIds.add(c.candidateUserId);
+          return true;
+        });
 
-        if (remaining.length > 0) {
+        if (dedupedCandidates.length < sortedCandidates.length) {
+          logger.info("[Graph:Evaluation] Deduped candidates by userId", {
+            before: sortedCandidates.length,
+            after: dedupedCandidates.length,
+            removed: sortedCandidates.length - dedupedCandidates.length,
+          });
+        }
+
+        const batchToEvaluate = dedupedCandidates.slice(0, EVAL_BATCH_SIZE);
+        const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
+
+        // Early termination: if search was query-driven and no query-sourced candidates remain,
+        // clear remaining to prevent pointless pagination through profile-similarity leftovers
+        const isQueryDriven = !!state.searchQuery?.trim();
+        const queryRemaining = remaining.filter(
+          (c) => c.discoverySource === 'query' || c.discoverySource == null,
+        );
+        const effectiveRemaining =
+          isQueryDriven && queryRemaining.length === 0 ? [] : remaining;
+
+        if (isQueryDriven && remaining.length > 0 && queryRemaining.length === 0) {
+          logger.info(
+            "[Graph:Evaluation] Early termination: no query-sourced candidates remain",
+            {
+              droppedProfileCandidates: remaining.length,
+            },
+          );
+        }
+
+        if (effectiveRemaining.length > 0) {
           logger.verbose('[Graph:Evaluation] Batched candidates for evaluation', {
             evaluating: batchToEvaluate.length,
-            remaining: remaining.length,
+            remaining: effectiveRemaining.length,
             total: sortedCandidates.length,
           });
         }
@@ -945,7 +986,7 @@ export class OpportunityGraphFactory {
               returnedFromEvaluator: evaluatedOpportunities.length,
               passedCount: passed.length,
               minScore,
-              remaining: remaining.length,
+              remaining: effectiveRemaining.length,
               batchNumber: 1,
               durationMs: Date.now() - startTime,
             },
@@ -984,7 +1025,7 @@ export class OpportunityGraphFactory {
 
           return {
             evaluatedOpportunities: passedOpportunities,
-            remainingCandidates: remaining,
+            remainingCandidates: effectiveRemaining,
             trace: traceEntries,
           };
         } catch (error) {

@@ -54,6 +54,8 @@ export interface CandidateMatch {
   lens: string;
   candidatePayload: string;
   candidateSummary?: string;
+  /** How this candidate was found: 'query' (HyDE from search text) or 'profile-similarity'. */
+  discoverySource?: 'query' | 'profile-similarity';
 }
 
 /**
