@@ -67,7 +67,7 @@ export class ChatSessionService {
    * @returns The created session ID
    */
   async createSession(userId: string, title?: string, indexId?: string): Promise<string> {
-    logger.verbose('Creating new session', { userId, title, indexId: indexId ?? undefined });
+    logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), indexId: indexId ?? undefined });
 
     const id = crypto.randomUUID();
     await this.db.createSession({ id, userId, title, indexId });
@@ -232,7 +232,7 @@ export class ChatSessionService {
    * @returns True if updated, false if not found or unauthorized
    */
   async updateSessionTitle(sessionId: string, userId: string, title: string): Promise<boolean> {
-    logger.verbose('Updating session title', { sessionId, userId, title });
+    logger.verbose('Updating session title', { sessionId, userId, titleLength: title.length });
     
     const session = await this.getSession(sessionId, userId);
     if (!session) {
@@ -252,7 +252,7 @@ export class ChatSessionService {
 
     const token = crypto.randomUUID();
     await this.db.setShareToken(sessionId, token);
-    logger.verbose('Session shared', { sessionId, shareToken: token });
+    logger.verbose('Session shared', { sessionId });
     return token;
   }
 
@@ -359,7 +359,7 @@ export class ChatSessionService {
       });
 
       await this.updateSessionTitle(sessionId, userId, title);
-      logger.verbose('Session title generated', { sessionId, title });
+      logger.verbose('Session title generated', { sessionId, titleLength: title.length });
 
       return title;
     } catch (err) {

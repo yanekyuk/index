@@ -38,7 +38,8 @@ export function createRetryTool(options: RetryOptions = {}) {
                     return result;
                 } catch (err) {
                     lastError = err;
-                    logger.warn('LLM retry attempt failed', { attempt: attempt + 1, message: (err as Error).message });
+                    const message = err instanceof Error ? err.message : String(err);
+                    logger.warn('LLM retry attempt failed', { attempt: attempt + 1, message });
 
                     if (attempt < maxRetries) {
                         await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt))); // Exponential backoff

@@ -55,14 +55,14 @@ export async function sendConnectionRequestEmail(
 
   // 1. Check Onboarding
   if (!recipient.onboarding?.completedAt) {
-    logger.info('Skipping connection email', { to, reason: 'Onboarding not completed' });
+    logger.info('Skipping connection email', { userId: recipient.id, reason: 'Onboarding not completed' });
     return;
   }
 
   // 2. Check Preferences
   // If settings exist and explicit false, skip. If no settings, default is true.
   if (recipient.settings?.preferences?.connectionUpdates === false) {
-    logger.info('Skipping connection email', { to, reason: 'User opted out' });
+    logger.info('Skipping connection email', { userId: recipient.id, reason: 'User opted out' });
     return;
   }
 
@@ -115,13 +115,13 @@ export async function sendConnectionAcceptedEmail(
 
     // 1. Check Onboarding
     if (!recipient.onboarding?.completedAt) {
-      logger.info('Skipping connection accepted email', { to: recipientEmail, reason: 'Onboarding not completed' });
+      logger.info('Skipping connection accepted email', { userId: recipient.id, reason: 'Onboarding not completed' });
       continue;
     }
 
     // 2. Check Preferences
     if (recipient.settings?.preferences?.connectionUpdates === false) {
-      logger.info('Skipping connection accepted email', { to: recipientEmail, reason: 'User opted out' });
+      logger.info('Skipping connection accepted email', { userId: recipient.id, reason: 'User opted out' });
       continue;
     }
 
