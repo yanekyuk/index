@@ -341,7 +341,7 @@ export class OpportunityEvaluator {
       return mappedOpportunities;
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
-      logger.verbose(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
+      logger.warn(`[OpportunityEvaluator] Analysis failed for candidate ${candidateUserId}`, { message });
       return [];
     }
   }
