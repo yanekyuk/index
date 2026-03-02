@@ -43,7 +43,7 @@ export class IntentIndexGraphFactory {
       return timed("IntentIndexGraph.assign", async () => {
         const intentId = state.intentId;
         const indexId = state.indexId;
-        logger.info("Assign intent to index", { userId: state.userId, intentId, indexId, skipEvaluation: state.skipEvaluation });
+        logger.verbose("Assign intent to index", { userId: state.userId, intentId, indexId, skipEvaluation: state.skipEvaluation });
 
         if (!intentId || !indexId) {
           return { mutationResult: { success: false, error: "Both intentId and indexId are required." } };
@@ -186,7 +186,7 @@ export class IntentIndexGraphFactory {
       return timed("IntentIndexGraph.read", async () => {
         const intentId = state.intentId;
         const indexId = state.indexId;
-        logger.info("Read intent-index links", { userId: state.userId, intentId, indexId, queryUserId: state.queryUserId });
+        logger.verbose("Read intent-index links", { userId: state.userId, intentId, indexId, queryUserId: state.queryUserId });
 
         try {
           // By both: check if specific intent-index link exists
@@ -294,7 +294,7 @@ export class IntentIndexGraphFactory {
       return timed("IntentIndexGraph.unassign", async () => {
         const intentId = state.intentId;
         const indexId = state.indexId;
-        logger.info("Unassign intent from index", { userId: state.userId, intentId, indexId });
+        logger.verbose("Unassign intent from index", { userId: state.userId, intentId, indexId });
 
         if (!intentId || !indexId) {
           return { mutationResult: { success: false, error: "Both intentId and indexId are required." } };

@@ -96,7 +96,7 @@ export class ChatGraphFactory {
     sessionId: string,
     maxMessages: number = 20
   ): Promise<BaseMessage[]> {
-    logger.info("Loading session context", {
+    logger.verbose("Loading session context", {
       sessionId,
       maxMessages,
     });
@@ -105,7 +105,7 @@ export class ChatGraphFactory {
       const messages = await chatSessionService.getSessionMessages(sessionId, maxMessages);
 
       if (messages.length === 0) {
-        logger.info("No previous messages found", { sessionId });
+        logger.verbose("No previous messages found", { sessionId });
         return [];
       }
 
@@ -123,7 +123,7 @@ export class ChatGraphFactory {
       // Truncate to fit within token limits
       const truncatedMessages = truncateToTokenLimit(langchainMessages, MAX_CONTEXT_TOKENS);
 
-      logger.info("Context loaded", {
+      logger.verbose("Context loaded", {
         sessionId,
         originalCount: messages.length,
         truncatedCount: truncatedMessages.length,
@@ -194,7 +194,7 @@ export class ChatGraphFactory {
       config: LangGraphRunnableConfig
     ) => {
       return timed("ChatGraph.agentLoop", async () => {
-        logger.info("Agent loop starting", {
+        logger.verbose("Agent loop starting", {
           userId: state.userId,
           messageCount: state.messages.length,
           currentIteration: state.iterationCount
@@ -229,7 +229,7 @@ export class ChatGraphFactory {
             iterationCount: result.iterationCount,
             messageCount: result.messages.length,
           });
-          logger.info("Agent loop complete", {
+          logger.verbose("Agent loop complete", {
             userId: state.userId,
             iterations: result.iterationCount,
             responseLength: result.responseText.length
@@ -250,7 +250,7 @@ export class ChatGraphFactory {
             await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
             try {
               const result = await runLoop();
-              logger.info("Agent loop complete after retry", {
+              logger.verbose("Agent loop complete after retry", {
                 userId: state.userId,
                 iterations: result.iterationCount,
               });
@@ -297,7 +297,7 @@ export class ChatGraphFactory {
       .addEdge(START, "agent_loop")
       .addEdge("agent_loop", END);
 
-    logger.info("Graph built successfully (agent loop architecture)");
+    logger.verbose("Graph built successfully (agent loop architecture)");
     return workflow;
   }
 }

@@ -30,7 +30,7 @@ export class FileService {
   async getFilesByIds(userId: string, fileIds: string[]) {
     if (!fileIds?.length) return [];
     
-    logger.info('[FileService] Getting files by IDs', { userId, count: fileIds.length });
+    logger.verbose('[FileService] Getting files by IDs', { userId, count: fileIds.length });
     
     return this.db.getFilesByIds(userId, fileIds);
   }
@@ -73,7 +73,7 @@ export class FileService {
    * @returns File record or null if not found
    */
   async getById(fileId: string, userId: string) {
-    logger.info('[FileService] Getting file by ID', { fileId, userId });
+    logger.verbose('[FileService] Getting file by ID', { fileId, userId });
     
     return this.db.getById(fileId, userId);
   }
@@ -90,7 +90,7 @@ export class FileService {
     const limit = Math.min(100, Math.max(1, options.limit || 100));
     const skip = (page - 1) * limit;
     
-    logger.info('[FileService] Listing files', { userId, page, limit });
+    logger.verbose('[FileService] Listing files', { userId, page, limit });
     
     const result = await this.db.listFiles(userId, { skip, limit });
     
@@ -112,7 +112,7 @@ export class FileService {
    * @returns The created file record
    */
   async createFile(data: CreateFileInput) {
-    logger.info('[FileService] Creating file', { id: data.id, userId: data.userId });
+    logger.verbose('[FileService] Creating file', { id: data.id, userId: data.userId });
     
     return this.db.createFile(data);
   }
@@ -125,7 +125,7 @@ export class FileService {
    * @returns True if deleted, false if not found or unauthorized
    */
   async softDelete(fileId: string, userId: string): Promise<boolean> {
-    logger.info('[FileService] Soft deleting file', { fileId, userId });
+    logger.verbose('[FileService] Soft deleting file', { fileId, userId });
     
     return this.db.softDelete(fileId, userId);
   }

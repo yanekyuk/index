@@ -163,7 +163,7 @@ export class OpportunityQueue {
       ).createGraph();
       await opportunityGraph.invoke(invokeOpts);
     }
-    this.logger.info('[OpportunityDiscovery] Discovery complete for intent', { intentId, userId });
+    this.logger.verbose('[OpportunityDiscovery] Discovery complete for intent', { intentId, userId });
   }
 }
 

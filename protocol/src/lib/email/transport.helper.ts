@@ -77,7 +77,7 @@ export const executeSendEmail = async (options: {
     return { data: null, skipped: true, reason: 'no_recipient' };
   }
 
-  logger.info(`[EmailTransport] Sending email to test recipient`, { recipient: String(recipient), originalTo: String(options.to) });
+  logger.verbose(`[EmailTransport] Sending email to test recipient`, { recipient: String(recipient), originalTo: String(options.to) });
 
   try {
     const result = await resend!.emails.send({

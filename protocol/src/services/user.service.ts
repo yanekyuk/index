@@ -17,7 +17,7 @@ const logger = log.service.from("UserService");
 export class UserService {
   constructor(private db = userDatabaseAdapter) {}
     async findById(userId: string) {
-        logger.info('[UserService] Finding user by ID', { userId });
+        logger.verbose('[UserService] Finding user by ID', { userId });
         return this.db.findById(userId);
     }
 
@@ -44,12 +44,12 @@ export class UserService {
     }
 
     async update(userId: string, data: Partial<User>) {
-        logger.info('[UserService] Updating user', { userId, fields: Object.keys(data) });
+        logger.verbose('[UserService] Updating user', { userId, fields: Object.keys(data) });
         return this.db.update(userId, data);
     }
 
     async softDelete(userId: string) {
-        logger.info('[UserService] Soft deleting user', { userId });
+        logger.verbose('[UserService] Soft deleting user', { userId });
         await this.db.softDelete(userId);
         return true;
     }

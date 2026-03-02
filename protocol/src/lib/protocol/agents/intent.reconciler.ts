@@ -150,7 +150,7 @@ export class IntentReconciler {
    */
   @Timed()
   public async invoke(inferredIntentsFormatted: string, activeIntentsContext: string) {
-    logger.info(`[IntentReconciler.invoke] Reconciling intents...`);
+    logger.verbose(`[IntentReconciler.invoke] Reconciling intents...`);
 
     const prompt = `
       # Active Intents
@@ -178,7 +178,7 @@ export class IntentReconciler {
         type: normalizeActionType(action.type),
       })) as NormalizedIntentAction[];
 
-      logger.info(`[IntentReconciler.invoke] Decision: ${normalizedActions.length} actions.`);
+      logger.verbose(`[IntentReconciler.invoke] Decision: ${normalizedActions.length} actions.`);
       return { actions: normalizedActions };
     } catch (error) {
       logger.error("[IntentReconciler] Error during invocation", { error });

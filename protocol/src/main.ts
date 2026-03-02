@@ -127,7 +127,7 @@ Bun.serve({
 
     const corsHeaders = getCorsHeaders(req);
 
-    logger.info('Request', { method, path: url.pathname });
+    logger.verbose('Request', { method, path: url.pathname });
 
     // Handle OPTIONS preflight requests
     if (method === 'OPTIONS') {
@@ -201,7 +201,7 @@ Bun.serve({
 
         if (isMatch) {
           const routeParams = params ?? {} as Record<string, string>;
-          logger.info('Matched route', { path: fullPath, handler: `${target.name}.${String(route.methodName)}`, params: routeParams });
+          logger.verbose('Matched route', { path: fullPath, handler: `${target.name}.${String(route.methodName)}`, params: routeParams });
           try {
             const instance = controllerInstances.get(target);
             if (!instance) {
@@ -211,20 +211,20 @@ Bun.serve({
 
             // Execute Guards
             const guards = RouteRegistry.getGuards(target, route.methodName);
-            logger.info('Guards found', { count: guards.length });
+            logger.verbose('Guards found', { count: guards.length });
             let guardResult: any = null;
 
             for (const guard of guards) {
-              logger.info('Executing guard', { guard: guard.name || 'anonymous' });
+              logger.verbose('Executing guard', { guard: guard.name || 'anonymous' });
               guardResult = await guard(req);
-              logger.info('Guard execution successful');
+              logger.verbose('Guard execution successful');
             }
 
             // Invoke handler: (req, user, params?)
             const handler = instance[route.methodName];
-            logger.info('Invoking handler', { handler: String(route.methodName) });
+            logger.verbose('Invoking handler', { handler: String(route.methodName) });
             const result = await handler.call(instance, req, guardResult, routeParams);
-            logger.info('Handler invoked successfully');
+            logger.verbose('Handler invoked successfully');
 
             // If result is a Response object, add CORS headers and return it.
             if (result instanceof Response) {
@@ -263,7 +263,7 @@ Bun.serve({
       }
     }
 
-    logger.info('No match found', { path: url.pathname });
+    logger.verbose('No match found', { path: url.pathname });
     return new Response('Not Found', { status: 404, headers: corsHeaders });
   },
 });

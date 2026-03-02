@@ -74,7 +74,7 @@ async function fetchFiles(integrationId: string, lastSyncAt?: Date): Promise<Int
       return [];
     }
 
-    logger.info('GoogleCalendar sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
+    logger.verbose('GoogleCalendar sync start', { integrationId, userId: integration.userId, lastSyncAt: lastSyncAt?.toISOString() });
     const composio = await getClient();
     const connectedAccountId = integration.connectedAccountId;
 

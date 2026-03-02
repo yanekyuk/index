@@ -50,7 +50,7 @@ export function extractTwitterUsername(input: string): string | null {
  * This function is kept as a stub for interface compatibility.
  */
 export async function syncTwitterUser(userId: string, sinceTimestamp?: Date | null, integrationId?: string): Promise<TwitterSyncResult> {
-  logger.info('Twitter sync is disabled (Snowflake integration removed)', { userId });
+  logger.verbose('Twitter sync is disabled (Snowflake integration removed)', { userId });
   return {
     intentsGenerated: 0,
     locationUpdated: false,
@@ -67,7 +67,7 @@ export async function syncTwitterUsersBulk(
   integrationBatch: Array<{ integration: typeof userIntegrations.$inferSelect; user: typeof users.$inferSelect }>,
   sinceTimestamp?: Date
 ): Promise<{ usersProcessed: number; intentsGenerated: number; locationUpdated: number; errors: number }> {
-  logger.info('Twitter bulk sync is disabled (Snowflake integration removed)', { 
+  logger.verbose('Twitter bulk sync is disabled (Snowflake integration removed)', { 
     userCount: integrationBatch.length 
   });
   return {

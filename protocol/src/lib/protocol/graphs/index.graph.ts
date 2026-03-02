@@ -29,7 +29,7 @@ export class IndexGraphFactory {
      */
     const readNode = async (state: typeof IndexGraphState.State) => {
       return timed("IndexGraph.read", async () => {
-        logger.info("Read indexes", { userId: state.userId, indexId: state.indexId, showAll: state.showAll });
+        logger.verbose("Read indexes", { userId: state.userId, indexId: state.indexId, showAll: state.showAll });
 
         try {
           const [allMemberships, ownedIndexes, publicIndexesResult] = await Promise.all([
@@ -96,7 +96,7 @@ export class IndexGraphFactory {
      */
     const createNode = async (state: typeof IndexGraphState.State) => {
       return timed("IndexGraph.create", async () => {
-        logger.info("Create index", { userId: state.userId, createInput: state.createInput });
+        logger.verbose("Create index", { userId: state.userId, createInput: state.createInput });
 
         if (!state.createInput?.title?.trim()) {
           return { mutationResult: { success: false, error: "Title is required." } };
@@ -142,7 +142,7 @@ export class IndexGraphFactory {
     const updateNode = async (state: typeof IndexGraphState.State) => {
       return timed("IndexGraph.update", async () => {
         const indexId = state.indexId;
-        logger.info("Update index", { userId: state.userId, indexId, updateInput: state.updateInput });
+        logger.verbose("Update index", { userId: state.userId, indexId, updateInput: state.updateInput });
 
         if (!indexId) {
           return { mutationResult: { success: false, error: "indexId is required for update." } };
@@ -176,7 +176,7 @@ export class IndexGraphFactory {
     const deleteNode = async (state: typeof IndexGraphState.State) => {
       return timed("IndexGraph.delete", async () => {
         const indexId = state.indexId;
-        logger.info("Delete index", { userId: state.userId, indexId });
+        logger.verbose("Delete index", { userId: state.userId, indexId });
 
         if (!indexId) {
           return { mutationResult: { success: false, error: "indexId is required for delete." } };

@@ -1,9 +1,14 @@
+import { eq } from 'drizzle-orm';
+
+import db from '../drizzle/drizzle';
+import { userNotificationSettings, users } from '../../schemas/database.schema';
+import { log } from '../log';
+
 import { sendEmail } from './transport.helper';
 import { connectionRequestTemplate } from './templates/connection-request.template';
 import { connectionAcceptedTemplate } from './templates/connection-accepted.template';
-import db from '../drizzle/drizzle';
-import { userNotificationSettings, users } from '../../schemas/database.schema';
-import { eq } from 'drizzle-orm';
+
+const logger = log.lib.from('notification.sender');
 
 const API_URL = process.env.API_URL || 'https://index.network.api';
 
@@ -50,14 +55,14 @@ export async function sendConnectionRequestEmail(
 
   // 1. Check Onboarding
   if (!recipient.onboarding?.completedAt) {
-    console.log(`[Email] Skipping connection email to ${to} - Onboarding not completed`);
+    logger.info('Skipping connection email', { userId: recipient.id, reason: 'Onboarding not completed' });
     return;
   }
 
   // 2. Check Preferences
   // If settings exist and explicit false, skip. If no settings, default is true.
   if (recipient.settings?.preferences?.connectionUpdates === false) {
-    console.log(`[Email] Skipping connection email to ${to} - User opted out`);
+    logger.info('Skipping connection email', { userId: recipient.id, reason: 'User opted out' });
     return;
   }
 
@@ -110,13 +115,13 @@ export async function sendConnectionAcceptedEmail(
 
     // 1. Check Onboarding
     if (!recipient.onboarding?.completedAt) {
-      console.log(`[Email] Skipping connection accepted email to ${recipientEmail} - Onboarding not completed`);
+      logger.info('Skipping connection accepted email', { userId: recipient.id, reason: 'Onboarding not completed' });
       continue;
     }
 
     // 2. Check Preferences
     if (recipient.settings?.preferences?.connectionUpdates === false) {
-      console.log(`[Email] Skipping connection accepted email to ${recipientEmail} - User opted out`);
+      logger.info('Skipping connection accepted email', { userId: recipient.id, reason: 'User opted out' });
       continue;
     }
 

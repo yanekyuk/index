@@ -219,7 +219,7 @@ export class IntentQueue implements IntentGraphQueue {
         forceRegenerate: true,
       });
     }
-    this.logger.info('[IntentHyde] Generated HyDE for intent', { intentId, userId });
+    this.logger.verbose('[IntentHyde] Generated HyDE for intent', { intentId, userId });
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??
@@ -233,7 +233,7 @@ export class IntentQueue implements IntentGraphQueue {
     const { intentId } = data;
     const db = this.deps?.database ?? this.database;
     await db.deleteHydeDocumentsForSource('intent', intentId);
-    this.logger.info('[IntentHyde] Deleted HyDE documents for intent', { intentId });
+    this.logger.verbose('[IntentHyde] Deleted HyDE documents for intent', { intentId });
   }
 }
 

@@ -18,7 +18,7 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
     const result = await indexService.getIndexesForUser(user.id);
-    logger.info('Indexes listed for user', { userId: user.id, count: result.indexes.length });
+    logger.verbose('Indexes listed for user', { userId: user.id, count: result.indexes.length });
     return Response.json(result);
   }
 
@@ -48,7 +48,7 @@ export class IndexController {
       joinPolicy: body.joinPolicy,
       allowGuestVibeCheck: body.allowGuestVibeCheck,
     });
-    logger.info('Index created', { indexId: result.id, userId: user.id });
+    logger.verbose('Index created', { indexId: result.id, userId: user.id });
     return Response.json({ index: result });
   }
 
@@ -73,7 +73,7 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async getMyMembers(_req: Request, user: AuthenticatedUser) {
     const members = await indexService.getMembersFromMyIndexes(user.id);
-    logger.info('My-index members listed', { userId: user.id, count: members.length });
+    logger.verbose('My-index members listed', { userId: user.id, count: members.length });
     return Response.json({ members });
   }
 
@@ -85,7 +85,7 @@ export class IndexController {
   async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const members = await indexService.getMembersForOwner(params.id, user.id);
-      logger.info('Members listed for index', { indexId: params.id, count: members.length });
+      logger.verbose('Members listed for index', { indexId: params.id, count: members.length });
       return Response.json({
         members,
         metadataKeys: [],
@@ -140,7 +140,7 @@ export class IndexController {
   async removeMember(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await indexService.removeMember(params.id, params.memberId, user.id);
-      logger.info('Member removed from index', { indexId: params.id, memberId: params.memberId });
+      logger.verbose('Member removed from index', { indexId: params.id, memberId: params.memberId });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -180,7 +180,7 @@ export class IndexController {
         allowGuestVibeCheck?: boolean;
       };
       const result = await indexService.updateIndex(params.id, user.id, body);
-      logger.info('Index updated', { indexId: params.id });
+      logger.verbose('Index updated', { indexId: params.id });
       return Response.json({ index: result });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -203,7 +203,7 @@ export class IndexController {
     try {
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean };
       const result = await indexService.updatePermissions(params.id, user.id, body);
-      logger.info('Permissions updated for index', { indexId: params.id });
+      logger.verbose('Permissions updated for index', { indexId: params.id });
       return Response.json({ index: result });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -225,7 +225,7 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async getPublicIndexes(_req: Request, user: AuthenticatedUser) {
     const result = await indexService.getPublicIndexes(user.id);
-    logger.info('Public indexes listed for user', { userId: user.id, count: result.indexes.length });
+    logger.verbose('Public indexes listed for user', { userId: user.id, count: result.indexes.length });
     return Response.json(result);
   }
 
@@ -237,7 +237,7 @@ export class IndexController {
   async delete(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await indexService.deleteIndex(params.id, user.id);
-      logger.info('Index deleted', { indexId: params.id, userId: user.id });
+      logger.verbose('Index deleted', { indexId: params.id, userId: user.id });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -260,7 +260,7 @@ export class IndexController {
   async joinPublicIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const index = await indexService.joinPublicIndex(params.id, user.id);
-      logger.info('User joined public index', { indexId: params.id, userId: user.id });
+      logger.verbose('User joined public index', { indexId: params.id, userId: user.id });
       return Response.json({ index });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -289,7 +289,7 @@ export class IndexController {
   async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const settings = await indexService.getMemberSettings(params.id, user.id);
-      logger.info('Member settings retrieved', { indexId: params.id, userId: user.id });
+      logger.verbose('Member settings retrieved', { indexId: params.id, userId: user.id });
       return Response.json(settings);
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -312,7 +312,7 @@ export class IndexController {
   async getMyIntents(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const intents = await indexService.getMyIntentsInIndex(params.id, user.id);
-      logger.info('My intents retrieved for index', { indexId: params.id, userId: user.id, count: intents.length });
+      logger.verbose('My intents retrieved for index', { indexId: params.id, userId: user.id, count: intents.length });
       return Response.json({ intents });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -335,7 +335,7 @@ export class IndexController {
   async leaveIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       await indexService.leaveIndex(params.id, user.id);
-      logger.info('User left index', { indexId: params.id, userId: user.id });
+      logger.verbose('User left index', { indexId: params.id, userId: user.id });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);

@@ -51,7 +51,7 @@ export async function getCheckpointer(): Promise<PostgresSaver> {
     );
   }
 
-  logger.info("[getCheckpointer] Initializing PostgresSaver checkpointer");
+  logger.verbose("[getCheckpointer] Initializing PostgresSaver checkpointer");
 
   // Create checkpointer from connection string
   checkpointerInstance = PostgresSaver.fromConnString(connectionString);
@@ -59,7 +59,7 @@ export async function getCheckpointer(): Promise<PostgresSaver> {
   // Setup creates required tables if they don't exist
   // Store the promise so concurrent calls can await it
   setupPromise = checkpointerInstance.setup().then(() => {
-    logger.info("[getCheckpointer] PostgresSaver setup complete");
+    logger.verbose("[getCheckpointer] PostgresSaver setup complete");
   }).catch((error) => {
     logger.error("[getCheckpointer] PostgresSaver setup failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -98,11 +98,11 @@ export async function createCheckpointer(
     );
   }
 
-  logger.info("[createCheckpointer] Creating new PostgresSaver instance");
+  logger.verbose("[createCheckpointer] Creating new PostgresSaver instance");
 
   const checkpointer = PostgresSaver.fromConnString(connStr);
   await checkpointer.setup();
-  logger.info("[createCheckpointer] PostgresSaver setup complete");
+  logger.verbose("[createCheckpointer] PostgresSaver setup complete");
   return checkpointer;
 }
 
@@ -114,7 +114,7 @@ export async function createCheckpointer(
  * Use with caution in production.
  */
 export function resetCheckpointer(): void {
-  logger.info("[resetCheckpointer] Resetting checkpointer instance");
+  logger.verbose("[resetCheckpointer] Resetting checkpointer instance");
   checkpointerInstance = null;
   setupPromise = null;
 }

@@ -67,7 +67,7 @@ export class ChatSessionService {
    * @returns The created session ID
    */
   async createSession(userId: string, title?: string, indexId?: string): Promise<string> {
-    logger.info('Creating new session', { userId, title, indexId: indexId ?? undefined });
+    logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), indexId: indexId ?? undefined });
 
     const id = crypto.randomUUID();
     await this.db.createSession({ id, userId, title, indexId });
@@ -91,7 +91,7 @@ export class ChatSessionService {
 
     await this.db.updateSessionIndex(sessionId, indexId?.trim() || null);
 
-    logger.info('Session index updated', { sessionId, indexId: indexId ?? null });
+    logger.verbose('Session index updated', { sessionId, indexId: indexId ?? null });
     return true;
   }
 
@@ -125,7 +125,7 @@ export class ChatSessionService {
    * @returns The session if found and owned by user, null otherwise
    */
   async getSession(sessionId: string, userId: string) {
-    logger.info('Getting session', { sessionId, userId });
+    logger.verbose('Getting session', { sessionId, userId });
     
     const session = await this.db.getSession(sessionId);
     
@@ -145,7 +145,7 @@ export class ChatSessionService {
    * @returns List of sessions
    */
   async getUserSessions(userId: string, limit = 10) {
-    logger.info('Getting user sessions', { userId, limit });
+    logger.verbose('Getting user sessions', { userId, limit });
     
     return this.db.getUserSessions(userId, limit);
   }
@@ -164,7 +164,7 @@ export class ChatSessionService {
     subgraphResults?: Record<string, unknown>;
     tokenCount?: number;
   }): Promise<string> {
-    logger.info('Adding message', {
+    logger.verbose('Adding message', {
       sessionId: params.sessionId,
       role: params.role,
       contentLength: params.content.length,
@@ -196,7 +196,7 @@ export class ChatSessionService {
    * @returns List of messages
    */
   async getSessionMessages(sessionId: string, limit?: number) {
-    logger.info('Getting session messages', { sessionId, limit });
+    logger.verbose('Getting session messages', { sessionId, limit });
     
     return this.db.getSessionMessages(sessionId, limit);
   }
@@ -209,7 +209,7 @@ export class ChatSessionService {
    * @returns True if deleted, false if not found or unauthorized
    */
   async deleteSession(sessionId: string, userId: string): Promise<boolean> {
-    logger.info('Deleting session', { sessionId, userId });
+    logger.verbose('Deleting session', { sessionId, userId });
     
     const session = await this.getSession(sessionId, userId);
     if (!session) {
@@ -219,7 +219,7 @@ export class ChatSessionService {
     
     await this.db.deleteSession(sessionId);
     
-    logger.info('Session deleted', { sessionId });
+    logger.verbose('Session deleted', { sessionId });
     return true;
   }
 
@@ -232,7 +232,7 @@ export class ChatSessionService {
    * @returns True if updated, false if not found or unauthorized
    */
   async updateSessionTitle(sessionId: string, userId: string, title: string): Promise<boolean> {
-    logger.info('Updating session title', { sessionId, userId, title });
+    logger.verbose('Updating session title', { sessionId, userId, titleLength: title.length });
     
     const session = await this.getSession(sessionId, userId);
     if (!session) {
@@ -252,7 +252,7 @@ export class ChatSessionService {
 
     const token = crypto.randomUUID();
     await this.db.setShareToken(sessionId, token);
-    logger.info('Session shared', { sessionId, shareToken: token });
+    logger.verbose('Session shared', { sessionId });
     return token;
   }
 
@@ -261,7 +261,7 @@ export class ChatSessionService {
     if (!session) return false;
 
     await this.db.setShareToken(sessionId, null);
-    logger.info('Session unshared', { sessionId });
+    logger.verbose('Session unshared', { sessionId });
     return true;
   }
 
@@ -284,7 +284,7 @@ export class ChatSessionService {
     responseText: string;
     error?: string;
   }> {
-    logger.info('Processing message', { userId });
+    logger.verbose('Processing message', { userId });
 
     const graph = this.factory.createGraph();
     const result = await graph.invoke({
@@ -332,7 +332,7 @@ export class ChatSessionService {
    * @returns The generated title or undefined if generation fails
    */
   async generateSessionTitle(sessionId: string, userId: string): Promise<string | undefined> {
-    logger.info('Generating session title', { sessionId });
+    logger.verbose('Generating session title', { sessionId });
 
     const session = await this.getSession(sessionId, userId);
     if (!session) {
@@ -359,7 +359,7 @@ export class ChatSessionService {
       });
 
       await this.updateSessionTitle(sessionId, userId, title);
-      logger.info('Session title generated', { sessionId, title });
+      logger.verbose('Session title generated', { sessionId, titleLength: title.length });
 
       return title;
     } catch (err) {

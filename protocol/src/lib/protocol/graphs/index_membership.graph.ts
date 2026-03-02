@@ -28,7 +28,7 @@ export class IndexMembershipGraphFactory {
      */
     const addMemberNode = async (state: typeof IndexMembershipGraphState.State) => {
       return timed("IndexMembershipGraph.addMember", async () => {
-        logger.info("Add member to index", {
+        logger.verbose("Add member to index", {
           userId: state.userId,
           indexId: state.indexId,
           targetUserId: state.targetUserId,
@@ -103,7 +103,7 @@ export class IndexMembershipGraphFactory {
      */
     const listMembersNode = async (state: typeof IndexMembershipGraphState.State) => {
       return timed("IndexMembershipGraph.listMembers", async () => {
-        logger.info("List index members", {
+        logger.verbose("List index members", {
           userId: state.userId,
           indexId: state.indexId,
         });
@@ -151,7 +151,7 @@ export class IndexMembershipGraphFactory {
      */
     const removeMemberNode = async (state: typeof IndexMembershipGraphState.State) => {
       return timed("IndexMembershipGraph.removeMember", async () => {
-        logger.info("Remove member from index", {
+        logger.verbose("Remove member from index", {
           userId: state.userId,
           indexId: state.indexId,
           targetUserId: state.targetUserId,

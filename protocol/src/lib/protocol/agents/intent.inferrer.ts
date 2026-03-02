@@ -163,7 +163,7 @@ export class ExplicitIntentInferrer {
       conversationContext = undefined
     } = options;
     
-    logger.info("invoke: received input", {
+    logger.verbose("invoke: received input", {
       contentPreview: content?.substring(0, 50),
       allowProfileFallback,
       operationMode,
@@ -174,7 +174,7 @@ export class ExplicitIntentInferrer {
     // CRITICAL: Don't fallback to profile when explicitly disabled
     // This prevents auto-generation of intents from profile during query operations
     if (!content && !allowProfileFallback) {
-      logger.info("invoke: no content and fallback disabled, returning empty");
+      logger.verbose("invoke: no content and fallback disabled, returning empty");
       return { intents: [] };
     }
 
@@ -226,7 +226,7 @@ export class ExplicitIntentInferrer {
       const result = await this.model.invoke(messages);
       const output = responseFormat.parse(result);
 
-      logger.info(`invoke: found ${output.intents.length} intents`, {
+      logger.verbose(`invoke: found ${output.intents.length} intents`, {
         operationMode,
         allowedFallback: allowProfileFallback,
         usedFallback: !content && allowProfileFallback,

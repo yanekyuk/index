@@ -225,7 +225,7 @@ export class ChatAgent {
       fullMessages.push(new SystemMessage(ITERATION_NUDGE));
     }
 
-    logger.info("Agent iteration", {
+    logger.verbose("Agent iteration", {
       iteration: iterationCount,
       messageCount: messages.length,
       pastSoftLimit: iterationCount >= SOFT_ITERATION_LIMIT,
@@ -246,7 +246,7 @@ export class ChatAgent {
     const toolCalls = response.tool_calls || [];
 
     if (toolCalls.length > 0) {
-      logger.info("Agent made tool calls", {
+      logger.verbose("Agent made tool calls", {
         iteration: iterationCount,
         toolCount: toolCalls.length,
         tools: toolCalls.map((tc) => tc.name),
@@ -289,7 +289,7 @@ export class ChatAgent {
       iteration: iterationCount,
       responseText,
     });
-    logger.info("Agent produced response", {
+    logger.verbose("Agent produced response", {
       iteration: iterationCount,
       responseLength: responseText.length,
     });
@@ -329,7 +329,7 @@ export class ChatAgent {
         }
 
         try {
-          logger.info("Executing tool", { name: tc.name, args: tc.args });
+          logger.verbose("Executing tool", { name: tc.name, args: tc.args });
           let result = await tool.invoke(tc.args);
           let resultStr =
             typeof result === "string" ? result : JSON.stringify(result);
@@ -343,7 +343,7 @@ export class ChatAgent {
           }
 
           logger.debug("Tool response", { name: tc.name, result: resultStr });
-          logger.info("Tool completed", {
+          logger.verbose("Tool completed", {
             name: tc.name,
             resultLength: resultStr.length,
           });
@@ -398,7 +398,7 @@ export class ChatAgent {
     const createOpportunitiesTool = this.toolsByName.get("create_opportunities");
     if (!createIntentTool || !createOpportunitiesTool) return null;
 
-    logger.info("Create-intent signal: auto-calling create_intent then create_opportunities");
+    logger.verbose("Create-intent signal: auto-calling create_intent then create_opportunities");
     const createIntentResult = await createIntentTool.invoke({
       description: parsed.data.suggestedIntentDescription,
       indexId: (originalArgs as { indexId?: string }).indexId,
@@ -528,7 +528,7 @@ export class ChatAgent {
         fullMessages.push(new SystemMessage(ITERATION_NUDGE));
       }
 
-      logger.info("Streaming iteration", {
+      logger.verbose("Streaming iteration", {
         iteration: iterationCount,
         messageCount: messages.length,
         pastSoftLimit: iterationCount >= SOFT_ITERATION_LIMIT,
@@ -573,7 +573,7 @@ export class ChatAgent {
       });
 
       if (toolCalls.length > 0) {
-        logger.info("Streaming: agent made tool calls", {
+        logger.verbose("Streaming: agent made tool calls", {
           iteration: iterationCount,
           tools: toolCalls.map((tc) => tc.name),
         });
@@ -616,7 +616,7 @@ export class ChatAgent {
           }
 
           try {
-            logger.info("Streaming: executing tool", { name: tc.name });
+            logger.verbose("Streaming: executing tool", { name: tc.name });
             let result = await tool.invoke(tc.args);
             let resultStr =
               typeof result === "string" ? result : JSON.stringify(result);
@@ -629,7 +629,7 @@ export class ChatAgent {
               }
             }
 
-            logger.info("Streaming: tool completed", {
+            logger.verbose("Streaming: tool completed", {
               name: tc.name,
               resultLength: resultStr.length,
             });
@@ -738,7 +738,7 @@ export class ChatAgent {
       }
 
       // ── No tool calls → final response already streamed ───────────────
-      logger.info("Streaming: agent produced response", {
+      logger.verbose("Streaming: agent produced response", {
         iteration: iterationCount,
         responseLength: iterationText.length,
       });

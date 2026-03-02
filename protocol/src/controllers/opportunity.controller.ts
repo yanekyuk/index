@@ -34,7 +34,7 @@ export class OpportunityController {
       offset: offset ? parseInt(offset, 10) : undefined,
     };
     const list = await opportunityService.getOpportunitiesForUser(user.id, options);
-    logger.info('Opportunities listed', { userId: user.id, count: list.length });
+    logger.verbose('Opportunities listed', { userId: user.id, count: list.length });
     return Response.json({ opportunities: list });
   }
 
@@ -105,7 +105,7 @@ export class OpportunityController {
     const result = await opportunityService.getOpportunityWithPresentation(id, user.id);
     
     if (!result) {
-      logger.info('Opportunity not found', { userId: user.id, opportunityId: id });
+      logger.verbose('Opportunity not found', { userId: user.id, opportunityId: id });
       return new Response(JSON.stringify({ error: 'Opportunity not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },

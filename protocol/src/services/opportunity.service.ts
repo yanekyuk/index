@@ -104,7 +104,7 @@ export class OpportunityService {
     userId: string,
     options?: { indexId?: string; limit?: number }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number } } | { error: string }> {
-    logger.info('[OpportunityService] Getting home view', { userId, options });
+    logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
       return { error: 'Home view not available' };
     }
@@ -143,7 +143,7 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.info('[OpportunityService] Getting opportunities for user', { userId, options });
+    logger.verbose('[OpportunityService] Getting opportunities for user', { userId, options });
     
     return this.db.getOpportunitiesForUser(userId, options);
   }
@@ -156,7 +156,7 @@ export class OpportunityService {
    * @returns Opportunity with presentation data or null
    */
   async getOpportunityWithPresentation(opportunityId: string, viewerId: string) {
-    logger.info('[OpportunityService] Getting opportunity', { opportunityId, viewerId });
+    logger.verbose('[OpportunityService] Getting opportunity', { opportunityId, viewerId });
 
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -236,7 +236,7 @@ export class OpportunityService {
     status: OpportunityStatus,
     userId: string
   ): Promise<OpportunityStatusUpdateResult | { error: string; status: number }> {
-    logger.info('[OpportunityService] Updating opportunity status', { opportunityId, status, userId });
+    logger.verbose('[OpportunityService] Updating opportunity status', { opportunityId, status, userId });
 
     const opp = await this.db.getOpportunity(opportunityId);
     if (!opp) {
@@ -281,7 +281,7 @@ export class OpportunityService {
    * @returns Discovery results
    */
   async discoverOpportunities(userId: string, query: string, limit: number = 5) {
-    logger.info('[OpportunityService] Discovering opportunities', { userId, query, limit });
+    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit });
 
     if (!this.graph) {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
@@ -325,7 +325,7 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.info('[OpportunityService] Getting opportunities for index', { indexId, userId, options });
+    logger.verbose('[OpportunityService] Getting opportunities for index', { indexId, userId, options });
 
     const isOwner = await this.db.isIndexOwner(indexId, userId);
     const isMember = await this.db.isIndexMember(indexId, userId);
@@ -355,7 +355,7 @@ export class OpportunityService {
       confidence?: number;
     }
   ) {
-    logger.info('[OpportunityService] Creating manual opportunity', { indexId, creatorId });
+    logger.verbose('[OpportunityService] Creating manual opportunity', { indexId, creatorId });
 
     // Check permission
     const permission = await this.checkCreatePermission(creatorId, data.parties, indexId);
@@ -441,7 +441,7 @@ export class OpportunityService {
    * @returns Opportunity cards and peer info for chat context
    */
   async getChatContext(userId: string, peerUserId: string) {
-    logger.info('[OpportunityService] Getting chat context', { userId, peerUserId });
+    logger.verbose('[OpportunityService] Getting chat context', { userId, peerUserId });
 
     const [rows, peerUser] = await Promise.all([
       this.db.getAcceptedOpportunitiesBetweenActors(userId, peerUserId),

@@ -94,7 +94,7 @@ export class SuggestionGenerator {
         ...(s.type === "direct" && s.followupText != null && { followupText: s.followupText }),
         ...(s.type === "prompt" && s.prefill != null && { prefill: s.prefill }),
       }));
-      logger.info("[SuggestionGenerator] Generated", { count: out.length });
+      logger.verbose("[SuggestionGenerator] Generated", { count: out.length });
       return out;
     } catch (error) {
       logger.warn("[SuggestionGenerator] Failed", {

@@ -21,7 +21,7 @@ export class IndexService {
    * Get all indexes that a user is a member of, including their personal index.
    */
   async getIndexesForUser(userId: string) {
-    logger.info('[IndexService] Getting indexes for user', { userId });
+    logger.verbose('[IndexService] Getting indexes for user', { userId });
     return this.adapter.getIndexesForUser(userId);
   }
 
@@ -29,7 +29,7 @@ export class IndexService {
    * Create a new index with the requesting user as owner.
    */
   async createIndex(userId: string, data: { title: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
-    logger.info('[IndexService] Creating index', { userId, title: data.title });
+    logger.verbose('[IndexService] Creating index', { userId, title: data.title });
     const index = await this.adapter.createIndex(data);
     // Add the creating user as the owner
     await this.adapter.addMemberToIndex(index.id, userId, 'owner');
@@ -45,7 +45,7 @@ export class IndexService {
    * Get a public index by ID (no auth required). Returns null if not public.
    */
   async getPublicIndexById(indexId: string) {
-    logger.info('[IndexService] Getting public index by id', { indexId });
+    logger.verbose('[IndexService] Getting public index by id', { indexId });
     return this.adapter.getPublicIndexDetail(indexId);
   }
 
@@ -54,7 +54,7 @@ export class IndexService {
    * Only members of the index can view it.
    */
   async getIndexById(indexId: string, userId: string) {
-    logger.info('[IndexService] Getting index by id', { indexId });
+    logger.verbose('[IndexService] Getting index by id', { indexId });
     return this.adapter.getIndexDetail(indexId, userId);
   }
 
@@ -62,7 +62,7 @@ export class IndexService {
    * Update index settings (title, prompt, permissions). Owner-only.
    */
   async updateIndex(indexId: string, userId: string, data: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
-    logger.info('[IndexService] Updating index', { indexId, userId });
+    logger.verbose('[IndexService] Updating index', { indexId, userId });
     return this.adapter.updateIndexSettings(indexId, userId, data);
   }
 
@@ -70,7 +70,7 @@ export class IndexService {
    * Update index permissions. Owner-only.
    */
   async updatePermissions(indexId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
-    logger.info('[IndexService] Updating permissions', { indexId, userId });
+    logger.verbose('[IndexService] Updating permissions', { indexId, userId });
     return this.adapter.updateIndexSettings(indexId, userId, data);
   }
 
@@ -86,7 +86,7 @@ export class IndexService {
    * Add a member to an index. Only owners/admins can add members.
    */
   async addMember(indexId: string, userId: string, requestingUserId: string, role: 'admin' | 'member' = 'member') {
-    logger.info('[IndexService] Adding member', { indexId, userId, role });
+    logger.verbose('[IndexService] Adding member', { indexId, userId, role });
     return this.adapter.addMemberForOwnerOrAdmin(indexId, userId, requestingUserId, role);
   }
 
@@ -94,7 +94,7 @@ export class IndexService {
    * Remove a member from an index. Owner-only.
    */
   async removeMember(indexId: string, memberId: string, userId: string) {
-    logger.info('[IndexService] Removing member', { indexId, memberId, userId });
+    logger.verbose('[IndexService] Removing member', { indexId, memberId, userId });
     return this.adapter.removeMemberForOwner(indexId, memberId, userId);
   }
 
@@ -102,7 +102,7 @@ export class IndexService {
    * Soft-delete an index. Owner-only.
    */
   async deleteIndex(indexId: string, userId: string) {
-    logger.info('[IndexService] Deleting index', { indexId, userId });
+    logger.verbose('[IndexService] Deleting index', { indexId, userId });
     return this.adapter.deleteIndexForOwner(indexId, userId);
   }
 
@@ -110,7 +110,7 @@ export class IndexService {
    * Get members of an index. Only owners can call this.
    */
   async getMembersForOwner(indexId: string, userId: string) {
-    logger.info('[IndexService] Getting members for owner', { indexId, userId });
+    logger.verbose('[IndexService] Getting members for owner', { indexId, userId });
     const raw = await this.adapter.getIndexMembersForOwner(indexId, userId);
     return raw.map(m => ({
       id: m.userId,
@@ -127,7 +127,7 @@ export class IndexService {
    * Used for mentionable users / @mentions.
    */
   async getMembersFromMyIndexes(userId: string) {
-    logger.info('[IndexService] Getting members from user indexes', { userId });
+    logger.verbose('[IndexService] Getting members from user indexes', { userId });
     const raw = await this.adapter.getMembersFromUserIndexes(userId);
     return raw.map(m => ({
       id: m.userId,
@@ -140,7 +140,7 @@ export class IndexService {
    * Get public indexes that the user has not joined (for discovery).
    */
   async getPublicIndexes(userId: string) {
-    logger.info('[IndexService] Getting public indexes for user', { userId });
+    logger.verbose('[IndexService] Getting public indexes for user', { userId });
     return this.adapter.getPublicIndexesNotJoined(userId);
   }
 
@@ -148,7 +148,7 @@ export class IndexService {
    * Join a public index.
    */
   async joinPublicIndex(indexId: string, userId: string) {
-    logger.info('[IndexService] Joining public index', { indexId, userId });
+    logger.verbose('[IndexService] Joining public index', { indexId, userId });
     await this.adapter.joinPublicIndex(indexId, userId);
     return this.adapter.getIndexDetail(indexId, userId);
   }
@@ -157,7 +157,7 @@ export class IndexService {
    * Leave an index. Members (non-owners) can leave.
    */
   async leaveIndex(indexId: string, userId: string) {
-    logger.info('[IndexService] Leaving index', { indexId, userId });
+    logger.verbose('[IndexService] Leaving index', { indexId, userId });
     await this.adapter.leaveIndex(indexId, userId);
   }
 
@@ -165,7 +165,7 @@ export class IndexService {
    * Get current user's member settings (permissions and ownership status).
    */
   async getMemberSettings(indexId: string, userId: string) {
-    logger.info('[IndexService] Getting member settings', { indexId, userId });
+    logger.verbose('[IndexService] Getting member settings', { indexId, userId });
     const settings = await this.adapter.getMemberSettings(indexId, userId);
     if (!settings) {
       throw new Error('Not a member of this index');
@@ -177,7 +177,7 @@ export class IndexService {
    * Get current user's intents in an index. Members only.
    */
   async getMyIntentsInIndex(indexId: string, userId: string) {
-    logger.info('[IndexService] Getting my intents in index', { indexId, userId });
+    logger.verbose('[IndexService] Getting my intents in index', { indexId, userId });
     return this.adapter.getIndexIntentsForMember(indexId, userId);
   }
 }
