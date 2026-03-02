@@ -806,10 +806,28 @@ export class OpportunityGraphFactory {
         const batchToEvaluate = dedupedCandidates.slice(0, EVAL_BATCH_SIZE);
         const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
 
-        if (remaining.length > 0) {
+        // Early termination: if search was query-driven and no query-sourced candidates remain,
+        // clear remaining to prevent pointless pagination through profile-similarity leftovers
+        const isQueryDriven = !!state.searchQuery?.trim();
+        const queryRemaining = remaining.filter(
+          (c) => c.discoverySource === 'query',
+        );
+        const effectiveRemaining =
+          isQueryDriven && queryRemaining.length === 0 ? [] : remaining;
+
+        if (isQueryDriven && remaining.length > 0 && queryRemaining.length === 0) {
+          logger.info(
+            "[Graph:Evaluation] Early termination: no query-sourced candidates remain",
+            {
+              droppedProfileCandidates: remaining.length,
+            },
+          );
+        }
+
+        if (effectiveRemaining.length > 0) {
           logger.info('[Graph:Evaluation] Batched candidates for evaluation', {
             evaluating: batchToEvaluate.length,
-            remaining: remaining.length,
+            remaining: effectiveRemaining.length,
             total: sortedCandidates.length,
           });
         }
@@ -968,7 +986,7 @@ export class OpportunityGraphFactory {
               returnedFromEvaluator: evaluatedOpportunities.length,
               passedCount: passed.length,
               minScore,
-              remaining: remaining.length,
+              remaining: effectiveRemaining.length,
               batchNumber: 1,
               durationMs: Date.now() - startTime,
             },
@@ -1007,7 +1025,7 @@ export class OpportunityGraphFactory {
 
           return {
             evaluatedOpportunities: passedOpportunities,
-            remainingCandidates: remaining,
+            remainingCandidates: effectiveRemaining,
             trace: traceEntries,
           };
         } catch (error) {
