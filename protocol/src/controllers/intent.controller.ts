@@ -73,7 +73,7 @@ export class IntentController {
     }
     const { proposalId, description, indexId } = parsed.data;
 
-    logger.info('Intent confirm requested', { userId: user.id, proposalId });
+    logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
 
     try {
       const created = await intentService.createFromProposal(user.id, description, proposalId, indexId);
@@ -108,7 +108,7 @@ export class IntentController {
     }
     const { proposalId } = parsed.data;
 
-    logger.info('Intent proposal rejected', { userId: user.id, proposalId });
+    logger.verbose('Intent proposal rejected', { userId: user.id, proposalId });
 
     return Response.json({
       success: true,
@@ -183,7 +183,7 @@ export class IntentController {
   @Post('/process')
   @UseGuards(AuthGuard)
   async process(req: Request, user: AuthenticatedUser) {
-    logger.info('Intent process requested', { userId: user.id });
+    logger.verbose('Intent process requested', { userId: user.id });
 
     let content: string | undefined;
     try {

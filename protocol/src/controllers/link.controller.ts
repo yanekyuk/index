@@ -37,7 +37,7 @@ export class LinkController {
 
     const inserted = await linkService.createLink(user.id, body.url);
 
-    logger.info('Link created', { userId: user.id, linkId: inserted.id });
+    logger.verbose('Link created', { userId: user.id, linkId: inserted.id });
 
     return Response.json({
       link: {

@@ -57,14 +57,14 @@ export class AuthController {
   @Get('/me')
   @UseGuards(AuthGuard)
   async me(_req: Request, user: AuthenticatedUser) {
-    logger.info('Auth me requested', { userId: user.id });
+    logger.verbose('Auth me requested', { userId: user.id });
     const fullUser = await userService.findWithGraph(user.id);
     if (!fullUser) {
       return Response.json({ error: 'User not found' }, { status: 404 });
     }
 
     if (shouldAutoGenerateProfile(fullUser)) {
-      logger.info('Auto-generating profile', { userId: user.id });
+      logger.verbose('Auto-generating profile', { userId: user.id });
       profileService.syncProfile(user.id).catch((error) => {
         logger.error('Background profile sync failed', {
           userId: user.id,

@@ -14,7 +14,7 @@ export class ProfileController {
   @Post('/sync')
   @UseGuards(AuthGuard)
   async sync(req: Request, user: AuthenticatedUser) {
-    logger.info('Profile sync requested', { userId: user.id });
+    logger.verbose('Profile sync requested', { userId: user.id });
     
     const result = await profileService.syncProfile(user.id);
 
