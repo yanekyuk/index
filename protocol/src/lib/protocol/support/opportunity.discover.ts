@@ -260,7 +260,7 @@ async function enrichOpportunities(
         avatarByUserId.set(r.id, r.user.avatar);
       }
     }
-    logger.info("[enrichOpportunities] Retried name lookup for candidates with missing names", {
+    logger.verbose("[enrichOpportunities] Retried name lookup for candidates with missing names", {
       attempted: missingNameIds.length,
       resolved: retried.filter((r) => r.profile?.identity?.name ?? r.user?.name).length,
     });
@@ -561,7 +561,7 @@ export async function runDiscoverFromQuery(
         }),
       );
       if (existingConnections.length > 0) {
-        logger.info("[runDiscoverFromQuery] Skipped duplicates; existing connections", {
+        logger.verbose("[runDiscoverFromQuery] Skipped duplicates; existing connections", {
           count: existingConnections.length,
           userIds: existingConnections.map((c) => c.userId),
         });
@@ -581,7 +581,7 @@ export async function runDiscoverFromQuery(
         );
         const validExistingOpps = existingOpps.filter((o): o is Opportunity => o != null);
         if (validExistingOpps.length > 0) {
-          logger.info("[runDiscoverFromQuery] Including existing opportunities as cards", {
+          logger.verbose("[runDiscoverFromQuery] Including existing opportunities as cards", {
             count: validExistingOpps.length,
             ids: validExistingOpps.map((o) => o.id),
           });
@@ -595,7 +595,7 @@ export async function runDiscoverFromQuery(
       // may set status to pending/latent when merging with related opportunities, so filtering to
       // "draft" would incorrectly drop them.
       if (chatSessionId && (result.opportunities?.length ?? 0) > 0) {
-        logger.info("[runDiscoverFromQuery] Chat session opportunities from graph", {
+        logger.verbose("[runDiscoverFromQuery] Chat session opportunities from graph", {
           count: opportunities.length,
           statuses: opportunities.map((o) => o.status),
         });

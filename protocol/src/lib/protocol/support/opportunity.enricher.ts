@@ -289,7 +289,7 @@ export async function enrichOrCreate(
 
   const resolvedStatus = resolveEnrichedStatus(related.map((o) => o.status), newData.status);
 
-  logger.info('[Enricher] Enriched opportunity', {
+  logger.verbose('[Enricher] Enriched opportunity', {
     enrichedFrom,
     actorCount: mergedActors.length,
   });
