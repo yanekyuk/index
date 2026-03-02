@@ -67,7 +67,7 @@ export class ProfileGenerator {
 
   @Timed()
   public async invoke(input: string) {
-    logger.info("Received input", { inputLength: input?.length });
+    logger.verbose("Received input", { inputLength: input?.length });
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the raw data:\n${input}`)
@@ -75,7 +75,7 @@ export class ProfileGenerator {
     const result = await this.model.invoke(messages);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
-    logger.info("Generated profile", {
+    logger.verbose("Generated profile", {
       skillsCount: output.attributes.skills.length,
       interestsCount: output.attributes.interests.length
     });

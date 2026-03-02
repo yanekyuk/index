@@ -83,7 +83,7 @@ export class LensInferrer {
   async infer(input: LensInferenceInput): Promise<LensInferenceOutput> {
     const { sourceText, profileContext, maxLenses = 3 } = input;
 
-    logger.info('Inferring lenses', {
+    logger.verbose('Inferring lenses', {
       sourceTextLength: sourceText.length,
       hasProfileContext: !!profileContext,
       maxLenses,
@@ -105,7 +105,7 @@ export class LensInferrer {
       const parsed = responseFormat.parse(result);
       const lenses = parsed.lenses.slice(0, maxLenses);
 
-      logger.info('Lenses inferred', {
+      logger.verbose('Lenses inferred', {
         count: lenses.length,
         lenses: lenses.map(l => ({ label: l.label, corpus: l.corpus })),
       });

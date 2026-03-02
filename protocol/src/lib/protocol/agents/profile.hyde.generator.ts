@@ -83,7 +83,7 @@ export class HydeGenerator {
 
   @Timed()
   public async invoke(input: string) {
-    logger.info("Received input", { inputLength: input?.length });
+    logger.verbose("Received input", { inputLength: input?.length });
     const messages = [
       new SystemMessage(systemPrompt),
       new HumanMessage(`Here is the profile for the HyDE Generation:\n${input}`)
@@ -91,7 +91,7 @@ export class HydeGenerator {
     const result = await this.model.invoke(messages);
     const output = responseFormat.parse(result);
     const textToEmbed = this.toString(output);
-    logger.info("Generated HyDE profile", {
+    logger.verbose("Generated HyDE profile", {
       skillsCount: output.attributes.skills.length,
       interestsCount: output.attributes.interests.length
     });
