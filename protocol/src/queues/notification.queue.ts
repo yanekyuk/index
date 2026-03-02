@@ -127,7 +127,7 @@ export class NotificationQueue {
     const { opportunityId, recipientId, priority } = data;
     const db = this.deps?.database ?? this.database;
 
-    this.logger.info('[NotificationJob] Processing opportunity notification', {
+    this.logger.verbose('[NotificationJob] Processing opportunity notification', {
       opportunityId,
       recipientId,
       priority,
@@ -180,13 +180,13 @@ export class NotificationQueue {
       return;
     }
     if (!recipient.onboarding?.completedAt) {
-      this.logger.info('[NotificationJob] Recipient has not completed onboarding, skipping email', {
+      this.logger.verbose('[NotificationJob] Recipient has not completed onboarding, skipping email', {
         recipientId,
       });
       return;
     }
     if (recipient.prefs?.connectionUpdates === false) {
-      this.logger.info('[NotificationJob] Recipient has connection/opportunity updates disabled', {
+      this.logger.verbose('[NotificationJob] Recipient has connection/opportunity updates disabled', {
         recipientId,
       });
       return;
@@ -202,7 +202,7 @@ export class NotificationQueue {
     const emailDedupeKey = `${EMAIL_OPPORTUNITY_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
     const setResult = await redis.set(emailDedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
     if (setResult !== 'OK') {
-      this.logger.info('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
+      this.logger.verbose('[NotificationJob] Skipped duplicate opportunity email (dedupe key already set)', {
         recipientId,
         opportunityId,
       });
@@ -243,7 +243,7 @@ export class NotificationQueue {
       const dedupeKey = `${DIGEST_DEDUPE_PREFIX}${recipientId}:${opportunityId}`;
       const setResult = await redis.set(dedupeKey, '1', 'EX', DIGEST_TTL_SEC, 'NX');
       if (setResult !== 'OK') {
-        this.logger.info('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
+        this.logger.verbose('[NotificationJob] Skipped duplicate digest entry (dedupe key already set)', {
           recipientId,
           opportunityId,
         });
@@ -252,7 +252,7 @@ export class NotificationQueue {
       const listKey = `${DIGEST_LIST_PREFIX}${recipientId}`;
       await redis.rpush(listKey, opportunityId);
       await redis.expire(listKey, DIGEST_TTL_SEC);
-      this.logger.info('[NotificationJob] Added opportunity to weekly digest list', {
+      this.logger.verbose('[NotificationJob] Added opportunity to weekly digest list', {
         recipientId,
         opportunityId,
       });

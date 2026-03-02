@@ -118,7 +118,7 @@ export class ProfileQueue {
       const factory = new ProfileGraphFactory(database, embedder, scraper);
       const graph = factory.createGraph();
       await graph.invoke({ userId, operationMode: 'write' });
-      this.logger.info('[ProfileHyde] Ensured profile HyDE for user', { userId });
+      this.logger.verbose('[ProfileHyde] Ensured profile HyDE for user', { userId });
     } catch (err) {
       this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, error: err });
       throw err;
