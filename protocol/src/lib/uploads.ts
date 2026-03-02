@@ -178,7 +178,7 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
   for (const file of files) {
     if (!isFileSupported(file.path)) {
       const error = `Skipping unsupported file: ${file.originalname}`;
-      logger.verbose('Skipping unsupported file', { error: error instanceof Error ? error.message : String(error) });
+      logger.verbose('Skipping unsupported file', { error });
       errors.push(error);
       continue;
     }
@@ -187,7 +187,7 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
       contentParts.push(`=== ${file.originalname} ===\n${result.content.substring(0, 5000)}`);
     } else if (result.error) {
       const error = `Failed to process ${file.originalname}: ${result.error}`;
-      logger.warn('Failed to process file', { error: error instanceof Error ? error.message : String(error) });
+      logger.warn('Failed to process file', { error });
       errors.push(error);
     }
   }
