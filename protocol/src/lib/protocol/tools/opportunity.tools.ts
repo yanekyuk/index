@@ -75,7 +75,7 @@ function buildMinimalOpportunityCard(
     : introducerName ?? (introducerActor ? "Someone" : "Index");
   const primaryActionLabel =
     viewerRole === "introducer"
-      ? `Send to ${counterpartName || "them"}`
+      ? "Introduce Them"
       : "Start Chat";
   return {
     opportunityId: opp.id,
@@ -347,11 +347,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
 
+        // Second party name — used in the headline for the introducer view ("A → B")
+        const secondPartyId = introducedPartyUserIds[1];
+        const secondEntity = query.entities?.find((e) => e.userId === secondPartyId);
+        const secondPartyName = (secondEntity?.profile as { name?: string } | undefined)?.name;
+
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const primaryActionLabel = viewerIsParty
           ? "Start Chat"
-          : `Send to ${counterpartName || "them"}`;
+          : "Introduce Them";
         const narratorChip = viewerIsParty
           ? {
               name: "Index",
@@ -362,6 +367,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
               text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
               userId: context.userId,
             };
+
+        const headline =
+          !viewerIsParty && secondPartyName
+            ? `${counterpartName} → ${secondPartyName}`
+            : `Connection with ${counterpartName}`;
 
         const cardData = {
           opportunityId: created.id,
@@ -379,7 +389,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             introducerUser?.name ?? undefined,
           ),
           cta: "Start a conversation to connect.",
-          headline: `Connection with ${counterpartName}`,
+          headline,
           primaryActionLabel,
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",

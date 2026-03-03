@@ -1002,6 +1002,102 @@ describe("create_opportunities tool", () => {
     expect(Array.isArray(parsed.data.opportunities) ? parsed.data.opportunities : []).toBeDefined();
   });
 
+  test("introduction mode: viewer as introducer — card headline is 'PartyA → PartyB' and action is 'Introduce Them'", async () => {
+    // Viewer (testUserId) is NOT in partyUserIds → viewerRole = "introducer"
+    // Timeout elevated: opportunity graph invokes the evaluator agent (LLM call)
+    const mockDb = createMockDatabase(async () => [], {
+      isIndexMember: async () => true,
+      opportunityExistsBetweenActors: async () => false,
+      findOverlappingOpportunities: async () => [],
+      createOpportunity: async (data) =>
+        ({
+          id: "opp-intro-1",
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: { ...data.interpretation, reasoning: "Good match between Alice and Bob." },
+          context: data.context,
+          confidence: data.confidence,
+          status: "draft",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        }) as Opportunity,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: {
+        partyUserIds?: string[];
+        entities?: Array<{ userId: string; profile?: Record<string, unknown>; indexId: string }>;
+      }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: ["alice-id", "bob-id"],
+      entities: [
+        { userId: "alice-id", profile: { name: "Alice" }, indexId: "idx-1" },
+        { userId: "bob-id", profile: { name: "Bob" }, indexId: "idx-1" },
+      ],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+
+    // Extract the opportunity card JSON from the message code block
+    const blockMatch = parsed.data.message.match(/```opportunity\n([\s\S]*?)\n```/);
+    expect(blockMatch).not.toBeNull();
+    const card = JSON.parse(blockMatch![1].replace(/\\u0060/g, "`"));
+
+    expect(card.viewerRole).toBe("introducer");
+    expect(card.headline).toBe("Alice → Bob");
+    expect(card.primaryActionLabel).toBe("Introduce Them");
+  }, 30000);
+
+  test("introduction mode: viewer as party — card headline is 'Connection with Counterpart' and action is 'Start Chat'", async () => {
+    // Viewer (testUserId) IS in partyUserIds → viewerRole = "party"
+    const mockDb = createMockDatabase(async () => [], {
+      isIndexMember: async () => true,
+      opportunityExistsBetweenActors: async () => false,
+      findOverlappingOpportunities: async () => [],
+      createOpportunity: async (data) =>
+        ({
+          id: "opp-party-1",
+          detection: data.detection,
+          actors: data.actors,
+          interpretation: { ...data.interpretation, reasoning: "Good match." },
+          context: data.context,
+          confidence: data.confidence,
+          status: "draft",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          expiresAt: null,
+        }) as Opportunity,
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: {
+        partyUserIds?: string[];
+        entities?: Array<{ userId: string; profile?: Record<string, unknown>; indexId: string }>;
+      }) => Promise<string>;
+    };
+    const result = await tool.invoke({
+      partyUserIds: [testUserId, "other-id"],
+      entities: [
+        { userId: testUserId, profile: { name: "Me" }, indexId: "idx-1" },
+        { userId: "other-id", profile: { name: "Other" }, indexId: "idx-1" },
+      ],
+    });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+
+    const blockMatch = parsed.data.message.match(/```opportunity\n([\s\S]*?)\n```/);
+    expect(blockMatch).not.toBeNull();
+    const card = JSON.parse(blockMatch![1].replace(/\\u0060/g, "`"));
+
+    expect(card.viewerRole).toBe("party");
+    expect(card.headline).toBe("Connection with Other");
+    expect(card.primaryActionLabel).toBe("Start Chat");
+  });
+
   test("introduction mode: entities only (no partyUserIds) derives partyUserIds and creates opportunity", async () => {
     const mockDb = createMockDatabase(async () => [], {
       isIndexMember: async () => true,
@@ -1040,13 +1136,11 @@ describe("create_opportunities tool", () => {
     expect(Array.isArray(parsed.data.opportunities)).toBe(true);
     expect(parsed.data.opportunities.length).toBe(1);
     const opp = parsed.data.opportunities[0];
-    expect(opp.id).toBe("opp-from-entities-only");
-    expect(opp.actors).toBeDefined();
-    expect(opp.actors.some((a: { userId: string }) => a.userId === testUserId)).toBe(true);
-    expect(opp.actors.some((a: { userId: string }) => a.userId === "other-user-id")).toBe(true);
-    expect(opp.detection).toBeDefined();
-    expect(opp.interpretation).toBeDefined();
-    expect(opp.confidence).toBeDefined();
+    // Tool returns minimal summary — not the full DB record
+    expect(opp.opportunityId).toBe("opp-from-entities-only");
+    expect(opp.matchReason).toBeDefined();
+    expect(typeof opp.score).toBe("number");
+    expect(opp.status).toBeDefined();
   });
 });
 
