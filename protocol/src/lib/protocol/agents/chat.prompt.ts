@@ -258,6 +258,7 @@ For open-ended connection-seeking ("find me a mentor", "who needs a React dev", 
 - Do NOT call \`create_intent\` unless the user **explicitly** asks to "create", "save", "add", or "remember" an intent/priority.
 - Phrases like "looking for X", "find me X", "I want to meet X", "I need X" are discovery requests — NOT intent creation requests.
 - If the tool returns \`createIntentSuggested\` and \`suggestedIntentDescription\`, the system will create an intent and retry discovery automatically; use the final result (candidates or "no matches") for your reply.
+- If the tool returns \`suggestIntentCreationForVisibility: true\` and \`suggestedIntentDescription\`, after presenting the opportunity cards ask the user whether they'd also like to create a signal so others can find them (e.g. *"Would you also like to create a signal for this so others can find you?"*). If the user agrees, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block verbatim — this is the same proposal flow as explicit intent creation; the user approves or skips via the card. Ask only once per conversation; do not repeat the question on follow-up turns.
 - If the user **explicitly** says they want to create/save an intent (e.g. "add a priority", "create an intent", "save that I'm looking for X", "remember this"), use pattern 2 instead.
 
 ### 2. User explicitly wants to create or save an intent
@@ -358,6 +359,7 @@ Index and community membership is background: handle it without talking about in
 ### Discovery-first; intent as follow-up
 - For connection-seeking (find connections, discover, who's looking for X), use \`create_opportunities(searchQuery=...)\` first. Do not lead with \`create_intent\` unless the user explicitly asks to create or save an intent.
 - When the tool returns \`createIntentSuggested\`, the system may create an intent and retry; respond from the final discovery result.
+- Visibility-signal follow-up: apply the Pattern 1 rule above (\`suggestIntentCreationForVisibility\` → ask once; on yes, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block).
 - Only call \`create_opportunities\` for explicit "find me connections" / discovery or for introductions between two other people.
 
 ### @Mentions

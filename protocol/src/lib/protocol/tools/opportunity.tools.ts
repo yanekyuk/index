@@ -582,6 +582,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         ...(result.existingConnections?.length ? { existingConnections: result.existingConnections } : {}),
         ...(result.pagination ? { pagination: result.pagination } : {}),
         debugSteps: allDebugSteps,
+        // Distinct from `createIntentSuggested` (no-results path) intentionally:
+        // `handleCreateIntentCallback` in chat.agent.ts auto-creates for that key.
+        // This flag is for the results-found path where the agent must ask the user first.
+        ...(searchQuery
+          ? {
+              suggestIntentCreationForVisibility: true,
+              suggestedIntentDescription: searchQuery,
+            }
+          : {}),
       });
     },
   });

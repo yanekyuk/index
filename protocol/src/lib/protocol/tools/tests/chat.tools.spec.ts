@@ -137,6 +137,37 @@ mock.module("../../graphs/intent.graph", () => ({
   },
 }));
 
+// Mutable mock result for opportunity discovery — tests set this before invoking the tool.
+// Default preserves the existing no-memberships test expectation (found:false + join/index/community message).
+let mockDiscoveryResult: {
+  found: boolean;
+  count: number;
+  message?: string;
+  opportunities?: Array<{
+    opportunityId: string;
+    userId: string;
+    name?: string;
+    avatar?: string | null;
+    matchReason: string;
+    score: number;
+    status?: string;
+  }>;
+  createIntentSuggested?: boolean;
+  suggestedIntentDescription?: string;
+  debugSteps?: unknown[];
+  pagination?: unknown;
+  existingConnections?: unknown[];
+  existingConnectionsForMention?: unknown[];
+} = {
+  found: false,
+  count: 0,
+  message: "You need to join at least one index (community) to discover opportunities.",
+};
+mock.module("../../support/opportunity.discover", () => ({
+  runDiscoverFromQuery: async () => mockDiscoveryResult,
+  continueDiscovery: async () => mockDiscoveryResult,
+}));
+
 import { describe, test, expect, beforeAll } from "bun:test";
 import { createChatTools, type ToolContext } from "..";
 import type { ChatGraphCompositeDatabase, Opportunity, SystemDatabase } from "../../interfaces/database.interface";
@@ -1142,6 +1173,83 @@ describe("create_opportunities tool", () => {
     expect(opp.matchReason.length).toBeGreaterThan(0);
     expect(typeof opp.score).toBe("number");
     expect(["latent", "draft", "pending", "viewed", "accepted", "rejected", "expired"]).toContain(opp.status);
+  });
+
+  test("discovery mode: when searchQuery is non-empty and results are found, includes suggestIntentCreationForVisibility and suggestedIntentDescription", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 1,
+      opportunities: [{
+        opportunityId: "opp-discovery-1",
+        userId: "candidate-user-id",
+        name: "Alice Investor",
+        avatar: null,
+        matchReason: "Both interested in game investments",
+        score: 0.8,
+        status: "draft",
+      }],
+    };
+    // Use getIndexMemberships to populate indexScope via graphs.index (avoids UUID check on context.indexId)
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery: string }) => Promise<string>;
+    };
+    const searchQuery = "looking for investors for my game project";
+    const result = await tool.invoke({ searchQuery });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+    expect(parsed.data.suggestIntentCreationForVisibility).toBe(true);
+    expect(parsed.data.suggestedIntentDescription).toBe(searchQuery);
+  });
+
+  test("discovery mode: when searchQuery is empty, does not include suggestIntentCreationForVisibility", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 1,
+      opportunities: [{
+        opportunityId: "opp-discovery-2",
+        userId: "candidate-user-id",
+        name: "Bob Investor",
+        avatar: null,
+        matchReason: "Both interested in game development",
+        score: 0.75,
+        status: "draft",
+      }],
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery?: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ searchQuery: "" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+    expect(parsed.data.suggestIntentCreationForVisibility).toBeUndefined();
   });
 });
 
