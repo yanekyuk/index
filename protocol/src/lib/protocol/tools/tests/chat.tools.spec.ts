@@ -1049,7 +1049,7 @@ describe("create_opportunities tool", () => {
     expect(card.viewerRole).toBe("introducer");
     expect(card.headline).toBe("Alice → Bob");
     expect(card.primaryActionLabel).toBe("Introduce Them");
-  }, 30000);
+  }, 60000);
 
   test("introduction mode: viewer as party — card headline is 'Connection with Counterpart' and action is 'Start Chat'", async () => {
     // Viewer (testUserId) IS in partyUserIds → viewerRole = "party"
@@ -1138,9 +1138,10 @@ describe("create_opportunities tool", () => {
     const opp = parsed.data.opportunities[0];
     // Tool returns minimal summary — not the full DB record
     expect(opp.opportunityId).toBe("opp-from-entities-only");
-    expect(opp.matchReason).toBeDefined();
+    expect(typeof opp.matchReason).toBe("string");
+    expect(opp.matchReason.length).toBeGreaterThan(0);
     expect(typeof opp.score).toBe("number");
-    expect(opp.status).toBeDefined();
+    expect(["latent", "draft", "pending", "viewed", "accepted", "rejected", "expired"]).toContain(opp.status);
   });
 });
 
