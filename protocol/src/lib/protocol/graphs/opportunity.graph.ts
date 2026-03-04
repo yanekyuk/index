@@ -401,14 +401,13 @@ export class OpportunityGraphFactory {
                     });
                   }
                 }
-                // Merge and dedupe - prefer HyDE candidates
+                // Merge and dedupe - keep both intent and profile candidates per user
                 const byKey = new Map<string, CandidateMatch>();
-                for (const c of queryCandidates) {
-                  byKey.set(`${c.candidateUserId}:${c.indexId}`, c);
-                }
-                for (const c of profileCandidates) {
-                  const key = `${c.candidateUserId}:${c.indexId}`;
-                  if (!byKey.has(key)) byKey.set(key, c);
+                for (const c of [...queryCandidates, ...profileCandidates]) {
+                  const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}:${c.discoverySource ?? 'unknown'}`;
+                  if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
+                    byKey.set(key, c);
+                  }
                 }
                 const merged = Array.from(byKey.values());
                 logger.verbose('[Graph:Discovery] Merged HyDE + profile candidates', { 
@@ -472,8 +471,8 @@ export class OpportunityGraphFactory {
             }
             const byUserAndIndex = new Map<string, CandidateMatch>();
             for (const c of allCandidates) {
-              const key = `${c.candidateUserId}:${c.indexId}`;
-              if (!byUserAndIndex.has(key) || (byUserAndIndex.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+              const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
+              if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
                 byUserAndIndex.set(key, c);
               }
             }
@@ -611,8 +610,8 @@ export class OpportunityGraphFactory {
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              const key = `${c.candidateUserId}:${c.indexId}`;
-              if (!byKey.has(key) || (byKey.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+              const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
+              if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }
             }
@@ -683,8 +682,8 @@ export class OpportunityGraphFactory {
           );
           const byUserAndIndex = new Map<string, CandidateMatch>();
           for (const c of allCandidates) {
-            const key = `${c.candidateUserId}:${c.indexId}`;
-            if (!byUserAndIndex.has(key) || (byUserAndIndex.get(key)?.candidateIntentId == null && c.candidateIntentId != null)) {
+            const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
+            if (!byUserAndIndex.has(key) || c.similarity > (byUserAndIndex.get(key)?.similarity ?? 0)) {
               byUserAndIndex.set(key, c);
             }
           }
