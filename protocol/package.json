@@ -23,8 +23,6 @@
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:generate-profiles": "bun ./src/cli/generate-profiles.ts",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
-    "integration-worker": "bun ./src/cli/integration-worker.ts",
-    "social-worker": "bun ./src/cli/social-worker.ts",
     "audit-freshness": "bun ./src/cli/audit-intent-freshness.ts",
     "test:opportunity-three-user": "bun ./src/cli/opportunity-three-user-test.ts",
     "test": "NODE_ENV=test bun test"
@@ -34,7 +32,8 @@
     "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@bull-board/api": "^6.15.0",
     "@bull-board/hono": "^6.15.0",
-    "@composio/core": "^0.1.55",
+    "@composio/core": "^0.6.3",
+    "@composio/langchain": "^0.6.3",
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.1.2",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.0",

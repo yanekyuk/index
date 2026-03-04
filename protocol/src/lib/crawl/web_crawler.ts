@@ -1,9 +1,18 @@
 import crypto from 'crypto';
 
 import { log } from '../../lib/log';
-import type { IntegrationFile } from '../../lib/integrations';
-
 import { extractUrlContent } from '../parallel/parallel';
+
+export interface IntegrationFile {
+  id: string;
+  name: string;
+  content: string;
+  lastModified: Date;
+  type: string;
+  size: number;
+  sourceId?: string;
+  metadata?: unknown;
+}
 
 const logger = log.lib.from("lib/crawl/web_crawler.ts");
 

@@ -240,7 +240,7 @@ export class MessagingController {
       return new Response(wrappedStream, {
         headers: {
           'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
+          'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
         },
       });

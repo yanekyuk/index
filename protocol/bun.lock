@@ -9,7 +9,8 @@
         "@aws-sdk/s3-request-presigner": "^3.983.0",
         "@bull-board/api": "^6.15.0",
         "@bull-board/hono": "^6.15.0",
-        "@composio/core": "^0.1.55",
+        "@composio/core": "^0.6.3",
+        "@composio/langchain": "^0.6.3",
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
         "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
@@ -188,11 +189,13 @@
 
     "@commander-js/extra-typings": ["@commander-js/extra-typings@13.1.0", "", { "peerDependencies": { "commander": "~13.1.0" } }, "sha512-q5P52BYb1hwVWE6dtID7VvuJWrlfbCv4klj7BjUUOqMz4jbSZD4C9fJ9lRjL2jnBGTg+gDDlaXN51rkWcLk4fg=="],
 
-    "@composio/client": ["@composio/client@0.1.0-alpha.37", "", {}, "sha512-2YzXiRXlxqOgEz7nEh1aKdJ9vwQRb69+RX6UH+LTDmuTwW+pOjI2qbhIBxTbP2z9e2SyHVG0/AtMxc9tR5jU0w=="],
+    "@composio/client": ["@composio/client@0.1.0-alpha.56", "", {}, "sha512-hNgChB5uhdvT4QXNzzfUuvtG6vrfanQQFY2hPyKwbeR4x6mEmIGFiZ4y2qynErdUWldAZiB/7pY/MBMg6Q9E0g=="],
 
-    "@composio/core": ["@composio/core@0.1.55", "", { "dependencies": { "@composio/client": "0.1.0-alpha.37", "@composio/json-schema-to-zod": "0.1.16", "@types/json-schema": "^7.0.15", "chalk": "^4.1.2", "openai": "^5.16.0", "pusher-js": "^8.4.0", "semver": "^7.7.2", "uuid": "^13.0.0", "zod-to-json-schema": "^3.24.5" }, "peerDependencies": { "zod": ">=3.25.76 <5" } }, "sha512-GLSWTS/gZeycQ7W2wSZQ21DKV+LC6WTAilhSj+JG9Apslx3re9luF1Lyblm4UMSf4DzYWKOrtipwQOaeg7bmTg=="],
+    "@composio/core": ["@composio/core@0.6.3", "", { "dependencies": { "@composio/client": "0.1.0-alpha.56", "@composio/json-schema-to-zod": "0.1.20", "@types/json-schema": "^7.0.15", "chalk": "^4.1.2", "openai": "^6.16.0", "pusher-js": "^8.4.0", "semver": "^7.7.2", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "zod": "^3.25 || ^4" } }, "sha512-PZm4LQGMaaDFHWUouMHqKPg5fNfgjM2l0zF0Vw/vfWJ34KYyo1ne6YjhGvBDmOIKPByT6Dal4/ff7AHpjedL/w=="],
 
-    "@composio/json-schema-to-zod": ["@composio/json-schema-to-zod@0.1.16", "", { "peerDependencies": { "zod": ">=3.25.76 <5" } }, "sha512-vu6RUQTWDW/0wLDWsQHtWJ97JsnMjA1olTQwVD88BAtKZTdDLuzjnGRxSllxp5JG/GntnovUphraZWcWfe80eQ=="],
+    "@composio/json-schema-to-zod": ["@composio/json-schema-to-zod@0.1.20", "", { "peerDependencies": { "zod": ">=3.25.76 <5" } }, "sha512-d4V34itLrUWG/VBh7ciznKcxF/T22MBLHmuEzHoX0zsBOHsUmjYz5qtDh20S2p3FE+HHvLZxpXiv8yfdd4yI+Q=="],
+
+    "@composio/langchain": ["@composio/langchain@0.6.3", "", { "peerDependencies": { "@composio/core": "0.6.3", "@langchain/core": "^1.1.4" } }, "sha512-vVzzx+20h+6G6GzVyqECf4XnsitmTEwo5m3MUUU15ipmOZnHM4KAw5aUvrChZWXBFTymdGv0+nJmZWNRe5BqFw=="],
 
     "@csstools/color-helpers": ["@csstools/color-helpers@5.1.0", "", {}, "sha512-S11EXWJyy0Mz5SYvRmY8nJYTFFd1LCNV+7cXyAgQtOOuzb4EsgfqDufL+9esx72/eLhsRdGZwaldu/h+E4t4BA=="],
 
@@ -1610,9 +1613,7 @@
 
     "@better-auth/core/zod": ["zod@4.3.6", "", {}, "sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg=="],
 
-    "@composio/core/openai": ["openai@5.23.2", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.23.8" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-MQBzmTulj+MM5O8SKEk/gL8a7s5mktS9zUtAkU257WjvobGc9nKcBuVwjyEEcb9SI8a8Y2G/mzn3vm9n1Jlleg=="],
-
-    "@composio/core/uuid": ["uuid@13.0.0", "", { "bin": { "uuid": "dist-node/bin/uuid" } }, "sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w=="],
+    "@composio/core/openai": ["openai@6.17.0", "", { "peerDependencies": { "ws": "^8.18.0", "zod": "^3.25 || ^4.0" }, "optionalPeers": ["ws", "zod"], "bin": { "openai": "bin/cli" } }, "sha512-NHRpPEUPzAvFOAFs9+9pC6+HCw/iWsYsKCMPXH5Kw7BpMxqd8g/A07/1o7Gx2TWtCnzevVRyKMRFqyiHyAlqcA=="],
 
     "@langchain/core/langsmith": ["langsmith@0.4.12", "", { "dependencies": { "@types/uuid": "^10.0.0", "chalk": "^4.1.2", "console-table-printer": "^2.12.1", "p-queue": "^6.6.2", "semver": "^7.6.3", "uuid": "^10.0.0" }, "peerDependencies": { "@opentelemetry/api": "*", "@opentelemetry/exporter-trace-otlp-proto": "*", "@opentelemetry/sdk-trace-base": "*", "openai": "*" }, "optionalPeers": ["@opentelemetry/api", "@opentelemetry/exporter-trace-otlp-proto", "@opentelemetry/sdk-trace-base", "openai"] }, "sha512-YWt0jcGvKqjUgIvd78rd4QcdMss0lUkeUaqp0UpVRq7H2yNDx8H5jOUO/laWUmaPtWGgcip0qturykXe1g9Gqw=="],
 

@@ -253,7 +253,6 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
           id: idx.id,
           title: idx.title,
           prompt: idx.prompt,
-          isPersonal: false,
           permissions: {
             joinPolicy: idx.joinPolicy,
             invitationLink: null,
