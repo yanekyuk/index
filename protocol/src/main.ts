@@ -28,12 +28,14 @@ import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
+import { enrichmentQueue } from './queues/enrichment.queue';
 import { IndexMembershipEvents } from './events/index_membership.event';
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();
 notificationQueue.startWorker();
 profileQueue.startWorker();
+enrichmentQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 
@@ -100,6 +102,7 @@ const messagingService = new MessagingService(messagingStore, {
   xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
   walletMasterKey,
 });
+console.log(path.resolve(import.meta.dir, '../.xmtp'));
 
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
