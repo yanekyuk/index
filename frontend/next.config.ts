@@ -7,13 +7,10 @@ const frontendRoot = path.resolve(__dirname);
 const nextConfig: NextConfig = {
   output: "standalone",
   async rewrites() {
-    const target = process.env.PROTOCOL_URL;
-    if (!target) return [];
+    const target = process.env.PROTOCOL_URL || 'http://localhost:3001';
     return [
       { source: '/api/:path*', destination: `${target}/api/:path*` },
     ];
-
-    console.log('target', target);
   },
   turbopack: {
     root: frontendRoot,

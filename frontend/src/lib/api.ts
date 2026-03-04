@@ -2,8 +2,8 @@ import { useCallback, useMemo, useRef } from 'react';
 
 import { authClient, getJwtToken } from './auth-client';
 
-// API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
+// API Configuration - relative path, proxied by Next.js to protocol server
+const API_BASE_URL = '/api';
 
 // Error types
 export class APIError extends Error {

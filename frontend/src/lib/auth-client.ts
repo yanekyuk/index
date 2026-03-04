@@ -1,11 +1,9 @@
 import { createAuthClient } from "better-auth/react";
 import { magicLinkClient, jwtClient } from "better-auth/client/plugins";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-const serverBase = apiUrl.startsWith('/') ? '' : (apiUrl.replace(/\/api\/?$/, '') || 'http://localhost:3001');
-
+// Same origin - auth routes proxied via Next.js to /api/auth/*
 export const authClient = createAuthClient({
-  baseURL: serverBase,
+  baseURL: '',
   basePath: "/api/auth",
   plugins: [magicLinkClient(), jwtClient()],
 });

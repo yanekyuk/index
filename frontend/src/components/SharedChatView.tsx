@@ -98,8 +98,7 @@ export default function SharedChatView({ token }: SharedChatViewProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL || "";
-    fetch(`${base}/chat/shared/${token}`)
+    fetch(`/api/chat/shared/${token}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Conversation not found");
         const data = await res.json();
