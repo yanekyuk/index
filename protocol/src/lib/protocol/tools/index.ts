@@ -32,6 +32,8 @@ import { createIntentTools } from "./intent.tools";
 import { createIndexTools } from "./index.tools";
 import { createOpportunityTools } from "./opportunity.tools";
 import { createUtilityTools } from "./utility.tools";
+import { createIntegrationTools } from "./integration.tools";
+import { createContactTools } from "./contact.tools";
 
 // Re-export types for consumers
 export type { ToolContext, ResolvedToolContext } from "./tool.helpers";
@@ -152,6 +154,8 @@ export async function createChatTools(
   const indexTools = createIndexTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
+  const integrationTools = createIntegrationTools(defineTool, toolDeps);
+  const contactTools = createContactTools(defineTool, toolDeps);
 
   // Chat only proposes opportunities from the conversation (create_opportunities).
   // Other opportunities are shown on the home view; do not give the agent list_opportunities.
@@ -165,6 +169,8 @@ export async function createChatTools(
     ...indexTools,
     ...opportunityToolsForChat,
     ...utilityTools,
+    ...integrationTools,
+    ...contactTools,
   ];
 }
 
