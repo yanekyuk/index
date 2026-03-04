@@ -14,12 +14,14 @@ WORKFLOW:
 2. Check the "connection_status" in the response
 3. If NOT connected, call COMPOSIO_MANAGE_CONNECTIONS to get an auth link - return this to the user
 4. If connected, call COMPOSIO_MULTI_EXECUTE_TOOL to execute the tools
-5. Return the results
+5. Return the results as-is without modification
 
-IMPORTANT:
+CRITICAL RULES:
+- ONLY use parameters defined in each tool's schema - do NOT add extra parameters
 - Always search for tools first before executing
 - If the user needs to authenticate, return the auth link clearly
-- Meta tools share context via session_id, so search results persist to execute calls`;
+- Meta tools share context via session_id, so search results persist to execute calls
+- Return raw data from tools - do not transform or filter unless explicitly asked`;
 
 /**
  * Fully dynamic integration adapter using Composio + LangGraph.
@@ -92,8 +94,12 @@ export class IntegrationAdapter {
           });
           return result;
         } catch (err) {
-          logger.error('Tools node error', { error: err instanceof Error ? err.message : String(err) });
-          throw err;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.error('Tools node error', { error: errMsg });
+          // Return error as a message so the agent can retry with correct params
+          return { 
+            messages: [new HumanMessage(`Error: ${errMsg}\n\n✖ Please fix your mistakes and try again with only the parameters defined in the tool schema.`)] 
+          };
         }
       })
       .addEdge('__start__', 'agent')
