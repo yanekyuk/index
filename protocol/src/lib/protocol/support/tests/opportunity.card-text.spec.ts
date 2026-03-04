@@ -108,6 +108,73 @@ describe("viewerCentricCardSummary", () => {
     expect(result).not.toContain("Yankı's");
     expect(result).toContain("Yuki Tanaka");
   });
+
+  // ── IND-113: Introducer stripping ──
+
+  it("strips introducer from summary with counterpart", () => {
+    const reasoning = "Seref Yarar introduced you to Lucy, who is actively seeking a product co-founder.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Lucy",
+      200,
+      "Viewer Name",
+      "Seref Yarar"
+    );
+    expect(result).not.toContain("Seref");
+    expect(result).toContain("Lucy");
+  });
+
+  it("strips introducer when viewerName is not provided", () => {
+    const reasoning = "Bob thinks you should meet Alice because your skills align.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Alice",
+      200,
+      undefined,
+      "Bob"
+    );
+    expect(result).not.toContain("Bob");
+    expect(result).toContain("Alice");
+  });
+
+  it("does not modify text when introducerName is undefined", () => {
+    const reasoning = "Alice is seeking a co-founder for her marketplace.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Alice",
+      200,
+      "Viewer",
+      undefined
+    );
+    expect(result).toBe(reasoning);
+  });
+
+  it("handles reasoning with viewer-centric transform then introducer strip", () => {
+    const reasoning = "Bob thinks Viewer should meet Alice.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Alice",
+      200,
+      "Viewer",
+      "Bob"
+    );
+    // First transforms "Viewer" to "you", then strips "Bob thinks"
+    expect(result).not.toContain("Bob");
+    expect(result).toContain("Alice");
+  });
+
+  it("truncates correctly after introducer removal", () => {
+    const reasoning = "Seref introduced you to Lucy, who has very long description about many things she is working on and seeking help with.";
+    const result = viewerCentricCardSummary(
+      reasoning,
+      "Lucy",
+      50,
+      undefined,
+      "Seref"
+    );
+    expect(result.length).toBeLessThanOrEqual(53); // 50 + "..."
+    expect(result).not.toContain("Seref");
+  });
 });
 
 describe("narratorRemarkFromReasoning", () => {
@@ -186,5 +253,20 @@ describe("narratorRemarkFromReasoning", () => {
     const result = narratorRemarkFromReasoning(reasoning, "Alex Chen");
     // Should mention the domain (AI, machine learning) or the relationship type
     expect(result.toLowerCase()).toMatch(/ai|machine learning|expertise|collaborat/);
+  });
+
+  // ── IND-113: Introducer handling in narrator remark ──
+
+  it("extracts domain terms from reasoning with introducer", () => {
+    const reasoning = "Seref introduced you to Lucy, who works in AI and machine learning.";
+    const result = narratorRemarkFromReasoning(reasoning, "Lucy", "Viewer");
+    expect(result).toContain("AI");
+  });
+
+  it("handles reasoning without clear domain terms", () => {
+    const reasoning = "Seref introduced you to Lucy. You should connect.";
+    const result = narratorRemarkFromReasoning(reasoning, "Lucy", "Viewer");
+    expect(result.length).toBeGreaterThan(0);
+    expect(result.length).toBeLessThanOrEqual(80);
   });
 });

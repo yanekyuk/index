@@ -54,9 +54,9 @@ export function stripIntroducerMentions(
   for (const name of namesToCheck) {
     const escapedName = escapeRegex(name);
 
-    // Pattern: "Name introduced you to " (with or without comma)
+    // Pattern: "Name introduced you to " (with or without comma, optionally with "directly")
     result = result.replace(
-      new RegExp(`\\b${escapedName}\\s+introduced\\s+you\\s+to\\s*`, "gi"),
+      new RegExp(`\\b${escapedName}\\s+introduced\\s+you\\s+(?:directly\\s+)?to\\s*`, "gi"),
       "",
     );
 
@@ -88,6 +88,25 @@ export function stripIntroducerMentions(
     result = result.replace(
       new RegExp(`\\b${escapedName}\\s+thinks\\s+you\\s+and\\s+`, "gi"),
       "",
+    );
+
+    // Pattern: "Name also thought..." - remove sentences starting with Name + also/also thought
+    result = result.replace(
+      new RegExp(`\\b${escapedName}\\s+(?:also\\s+)?(?:thought|thinks?|believes?|felt)\\s*`, "gi"),
+      "",
+    );
+
+    // General: Remove any remaining standalone mention of the introducer name at sentence start
+    // This catches patterns like "Name also..." or "Name believed..."
+    result = result.replace(
+      new RegExp(`(?:^|\\.\\s*)\\b${escapedName}\\s+`, "gi"),
+      (match, offset) => {
+        // Only remove if it's at the start of text or after a period
+        if (offset === 0 || match.startsWith(".")) {
+          return match.startsWith(".") ? ". " : "";
+        }
+        return match;
+      },
     );
   }
 
