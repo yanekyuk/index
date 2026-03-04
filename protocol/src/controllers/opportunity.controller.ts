@@ -174,8 +174,8 @@ export class OpportunityController {
   @Post('/discover')
   @UseGuards(AuthGuard)
   async discover(req: Request, user: AuthenticatedUser) {
-    const body = (await req.json()) as { query?: string; limit?: number };
-    const { query, limit = 5 } = body ?? {};
+    const body = (await req.json()) as { query?: string; limit?: number; networkOnly?: boolean };
+    const { query, limit = 5, networkOnly = false } = body ?? {};
 
     if (!query || typeof query !== 'string') {
       return new Response(
@@ -184,7 +184,7 @@ export class OpportunityController {
       );
     }
 
-    const result = await opportunityService.discoverOpportunities(user.id, query, limit);
+    const result = await opportunityService.discoverOpportunities(user.id, query, limit, networkOnly);
     
     if (result.error) {
       return new Response(JSON.stringify({ error: result.error }), {

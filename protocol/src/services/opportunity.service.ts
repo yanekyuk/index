@@ -280,8 +280,8 @@ export class OpportunityService {
    * @param limit - Number of results
    * @returns Discovery results
    */
-  async discoverOpportunities(userId: string, query: string, limit: number = 5) {
-    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit });
+  async discoverOpportunities(userId: string, query: string, limit: number = 5, networkOnly: boolean = false) {
+    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit, networkOnly });
 
     if (!this.graph) {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
@@ -289,7 +289,7 @@ export class OpportunityService {
 
     const memberships = await this.db.getIndexMemberships(userId);
     const indexScope = memberships.map((m) => m.indexId);
-    
+
     if (indexScope.length === 0) {
       return {
         userId: userId as Id<'users'>,
@@ -302,6 +302,7 @@ export class OpportunityService {
     const result = await this.graph!.invoke({
       userId: userId as Id<'users'>,
       searchQuery: query,
+      networkOnly,
       options: { limit, initialStatus: 'latent' as const },
     });
 

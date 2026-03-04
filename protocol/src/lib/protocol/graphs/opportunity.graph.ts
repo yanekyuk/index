@@ -803,8 +803,27 @@ export class OpportunityGraphFactory {
           });
         }
 
-        const batchToEvaluate = dedupedCandidates.slice(0, EVAL_BATCH_SIZE);
-        const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
+        // Network-only filter: restrict to user's imported contacts
+        let filteredCandidates = dedupedCandidates;
+        if (state.networkOnly) {
+          const contactUserIds = await this.database.getContactUserIds(state.userId);
+          if (contactUserIds.length === 0) {
+            logger.verbose('[Graph:Evaluation] networkOnly=true but user has no contacts');
+            return { evaluatedOpportunities: [], trace: [{ node: 'evaluation', detail: 'Network filter: no contacts found' }] };
+          }
+          const contactSet = new Set(contactUserIds);
+          filteredCandidates = dedupedCandidates.filter((c) => contactSet.has(c.candidateUserId));
+          logger.verbose('[Graph:Evaluation] Network filter applied', {
+            before: dedupedCandidates.length,
+            after: filteredCandidates.length,
+          });
+          if (filteredCandidates.length === 0) {
+            return { evaluatedOpportunities: [], trace: [{ node: 'evaluation', detail: 'Network filter: no candidates in network' }] };
+          }
+        }
+
+        const batchToEvaluate = filteredCandidates.slice(0, EVAL_BATCH_SIZE);
+        const remaining = filteredCandidates.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
         // clear remaining to prevent pointless pagination through profile-similarity leftovers

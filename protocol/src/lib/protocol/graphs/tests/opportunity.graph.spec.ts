@@ -90,6 +90,7 @@ function createMockGraph(deps?: {
     getOpportunitiesForUser: () => Promise.resolve([]),
     updateOpportunityStatus: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
+    getContactUserIds: () => Promise.resolve([]),
   };
 
   const mockEmbedder: Embedder = {
