@@ -653,7 +653,7 @@ export class OpportunityGraphFactory {
                 excludeUserId: state.userId,
                 limitPerStrategy,
                 limit: perIndexLimit,
-                minScore: 0.40,
+                minScore,
               });
               for (const result of results.filter((r) => r.type === 'intent')) {
                 allCandidates.push({
