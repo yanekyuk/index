@@ -106,31 +106,15 @@ git commit -m "test(intent-inferrer): add query grounding tests for IND-118"
 **Files:**
 - Modify: `protocol/src/lib/protocol/agents/intent.inferrer.ts:57-111` (system prompt)
 
-**Step 1: Update the system prompt**
+**Step 1: Verify the system prompt (already implemented)**
 
-In `intent.inferrer.ts`, add a new rule block to the `CRITICAL RULES` section (after line 83) and strengthen the `WHEN TO FALLBACK TO PROFILE` section. The changes:
+Both `CONTENT GROUNDING (CRITICAL)` and `WHEN TO FALLBACK TO PROFILE` sections already exist in `intent.inferrer.ts` (lines 85-91 and 107-119). **Do not add duplicates.**
 
-1. Add to `CRITICAL RULES` (after line 83, before line 85):
+Verify the existing rules match the intended behavior:
+1. Check that `CONTENT GROUNDING (CRITICAL)` block (lines 85-91) contains all six rules including the two examples (artist, photographer).
+2. Check that `WHEN TO FALLBACK TO PROFILE` block (lines 107-119) enforces: only for CREATE with no content, never for query, profile as enrichment only.
 
-```
-  CONTENT GROUNDING (CRITICAL):
-  - When New Content is present, EVERY inferred intent MUST be directly related to the New Content.
-  - The User Profile is ENRICHMENT CONTEXT ONLY — use it to add specificity or domain detail to content-derived intents.
-  - Do NOT generate intents from the profile that are unrelated to the New Content.
-  - If the New Content is a short phrase (e.g., "artist", "photographer"), treat it as the user's stated goal — infer what they want regarding that topic.
-  - Example: New Content = "artist", Profile = "Building a decentralized protocol" → Intent: "Find or connect with artists" (NOT "Secure partnerships for decentralized protocol")
-  - Example: New Content = "looking for a photographer", Profile = "AI startup founder" → Intent: "Find a photographer" (NOT "Recruit AI engineers")
-```
-
-2. Update `WHEN TO FALLBACK TO PROFILE` section (lines 107-110) to reinforce:
-
-```
-  WHEN TO FALLBACK TO PROFILE:
-  - Only when explicitly instructed: "(No content provided. Please infer intents from Profile Narrative and Aspirations)"
-  - This should ONLY happen for CREATE operations with no explicit user input
-  - Never infer from profile for query operations
-  - When content IS present: profile may inform HOW to describe the intent (e.g., adding domain context), but must NOT change WHAT the intent is about
-```
+If the wording needs refinement (e.g., stronger language), update the existing blocks in place — do not insert new ones.
 
 **Step 2: Run the tests**
 

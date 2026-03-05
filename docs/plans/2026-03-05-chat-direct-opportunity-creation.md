@@ -82,7 +82,7 @@ describe('targetUserId filtering', () => {
       {
         type: 'intent' as const,
         id: 'intent-bob' as Id<'intents'>,
-        userId: 'user-bob',
+        candidateUserId: 'user-bob',
         score: 0.9,
         matchedVia: 'mirror' as const,
         indexId: 'idx-1',
@@ -90,7 +90,7 @@ describe('targetUserId filtering', () => {
       {
         type: 'intent' as const,
         id: 'intent-alice' as Id<'intents'>,
-        userId: 'user-alice',
+        candidateUserId: 'user-alice',
         score: 0.85,
         matchedVia: 'mirror' as const,
         indexId: 'idx-1',
@@ -119,7 +119,7 @@ describe('targetUserId filtering', () => {
       {
         type: 'intent' as const,
         id: 'intent-bob' as Id<'intents'>,
-        userId: 'user-bob',
+        candidateUserId: 'user-bob',
         score: 0.9,
         matchedVia: 'mirror' as const,
         indexId: 'idx-1',
@@ -127,7 +127,7 @@ describe('targetUserId filtering', () => {
       {
         type: 'intent' as const,
         id: 'intent-alice' as Id<'intents'>,
-        userId: 'user-alice',
+        candidateUserId: 'user-alice',
         score: 0.85,
         matchedVia: 'mirror' as const,
         indexId: 'idx-1',
