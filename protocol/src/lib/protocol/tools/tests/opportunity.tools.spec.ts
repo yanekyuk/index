@@ -6,7 +6,7 @@ import type { Opportunity } from "../../interfaces/database.interface";
 import { buildMinimalOpportunityCard } from "../opportunity.tools";
 
 describe("buildMinimalOpportunityCard - IND-113", () => {
-  const mockOpportunity: Opportunity = {
+  const mockOpportunity = {
     id: "opp-123",
     status: "pending",
     interpretation: {
@@ -23,7 +23,7 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
       source: "manual",
       createdByName: "Seref Yarar",
     },
-  };
+  } as unknown as Opportunity;
 
   it("should not include introducer name in mainText when introducerName is passed", () => {
     const card = buildMinimalOpportunityCard(
@@ -60,12 +60,12 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
   });
 
   it("should return safe card when interpretation or reasoning is missing", () => {
-    const oppNoInterpretation: Opportunity = {
+    const oppNoInterpretation = {
       id: "opp-no-interp",
       status: "pending",
       actors: [{ userId: "viewer-1", role: "party" }, { userId: "counterpart-1", role: "party" }],
-      detection: { source: "system" },
-    };
+      detection: { source: "manual" },
+    } as unknown as Opportunity;
     const card = buildMinimalOpportunityCard(
       oppNoInterpretation,
       "viewer-1",
