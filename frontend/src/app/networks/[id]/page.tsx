@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
+import IndexAvatar from '@/components/IndexAvatar';
 import * as Tabs from '@radix-ui/react-tabs';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
@@ -127,7 +128,11 @@ export default function NetworkDetailPage() {
             <>
               {/* Header */}
               <div className="flex items-start justify-between mb-8">
-                <div>
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-16 rounded-sm overflow-hidden shrink-0">
+                    <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="sm" />
+                  </div>
+                  <div>
                   <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-3">
                     {network.title}
                   </h1>
@@ -149,6 +154,7 @@ export default function NetworkDetailPage() {
                         Owner
                       </span>
                     )}
+                  </div>
                   </div>
                 </div>
                 {!isOwner && (

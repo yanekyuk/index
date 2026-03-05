@@ -24,6 +24,16 @@ export interface Storage {
   uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
 
   /**
+   * Upload an index (network) image to storage.
+   * @param buffer - The image buffer
+   * @param userId - The user's ID
+   * @param extension - File extension (e.g., "png", "jpg")
+   * @param contentType - The MIME type
+   * @returns The URL to access the image
+   */
+  uploadIndexImage(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
+
+  /**
    * Upload a base64-encoded image to storage.
    * @param base64Image - The base64 string (can include data URI prefix)
    * @param folder - The folder path in the bucket (default: "feedback")

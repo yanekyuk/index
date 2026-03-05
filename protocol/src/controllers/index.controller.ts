@@ -31,6 +31,7 @@ export class IndexController {
     const body = await req.json().catch(() => ({})) as {
       title?: string;
       prompt?: string;
+      imageUrl?: string | null;
       joinPolicy?: 'anyone' | 'invite_only';
       allowGuestVibeCheck?: boolean;
     };
@@ -45,6 +46,7 @@ export class IndexController {
     const result = await indexService.createIndex(user.id, {
       title: body.title,
       prompt: body.prompt,
+      imageUrl: body.imageUrl,
       joinPolicy: body.joinPolicy,
       allowGuestVibeCheck: body.allowGuestVibeCheck,
     });
@@ -176,6 +178,7 @@ export class IndexController {
       const body = await req.json().catch(() => ({})) as {
         title?: string;
         prompt?: string | null;
+        imageUrl?: string | null;
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
       };

@@ -85,6 +85,20 @@ export class S3StorageAdapter {
   }
 
   /**
+   * Upload an index (network) image to S3.
+   * @returns The URL to access the image
+   */
+  async uploadIndexImage(
+    buffer: Buffer,
+    userId: string,
+    extension: string,
+    contentType: string,
+  ): Promise<string> {
+    const key = `index-images/${userId}/${uuidv4()}.${extension}`;
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+
+  /**
    * Upload a base64-encoded image to S3.
    * @returns The URL to access the image
    */

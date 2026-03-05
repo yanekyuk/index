@@ -28,7 +28,7 @@ export class IndexService {
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createIndex(userId: string, data: { title: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+  async createIndex(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[IndexService] Creating index', { userId, title: data.title });
     const index = await this.adapter.createIndex(data);
     // Add the creating user as the owner
@@ -61,7 +61,7 @@ export class IndexService {
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
    */
-  async updateIndex(indexId: string, userId: string, data: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+  async updateIndex(indexId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[IndexService] Updating index', { indexId, userId });
     return this.adapter.updateIndexSettings(indexId, userId, data);
   }
