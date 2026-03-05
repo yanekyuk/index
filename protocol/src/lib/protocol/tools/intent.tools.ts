@@ -181,8 +181,24 @@ export function createIntentTools(defineTool: DefineTool, deps: ToolDeps) {
       if (verified.length === 0) {
         // Build a descriptive rejection reason from the trace so the ReACT agent
         // can retry with a better description or ask the user for clarification.
+        // When inference produces 0 intents, propose mode exits before verification
+        // runs — so we check inference trace first.
         const verificationTrace = debugSteps.find((s: { step: string; detail?: string }) => s.step === "verification");
-        const rejectionHint = verificationTrace?.detail ?? "unknown reason";
+
+        if (!verificationTrace) {
+          const inferenceHint =
+            debugSteps.find((s: { step: string; detail?: string }) => s.step === "inference")?.detail
+            ?? "no intents extracted";
+          return error(
+            `No actionable intent was extracted (${inferenceHint}). ` +
+            `Please retry with a more specific goal (what kind, what for, and/or timeframe), ` +
+            `or ask the user to clarify.`,
+            debugSteps,
+          );
+        }
+
+        const rejectionHint =
+          verificationTrace.detail ?? "all candidate intents were filtered as invalid or too vague";
         return error(
           `Intent verification failed (${rejectionHint}). ` +
           `The description may be too vague or was classified as a statement rather than a goal. ` +
