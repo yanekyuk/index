@@ -25,6 +25,13 @@ function sanitizeJsonForCodeFence(json: string): string {
  * Build minimal opportunity card data for chat without calling the LLM presenter.
  * Uses only required fields from the opportunity record and counterpart name/avatar
  * so list_opportunities and discovery return quickly.
+ *
+ * Note: narratorChip.text is generated via regex heuristics (narratorRemarkFromReasoning)
+ * rather than the OpportunityPresenter LLM. If narrator quality becomes an issue again,
+ * consider making this function async and delegating to OpportunityPresenter.presentHomeCard()
+ * which already produces a high-quality narratorRemark via LLM (used by the home graph
+ * and discovery pipeline). The trade-off is 5-20s latency per card.
+ *
  * Exported for use in tests (opportunity.tools.spec.ts).
  */
 export function buildMinimalOpportunityCard(
