@@ -386,6 +386,14 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       } finally {
         skipSessionUpdateForRequestRef.current = false;
         setIsLoading(false);
+        // Ensure isStreaming is always cleared when the stream ends
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, isStreaming: false }
+              : msg,
+          ),
+        );
       }
     },
     [sessionId, scopeIndexId, refetchSessions],

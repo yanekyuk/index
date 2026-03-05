@@ -2355,6 +2355,92 @@ export class ChatDatabaseAdapter {
       .limit(1);
     return row ?? null;
   }
+
+  /**
+   * Bulk lookup users by email.
+   * @param emails - Array of emails to search for
+   * @returns Array of user records (only those that exist)
+   */
+  async getUsersByEmails(emails: string[]): Promise<Array<{ id: string; name: string; email: string; isGhost: boolean }>> {
+    if (emails.length === 0) return [];
+    const rows = await db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        isGhost: schema.users.isGhost,
+      })
+      .from(schema.users)
+      .where(inArray(schema.users.email, emails));
+    return rows;
+  }
+
+  /**
+   * Bulk create ghost users with empty profiles and Index Global membership.
+   * @param data - Array of {name, email} for ghost users
+   * @returns Array of created ghost users with their IDs
+   */
+  async createGhostUsersBulk(data: Array<{ name: string; email: string }>): Promise<Array<{ id: string; name: string; email: string }>> {
+    if (data.length === 0) return [];
+
+    const globalIndexId = process.env.INDEX_GLOBAL_ID;
+    const results: Array<{ id: string; name: string; email: string }> = [];
+
+    // Create users
+    const usersToInsert = data.map(d => ({
+      id: crypto.randomUUID(),
+      name: d.name,
+      email: d.email,
+      isGhost: true,
+    }));
+
+    await db.insert(schema.users).values(usersToInsert);
+
+    // Create empty profiles
+    const profilesToInsert = usersToInsert.map(u => ({ userId: u.id }));
+    await db.insert(schema.userProfiles).values(profilesToInsert);
+
+    // Add to Index Global if configured
+    if (globalIndexId) {
+      const membersToInsert = usersToInsert.map(u => ({
+        indexId: globalIndexId,
+        userId: u.id,
+        permissions: ['member'] as string[],
+      }));
+      await db.insert(schema.indexMembers).values(membersToInsert).onConflictDoNothing();
+    }
+
+    for (const u of usersToInsert) {
+      results.push({ id: u.id, name: u.name, email: u.email });
+    }
+
+    return results;
+  }
+
+  /**
+   * Bulk upsert contact records.
+   * @param data - Array of contact records
+   */
+  async upsertContactsBulk(data: Array<{ ownerId: string; userId: string; source: 'gmail' | 'google_calendar' | 'manual' }>): Promise<void> {
+    if (data.length === 0) return;
+
+    const values = data.map(d => ({
+      ownerId: d.ownerId,
+      userId: d.userId,
+      source: d.source,
+    }));
+
+    await db
+      .insert(schema.userContacts)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [schema.userContacts.ownerId, schema.userContacts.userId],
+        set: {
+          updatedAt: new Date(),
+          deletedAt: null,
+        },
+      });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

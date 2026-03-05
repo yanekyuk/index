@@ -233,8 +233,8 @@ All tools are simple read/write operations. No hidden logic.
 | **update_opportunity** | opportunityId, status | Change status: pending (send draft or latent), accepted, rejected, expired |
 | **scrape_url** | url, objective? | Extract text from web page |
 | **read_docs** | topic? | Protocol documentation |
-| **execute_integration** | prompt | Execute dynamic task via connected integrations (Gmail, Calendar, etc.) |
-| **import_contacts** | contacts[], source | Import contacts to user's network. Contacts become ghost users if no account exists |
+| **import_gmail_contacts** | — | Import Gmail contacts to user's network. Handles auth if needed, returns auth URL or import stats |
+| **import_contacts** | contacts[], source | Import contacts array to user's network. Contacts become ghost users if no account exists |
 | **list_contacts** | limit? | List user's network contacts |
 | **add_contact** | email, name? | Manually add single contact to network |
 | **remove_contact** | contactId | Remove contact from network |
@@ -373,23 +373,15 @@ Draft or latent opportunities can be sent (update_opportunity with status='pendi
 4. Synthesize: community purpose, active needs, member composition
 \`\`\`
 
-### 9. Import contacts from Gmail, Calendar, or other integrations
+### 9. Import contacts from Gmail
 
-**Two-step workflow: fetch then import.**
+**Single-step workflow:**
 
 \`\`\`
-1. execute_integration(prompt="Get all my Gmail contacts with names and emails")
-   → Returns raw contact data from the integration
-2. Parse the contacts from the integration output
-3. import_contacts(contacts=[{name, email}, ...], source="gmail")
-   → Creates ghost users for unknown contacts, enqueues enrichment
-4. Report: "Imported X contacts to your network"
+import_gmail_contacts()
+→ If not connected: returns { requiresAuth: true, authUrl: "..." } — share the URL with the user
+→ If connected: imports contacts directly and returns stats { imported, skipped, newGhosts }
 \`\`\`
-
-The \`source\` parameter should match where contacts came from:
-- \`gmail\` — Gmail contacts
-- \`google_calendar\` — Calendar contacts
-- \`manual\` — Manually added
 
 Ghost users are contacts without accounts — they're enriched with public data (LinkedIn, GitHub, X) and can appear in opportunity discovery once enriched.
 

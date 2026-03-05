@@ -1,6 +1,5 @@
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
-import { enrichmentQueue } from '../queues/enrichment.queue';
 import type { ContactSource } from '../schemas/database.schema';
 
 const logger = log.service.from('ContactService');
@@ -57,6 +56,8 @@ export class ContactService {
    * - Upsert the contact relationship
    * - Enqueue enrichment for new ghost users
    *
+   * Uses bulk operations for performance.
+   *
    * @param ownerId - The user importing contacts
    * @param contacts - Array of contact data (name, email)
    * @param source - Where contacts came from (gmail, google_calendar, manual)
@@ -80,63 +81,84 @@ export class ContactService {
       details: [],
     };
 
-    // Fetch owner once to avoid N queries
+    // Fetch owner once
     const owner = await this.db.getUser(ownerId);
+    const ownerEmail = owner?.email.toLowerCase();
+
+    // Normalize, filter, and deduplicate contacts
+    const seenEmails = new Set<string>();
+    const validContacts: Array<{ name: string; email: string }> = [];
     for (const contact of contacts) {
-      try {
-        // Normalize email
-        const email = contact.email.toLowerCase().trim();
-        if (!email || !email.includes('@')) {
-          result.skipped++;
-          continue;
-        }
-
-        // Skip self-import
-        if (owner?.email.toLowerCase() === email) {
-          result.skipped++;
-          continue;
-        }
-
-        // Check if user exists
-        let existingUser = await this.db.getUserByEmail(email);
-        let isNew = false;
-
-        if (!existingUser) {
-          // Create ghost user
-          const name = contact.name?.trim() || email.split('@')[0];
-          const ghost = await this.db.createGhostUser({ name, email });
-          existingUser = { id: ghost.id, name, email, isGhost: true };
-          isNew = true;
-          result.newGhosts++;
-
-          // TODO: Re-enable enrichment after testing bulk imports
-          // await enrichmentQueue.addEnrichGhostJob({ userId: ghost.id });
-          logger.verbose('[ContactService] Created ghost user (enrichment disabled)', {
-            ghostId: ghost.id,
-            email,
-          });
-        }
-
-        // Upsert contact relationship
-        await this.db.upsertContact({
-          ownerId,
-          userId: existingUser.id,
-          source,
-        });
-
-        result.imported++;
-        result.details.push({
-          email,
-          userId: existingUser.id,
-          isNew,
-        });
-      } catch (err) {
-        logger.error('[ContactService] Failed to import contact', {
-          contact,
-          error: err,
-        });
+      const email = contact.email.toLowerCase().trim();
+      if (!email || !email.includes('@')) {
         result.skipped++;
+        continue;
       }
+      if (ownerEmail === email) {
+        result.skipped++;
+        continue;
+      }
+      if (seenEmails.has(email)) {
+        result.skipped++;
+        continue;
+      }
+      seenEmails.add(email);
+      validContacts.push({
+        name: contact.name?.trim() || email.split('@')[0],
+        email,
+      });
+    }
+
+    if (validContacts.length === 0) {
+      logger.info('[ContactService] No valid contacts to import', { ownerId });
+      return result;
+    }
+
+    // Bulk lookup existing users by email
+    const emails = validContacts.map(c => c.email);
+    const existingUsers = await this.db.getUsersByEmails(emails);
+    const existingByEmail = new Map(existingUsers.map(u => [u.email.toLowerCase(), u]));
+
+    // Identify contacts that need ghost users
+    const needGhosts: Array<{ name: string; email: string }> = [];
+    for (const contact of validContacts) {
+      if (!existingByEmail.has(contact.email)) {
+        needGhosts.push(contact);
+      }
+    }
+
+    // Bulk create ghost users
+    if (needGhosts.length > 0) {
+      const ghosts = await this.db.createGhostUsersBulk(needGhosts);
+      for (const ghost of ghosts) {
+        existingByEmail.set(ghost.email.toLowerCase(), { 
+          id: ghost.id, 
+          email: ghost.email, 
+          name: ghost.name,
+          isGhost: true 
+        });
+      }
+      result.newGhosts = ghosts.length;
+      logger.verbose('[ContactService] Created ghost users', { count: ghosts.length });
+    }
+
+    // Bulk upsert contact relationships
+    const contactsToUpsert: Array<{ ownerId: string; userId: string; source: ContactSource }> = [];
+    for (const contact of validContacts) {
+      const user = existingByEmail.get(contact.email);
+      if (user) {
+        contactsToUpsert.push({ ownerId, userId: user.id, source });
+        result.details.push({
+          email: contact.email,
+          userId: user.id,
+          isNew: !existingUsers.some(u => u.id === user.id),
+        });
+      }
+    }
+
+    if (contactsToUpsert.length > 0) {
+      await this.db.upsertContactsBulk(contactsToUpsert);
+      result.imported = contactsToUpsert.length;
     }
 
     logger.info('[ContactService] Import completed', {
