@@ -270,16 +270,27 @@ function extractDomainTerms(text: string): string[] {
     // Single capitalized words as last resort (skip common sentence-starters and meta-words)
     if (terms.length === 0) {
       const skipCapitalized = new Set([
+        // Common sentence starters / pronouns / determiners
         "both", "their", "they", "this", "that", "these", "those",
         "here", "there", "would", "could", "should", "also", "very",
+        "one", "another", "other", "each", "some", "many", "most",
+        "such", "clear", "high", "good", "well", "just", "even",
+        // Generic matching/relationship language
         "strong", "match", "based", "making", "looking", "seeking",
+        "connection", "relationship", "opportunity", "overlap",
+        "complementary", "potential", "interested", "collaborate",
+        // Evaluator meta-language (about the matching process, not topics)
         "intent", "intents", "profile", "user", "users", "person",
         "discoverer", "explicitly", "states", "expressed", "mentioned",
         "indicates", "suggests", "demonstrates", "describes", "involves",
+        "inference", "preparatory", "sincerity", "evaluator", "classifier",
+        "semantic", "pragmatic", "verification", "reconciliation",
+        "assertive", "commissive", "directive", "illocutionary",
+        "felicity", "utterance", "detected", "analysis", "confirmed",
+        "genuine", "conditions", "determined",
+        // Discourse markers
         "particularly", "specifically", "especially", "primarily",
         "overall", "furthermore", "however", "therefore", "moreover",
-        "connection", "relationship", "opportunity", "overlap",
-        "complementary", "potential", "interested", "collaborate",
       ]);
       const capWords = text.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
       for (const w of capWords) {
