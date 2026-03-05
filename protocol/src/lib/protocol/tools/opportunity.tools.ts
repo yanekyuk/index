@@ -602,7 +602,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         // Distinct from `createIntentSuggested` (no-results path) intentionally:
         // `handleCreateIntentCallback` in chat.agent.ts auto-creates for that key.
         // This flag is for the results-found path where the agent must ask the user first.
-        ...(searchQuery
+        ...(searchQuery && !query.targetUserId
           ? {
               suggestIntentCreationForVisibility: true,
               suggestedIntentDescription: searchQuery,
