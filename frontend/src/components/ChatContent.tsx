@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowUp,
-  Loader2,
   Pencil,
   Paperclip,
+  Square,
   X,
   Globe,
   ChevronDown,
@@ -305,6 +305,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const {
     messages,
     isLoading,
+    stopStream,
     sendMessage,
     clearChat,
     loadSession,
@@ -893,18 +894,27 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             inputRef={inputRef}
             suggestionsAbove
           />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={isBusy || !canSend}
-            className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+          {isLoading ? (
+            <Button
+              type="button"
+              size="icon"
+              onClick={() => stopStream()}
+              className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] p-0"
+              title="Stop generating"
+              aria-label="Stop generating"
+            >
+              <Square className="h-4 w-4 fill-current" />
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!canSend || isUploadingFiles}
+              className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
+            >
               <ArrowUp className="h-4 w-4" />
-            )}
-          </Button>
+            </Button>
+          )}
         </form>
       </div>
       <div className="py-2 bg-white"></div>
@@ -1071,18 +1081,27 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       )}
                     </div>
                   )}
-                  <Button
-                    type="submit"
-                    size="icon"
-                    disabled={isBusy || !canSend}
-                    className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
+                  {isLoading ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={() => stopStream()}
+                      className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] p-0"
+                      title="Stop generating"
+                      aria-label="Stop generating"
+                    >
+                      <Square className="h-4 w-4 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      size="icon"
+                      disabled={!canSend || isUploadingFiles}
+                      className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
+                    >
                       <ArrowUp className="h-4 w-4" />
-                    )}
-                  </Button>
+                    </Button>
+                  )}
                 </form>
               </div>
               {homeViewLoading ? (
@@ -1311,18 +1330,27 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   )}
                 </div>
               )}
-              <Button
-                type="submit"
-                size="icon"
-                disabled={isBusy || !canSend}
-                className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {isLoading ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={() => stopStream()}
+                  className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] p-0"
+                  title="Stop generating"
+                  aria-label="Stop generating"
+                >
+                  <Square className="h-4 w-4 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!canSend || isUploadingFiles}
+                  className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white hover:bg-[#0a2d4a] disabled:opacity-50 disabled:cursor-not-allowed p-0"
+                >
                   <ArrowUp className="h-4 w-4" />
-                )}
-              </Button>
+                </Button>
+              )}
             </form>
           </div>
           <div className="py-2"></div>
@@ -1505,6 +1533,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             <ToolCallsDisplay
                               traceEvents={msg.traceEvents}
                               isStreaming={msg.isStreaming}
+                              wasStoppedByUser={msg.wasStoppedByUser}
+                              stoppedAt={msg.stoppedAt}
                             />
                           )}
                           <AssistantMessageContent
