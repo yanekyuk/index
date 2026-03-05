@@ -25,8 +25,16 @@ function sanitizeJsonForCodeFence(json: string): string {
  * Build minimal opportunity card data for chat without calling the LLM presenter.
  * Uses only required fields from the opportunity record and counterpart name/avatar
  * so list_opportunities and discovery return quickly.
+ *
+ * Note: narratorChip.text is generated via regex heuristics (narratorRemarkFromReasoning)
+ * rather than the OpportunityPresenter LLM. If narrator quality becomes an issue again,
+ * consider making this function async and delegating to OpportunityPresenter.presentHomeCard()
+ * which already produces a high-quality narratorRemark via LLM (used by the home graph
+ * and discovery pipeline). The trade-off is 5-20s latency per card.
+ *
+ * Exported for use in tests (opportunity.tools.spec.ts).
  */
-function buildMinimalOpportunityCard(
+export function buildMinimalOpportunityCard(
   opp: Opportunity,
   viewerId: string,
   counterpartUserId: string,
@@ -66,6 +74,7 @@ function buildMinimalOpportunityCard(
     counterpartName,
     MINIMAL_MAIN_TEXT_MAX_CHARS,
     viewerName,
+    introducerName ?? undefined,
   );
   const score =
     typeof opp.interpretation?.confidence === "number"
@@ -113,11 +122,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "create_opportunities",
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
-      "Two modes:\n" +
+      "Three modes:\n" +
       "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
-      "Optionally pass hint (the user's reason for the introduction).\n\n" +
+      "Optionally pass hint (the user's reason for the introduction).\n" +
+      "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
+      "Creates an opportunity between the current user and the target user.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z
@@ -136,6 +147,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Discovery mode: optional intent to use as source and for triggeredBy (e.g. from queue)."),
+      targetUserId: z
+        .string()
+        .optional()
+        .describe("Direct connection mode: create opportunity with this specific user ID. Used when the user wants to connect with a named person."),
       partyUserIds: z
         .array(z.string())
         .optional()
@@ -389,6 +404,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             reasoning,
             counterpartName,
             MINIMAL_MAIN_TEXT_MAX_CHARS,
+            undefined, // viewerName not available in this context; introducer name passed separately
             introducerUser?.name ?? undefined,
           ),
           cta: "Start a conversation to connect.",
@@ -479,6 +495,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         limit: 20,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
+        targetUserId: query.targetUserId?.trim() || undefined,
         cache,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
       });
@@ -585,7 +602,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         // Distinct from `createIntentSuggested` (no-results path) intentionally:
         // `handleCreateIntentCallback` in chat.agent.ts auto-creates for that key.
         // This flag is for the results-found path where the agent must ask the user first.
-        ...(searchQuery
+        ...(searchQuery && !query.targetUserId
           ? {
               suggestIntentCreationForVisibility: true,
               suggestedIntentDescription: searchQuery,

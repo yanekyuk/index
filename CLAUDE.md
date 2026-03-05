@@ -285,6 +285,8 @@ Each layer has a `*.template.md` with coding guidelines. Consult before adding o
 
 Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
 
+**Adapter file naming**: Use **conceptual** names (role/capability), not implementation technology. Pattern: `{concept}.adapter.ts`. Examples: `database.adapter.ts` (not `drizzle.adapter.ts`), `cache.adapter.ts` and `queue.adapter.ts` (not `redis.adapter.ts`), `storage.adapter.ts` (not `s3.adapter.ts`). Tests: `{concept}.adapter.spec.ts`.
+
 ### Controller and Decorator Routing
 
 The API uses class-based controllers with `@Controller(prefix)`, `@Get(path)`, `@Post(path)`, and optional guards. Routes are registered in `RouteRegistry` and dispatched in `main.ts`. See `protocol/src/controllers/controller.template.md` and `protocol/src/lib/router/router.decorators.ts`.
@@ -612,6 +614,8 @@ All files in the protocol directory should follow the pattern: `{domain}.{purpos
 | `.service` | Business logic services | `intent.service.ts` |
 | `.queue` | Job queue definitions | `intent.queue.ts` |
 | `.spec` | Test files | `router.agent.spec.ts` |
+
+**Adapters** (`protocol/src/adapters/`): Name by **concept**, not by tech. Use `{concept}.adapter.ts` (e.g. `database.adapter.ts`, `cache.adapter.ts`, `queue.adapter.ts`). Do not name after the implementation (e.g. no `drizzle.adapter.ts`, `redis.adapter.ts`, `bullmq.adapter.ts`). See Adapter Pattern above.
 
 **Exceptions** (exempt from convention):
 - `index.ts` - Barrel export files
