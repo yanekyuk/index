@@ -122,11 +122,13 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "create_opportunities",
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
-      "Two modes:\n" +
+      "Three modes:\n" +
       "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
-      "Optionally pass hint (the user's reason for the introduction).\n\n" +
+      "Optionally pass hint (the user's reason for the introduction).\n" +
+      "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
+      "Creates an opportunity between the current user and the target user.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z
@@ -145,6 +147,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Discovery mode: optional intent to use as source and for triggeredBy (e.g. from queue)."),
+      targetUserId: z
+        .string()
+        .optional()
+        .describe("Direct connection mode: create opportunity with this specific user ID. Used when the user wants to connect with a named person."),
       partyUserIds: z
         .array(z.string())
         .optional()
@@ -489,6 +495,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         limit: 20,
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
+        targetUserId: query.targetUserId?.trim() || undefined,
         cache,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
       });
