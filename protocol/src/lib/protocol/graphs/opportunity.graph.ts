@@ -314,6 +314,19 @@ export class OpportunityGraphFactory {
       const self = this;
       return timed("OpportunityGraph.discovery", async () => {
         const startTime = Date.now();
+
+        /** Filter candidates to targetUserId when set (direct-connection mode). */
+        const filterByTarget = (candidates: CandidateMatch[]): CandidateMatch[] => {
+          if (!state.targetUserId) return candidates;
+          const filtered = candidates.filter(c => c.candidateUserId === state.targetUserId);
+          logger.verbose('[Graph:Discovery] targetUserId filter applied', {
+            targetUserId: state.targetUserId,
+            before: candidates.length,
+            after: filtered.length,
+          });
+          return filtered;
+        };
+
         logger.verbose('[Graph:Discovery] Starting semantic search', {
           targetIndexesCount: state.targetIndexes.length,
           discoverySource: state.discoverySource,
@@ -425,10 +438,10 @@ export class OpportunityGraphFactory {
                   },
                 });
                 
-                return { candidates: merged, trace: traceEntries };
+                return { candidates: filterByTarget(merged), trace: traceEntries };
               }
-              
-              return { candidates: queryCandidates, trace: traceEntries };
+
+              return { candidates: filterByTarget(queryCandidates), trace: traceEntries };
             }
 
             // No search query - use profile embedding directly (mirror-only)
@@ -536,7 +549,7 @@ export class OpportunityGraphFactory {
             }
 
             return {
-              candidates,
+              candidates: filterByTarget(candidates),
               trace: traceEntries,
             };
           }
@@ -752,7 +765,7 @@ export class OpportunityGraphFactory {
 
           return {
             hydeEmbeddings: hydeEmbeddings as Record<string, number[]>,
-            candidates,
+            candidates: filterByTarget(candidates),
             trace: traceEntries,
           };
         } catch (error) {

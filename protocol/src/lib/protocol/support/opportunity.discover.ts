@@ -41,6 +41,8 @@ export interface DiscoverInput {
   limit?: number;
   /** Optional intent to use as discovery source and for triggeredBy (e.g. from opportunity queue). */
   triggerIntentId?: string;
+  /** When set, filter discovery candidates to this specific user only (direct connection). */
+  targetUserId?: string;
   /** When provided, each opportunity is enriched with personalized presentation (headline, personalizedSummary, suggestedAction). */
   presenter?: OpportunityPresenter;
   /**
@@ -431,6 +433,7 @@ export async function runDiscoverFromQuery(
     indexScope,
     limit = 5,
     triggerIntentId,
+    targetUserId,
     chatSessionId,
   } = input;
 
@@ -471,6 +474,7 @@ export async function runDiscoverFromQuery(
         searchQuery: queryOrEmpty || undefined,
         indexId: indexScope.length === 1 ? indexScope[0] : undefined,
         triggerIntentId,
+        targetUserId,
         options,
       });
 
