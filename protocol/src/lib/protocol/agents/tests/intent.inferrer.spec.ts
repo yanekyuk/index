@@ -169,6 +169,13 @@ Interests: AI agents, decentralized systems, venture capital
       }
     );
 
+    // Must produce at least one intent grounded in the query
+    expect(result.intents.length).toBeGreaterThan(0);
+    const hasArtistGrounding = result.intents.some(i =>
+      i.description.toLowerCase().includes('artist')
+    );
+    expect(hasArtistGrounding).toBe(true);
+
     // Every inferred intent should be grounded in the query ("artist"),
     // not drifting to the user's profile topics (crypto, funding, etc.)
     for (const intent of result.intents) {
