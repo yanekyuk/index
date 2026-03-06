@@ -255,6 +255,11 @@ export class IntentDatabaseAdapter {
     }
   }
 
+  async deleteIntentIndexAssociations(intentId: string): Promise<void> {
+    await db.delete(schema.intentIndexes)
+      .where(eq(schema.intentIndexes.intentId, intentId));
+  }
+
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let indexId: string | null = null;
