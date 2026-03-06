@@ -945,10 +945,17 @@ export class OpportunityGraphFactory {
                 const entity = candidateEntities.find(e => e.userId === candidate.userId);
                 const candidateName = entity?.profile?.name ?? '';
                 const reasoningLower = op.reasoning.toLowerCase();
-                const mentionsCandidate = candidateName &&
+                const mentionsCandidate =
+                  candidateName !== '' &&
                   reasoningLower.includes(candidateName.toLowerCase());
+                const mentionsOtherCandidate = nonViewerActors
+                  .filter((actor) => actor.userId !== candidate.userId)
+                  .map((actor) =>
+                    candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
+                  )
+                  .some((name): name is string => Boolean(name) && reasoningLower.includes(name));
                 let reasoning: string;
-                if (mentionsCandidate) {
+                if (mentionsCandidate && !mentionsOtherCandidate) {
                   reasoning = op.reasoning;
                 } else if (entity?.profile) {
                   const p = entity.profile;

@@ -498,6 +498,65 @@ describe('Opportunity Graph', () => {
       // It should contain Charlie's own profile info instead
       expect(charlieOpp!.interpretation.reasoning).toContain('Charlie');
     });
+
+    test('when bundled reasoning mentions both candidates, neither split reuses the shared text', async () => {
+      const profilesByUserId: Record<string, ProfileDocument> = {
+        'user-alice': {
+          identity: { name: 'Alice Park', bio: 'Founder & CIO of Acme Labs' },
+          attributes: { interests: ['crypto'], skills: ['blockchain'] },
+          narrative: {},
+        } as ProfileDocument,
+        'user-charlie': {
+          identity: { name: 'Charlie Voss', bio: 'Angel investor in AI startups' },
+          attributes: { interests: ['AI'], skills: ['investing'] },
+          narrative: {},
+        } as ProfileDocument,
+      };
+      const { compiledGraph, mockDb, mockEmbedder } = createMockGraph({
+        evaluatorResult: [
+          {
+            reasoning: 'Alice Park and Charlie Voss both bring complementary expertise in blockchain and AI investing.',
+            score: 80,
+            actors: [
+              { userId: 'user-source', role: 'patient' as const, intentId: null },
+              { userId: 'user-alice', role: 'agent' as const, intentId: null },
+              { userId: 'user-charlie', role: 'agent' as const, intentId: null },
+            ],
+          },
+        ],
+      });
+      spyOn(mockDb, 'getProfile').mockImplementation((userId: string) =>
+        Promise.resolve(profilesByUserId[userId] ?? null)
+      );
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([
+        { type: 'intent' as const, id: 'intent-alice', userId: 'user-alice', score: 0.9, matchedVia: 'mirror' as const, indexId: 'idx-1' },
+        { type: 'intent' as const, id: 'intent-charlie', userId: 'user-charlie', score: 0.85, matchedVia: 'reciprocal' as const, indexId: 'idx-1' },
+      ]);
+
+      const result = (await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'blockchain and AI',
+        options: { minScore: 70 },
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.opportunities.length).toBe(2);
+
+      const aliceOpp = result.opportunities.find(
+        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'user-alice')
+      );
+      const charlieOpp = result.opportunities.find(
+        (opp: { actors: OpportunityActor[] }) => opp.actors.some((a: OpportunityActor) => a.userId === 'user-charlie')
+      );
+
+      expect(aliceOpp).toBeDefined();
+      expect(charlieOpp).toBeDefined();
+
+      // Neither split should reuse the shared reasoning that mentions both names
+      expect(aliceOpp!.interpretation.reasoning).toContain('Alice');
+      expect(aliceOpp!.interpretation.reasoning).not.toContain('Charlie');
+      expect(charlieOpp!.interpretation.reasoning).toContain('Charlie');
+      expect(charlieOpp!.interpretation.reasoning).not.toContain('Alice');
+    });
   });
 
   describe('Ranking node', () => {
