@@ -51,7 +51,6 @@ const RETRY_DELAY_MS = 800;
  */
 export class ChatGraphFactory {
   private streamingService: ChatStreamer;
-  private _activeSignal?: AbortSignal;
 
   constructor(
     private database: ChatGraphCompositeDatabase,
@@ -155,7 +154,6 @@ export class ChatGraphFactory {
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
   ) {
-    this._activeSignal = signal;
     yield* this.streamingService.streamChatEventsWithContext(input, checkpointer, signal);
   }
 
@@ -169,7 +167,6 @@ export class ChatGraphFactory {
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
   ) {
-    this._activeSignal = signal;
     yield* this.streamingService.streamChatEvents(input, sessionId, checkpointer, signal);
   }
 
@@ -181,7 +178,6 @@ export class ChatGraphFactory {
     const database = this.database;
     const embedder = this.embedder;
     const scraper = this.scraper;
-    const activeSignalRef = () => this._activeSignal;
 
     // ─────────────────────────────────────────────────────────────────────────
     // AGENT LOOP NODE
@@ -224,7 +220,9 @@ export class ChatGraphFactory {
               /* swallow if writer is gone */
             }
           };
-          const result = await agent.streamRun(state.messages, directWriter, activeSignalRef());
+          // Get signal from configurable (passed by streamer via graph.stream() config)
+          const signal = config.configurable?.signal as AbortSignal | undefined;
+          const result = await agent.streamRun(state.messages, directWriter, signal);
           return result;
         };
 
@@ -249,6 +247,14 @@ export class ChatGraphFactory {
           };
         } catch (error) {
           if (isRetriableError(error)) {
+            const signal = config.configurable?.signal as AbortSignal | undefined;
+            if (signal?.aborted) {
+              return {
+                error: "Request aborted",
+                responseText: "",
+                shouldContinue: false,
+              };
+            }
             logger.warn("Agent loop failed with retriable error, retrying once", {
               userId: state.userId,
               error: error instanceof Error ? error.message : String(error)
