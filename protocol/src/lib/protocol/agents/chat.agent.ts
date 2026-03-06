@@ -497,6 +497,7 @@ export class ChatAgent {
   async streamRun(
     initialMessages: BaseMessage[],
     writer?: StreamWriter,
+    signal?: AbortSignal,
   ): Promise<{
     responseText: string;
     messages: BaseMessage[];
@@ -517,6 +518,10 @@ export class ChatAgent {
     const toolsDebug: DebugMetaToolCall[] = [];
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
+      if (signal?.aborted) {
+        logger.verbose("Stream aborted by client", { iterationCount });
+        break;
+      }
       emit({ type: "iteration_start", iteration: iterationCount });
 
       const systemContent = buildSystemContent(this.resolvedContext);
@@ -540,7 +545,7 @@ export class ChatAgent {
       let accumulated: AIMessageChunk | undefined;
       let iterationText = "";
 
-      const stream = await this.model.stream(fullMessages);
+      const stream = await this.model.stream(fullMessages, { signal });
       for await (const chunk of stream) {
         // Accumulate using AIMessageChunk.concat() so tool_call_chunks merge and tool_calls is populated
         accumulated = accumulated ? accumulated.concat(chunk) : chunk;
@@ -586,6 +591,10 @@ export class ChatAgent {
           result: string;
         }> = [];
         for (const tc of toolCalls) {
+          if (signal?.aborted) {
+            logger.verbose("Stream aborted by client during tool execution");
+            break;
+          }
           emit({ type: "tool_activity", phase: "start", name: tc.name });
 
           const tool = this.toolsByName.get(tc.name);
