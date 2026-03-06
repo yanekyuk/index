@@ -10,6 +10,7 @@ import type {
 import type { Scraper } from "../interfaces/scraper.interface";
 import type { Cache } from "../interfaces/cache.interface";
 import type { CompiledOpportunityGraph } from "../support/opportunity.discover";
+import type { IntegrationAdapter } from "../interfaces/integration.interface";
 
 /** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
 export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
@@ -226,6 +227,7 @@ export interface ToolDeps {
   scraper: Scraper;
   embedder: import('../interfaces/embedder.interface').Embedder;
   cache: Cache;
+  integration: IntegrationAdapter;
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;

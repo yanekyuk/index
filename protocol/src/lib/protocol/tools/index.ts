@@ -12,6 +12,7 @@ import { IndexGraphFactory } from "../graphs/index.graph";
 import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
 import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
 import { RedisCacheAdapter } from "../../../adapters/cache.adapter";
+import { ComposioIntegrationAdapter } from "../../../adapters/integration.adapter";
 import {
   chatDatabaseAdapter,
   createUserDatabase,
@@ -131,6 +132,7 @@ export async function createChatTools(
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = new RedisCacheAdapter();
+  const integration = new ComposioIntegrationAdapter();
   const toolDeps: ToolDeps = {
     database,
     userDb,
@@ -138,6 +140,7 @@ export async function createChatTools(
     scraper,
     embedder,
     cache,
+    integration,
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
