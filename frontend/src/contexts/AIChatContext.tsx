@@ -71,6 +71,10 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  /** Set when user stopped the stream; trace should show "Stopped" instead of "Thinking...". */
+  wasStoppedByUser?: boolean;
+  /** Timestamp when user stopped; used to freeze trace duration display. */
+  stoppedAt?: number;
   attachmentNames?: string[];
   discoveries?: DiscoveryOpportunity[];
   traceEvents?: TraceEvent[];
@@ -94,6 +98,8 @@ interface AIChatContextType {
   /** Per-turn debug meta (one entry per assistant message, null for loaded history). */
   debugMetaByTurn: (DebugTurnMeta | null)[];
   isLoading: boolean;
+  /** Abort the in-progress agent response stream. */
+  stopStream: () => void;
   sendMessage: (
     message: string,
     fileIds?: string[],
@@ -369,6 +375,19 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           console.log("Chat stream aborted");
+          const stoppedAt = Date.now();
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    isStreaming: false,
+                    wasStoppedByUser: true,
+                    stoppedAt,
+                  }
+                : msg,
+            ),
+          );
         } else {
           console.error("Chat error:", error);
           setMessages((prev) =>
@@ -390,6 +409,12 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     },
     [sessionId, scopeIndexId, refetchSessions],
   );
+
+  const stopStream = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
 
   const clearChat = useCallback((options?: { abortStream?: boolean }) => {
     const abortStream = options?.abortStream !== false;
@@ -479,6 +504,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         suggestions,
         debugMetaByTurn,
         isLoading,
+        stopStream,
         sendMessage,
         clearChat,
         loadSession,

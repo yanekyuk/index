@@ -151,9 +151,10 @@ export class ChatGraphFactory {
       maxContextMessages?: number;
       indexId?: string;
     },
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ) {
-    yield* this.streamingService.streamChatEventsWithContext(input, checkpointer);
+    yield* this.streamingService.streamChatEventsWithContext(input, checkpointer, signal);
   }
 
   /**
@@ -163,9 +164,10 @@ export class ChatGraphFactory {
   public async *streamChatEvents(
     input: { userId: string; messages: BaseMessage[] },
     sessionId: string,
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ) {
-    yield* this.streamingService.streamChatEvents(input, sessionId, checkpointer);
+    yield* this.streamingService.streamChatEvents(input, sessionId, checkpointer, signal);
   }
 
   /**
@@ -218,7 +220,9 @@ export class ChatGraphFactory {
               /* swallow if writer is gone */
             }
           };
-          const result = await agent.streamRun(state.messages, directWriter);
+          // Get signal from configurable (passed by streamer via graph.stream() config)
+          const signal = config.configurable?.signal as AbortSignal | undefined;
+          const result = await agent.streamRun(state.messages, directWriter, signal);
           return result;
         };
 
@@ -243,6 +247,14 @@ export class ChatGraphFactory {
           };
         } catch (error) {
           if (isRetriableError(error)) {
+            const signal = config.configurable?.signal as AbortSignal | undefined;
+            if (signal?.aborted) {
+              return {
+                error: "Request aborted",
+                responseText: "",
+                shouldContinue: false,
+              };
+            }
             logger.warn("Agent loop failed with retriable error, retrying once", {
               userId: state.userId,
               error: error instanceof Error ? error.message : String(error)

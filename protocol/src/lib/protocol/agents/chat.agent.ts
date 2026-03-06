@@ -491,12 +491,14 @@ export class ChatAgent {
    *
    * @param initialMessages - Starting conversation messages
    * @param writer - Callback to emit streaming events (from `config.writer`)
+   * @param signal - Optional AbortSignal to cancel the streaming LLM call and tool execution
    * @returns Final response metadata (same shape as `run()`)
    */
   @Timed()
   async streamRun(
     initialMessages: BaseMessage[],
     writer?: StreamWriter,
+    signal?: AbortSignal,
   ): Promise<{
     responseText: string;
     messages: BaseMessage[];
@@ -517,6 +519,10 @@ export class ChatAgent {
     const toolsDebug: DebugMetaToolCall[] = [];
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
+      if (signal?.aborted) {
+        logger.verbose("Stream aborted by client", { iterationCount });
+        break;
+      }
       emit({ type: "iteration_start", iteration: iterationCount });
 
       const systemContent = buildSystemContent(this.resolvedContext);
@@ -540,18 +546,26 @@ export class ChatAgent {
       let accumulated: AIMessageChunk | undefined;
       let iterationText = "";
 
-      const stream = await this.model.stream(fullMessages);
-      for await (const chunk of stream) {
-        // Accumulate using AIMessageChunk.concat() so tool_call_chunks merge and tool_calls is populated
-        accumulated = accumulated ? accumulated.concat(chunk) : chunk;
+      try {
+        const stream = await this.model.stream(fullMessages, { signal });
+        for await (const chunk of stream) {
+          // Accumulate using AIMessageChunk.concat() so tool_call_chunks merge and tool_calls is populated
+          accumulated = accumulated ? accumulated.concat(chunk) : chunk;
 
-        // Emit text content tokens to the user immediately
-        const textPart = extractTextFromChunk(chunk);
-        if (textPart) {
-          emit({ type: "text_chunk", content: textPart });
-          iterationText += textPart;
-          fullResponseText += textPart;
+          // Emit text content tokens to the user immediately
+          const textPart = extractTextFromChunk(chunk);
+          if (textPart) {
+            emit({ type: "text_chunk", content: textPart });
+            iterationText += textPart;
+            fullResponseText += textPart;
+          }
         }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          logger.verbose("LLM stream aborted by client", { iterationCount });
+          break; // breaks the outer while loop
+        }
+        throw err; // re-throw non-abort errors
       }
 
       if (!accumulated) {
@@ -586,6 +600,10 @@ export class ChatAgent {
           result: string;
         }> = [];
         for (const tc of toolCalls) {
+          if (signal?.aborted) {
+            logger.verbose("Stream aborted by client during tool execution");
+            break;
+          }
           emit({ type: "tool_activity", phase: "start", name: tc.name });
 
           const tool = this.toolsByName.get(tc.name);
@@ -720,6 +738,12 @@ export class ChatAgent {
           }
         }
 
+        // If aborted during tool execution, discard partial results
+        if (signal?.aborted) {
+          logger.verbose("Stream aborted after partial tool execution, discarding results");
+          break; // break outer while loop — don't append partial toolResults to messages
+        }
+
         // Build updated messages and loop
         messages = [
           ...messages,
@@ -745,6 +769,16 @@ export class ChatAgent {
       messages = [...messages, accumulated];
       iterationCount++;
 
+      return {
+        responseText: fullResponseText,
+        messages,
+        iterationCount,
+        debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
+      };
+    }
+
+    // If aborted, return immediately without making another LLM call
+    if (signal?.aborted) {
       return {
         responseText: fullResponseText,
         messages,

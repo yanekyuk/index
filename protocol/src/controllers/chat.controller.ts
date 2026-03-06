@@ -236,6 +236,7 @@ export class ChatController {
               indexId: indexIdForStream,
             },
             checkpointer,
+            req.signal,
           )) {
             if (event) {
               // response_complete is an internal event carrying the agent's
@@ -260,46 +261,51 @@ export class ChatController {
             }
           }
 
-          // Persist user message and assistant response so loadSessionContext on the next turn sees them
+          // Persist user message and assistant response
           await chatSessionService.addMessage({
             sessionId,
             role: "user",
             content: messageContent,
           });
-          await chatSessionService.addMessage({
-            sessionId,
-            role: "assistant",
-            content: fullResponse,
-            routingDecision,
-            subgraphResults,
-          });
+          if (fullResponse) {
+            await chatSessionService.addMessage({
+              sessionId,
+              role: "assistant",
+              content: fullResponse,
+              routingDecision,
+              subgraphResults,
+            });
+          }
 
-          // Generate session title and suggestions in parallel (graceful fallback if suggestions fail)
-          const [sessionTitle, suggestions] = await Promise.all([
-            chatSessionService.generateSessionTitle(sessionId, user.id),
-            getSuggestionGenerator()
-              .generate({
-                messages: [
-                  { role: "user", content: messageContent },
-                  { role: "assistant", content: fullResponse },
-                ],
-              })
-              .catch(() => []),
-          ]);
+          // Skip title/suggestions generation if client disconnected
+          if (!req.signal.aborted) {
+            // Generate session title and suggestions in parallel
+            const [sessionTitle, suggestions] = await Promise.all([
+              chatSessionService.generateSessionTitle(sessionId, user.id),
+              getSuggestionGenerator()
+                .generate({
+                  messages: [
+                    { role: "user", content: messageContent },
+                    { role: "assistant", content: fullResponse },
+                  ],
+                })
+                .catch(() => []),
+            ]);
 
-          // Send done event with title and suggestions
-          controller.enqueue(
-            encoder.encode(
-              formatSSEEvent(
-                createDoneEvent(sessionId, fullResponse, {
-                  routingDecision,
-                  subgraphResults,
-                  title: sessionTitle,
-                  suggestions,
-                }),
+            // Send done event with title and suggestions
+            controller.enqueue(
+              encoder.encode(
+                formatSSEEvent(
+                  createDoneEvent(sessionId, fullResponse, {
+                    routingDecision,
+                    subgraphResults,
+                    title: sessionTitle,
+                    suggestions,
+                  }),
+                ),
               ),
-            ),
-          );
+            );
+          }
         } catch (error) {
           controller.enqueue(
             encoder.encode(

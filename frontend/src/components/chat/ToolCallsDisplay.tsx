@@ -303,6 +303,10 @@ function FelicityScores({ data }: { data: FelicityData }) {
 interface TraceDisplayProps {
   traceEvents: TraceEvent[];
   isStreaming?: boolean;
+  /** When true, show "Stopped" for in-progress events and freeze duration. */
+  wasStoppedByUser?: boolean;
+  /** Timestamp when user stopped; used for frozen duration display. */
+  stoppedAt?: number;
 }
 
 function RunningTimer({ startedAt }: { startedAt: number }) {
@@ -321,6 +325,8 @@ function RunningTimer({ startedAt }: { startedAt: number }) {
 export function ToolCallsDisplay({
   traceEvents,
   isStreaming,
+  wasStoppedByUser,
+  stoppedAt,
 }: TraceDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedTools, setExpandedTools] = useState<Set<number>>(new Set());
@@ -391,8 +397,10 @@ export function ToolCallsDisplay({
         <span className="text-gray-500">TRACE</span>
         <span className="text-gray-600">│</span>
         <span>
-          {runningTools > 0 || isStreaming ? (
+          {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
             <span className="text-yellow-400">{traceEvents.length} events</span>
+          ) : wasStoppedByUser ? (
+            <span className="text-amber-400">{traceEvents.length} events (stopped)</span>
           ) : (
             <span className={hasErrors ? "text-red-400" : "text-green-400"}>
               {traceEvents.length} events
@@ -400,8 +408,10 @@ export function ToolCallsDisplay({
           )}
         </span>
         <span className="text-gray-600 ml-auto">
-          {runningTools > 0 || isStreaming ? (
+          {runningTools > 0 || (isStreaming && !wasStoppedByUser) ? (
             <Loader2 className="w-3 h-3 animate-spin text-yellow-400" />
+          ) : wasStoppedByUser && stoppedAt && firstEvent ? (
+            formatDuration(stoppedAt - firstEvent.timestamp)
           ) : (
             totalDuration > 0 && formatDuration(totalDuration)
           )}
@@ -412,9 +422,11 @@ export function ToolCallsDisplay({
         <div className="divide-y divide-gray-800">
           {traceEvents.map((event, idx) => {
             const duration = getEventDuration(event, idx);
-            const isRunning =
+            const wouldBeRunning =
               (event.type === "llm_start" || event.type === "tool_start") &&
               duration === null;
+            const isRunning = wouldBeRunning && !wasStoppedByUser;
+            const isStopped = wouldBeRunning && wasStoppedByUser && stoppedAt;
 
             if (event.type === "iteration_start") {
               return (
@@ -439,22 +451,29 @@ export function ToolCallsDisplay({
                   key={idx}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5",
-                    isRunning && "bg-purple-900/10"
+                    isRunning && "bg-purple-900/10",
+                    isStopped && "bg-amber-900/10"
                   )}
                 >
                   {isRunning ? (
                     <Loader2 className="w-3 h-3 text-purple-400 animate-spin flex-shrink-0" />
+                  ) : isStopped ? (
+                    <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
                   ) : (
                     <Cpu className="w-3 h-3 text-purple-400 flex-shrink-0" />
                   )}
-                  <span className="text-purple-300">
+                  <span className={isStopped ? "text-amber-300" : "text-purple-300"}>
                     {isRunning
                       ? "Thinking about your request..."
-                      : "Analyzed your request"}
+                      : isStopped
+                        ? "Stopped"
+                        : "Analyzed your request"}
                   </span>
                   <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
                     {isRunning ? (
                       <RunningTimer startedAt={event.timestamp} />
+                    ) : isStopped && stoppedAt ? (
+                      formatDuration(stoppedAt - event.timestamp)
                     ) : duration !== null ? (
                       formatDuration(duration)
                     ) : null}
@@ -485,18 +504,25 @@ export function ToolCallsDisplay({
                   key={idx}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5",
-                    isRunning && "bg-yellow-900/10"
+                    isRunning && "bg-yellow-900/10",
+                    isStopped && "bg-amber-900/10"
                   )}
                 >
                   {isRunning ? (
                     <Loader2 className="w-3 h-3 text-yellow-400 animate-spin flex-shrink-0" />
+                  ) : isStopped ? (
+                    <Square className="w-3 h-3 text-amber-400 fill-amber-400 flex-shrink-0" />
                   ) : (
                     <Play className="w-3 h-3 text-cyan-400 fill-cyan-400 flex-shrink-0" />
                   )}
-                  <span className="text-cyan-300">{desc.running}</span>
+                  <span className={isStopped ? "text-amber-300" : "text-cyan-300"}>
+                    {isRunning ? desc.running : isStopped ? "Stopped" : desc.action}
+                  </span>
                   <span className="tabular-nums flex-shrink-0 ml-auto text-gray-500">
                     {isRunning ? (
                       <RunningTimer startedAt={event.timestamp} />
+                    ) : isStopped && stoppedAt ? (
+                      formatDuration(stoppedAt - event.timestamp)
                     ) : duration !== null ? (
                       formatDuration(duration)
                     ) : null}
