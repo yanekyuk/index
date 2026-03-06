@@ -4,6 +4,7 @@ import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { intentQueue } from '../queues/intent.queue';
+import { IntentEvents } from '../events/intent.event';
 
 const logger = log.service.from("IntentService");
 
@@ -260,7 +261,33 @@ export class IntentService {
       return { success: false, error: 'Intent not found or unauthorized' };
     }
 
-    return this.adapter.archiveIntent(intentId);
+    const result = await this.adapter.archiveIntent(intentId);
+    if (!result.success) return result;
+
+    try {
+      await this.adapter.deleteIntentIndexAssociations(intentId);
+    } catch (err) {
+      logger.error('[IntentService] Failed to delete intent-index associations', { intentId, error: err });
+    }
+
+    try {
+      const expiredCount = await this.adapter.expireOpportunitiesByIntentActor(intentId);
+      if (expiredCount > 0) {
+        logger.verbose('[IntentService] Expired opportunities referencing intent', { intentId, expiredCount });
+      }
+    } catch (err) {
+      logger.error('[IntentService] Failed to expire opportunities', { intentId, error: err });
+    }
+
+    try {
+      await intentQueue.addDeleteHydeJob({ intentId });
+    } catch (err) {
+      logger.error('[IntentService] Failed to enqueue HyDE deletion', { intentId, error: err });
+    }
+
+    IntentEvents.onArchived(intentId, userId);
+
+    return result;
   }
 }
 
