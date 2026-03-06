@@ -1,6 +1,6 @@
 import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, unique } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
 
 // Enums
@@ -279,6 +279,7 @@ export const indexes = pgTable('indexes', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
+  isGlobal: boolean('is_global').default(false).notNull(),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
@@ -291,7 +292,9 @@ export const indexes = pgTable('indexes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (t) => ({
+  globalUnique: uniqueIndex('indexes_is_global_unique').on(t.isGlobal).where(sql`is_global = true`),
+}));
 
 export const indexMembers = pgTable('index_members', {
   indexId: text('index_id').notNull().references(() => indexes.id),

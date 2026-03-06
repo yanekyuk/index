@@ -1,6 +1,6 @@
 {
-  "id": "64d10dad-fc72-4bf4-9f9a-004671683e18",
-  "prevId": "96d95713-f053-427d-b366-c14cd8e7e467",
+  "id": "584d43eb-a6e2-4042-bf4a-3bdff7e8b3a3",
+  "prevId": "64d10dad-fc72-4bf4-9f9a-004671683e18",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -836,6 +836,26 @@
           "primaryKey": false,
           "notNull": false
         },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_personal": {
+          "name": "is_personal",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "is_global": {
+          "name": "is_global",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "permissions": {
           "name": "permissions",
           "type": "json",
@@ -864,7 +884,24 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "indexes_is_global_unique": {
+          "name": "indexes_is_global_unique",
+          "columns": [
+            {
+              "expression": "is_global",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "is_global = true",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

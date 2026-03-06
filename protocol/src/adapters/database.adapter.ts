@@ -16,6 +16,22 @@ import { IndexMembershipEvents } from '../events/index_membership.event';
 
 const logger = log.lib.from('database.adapter');
 
+/** Cached global index ID (queried once, reused). */
+let _globalIndexId: string | null | undefined;
+
+/** Returns the ID of the single index with isGlobal=true, or null if none exists. */
+async function getGlobalIndexId(): Promise<string | null> {
+  if (_globalIndexId !== undefined) return _globalIndexId;
+  const row = await db
+    .select({ id: schema.indexes.id })
+    .from(schema.indexes)
+    .where(eq(schema.indexes.isGlobal, true))
+    .limit(1)
+    .then((rows) => rows[0]);
+  _globalIndexId = row?.id ?? null;
+  return _globalIndexId;
+}
+
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
   id: string;
@@ -2272,8 +2288,8 @@ export class ChatDatabaseAdapter {
       userId: id,
     });
 
-    // Add to Index Global if configured
-    const globalIndexId = process.env.INDEX_GLOBAL_ID;
+    // Add to Index Global if one exists
+    const globalIndexId = await getGlobalIndexId();
     if (globalIndexId) {
       await db
         .insert(schema.indexMembers)
@@ -2422,7 +2438,7 @@ export class ChatDatabaseAdapter {
   async createGhostUsersBulk(data: Array<{ name: string; email: string }>): Promise<Array<{ id: string; name: string; email: string }>> {
     if (data.length === 0) return [];
 
-    const globalIndexId = process.env.INDEX_GLOBAL_ID;
+    const globalIndexId = await getGlobalIndexId();
     const results: Array<{ id: string; name: string; email: string }> = [];
 
     // Create users
@@ -2531,7 +2547,7 @@ export class ChatDatabaseAdapter {
       // Create ghost users
       const newGhosts: Array<{ id: string; name: string; email: string }> = [];
       if (ghosts.length > 0) {
-        const globalIndexId = process.env.INDEX_GLOBAL_ID;
+        const globalIndexId = await getGlobalIndexId();
 
         const usersToInsert = ghosts.map(d => ({
           id: crypto.randomUUID(),
