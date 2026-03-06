@@ -39,7 +39,8 @@ export class S3StorageAdapter {
 
   constructor(config: S3StorageConfig) {
     this.bucket = config.bucket;
-    this.baseUrl = config.baseUrl ?? '/storage';
+    const region = config.region || 'us-east-1';
+    this.baseUrl = config.baseUrl ?? `https://${config.bucket}.s3.${region}.amazonaws.com`;
     this.client = new S3Client({
       endpoint: config.endpoint,
       region: config.region || 'auto',
