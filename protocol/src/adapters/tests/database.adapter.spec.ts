@@ -29,6 +29,7 @@ import {
   IndexGraphDatabaseAdapter,
   HydeDatabaseAdapter,
 } from '../database.adapter';
+import { AuthDatabaseAdapter } from '../auth.adapter';
 
 const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 
@@ -877,10 +878,10 @@ describe('HydeDatabaseAdapter – deleteExpired and getStale', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ChatDatabaseAdapter – prepareGhostClaim + claimGhostUser (two-phase)
+// AuthDatabaseAdapter – prepareGhostClaim + claimGhostUser (two-phase)
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('ChatDatabaseAdapter ghost claim', () => {
-  const adapter = new ChatDatabaseAdapter();
+describe('AuthDatabaseAdapter ghost claim', () => {
+  const adapter = new AuthDatabaseAdapter();
   const ghostId = uuidv4();
   const realUserId = uuidv4();
   const ghostEmail = TEST_PREFIX + 'ghost_claim@test.com';
@@ -1017,9 +1018,9 @@ describe('ChatDatabaseAdapter ghost claim', () => {
   });
 });
 
-// ChatDatabaseAdapter – restoreGhostEmail
-describe('ChatDatabaseAdapter.restoreGhostEmail', () => {
-  const adapter = new ChatDatabaseAdapter();
+// AuthDatabaseAdapter – restoreGhostEmail
+describe('AuthDatabaseAdapter.restoreGhostEmail', () => {
+  const adapter = new AuthDatabaseAdapter();
   const ghostId = crypto.randomUUID();
   const originalEmail = `${TEST_PREFIX}restore-ghost@test.com`;
 

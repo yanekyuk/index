@@ -17,8 +17,10 @@ import { MessagingService } from './services/messaging.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
-import { auth, setWalletHook } from './lib/betterauth/betterauth';
-import { getCorsHeaders } from './lib/cors';
+import { createAuth } from './lib/betterauth/betterauth';
+import { AuthDatabaseAdapter } from './adapters/auth.adapter';
+import { getCorsHeaders, getTrustedOrigins } from './lib/cors';
+import { sendMagicLinkEmail } from './lib/email/magic-link.handler';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
@@ -100,7 +102,14 @@ if (!walletMasterKeyHex || walletMasterKeyHex.length !== 64) {
 const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
 
 const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
-setWalletHook((userId) => messagingStore.ensureWallet(userId));
+
+const authDb = new AuthDatabaseAdapter();
+const auth = createAuth({
+  authDb,
+  getTrustedOrigins,
+  sendMagicLinkEmail,
+  ensureWallet: (userId) => messagingStore.ensureWallet(userId),
+});
 const messagingService = new MessagingService(messagingStore, {
   xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',
   xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
