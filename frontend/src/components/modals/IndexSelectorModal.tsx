@@ -2,6 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { Crown, Plus, Users, X } from 'lucide-react';
+import IndexAvatar from '@/components/IndexAvatar';
 import { Index } from '@/lib/types';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -50,9 +51,12 @@ export default function IndexSelectorModal({
                 {rawIndexes.map((index) => (
                   <div
                     key={index.id}
-                    className="group flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                    className="group flex items-center gap-3 justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
                   >
-                    <span className="flex-1 text-sm font-ibm-plex-mono text-black truncate">
+                    <div className="w-8 h-8 rounded-sm overflow-hidden shrink-0">
+                      <IndexAvatar id={index.id} title={index.title} imageUrl={index.imageUrl} size={32} rounded="sm" />
+                    </div>
+                    <span className="flex-1 text-sm font-ibm-plex-mono text-black truncate min-w-0">
                       {index.title}
                     </span>
                     <div className="flex items-center gap-1">

@@ -107,6 +107,7 @@ export class IndexGraphFactory {
           const index = await this.database.createIndex({
             title: state.createInput.title.trim(),
             prompt: state.createInput.prompt?.trim() || undefined,
+            imageUrl: state.createInput.imageUrl ?? undefined,
             joinPolicy: state.createInput.joinPolicy,
           });
           createdIndexId = index.id;

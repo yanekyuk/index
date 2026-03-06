@@ -1047,6 +1047,7 @@ export class ChatDatabaseAdapter {
         id: schema.indexes.id,
         title: schema.indexes.title,
         prompt: schema.indexes.prompt,
+        imageUrl: schema.indexes.imageUrl,
         permissions: schema.indexes.permissions,
         isPersonal: schema.indexes.isPersonal,
         createdAt: schema.indexes.createdAt,
@@ -1082,6 +1083,7 @@ export class ChatDatabaseAdapter {
           id: row.id,
           title: row.title,
           prompt: row.prompt,
+          imageUrl: row.imageUrl,
           permissions: row.permissions,
           isPersonal: row.isPersonal,
           createdAt: row.createdAt,
@@ -1135,6 +1137,7 @@ export class ChatDatabaseAdapter {
         id: schema.indexes.id,
         title: schema.indexes.title,
         prompt: schema.indexes.prompt,
+        imageUrl: schema.indexes.imageUrl,
         createdAt: schema.indexes.createdAt,
         permissions: schema.indexes.permissions,
       })
@@ -1172,6 +1175,7 @@ export class ChatDatabaseAdapter {
         id: row.id,
         title: row.title,
         prompt: row.prompt,
+        imageUrl: row.imageUrl,
         createdAt: row.createdAt,
         permissions: row.permissions,
         memberCount: Number(countResult?.count ?? 0),
@@ -1673,7 +1677,7 @@ export class ChatDatabaseAdapter {
   async updateIndexSettings(
     indexId: string,
     requestingUserId: string,
-    data: { title?: string; prompt?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }
+    data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }
   ) {
     const isOwner = await this.isIndexOwner(indexId, requestingUserId);
     if (!isOwner) {
@@ -1688,6 +1692,7 @@ export class ChatDatabaseAdapter {
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
     if (data.title !== undefined) updateData.title = data.title;
     if (data.prompt !== undefined) updateData.prompt = data.prompt;
+    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
     if (data.joinPolicy !== undefined || data.allowGuestVibeCheck !== undefined) {
       const currentPerms = (existing.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
       updateData.permissions = {
@@ -1704,6 +1709,7 @@ export class ChatDatabaseAdapter {
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
@@ -1735,6 +1741,7 @@ export class ChatDatabaseAdapter {
       id: updatedRow.id,
       title: updatedRow.title,
       prompt: updatedRow.prompt,
+      imageUrl: updatedRow.imageUrl,
       permissions: {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
@@ -1767,11 +1774,13 @@ export class ChatDatabaseAdapter {
   async createIndex(data: {
     title: string;
     prompt?: string | null;
+    imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
   }): Promise<{
     id: string;
     title: string;
     prompt: string | null;
+    imageUrl: string | null;
     permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
   }> {
     const finalJoinPolicy = data.joinPolicy ?? 'invite_only';
@@ -1785,12 +1794,14 @@ export class ChatDatabaseAdapter {
       .values({
         title: data.title,
         prompt: data.prompt ?? null,
+        imageUrl: data.imageUrl ?? null,
         permissions,
       })
       .returning({
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
       });
     if (!row) throw new Error('Failed to create index');
@@ -1799,6 +1810,7 @@ export class ChatDatabaseAdapter {
       id: row.id,
       title: row.title,
       prompt: row.prompt,
+      imageUrl: row.imageUrl,
       permissions: {
         joinPolicy: (perms.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
         invitationLink: perms.invitationLink ?? null,
@@ -1887,6 +1899,7 @@ export class ChatDatabaseAdapter {
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
         isPersonal: indexes.isPersonal,
         createdAt: indexes.createdAt,
@@ -1919,6 +1932,7 @@ export class ChatDatabaseAdapter {
       id: row.id,
       title: row.title,
       prompt: row.prompt,
+      imageUrl: row.imageUrl,
       permissions: row.permissions,
       isPersonal: row.isPersonal,
       createdAt: row.createdAt,
@@ -1934,6 +1948,7 @@ export class ChatDatabaseAdapter {
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
         isPersonal: indexes.isPersonal,
         createdAt: indexes.createdAt,
@@ -1968,6 +1983,7 @@ export class ChatDatabaseAdapter {
       id: row.id,
       title: row.title,
       prompt: row.prompt,
+      imageUrl: row.imageUrl,
       permissions: row.permissions,
       isPersonal: row.isPersonal,
       createdAt: row.createdAt,

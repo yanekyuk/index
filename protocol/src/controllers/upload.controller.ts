@@ -54,7 +54,12 @@ function parseMultipartFile(req: Request, fieldName = 'file', sizeLimit = FILE_S
       const { filename, mimeType } = info;
       const chunks: Buffer[] = [];
       stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('limit', () => finish(new Error('File size limit exceeded')));
       stream.on('end', () => {
+        if (stream.truncated) {
+          finish(new Error('File size limit exceeded'));
+          return;
+        }
         const buffer = Buffer.concat(chunks);
         finish(undefined, {
           filename: filename || 'unknown',
@@ -81,9 +86,15 @@ function parseMultipartFile(req: Request, fieldName = 'file', sizeLimit = FILE_S
 
 @Controller('/uploads')
 export class UploadController {
-  private storage: { uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string> };
+  private storage: {
+    uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
+    uploadIndexImage(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
+  };
 
-  constructor(storage: { uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string> }) {
+  constructor(storage: {
+    uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
+    uploadIndexImage(buffer: Buffer, userId: string, extension: string, contentType: string): Promise<string>;
+  }) {
     this.storage = storage;
   }
 
@@ -223,6 +234,40 @@ export class UploadController {
         error: err instanceof Error ? err.message : String(err),
       });
       return Response.json({ error: 'Failed to upload avatar' }, { status: 500 });
+    }
+  }
+
+  @Post('/index-image')
+  @UseGuards(AuthGuard)
+  async uploadIndexImage(req: Request, user: AuthenticatedUser): Promise<Response | object> {
+    let parsed: ParsedFile;
+    try {
+      parsed = await parseMultipartFile(req, 'image', FILE_SIZE_LIMITS.AVATAR);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid multipart body';
+      return Response.json({ error: message }, { status: 400 });
+    }
+
+    const { filename, mimeType, buffer } = parsed;
+
+    const validation = validateFileByMetadata(filename, mimeType, buffer.length, 'avatar');
+    if (!validation.isValid) {
+      return Response.json({ error: validation.message || 'File validation failed' }, { status: 400 });
+    }
+
+    try {
+      const ext = path.extname(filename).replace('.', '');
+      const imageUrl = await this.storage.uploadIndexImage(buffer, user.id, ext, mimeType);
+
+      logger.info('Index image uploaded', { userId: user.id, imageUrl });
+
+      return { message: 'Index image uploaded successfully', imageUrl };
+    } catch (err) {
+      logger.error('Index image upload failed', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return Response.json({ error: 'Failed to upload index image' }, { status: 500 });
     }
   }
 

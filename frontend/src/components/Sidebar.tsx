@@ -57,11 +57,12 @@ export default function Sidebar() {
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
       const createRequest = {
         title: indexData.name,
         prompt: indexData.prompt,
+        imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy
       };
       const newIndex = await indexesService.createIndex(createRequest);
@@ -340,6 +341,7 @@ export default function Sidebar() {
         open={createIndexModalOpen}
         onOpenChange={setCreateIndexModalOpen}
         onSubmit={handleCreateIndex}
+        uploadIndexImage={indexesService.uploadIndexImage}
       />
     </div>
   );
