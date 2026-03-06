@@ -1046,6 +1046,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // HOME STATE - No messages yet
   if (messages.length === 0) {
+    const globalIndex = indexes.find((i) => i.isGlobal);
     const selectedIndex = indexes.find((i) => selectedIndexIds.includes(i.id));
 
     // API-driven home view (dynamic sections with Lucide icons)
@@ -1106,7 +1107,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           isInputMultiline ? "px-1.5" : "px-3",
                         )}
                       >
-                        {selectedIndexIds.includes("my-network") ||
+                        {selectedIndex?.isGlobal ||
                         selectedIndex?.permissions?.joinPolicy ===
                           "invite_only" ? (
                           <Lock className="w-4 h-4" />
@@ -1115,9 +1116,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         )}
                         {!isInputMultiline && (
                           <span>
-                            {selectedIndexIds.includes("my-network")
-                              ? "My network"
-                              : selectedIndex?.title || "Everywhere"}
+                            {selectedIndex?.title || "Everywhere"}
                           </span>
                         )}
                         <ChevronDown
@@ -1148,22 +1147,25 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             >
                               <Globe className="w-4 h-4" /> Everywhere
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleIndexSelect("my-network");
-                                setIsIndexDropdownOpen(false);
-                              }}
-                              className={cn(
-                                "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                                selectedIndexIds.includes("my-network") &&
-                                  "text-gray-900 font-medium",
-                              )}
-                            >
-                              <Lock className="w-4 h-4" /> My network
-                            </button>
+                            {globalIndex && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleIndexSelect(globalIndex.id);
+                                  setIsIndexDropdownOpen(false);
+                                }}
+                                className={cn(
+                                  "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                                  selectedIndexIds.includes(globalIndex.id) &&
+                                    "text-gray-900 font-medium",
+                                )}
+                              >
+                                <Lock className="w-4 h-4" /> {globalIndex.title}
+                              </button>
+                            )}
                             <div className="my-1 border-t border-gray-200" />
                             {[...indexes]
+                              .filter((i) => !i.isGlobal)
                               .sort(
                                 (a, b) =>
                                   (a.permissions?.joinPolicy === "invite_only"
@@ -1358,7 +1360,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       isInputMultiline ? "px-1.5" : "px-3",
                     )}
                   >
-                    {selectedIndexIds.includes("my-network") ||
+                    {selectedIndex?.isGlobal ||
                     selectedIndex?.permissions?.joinPolicy === "invite_only" ? (
                       <Lock className="w-4 h-4" />
                     ) : (
@@ -1366,9 +1368,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     )}
                     {!isInputMultiline && (
                       <span>
-                        {selectedIndexIds.includes("my-network")
-                          ? "My network"
-                          : selectedIndex?.title || "Everywhere"}
+                        {selectedIndex?.title || "Everywhere"}
                       </span>
                     )}
                     <ChevronDown
@@ -1399,22 +1399,25 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         >
                           <Globe className="w-4 h-4" /> Everywhere
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleIndexSelect("my-network");
-                            setIsIndexDropdownOpen(false);
-                          }}
-                          className={cn(
-                            "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                            selectedIndexIds.includes("my-network") &&
-                              "text-gray-900 font-medium",
-                          )}
-                        >
-                          <Lock className="w-4 h-4" /> My network
-                        </button>
+                        {globalIndex && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleIndexSelect(globalIndex.id);
+                              setIsIndexDropdownOpen(false);
+                            }}
+                            className={cn(
+                              "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                              selectedIndexIds.includes(globalIndex.id) &&
+                                "text-gray-900 font-medium",
+                            )}
+                          >
+                            <Lock className="w-4 h-4" /> {globalIndex.title}
+                          </button>
+                        )}
                         <div className="my-1 border-t border-gray-200" />
                         {[...indexes]
+                          .filter((i) => !i.isGlobal)
                           .sort(
                             (a, b) =>
                               (a.permissions?.joinPolicy === "invite_only"
