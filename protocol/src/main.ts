@@ -45,7 +45,7 @@ IndexMembershipEvents.onMemberAdded = (userId: string) => {
 };
 
 IntentEvents.onArchived = (intentId: string, userId: string) => {
-  log.from('IntentEvents').verbose('Intent archived', { intentId, userId });
+  log.job.from('IntentEvents').verbose('Intent archived', { intentId, userId });
 };
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
