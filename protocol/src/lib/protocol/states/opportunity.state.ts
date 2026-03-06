@@ -194,7 +194,7 @@ export const OpportunityGraphState = Annotation.Root({
   }),
 
   /** When true, restrict discovery results to the user's imported contacts only. */
-  networkOnly: Annotation<boolean>({
+  contactsOnly: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,
   }),

@@ -1569,7 +1569,7 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'assignIntentToIndex'
   | 'unassignIntentFromIndex'
   | 'getIndexIdsForIntent'
-  // Contact / Network Operations (for network-scoped discovery)
+  // Contact Operations (for contacts-only discovery)
   | 'getContactUserIds'
   // Index Ownership Operations (owner-only)
   | 'getOwnedIndexes'
@@ -1617,7 +1617,7 @@ export type OpportunityGraphDatabase = Pick<
   | 'getUser'
   // Load candidate intent payload/summary for evaluator
   | 'getIntent'
-  // Network-scoped discovery
+  // Contacts-only discovery
   | 'getContactUserIds'
 >;
 

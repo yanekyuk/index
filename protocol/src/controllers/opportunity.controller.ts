@@ -12,7 +12,7 @@ const logger = log.controller.from('opportunity');
 const discoverBodySchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().positive().optional(),
-  networkOnly: z.boolean().optional(),
+  contactsOnly: z.boolean().optional(),
 });
 
 /** Route params when path has :id or :indexId */
@@ -198,9 +198,9 @@ export class OpportunityController {
       });
     }
 
-    const { query, limit = 5, networkOnly = false } = parsed.data;
+    const { query, limit = 5, contactsOnly = false } = parsed.data;
 
-    const result = await opportunityService.discoverOpportunities(user.id, query, limit, networkOnly);
+    const result = await opportunityService.discoverOpportunities(user.id, query, limit, contactsOnly);
     
     if (result.error) {
       return new Response(JSON.stringify({ error: result.error }), {
