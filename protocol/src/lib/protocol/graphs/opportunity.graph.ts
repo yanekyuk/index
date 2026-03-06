@@ -926,16 +926,48 @@ export class OpportunityGraphFactory {
 
           // Split multi-actor evaluator results into pairwise (viewer + candidate).
           // Each persisted discovery opportunity should have exactly 2 actors.
+          // When splitting, build per-candidate reasoning from entity data because
+          // the shared reasoning typically describes only one candidate.
           const pairwiseOpportunities: typeof opportunitiesWithActors = [];
           for (const op of opportunitiesWithActors) {
             const nonViewerActors = op.actors.filter(a => a.userId !== state.userId);
             if (nonViewerActors.length <= 1) {
               pairwiseOpportunities.push(op);
             } else {
+              logger.warn('[Graph:Evaluation] Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
+                actorCount: nonViewerActors.length,
+                userIds: nonViewerActors.map(a => a.userId),
+              });
               const viewerActor = op.actors.find(a => a.userId === state.userId);
               for (const candidate of nonViewerActors) {
+                // Check if the shared reasoning actually mentions this candidate's name.
+                // If not, build a fallback from their entity profile to avoid misattribution.
+                const entity = candidateEntities.find(e => e.userId === candidate.userId);
+                const candidateName = entity?.profile?.name ?? '';
+                const reasoningLower = op.reasoning.toLowerCase();
+                const mentionsCandidate =
+                  candidateName !== '' &&
+                  reasoningLower.includes(candidateName.toLowerCase());
+                const mentionsOtherCandidate = nonViewerActors
+                  .filter((actor) => actor.userId !== candidate.userId)
+                  .map((actor) =>
+                    candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
+                  )
+                  .some((name): name is string => Boolean(name) && reasoningLower.includes(name));
+                let reasoning: string;
+                if (mentionsCandidate && !mentionsOtherCandidate) {
+                  reasoning = op.reasoning;
+                } else if (entity?.profile) {
+                  const p = entity.profile;
+                  const parts = [p.name, p.bio].filter(Boolean);
+                  if (p.skills?.length) parts.push(`Skills: ${p.skills.join(', ')}`);
+                  if (p.interests?.length) parts.push(`Interests: ${p.interests.join(', ')}`);
+                  reasoning = parts.join('. ') || op.reasoning;
+                } else {
+                  reasoning = op.reasoning;
+                }
                 pairwiseOpportunities.push({
-                  reasoning: op.reasoning,
+                  reasoning,
                   score: op.score,
                   actors: [
                     viewerActor ?? { userId: state.userId, role: 'patient' as const, intentId: null },
