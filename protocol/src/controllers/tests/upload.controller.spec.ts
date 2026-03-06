@@ -18,6 +18,9 @@ const mockStorage = {
   async uploadAvatar(buffer: Buffer, userId: string, extension: string, contentType: string) {
     return `/storage/avatars/${userId}/mock.${extension}`;
   },
+  async uploadIndexImage(buffer: Buffer, userId: string, extension: string, contentType: string) {
+    return `/storage/index-images/${userId}/mock.${extension}`;
+  },
 };
 
 describe("UploadController Integration", () => {

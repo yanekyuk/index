@@ -241,6 +241,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
   const updateIndexSettingsSchema = z.object({
     title: z.string().optional(),
     prompt: z.string().nullable().optional(),
+    imageUrl: z.string().url().nullable().optional(),
     joinPolicy: z.enum(['anyone', 'invite_only']).optional(),
     allowGuestVibeCheck: z.boolean().optional(),
   }).strict();
@@ -250,7 +251,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     description: "Updates an index (owner only). Pass indexId or omit when index-scoped.",
     querySchema: z.object({
       indexId: z.string().optional().describe("Index UUID; defaults to current index when scoped."),
-      settings: updateIndexSettingsSchema.describe("Fields to update: title?, prompt?, joinPolicy?, allowGuestVibeCheck?"),
+      settings: updateIndexSettingsSchema.describe("Fields to update: title?, prompt?, imageUrl?, joinPolicy?, allowGuestVibeCheck?"),
     }),
     handler: async ({ context, query }) => {
       const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
@@ -281,10 +282,11 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
   const createIndex = defineTool({
     name: "create_index",
-    description: "Creates a new index (community). You become the owner. Pass title; optional prompt and joinPolicy ('anyone' | 'invite_only').",
+    description: "Creates a new index (community). You become the owner. Pass title; optional prompt, imageUrl, and joinPolicy ('anyone' | 'invite_only').",
     querySchema: z.object({
       title: z.string().describe("Display name of the index"),
       prompt: z.string().optional().describe("What the community is about"),
+      imageUrl: z.string().url().optional().describe("URL of the index image (optional)"),
       joinPolicy: z.enum(['anyone', 'invite_only']).optional().describe("Who can join; default invite_only"),
     }),
     handler: async ({ context, query }) => {
@@ -298,6 +300,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         createInput: {
           title: query.title.trim(),
           prompt: query.prompt?.trim() || undefined,
+          imageUrl: query.imageUrl || undefined,
           joinPolicy: query.joinPolicy,
         },
       });

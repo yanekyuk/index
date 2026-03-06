@@ -274,6 +274,7 @@ export const indexes = pgTable('indexes', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: text('title').notNull(),
   prompt: text('prompt'),
+  imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';

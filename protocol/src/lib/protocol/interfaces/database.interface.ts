@@ -270,6 +270,8 @@ export interface UpdateIndexSettingsData {
   title?: string;
   /** New prompt (optional) */
   prompt?: string | null;
+  /** New image URL (optional) */
+  imageUrl?: string | null;
   /** New join policy (optional) */
   joinPolicy?: 'anyone' | 'invite_only';
   /** Allow guest vibe check (optional) */
@@ -848,17 +850,19 @@ export interface Database {
   /**
    * Create a new index and return its record.
    *
-   * @param data - Title, optional prompt, optional joinPolicy
-   * @returns The created index with id, title, prompt, permissions
+   * @param data - Title, optional prompt, optional imageUrl, optional joinPolicy
+   * @returns The created index with id, title, prompt, imageUrl, permissions
    */
   createIndex(data: {
     title: string;
     prompt?: string | null;
+    imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
   }): Promise<{
     id: string;
     title: string;
     prompt: string | null;
+    imageUrl: string | null;
     permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
   }>;
 
@@ -1247,11 +1251,13 @@ export interface UserDatabase {
   createIndex(data: {
     title: string;
     prompt?: string | null;
+    imageUrl?: string | null;
     joinPolicy?: 'anyone' | 'invite_only';
   }): Promise<{
     id: string;
     title: string;
     prompt: string | null;
+    imageUrl: string | null;
     permissions: { joinPolicy: 'anyone' | 'invite_only'; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean };
   }>;
 

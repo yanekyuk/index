@@ -39,7 +39,8 @@ export class S3StorageAdapter {
 
   constructor(config: S3StorageConfig) {
     this.bucket = config.bucket;
-    this.baseUrl = config.baseUrl ?? '/storage';
+    const region = config.region || 'us-east-1';
+    this.baseUrl = config.baseUrl ?? `https://${config.bucket}.s3.${region}.amazonaws.com`;
     this.client = new S3Client({
       endpoint: config.endpoint,
       region: config.region || 'auto',
@@ -81,6 +82,25 @@ export class S3StorageAdapter {
     contentType: string,
   ): Promise<string> {
     const key = `avatars/${userId}/${uuidv4()}.${extension}`;
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+
+  /**
+   * Upload an index (network) image to S3.
+   * @returns The URL to access the image
+   */
+  async uploadIndexImage(
+    buffer: Buffer,
+    userId: string,
+    extension: string,
+    contentType: string,
+  ): Promise<string> {
+    const safeUserId = userId.replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeExtension = extension.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!safeExtension) {
+      throw new Error('Invalid file extension');
+    }
+    const key = `index-images/${safeUserId}/${uuidv4()}.${safeExtension}`;
     return this.uploadBuffer(buffer, key, contentType);
   }
 

@@ -84,6 +84,7 @@ const storageAdapter = new S3StorageAdapter({
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
   },
   bucket: process.env.S3_BUCKET,
+  baseUrl: process.env.S3_BASE_URL,
 });
 
 const walletMasterKeyHex = process.env.WALLET_ENCRYPTION_KEY;

@@ -4,6 +4,7 @@ import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Plus, Users, Loader2 } from 'lucide-react';
+import IndexAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import CreateIndexModal from '@/components/modals/CreateIndexModal';
 import { ContentContainer } from '@/components/layout';
@@ -64,11 +65,12 @@ export default function NetworksPage() {
     }
   };
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
       const newIndex = await indexesService.createIndex({
         title: indexData.name,
         prompt: indexData.prompt,
+        imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
       });
       addIndex(newIndex);
@@ -131,9 +133,12 @@ export default function NetworksPage() {
                         <button
                           key={network.id}
                           onClick={() => router.push(`/networks/${network.id}`)}
-                          className="w-full flex items-center justify-between py-3 hover:bg-gray-50 -mx-2 px-2 rounded-sm transition-colors text-left group"
+                          className="w-full flex items-center gap-3 py-3 hover:bg-gray-50 -mx-2 px-2 rounded-sm transition-colors text-left group"
                         >
-                          <div className="min-w-0">
+                          <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0">
+                            <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="sm" />
+                          </div>
+                          <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-black truncate">{network.title}</p>
                             <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                               <Users className="w-3 h-3" />
@@ -166,12 +171,15 @@ export default function NetworksPage() {
                 ) : publicNetworks.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {publicNetworks.map((network) => (
-                      <div key={network.id} className="flex items-center justify-between py-3">
-                        <div className="min-w-0">
+                      <div key={network.id} className="flex items-center gap-3 py-3">
+                        <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0">
+                          <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="sm" />
+                        </div>
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-black truncate">{network.title}</p>
                           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                             <Users className="w-3 h-3" />
-                            {network._count?.members || 0} members
+                            {network._count?.members ?? (network as { memberCount?: number }).memberCount ?? 0} members
                           </p>
                         </div>
                         {network.isMember ? (
@@ -208,6 +216,7 @@ export default function NetworksPage() {
         open={createIndexModalOpen}
         onOpenChange={setCreateIndexModalOpen}
         onSubmit={handleCreateIndex}
+        uploadIndexImage={indexesService.uploadIndexImage}
       />
     </ClientLayout>
   );
