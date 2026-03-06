@@ -51,6 +51,7 @@ const RETRY_DELAY_MS = 800;
  */
 export class ChatGraphFactory {
   private streamingService: ChatStreamer;
+  private _activeSignal?: AbortSignal;
 
   constructor(
     private database: ChatGraphCompositeDatabase,
@@ -151,9 +152,11 @@ export class ChatGraphFactory {
       maxContextMessages?: number;
       indexId?: string;
     },
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ) {
-    yield* this.streamingService.streamChatEventsWithContext(input, checkpointer);
+    this._activeSignal = signal;
+    yield* this.streamingService.streamChatEventsWithContext(input, checkpointer, signal);
   }
 
   /**
@@ -163,9 +166,11 @@ export class ChatGraphFactory {
   public async *streamChatEvents(
     input: { userId: string; messages: BaseMessage[] },
     sessionId: string,
-    checkpointer?: MemorySaver | PostgresSaver
+    checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ) {
-    yield* this.streamingService.streamChatEvents(input, sessionId, checkpointer);
+    this._activeSignal = signal;
+    yield* this.streamingService.streamChatEvents(input, sessionId, checkpointer, signal);
   }
 
   /**
@@ -176,6 +181,7 @@ export class ChatGraphFactory {
     const database = this.database;
     const embedder = this.embedder;
     const scraper = this.scraper;
+    const activeSignalRef = () => this._activeSignal;
 
     // ─────────────────────────────────────────────────────────────────────────
     // AGENT LOOP NODE
@@ -218,7 +224,7 @@ export class ChatGraphFactory {
               /* swallow if writer is gone */
             }
           };
-          const result = await agent.streamRun(state.messages, directWriter);
+          const result = await agent.streamRun(state.messages, directWriter, activeSignalRef());
           return result;
         };
 
