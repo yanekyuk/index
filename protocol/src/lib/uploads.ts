@@ -1,84 +1,23 @@
 /**
  * Backend Uploads Implementation
  *
- * Thin adapters for Multer File types that delegate to shared validation logic.
- * Also includes backend-specific multer filters and Unstructured processing.
+ * File content loading utilities using Unstructured API with text fallback.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import multer from 'multer';
-import { v4 as uuidv4 } from 'uuid';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
 
 import { log } from './log';
-import { getUploadsPath } from './paths';
 import {
   FILE_SIZE_LIMITS,
-  MAX_FILES_PER_UPLOAD,
-  UploadType,
-  UploadContext,
-  ValidationResult,
-  validateFileTypeByMetadata,
-  validateFileSizeByBytes,
-  validateFileCountByNumber,
-  validateFileByMetadata,
-  validateFilesByMetadata,
   isFileExtensionSupported,
   FALLBACK_TEXT_EXTENSIONS,
 } from './uploads.config';
 
 const logger = log.lib.from('uploads');
-
-// Type extension for requests with generated file ID
-declare global {
-  namespace Express {
-    interface Request {
-      generatedFileId?: string;
-    }
-  }
-}
-
-// ----- Thin Validation Adapters -----
-
-export const validateFileType = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
-  validateFileTypeByMetadata(file.originalname, file.mimetype, uploadType);
-
-export const validateFileSize = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
-  validateFileSizeByBytes(file.size, uploadType);
-
-export const validateFileCount = (files: Express.Multer.File[]): ValidationResult =>
-  validateFileCountByNumber(files.length);
-
-export const validateFile = (file: Express.Multer.File, uploadType: UploadType = 'general'): ValidationResult =>
-  validateFileByMetadata(file.originalname, file.mimetype, file.size, uploadType);
-
-export const validateFileUploads = (files: Express.Multer.File[], uploadType: UploadType = 'general'): ValidationResult =>
-  validateFilesByMetadata(
-    files.map(f => ({ filename: f.originalname, mimetype: f.mimetype, size: f.size })),
-    uploadType
-  );
-
-// ----- Multer Filters -----
-
-/** Map UploadContext to the validation type used by validateFileType (both discovery and library use general). */
-function uploadContextToUploadType(_uploadContext: UploadContext): UploadType {
-  return 'general';
-}
-
-export function createFileFilter(uploadContext: UploadContext) {
-  const uploadType = uploadContextToUploadType(uploadContext);
-  return (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    const validation = validateFileType(file, uploadType);
-    if (validation.isValid) {
-      cb(null, true);
-    } else {
-      cb(new Error(validation.message ?? 'File type not allowed'));
-    }
-  };
-}
 
 // ----- Unstructured Processing -----
 let unstructuredClient: UnstructuredClient | null = null;
@@ -170,86 +109,3 @@ export async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ 
   });
   return Promise.all(promises);
 }
-
-export async function processUploadedFiles(files: Express.Multer.File[]): Promise<{ content: string; errors: string[] }> {
-  const contentParts: string[] = [];
-  const errors: string[] = [];
-  
-  for (const file of files) {
-    if (!isFileSupported(file.path)) {
-      const error = `Skipping unsupported file: ${file.originalname}`;
-      logger.verbose('Skipping unsupported file', { error });
-      errors.push(error);
-      continue;
-    }
-    const result = await loadFileContent(file.path);
-    if (result.content && result.content.trim()) {
-      contentParts.push(`=== ${file.originalname} ===\n${result.content.substring(0, 5000)}`);
-    } else if (result.error) {
-      const error = `Failed to process ${file.originalname}: ${result.error}`;
-      logger.warn('Failed to process file', { error });
-      errors.push(error);
-    }
-  }
-  
-  return {
-    content: contentParts.join('\n\n'),
-    errors
-  };
-}
-
-// ----- File Cleanup Utilities -----
-
-export async function cleanupUploadedFiles(files: Express.Multer.File[]): Promise<void> {
-  await Promise.all(
-    files.map(async (file) => {
-      try {
-        await fs.promises.unlink(file.path);
-      } catch (error) {
-        logger.warn('Failed to cleanup file', { filePath: file.path, error: error instanceof Error ? error.message : String(error) });
-      }
-    })
-  );
-}
-
-// ----- Centralized Multer Factory -----
-
-export function createUploadClient(
-  uploadContext: UploadContext,
-  userId: string
-): multer.Multer {
-  const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      const targetDir = getUploadsPath('files', userId);
-      
-      if (!fs.existsSync(targetDir)) {
-        try {
-          fs.mkdirSync(targetDir, { recursive: true });
-        } catch (error) {
-          return cb(new Error(`Failed to create directory: ${error instanceof Error ? error.message : 'Unknown error'}`), '');
-        }
-      }
-      cb(null, targetDir);
-    },
-    filename: (req, file, cb) => {
-      const fileId = uuidv4();
-      const extension = path.extname(file.originalname);
-      req.generatedFileId = fileId;
-      cb(null, fileId + extension);
-    }
-  });
-
-  const fileFilter = createFileFilter(uploadContext);
-
-  return multer({
-    storage,
-    limits: {
-      fileSize: FILE_SIZE_LIMITS.GENERAL,
-      files: MAX_FILES_PER_UPLOAD
-    },
-    fileFilter
-  });
-}
-
-
-
