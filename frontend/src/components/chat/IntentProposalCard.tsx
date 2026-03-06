@@ -281,19 +281,6 @@ export default function IntentProposalCard({
             <span className="text-xs text-gray-400">Skipping…</span>
           )}
 
-          {actionError && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-red-500">Failed</span>
-              <button
-                type="button"
-                onClick={handleApproveNow}
-                className="text-sm font-medium text-[#041729] hover:underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
           {effectiveStatus === "rejected" && (
             <span className="text-xs text-gray-400">Skipped</span>
           )}

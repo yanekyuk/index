@@ -683,6 +683,14 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     [opportunitiesService, router, showError, showSuccess],
   );
 
+  const archiveProposalIntent = useCallback(
+    async (proposalId: string, intentId: string) => {
+      await apiClient.patch(`/intents/${intentId}/archive`);
+      setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
+    },
+    [],
+  );
+
   const handleIntentProposalApprove = useCallback(
     async (proposalId: string, description: string, indexId?: string) => {
       try {
@@ -694,16 +702,13 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           title: "Broadcasting Signal",
           message: description,
           duration: 10000,
-          onAction: async () => {
-            await apiClient.patch(`/intents/${res.intentId}/archive`);
-            setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
-          },
+          onAction: () => archiveProposalIntent(proposalId, res.intentId),
         });
       } catch (err) {
-        throw err; // Card's inline error UI handles display
+        throw err;
       }
     },
-    [addNotification],
+    [addNotification, archiveProposalIntent],
   );
 
   const handleIntentProposalReject = useCallback(
@@ -712,7 +717,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         await apiClient.post("/intents/reject", { proposalId });
         setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
       } catch (err) {
-        throw err; // Card's inline error UI handles display
+        throw err;
       }
     },
     [],
@@ -722,14 +727,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     async (proposalId: string) => {
       const intentId = proposalIntentMap[proposalId];
       if (!intentId) throw new Error("Intent ID not found for proposal");
-      try {
-        await apiClient.patch(`/intents/${intentId}/archive`);
-        setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "rejected" }));
-      } catch (err) {
-        throw err; // Card's inline error UI handles display
-      }
+      await archiveProposalIntent(proposalId, intentId);
     },
-    [proposalIntentMap],
+    [proposalIntentMap, archiveProposalIntent],
   );
 
   const canSend = input.trim() || selectedFiles.length > 0;
