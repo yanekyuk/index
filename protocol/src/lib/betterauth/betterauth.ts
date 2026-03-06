@@ -3,19 +3,26 @@ import { magicLink, bearer, jwt } from "better-auth/plugins";
 
 import { log } from "../log";
 
-import type { AuthDatabaseAdapter } from "../../adapters/auth.adapter";
-
 const logger = log.server.from("betterauth");
 
 export const PROTOCOL_URL =
   process.env.PROTOCOL_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+/** Contract for the auth database adapter injected into createAuth. */
+export interface AuthDbContract {
+  /** Returns a configured adapter object for Better Auth's `database` option. */
+  createDrizzleAdapter(): { provider: string; [key: string]: unknown };
+  prepareGhostClaim(email: string): Promise<string | null>;
+  claimGhostUser(realUserId: string, ghostId: string): Promise<void>;
+  restoreGhostEmail(ghostId: string, email: string): Promise<void>;
+}
 
 /**
  * Dependencies injected into the Better Auth factory.
  * Keeps this lib module free of direct adapter/infrastructure imports.
  */
 export interface AuthDeps {
-  authDb: AuthDatabaseAdapter;
+  authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
   ensureWallet?: (userId: string) => Promise<void>;
