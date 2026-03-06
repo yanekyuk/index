@@ -1016,3 +1016,30 @@ describe('ChatDatabaseAdapter ghost claim', () => {
     });
   });
 });
+
+// ChatDatabaseAdapter – restoreGhostEmail
+describe('ChatDatabaseAdapter.restoreGhostEmail', () => {
+  const adapter = new ChatDatabaseAdapter();
+  const ghostId = crypto.randomUUID();
+  const originalEmail = `${TEST_PREFIX}restore-ghost@test.com`;
+
+  beforeAll(async () => {
+    // Create a ghost with placeholder email (simulating after prepareGhostClaim)
+    await db.insert(users).values({
+      id: ghostId,
+      name: TEST_PREFIX + 'RestoreGhost',
+      email: `__ghost_claimed_${ghostId}`,
+      isGhost: true,
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(users).where(eq(users.id, ghostId));
+  });
+
+  it('should restore the ghost email from placeholder', async () => {
+    await adapter.restoreGhostEmail(ghostId, originalEmail);
+    const row = await db.select({ email: users.email }).from(users).where(eq(users.id, ghostId)).limit(1);
+    expect(row[0].email).toBe(originalEmail);
+  });
+});

@@ -2410,7 +2410,7 @@ export class ChatDatabaseAdapter {
         isGhost: schema.users.isGhost,
       })
       .from(schema.users)
-      .where(inArray(schema.users.email, emails));
+      .where(and(inArray(schema.users.email, emails), isNull(schema.users.deletedAt)));
     return rows;
   }
 
@@ -2586,7 +2586,7 @@ export class ChatDatabaseAdapter {
       // Upsert all contacts (existing users + newly created ghosts)
       const contactsToUpsert: Array<{ ownerId: string; userId: string; source: typeof source }> = [];
       for (const contact of validContacts) {
-        const user = existingByEmail.get(contact.email);
+        const user = existingByEmail.get(contact.email.toLowerCase());
         if (user) {
           contactsToUpsert.push({ ownerId, userId: user.id, source });
         }
@@ -2633,6 +2633,17 @@ export class ChatDatabaseAdapter {
       .where(eq(schema.users.id, ghost.id));
 
     return ghost.id;
+  }
+
+  /**
+   * Restores a ghost user's email after a failed claim attempt.
+   * @param ghostId - The ghost user's ID
+   * @param email - The original email to restore
+   */
+  async restoreGhostEmail(ghostId: string, email: string): Promise<void> {
+    await db.update(schema.users)
+      .set({ email })
+      .where(eq(schema.users.id, ghostId));
   }
 
   /**

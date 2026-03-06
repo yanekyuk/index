@@ -54,7 +54,7 @@ export const auth = betterAuth({
               pendingGhostClaims.set(user.id, ghostId);
             }
           } catch (err) {
-            logger.error('Failed to prepare ghost claim', { email: user.email, error: err });
+            logger.error('Failed to prepare ghost claim', { email: user.email.replace(/(.{2}).+(@.+)/, '$1***$2'), error: err });
           }
           return { data: user };
         },
@@ -65,10 +65,17 @@ export const auth = betterAuth({
 
           const ghostId = pendingGhostClaims.get(user.id);
           if (ghostId) {
-            pendingGhostClaims.delete(user.id);
             try {
               await chatDb.claimGhostUser(user.id, ghostId);
+              pendingGhostClaims.delete(user.id);
             } catch (err) {
+              // Restore ghost email so the ghost row isn't orphaned with a placeholder email
+              try {
+                await chatDb.restoreGhostEmail(ghostId, user.email);
+              } catch (restoreErr) {
+                logger.error('Failed to restore ghost email after claim failure', { ghostId, error: restoreErr });
+              }
+              pendingGhostClaims.delete(user.id);
               logger.error('Ghost claiming failed', { userId: user.id, ghostId, error: err });
             }
           }
