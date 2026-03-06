@@ -62,6 +62,7 @@ export class ChatStreamer {
       indexId?: string;
     },
     checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatStreamEvent> {
     const {
       userId,
@@ -99,6 +100,7 @@ export class ChatStreamer {
         { userId, messages: allMessages, indexId },
         sessionId,
         checkpointer,
+        signal,
       );
     } catch (error) {
       logger.error("Stream error", {
@@ -131,6 +133,7 @@ export class ChatStreamer {
     input: { userId: string; messages: BaseMessage[]; indexId?: string },
     sessionId: string,
     checkpointer?: MemorySaver | PostgresSaver,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatStreamEvent> {
     const graph = this.createStreamingGraph(checkpointer);
 
@@ -151,13 +154,15 @@ export class ChatStreamer {
       // Custom events come from config.writer() inside agentLoopNode.
       const eventStream = await graph.stream(initialState, {
         streamMode: ["custom", "updates"] as const,
-        configurable: { thread_id: sessionId },
+        configurable: { thread_id: sessionId, signal },
+        signal,
       });
 
       // Emit initial status
       yield createStatusEvent(sessionId, "Processing your message...");
 
       for await (const tuple of eventStream) {
+        if (signal?.aborted) break;
         // graph.stream with multiple modes yields [mode, chunk] tuples
         const [mode, chunk] = tuple as [string, unknown];
 
