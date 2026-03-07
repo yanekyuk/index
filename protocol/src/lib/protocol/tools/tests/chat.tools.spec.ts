@@ -1688,7 +1688,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     expect(capturedLimit).toBe(3);
 
     // Count actual ```opportunity code blocks (start-of-line or after newline, not mid-sentence mentions)
-    const codeBlockCount = (parsed.data.message.match(/\n```opportunity\n/g) || []).length;
+    const codeBlockCount = (parsed.data.message.match(/(?:^|\n)```opportunity\n/g) || []).length;
     expect(codeBlockCount).toBe(3);
     // Total count reported should also be capped
     expect(parsed.data.count).toBe(3);
