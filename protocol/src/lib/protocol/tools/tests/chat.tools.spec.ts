@@ -1290,8 +1290,47 @@ describe("create_opportunities tool", () => {
     // Count opportunity code blocks in the message
     const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
     expect(blocks.length).toBe(3);
-    // Should mention remaining candidates
-    expect(parsed.data.message).toContain("more candidates");
+    // No discoveryId in pagination → falls through to signal suggestion instead of "see more"
+    expect(parsed.data.message).toContain("create a signal");
+  });
+
+  test("discovery mode: offers 'see more' when discoveryId is available and extra cards were capped", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 5,
+      opportunities: Array.from({ length: 5 }, (_, i) => ({
+        opportunityId: `opp-more-${i + 1}`,
+        userId: `candidate-more-${i + 1}`,
+        name: `Candidate ${i + 1}`,
+        avatar: null,
+        matchReason: `Match reason ${i + 1}`,
+        score: 0.9 - i * 0.1,
+        status: "draft",
+      })),
+      pagination: { discoveryId: "disc-123", evaluated: 5, remaining: 3 },
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ searchQuery: "looking for co-founders" });
+    const parsed = JSON.parse(result);
+    expect(parsed.data.count).toBe(3);
+    // 3 remaining from pagination + 2 extra from cap = 5 total remaining
+    expect(parsed.data.message).toContain("5 more candidates");
+    expect(parsed.data.message).toContain("disc-123");
   });
 
   test("continueFrom mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
