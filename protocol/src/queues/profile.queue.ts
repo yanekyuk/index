@@ -72,7 +72,9 @@ export class ProfileQueue {
    * @returns The BullMQ job
    */
   addEnrichGhostJob(data: { userId: string }): Promise<Job<ProfileJobPayload>> {
-    return this.addJob('ghost.enrich', data);
+    return this.addJob('ghost.enrich', data, {
+      jobId: `ghost.enrich.${data.userId}.${Date.now()}`,
+    });
   }
 
   /**
@@ -121,10 +123,24 @@ export class ProfileQueue {
   startWorker(): void {
     if (this.worker) return;
     const processor = async (job: Job<ProfileJobPayload>) => {
-      this.queueLogger.info(`[ProfileProcessor] Processing job ${job.id} (${job.name})`);
+      this.queueLogger.info(`[ProfileProcessor] Processing job ${job.id} (${job.name})`, {
+        userId: (job.data as EnsureProfileHydeData).userId,
+      });
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor);
+    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, { concurrency: 10 });
+  }
+
+  /**
+   * Gracefully close the worker and queue connections.
+   * Called during server shutdown to prevent stale workers.
+   */
+  async close(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    await this.queue.close();
   }
 
   private async handleEnsureProfileHyde(data: EnsureProfileHydeData): Promise<void> {
@@ -152,14 +168,22 @@ export class ProfileQueue {
       const chatDb = new ChatDatabaseAdapter();
       const user = await chatDb.getUser(userId);
       if (!user) {
-        this.logger.warn('[EnrichGhost] User not found, skipping', { userId });
+        this.queueLogger.warn('[EnrichGhost] User not found, skipping', { userId });
         return;
       }
 
-      // Search for public data via Parallels API
+      this.queueLogger.info('[EnrichGhost] Starting enrichment', {
+        userId,
+        name: user.name,
+        email: user.email,
+        hasSocials: !!(user.socials && Object.keys(user.socials).length > 0),
+      });
+
+      // Search for public data via Parallels API and pass results to profile graph
+      let enrichmentInput: string | undefined;
       try {
         const searchResult = await searchUser({ name: user.name, email: user.email });
-        this.logger.verbose('[EnrichGhost] Parallels search completed', {
+        this.queueLogger.info('[EnrichGhost] Parallels search completed', {
           userId,
           resultCount: searchResult?.results?.length ?? 0,
         });
@@ -167,12 +191,19 @@ export class ProfileQueue {
         if (searchResult?.results?.length) {
           const socials: Record<string, string | string[]> = {};
           const websites: string[] = [];
+          const inputParts: string[] = [];
+
           for (const result of searchResult.results) {
             const url = result.url;
             if (url.includes('linkedin.com')) socials.linkedin = url;
             else if (url.includes('twitter.com') || url.includes('x.com')) socials.x = url;
             else if (url.includes('github.com')) socials.github = url;
             else websites.push(url);
+
+            // Collect excerpts for profile generation input
+            if (result.excerpts && result.excerpts.length > 0) {
+              inputParts.push(`Source: ${result.title || result.url}\n${result.excerpts.join('\n')}`);
+            }
           }
           if (websites.length > 0) socials.websites = websites;
           if (Object.keys(socials).length > 0) {
@@ -180,30 +211,44 @@ export class ProfileQueue {
               socials: socials as { x?: string; linkedin?: string; github?: string; websites?: string[] },
             });
           }
+
+          if (inputParts.length > 0) {
+            enrichmentInput = inputParts.join('\n\n');
+          }
         }
       } catch (err) {
-        this.logger.warn('[EnrichGhost] Parallels search failed, running profile graph without enrichment', {
+        this.queueLogger.warn('[EnrichGhost] Parallels search failed, running profile graph without enrichment', {
           userId,
-          error: err,
+          error: err instanceof Error ? err.message : String(err),
         });
       }
 
-      // Generate profile + HyDE from available data
-      await this.invokeProfileGraph(userId);
-      this.logger.verbose('[EnrichGhost] Profile generated for ghost user', { userId });
+      // Generate profile + HyDE — pass pre-fetched search results so graph skips redundant search
+      this.queueLogger.info('[EnrichGhost] Invoking profile graph', { userId, hasEnrichmentInput: !!enrichmentInput });
+      const result = await this.invokeProfileGraph(userId, enrichmentInput);
+      this.queueLogger.info('[EnrichGhost] Profile graph completed', {
+        userId,
+        hasProfile: !!result.profile,
+        hasError: !!result.error,
+        error: result.error,
+        needsUserInfo: result.needsUserInfo,
+      });
     } catch (err) {
-      this.logger.error('[EnrichGhost] Failed to enrich ghost user', { userId, error: err });
+      this.queueLogger.error('[EnrichGhost] Failed to enrich ghost user', {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       throw err;
     }
   }
 
-  private async invokeProfileGraph(userId: string): Promise<void> {
+  private async invokeProfileGraph(userId: string, enrichmentInput?: string) {
     const database = new ProfileDatabaseAdapter();
     const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
     const factory = new ProfileGraphFactory(database, embedder, scraper);
     const graph = factory.createGraph();
-    await graph.invoke({ userId, operationMode: 'generate' });
+    return graph.invoke({ userId, operationMode: 'generate', enrichmentInput });
   }
 }
 

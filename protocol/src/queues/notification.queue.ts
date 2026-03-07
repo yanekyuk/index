@@ -123,6 +123,14 @@ export class NotificationQueue {
     this.worker = QueueFactory.createWorker<NotificationJobData>(QUEUE_NAME, processor);
   }
 
+  async close(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    await this.queue.close();
+  }
+
   private async processOpportunityNotification(data: NotificationJobData): Promise<void> {
     const { opportunityId, recipientId, priority } = data;
     const db = this.deps?.database ?? this.database;

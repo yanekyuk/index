@@ -288,3 +288,20 @@ Bun.serve({
 });
 
 logger.info('Server running', { port: PORT });
+
+
+// Graceful shutdown: close BullMQ workers so stale workers don't linger after restart
+const shutdown = async () => {
+  logger.info('Shutting down workers...');
+  await Promise.allSettled([
+    profileQueue.close(),
+    intentQueue.close(),
+    opportunityQueue.close(),
+    notificationQueue.close(),
+    emailQueue.close(),
+  ]);
+  logger.info('Workers closed');
+  process.exit(0);
+};
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

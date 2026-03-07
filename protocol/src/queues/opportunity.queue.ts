@@ -126,6 +126,14 @@ export class OpportunityQueue {
     this.worker = QueueFactory.createWorker<OpportunityJobData>(QUEUE_NAME, processor);
   }
 
+  async close(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    await this.queue.close();
+  }
+
   private async handleDiscoverOpportunities(data: OpportunityJobData): Promise<void> {
     const { intentId, userId, indexIds } = data;
     const db = this.deps?.database ?? this.database;

@@ -366,11 +366,25 @@ export class ProfileGraphFactory {
     // ─────────────────────────────────────────────────────────
     const autoGenerateNode = async (state: typeof ProfileGraphState.State) => {
       return timed("ProfileGraph.autoGenerate", async () => {
-        logger.verbose("Starting auto-generate via Parallels searchUser", {
+        logger.verbose("Starting auto-generate", {
           userId: state.userId,
+          hasEnrichmentInput: !!state.enrichmentInput,
         });
 
         try {
+          // If enrichment input was pre-fetched (e.g. by handleEnrichGhost), use it directly
+          if (state.enrichmentInput) {
+            logger.verbose("Using pre-fetched enrichment input, skipping Parallels search", {
+              inputLength: state.enrichmentInput.length,
+            });
+            return {
+              input: state.enrichmentInput,
+              needsUserInfo: false,
+              needsProfileGeneration: true,
+              operationsPerformed: { scraped: true },
+            };
+          }
+
           // Load user from DB
           const user = await this.database.getUser(state.userId);
           if (!user) {
@@ -397,71 +411,77 @@ export class ProfileGraphFactory {
             request.websites = user.socials.websites;
           }
 
-          // Check minimum info
           const hasSocials = !!(request.linkedin || request.twitter || request.github || (request.websites && request.websites.length > 0));
           const hasMeaningfulName = request.name && request.name.trim() !== '' && !request.name.includes('@') && request.name.split(/\s+/).filter(Boolean).length >= 2;
 
-          if (!hasSocials && !hasMeaningfulName) {
-            logger.verbose("Insufficient user info for auto-generate", { userId: state.userId });
-            return {
-              needsUserInfo: true,
-              missingUserInfo: [
-                ...(hasSocials ? [] : ['social_urls']),
-                ...(hasMeaningfulName ? [] : ['full_name']),
-              ],
-            };
-          }
-
-          logger.verbose("Calling Parallels searchUser", {
-            hasName: !!request.name,
-            hasEmail: !!request.email,
-            hasSocials,
-          });
-
-          const searchResult = await searchUser(request);
-
-          // Combine excerpts into input text for profile generation
-          const inputParts: string[] = [];
-          if (searchResult.results && searchResult.results.length > 0) {
-            for (const r of searchResult.results) {
-              if (r.excerpts && r.excerpts.length > 0) {
-                inputParts.push(`Source: ${r.title || r.url}\n${r.excerpts.join('\n')}`);
-              }
-            }
-          }
-
-          if (inputParts.length === 0) {
-            logger.warn("Parallels searchUser returned no usable content", { userId: state.userId });
-            // Fall back to basic user info
-            const basicInfo = [
+          // Helper: build basic profile input from whatever user info we have
+          const buildBasicInfo = () => {
+            const parts = [
               user.name ? `Name: ${user.name}` : '',
               user.email ? `Email: ${user.email}` : '',
               user.location ? `Location: ${user.location}` : '',
               user.intro ? `Bio: ${user.intro}` : '',
             ].filter(Boolean).join('\n');
-            return {
-              input: basicInfo || "No information available",
-              needsProfileGeneration: true,
-              operationsPerformed: { scraped: true },
-            };
+            return parts || "No information available";
+          };
+
+          // Try Parallels search if we have enough info for a meaningful lookup
+          if (hasSocials || hasMeaningfulName) {
+            logger.verbose("Calling Parallels searchUser", {
+              hasName: !!request.name,
+              hasEmail: !!request.email,
+              hasSocials,
+            });
+
+            try {
+              const searchResult = await searchUser(request);
+
+              const inputParts: string[] = [];
+              if (searchResult.results && searchResult.results.length > 0) {
+                for (const r of searchResult.results) {
+                  if (r.excerpts && r.excerpts.length > 0) {
+                    inputParts.push(`Source: ${r.title || r.url}\n${r.excerpts.join('\n')}`);
+                  }
+                }
+              }
+
+              if (inputParts.length > 0) {
+                const combinedInput = inputParts.join('\n\n');
+                logger.verbose("Auto-generate input ready", {
+                  sourceCount: inputParts.length,
+                  inputLength: combinedInput.length,
+                });
+                return {
+                  input: combinedInput,
+                  needsUserInfo: false,
+                  needsProfileGeneration: true,
+                  operationsPerformed: { scraped: true },
+                };
+              }
+
+              logger.warn("Parallels searchUser returned no usable content, falling back to basic info", { userId: state.userId });
+            } catch (searchErr) {
+              logger.warn("Parallels searchUser failed, falling back to basic info", {
+                userId: state.userId,
+                error: searchErr instanceof Error ? searchErr.message : String(searchErr),
+              });
+            }
+          } else {
+            logger.verbose("Minimal user info — skipping Parallels, generating from name/email", { userId: state.userId });
           }
 
-          const combinedInput = inputParts.join('\n\n');
-          logger.verbose("Auto-generate input ready", {
-            sourceCount: inputParts.length,
-            inputLength: combinedInput.length,
-          });
-
+          // Fall back to basic user info (name, email, etc.)
           return {
-            input: combinedInput,
+            input: buildBasicInfo(),
+            needsUserInfo: false,
             needsProfileGeneration: true,
             operationsPerformed: { scraped: true },
           };
         } catch (err) {
-          logger.error("Auto-generate via Parallels failed", {
+          logger.error("Auto-generate failed", {
             error: err instanceof Error ? err.message : String(err),
           });
-          return { error: "Auto-generate failed. Please try again or provide your information manually." };
+          return { error: `Auto-generate failed: ${err instanceof Error ? err.message : String(err)}` };
         }
       });
     };

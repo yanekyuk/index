@@ -78,13 +78,34 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
   if ('objective' in request) {
     objective = request.objective;
   } else {
-    objective = `Find information about the person named ${request.name || 'Unknown'}.`;
-    if (request.email) objective += `\nEmail: ${request.email}`;
+    const name = request.name?.trim() || '';
+    const email = request.email?.trim() || '';
+    const isSingleName = name && !name.includes('@') && name.split(/\s+/).filter(Boolean).length < 2;
+
+    if (isSingleName && email) {
+      // Single name (e.g. "seren") — email is more identifying than the name alone
+      objective = `Find information about the person with email "${email}" (name: ${name}).`;
+    } else if (name) {
+      objective = `Find information about the person named ${name}.`;
+      if (email) objective += `\nEmail: ${email}`;
+    } else if (email) {
+      objective = `Find information about the person with email "${email}".`;
+    } else {
+      objective = 'Find information about this person.';
+    }
     if (request.linkedin) objective += `\nLinkedIn: ${request.linkedin}`;
     if (request.twitter) objective += `\nTwitter: ${request.twitter}`;
     if (request.github) objective += `\nGitHub: ${request.github}`;
     if (request.websites?.length) objective += `\nWebsites: ${request.websites.join(', ')}`;
   }
+
+  const requestBody = {
+    mode: 'one-shot',
+    search_queries: null,
+    max_results: 20,
+    objective,
+  };
+  logger.info('Parallel Search request', { url: PARALLEL_API_URL, body: requestBody });
 
   for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
     const response = await fetch(PARALLEL_API_URL, {
@@ -94,12 +115,7 @@ export async function searchUser(request: ParallelSearchRequest): Promise<Parall
         'x-api-key': apiKey,
         'parallel-beta': 'search-extract-2025-10-10'
       },
-      body: JSON.stringify({
-        mode: 'one-shot',
-        search_queries: null,
-        max_results: 10,
-        objective,
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (response.status === 429) {

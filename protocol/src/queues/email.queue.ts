@@ -108,6 +108,14 @@ export class EmailQueue {
     });
   }
 
+  async close(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    await this.queue.close();
+  }
+
   private async handleSendEmail(data: EmailJobData): Promise<void> {
     await executeSendEmail(data);
   }

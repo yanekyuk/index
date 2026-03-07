@@ -152,26 +152,21 @@ export class ContactService {
     }
     result.imported = result.details.length;
 
-    // Enqueue enrichment for ghost contacts that lack a profile.
+    // Enqueue enrichment for all ghost contacts on every import.
+    // Re-imports re-trigger profile generation so updated data or
+    // previously failed enrichments are retried.
     const ghostDetails = result.details.filter(d => {
       const user = existingByEmail.get(d.email);
       return user?.isGhost === true;
     });
     if (ghostDetails.length > 0) {
-      const needsEnrichment = await this.db.getUserIdsWithoutProfile(
-        ghostDetails.map(g => g.userId)
-      );
-      if (needsEnrichment.size > 0) {
-        for (const ghost of ghostDetails) {
-          if (needsEnrichment.has(ghost.userId)) {
-            await profileQueue.addEnrichGhostJob({ userId: ghost.userId });
-          }
-        }
-        logger.info('[ContactService] Enrichment jobs enqueued for ghost contacts without profiles', {
-          ghostIds: [...needsEnrichment],
-          count: needsEnrichment.size,
-        });
+      for (const ghost of ghostDetails) {
+        await profileQueue.addEnrichGhostJob({ userId: ghost.userId });
       }
+      logger.info('[ContactService] Enrichment jobs enqueued for ghost contacts', {
+        ghostIds: ghostDetails.map(g => g.userId),
+        count: ghostDetails.length,
+      });
     }
 
     logger.info('[ContactService] Import completed', {

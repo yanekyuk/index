@@ -168,6 +168,14 @@ export class IntentQueue implements IntentGraphQueue {
     this.worker = QueueFactory.createWorker<IntentJobPayload>(QUEUE_NAME, processor);
   }
 
+  async close(): Promise<void> {
+    if (this.worker) {
+      await this.worker.close();
+      this.worker = null;
+    }
+    await this.queue.close();
+  }
+
   private async handleGenerateHyde(
     data: IntentJobData,
     overrides?: { addOpportunityJob?: (d: { intentId: string; userId: string }) => Promise<unknown> }
