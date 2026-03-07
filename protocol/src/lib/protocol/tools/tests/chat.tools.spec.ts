@@ -1251,6 +1251,48 @@ describe("create_opportunities tool", () => {
     expect(parsed.data.found).toBe(true);
     expect(parsed.data.suggestIntentCreationForVisibility).toBeUndefined();
   });
+
+  test("discovery mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 5,
+      opportunities: Array.from({ length: 5 }, (_, i) => ({
+        opportunityId: `opp-cap-${i + 1}`,
+        userId: `candidate-${i + 1}`,
+        name: `Candidate ${i + 1}`,
+        avatar: null,
+        matchReason: `Match reason ${i + 1}`,
+        score: 0.9 - i * 0.1,
+        status: "draft",
+      })),
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ searchQuery: "looking for co-founders" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+    expect(parsed.data.count).toBe(3);
+    // Count opportunity code blocks in the message
+    const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
+    expect(blocks.length).toBe(3);
+    // Should mention remaining candidates
+    expect(parsed.data.message).toContain("more candidates");
+  });
 });
 
 describe("update_opportunity tool (send via status pending)", () => {

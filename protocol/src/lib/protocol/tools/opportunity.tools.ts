@@ -10,6 +10,9 @@ import type { Opportunity } from "../interfaces/database.interface";
 
 const logger = protocolLogger("ChatTools:Opportunity");
 
+/** Maximum number of opportunity cards to show per chat response. */
+const CHAT_DISPLAY_LIMIT = 3;
+
 /** Markdown code fence (three backticks). Avoids embedding ``` in string literals so TS parser stays in sync. */
 const CODE_FENCE = String.fromCharCode(96, 96, 96);
 
@@ -573,11 +576,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         );
       });
 
+      // Cap displayed cards at CHAT_DISPLAY_LIMIT; remaining feed into pagination
+      const displayedBlocks = opportunityBlocks.slice(0, CHAT_DISPLAY_LIMIT);
+      const extraFromCap = opportunityBlocks.length - displayedBlocks.length;
+
       // Join all opportunity blocks into a single string for the LLM to include verbatim
-      const blocksText = opportunityBlocks.join("\n\n");
+      const blocksText = displayedBlocks.join("\n\n");
       let message =
         "Found " +
-        result.count +
+        displayedBlocks.length +
         " potential connection(s). IMPORTANT: Include the following " + CODE_FENCE + "opportunity code blocks EXACTLY as-is in your response (they render as interactive cards):\n\n" +
         blocksText;
       const existingForMention = result.existingConnectionsForMention ?? result.existingConnections ?? [];
@@ -588,13 +595,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ". View on your home page.";
       }
 
-      if (result.pagination && result.pagination.remaining > 0) {
-        message += `\n\nThere are ${result.pagination.remaining} more candidates I haven't evaluated yet. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination.discoveryId}".`;
+      const totalRemaining = (result.pagination?.remaining ?? 0) + extraFromCap;
+      if (totalRemaining > 0) {
+        message += `\n\nThere are ${totalRemaining} more candidates. Ask if the user wants to see more — they can say "show me more" and you should call create_opportunities with continueFrom="${result.pagination?.discoveryId ?? ""}".`;
+      } else {
+        message += `\n\nThese are all the connections I found. If the user wants to attract more connections, suggest they create a signal — e.g. "Would you like to create a signal so others looking for someone like you can find you?" If they agree, call create_intent with a description based on what they were searching for.`;
       }
 
       return success({
         found: true,
-        count: result.count,
+        count: displayedBlocks.length,
         message,
         ...(result.existingConnections?.length ? { existingConnections: result.existingConnections } : {}),
         ...(result.pagination ? { pagination: result.pagination } : {}),
