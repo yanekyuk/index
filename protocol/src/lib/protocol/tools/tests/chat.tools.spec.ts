@@ -1687,9 +1687,8 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     // Verify CHAT_DISPLAY_LIMIT (3) was passed to the database query
     expect(capturedLimit).toBe(3);
 
-    // Count ```opportunity code blocks in the message
-    const codeBlockCount = (parsed.data.message.match(/```opportunity/g) || []).length;
-    expect(codeBlockCount).toBeLessThanOrEqual(3);
+    // Count actual ```opportunity code blocks (start-of-line or after newline, not mid-sentence mentions)
+    const codeBlockCount = (parsed.data.message.match(/\n```opportunity\n/g) || []).length;
     expect(codeBlockCount).toBe(3);
     // Total count reported should also be capped
     expect(parsed.data.count).toBe(3);
