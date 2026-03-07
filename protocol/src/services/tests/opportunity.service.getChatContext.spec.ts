@@ -264,8 +264,8 @@ describe("OpportunityService.getChatContext", () => {
       await service.getChatContext(VIEWER_ID, PEER_ID);
 
       expect(mockPresent).toHaveBeenCalledTimes(1);
-      const presenterInput = mockPresent.mock.calls[0][0];
-      expect(presenterInput.opportunityStatus).toBe("accepted");
+      const presenterInput = (mockPresent.mock.calls as unknown[][])[0]?.[0] as Record<string, unknown> | undefined;
+      expect(presenterInput?.opportunityStatus).toBe("accepted");
     });
 
     it("should return headline and personalizedSummary from presenter", async () => {
