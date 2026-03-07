@@ -953,7 +953,8 @@ export class OpportunityGraphFactory {
                   .map((actor) =>
                     candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
                   )
-                  .some((name): name is string => Boolean(name) && reasoningLower.includes(name));
+                  .filter((name): name is string => Boolean(name))
+                  .some((name) => reasoningLower.includes(name));
                 let reasoning: string;
                 if (mentionsCandidate && !mentionsOtherCandidate) {
                   reasoning = op.reasoning;

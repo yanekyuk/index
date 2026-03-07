@@ -1251,6 +1251,120 @@ describe("create_opportunities tool", () => {
     expect(parsed.data.found).toBe(true);
     expect(parsed.data.suggestIntentCreationForVisibility).toBeUndefined();
   });
+
+  test("discovery mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 5,
+      opportunities: Array.from({ length: 5 }, (_, i) => ({
+        opportunityId: `opp-cap-${i + 1}`,
+        userId: `candidate-${i + 1}`,
+        name: `Candidate ${i + 1}`,
+        avatar: null,
+        matchReason: `Match reason ${i + 1}`,
+        score: 0.9 - i * 0.1,
+        status: "draft",
+      })),
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ searchQuery: "looking for co-founders" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+    expect(parsed.data.count).toBe(3);
+    // Count opportunity code blocks in the message
+    const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
+    expect(blocks.length).toBe(3);
+    // No discoveryId in pagination → falls through to signal suggestion instead of "see more"
+    expect(parsed.data.message).toContain("create a signal");
+  });
+
+  test("discovery mode: offers 'see more' when discoveryId is available and extra cards were capped", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 5,
+      opportunities: Array.from({ length: 5 }, (_, i) => ({
+        opportunityId: `opp-more-${i + 1}`,
+        userId: `candidate-more-${i + 1}`,
+        name: `Candidate ${i + 1}`,
+        avatar: null,
+        matchReason: `Match reason ${i + 1}`,
+        score: 0.9 - i * 0.1,
+        status: "draft",
+      })),
+      pagination: { discoveryId: "disc-123", evaluated: 5, remaining: 3 },
+    };
+    const mockDb = createMockDatabase(async () => [], {
+      getIndexMemberships: async () => [{
+        indexId: "00000000-0000-0000-0000-000000000001",
+        indexTitle: "Test Index",
+        indexPrompt: null,
+        permissions: [],
+        memberPrompt: null,
+        autoAssign: false,
+        joinedAt: new Date(),
+      }],
+    });
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { searchQuery: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ searchQuery: "looking for co-founders" });
+    const parsed = JSON.parse(result);
+    expect(parsed.data.count).toBe(3);
+    // 3 remaining from pagination + 2 extra from cap = 5 total remaining
+    expect(parsed.data.message).toContain("5 more candidates");
+    expect(parsed.data.message).toContain("disc-123");
+  });
+
+  test("continueFrom mode: caps displayed opportunity cards at CHAT_DISPLAY_LIMIT (3) even when graph returns more", async () => {
+    mockDiscoveryResult = {
+      found: true,
+      count: 5,
+      opportunities: Array.from({ length: 5 }, (_, i) => ({
+        opportunityId: `opp-continue-${i + 1}`,
+        userId: `candidate-continue-${i + 1}`,
+        name: `Candidate Continue ${i + 1}`,
+        avatar: null,
+        matchReason: `Continue match reason ${i + 1}`,
+        score: 0.9 - i * 0.1,
+        status: "draft",
+      })),
+      pagination: { remaining: 2, discoveryId: "disc-continue-123" },
+    };
+    const mockDb = createMockDatabase(async () => [], {});
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const tools = await createChatTools(context);
+    const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
+      invoke: (args: { continueFrom: string }) => Promise<string>;
+    };
+    const result = await tool.invoke({ continueFrom: "disc-continue-123" });
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+    expect(parsed.data.count).toBe(3);
+    // Count opportunity code blocks in the message
+    const blocks = parsed.data.message.match(/```opportunity\n[\s\S]*?\n```/g) ?? [];
+    expect(blocks.length).toBe(3);
+    // Should mention remaining candidates (2 from pagination + 2 extra from cap = 4)
+    expect(parsed.data.message).toContain("more candidates");
+  });
 });
 
 describe("update_opportunity tool (send via status pending)", () => {
@@ -1515,5 +1629,107 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
     expect(parsed.data.profiles[0].userId).toBe("user-diego");
     expect(parsed.data.profiles[0].hasProfile).toBe(false);
     expect(parsed.data.profiles[0].profile).toBeUndefined();
+  });
+});
+
+describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
+  /**
+   * Build N fake Opportunity records that list_opportunities can process.
+   * Each has a unique counterpart actor so buildMinimalOpportunityCard produces
+   * a distinct card.
+   */
+  function buildFakeOpportunities(n: number): Opportunity[] {
+    return Array.from({ length: n }, (_, i) => ({
+      id: `opp-fake-${i}`,
+      status: "pending",
+      interpretation: { reasoning: `Reasoning for opp ${i}`, confidence: 0.8 },
+      actors: [
+        { userId: testUserId, role: "party" },
+        { userId: `counterpart-${i}`, role: "party" },
+      ],
+      detection: { source: "discovery", createdByName: null },
+      context: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    })) as unknown as Opportunity[];
+  }
+
+  test("returns at most 3 opportunity code blocks when database has 5 opportunities", async () => {
+    const fakeOpps = buildFakeOpportunities(5);
+    let capturedLimit: number | undefined;
+    const mockDb = createMockDatabase(async () => [], {
+      getOpportunitiesForUser: async (_userId: string, opts?: { indexId?: string; limit?: number }) => {
+        capturedLimit = opts?.limit;
+        // Respect the limit like a real database would
+        return opts?.limit ? fakeOpps.slice(0, opts.limit) : fakeOpps;
+      },
+    } as unknown as MockOverrides);
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    // createChatTools filters out list_opportunities; access all opportunity tools via the full tool set
+    // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
+    // Instead, we import createOpportunityTools and wire a minimal defineTool.
+    const { tool: lcTool } = await import("@langchain/core/tools");
+    const { createOpportunityTools } = await import("../opportunity.tools");
+    const { z } = await import("zod");
+
+    const resolvedContext = {
+      userId: testUserId,
+      indexId: undefined,
+      sessionId: undefined,
+      userName: "Test User",
+      userIndexes: [],
+      scopedIndexRole: undefined,
+      indexName: undefined,
+    };
+
+    function defineTool<T extends import("zod").ZodType>(opts: {
+      name: string;
+      description: string;
+      querySchema: T;
+      handler: (input: { context: typeof resolvedContext; query: import("zod").infer<T> }) => Promise<string>;
+    }) {
+      return lcTool(
+        async (query: import("zod").infer<T>) => opts.handler({ context: resolvedContext, query }),
+        { name: opts.name, description: opts.description, schema: opts.querySchema },
+      );
+    }
+
+    const noopGraph = { invoke: async () => ({}) };
+    const deps = {
+      database: mockDb,
+      userDb: { getUser: async () => ({ id: testUserId, name: "Test User" }) },
+      systemDb: {},
+      scraper: mockScraper,
+      embedder: mockEmbedder,
+      cache: {},
+      graphs: {
+        profile: noopGraph,
+        intent: noopGraph,
+        index: noopGraph,
+        indexMembership: noopGraph,
+        intentIndex: noopGraph,
+        opportunity: noopGraph,
+      },
+    };
+
+    const oppTools = createOpportunityTools(defineTool as never, deps as never);
+    const listTool = (oppTools as unknown as Array<{ name: string; invoke: (args: { indexId?: string }) => Promise<string> }>)
+      .find((t) => t.name === "list_opportunities")!;
+    expect(listTool).toBeDefined();
+
+    const result = await listTool.invoke({});
+    const parsed = JSON.parse(result);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.found).toBe(true);
+
+    // Verify CHAT_DISPLAY_LIMIT (3) was passed to the database query
+    expect(capturedLimit).toBe(3);
+
+    // Count actual ```opportunity code blocks (start-of-line or after newline, not mid-sentence mentions)
+    const codeBlockCount = (parsed.data.message.match(/(?:^|\n)```opportunity\n/g) || []).length;
+    expect(codeBlockCount).toBe(3);
+    // Total count reported should also be capped
+    expect(parsed.data.count).toBe(3);
   });
 });
