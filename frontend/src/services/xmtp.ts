@@ -23,7 +23,9 @@ export interface ChatContextResponse {
   opportunities: {
     opportunityId: string;
     headline: string;
-    summary: string;
+    personalizedSummary: string;
+    narratorRemark: string;
+    introducerName: string | null;
     peerName: string;
     peerAvatar: string | null;
     acceptedAt: string | null;

@@ -515,7 +515,6 @@ export class ChatAgent {
 
     let messages = initialMessages;
     let iterationCount = 0;
-    let fullResponseText = "";
     const toolsDebug: DebugMetaToolCall[] = [];
 
     while (iterationCount < HARD_ITERATION_LIMIT) {
@@ -557,7 +556,6 @@ export class ChatAgent {
           if (textPart) {
             emit({ type: "text_chunk", content: textPart });
             iterationText += textPart;
-            fullResponseText += textPart;
           }
         }
       } catch (err) {
@@ -770,7 +768,7 @@ export class ChatAgent {
       iterationCount++;
 
       return {
-        responseText: fullResponseText,
+        responseText: iterationText,
         messages,
         iterationCount,
         debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
@@ -780,7 +778,7 @@ export class ChatAgent {
     // If aborted, return immediately without making another LLM call
     if (signal?.aborted) {
       return {
-        responseText: fullResponseText,
+        responseText: "",
         messages,
         iterationCount,
         debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },
@@ -798,6 +796,7 @@ export class ChatAgent {
     ];
 
     let forcedAccumulated: AIMessageChunk | undefined;
+    let forcedResponseText = "";
     const forceStream = await this.model.stream(forceMessages);
     for await (const chunk of forceStream) {
       forcedAccumulated = forcedAccumulated
@@ -806,12 +805,12 @@ export class ChatAgent {
       const textPart = extractTextFromChunk(chunk);
       if (textPart) {
         emit({ type: "text_chunk", content: textPart });
-        fullResponseText += textPart;
+        forcedResponseText += textPart;
       }
     }
 
     return {
-      responseText: fullResponseText,
+      responseText: forcedResponseText,
       messages: [
         ...messages,
         ...(forcedAccumulated ? [forcedAccumulated] : []),

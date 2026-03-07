@@ -77,8 +77,9 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'indexnetwork.s3.us-east-1.amazonaws.com',
+        port: '',
         pathname: '/**',
-      }
+      },
     ],
   },
 };

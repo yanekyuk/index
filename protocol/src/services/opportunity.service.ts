@@ -15,8 +15,11 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity, validateOpportunityActors } from '../lib/protocol/support/opportunity.utils';
 import { persistOpportunities } from '../lib/protocol/support/opportunity.persist';
+import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../lib/protocol/agents/opportunity.presenter';
+import { stripUuids, stripIntroducerMentions } from '../lib/protocol/support/opportunity.sanitize';
 
 const logger = log.service.from("OpportunityService");
+const presenter = new OpportunityPresenter();
 
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
@@ -444,19 +447,62 @@ export class OpportunityService {
   async getChatContext(userId: string, peerUserId: string) {
     logger.verbose('[OpportunityService] Getting chat context', { userId, peerUserId });
 
-    const [rows, peerUser] = await Promise.all([
+    const [allRows, peerUser] = await Promise.all([
       this.db.getAcceptedOpportunitiesBetweenActors(userId, peerUserId),
       this.db.getUser(peerUserId),
     ]);
 
-    const opportunityCards = rows.map((opp) => ({
-      opportunityId: opp.id,
-      headline: opp.interpretation?.reasoning?.substring(0, 80) ?? 'Connection opportunity',
-      summary: opp.interpretation?.reasoning ?? '',
-      peerName: peerUser?.name ?? 'Someone',
-      peerAvatar: peerUser?.avatar ?? null,
-      acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
-    }));
+    // Filter out opportunities where either chat participant is the introducer.
+    // Chat context should only show direct connections, not introductions they facilitated.
+    const rows = allRows.filter((opp) =>
+      !opp.actors.some((a) =>
+        (a.userId === userId || a.userId === peerUserId) && a.role === 'introducer'
+      )
+    );
+
+    const opportunityCards = await Promise.all(
+      rows.map(async (opp) => {
+        try {
+          const presenterInput = await gatherPresenterContext(
+            this.db as unknown as PresenterDatabase,
+            opp,
+            userId,
+          );
+          presenterInput.opportunityStatus = 'accepted';
+          presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
+          const presented = await presenter.present(presenterInput);
+          return {
+            opportunityId: opp.id,
+            headline: presented.headline,
+            personalizedSummary: presented.personalizedSummary,
+            narratorRemark: '',
+            introducerName: presenterInput.introducerName ?? null,
+            peerName: peerUser?.name ?? 'Someone',
+            peerAvatar: peerUser?.avatar ?? null,
+            acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
+          };
+        } catch (err) {
+          logger.warn('[OpportunityService] getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
+          const introducerActor = opp.actors.find((a) => a.role === 'introducer');
+          const introducerName = introducerActor ? opp.detection?.createdByName ?? null : null;
+          let rawReasoning = opp.interpretation?.reasoning ?? '';
+          rawReasoning = stripUuids(rawReasoning);
+          if (introducerName) {
+            rawReasoning = stripIntroducerMentions(rawReasoning, introducerName);
+          }
+          return {
+            opportunityId: opp.id,
+            headline: rawReasoning.substring(0, 80) || 'Connection opportunity',
+            personalizedSummary: rawReasoning,
+            narratorRemark: '',
+            introducerName,
+            peerName: peerUser?.name ?? 'Someone',
+            peerAvatar: peerUser?.avatar ?? null,
+            acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
+          };
+        }
+      }),
+    );
 
     return { opportunities: opportunityCards };
   }

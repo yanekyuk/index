@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useXMTP } from '@/contexts/XMTPContext';
-import { Loader2, ArrowUp, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Loader2, ArrowUp, MoreHorizontal, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
@@ -28,7 +28,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   const [groupId, setGroupId] = useState<string | null>(initialGroupId ?? null);
   const [chatContext, setChatContext] = useState<XmtpChatContext | null>(null);
   const [messageText, setMessageText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(true);
+  const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -41,7 +42,18 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Init: fetch chat context (read-only, no group creation)
+  // Load messages eagerly (fast — XMTP local)
+  useEffect(() => {
+    if (!isConnected) return;
+    const gid = initialGroupId ?? groupId;
+    if (gid) {
+      loadMessages(gid, 50).finally(() => setMessagesLoading(false));
+    } else {
+      setMessagesLoading(false);
+    }
+  }, [isConnected, initialGroupId, groupId, loadMessages]);
+
+  // Load chat context independently (slow — involves LLM presenter)
   useEffect(() => {
     if (!isConnected) return;
 
@@ -52,20 +64,17 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         if (!mounted) return;
         setChatContext(ctx);
         const gid = initialGroupId ?? ctx?.groupId ?? null;
-        setGroupId(gid);
-        if (gid) {
-          await loadMessages(gid, 50);
-        }
+        if (gid && !groupId) setGroupId(gid);
       } catch (err) {
-        console.error('[ChatView] Init error:', err);
+        console.error('[ChatView] Chat context error:', err);
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) setContextLoading(false);
       }
     };
 
     init();
     return () => { mounted = false; };
-  }, [isConnected, userId, initialGroupId, getChatContext, loadMessages]);
+  }, [isConnected, userId, initialGroupId, getChatContext]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -124,6 +133,25 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   };
 
   const opportunityCards = chatContext?.opportunities ?? [];
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  const toggleExpand = useCallback((oppId: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(oppId)) next.delete(oppId);
+      else next.add(oppId);
+      return next;
+    });
+  }, []);
+
+  const handleCarouselScroll = useCallback(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const index = Math.round(el.scrollLeft / el.offsetWidth);
+    setActiveCardIndex(index);
+  }, []);
 
   return (
     <>
@@ -160,27 +188,85 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
       {/* Messages */}
       <div className="px-6 lg:px-8 pb-32 flex-1">
         <ContentContainer>
-          {loading ? (
-            <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
-          ) : (
-            <div className="space-y-4">
-              {/* Opportunity cards from DB */}
-              {opportunityCards.length > 0 && (
-                <div className="space-y-3 mb-6">
-                  {opportunityCards.map((opp) => (
-                    <div key={opp.opportunityId} className="bg-[#F8F8F8] rounded-lg p-4">
-                      <p className="text-sm font-semibold text-gray-900 mb-1">{opp.headline}</p>
-                      <p className="text-sm text-gray-600 leading-relaxed">{opp.summary}</p>
-                    </div>
-                  ))}
+          <div className="space-y-4">
+              {/* Opportunity cards — skeleton while loading, carousel when ready */}
+              {contextLoading ? (
+                <div className="mt-6 mb-6 max-w-[72%] mx-auto">
+                  <div className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-3" />
+                    <div className="h-3 bg-gray-100 rounded w-full mb-2" />
+                    <div className="h-3 bg-gray-100 rounded w-5/6" />
+                  </div>
                 </div>
-              )}
+              ) : opportunityCards.length > 0 ? (
+                <div className="mt-6 mb-6 max-w-[72%] mx-auto">
+                  <div
+                    ref={carouselRef}
+                    onScroll={handleCarouselScroll}
+                    className={cn(
+                      'flex gap-3 overflow-x-auto scrollbar-hide snap-x snap-mandatory p-2 -m-2',
+                      opportunityCards.length === 1 && 'overflow-x-hidden'
+                    )}
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {opportunityCards.map((opp) => {
+                      const isExpanded = expandedCards.has(opp.opportunityId);
+                      return (
+                        <div
+                          key={opp.opportunityId}
+                          className="snap-center shrink-0 w-full bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)]"
+                        >
+                          {opp.headline && (
+                            <p className="text-sm font-bold text-[#1A1A1A] mb-2">{opp.headline}</p>
+                          )}
+                          <p className={cn('text-sm text-[#3D3D3D] leading-relaxed', !isExpanded && 'line-clamp-2')}>
+                            {opp.personalizedSummary}
+                          </p>
+                          {opp.personalizedSummary && opp.personalizedSummary.length > 100 && (
+                            <button
+                              onClick={() => toggleExpand(opp.opportunityId)}
+                              className="mt-1 inline-flex items-center gap-0.5 text-xs text-[#666] hover:text-[#333] transition-colors"
+                            >
+                              {isExpanded ? (
+                                <><ChevronUp className="w-3 h-3" /> Show less</>
+                              ) : (
+                                <><ChevronDown className="w-3 h-3" /> Read more</>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Dot indicators */}
+                  {opportunityCards.length > 1 && (
+                    <div className="flex justify-center gap-1.5 mt-3">
+                      {opportunityCards.map((opp, i) => (
+                        <button
+                          key={opp.opportunityId}
+                          aria-label={`Go to card ${i + 1} of ${opportunityCards.length}`}
+                          aria-current={i === activeCardIndex ? 'true' : undefined}
+                          onClick={() => {
+                            carouselRef.current?.children[i]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                          }}
+                          className={cn(
+                            'w-1.5 h-1.5 rounded-full transition-colors',
+                            i === activeCardIndex ? 'bg-[#3D3D3D]' : 'bg-[#D4D4D4]'
+                          )}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
 
-              {messages.length === 0 && opportunityCards.length === 0 && (
+              {messagesLoading ? (
+                <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+              ) : messages.length === 0 && !contextLoading && opportunityCards.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
                   <p className="text-sm">Start a conversation with {userName}</p>
                 </div>
-              )}
+              ) : null}
 
               {messages.map((message, index) => {
                 const isOwn = message.senderInboxId === 'self' || (myInboxId != null && message.senderInboxId === myInboxId);
@@ -211,7 +297,6 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               })}
               <div ref={messagesEndRef} />
             </div>
-          )}
         </ContentContainer>
       </div>
 
@@ -220,7 +305,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         <div className="px-6 lg:px-8">
           <ContentContainer>
             <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
-              <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-3 bg-[#F8F8F8] border border-[#E9E9E9] rounded-[32px] px-4 py-3">
+              <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-3 bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3">
                 <input
                   ref={inputRef}
                   type="text"
