@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, Fragment } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useXMTP } from '@/contexts/XMTPContext';
-import { Loader2, ArrowUp, MoreHorizontal, Trash2, Bot, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, ArrowUp, MoreHorizontal, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
@@ -234,23 +234,6 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                               )}
                             </button>
                           )}
-                          {opp.narratorRemark && (
-                            <div className="mt-3">
-                              <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-md bg-[#F0F0F0] border border-gray-200">
-                                <div className="relative shrink-0">
-                                  {opp.introducerName ? (
-                                    <UserAvatar name={opp.introducerName} size={28} />
-                                  ) : (
-                                    <Bot className="w-7 h-7 text-[#3D3D3D]" />
-                                  )}
-                                </div>
-                                <span className="text-[13px] text-[#3D3D3D]">
-                                  <span className="font-semibold">{opp.introducerName ?? 'Index'}:</span>{' '}
-                                  {opp.narratorRemark}
-                                </span>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -261,6 +244,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                       {opportunityCards.map((opp, i) => (
                         <button
                           key={opp.opportunityId}
+                          aria-label={`Go to card ${i + 1} of ${opportunityCards.length}`}
+                          aria-current={i === activeCardIndex ? 'true' : undefined}
                           onClick={() => {
                             carouselRef.current?.children[i]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
                           }}

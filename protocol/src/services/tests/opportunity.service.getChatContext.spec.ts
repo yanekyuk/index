@@ -263,10 +263,9 @@ describe("OpportunityService.getChatContext", () => {
       const service = createService([directOpportunity]);
       await service.getChatContext(VIEWER_ID, PEER_ID);
 
-      expect(mockGatherPresenterContext).toHaveBeenCalledTimes(1);
-      // The service mutates presenterInput.opportunityStatus after gathering
-      // Verify through the present() call receiving correct input
       expect(mockPresent).toHaveBeenCalledTimes(1);
+      const presenterInput = mockPresent.mock.calls[0][0];
+      expect(presenterInput.opportunityStatus).toBe("accepted");
     });
 
     it("should return headline and personalizedSummary from presenter", async () => {
