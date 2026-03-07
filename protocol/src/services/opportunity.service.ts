@@ -468,6 +468,7 @@ export class OpportunityService {
             userId,
           );
           presenterInput.opportunityStatus = 'accepted';
+          presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
           const presented = await presenter.present(presenterInput);
           return {
             opportunityId: opp.id,

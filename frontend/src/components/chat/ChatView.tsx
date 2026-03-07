@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, Fragment } from 'react';
 import { useXMTP } from '@/contexts/XMTPContext';
-import { Loader2, ArrowUp, MoreHorizontal, Trash2, Bot } from 'lucide-react';
+import { Loader2, ArrowUp, MoreHorizontal, Trash2, Bot, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import UserAvatar from '@/components/UserAvatar';
 import ReactMarkdown from 'react-markdown';
@@ -124,6 +124,25 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
   };
 
   const opportunityCards = chatContext?.opportunities ?? [];
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  const toggleExpand = useCallback((oppId: string) => {
+    setExpandedCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(oppId)) next.delete(oppId);
+      else next.add(oppId);
+      return next;
+    });
+  }, []);
+
+  const handleCarouselScroll = useCallback(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const index = Math.round(el.scrollLeft / el.offsetWidth);
+    setActiveCardIndex(index);
+  }, []);
 
   return (
     <>
@@ -164,37 +183,81 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
             <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
           ) : (
             <div className="space-y-4">
-              {/* Opportunity cards from DB */}
+              {/* Opportunity cards — carousel when multiple */}
               {opportunityCards.length > 0 && (
-                <div className="space-y-3 mt-6 mb-6 max-w-[72%] mx-auto">
-                  {opportunityCards.map((opp) => (
-                    <div key={opp.opportunityId} className="bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)]">
-                      {opp.headline && (
-                        <p className="text-sm font-bold text-[#1A1A1A] mb-2">{opp.headline}</p>
-                      )}
-                      <p className="text-sm text-[#3D3D3D] leading-relaxed">{opp.personalizedSummary}</p>
-                      {opp.narratorRemark && (
-                        <div className="mt-3">
-                          <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-md bg-[#F0F0F0] border border-gray-200">
-                            <div className="relative shrink-0">
-                              {opp.introducerName ? (
-                                <UserAvatar
-                                  name={opp.introducerName}
-                                  size={28}
-                                />
+                <div className="mt-6 mb-6 max-w-[72%] mx-auto">
+                  <div
+                    ref={carouselRef}
+                    onScroll={handleCarouselScroll}
+                    className={cn(
+                      'flex gap-3 overflow-x-auto scrollbar-hide snap-x snap-mandatory',
+                      opportunityCards.length === 1 && 'overflow-x-hidden'
+                    )}
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
+                    {opportunityCards.map((opp) => {
+                      const isExpanded = expandedCards.has(opp.opportunityId);
+                      return (
+                        <div
+                          key={opp.opportunityId}
+                          className="snap-center shrink-0 w-full bg-white rounded-xl p-4 shadow-[0_1px_4px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)]"
+                        >
+                          {opp.headline && (
+                            <p className="text-sm font-bold text-[#1A1A1A] mb-2 line-clamp-1">{opp.headline}</p>
+                          )}
+                          <p className={cn('text-sm text-[#3D3D3D] leading-relaxed', !isExpanded && 'line-clamp-2')}>
+                            {opp.personalizedSummary}
+                          </p>
+                          {opp.personalizedSummary && opp.personalizedSummary.length > 100 && (
+                            <button
+                              onClick={() => toggleExpand(opp.opportunityId)}
+                              className="mt-1 inline-flex items-center gap-0.5 text-xs text-[#666] hover:text-[#333] transition-colors"
+                            >
+                              {isExpanded ? (
+                                <><ChevronUp className="w-3 h-3" /> Show less</>
                               ) : (
-                                <Bot className="w-7 h-7 text-[#3D3D3D]" />
+                                <><ChevronDown className="w-3 h-3" /> Read more</>
                               )}
+                            </button>
+                          )}
+                          {opp.narratorRemark && (
+                            <div className="mt-3">
+                              <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-md bg-[#F0F0F0] border border-gray-200">
+                                <div className="relative shrink-0">
+                                  {opp.introducerName ? (
+                                    <UserAvatar name={opp.introducerName} size={28} />
+                                  ) : (
+                                    <Bot className="w-7 h-7 text-[#3D3D3D]" />
+                                  )}
+                                </div>
+                                <span className="text-[13px] text-[#3D3D3D]">
+                                  <span className="font-semibold">{opp.introducerName ?? 'Index'}:</span>{' '}
+                                  {opp.narratorRemark}
+                                </span>
+                              </div>
                             </div>
-                            <span className="text-[13px] text-[#3D3D3D]">
-                              <span className="font-semibold">{opp.introducerName ?? 'Index'}:</span>{' '}
-                              {opp.narratorRemark}
-                            </span>
-                          </div>
+                          )}
                         </div>
-                      )}
+                      );
+                    })}
+                  </div>
+                  {/* Dot indicators */}
+                  {opportunityCards.length > 1 && (
+                    <div className="flex justify-center gap-1.5 mt-3">
+                      {opportunityCards.map((opp, i) => (
+                        <button
+                          key={opp.opportunityId}
+                          onClick={() => {
+                            carouselRef.current?.children[i]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                          }}
+                          className={cn(
+                            'w-1.5 h-1.5 rounded-full transition-colors',
+                            i === activeCardIndex ? 'bg-[#3D3D3D]' : 'bg-[#D4D4D4]'
+                          )}
+                        />
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
 
