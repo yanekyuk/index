@@ -826,7 +826,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].indexId).toBe(scopedIndexId);
-    expect(parsed.data.summary.scopeNote).toContain("Showing current index");
+    expect(parsed.data.stats.scopeNote).toContain("Showing current index");
   });
 
   test("when context.indexId is set, showAll parameter is ignored (strict scope enforcement)", async () => {
@@ -849,7 +849,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
     // Only returns scoped index, not all 2 memberships - strict scope enforcement
     expect(parsed.data.memberOf).toHaveLength(1);
     expect(parsed.data.memberOf[0].indexId).toBe(scopedIndexId);
-    expect(parsed.data.summary.scopeNote).toContain("Showing current index");
+    expect(parsed.data.stats.scopeNote).toContain("Showing current index");
   });
 });
 

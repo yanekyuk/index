@@ -75,9 +75,17 @@ export const IndexGraphState = Annotation.Root({
       intentCount: number;
       joinPolicy: string;
     }>;
-    summary: {
+    publicIndexes?: Array<{
+      indexId: string;
+      title: string;
+      description: string | null;
+      memberCount: number;
+      owner: { name: string; avatar: string | null } | null;
+    }>;
+    stats: {
       memberOfCount: number;
       ownsCount: number;
+      publicIndexesCount?: number;
       scopeNote?: string;
     };
   } | undefined>({

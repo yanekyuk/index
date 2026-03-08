@@ -48,7 +48,7 @@ export class IndexGraphFactory {
                 readResult: {
                   memberOf: [],
                   owns: [],
-                  summary: { memberOfCount: 0, ownsCount: 0, scopeNote: "Index not found or you are not a member." },
+                  stats: { memberOfCount: 0, ownsCount: 0, scopeNote: "Index not found or you are not a member." },
                 },
               };
             }
@@ -62,7 +62,7 @@ export class IndexGraphFactory {
                 owns: owned
                   ? [{ indexId: owned.id, title: owned.title, description: owned.prompt, memberCount: owned.memberCount, intentCount: owned.intentCount, joinPolicy: owned.permissions.joinPolicy }]
                   : [],
-                summary: { memberOfCount: membership ? 1 : 0, ownsCount: owned ? 1 : 0, scopeNote: "Showing current index. Use showAll: true for all indexes." },
+                stats: { memberOfCount: membership ? 1 : 0, ownsCount: owned ? 1 : 0, scopeNote: "Showing current index. Use showAll: true for all indexes." },
               },
             };
           }
@@ -81,7 +81,7 @@ export class IndexGraphFactory {
               memberOf: allMemberships.map((m) => ({ indexId: m.indexId, title: m.indexTitle, description: m.indexPrompt, autoAssign: m.autoAssign, joinedAt: m.joinedAt })),
               owns: ownedIndexes.map((o) => ({ indexId: o.id, title: o.title, description: o.prompt, memberCount: o.memberCount, intentCount: o.intentCount, joinPolicy: o.permissions.joinPolicy })),
               publicIndexes,
-              summary: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicIndexesCount: publicIndexes.length },
+              stats: { memberOfCount: allMemberships.length, ownsCount: ownedIndexes.length, publicIndexesCount: publicIndexes.length },
             },
           };
         } catch (err) {
