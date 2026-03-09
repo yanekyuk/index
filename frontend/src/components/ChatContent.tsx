@@ -15,6 +15,7 @@ import {
   Share2,
   Check,
   Bug,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -377,6 +378,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     sessionIndexId,
     updateSessionTitle,
     debugMetaByTurn,
+    setContactsOnly: setContactsOnlyContext,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -568,7 +570,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [proposalIdsKey]);
 
   // Index filter
-  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
+  const { selectedIndexIds, setSelectedIndexIds, contactsOnly, setContactsOnly } = useIndexFilter();
   const { indexes } = useIndexesState();
   const selectedIndexId =
     selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
@@ -583,19 +585,29 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIndexSelect = useCallback(
     (indexId: string | null) => {
-      if (indexId === null) {
+      if (indexId === "__contacts__") {
+        setContactsOnly(true);
+        setSelectedIndexIds([]);
+      } else if (indexId === null) {
+        setContactsOnly(false);
         setSelectedIndexIds([]);
       } else {
+        setContactsOnly(false);
         setSelectedIndexIds([indexId]);
       }
     },
-    [setSelectedIndexIds],
+    [setSelectedIndexIds, setContactsOnly],
   );
 
   // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
   useEffect(() => {
     setScopeIndexId(selectedIndexId);
   }, [selectedIndexId, setScopeIndexId]);
+
+  // Sync contactsOnly to chat context so backend receives contactsOnly flag
+  useEffect(() => {
+    setContactsOnlyContext(contactsOnly);
+  }, [contactsOnly, setContactsOnlyContext]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -1132,7 +1144,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           isInputMultiline ? "px-1.5" : "px-3",
                         )}
                       >
-                        {selectedIndex?.isGlobal ||
+                        {contactsOnly ? (
+                          <Users className="w-4 h-4" />
+                        ) : selectedIndex?.isGlobal ||
                         selectedIndex?.permissions?.joinPolicy ===
                           "invite_only" ? (
                           <Lock className="w-4 h-4" />
@@ -1141,7 +1155,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         )}
                         {!isInputMultiline && (
                           <span>
-                            {selectedIndex?.title || "Everywhere"}
+                            {contactsOnly ? "My Contacts" : selectedIndex?.title || "Everywhere"}
                           </span>
                         )}
                         <ChevronDown
@@ -1166,11 +1180,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               }}
                               className={cn(
                                 "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                                selectedIndexIds.length === 0 &&
+                                selectedIndexIds.length === 0 && !contactsOnly &&
                                   "text-gray-900 font-medium",
                               )}
                             >
                               <Globe className="w-4 h-4" /> Everywhere
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleIndexSelect("__contacts__");
+                                setIsIndexDropdownOpen(false);
+                              }}
+                              className={cn(
+                                "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                                contactsOnly && "text-gray-900 font-medium",
+                              )}
+                            >
+                              <Users className="w-4 h-4" /> My Contacts
                             </button>
                             {globalIndex && (
                               <button
@@ -1410,14 +1437,16 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     )}
                   >
                     {selectedIndex?.isGlobal ||
-                    selectedIndex?.permissions?.joinPolicy === "invite_only" ? (
+                    contactsOnly ? (
+                      <Users className="w-4 h-4" />
+                    ) : selectedIndex?.permissions?.joinPolicy === "invite_only" ? (
                       <Lock className="w-4 h-4" />
                     ) : (
                       <Globe className="w-4 h-4" />
                     )}
                     {!isInputMultiline && (
                       <span>
-                        {selectedIndex?.title || "Everywhere"}
+                        {contactsOnly ? "My Contacts" : selectedIndex?.title || "Everywhere"}
                       </span>
                     )}
                     <ChevronDown
@@ -1442,11 +1471,24 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                           }}
                           className={cn(
                             "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                            selectedIndexIds.length === 0 &&
+                            selectedIndexIds.length === 0 && !contactsOnly &&
                               "text-gray-900 font-medium",
                           )}
                         >
                           <Globe className="w-4 h-4" /> Everywhere
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleIndexSelect("__contacts__");
+                            setIsIndexDropdownOpen(false);
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
+                            contactsOnly && "text-gray-900 font-medium",
+                          )}
+                        >
+                          <Users className="w-4 h-4" /> My Contacts
                         </button>
                         {globalIndex && (
                           <button

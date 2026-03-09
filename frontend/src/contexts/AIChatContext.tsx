@@ -93,6 +93,10 @@ interface AIChatContextType {
   scopeIndexId: string | null;
   /** Set the current index scope (e.g. from the index filter dropdown in ChatContent). Call with null for "Everywhere". */
   setScopeIndexId: (indexId: string | null) => void;
+  /** When true, discovery is restricted to the user's imported contacts only. */
+  contactsOnly: boolean;
+  /** Set contactsOnly mode for discovery. */
+  setContactsOnly: (value: boolean) => void;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
   /** Per-turn debug meta (one entry per assistant message, null for loaded history). */
@@ -131,6 +135,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionIndexId, setSessionIndexId] = useState<string | null>(null);
   // Effective scope: session's bound index takes precedence, then UI override, then path
   const scopeIndexId = sessionIndexId ?? scopeIndexIdOverride ?? scopeFromPath;
+  // When true, discovery is restricted to the user's imported contacts only
+  const [contactsOnly, setContactsOnly] = useState<boolean>(false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -193,6 +199,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           ...(fileIds?.length ? { fileIds } : {}),
           ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
+          ...(contactsOnly ? { contactsOnly: true } : {}),
         };
 
         const response = await apiClient.stream("/chat/stream", bodyPayload, {
@@ -420,7 +427,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [sessionId, scopeIndexId, refetchSessions],
+    [sessionId, scopeIndexId, contactsOnly, refetchSessions],
   );
 
   const stopStream = useCallback(() => {
@@ -514,6 +521,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sessionIndexId,
         scopeIndexId,
         setScopeIndexId: setScopeIndexIdOverride,
+        contactsOnly,
+        setContactsOnly,
         suggestions,
         debugMetaByTurn,
         isLoading,

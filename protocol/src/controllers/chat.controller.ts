@@ -93,6 +93,7 @@ export class ChatController {
       useCheckpointer?: boolean;
       fileIds?: string[];
       indexId?: string;
+      contactsOnly?: boolean;
     };
     try {
       body = (await req.json()) as {
@@ -101,6 +102,7 @@ export class ChatController {
         useCheckpointer?: boolean;
         fileIds?: string[];
         indexId?: string;
+        contactsOnly?: boolean;
       };
     } catch {
       return Response.json(
@@ -234,6 +236,7 @@ export class ChatController {
               sessionId,
               maxContextMessages: 20,
               indexId: indexIdForStream,
+              contactsOnly: body.contactsOnly ?? false,
             },
             checkpointer,
             req.signal,
