@@ -104,9 +104,9 @@ index/
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards for the decorator router (e.g. `auth.guard.ts`)
 - `src/types/` - Shared TypeScript types
-- `src/cli/` - CLI and maintenance scripts (db-seed, db-flush, integration-worker, social-worker, trigger-integration, audit-intent-freshness, backfill-profile-hyde, generate-profiles, etc.)
-- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`
-- `src/lib/protocol/` - Protocol layer: `graphs/` (LangGraph state machines: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `agents/` (chat agent, intent inferrer/indexer/reconciler/verifier/clarifier, opportunity evaluator/presenter, profile/hyde generators, home categorizer, lens inferrer, suggestion generator, chat title generator), `interfaces/` (database, embedder, cache, queue, scraper, storage), `docs/`
+- `src/cli/` - CLI and maintenance scripts (db-seed, db-flush, db-apply-schema, db-reset-remote, backfill-profile-hyde, generate-profiles, opportunity-three-user-test, test-data). Note: some package.json maintenance scripts (trigger-integration, export-slack, import-slack-export, reset-brokers, update-embeddings, audit-intent-freshness) reference CLI files that no longer exist
+- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`, `lib/smartest/` (LLM-based test verification framework), `lib/performance/` (performance monitoring decorators/wrappers), `lib/parallel/` (parallel execution utilities)
+- `src/lib/protocol/` - Protocol layer: `graphs/` (LangGraph state machines: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `agents/` (chat agent, intent inferrer/indexer/reconciler/verifier/clarifier, opportunity evaluator/presenter, profile/hyde generators, home categorizer, lens inferrer, suggestion generator, chat title generator), `states/` (graph state definitions: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `streamers/` (response streaming: chat.streamer, response.streamer), `support/` (protocol utilities: chat checkpointer/utils, opportunity card-text/constants/discover/enricher/persist/presentation/sanitize/utils, debug-meta sanitizer, lucide icon-catalog, protocol logger), `tools/` (agent tool definitions: contact, index, integration, intent, opportunity, profile, utility tools), `interfaces/` (database, embedder, cache, queue, scraper, storage), `docs/`
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters for agent system (intent events, index membership events)
 
@@ -191,6 +191,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `sessions` / `accounts` / `verifications` / `jwks` - Better Auth tables
 - `links` - Shareable link records
 - `hidden_conversations` - Hidden conversation tracking
+- `user_contacts` - My Network contacts (owner/user pairs with source: gmail|google_calendar|manual)
 
 **Key Features**:
 - pgvector extension for 2000-dimensional embeddings
@@ -237,6 +238,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `UserController` - User management
 - `LinkController` - Link management
 - `MessagingController` - Messaging operations
+- `QueuesController` - Bull Board queue monitoring UI
 
 ### Frontend Architecture
 
@@ -255,6 +257,7 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
   - `/d/[id]` - Discovery/detail (e.g. by id)
   - `/l/[code]` - Link redirect (e.g. by code)
   - `/s/[token]` - Shared session view (e.g. by share token)
+  - `/storage/[...path]` - File storage/download (dynamic path handling)
   - `/blog` - Blog listing; `/blog/[slug]` - Markdown-based blog posts
   - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
   - `/dev/intent-proposal` - Dev tool for intent proposal testing
@@ -289,7 +292,7 @@ Each layer has a `*.template.md` with coding guidelines. Consult before adding o
 
 ### Adapter Pattern
 
-Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`, `storage.interface.ts`). Implementations live in `src/adapters/` (database, embedder, cache, queue, scraper, storage, messaging). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
+Protocol interfaces live in `src/lib/protocol/interfaces/` (e.g. `database.interface.ts`, `storage.interface.ts`). Implementations live in `src/adapters/` (auth, database, embedder, cache, integration, queue, scraper, storage, messaging). Controllers (e.g. opportunity, chat) receive database/queue abstractions via constructor injection so they can be tested with mocks.
 
 **Adapter file naming**: Use **conceptual** names (role/capability), not implementation technology. Pattern: `{concept}.adapter.ts`. Examples: `database.adapter.ts` (not `drizzle.adapter.ts`), `cache.adapter.ts` and `queue.adapter.ts` (not `redis.adapter.ts`), `storage.adapter.ts` (not `s3.adapter.ts`). Tests: `{concept}.adapter.spec.ts`.
 
