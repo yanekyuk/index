@@ -140,8 +140,8 @@ export default function NetworksPage() {
                           onClick={() => router.push(`/networks/${network.id}`)}
                           className="w-full flex items-center gap-3 py-3 hover:bg-gray-50 -mx-2 px-2 rounded-sm transition-colors text-left group"
                         >
-                          <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0">
-                            <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="sm" />
+                          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
+                            <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-black truncate">{network.title}</p>
@@ -177,8 +177,8 @@ export default function NetworksPage() {
                   <div className="divide-y divide-gray-100">
                     {publicNetworks.map((network) => (
                       <div key={network.id} className="flex items-center gap-3 py-3">
-                        <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0">
-                          <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="sm" />
+                        <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
+                          <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-black truncate">{network.title}</p>

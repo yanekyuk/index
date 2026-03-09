@@ -4,13 +4,13 @@ import { ChatController } from './controllers/chat.controller';
 import { S3StorageAdapter } from './adapters/storage.adapter';
 import { IndexController } from './controllers/index.controller';
 import { IntentController } from './controllers/intent.controller';
-import { FileController } from './controllers/file.controller';
 import { LinkController } from './controllers/link.controller';
 import { OpportunityController, IndexOpportunityController } from './controllers/opportunity.controller';
 import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
-import { UploadController } from './controllers/upload.controller';
 import { UserController } from './controllers/user.controller';
+import { StorageController } from './controllers/storage.controller';
+import { fileService } from './services/file.service';
 import { MessagingController } from './controllers/messaging.controller';
 import { MessagingDatabaseAdapter, ensureGlobalIndex, ensureGlobalIndexMembership } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
@@ -91,7 +91,6 @@ const storageAdapter = new S3StorageAdapter({
     secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
   },
   bucket: process.env.S3_BUCKET,
-  baseUrl: process.env.S3_BASE_URL,
 });
 
 const walletMasterKeyHex = process.env.WALLET_ENCRYPTION_KEY;
@@ -120,19 +119,21 @@ const messagingService = new MessagingService(messagingStore, {
   xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
   walletMasterKey,
 });
+// Set storage adapter on fileService for S3 file operations
+fileService.setStorageAdapter(storageAdapter);
+
 const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
 controllerInstances.set(ChatController, new ChatController());
 controllerInstances.set(IndexController, new IndexController());
 controllerInstances.set(IntentController, new IntentController());
-controllerInstances.set(FileController, new FileController());
 controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
-controllerInstances.set(UploadController, new UploadController(storageAdapter));
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(MessagingController, new MessagingController(messagingService));
+controllerInstances.set(StorageController, new StorageController(storageAdapter));
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
 
@@ -213,7 +214,6 @@ Bun.serve({
         let fullPath = GLOBAL_PREFIX + controllerDef.path + route.path;
         // Normalize double slashes
         fullPath = fullPath.replace(/\/+/g, '/');
-        // Remove trailing slash if strictly matching, or just strip both
         const hasParams = fullPath.includes(':');
         const params = hasParams ? matchPath(fullPath, url.pathname) : null;
         const isMatch = url.pathname === fullPath || params !== null;

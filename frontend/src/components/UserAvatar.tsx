@@ -13,11 +13,14 @@ interface UserAvatarProps {
 }
 
 function resolveAvatarSrc(avatar: string): string {
-  if (avatar.startsWith('http://') || avatar.startsWith('https://') || avatar.startsWith('/storage/')) {
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+    return avatar;
+  }
+  if (avatar.startsWith('/api/storage/')) {
     return avatar;
   }
   const cleanPath = avatar.startsWith('/') ? avatar.slice(1) : avatar;
-  return `/storage/${cleanPath}`;
+  return `/api/storage/${cleanPath}`;
 }
 
 function BoringFallback({ id, name, size, className }: Omit<UserAvatarProps, 'avatar'>) {
@@ -43,13 +46,18 @@ export default function UserAvatar({ id, name, avatar, size, className }: UserAv
   }
 
   return (
-    <Image
-      src={resolveAvatarSrc(avatar)}
-      alt={name || 'User'}
-      width={size}
-      height={size}
-      className={`rounded-full${className ? ` ${className}` : ''}`}
-      onError={() => setImgError(true)}
-    />
+    <div
+      className={`rounded-full overflow-hidden flex-shrink-0${className ? ` ${className}` : ''}`}
+      style={{ width: size, height: size }}
+    >
+      <Image
+        src={resolveAvatarSrc(avatar)}
+        alt={name || 'User'}
+        width={size}
+        height={size}
+        className="w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    </div>
   );
 }

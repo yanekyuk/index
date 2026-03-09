@@ -130,8 +130,8 @@ export default function NetworkDetailPage() {
               {/* Header */}
               <div className="flex items-start justify-between mb-8">
                 <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-sm overflow-hidden shrink-0">
-                    <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="sm" />
+                  <div className="w-16 h-16 rounded-full overflow-hidden shrink-0">
+                    <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="full" />
                   </div>
                   <div>
                   <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-3">

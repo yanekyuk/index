@@ -9,12 +9,12 @@ export type UploadListResponse = {
 
 export const createUploadServiceV2 = () => ({
   uploadFile: async (file: File): Promise<FileRecord> => {
-    const data = await apiClient.uploadFile<{ file: FileRecord }>('/uploads', file);
+    const data = await apiClient.uploadFile<{ file: FileRecord }>('/storage/files', file);
     return data.file;
   },
 
   getFiles: async (page: number = 1, limit: number = 100): Promise<UploadListResponse> => {
-    const data = await apiClient.get<UploadListResponse>(`/uploads?page=${page}&limit=${limit}`);
+    const data = await apiClient.get<UploadListResponse>(`/storage/files?page=${page}&limit=${limit}`);
     return {
       files: data.files ?? [],
       pagination: data.pagination ?? { current: page, total: 0, count: 0, totalCount: 0 },

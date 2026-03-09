@@ -19,7 +19,7 @@ import { INTEGRATIONS, getIndexIntegrations } from '@/config/integrations';
 import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
 import { validateFiles } from '@/lib/file-validation';
-import IndexAvatar from '@/components/IndexAvatar';
+import IndexAvatar, { resolveIndexImageSrc } from '@/components/IndexAvatar';
 
 interface IntegrationItem {
   id: string | null;
@@ -373,7 +373,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             <div className="relative shrink-0">
               <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
                 {displayImageUrl ? (
-                  <Image src={displayImageUrl} alt="Network" width={72} height={72} className="w-full h-full object-cover" unoptimized />
+                  <Image src={resolveIndexImageSrc(displayImageUrl)} alt="Network" width={72} height={72} className="w-full h-full object-cover" unoptimized />
                 ) : (
                   <IndexAvatar id={index.id} title={title || index.title} size={72} rounded="full" />
                 )}

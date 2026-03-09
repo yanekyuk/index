@@ -13,6 +13,17 @@ interface IndexAvatarProps {
   rounded?: 'full' | 'sm';
 }
 
+export function resolveIndexImageSrc(imageUrl: string): string {
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    return imageUrl;
+  }
+  if (imageUrl.startsWith('/api/storage/')) {
+    return imageUrl;
+  }
+  const cleanPath = imageUrl.startsWith('/') ? imageUrl.slice(1) : imageUrl;
+  return `/api/storage/${cleanPath}`;
+}
+
 function BoringFallback({ id, title, size, rounded, className }: { id?: string; title?: string; size: number; rounded: 'full' | 'sm'; className?: string }) {
   const seed = id || title || 'default';
   const roundedClass = rounded === 'full' ? 'rounded-full' : 'rounded-sm';
@@ -39,14 +50,18 @@ export default function IndexAvatar({ id, title, imageUrl, size, className = '',
 
   const roundedClass = rounded === 'full' ? 'rounded-full' : 'rounded-sm';
   return (
-    <Image
-      src={imageUrl}
-      alt={title || 'Network'}
-      width={size}
-      height={size}
-      className={`object-cover ${roundedClass} ${className}`}
-      unoptimized
-      onError={() => setImgError(true)}
-    />
+    <div
+      className={`overflow-hidden shrink-0 ${roundedClass} ${className}`}
+      style={{ width: size, height: size }}
+    >
+      <Image
+        src={resolveIndexImageSrc(imageUrl)}
+        alt={title || 'Network'}
+        width={size}
+        height={size}
+        className="w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    </div>
   );
 }

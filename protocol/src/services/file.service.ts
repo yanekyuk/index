@@ -1,13 +1,12 @@
-import * as fs from 'fs';
 import path from 'path';
 import { UnstructuredClient } from 'unstructured-client';
 import { Strategy } from 'unstructured-client/sdk/models/shared';
 import { NodeHtmlMarkdown } from 'node-html-markdown';
 
 import { log } from '../lib/log';
-import { getUploadsPath } from '../lib/paths';
 import { FILE_SIZE_LIMITS, FALLBACK_TEXT_EXTENSIONS } from '../lib/uploads.config';
 import { fileDatabaseAdapter, type CreateFileInput } from '../adapters/database.adapter';
+import { S3StorageAdapter } from '../adapters/storage.adapter';
 
 const logger = log.service.from("FileService");
 
@@ -25,27 +24,29 @@ function getUnstructuredClient(): UnstructuredClient | null {
   return unstructuredClient;
 }
 
-async function loadFileContent(filePath: string): Promise<{ content: string | null; error: string | null }> {
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { content: null, error: `File not found: ${filePath}` };
+async function loadFileContentFromBuffer(
+  data: Buffer,
+  fileName: string
+): Promise<{ content: string | null; error: string | null }> {
+  if (!data || data.length === 0) {
+    return { content: null, error: `Empty file: ${fileName}` };
+  }
+
+  if (data.length > FILE_SIZE_LIMITS.GENERAL) {
+    return {
+      content: null,
+      error: `File exceeds size limit (${(data.length / (1024 * 1024)).toFixed(2)}MB > ${(FILE_SIZE_LIMITS.GENERAL / (1024 * 1024)).toFixed(2)}MB)`
+    };
   }
 
   try {
     const client = getUnstructuredClient();
     if (client) {
-      const stats = fs.statSync(filePath);
-      if (stats.size > FILE_SIZE_LIMITS.GENERAL) {
-        return {
-          content: null,
-          error: `File exceeds size limit (${(stats.size / (1024 * 1024)).toFixed(2)}MB > ${(FILE_SIZE_LIMITS.GENERAL / (1024 * 1024)).toFixed(2)}MB)`
-        };
-      }
-      const data = fs.readFileSync(filePath);
       const response = await client.general.partition({
         partitionParameters: {
           files: {
             content: data,
-            fileName: path.basename(filePath),
+            fileName,
           },
           strategy: Strategy.Fast,
           splitPdfPage: true,
@@ -66,13 +67,16 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
       }
     }
   } catch (error) {
-    logger.warn('UnstructuredClient failed, trying fallback', { fileName: path.basename(filePath), error: error instanceof Error ? error.message : 'Unknown error' });
+    logger.warn('UnstructuredClient failed, trying fallback', {
+      fileName,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 
   try {
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = path.extname(fileName).toLowerCase();
     if ((FALLBACK_TEXT_EXTENSIONS as readonly string[]).includes(ext) || ext === '') {
-      const rawContent = fs.readFileSync(filePath, 'utf8');
+      const rawContent = data.toString('utf8');
       if (ext === '.html') {
         const markdownContent = NodeHtmlMarkdown.translate(rawContent);
         if (markdownContent.trim()) return { content: markdownContent, error: null };
@@ -97,16 +101,27 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
  * FileService
  *
  * Manages file operations including storage, retrieval, and content loading.
- * Uses FileDatabaseAdapter for all database operations.
+ * Uses FileDatabaseAdapter for database operations and S3StorageAdapter for file storage.
  *
  * RESPONSIBILITIES:
  * - File metadata CRUD operations
- * - File content loading for attached files
+ * - File content loading for attached files (from S3)
  * - File listing with pagination
  * - Soft delete management
  */
 export class FileService {
+  private storage: S3StorageAdapter | null = null;
+
   constructor(private db = fileDatabaseAdapter) {}
+
+  /**
+   * Set the storage adapter for S3 operations.
+   * Must be called before using loadAttachedFileContent.
+   */
+  setStorageAdapter(storage: S3StorageAdapter) {
+    this.storage = storage;
+  }
+
   /**
    * Get files by IDs for a specific user
    *
@@ -124,28 +139,41 @@ export class FileService {
 
   /**
    * Load content from multiple files and format for chat context.
-   * Reads file content from disk and concatenates with metadata.
+   * Downloads file content from S3 and concatenates with metadata.
    *
-   * @param userId - The user ID (for path resolution)
+   * @param userId - The user ID (for S3 key resolution)
    * @param fileIds - Array of file IDs to load
    * @returns Formatted string with file contents
    */
   async loadAttachedFileContent(userId: string, fileIds: string[]): Promise<string> {
     if (!fileIds?.length) return '';
+    if (!this.storage) {
+      logger.error('Storage adapter not set for FileService');
+      return '';
+    }
 
     const rows = await this.getFilesByIds(userId, fileIds);
     if (rows.length === 0) return '';
 
-    const targetDir = getUploadsPath('files', userId);
     const parts: string[] = [];
 
     for (const row of rows) {
-      const ext = path.extname(row.name);
-      const filePath = path.join(targetDir, row.id + ext);
-      const result = await loadFileContent(filePath);
+      const ext = path.extname(row.name).replace(/^\./, '');
+      const key = `files/${userId}/${row.id}.${ext}`;
 
-      if (result.content?.trim()) {
-        parts.push(`=== ${row.name} ===\n${result.content.substring(0, 10000)}`);
+      try {
+        const buffer = await this.storage.downloadFile(key);
+        const result = await loadFileContentFromBuffer(buffer, row.name);
+
+        if (result.content?.trim()) {
+          parts.push(`=== ${row.name} ===\n${result.content.substring(0, 10000)}`);
+        }
+      } catch (error) {
+        logger.warn('Failed to load file from S3', {
+          userId,
+          fileId: row.id,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
       }
     }
 

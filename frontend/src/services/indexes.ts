@@ -95,7 +95,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Upload index image (returns URL to use in create/update)
   uploadIndexImage: async (file: File): Promise<string> => {
-    const result = await api.uploadFile<{ imageUrl?: string }>('/uploads/index-image', file, undefined, 'image');
+    const result = await api.uploadFile<{ imageUrl?: string }>('/storage/index-images', file, undefined, 'image');
     if (!result?.imageUrl) {
       throw new Error('Failed to upload index image');
     }

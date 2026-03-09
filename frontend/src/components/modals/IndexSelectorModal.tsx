@@ -53,8 +53,8 @@ export default function IndexSelectorModal({
                     key={index.id}
                     className="group flex items-center gap-3 justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="w-8 h-8 rounded-sm overflow-hidden shrink-0">
-                      <IndexAvatar id={index.id} title={index.title} imageUrl={index.imageUrl} size={32} rounded="sm" />
+                    <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+                      <IndexAvatar id={index.id} title={index.title} imageUrl={index.imageUrl} size={32} rounded="full" />
                     </div>
                     <span className="flex-1 text-sm font-ibm-plex-mono text-black truncate min-w-0">
                       {index.title}

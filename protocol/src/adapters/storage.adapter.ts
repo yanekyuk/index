@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 
 interface S3StorageConfig {
@@ -9,7 +10,6 @@ interface S3StorageConfig {
     secretAccessKey: string;
   };
   bucket: string;
-  baseUrl?: string;
 }
 
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -35,12 +35,9 @@ function mimeToExtension(contentType: string): string {
 export class S3StorageAdapter {
   private client: S3Client;
   private bucket: string;
-  private baseUrl: string;
 
   constructor(config: S3StorageConfig) {
     this.bucket = config.bucket;
-    const region = config.region || 'us-east-1';
-    this.baseUrl = config.baseUrl ?? `https://${config.bucket}.s3.${region}.amazonaws.com`;
     this.client = new S3Client({
       endpoint: config.endpoint,
       region: config.region || 'auto',
@@ -50,15 +47,22 @@ export class S3StorageAdapter {
   }
 
   /**
-   * Generate the storage URL for a given key.
+   * Generate a presigned URL for reading a file.
+   * @param key - The S3 object key
+   * @param expiresIn - URL expiration in seconds (default: 3600)
+   * @returns Presigned URL for the object
    */
-  getUrl(key: string): string {
-    return `${this.baseUrl}/${key}`;
+  async getPresignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+    return getSignedUrl(this.client, command, { expiresIn });
   }
 
   /**
    * Upload a buffer to S3.
-   * @returns The URL to access the uploaded file
+   * @returns The S3 object key (relative path)
    */
   async uploadBuffer(buffer: Buffer, key: string, contentType: string): Promise<string> {
     const command = new PutObjectCommand({
@@ -68,12 +72,12 @@ export class S3StorageAdapter {
       ContentType: contentType,
     });
     await this.client.send(command);
-    return this.getUrl(key);
+    return key;
   }
 
   /**
    * Upload an avatar image to S3.
-   * @returns The URL to access the avatar
+   * @returns The S3 object key (e.g., avatars/userId/uuid.ext)
    */
   async uploadAvatar(
     buffer: Buffer,
@@ -87,7 +91,7 @@ export class S3StorageAdapter {
 
   /**
    * Upload an index (network) image to S3.
-   * @returns The URL to access the image
+   * @returns The S3 object key (e.g., index-images/userId/uuid.ext)
    */
   async uploadIndexImage(
     buffer: Buffer,
@@ -106,7 +110,7 @@ export class S3StorageAdapter {
 
   /**
    * Upload a base64-encoded image to S3.
-   * @returns The URL to access the image
+   * @returns The S3 object key (e.g., feedback/uuid.ext)
    */
   async uploadBase64Image(base64Image: string, folder: string = 'feedback'): Promise<string> {
     const matches = base64Image.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
@@ -123,5 +127,35 @@ export class S3StorageAdapter {
     const extension = mimeToExtension(contentType);
     const key = `${folder}/${uuidv4()}.${extension}`;
     return this.uploadBuffer(buffer, key, contentType);
+  }
+
+  /**
+   * Upload a library file to S3.
+   * @returns The S3 object key (e.g., files/userId/fileId.ext)
+   */
+  async uploadFile(
+    buffer: Buffer,
+    userId: string,
+    fileId: string,
+    extension: string,
+    contentType: string,
+  ): Promise<string> {
+    const safeExtension = extension.replace(/^\./, '').trim().toLowerCase();
+    const key = `files/${userId}/${fileId}.${safeExtension}`;
+    return this.uploadBuffer(buffer, key, contentType);
+  }
+
+  /**
+   * Download a file from S3.
+   * @param key - The S3 object key
+   * @returns The file content as a Buffer
+   */
+  async downloadFile(key: string): Promise<Buffer> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+    const response = await this.client.send(command);
+    return Buffer.from(await response.Body!.transformToByteArray());
   }
 }
