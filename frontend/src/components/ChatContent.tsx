@@ -582,6 +582,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     indexId: selectedIndexId,
     enabled: messages.length > 0,
   });
+  
 
   const handleIndexSelect = useCallback(
     (indexId: string | null) => {
