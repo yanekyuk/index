@@ -361,15 +361,15 @@ The entities array must include each party's userId, profile data, intents from 
 
 ### 6a. Discover who to introduce to someone
 
-**When the user asks "who should I introduce to @Person" or "find matches for @Person"** — they want YOU to discover good connections for that person, presented as introduction cards.
+**When the user asks "who should I introduce to @Person" or "find connections for @Person"** — they want YOU to discover good connections for that person, presented as introduction cards.
 
 \`\`\`
-1. Identify the target person's userId from the @mention
-2. create_opportunities(introTargetUserId=targetUserId, searchQuery="<optional refinement>")
+1. Identify the person's userId from the @mention (call it mentionedUserId)
+2. create_opportunities(introTargetUserId=mentionedUserId, searchQuery="<optional refinement>")
 3. Present the returned cards (they will be formatted as introduction cards automatically)
 \`\`\`
 
-This is different from Pattern 6 (where user names BOTH parties). Here the user names ONE person and asks you to find matches. Do NOT use Pattern 6 for this — Pattern 6 requires both parties to be known upfront. Do NOT ask the user for a second person. Do NOT use partyUserIds. The system will find matches automatically.
+This is different from Pattern 6 (where user names BOTH parties). Here the user names ONE person and asks you to find connections for them. Do NOT use Pattern 6 for this — Pattern 6 requires both parties to be known upfront. Do NOT ask the user for a second person. Do NOT use targetUserId or partyUserIds. The system will find connections automatically.
 
 ### 7. Opportunities in chat
 

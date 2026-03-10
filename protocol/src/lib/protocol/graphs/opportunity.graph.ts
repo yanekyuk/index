@@ -315,6 +315,7 @@ export class OpportunityGraphFactory {
       const self = this;
       return timed("OpportunityGraph.discovery", async () => {
         const startTime = Date.now();
+        const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
 
         /** Filter candidates to targetUserId when set (direct-connection mode). */
         const filterByTarget = (candidates: CandidateMatch[]): CandidateMatch[] => {
@@ -397,7 +398,7 @@ export class OpportunityGraphFactory {
                 for (const targetIndex of state.targetIndexes) {
                   const results = await this.embedder.searchWithProfileEmbedding(vector, {
                     indexScope: [targetIndex.indexId],
-                    excludeUserId: state.userId,
+                    excludeUserId: discoveryUserId,
                     limitPerStrategy: Math.floor(limitPerStrategy / 2),
                     limit: Math.floor(perIndexLimit / 2),
                     minScore,
@@ -453,7 +454,7 @@ export class OpportunityGraphFactory {
             for (const targetIndex of state.targetIndexes) {
               const results = await this.embedder.searchWithProfileEmbedding(vector, {
                 indexScope: [targetIndex.indexId],
-                excludeUserId: state.userId,
+                excludeUserId: discoveryUserId,
                 limitPerStrategy,
                 limit: perIndexLimit,
                 minScore,
@@ -585,7 +586,7 @@ export class OpportunityGraphFactory {
               state.targetIndexes.map(async (targetIndex) => {
                 const results = await self.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                   indexScope: [targetIndex.indexId],
-                  excludeUserId: state.userId,
+                  excludeUserId: discoveryUserId,
                   limitPerStrategy,
                   limit: perIndexLimit,
                   minScore,
@@ -664,7 +665,7 @@ export class OpportunityGraphFactory {
             state.targetIndexes.map(async (targetIndex) => {
               const results = await this.embedder.searchWithHydeEmbeddings(lensEmbeddings, {
                 indexScope: [targetIndex.indexId],
-                excludeUserId: state.userId,
+                excludeUserId: discoveryUserId,
                 limitPerStrategy,
                 limit: perIndexLimit,
                 minScore,
@@ -1437,18 +1438,23 @@ export class OpportunityGraphFactory {
                 : [];
               if (overlapping.length > 0) {
                 const existing = overlapping[0];
-                if (existing.status === 'expired') {
+                const sameIntroducer = existing.actors?.some(
+                  (actor) => actor.role === 'introducer' && actor.userId === state.userId,
+                );
+                if (existing.status === 'expired' && sameIntroducer) {
                   const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
                   if (reactivated) reactivatedOpportunities.push(reactivated);
-                } else if (candidateUserId) {
+                  continue;
+                }
+                if (existing.status !== 'expired' && candidateUserId) {
                   existingBetweenActors.push({
                     candidateUserId: candidateUserId as Id<'users'>,
                     indexId: (state.indexId ?? indexIdForActors ?? '') as Id<'indexes'>,
                     existingOpportunityId: existing.id as Id<'opportunities'>,
                     existingStatus: existing.status,
                   });
+                  continue;
                 }
-                continue;
               }
 
               data = {
