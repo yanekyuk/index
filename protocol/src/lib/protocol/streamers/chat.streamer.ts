@@ -146,14 +146,14 @@ export class ChatStreamer {
         messages: BaseMessage[];
         indexId?: string;
         sessionId?: string;
-        contactsOnly?: boolean;
+        contactsOnly: boolean;
       } = {
         userId: input.userId,
         messages: input.messages,
+        contactsOnly: input.contactsOnly ?? false,
       };
       if (input.indexId) initialState.indexId = input.indexId;
       initialState.sessionId = sessionId;
-      if (input.contactsOnly) initialState.contactsOnly = input.contactsOnly;
 
       // Use graph.stream() with custom + updates modes.
       // Custom events come from config.writer() inside agentLoopNode.

@@ -195,7 +195,7 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     ...(sessionId !== undefined ? { sessionId } : {}),
-    ...(contactsOnly ? { contactsOnly } : {}),
+    contactsOnly: contactsOnly ?? false,
   };
 }
 

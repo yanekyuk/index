@@ -508,7 +508,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         targetUserId: query.targetUserId?.trim() || undefined,
         cache,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
-        ...(context.contactsOnly ? { contactsOnly: true } : {}),
+        contactsOnly: context.contactsOnly ?? false,
       });
 
       const allDebugSteps = [

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
 import { log } from "../lib/log";
 import {
@@ -17,6 +19,15 @@ import {
 } from "../types/chat-streaming.types";
 
 const logger = log.controller.from("chat");
+
+const streamBodySchema = z.object({
+  message: z.string().optional(),
+  sessionId: z.string().optional(),
+  useCheckpointer: z.boolean().optional(),
+  fileIds: z.array(z.string()).optional(),
+  indexId: z.string().optional(),
+  contactsOnly: z.boolean().optional().default(false),
+});
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
 function getSuggestionGenerator(): SuggestionGenerator {
@@ -86,24 +97,21 @@ export class ChatController {
     req: Request,
     user: AuthenticatedUser,
   ): Promise<Response> {
-    // 1. Parse request body
-    let body: {
-      message?: string;
-      sessionId?: string;
-      useCheckpointer?: boolean;
-      fileIds?: string[];
-      indexId?: string;
-      contactsOnly?: boolean;
-    };
+    // 1. Parse and validate request body
+    let body: z.infer<typeof streamBodySchema>;
     try {
-      body = (await req.json()) as {
-        message?: string;
-        sessionId?: string;
-        useCheckpointer?: boolean;
-        fileIds?: string[];
-        indexId?: string;
-        contactsOnly?: boolean;
-      };
+      const raw = await req.json();
+      const parsed = streamBodySchema.safeParse(raw);
+      if (!parsed.success) {
+        return Response.json(
+          {
+            error:
+              "Invalid request body. Expected { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[], contactsOnly?: boolean }",
+          },
+          { status: 400 },
+        );
+      }
+      body = parsed.data;
     } catch {
       return Response.json(
         {
