@@ -956,7 +956,8 @@ export class OpportunityGraphFactory {
           // the shared reasoning typically describes only one candidate.
           const pairwiseOpportunities: typeof opportunitiesWithActors = [];
           for (const op of opportunitiesWithActors) {
-            const nonViewerActors = op.actors.filter(a => a.userId !== state.userId);
+            const pairwiseSourceId = state.onBehalfOfUserId ?? state.userId;
+            const nonViewerActors = op.actors.filter(a => a.userId !== pairwiseSourceId);
             if (nonViewerActors.length <= 1) {
               pairwiseOpportunities.push(op);
             } else {
@@ -964,7 +965,7 @@ export class OpportunityGraphFactory {
                 actorCount: nonViewerActors.length,
                 userIds: nonViewerActors.map(a => a.userId),
               });
-              const viewerActor = op.actors.find(a => a.userId === state.userId);
+              const viewerActor = op.actors.find(a => a.userId === pairwiseSourceId);
               for (const candidate of nonViewerActors) {
                 // Check if the shared reasoning actually mentions this candidate's name.
                 // If not, build a fallback from their entity profile to avoid misattribution.
@@ -996,7 +997,7 @@ export class OpportunityGraphFactory {
                   reasoning,
                   score: op.score,
                   actors: [
-                    viewerActor ?? { userId: state.userId, role: 'patient' as const, intentId: null },
+                    viewerActor ?? { userId: pairwiseSourceId, role: 'patient' as const, intentId: null },
                     candidate,
                   ],
                 });

@@ -1406,6 +1406,7 @@ describe('Opportunity Graph', () => {
       expect(targetActor).toBeDefined();
       expect(targetActor!.role).not.toBe('introducer');
       expect(opp.detection?.source).toBe('manual');
+      expect(opp.actors.length).toBe(3); // target + candidate + introducer
     });
   });
 
