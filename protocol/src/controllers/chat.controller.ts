@@ -106,7 +106,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[], contactsOnly?: boolean }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null, contactsOnly?: boolean }",
           },
           { status: 400 },
         );
