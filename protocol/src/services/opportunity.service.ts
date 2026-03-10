@@ -56,6 +56,17 @@ export class OpportunityServiceEvents extends EventEmitter {
  */
 const CHAT_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
 
+interface ChatCardCached {
+  opportunityId: string;
+  headline: string;
+  personalizedSummary: string;
+  narratorRemark: string;
+  introducerName: string | null;
+  peerName: string;
+  peerAvatar: string | null;
+  acceptedAt: string | null;
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
@@ -464,18 +475,15 @@ export class OpportunityService {
       )
     );
 
-    // Check cache for all opportunities
-    const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
-    const cachedResults = await this.cache.mget<{
-      opportunityId: string;
-      headline: string;
-      personalizedSummary: string;
-      narratorRemark: string;
-      introducerName: string | null;
-      peerName: string;
-      peerAvatar: string | null;
-      acceptedAt: string | null;
-    }>(cacheKeys);
+    // Check cache for all opportunities (graceful fallback if Redis unavailable)
+    let cachedResults: (ChatCardCached | null)[] = [];
+    try {
+      const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
+      cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
+    } catch (e) {
+      logger.warn('[OpportunityService] getChatContext cache read failed, skipping', { error: e });
+      cachedResults = rows.map(() => null);
+    }
 
     const opportunityCards = await Promise.all(
       rows.map(async (opp, idx) => {
@@ -494,7 +502,7 @@ export class OpportunityService {
           presenterInput.opportunityStatus = 'accepted';
           presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
           const presented = await presenter.present(presenterInput);
-          const card = {
+          const card: ChatCardCached = {
             opportunityId: opp.id,
             headline: presented.headline,
             personalizedSummary: presented.personalizedSummary,
@@ -504,7 +512,11 @@ export class OpportunityService {
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
           };
-          await this.cache.set(`chat:card:${opp.id}:${userId}`, card, { ttl: CHAT_CACHE_TTL });
+          try {
+            await this.cache.set(`chat:card:${opp.id}:${userId}`, card, { ttl: CHAT_CACHE_TTL });
+          } catch {
+            // Cache write failure is non-critical
+          }
           return card;
         } catch (err) {
           logger.warn('[OpportunityService] getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });

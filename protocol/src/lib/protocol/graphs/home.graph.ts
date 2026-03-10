@@ -248,30 +248,35 @@ export class HomeGraphFactory {
           return { cachedCards: new Map(), uncachedOpportunities: [] };
         }
 
-        const keys = opportunities.map(
-          (opp) => `home:card:${opp.id}:${userId}`
-        );
-        const results = await this.cache.mget<HomeCardItem>(keys);
+        try {
+          const keys = opportunities.map(
+            (opp) => `home:card:${opp.id}:${userId}`
+          );
+          const results = await this.cache.mget<HomeCardItem>(keys);
 
-        const cachedCards = new Map<string, HomeCardItem>();
-        const uncachedOpportunities: typeof opportunities = [];
+          const cachedCards = new Map<string, HomeCardItem>();
+          const uncachedOpportunities: typeof opportunities = [];
 
-        for (let i = 0; i < opportunities.length; i++) {
-          const cached = results[i];
-          if (cached) {
-            cachedCards.set(opportunities[i].id, cached);
-          } else {
-            uncachedOpportunities.push(opportunities[i]);
+          for (let i = 0; i < opportunities.length; i++) {
+            const cached = results[i];
+            if (cached) {
+              cachedCards.set(opportunities[i].id, cached);
+            } else {
+              uncachedOpportunities.push(opportunities[i]);
+            }
           }
+
+          logger.verbose('[HomeGraph:checkPresenterCache]', {
+            total: opportunities.length,
+            cacheHits: cachedCards.size,
+            cacheMisses: uncachedOpportunities.length,
+          });
+
+          return { cachedCards, uncachedOpportunities };
+        } catch (e) {
+          logger.warn('[HomeGraph:checkPresenterCache] cache unavailable, skipping', { error: e });
+          return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
-
-        logger.verbose('[HomeGraph:checkPresenterCache]', {
-          total: opportunities.length,
-          cacheHits: cachedCards.size,
-          cacheMisses: uncachedOpportunities.length,
-        });
-
-        return { cachedCards, uncachedOpportunities };
       });
     };
 
@@ -451,15 +456,19 @@ export class HomeGraphFactory {
         // Only cache cards that weren't already from cache
         const newCards = cards.filter((card) => !cachedCards.has(card.opportunityId));
 
-        await Promise.all(
-          newCards.map((card) =>
-            this.cache.set(
-              `home:card:${card.opportunityId}:${userId}`,
-              card,
-              { ttl: HOME_CACHE_TTL }
+        try {
+          await Promise.all(
+            newCards.map((card) =>
+              this.cache.set(
+                `home:card:${card.opportunityId}:${userId}`,
+                card,
+                { ttl: HOME_CACHE_TTL }
+              )
             )
-          )
-        );
+          );
+        } catch (e) {
+          logger.warn('[HomeGraph:cachePresenterResults] cache write failed, continuing', { error: e });
+        }
 
         // Merge cached cards into full card list
         const allCards: HomeCardItem[] = [...cards];
@@ -490,20 +499,24 @@ export class HomeGraphFactory {
           return { categoryCacheHit: false };
         }
 
-        const oppIds = state.cards
-          .map((c) => c.opportunityId)
-          .sort()
-          .join(',');
-        const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-        const key = `home:categories:${state.userId}:${hash}`;
+        try {
+          const oppIds = state.cards
+            .map((c) => c.opportunityId)
+            .sort()
+            .join(',');
+          const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
+          const key = `home:categories:${state.userId}:${hash}`;
 
-        const cached = await this.cache.get<HomeSectionProposal[]>(key);
-        if (cached) {
-          logger.verbose('[HomeGraph:checkCategorizerCache] cache hit');
-          return { sectionProposals: cached, categoryCacheHit: true };
+          const cached = await this.cache.get<HomeSectionProposal[]>(key);
+          if (cached) {
+            logger.verbose('[HomeGraph:checkCategorizerCache] cache hit');
+            return { sectionProposals: cached, categoryCacheHit: true };
+          }
+
+          logger.verbose('[HomeGraph:checkCategorizerCache] cache miss');
+        } catch (e) {
+          logger.warn('[HomeGraph:checkCategorizerCache] cache unavailable, skipping', { error: e });
         }
-
-        logger.verbose('[HomeGraph:checkCategorizerCache] cache miss');
         return { categoryCacheHit: false };
       });
     };
@@ -553,18 +566,22 @@ export class HomeGraphFactory {
           return {};
         }
 
-        const oppIds = state.cards
-          .map((c) => c.opportunityId)
-          .sort()
-          .join(',');
-        const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
-        const key = `home:categories:${state.userId}:${hash}`;
+        try {
+          const oppIds = state.cards
+            .map((c) => c.opportunityId)
+            .sort()
+            .join(',');
+          const hash = createHash('sha256').update(oppIds).digest('hex').slice(0, 16);
+          const key = `home:categories:${state.userId}:${hash}`;
 
-        await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
+          await this.cache.set(key, state.sectionProposals, { ttl: HOME_CACHE_TTL });
 
-        logger.verbose('[HomeGraph:cacheCategorizerResults] cached', {
-          sectionCount: state.sectionProposals.length,
-        });
+          logger.verbose('[HomeGraph:cacheCategorizerResults] cached', {
+            sectionCount: state.sectionProposals.length,
+          });
+        } catch (e) {
+          logger.warn('[HomeGraph:cacheCategorizerResults] cache write failed, continuing', { error: e });
+        }
 
         return {};
       });
