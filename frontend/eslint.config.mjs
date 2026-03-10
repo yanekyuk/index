@@ -18,7 +18,6 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
-      "react/no-unescaped-entities": "off",
     },
   },
 );

@@ -114,7 +114,7 @@ export default function PublicJoinPage() {
     };
 
     loadIndexAndCheckAuth();
-  }, [indexId!, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes]);
+  }, [indexId, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes]);
 
   // Trigger reload when user authenticates
   useEffect(() => {

@@ -5,6 +5,7 @@ import Footer from '@/components/Footer';
 
 export default function BlogPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Waitlist modal state
   const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
@@ -17,7 +18,9 @@ export default function BlogPage() {
   const [waitlistStatus, setWaitlistStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
   useEffect(() => {
-    getAllPosts().then(data => setPosts(data));
+    getAllPosts()
+      .then(data => setPosts(data))
+      .finally(() => setIsLoading(false));
   }, []);
 
   // Listen for custom event from header button
@@ -213,7 +216,9 @@ export default function BlogPage() {
           </h1>
         </div>
 
-        {posts.length === 0 ? (
+        {isLoading ? (
+          <p className="text-black font-sans">Loading posts...</p>
+        ) : posts.length === 0 ? (
           <p className="text-black font-sans">No posts yet. Check back soon!</p>
         ) : (
           <div className="space-y-2 mt-8">

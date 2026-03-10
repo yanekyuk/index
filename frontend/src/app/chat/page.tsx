@@ -10,7 +10,7 @@ export default function ChatLandingPage() {
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      navigate('/');
+      navigate('/', { replace: true });
     }
   }, [authLoading, isAuthenticated, navigate]);
 

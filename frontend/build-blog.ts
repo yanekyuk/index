@@ -100,6 +100,10 @@ for (const slug of slugs) {
   }
 }
 
-posts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+posts.sort((a, b) => {
+  const dateA = a.date ? new Date(a.date).getTime() : 0;
+  const dateB = b.date ? new Date(b.date).getTime() : 0;
+  return dateB - dateA;
+});
 writeFileSync(join(OUTPUT_DIR, "posts.json"), JSON.stringify(posts, null, 2));
 console.log(`Built ${posts.length} blog posts to ${OUTPUT_DIR}`);

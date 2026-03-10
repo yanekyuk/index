@@ -117,7 +117,7 @@ export default function InvitationPage() {
     };
 
     loadIndexAndCheckAuth();
-  }, [code!, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes, refetchUser]);
+  }, [code, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes, refetchUser]);
 
   // Trigger reload when user authenticates
   useEffect(() => {

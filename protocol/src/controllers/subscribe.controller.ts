@@ -10,13 +10,18 @@ const logger = log.controller.from('subscribe');
 export class SubscribeController {
   @Post('/')
   async subscribe(req: Request) {
-    const body = await req.json() as {
+    let body: {
       email: string;
       type?: 'newsletter' | 'waitlist';
       name?: string;
       whatYouDo?: string;
       whoToMeet?: string;
     };
+    try {
+      body = await req.json();
+    } catch {
+      return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
     const { email, type = 'newsletter', name, whatYouDo, whoToMeet } = body;
 
@@ -24,7 +29,7 @@ export class SubscribeController {
       return Response.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    logger.info('Processing subscription', { email, type });
+    logger.info('Processing subscription', { type });
 
     const res = await fetch(
       'https://app.loops.so/api/newsletter-form/cmkq2slhq0aii0iuf7jigfxos',
@@ -38,6 +43,7 @@ export class SubscribeController {
           whatYouDo,
           whoToMeet,
         }),
+        signal: AbortSignal.timeout(10000),
       },
     );
 
