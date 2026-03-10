@@ -1,9 +1,9 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage, BaseMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
 import { Timed } from "../../performance";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("ExplicitIntentInferrer");
 
@@ -14,10 +14,7 @@ import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-2.5-flash',
-  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
-});
+const model = createModel("intentInferrer");
 
 // ──────────────────────────────────────────────────────────────
 // 0. INFERRER OPTIONS

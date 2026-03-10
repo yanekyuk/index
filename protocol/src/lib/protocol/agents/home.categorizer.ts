@@ -6,7 +6,7 @@
  * generateCardText.
  */
 
-import { ChatOpenAI } from '@langchain/openai';
+import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { config } from 'dotenv';
@@ -16,6 +16,7 @@ import type { HomeSectionProposal } from '../states/home.state';
 import { getIconNamesForPrompt, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { protocolLogger } from '../support/protocol.logger';
 import { Timed } from "../../performance";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger('HomeCategorizer');
 
@@ -116,13 +117,7 @@ export class HomeCategorizerAgent {
   private model: ReturnType<ChatOpenAI['withStructuredOutput']>;
 
   constructor() {
-    const llm = new ChatOpenAI({
-      model: 'google/gemini-2.5-flash',
-      configuration: {
-        baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-        apiKey: process.env.OPENROUTER_API_KEY,
-      },
-    });
+    const llm = createModel("homeCategorizer");
     this.model = llm.withStructuredOutput(categorizationSchema, { name: 'home_sections' });
   }
 

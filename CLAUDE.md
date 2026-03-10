@@ -116,19 +116,16 @@ The protocol server is `protocol/src/main.ts`: Bun native server on port 3001, c
 
 ### Agent System (LangGraph-Based)
 
-All agents extend `BaseLangChainAgent` which wraps LangChain's ChatOpenAI model (configured for OpenRouter). Agents use Zod schemas for structured output validation.
+Agents use `createModel()` from `model.config.ts` for LLM configuration (model, temperature, max tokens) and Zod schemas for structured output validation.
 
 **LangGraph Patterns**:
 
-- **When to use graphs**: Complex, multi-step workflows with conditional logic; read/write separation with fast paths; state accumulation across agents; complex decision trees; parallel map-reduce. **Do not** use graphs for: simple CRUD (use services), linear agent calls, single LLM call, single-agent workflows.
-- **File organization**: Each graph lives in `{domain}.graph.ts` (factory, nodes, and state annotation). State is defined inline in the graph file.
-- **Factory pattern**: Graph built by a factory class that accepts dependencies in the constructor (database, embedder, agents), exposes `createGraph()` or `compile()`, and does not instantiate adapters inside the graph. No hardcoded dependencies.
-- **State**: Use LangGraph `Annotation.Root` with reducers. Separate input fields, intermediate (merge) fields, control fields (operation mode), and output fields.
-- **Conditional routing**: Every graph must have at least one conditional edge (routing decision). Use for read/write separation (fast path vs full pipeline), skip expensive ops by operation mode, or state-based branching. Map all branch results to valid node names or END.
-- **Nodes**: Async functions that accept state and return partial state. Log entry with context and exit with results. Catch errors and return error state (do not throw). Return only the state fields being updated. Use `{action}Node` naming (e.g. `inferenceNode`).
-- **Assembly**: Use `START` and `END` from `@langchain/langgraph`. Start with `addEdge(START, "first_node")`, end with `addEdge("last_node", END)`. Every conditional branch must map to a valid node.
-- **Anti-patterns**: Avoid linear graphs with no conditionals (use service calls instead); avoid throwing in nodes (return error state); avoid hardcoded dependencies (inject via factory).
-- **Checklist**: At least one conditional edge; state annotation defined with `Annotation.Root`; factory with DI; node logging and error handling; fast paths if applicable; tests cover routing logic.
+- **When to use**: Multi-step workflows with conditional logic, read/write separation, state accumulation, parallel map-reduce. Do **not** use for simple CRUD, single LLM calls, or linear agent calls.
+- **File organization**: Each graph in `{domain}.graph.ts` with factory, nodes, and inline state annotation (`Annotation.Root` with reducers).
+- **Factory pattern**: Factory class accepts dependencies (database, embedder, agents) via constructor; no hardcoded dependencies.
+- **Nodes**: Async functions accepting state, returning partial state. Catch errors (do not throw). Use `{action}Node` naming.
+- **Conditional routing**: Every graph must have at least one conditional edge. Map all branches to valid node names or END.
+- **Checklist**: Conditional edge; `Annotation.Root` state; factory with DI; node error handling; fast paths; routing tests.
 
 **Protocol Agents** (`src/lib/protocol/agents/`):
 
@@ -362,24 +359,13 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 ### OpenRouter Configuration
 
-The protocol uses OpenRouter as the LLM provider with **presets** for different agent types. Each preset is configured at https://openrouter.ai/settings/presets with specific model, temperature, and max_tokens settings.
-
-**Required Presets** (configure in OpenRouter dashboard):
-- `intent-inferrer` - Complex structured output generation from content
-- `intent-summarizer` - Text summarization with length constraints
-- `intent-tag-suggester` - Tag/cluster generation from intent analysis
-- `intent-indexer` - Intent appropriateness evaluation scoring
-- `vibe-checker` - Collaboration synthesis generation
-- `intro-maker` - Email introduction generation
-- `semantic-relevancy` - Semantic intent relationship analysis
-- `intent-freshness-auditor` - Intent expiration detection based on temporal markers
+The protocol uses OpenRouter as the LLM provider. Model settings per agent are centralized in `protocol/src/lib/protocol/agents/model.config.ts` — the single source of truth for model names, temperatures, and token limits.
 
 **Environment Variables**:
-```bash
-OPENROUTER_API_KEY=your-openrouter-api-key
-```
-
-Agents reference presets by name in their configuration. This allows centralized control of model selection and parameters for each agent type.
+- `OPENROUTER_API_KEY` - Required
+- `OPENROUTER_BASE_URL` - Optional (defaults to `https://openrouter.ai/api/v1`)
+- `CHAT_MODEL` - Override chat agent model (defaults to `google/gemini-3-pro-preview`)
+- `CHAT_REASONING_EFFORT` - Chat reasoning budget (`minimal|low|medium|high|xhigh`, defaults to `low`)
 
 ## Environment Setup
 
@@ -392,8 +378,6 @@ DATABASE_URL=postgresql://username:password@localhost:5432/protocol_db
 
 # LLM (OpenRouter)
 OPENROUTER_API_KEY=your-openrouter-api-key
-# Note: Create presets at https://openrouter.ai/settings/presets
-# See "OpenRouter Configuration" section above for required preset names
 
 # Authentication
 
@@ -467,15 +451,7 @@ bun test                    # Run ALL tests (slow — avoid unless necessary)
 - E2E tests: Test full API workflows
 - Smoke tests: Test external integrations (crawl4ai, etc.)
 
-**Bun Test Standards**:
-
-- **Environment**: Load env at the top of test files before other imports (`import { config } from "dotenv"; config({ path: '.env.development', override: true });`). Import test utilities from `bun:test` destructured (`describe`, `expect`, `it`, `beforeAll`, `afterAll`, `mock`, etc.), not default import.
-- **Structure**: Group related tests with descriptive `describe` blocks. Write clear, specific test descriptions that explain behavior and expected outcome (not vague names like "should work").
-- **Lifecycle**: Use `beforeAll`/`afterAll` (and `beforeEach`/`afterEach` when needed). Always clean up DB records and resources in `afterAll` for integration tests.
-- **Timeouts**: Set explicit timeouts for async operations: fast operations use default (5s); agent inference 30000ms; graph operations 60000ms; LLM operations 120000ms.
-- **Assertions**: Use specific matchers (e.g. `expect(result.target).toBe("intent_query")`); avoid loose assertions like `.toBeTruthy()` or `.toBeDefined()` only. Test multiple aspects of the result where relevant.
-- **Mocking**: Mock external dependencies (DB, APIs) for isolation. Use `mock()` from `bun:test` for function mocking. Use realistic, representative test data (not minimal stubs).
-- **Coverage**: Test both success and error paths. Add comments to explain complex scenarios. Use modifiers when appropriate: `it.skip()`, `it.todo()`, `it.only()`, `it.failing()`.
+**Bun Test Standards**: Load env at top before imports. Import from `bun:test` (destructured). Use `describe` grouping with clear test names. Set timeouts (agent: 30s, graph: 60s, LLM: 120s). Clean up in `afterAll`. Use specific matchers. Mock externals with `mock()`. Test success and error paths.
 
 Checklist: env at top; imports from `bun:test`; `describe` grouping; clear test names; timeouts set; lifecycle cleanup in `afterAll`; specific assertions; mocks for externals; success and error paths; realistic data.
 
@@ -519,13 +495,7 @@ Drizzle generates random names like `0002_flashy_millenium_guard.sql`. **Always 
 
 ### Why migrations get out of sync
 
-Drizzle stays in sync when (1) **`drizzle/meta/_journal.json`** lists every migration in order and (2) the **`__drizzle_migrations`** table in the DB matches what’s been applied. Things break when:
-
-- **Journal and files diverge** — A new `.sql` file is added (e.g. `0001_foo.sql`) but `_journal.json` is not updated. Then `drizzle-kit migrate` only knows about migrations in the journal, so the new file is never applied. **Rule:** Every file in `drizzle/*.sql` must have a matching entry in `drizzle/meta/_journal.json` (same order; `tag` = filename without `.sql`).
-- **Applying SQL outside Drizzle** — Running SQL by hand or via `db:apply-schema` applies changes but does not insert into `__drizzle_migrations`. Next run of `drizzle-kit migrate` can skip or re-apply migrations. **Rule:** Prefer `bun run db:migrate` so Drizzle tracks applied migrations; if you must run SQL manually, insert the corresponding row(s) into `__drizzle_migrations` (see Drizzle docs).
-- **pgvector** — Drizzle does not emit `CREATE EXTENSION vector`. The first migration must include it (e.g. add it manually to the first `.sql` or use a custom migration). The `maintenance:fix-migrations` script injects it when regenerating from scratch.
-
-Using Drizzle is correct; the pain usually comes from the journal or migration history getting out of sync with the actual files/DB.
+Migrations break when: (1) `_journal.json` and `.sql` files diverge (every `.sql` needs a matching journal entry), (2) SQL is applied outside Drizzle (manually or via `db:apply-schema`) without updating `__drizzle_migrations`, or (3) pgvector `CREATE EXTENSION vector` is missing from the first migration. Always use `bun run db:migrate` to keep tracking consistent.
 
 ### Making db:migrate the single source of truth
 
@@ -674,33 +644,21 @@ export class IntentService {
 
 ### Agents
 
-- Extend `BaseLangChainAgent` for consistency
-- Define input/output as Zod schemas
-- Set appropriate temperature per agent type
-- Use Langfuse middleware for tracing
+- Use `createModel()` from `model.config.ts` for LLM configuration
+- Define input/output as Zod schemas; configure temperature/maxTokens in `model.config.ts`
 - Keep agents pure (no direct DB access) - let services handle persistence
 
 ### Services
 
-- Services encapsulate business logic
-- Handle database transactions
-- Emit events after successful operations
-- Return typed results
+- Encapsulate business logic, handle DB transactions, emit events, return typed results
 - Use Drizzle for type-safe queries
 - **Must not import other services** — use events, queues, or shared lib for cross-service orchestration
 
 ### Controllers
 
-- Controllers handle HTTP (request/response) and delegate business logic to services or protocol graphs
-- They may accept adapters (database, queue) via constructor injection for testability
+- Handle HTTP and delegate to services/graphs; use guards for auth (e.g. `AuthGuard`)
+- Validate input with Zod; return consistent JSON responses
 - **Must not import adapters directly** — only services may import adapters
-
-### API Routes
-
-- Controllers use guard functions for authentication (e.g. `AuthGuard`)
-- Validate input with Zod schemas where needed
-- Handle errors with try/catch and proper HTTP status codes
-- Return consistent JSON responses or Response objects
 
 ### Database
 
@@ -726,17 +684,15 @@ Only use the main working tree for small docs/config edits, dependency bumps, or
 
 ### Worktrees
 
-Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. **Worktree folder names must use dashes, not slashes** (e.g. `feat-my-feature`, not `feat/my-feature`) — slashes create subdirectories which Zed does not support. The branch inside the worktree can still follow the conventional `feat/my-feature` format. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`). It also runs `bun install` in each workspace (`node_modules` can't be symlinked because Turbopack rejects symlinks pointing outside the worktree root).
+Worktrees live in `.worktrees/` (gitignored), sharing git history with an isolated working tree. **Folder names must use dashes** (e.g. `feat-my-feature`, not `feat/my-feature`); branches inside can use slashes. Run `bun run worktree:setup <name>` after creation to symlink `.env*` files and install dependencies.
 
 ```bash
-# After creating a worktree (e.g., via `git worktree add .worktrees/feat-foo dev`)
-bun run worktree:setup feat-foo
-
-# Run all dev servers (protocol + frontend + evaluator) from a worktree
-bun run worktree:dev feat-foo
+git worktree add .worktrees/feat-foo dev
+bun run worktree:setup feat-foo    # symlink .env files + bun install
+bun run worktree:dev feat-foo      # start all dev servers (auto-setups if needed)
 ```
 
-Root `bun run dev` shows an interactive list to select either the active branch (root) or one of the worktrees; choosing root runs a full build then starts dev servers, choosing a worktree runs `worktree:dev` for that worktree. `worktree:dev` auto-runs setup if the worktree hasn't been set up yet. Use `bun run worktree:list` to see available worktrees and whether they've been set up. Use `bun run worktree:build` (at root) or `bun run worktree:build <name>` to build a specific worktree.
+Use `bun run worktree:list` to see worktrees and status. Root `bun run dev` lets you pick root or a worktree interactively.
 
 ### Conventional Commits
 

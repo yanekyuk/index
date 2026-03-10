@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
@@ -10,13 +9,11 @@ import { ProfileDocument } from "./profile.generator";
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
 import { Timed } from "../../performance";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("HyDEGenerator");
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-2.5-flash',
-  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
-});
+const model = createModel("profileHydeGenerator");
 
 const systemPrompt = `
     You are a Profile Profiler.

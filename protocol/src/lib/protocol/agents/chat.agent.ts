@@ -1,4 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
+import type { ChatOpenAI } from "@langchain/openai";
 import {
   BaseMessage,
   SystemMessage,
@@ -13,6 +13,7 @@ import {
 import { resolveChatContext } from "../tools/tool.helpers";
 import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt";
 import { protocolLogger } from "../support/protocol.logger";
+import { createModel } from "./model.config";
 import { sanitizeForDebugMeta } from "../support/debug-meta.sanitizer";
 import type { DebugMetaToolCall } from "../../../types/chat-streaming.types";
 import { Timed } from "../../performance";
@@ -147,33 +148,7 @@ export class ChatAgent {
     private resolvedContext: ResolvedToolContext,
     tools: Awaited<ReturnType<typeof createChatTools>>,
   ) {
-    // Thinking model for tool use: better reasoning over tool inputs/outputs (OpenRouter reasoning tokens)
-    const chatModel = process.env.CHAT_MODEL ?? "google/gemini-3-pro-preview";
-    const reasoningEffort =
-      (process.env.CHAT_REASONING_EFFORT as
-        | "minimal"
-        | "low"
-        | "medium"
-        | "high"
-        | "xhigh"
-        | undefined) ?? "low";
-
-    this.model = new ChatOpenAI({
-      model: chatModel,
-      configuration: {
-        baseURL:
-          process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-      },
-      maxTokens: 8192,
-      // OpenRouter: reasoning budget for thinking models (Gemini 3, etc.)
-      modelKwargs: {
-        reasoning: {
-          effort: reasoningEffort,
-          exclude: true, // don't stream thinking tokens to the user
-        },
-      },
-    });
+    this.model = createModel("chat");
 
     // Store tools and index by name
     this.tools = tools;
