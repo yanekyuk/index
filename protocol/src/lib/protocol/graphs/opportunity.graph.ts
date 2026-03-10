@@ -870,10 +870,11 @@ export class OpportunityGraphFactory {
         }
 
         try {
-          const sourceProfile = await this.database.getProfile(state.userId);
+          const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
+          const sourceProfile = await this.database.getProfile(discoveryUserId);
           const sourceIndexId = state.targetIndexes[0]?.indexId ?? state.userIndexes[0];
           const sourceEntity: EvaluatorEntity = {
-            userId: state.userId,
+            userId: discoveryUserId,
             profile: {
               name: sourceProfile?.identity?.name,
               bio: sourceProfile?.identity?.bio,
@@ -932,7 +933,7 @@ export class OpportunityGraphFactory {
           }
 
           const input: EvaluatorInput = {
-            discovererId: state.userId,
+            discovererId: discoveryUserId,
             entities,
             existingOpportunities: state.options.existingOpportunities,
             ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
