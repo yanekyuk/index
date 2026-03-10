@@ -8,6 +8,7 @@ import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.d
 import { S3StorageAdapter } from '../adapters/storage.adapter';
 import { fileService } from '../services/file.service';
 import { validateFileByMetadata, FILE_SIZE_LIMITS } from '../lib/uploads.config';
+import { normalizeExtension } from '../lib/storage.utils';
 import { log } from '../lib/log';
 import type { FileRecord } from '../types';
 
@@ -180,7 +181,7 @@ export class StorageController {
       size: f.size.toString(),
       type: f.type,
       createdAt: f.createdAt.toISOString(),
-      url: `files/${user.id}/${f.id}${path.extname(f.name)}`,
+      url: `files/${user.id}/${f.id}.${normalizeExtension(path.extname(f.name))}`,
     }));
 
     return { files, pagination: result.pagination };
@@ -202,17 +203,18 @@ export class StorageController {
       return Response.json({ error: 'File not found' }, { status: 404 });
     }
 
-    const ext = path.extname(file.name).replace(/^\./, '');
+    const ext = normalizeExtension(path.extname(file.name));
     const key = `files/${user.id}/${file.id}.${ext}`;
 
     try {
       const buffer = await this.storage.downloadFile(key);
+      const safeName = file.name.replace(/["\\\r\n]/g, '_');
       return new Response(buffer, {
         status: 200,
         headers: {
           'Content-Type': file.type,
           'Content-Length': String(buffer.length),
-          'Content-Disposition': `attachment; filename="${file.name}"`,
+          'Content-Disposition': `attachment; filename="${safeName}"`,
           'Cache-Control': 'private, max-age=3600',
         },
       });

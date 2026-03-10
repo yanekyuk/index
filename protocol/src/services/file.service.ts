@@ -5,6 +5,7 @@ import { NodeHtmlMarkdown } from 'node-html-markdown';
 
 import { log } from '../lib/log';
 import { FILE_SIZE_LIMITS, FALLBACK_TEXT_EXTENSIONS } from '../lib/uploads.config';
+import { normalizeExtension } from '../lib/storage.utils';
 import { fileDatabaseAdapter, type CreateFileInput } from '../adapters/database.adapter';
 import { S3StorageAdapter } from '../adapters/storage.adapter';
 
@@ -158,7 +159,7 @@ export class FileService {
     const parts: string[] = [];
 
     for (const row of rows) {
-      const ext = path.extname(row.name).replace(/^\./, '');
+      const ext = normalizeExtension(path.extname(row.name));
       const key = `files/${userId}/${row.id}.${ext}`;
 
       try {

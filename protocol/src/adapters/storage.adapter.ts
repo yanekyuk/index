@@ -2,6 +2,8 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 
+import { normalizeExtension } from '../lib/storage.utils';
+
 interface S3StorageConfig {
   endpoint?: string;
   region?: string;
@@ -140,7 +142,10 @@ export class S3StorageAdapter {
     extension: string,
     contentType: string,
   ): Promise<string> {
-    const safeExtension = extension.replace(/^\./, '').trim().toLowerCase();
+    const safeExtension = normalizeExtension(extension);
+    if (!safeExtension) {
+      throw new Error('Invalid file extension');
+    }
     const key = `files/${userId}/${fileId}.${safeExtension}`;
     return this.uploadBuffer(buffer, key, contentType);
   }
