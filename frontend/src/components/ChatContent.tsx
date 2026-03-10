@@ -693,7 +693,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     if (sessionId && !sessionIdFromUrl) {
       navigate(`/d/${sessionId}`);
     }
-  }, [sessionId, sessionIdFromUrl, router]);
+  }, [sessionId, sessionIdFromUrl, navigate]);
 
   const handleHomeOpportunityAction = useCallback(
     async (
@@ -761,7 +761,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         }));
       }
     },
-    [opportunitiesService, router, showError, showSuccess],
+    [opportunitiesService, navigate, showError, showSuccess],
   );
 
   const archiveProposalIntent = useCallback(
