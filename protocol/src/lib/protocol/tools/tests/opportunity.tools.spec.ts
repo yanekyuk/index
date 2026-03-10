@@ -83,3 +83,37 @@ describe("buildMinimalOpportunityCard - IND-113", () => {
     expect(card.name).toBe("Alice");
   });
 });
+
+describe('buildMinimalOpportunityCard - introducer discovery (IND-140)', () => {
+  const mockIntroducerOpp = {
+    id: 'opp-intro-disc',
+    status: 'draft',
+    interpretation: {
+      reasoning: 'Target User and Bob share interest in AI infrastructure.',
+      confidence: 0.85,
+    },
+    actors: [
+      { userId: 'target-user', role: 'patient' },
+      { userId: 'user-bob', role: 'agent' },
+      { userId: 'introducer-user', role: 'introducer' },
+    ],
+    detection: { source: 'manual', createdByName: 'Introducer Name' },
+  } as unknown as Opportunity;
+
+  it('should return viewerRole "introducer" when viewer is the introducer', () => {
+    const card = buildMinimalOpportunityCard(
+      mockIntroducerOpp,
+      'introducer-user',
+      'target-user',
+      'Target User',
+      null,
+      undefined,
+      null,
+      'Introducer Name',
+      'Bob',
+    );
+    expect(card.viewerRole).toBe('introducer');
+    expect(card.primaryActionLabel).toBe('Introduce Them');
+    expect(card.headline).toBe('Target User → Bob');
+  });
+});

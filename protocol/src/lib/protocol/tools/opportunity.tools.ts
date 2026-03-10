@@ -125,13 +125,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     name: "create_opportunities",
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
-      "Three modes:\n" +
+      "Four modes:\n" +
       "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n" +
       "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
-      "Creates an opportunity between the current user and the target user.\n\n" +
+      "Creates an opportunity between the current user and the target user.\n" +
+      "4. **Introducer discovery**: pass introTargetUserId (user ID to find matches FOR). " +
+      "Discovers matches for that person; current user becomes the introducer. " +
+      "Use when user asks 'who should I introduce to @Person'.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z
@@ -154,6 +157,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Direct connection mode: create opportunity with this specific user ID. Used when the user wants to connect with a named person."),
+      introTargetUserId: z
+        .string()
+        .optional()
+        .describe(
+          "Introducer discovery mode: find matches FOR this user ID (the current user becomes the introducer). " +
+          "Use when the user asks 'who should I introduce to @Person'. " +
+          "Do NOT combine with partyUserIds (that's full introduction mode)."
+        ),
       partyUserIds: z
         .array(z.string())
         .optional()
@@ -506,6 +517,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         minimalForChat: true, // Skip LLM presenter; return only required fields for fast chat
         triggerIntentId,
         targetUserId: query.targetUserId?.trim() || undefined,
+        onBehalfOfUserId: query.introTargetUserId?.trim() || undefined,
         cache,
         ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
         contactsOnly: context.contactsOnly ?? false,
