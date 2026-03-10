@@ -60,6 +60,7 @@ export class ChatStreamer {
       sessionId: string;
       maxContextMessages?: number;
       indexId?: string;
+      contactsOnly?: boolean;
     },
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
@@ -70,6 +71,7 @@ export class ChatStreamer {
       sessionId,
       maxContextMessages = 20,
       indexId,
+      contactsOnly,
     } = input;
     logger.verbose("Starting context-aware streaming", {
       userId,
@@ -78,6 +80,7 @@ export class ChatStreamer {
       hasCheckpointer: !!checkpointer,
       hasIndexId: !!indexId,
       indexId: indexId ?? undefined,
+      contactsOnly: contactsOnly ?? false,
     });
 
     try {
@@ -97,7 +100,7 @@ export class ChatStreamer {
 
       // Stream with context using the optional checkpointer
       yield* this.streamChatEvents(
-        { userId, messages: allMessages, indexId },
+        { userId, messages: allMessages, indexId, contactsOnly },
         sessionId,
         checkpointer,
         signal,
@@ -130,7 +133,7 @@ export class ChatStreamer {
    * @yields ChatStreamEvent objects
    */
   public async *streamChatEvents(
-    input: { userId: string; messages: BaseMessage[]; indexId?: string },
+    input: { userId: string; messages: BaseMessage[]; indexId?: string; contactsOnly?: boolean },
     sessionId: string,
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
@@ -143,9 +146,11 @@ export class ChatStreamer {
         messages: BaseMessage[];
         indexId?: string;
         sessionId?: string;
+        contactsOnly: boolean;
       } = {
         userId: input.userId,
         messages: input.messages,
+        contactsOnly: input.contactsOnly ?? false,
       };
       if (input.indexId) initialState.indexId = input.indexId;
       initialState.sessionId = sessionId;

@@ -56,6 +56,8 @@ export interface ResolvedToolContext {
   isOnboarding: boolean;
   /** Chat session ID when tools are used in a chat; used for draft opportunities (context.conversationId). */
   sessionId?: string;
+  /** When true, restrict discovery results to the user's imported contacts only. */
+  contactsOnly?: boolean;
 }
 
 /**
@@ -79,6 +81,8 @@ export interface ToolContext {
   indexId?: string;
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
+  /** When true, restrict discovery results to the user's imported contacts only. */
+  contactsOnly?: boolean;
 }
 
 /**
@@ -109,8 +113,10 @@ export async function resolveChatContext(params: {
   indexId?: string;
   /** Chat session ID for draft opportunities (stored as context.conversationId). */
   sessionId?: string;
+  /** When true, restrict discovery results to the user's imported contacts only. */
+  contactsOnly?: boolean;
 }): Promise<ResolvedToolContext> {
-  const { database, userId, indexId, sessionId } = params;
+  const { database, userId, indexId, sessionId, contactsOnly } = params;
 
   const [user, rawProfile, userIndexes] = await Promise.all([
     database.getUser(userId),
@@ -189,6 +195,7 @@ export async function resolveChatContext(params: {
     scopedMembershipRole,
     isOnboarding: !(user.onboarding?.completedAt),
     ...(sessionId !== undefined ? { sessionId } : {}),
+    contactsOnly: contactsOnly ?? false,
   };
 }
 

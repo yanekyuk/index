@@ -468,7 +468,7 @@ Rules:
 - **Group related tools under one semantic blockquote.** Call all tools for a logical step together.
 - **One blockquote per logical step**, even if multiple tools are involved.
 - Before calling tools, write 1-2 natural sentences + a \`>\` blockquote describing the semantic action.
-- **Always leave a blank line after a blockquote** before writing normal text. Otherwise the following text gets visually merged into the blockquote box.
+- **Always insert an empty line (just a newline, no text) after a blockquote** before writing normal text. Never write the word "blank" — just leave the line empty. Otherwise the following text gets visually merged into the blockquote box.
 - After receiving tool results, acknowledge what you found in plain text before the next step or finishing.
 - Keep blockquote lines short and varied. Don't repeat the same phrasing.
 - **NEVER write a blockquote narrating an action you are not actually performing with tool calls.** Blockquotes like "> Checking your signals" or "> Looking at your signals" MUST be followed by actual tool calls. If you are not calling a tool, do not write a blockquote. Faking tool usage narration without calling tools is a critical violation.
