@@ -1,9 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
+import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import type { ChatSuggestion } from "../../../types/chat-streaming.types";
 import { protocolLogger } from "../support/protocol.logger";
 import { Timed } from "../../performance";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("SuggestionGenerator");
 
@@ -48,15 +49,7 @@ export class SuggestionGenerator {
   private model: ReturnType<ChatOpenAI["withStructuredOutput"]>;
 
   constructor() {
-    const llm = new ChatOpenAI({
-      model: "google/gemini-2.5-flash",
-      configuration: {
-        baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-        apiKey: process.env.OPENROUTER_API_KEY,
-      },
-      temperature: 0.4,
-      maxTokens: 512,
-    });
+    const llm = createModel("suggestionGenerator");
     this.model = llm.withStructuredOutput(suggestionsSchema, { name: "chat_suggestions" });
   }
 

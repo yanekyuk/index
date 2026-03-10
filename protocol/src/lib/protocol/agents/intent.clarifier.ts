@@ -1,28 +1,12 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
 import { Timed } from "../../performance";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("IntentClarifier");
 
-function createIntentClarifierChatModel(): ChatOpenAI {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey || String(apiKey).trim() === "") {
-    throw new Error(
-      "IntentClarifier: OPENROUTER_API_KEY is required. Set it in your environment or .env."
-    );
-  }
-  const baseURL =
-    process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
-  return new ChatOpenAI({
-    model: "google/gemini-2.5-flash",
-    configuration: {
-      baseURL,
-      apiKey,
-    },
-  });
-}
+import type { ChatOpenAI } from "@langchain/openai";
 
 type ClarifierStructuredModel = ReturnType<ChatOpenAI["withStructuredOutput"]>;
 
@@ -90,7 +74,7 @@ export class IntentClarifier {
   private readonly clarificationDraftModel: ClarifierStructuredModel;
 
   constructor() {
-    const baseModel = createIntentClarifierChatModel();
+    const baseModel = createModel("intentClarifier");
     this.model = baseModel.withStructuredOutput(clarificationSchema, {
       name: "intent_clarifier",
     });

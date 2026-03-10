@@ -2,13 +2,13 @@
  * HyDE Generator Agent: pure LLM agent for generating hypothetical documents
  * in the target corpus voice. Uses free-text lens labels instead of enum strategies.
  */
-import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { HYDE_CORPUS_PROMPTS } from './hyde.strategies';
 import type { HydeTargetCorpus } from './lens.inferrer';
 import { Timed } from "../../performance";
 import { protocolLogger } from '../support/protocol.logger';
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("HydeGenerator");
 
@@ -28,10 +28,7 @@ const responseFormat = z.object({
     .describe('The hypothetical document text in the target voice, suitable for embedding and retrieval'),
 });
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-2.5-flash',
-  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
-});
+const model = createModel("hydeGenerator");
 
 export interface HydeGeneratorOutput {
   text: string;

@@ -3,11 +3,11 @@
  * profile context and infers 1-N search lenses, each tagged with a target corpus.
  * Replaces the hardcoded HydeStrategy enum and regex-based selectStrategiesFromQuery.
  */
-import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { Timed } from "../../performance";
 import { protocolLogger } from '../support/protocol.logger';
+import { createModel } from "./model.config";
 
 export type HydeTargetCorpus = 'profiles' | 'intents';
 
@@ -57,10 +57,7 @@ const responseFormat = z.object({
   })).min(1).max(5).describe('Inferred search lenses'),
 });
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-2.5-flash',
-  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
-});
+const model = createModel("lensInferrer");
 
 const logger = protocolLogger("LensInferrer");
 

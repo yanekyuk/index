@@ -7,7 +7,6 @@
  * and suggestedAction for chat tools and user-facing surfaces.
  */
 
-import { ChatOpenAI } from "@langchain/openai";
 import type { Runnable } from "@langchain/core/runnables";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
@@ -15,6 +14,7 @@ import { z } from "zod";
 import { Timed } from "../../performance";
 
 import { protocolLogger } from "../support/protocol.logger";
+import { createModel } from "./model.config";
 import { viewerCentricCardSummary } from "../support/opportunity.card-text";
 import type { Opportunity } from "../interfaces/database.interface";
 import type { ChatGraphCompositeDatabase } from "../interfaces/database.interface";
@@ -32,13 +32,7 @@ export type PresenterDatabase = Pick<
 const logger = protocolLogger("OpportunityPresenter");
 const LLM_TIMEOUT_MS = 20_000;
 
-const model = new ChatOpenAI({
-  model: "google/gemini-2.5-flash",
-  configuration: {
-    baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
-    apiKey: process.env.OPENROUTER_API_KEY,
-  },
-});
+const model = createModel("opportunityPresenter");
 
 // ──────────────────────────────────────────────────────────────
 // SCHEMA & TYPES

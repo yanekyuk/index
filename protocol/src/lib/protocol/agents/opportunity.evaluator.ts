@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import type { Runnable } from "@langchain/core/runnables";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
@@ -8,6 +7,7 @@ import type { Lens } from "./lens.inferrer";
 import type { OpportunityStatus } from "../interfaces/database.interface";
 import { Timed } from "../../performance";
 import { stripUuids } from "../support/opportunity.sanitize";
+import { createModel } from "./model.config";
 
 const logger = protocolLogger("OpportunityEvaluator");
 
@@ -17,10 +17,7 @@ const logger = protocolLogger("OpportunityEvaluator");
 import { config } from "dotenv";
 config({ path: '.env.development' });
 
-const model = new ChatOpenAI({
-  model: 'google/gemini-2.5-flash',
-  configuration: { baseURL: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1', apiKey: process.env.OPENROUTER_API_KEY }
-});
+const model = createModel("opportunityEvaluator");
 
 // ──────────────────────────────────────────────────────────────
 // 1. SYSTEM PROMPT
