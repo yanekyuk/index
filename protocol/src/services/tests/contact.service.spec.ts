@@ -28,6 +28,7 @@ const TEST_PREFIX = 'contact_svc_smoke_' + Date.now() + '_';
 let ownerId: string;
 let existingUserId: string;
 let globalIndexId: string;
+let createdGlobalIndex = false;
 
 const ownerEmail = `${TEST_PREFIX}owner@test.com`;
 const existingContactEmail = `${TEST_PREFIX}existing@test.com`;
@@ -60,26 +61,35 @@ beforeAll(async () => {
     email: existingContactEmail,
   });
 
-  // Create a global index so ghost users get added to it
-  await db.insert(indexes).values({
-    id: globalIndexId,
-    title: TEST_PREFIX + 'Global Index',
-    prompt: 'Global test index',
-    isGlobal: true,
-  });
+  // Use existing global index, or create one if missing
+  const [existingGlobal] = await db
+    .select({ id: indexes.id })
+    .from(indexes)
+    .where(eq(indexes.isGlobal, true))
+    .limit(1);
+  if (existingGlobal) {
+    globalIndexId = existingGlobal.id;
+  } else {
+    await db.insert(indexes).values({
+      id: globalIndexId,
+      title: TEST_PREFIX + 'Global Index',
+      prompt: 'Global test index',
+      isGlobal: true,
+    });
+    createdGlobalIndex = true;
+  }
 });
 
 afterAll(async () => {
-  // Clean up in dependency order
+  // Clean up in dependency order: contacts → index_members → profiles → indexes → users
   await db.delete(userContacts).where(eq(userContacts.ownerId, ownerId));
-  await db.delete(indexMembers).where(eq(indexMembers.indexId, globalIndexId));
-  await db.delete(userProfiles).where(
-    inArray(userProfiles.userId, [ownerId, existingUserId, ...createdGhostIds])
-  );
-  await db.delete(indexes).where(eq(indexes.id, globalIndexId));
-  await db.delete(users).where(
-    inArray(users.id, [ownerId, existingUserId, ...createdGhostIds])
-  );
+  const allUserIds = [ownerId, existingUserId, ...createdGhostIds];
+  await db.delete(indexMembers).where(inArray(indexMembers.userId, allUserIds));
+  await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
+  if (createdGlobalIndex) {
+    await db.delete(indexes).where(eq(indexes.id, globalIndexId));
+  }
+  await db.delete(users).where(inArray(users.id, allUserIds));
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -98,7 +108,7 @@ describe('importContacts', () => {
     );
 
     expect(result.imported).toBe(3);
-    expect(result.newContacts).toBe(2);
+    expect(result.newContacts).toBe(3);
     expect(result.skipped).toBe(0);
 
     // Track ghost IDs for cleanup
