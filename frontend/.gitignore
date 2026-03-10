@@ -45,3 +45,7 @@ yarn-error.log*
 
 # blog build output
 /public/blog/
+
+# playwright
+test-results/
+playwright-report/
