@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import type { Id } from '../types/common.types';
 import type { OpportunityControllerDatabase, OpportunityGraphDatabase, HydeGraphDatabase, HomeGraphDatabase, CreateOpportunityData, Opportunity, OpportunityActor, OpportunityStatus } from '../lib/protocol/interfaces/database.interface';
 import type { Embedder } from '../lib/protocol/interfaces/embedder.interface';
-import type { HydeCache } from '../lib/protocol/interfaces/cache.interface';
+import type { HydeCache, OpportunityCache } from '../lib/protocol/interfaces/cache.interface';
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HomeGraphFactory } from '../lib/protocol/graphs/home.graph';
@@ -54,8 +54,22 @@ export class OpportunityServiceEvents extends EventEmitter {
  * - Create manual opportunities
  * - Update opportunity status
  */
+const CHAT_CACHE_TTL = 24 * 60 * 60; // 24 hours in seconds
+
+interface ChatCardCached {
+  opportunityId: string;
+  headline: string;
+  personalizedSummary: string;
+  narratorRemark: string;
+  introducerName: string | null;
+  peerName: string;
+  peerAvatar: string | null;
+  acceptedAt: string | null;
+}
+
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
+  private cache: OpportunityCache;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
@@ -65,6 +79,7 @@ export class OpportunityService {
     database?: OpportunityControllerDatabase,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
+    this.cache = new RedisCacheAdapter();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -86,7 +101,7 @@ export class OpportunityService {
       );
       this.graph = factory.createGraph();
     }
-    this.homeGraph = new HomeGraphFactory(this.db as unknown as HomeGraphDatabase).createGraph();
+    this.homeGraph = new HomeGraphFactory(this.db as unknown as HomeGraphDatabase, this.cache).createGraph();
   }
 
   /**
@@ -460,8 +475,24 @@ export class OpportunityService {
       )
     );
 
+    // Check cache for all opportunities (graceful fallback if Redis unavailable)
+    let cachedResults: (ChatCardCached | null)[] = [];
+    try {
+      const cacheKeys = rows.map((opp) => `chat:card:${opp.id}:${userId}`);
+      cachedResults = await this.cache.mget<ChatCardCached>(cacheKeys);
+    } catch (e) {
+      logger.warn('[OpportunityService] getChatContext cache read failed, skipping', { error: e });
+      cachedResults = rows.map(() => null);
+    }
+
     const opportunityCards = await Promise.all(
-      rows.map(async (opp) => {
+      rows.map(async (opp, idx) => {
+        // Return cached result if available
+        const cached = cachedResults[idx];
+        if (cached) {
+          return cached;
+        }
+
         try {
           const presenterInput = await gatherPresenterContext(
             this.db as unknown as PresenterDatabase,
@@ -471,7 +502,7 @@ export class OpportunityService {
           presenterInput.opportunityStatus = 'accepted';
           presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
           const presented = await presenter.present(presenterInput);
-          return {
+          const card: ChatCardCached = {
             opportunityId: opp.id,
             headline: presented.headline,
             personalizedSummary: presented.personalizedSummary,
@@ -481,6 +512,12 @@ export class OpportunityService {
             peerAvatar: peerUser?.avatar ?? null,
             acceptedAt: opp.updatedAt instanceof Date ? opp.updatedAt.toISOString() : (opp.updatedAt ?? null),
           };
+          try {
+            await this.cache.set(`chat:card:${opp.id}:${userId}`, card, { ttl: CHAT_CACHE_TTL });
+          } catch {
+            // Cache write failure is non-critical
+          }
+          return card;
         } catch (err) {
           logger.warn('[OpportunityService] getChatContext presenter failed, using fallback', { error: err, opportunityId: opp.id });
           const introducerActor = opp.actors.find((a) => a.role === 'introducer');

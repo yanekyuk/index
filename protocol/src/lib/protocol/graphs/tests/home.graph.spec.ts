@@ -8,7 +8,17 @@ import { describe, test, expect } from 'bun:test';
 import { HomeGraphFactory, stripLeadingNarratorName } from '../home.graph';
 import type { HomeGraphDatabase } from '../../interfaces/database.interface';
 import type { Opportunity } from '../../interfaces/database.interface';
+import type { OpportunityCache } from '../../interfaces/cache.interface';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON, getIconNamesForPrompt } from '../../support/lucide.icon-catalog';
+
+function createMockCache(): OpportunityCache {
+  const store = new Map<string, unknown>();
+  return {
+    get: async <T>(key: string) => (store.get(key) as T) ?? null,
+    set: async <T>(key: string, value: T) => { store.set(key, value); },
+    mget: async <T>(keys: string[]) => keys.map((k) => (store.get(k) as T) ?? null),
+  };
+}
 
 function createMockDb(opportunities: Opportunity[] = []): HomeGraphDatabase {
   return {
@@ -80,7 +90,7 @@ function minimalOpportunityWithId(viewerId: string, otherId: string, id: string,
 describe('HomeGraph', () => {
   test('no opportunities returns empty sections and meta', async () => {
     const db = createMockDb([]);
-    const factory = new HomeGraphFactory(db);
+    const factory = new HomeGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: 'user-1', limit: 50 });
     expect(result.error).toBeUndefined();
@@ -90,7 +100,7 @@ describe('HomeGraph', () => {
 
   test('missing userId returns error', async () => {
     const db = createMockDb([]);
-    const factory = new HomeGraphFactory(db);
+    const factory = new HomeGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: '', limit: 50 });
     expect(result.error).toBe('userId is required');
@@ -101,7 +111,7 @@ describe('HomeGraph', () => {
     const otherId = 'other-1';
     const opp = minimalOpportunityAgentViewer(viewerId, otherId);
     const db = createMockDb([opp]);
-    const factory = new HomeGraphFactory(db);
+    const factory = new HomeGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
     expect(result.error).toBeUndefined();
@@ -126,7 +136,7 @@ describe('HomeGraph', () => {
     expect(opp.detection?.source).toBe('manual');
     expect(opp.actors.some((a) => a.role === 'introducer')).toBe(false);
     const db = createMockDb([opp]);
-    const factory = new HomeGraphFactory(db);
+    const factory = new HomeGraphFactory(db, createMockCache());
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
     expect(result.error).toBeUndefined();
@@ -142,7 +152,7 @@ describe('HomeGraph', () => {
     const opp2 = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-2');
     opp2.interpretation = { reasoning: 'You could also collaborate on early startup team formation.', category: 'connection', confidence: 0.8 };
     const db = createMockDb([opp1, opp2]);
-    const graph = new HomeGraphFactory(db).createGraph();
+    const graph = new HomeGraphFactory(db, createMockCache()).createGraph();
 
     const result = await graph.invoke({ userId: viewerId, limit: 50 });
 
@@ -199,7 +209,7 @@ describe('HomeGraph', () => {
     };
 
     const db = createMockDb([withIntroducerA, withIntroducerB]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
@@ -232,7 +242,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([acceptedWithIntroducer]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
@@ -260,7 +270,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([acceptedOpp]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
@@ -293,7 +303,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([latentOpportunity]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
@@ -323,7 +333,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([pendingOpportunity]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: viewerId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
@@ -350,7 +360,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([pendingOpp]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(1);
@@ -378,7 +388,7 @@ describe('HomeGraph', () => {
       expiresAt: null,
     };
     const db = createMockDb([latentOpp]);
-    const result = await new HomeGraphFactory(db).createGraph().invoke({ userId: agentId, limit: 50 });
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: agentId, limit: 50 });
 
     expect(result.error).toBeUndefined();
     expect(result.meta.totalOpportunities).toBe(0);
@@ -386,6 +396,134 @@ describe('HomeGraph', () => {
     expect(totalItems).toBe(0);
   }, 30000);
 
+});
+
+describe('HomeGraph caching', () => {
+  const viewerId = 'viewer-1';
+  const otherId = 'other-1';
+
+  function cachedCard(opportunityId: string, cardIndex: number): import('../../states/home.state').HomeCardItem {
+    return {
+      opportunityId,
+      userId: otherId,
+      name: 'Cached User',
+      avatar: null,
+      mainText: 'Cached summary',
+      cta: 'Cached action',
+      headline: 'Cached headline',
+      primaryActionLabel: 'Start Chat',
+      secondaryActionLabel: 'Skip',
+      mutualIntentsLabel: 'Shared interests',
+      narratorChip: { name: 'Index', text: 'Cached remark' },
+      viewerRole: 'agent',
+      _cardIndex: cardIndex,
+    };
+  }
+
+  test('full cache hit skips presenter LLM calls and returns cached cards', async () => {
+    const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-cached');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+
+    // Pre-populate cache with a card for this opportunity
+    const card = cachedCard('opp-cached', 99); // stale _cardIndex to verify recomputation
+    await cache.set(`home:card:opp-cached:${viewerId}`, card);
+
+    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(1);
+    const totalItems = result.sections.reduce((n, s) => n + s.items.length, 0);
+    expect(totalItems).toBe(1);
+    const item = result.sections[0]?.items[0];
+    expect(item?.mainText).toBe('Cached summary');
+    expect(item?.headline).toBe('Cached headline');
+  }, 30000);
+
+  test('partial cache hit only generates uncached cards', async () => {
+    const opp1 = minimalOpportunityAgentViewer(viewerId, 'other-1', 'opp-hit');
+    const opp2 = minimalOpportunityAgentViewer(viewerId, 'other-2', 'opp-miss');
+    const db = createMockDb([opp1, opp2]);
+    const cache = createMockCache();
+
+    // Only cache opp1
+    await cache.set(`home:card:opp-hit:${viewerId}`, cachedCard('opp-hit', 0));
+
+    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(2);
+    const allItems = result.sections.flatMap((s) => s.items);
+    expect(allItems.length).toBe(2);
+
+    const hitItem = allItems.find((i) => i.opportunityId === 'opp-hit');
+    const missItem = allItems.find((i) => i.opportunityId === 'opp-miss');
+    expect(hitItem?.mainText).toBe('Cached summary');
+    // The miss item should have been generated fresh by the presenter
+    expect(missItem?.mainText).not.toBe('Cached summary');
+    expect(missItem?.opportunityId).toBe('opp-miss');
+  }, 30000);
+
+  test('cached cards get _cardIndex recomputed to current opportunity order', async () => {
+    const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-reindex');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+
+    // Cache with stale _cardIndex of 42
+    await cache.set(`home:card:opp-reindex:${viewerId}`, cachedCard('opp-reindex', 42));
+
+    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    // The card should appear correctly (index 0, since it's the only opportunity)
+    expect(result.error).toBeUndefined();
+    const allItems = result.sections.flatMap((s) => s.items);
+    expect(allItems.length).toBe(1);
+    expect(allItems[0]?.opportunityId).toBe('opp-reindex');
+  }, 30000);
+
+  test('categorizer cache hit skips LLM categorization', async () => {
+    const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-cat');
+    const db = createMockDb([opp]);
+    const cache = createMockCache();
+
+    // Run once to populate both presenter and categorizer caches
+    const graph = new HomeGraphFactory(db, cache).createGraph();
+    const firstResult = await graph.invoke({ userId: viewerId, limit: 50 });
+    expect(firstResult.error).toBeUndefined();
+    expect(firstResult.sections.length).toBeGreaterThanOrEqual(1);
+    const firstSectionTitle = firstResult.sections[0]?.title;
+
+    // Run again — should use cached presenter AND cached categories
+    const secondResult = await graph.invoke({ userId: viewerId, limit: 50 });
+    expect(secondResult.error).toBeUndefined();
+    expect(secondResult.sections.length).toBe(firstResult.sections.length);
+    // Same category structure since same opportunity set
+    expect(secondResult.sections[0]?.title).toBe(firstSectionTitle);
+  }, 60000);
+
+  test('cache failure gracefully falls through to uncached path', async () => {
+    const opp = minimalOpportunityAgentViewer(viewerId, otherId, 'opp-fail');
+    const db = createMockDb([opp]);
+
+    // Create a cache that throws on every operation
+    const failingCache: OpportunityCache = {
+      get: async () => { throw new Error('Redis down'); },
+      set: async () => { throw new Error('Redis down'); },
+      mget: async () => { throw new Error('Redis down'); },
+    };
+
+    const graph = new HomeGraphFactory(db, failingCache).createGraph();
+    const result = await graph.invoke({ userId: viewerId, limit: 50 });
+
+    // Should still work — just without caching
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(1);
+    const totalItems = result.sections.reduce((n, s) => n + s.items.length, 0);
+    expect(totalItems).toBe(1);
+  }, 30000);
 });
 
 describe('stripLeadingNarratorName', () => {

@@ -98,6 +98,24 @@ export const HomeGraphState = Annotation.Root({
     default: () => [],
   }),
 
+  /** Presenter results retrieved from cache (opportunityId → HomeCardItem). */
+  cachedCards: Annotation<Map<string, HomeCardItem>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => new Map(),
+  }),
+
+  /** Opportunities that had no cache hit and need presenter generation. */
+  uncachedOpportunities: Annotation<Opportunity[]>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => [],
+  }),
+
+  /** Whether categorizer results were found in cache. */
+  categoryCacheHit: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
+  }),
+
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
