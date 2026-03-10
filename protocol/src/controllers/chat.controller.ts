@@ -115,8 +115,7 @@ export class ChatController {
     } catch {
       return Response.json(
         {
-          error:
-            "Invalid request body. Expected { message: string, sessionId?: string, useCheckpointer?: boolean, fileIds?: string[] }",
+          error: "Invalid JSON in request body",
         },
         { status: 400 },
       );
