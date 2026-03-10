@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Index Network is a private, intent-driven discovery protocol built on autonomous agents. Users define "intents" and competing Broker Agents work to fulfill them through relevant connections. The system leverages LangChain/LangGraph for agent orchestration, PostgreSQL with pgvector for semantic search, and a monorepo structure with protocol (backend) and frontend (Next.js) workspaces.
+Index Network is a private, intent-driven discovery protocol built on autonomous agents. Users define "intents" and competing Broker Agents work to fulfill them through relevant connections. The system leverages LangChain/LangGraph for agent orchestration, PostgreSQL with pgvector for semantic search, and a monorepo structure with protocol (backend) and frontend (Vite + React Router) workspaces.
 
 ## Development Commands
 
@@ -61,9 +61,10 @@ bun run audit-freshness                     # Audit intent freshness
 cd frontend
 
 # Development
-bun run dev                                 # Start Next.js dev server (Turbopack)
-bun run build                               # Build for production
-bun run start                               # Start production server
+bun run dev                                 # Start Vite dev server (with API proxy to protocol)
+bun run build                               # Build blog assets then run Vite production build
+bun run build:blog                          # Pre-build blog assets only
+bun run start                               # Start Vite preview server
 bun run lint                                # Run ESLint
 ```
 
@@ -90,7 +91,7 @@ bun run worktree:build [name]               # Build at root, or in worktree <nam
 ```
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
-└── frontend/          # Next.js 15 App with React 19
+└── frontend/          # Vite + React Router v7 SPA with React 19
 ```
 
 ### Protocol Architecture
@@ -242,33 +243,41 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 ### Frontend Architecture
 
-**Framework**: Next.js 15 (App Router), React 19, Tailwind CSS
+**Framework**: Vite, React Router v7, React 19, Tailwind CSS 4
 
 **Directory Structure**:
-- `src/app/` - Next.js App Router pages (file-based routing)
+- `src/main.tsx` - App entry point with provider tree
+- `src/routes.tsx` - Route definitions (React Router `createBrowserRouter`)
+- `src/app/` - Page components (client-side, lazy loaded)
   - `/` - Home page
   - `/about` - About page
   - `/chat` - Main chat interface
   - `/profile` - User profile management
   - `/library` - Library
-  - `/networks` - Networks listing; `/networks/[id]` - Network detail
-  - `/index/[indexId]` - Index detail pages
-  - `/u/[id]` - User profile pages; `/u/[id]/chat` - User chat
-  - `/d/[id]` - Discovery/detail (e.g. by id)
-  - `/l/[code]` - Link redirect (e.g. by code)
-  - `/s/[token]` - Shared session view (e.g. by share token)
-  - `/storage/[...path]` - File storage/download (dynamic path handling)
-  - `/blog` - Blog listing; `/blog/[slug]` - Markdown-based blog posts
+  - `/networks` - Networks listing; `/networks/:id` - Network detail
+  - `/index/:indexId` - Index detail pages
+  - `/u/:id` - User profile pages; `/u/:id/chat` - User chat
+  - `/d/:id` - Discovery/detail (e.g. by id)
+  - `/l/:code` - Link redirect (e.g. by code)
+  - `/s/:token` - Shared session view (e.g. by share token)
+  - `/blog` - Blog listing; `/blog/:slug` - Markdown-based blog posts
   - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
   - `/dev/intent-proposal` - Dev tool for intent proposal testing
 - `src/components/` - Reusable React components
 - `src/contexts/` - React Context providers (Auth, AIChatContext, AIChatSessionsContext, API, DiscoveryFilter, Indexes, IndexFilter, Notifications, SaveBar, XMTP)
 - `src/services/` - Frontend API clients (typed fetch wrappers)
 - `src/lib/` - Utilities and shared logic
+- `build-blog.ts` - Blog pre-build script (generates blog assets at build time)
+
+**Routing**: React Router v7 with `createBrowserRouter`. Page components are lazy-loaded for code splitting. Route params use `:param` syntax (e.g. `/u/:id`).
 
 **Authentication**: Better Auth (session-based; email, social, etc.)
 
-**UI Libraries**: Tailwind CSS, Radix UI, Lucide React, Ant Design, react-markdown
+**Blog**: Blog posts are pre-built at build time via `build-blog.ts` and rendered client-side with react-markdown.
+
+**API Proxy**: In development, the Vite dev server proxies `/api/*` requests to the protocol backend (port 3001). In production, a reverse proxy handles this.
+
+**UI Libraries**: Tailwind CSS 4, Radix UI, Lucide React, Ant Design, react-markdown
 
 ## Important Patterns & Conventions
 
@@ -726,7 +735,7 @@ Only use the main working tree for small docs/config edits, dependency bumps, or
 
 ### Worktrees
 
-Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. **Worktree folder names must use dashes, not slashes** (e.g. `feat-my-feature`, not `feat/my-feature`) — slashes create subdirectories which Zed does not support. The branch inside the worktree can still follow the conventional `feat/my-feature` format. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`). It also runs `bun install` in each workspace (`node_modules` can't be symlinked because Turbopack rejects symlinks pointing outside the worktree root).
+Worktrees live in `.worktrees/` (gitignored). They share the same git history but have an isolated working tree. **Worktree folder names must use dashes, not slashes** (e.g. `feat-my-feature`, not `feat/my-feature`) — slashes create subdirectories which Zed does not support. The branch inside the worktree can still follow the conventional `feat/my-feature` format. Since `.gitignore`d files (`node_modules/`, `.env*`) are not copied into worktrees, you must run `bun run worktree:setup <name>` after creating one. This symlinks `.env*` files from the main repo into the worktree for all workspaces (`protocol`, `frontend`, `evaluator`). It also runs `bun install` in each workspace (`node_modules` can't be symlinked because bundlers may reject symlinks pointing outside the worktree root).
 
 ```bash
 # After creating a worktree (e.g., via `git worktree add .worktrees/feat-foo dev`)
@@ -806,7 +815,8 @@ When a feature or fix branch is complete and ready to integrate:
 - `resend` - Email delivery
 
 **Frontend**:
-- `next` - React framework
+- `vite` - Build tool and dev server
+- `react-router` - Client-side routing
 - `react` / `react-dom` - UI library
 - `tailwindcss` - CSS framework
 - `@radix-ui/*` - Accessible UI primitives
