@@ -1,53 +1,12 @@
-import { getPostBySlug, getAllPostSlugs } from '@/lib/blog';
-import { headers } from 'next/headers';
-import { notFound } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router';
+import { getPostBySlug, BlogPost } from '@/lib/blog';
 import ReactMarkdown from 'react-markdown';
 import { Components } from 'react-markdown';
-import Image from 'next/image';
 import Footer from '@/components/Footer';
 import WaitlistModal from './WaitlistModal';
 import { visit } from 'unist-util-visit';
 import type { Root } from 'hast';
-
-export async function generateStaticParams() {
-  const slugs = getAllPostSlugs();
-  return slugs.map((slug) => ({ slug }));
-}
-
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const post = getPostBySlug(slug);
-  
-  if (!post) {
-    return { title: 'Post Not Found | Index Network' };
-  }
-
-  const h = await headers();
-  const host = h.get('host');
-  const proto = h.get('x-forwarded-proto') ?? 'https';
-  const baseUrl = host ? `${proto}://${host}` : 'https://index.network';
-  const imageUrl = post.image ? `${baseUrl}${post.image}` : undefined;
-
-  return {
-    title: `${post.title} | Index Network Blog`,
-    description: post.description,
-    ...(imageUrl && {
-      openGraph: {
-        type: 'article',
-        url: `${baseUrl}/blog/${slug}`,
-        title: `${post.title} | Index Network Blog`,
-        description: post.description ?? undefined,
-        images: [{ url: imageUrl }],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: `${post.title} | Index Network Blog`,
-        description: post.description ?? undefined,
-        images: [imageUrl],
-      },
-    }),
-  };
-}
 
 function getAudioType(src: string): string {
   const ext = src.split('.').pop()?.toLowerCase();
@@ -99,9 +58,9 @@ function unwrapImages() {
 
 const markdownComponents: Components = {
   a: ({ href, children }) => {
-    const childText = typeof children === 'string' ? children : 
+    const childText = typeof children === 'string' ? children :
       Array.isArray(children) ? children.join('') : '';
-    
+
     // Check if this is an audio link: [audio](file.mp3)
     if (childText.toLowerCase() === 'audio' && href) {
       return (
@@ -153,35 +112,58 @@ const markdownComponents: Components = {
       large: 'w-3/4',
     };
     const widthClass = sizeClasses[size] || 'w-full';
-    
+
     if (!src || typeof src !== 'string') return null;
-    
-    // Check if it's an external URL
-    const isExternal = src.startsWith('http://') || src.startsWith('https://');
-    
-    // Use span with block display instead of div to avoid hydration error
-    // (span is valid inside p tags, div is not)
+
     return (
       <span className={`${widthClass} rounded-lg my-6 mx-auto block`} style={{ display: 'block' }}>
-        <Image
+        <img
           src={src}
           alt={altText || ''}
-          width={800}
-          height={600}
+          loading="lazy"
           className="rounded-lg w-full h-auto"
-          unoptimized={isExternal}
         />
       </span>
     );
   },
 };
 
-export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const post = getPostBySlug(slug);
+export default function BlogPostPage() {
+  const { slug } = useParams();
+  const [post, setPost] = useState<BlogPost | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
-  if (!post) {
-    notFound();
+  useEffect(() => {
+    if (!slug) return;
+    setLoading(true);
+    getPostBySlug(slug).then((result) => {
+      if (result) {
+        setPost(result);
+      } else {
+        setNotFound(true);
+      }
+      setLoading(false);
+    });
+  }, [slug]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (notFound || !post) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Post not found</h1>
+          <p className="text-gray-600">The blog post you are looking for does not exist.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -204,7 +186,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
         {/* Post content */}
         <article className="text-black text-lg leading-[25px] font-['Times_New_Roman',_serif] [&_h2]:text-2xl [&_h2]:font-['Times_New_Roman',_serif] [&_h2]:font-medium [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-['Times_New_Roman',_serif] [&_h3]:font-medium [&_h3]:mt-8 [&_h3]:mb-3 [&_p]:mb-6 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-6 [&_li]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-6">
-          <ReactMarkdown components={markdownComponents} rehypePlugins={[unwrapImages]}>{post.content}</ReactMarkdown>
+          <ReactMarkdown components={markdownComponents} rehypePlugins={[unwrapImages]}>{post.content || ''}</ReactMarkdown>
         </article>
 
       </div>
@@ -212,3 +194,5 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     </div>
   );
 }
+
+export const Component = BlogPostPage;
