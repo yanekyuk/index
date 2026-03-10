@@ -50,8 +50,8 @@ const TOOL_DESCRIPTIONS: Record<string, { action: string; running: string }> = {
     running: "Fetching your active intents...",
   },
   create_intent: {
-    action: "Create intent",
-    running: "Creating a new intent...",
+    action: "Create signal",
+    running: "Creating a new signal...",
   },
   update_intent: {
     action: "Update intent",
