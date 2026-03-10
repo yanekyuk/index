@@ -10,7 +10,7 @@ import { connectionAcceptedTemplate } from './templates/connection-accepted.temp
 
 const logger = log.lib.from('notification.sender');
 
-const API_URL = process.env.API_URL || 'https://index.network.api';
+const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
 
 async function getUnsubscribeUrl(userId: string, type: 'weeklyNewsletter' | 'connectionUpdates') {
   // Find or create settings (create should technically happen on user creation, but good to be safe)
@@ -29,7 +29,7 @@ async function getUnsubscribeUrl(userId: string, type: 'weeklyNewsletter' | 'con
   }
 
   const token = settings[0].unsubscribeToken;
-  return `${API_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
+  return `${BASE_URL}/api/notifications/unsubscribe?token=${token}&type=${type}`;
 }
 
 export async function sendConnectionRequestEmail(
@@ -69,8 +69,8 @@ export async function sendConnectionRequestEmail(
   let unsubscribeUrl: string | undefined;
   // If settings exist, use token. If not (but onboarded), lazy create via getUnsubscribeUrl logic
   if (recipient.settings?.unsubscribeToken) {
-    const API_URL = process.env.API_URL || 'https://index.network.api';
-    unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
+    const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
+    unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
   } else {
     // Legacy support: Onboarded but no settings row yet. content.
     unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
@@ -127,8 +127,8 @@ export async function sendConnectionAcceptedEmail(
 
     let unsubscribeUrl: string | undefined;
     if (recipient.settings?.unsubscribeToken) {
-      const API_URL = process.env.API_URL || 'https://index.network.api';
-      unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
+      const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
+      unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.settings.unsubscribeToken}&type=connectionUpdates`;
     } else {
       unsubscribeUrl = await getUnsubscribeUrl(recipient.id, 'connectionUpdates');
     }

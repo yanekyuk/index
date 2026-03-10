@@ -32,7 +32,7 @@ export interface NotificationQueueDeps {
   database?: NotificationQueueDatabase;
 }
 
-const API_URL = process.env.API_URL || 'https://index.network';
+const BASE_URL = process.env.BASE_URL || 'https://protocol.index.network';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://index.network';
 const DIGEST_LIST_PREFIX = 'digest:opportunities:';
 const DIGEST_DEDUPE_PREFIX = 'digest:dedupe:';
@@ -203,7 +203,7 @@ export class NotificationQueue {
     const opportunityUrl = `${FRONTEND_URL}/opportunities/${opportunityId}`;
     let unsubscribeUrl: string | undefined;
     if (recipient.unsubscribeToken) {
-      unsubscribeUrl = `${API_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=connectionUpdates`;
+      unsubscribeUrl = `${BASE_URL}/api/notifications/unsubscribe?token=${recipient.unsubscribeToken}&type=connectionUpdates`;
     }
 
     const redis = getRedisClient();

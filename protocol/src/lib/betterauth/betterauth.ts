@@ -5,8 +5,8 @@ import { log } from "../log";
 
 const logger = log.server.from("betterauth");
 
-export const PROTOCOL_URL =
-  process.env.PROTOCOL_URL || `http://localhost:${process.env.PORT || 3001}`;
+export const BASE_URL =
+  process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
 
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
@@ -44,7 +44,7 @@ export function createAuth(deps: AuthDeps) {
   const pendingGhostClaims = new Map<string, string>();
 
   return betterAuth({
-    baseURL: PROTOCOL_URL,
+    baseURL: BASE_URL,
     database: authDb.createDrizzleAdapter(),
     databaseHooks: {
       user: {
@@ -119,7 +119,7 @@ export function createAuth(deps: AuthDeps) {
       bearer(),
       jwt({
         jwt: {
-          issuer: PROTOCOL_URL,
+          issuer: BASE_URL,
           expirationTime: "1h",
           definePayload: ({ user }) => ({
             id: user.id,
