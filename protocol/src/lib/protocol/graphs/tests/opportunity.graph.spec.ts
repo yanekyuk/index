@@ -127,6 +127,91 @@ function createMockGraph(deps?: {
   return { compiledGraph, mockDb, mockEmbedder, mockHydeGenerator };
 }
 
+function createMockGraphWithFnOverrides(deps?: {
+  getProfileFn?: (userId: string) => Promise<Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>>;
+  getActiveIntentsFn?: (userId: string) => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
+  evaluatorResult?: EvaluatedOpportunityWithActors[];
+  getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+}) {
+  const mockDb: OpportunityGraphDatabase = {
+    getProfile: (userId: string) =>
+      deps?.getProfileFn
+        ? deps.getProfileFn(userId)
+        : Promise.resolve(null),
+    createOpportunity: (data) =>
+      Promise.resolve({
+        id: 'opp-1',
+        detection: data.detection,
+        actors: data.actors,
+        interpretation: data.interpretation,
+        context: data.context,
+        confidence: data.confidence,
+        status: data.status ?? 'pending',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        expiresAt: null,
+      }),
+    opportunityExistsBetweenActors: () => Promise.resolve(false),
+    getOpportunityBetweenActors: () => Promise.resolve(null),
+    findOverlappingOpportunities: () => Promise.resolve([]),
+    getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
+    getActiveIntents: (userId: string) =>
+      deps?.getActiveIntentsFn
+        ? deps.getActiveIntentsFn(userId)
+        : Promise.resolve([
+            {
+              id: 'intent-1' as Id<'intents'>,
+              payload: 'Looking for a technical co-founder',
+              summary: 'Co-founder',
+              createdAt: new Date(),
+            },
+          ]),
+    getIndex: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+    getIndexMemberCount: () => Promise.resolve(2),
+    getIndexIdsForIntent: () => Promise.resolve(['idx-1']),
+    getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+    isIndexMember: () => Promise.resolve(true),
+    getOpportunity: () => Promise.resolve(null),
+    getOpportunitiesForUser: () => Promise.resolve([]),
+    updateOpportunityStatus: () => Promise.resolve(null),
+    getIntent: () => Promise.resolve(null),
+    getContactUserIds: () => Promise.resolve([]),
+  };
+
+  const mockEmbedder: Embedder = {
+    generate: () => Promise.resolve(dummyEmbedding),
+    search: () => Promise.resolve([]),
+    searchWithHydeEmbeddings: () =>
+      Promise.resolve([
+        {
+          type: 'intent' as const,
+          id: 'intent-bob' as Id<'intents'>,
+          userId: 'user-bob',
+          score: 0.9,
+          matchedVia: 'mirror' as const,
+          indexId: 'idx-1',
+        },
+      ]),
+    searchWithProfileEmbedding: () => Promise.resolve([]),
+  } as unknown as Embedder;
+
+  const mockHyde = {
+    invoke: () =>
+      Promise.resolve({
+        hydeEmbeddings: {
+          mirror: dummyEmbedding,
+          reciprocal: dummyEmbedding,
+        },
+      }),
+  };
+
+  const evaluator = createMockEvaluator(deps?.evaluatorResult ?? defaultMockEvaluatorResult);
+  const queueNotification = async () => undefined;
+  const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, evaluator, queueNotification);
+  const compiledGraph = factory.createGraph();
+  return { compiledGraph, mockDb };
+}
+
 describe('Opportunity Graph', () => {
   describe('Prep node', () => {
     test('when user has no index memberships, returns error and no opportunities', async () => {
@@ -1137,6 +1222,190 @@ describe('Opportunity Graph', () => {
 
       expect(result.opportunities.length).toBe(1);
       expect(result.error).toBeUndefined();
+    });
+  });
+
+  describe('onBehalfOfUserId (introducer discovery) path', () => {
+    const onBehalfUserId = 'user-target' as Id<'users'>;
+
+    test('prep node fetches target user profile and intents when onBehalfOfUserId is set', async () => {
+      const getProfileCalls: string[] = [];
+      const getActiveIntentsCalls: string[] = [];
+
+      const { compiledGraph } = createMockGraphWithFnOverrides({
+        getProfileFn: async (userId: string) => {
+          getProfileCalls.push(userId);
+          if (userId === onBehalfUserId) {
+            return {
+              embedding: dummyEmbedding,
+              identity: { name: 'Target User', bio: 'Target bio' },
+              narrative: { context: 'Target context' },
+              attributes: { skills: ['skill-a'], interests: ['interest-a'] },
+            } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+          }
+          return null;
+        },
+        getActiveIntentsFn: async (userId: string) => {
+          getActiveIntentsCalls.push(userId);
+          if (userId === onBehalfUserId) {
+            return [{
+              id: 'intent-target' as Id<'intents'>,
+              payload: 'Target intent payload',
+              summary: 'Target summary',
+              createdAt: new Date(),
+            }];
+          }
+          return [];
+        },
+      });
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        onBehalfOfUserId: onBehalfUserId,
+        searchQuery: 'find collaborators',
+        options: { limit: 1 },
+      });
+
+      expect(getProfileCalls).toContain(onBehalfUserId);
+      expect(getActiveIntentsCalls).toContain(onBehalfUserId);
+    });
+
+    test('evaluation node uses target user as source entity when onBehalfOfUserId is set', async () => {
+      let capturedInput: Parameters<NonNullable<OpportunityEvaluatorLike['invokeEntityBundle']>>[0] | null = null;
+      const capturingEvaluator: OpportunityEvaluatorLike = {
+        invokeEntityBundle: async (input) => {
+          capturedInput = input;
+          return defaultMockEvaluatorResult;
+        },
+      };
+
+      const mockDb: OpportunityGraphDatabase = {
+        getProfile: async (userId: string) => {
+          if (userId === onBehalfUserId) {
+            return {
+              embedding: dummyEmbedding,
+              identity: { name: 'Target User', bio: 'Target bio' },
+            } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+          }
+          return { embedding: dummyEmbedding, identity: { name: 'Source User' } } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>;
+        },
+        createOpportunity: (data) =>
+          Promise.resolve({
+            id: 'opp-1',
+            detection: data.detection,
+            actors: data.actors,
+            interpretation: data.interpretation,
+            context: data.context,
+            confidence: data.confidence,
+            status: data.status ?? 'pending',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            expiresAt: null,
+          }),
+        opportunityExistsBetweenActors: () => Promise.resolve(false),
+        getOpportunityBetweenActors: () => Promise.resolve(null),
+        findOverlappingOpportunities: () => Promise.resolve([]),
+        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'indexes'>[]),
+        getActiveIntents: async (userId: string) => {
+          if (userId === onBehalfUserId) {
+            return [{
+              id: 'intent-target' as Id<'intents'>,
+              payload: 'Target intent payload',
+              summary: 'Target summary',
+              createdAt: new Date(),
+            }];
+          }
+          return [];
+        },
+        getIndex: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+        getIndexMemberCount: () => Promise.resolve(2),
+        getIndexIdsForIntent: () => Promise.resolve(['idx-1']),
+        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+        isIndexMember: () => Promise.resolve(true),
+        getOpportunity: () => Promise.resolve(null),
+        getOpportunitiesForUser: () => Promise.resolve([]),
+        updateOpportunityStatus: () => Promise.resolve(null),
+        getIntent: () => Promise.resolve(null),
+        getContactUserIds: () => Promise.resolve([]),
+      };
+
+      const mockEmbedder: Embedder = {
+        generate: () => Promise.resolve(dummyEmbedding),
+        search: () => Promise.resolve([]),
+        searchWithHydeEmbeddings: () =>
+          Promise.resolve([
+            {
+              type: 'intent' as const,
+              id: 'intent-bob' as Id<'intents'>,
+              userId: 'user-bob',
+              score: 0.9,
+              matchedVia: 'mirror' as const,
+              indexId: 'idx-1',
+            },
+          ]),
+        searchWithProfileEmbedding: () => Promise.resolve([]),
+      } as unknown as Embedder;
+
+      const mockHyde = {
+        invoke: () =>
+          Promise.resolve({
+            hydeEmbeddings: {
+              mirror: dummyEmbedding,
+              reciprocal: dummyEmbedding,
+            },
+          }),
+      };
+
+      const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, capturingEvaluator, async () => undefined);
+      const compiledGraph = factory.createGraph();
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        onBehalfOfUserId: onBehalfUserId,
+        searchQuery: 'find collaborators',
+        options: {},
+      });
+
+      expect(capturedInput).not.toBeNull();
+      expect(capturedInput!.discovererId).toBe(onBehalfUserId);
+      const sourceEntity = capturedInput!.entities?.find((e) => e.userId === onBehalfUserId);
+      expect(sourceEntity).toBeDefined();
+      expect(sourceEntity?.profile?.name).toBe('Target User');
+    });
+
+    test('persist node assigns userId as introducer actor when onBehalfOfUserId is set', async () => {
+      const { compiledGraph } = createMockGraphWithFnOverrides({
+        getProfileFn: async (userId: string) => ({
+          embedding: dummyEmbedding,
+          identity: { name: userId === onBehalfUserId ? 'Target User' : 'Bob' },
+        } as Awaited<ReturnType<OpportunityGraphDatabase['getProfile']>>),
+        evaluatorResult: [{
+          reasoning: 'Great match for target user.',
+          score: 85,
+          actors: [
+            { userId: onBehalfUserId, role: 'patient' as const, intentId: null },
+            { userId: 'user-bob', role: 'agent' as const, intentId: null },
+          ],
+        }],
+      });
+
+      const result = await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        onBehalfOfUserId: onBehalfUserId,
+        searchQuery: 'find collaborators',
+        options: { limit: 1 },
+      });
+
+      expect(result.opportunities.length).toBeGreaterThan(0);
+      const opp = result.opportunities[0];
+      const introducerActor = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
+      const targetActor = opp.actors.find((a: OpportunityActor) => a.userId === onBehalfUserId);
+
+      expect(introducerActor).toBeDefined();
+      expect(introducerActor!.userId).toBe('user-source');
+      expect(targetActor).toBeDefined();
+      expect(targetActor!.role).not.toBe('introducer');
+      expect(opp.detection?.source).toBe('manual');
     });
   });
 

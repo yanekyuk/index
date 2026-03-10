@@ -129,9 +129,10 @@ export class OpportunityGraphFactory {
                 error: 'You need to join at least one index to find opportunities.',
               };
             }
+            const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
             const [intents, profile] = await Promise.all([
-              this.database.getActiveIntents(state.userId),
-              this.database.getProfile(state.userId),
+              this.database.getActiveIntents(discoveryUserId),
+              this.database.getProfile(discoveryUserId),
             ]);
             const indexedIntents: IndexedIntent[] = intents.map((intent: ActiveIntent) => ({
               intentId: intent.id,
