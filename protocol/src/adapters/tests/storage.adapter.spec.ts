@@ -15,13 +15,12 @@ mock.module('@aws-sdk/client-s3', () => ({
   },
 }));
 
-function createAdapter(baseUrl?: string) {
+function createAdapter() {
   return new S3StorageAdapter({
     endpoint: 'https://fake.endpoint',
     region: 'us-east-1',
     credentials: { accessKeyId: 'fake', secretAccessKey: 'fake' },
     bucket: 'test-bucket',
-    baseUrl,
   });
 }
 
@@ -30,33 +29,21 @@ describe('S3StorageAdapter', () => {
     mockSend.mockClear();
   });
 
-  describe('getUrl', () => {
-    it('returns /storage/{key} by default', () => {
-      const adapter = createAdapter();
-      expect(adapter.getUrl('avatars/123/abc.png')).toBe('/storage/avatars/123/abc.png');
-    });
-
-    it('uses custom baseUrl when provided', () => {
-      const adapter = createAdapter('https://cdn.example.com');
-      expect(adapter.getUrl('avatars/123/abc.png')).toBe('https://cdn.example.com/avatars/123/abc.png');
-    });
-  });
-
   describe('uploadBuffer', () => {
-    it('calls S3 and returns the storage URL', async () => {
+    it('calls S3 and returns the object key', async () => {
       const adapter = createAdapter();
       const result = await adapter.uploadBuffer(Buffer.from('data'), 'test/file.txt', 'text/plain');
       expect(mockSend).toHaveBeenCalledTimes(1);
-      expect(result).toBe('/storage/test/file.txt');
+      expect(result).toBe('test/file.txt');
     });
   });
 
   describe('uploadAvatar', () => {
-    it('uploads under avatars/{userId}/ path and returns URL', async () => {
+    it('uploads under avatars/{userId}/ path and returns key', async () => {
       const adapter = createAdapter();
       const result = await adapter.uploadAvatar(Buffer.from('img'), 'user-1', 'png', 'image/png');
       expect(mockSend).toHaveBeenCalledTimes(1);
-      expect(result).toStartWith('/storage/avatars/user-1/');
+      expect(result).toStartWith('avatars/user-1/');
       expect(result).toEndWith('.png');
     });
   });
@@ -67,7 +54,7 @@ describe('S3StorageAdapter', () => {
       const base64 = 'data:image/jpeg;base64,/9j/4AAQ';
       const result = await adapter.uploadBase64Image(base64, 'feedback');
       expect(mockSend).toHaveBeenCalledTimes(1);
-      expect(result).toStartWith('/storage/feedback/');
+      expect(result).toStartWith('feedback/');
       expect(result).toEndWith('.jpeg');
     });
 
@@ -75,21 +62,21 @@ describe('S3StorageAdapter', () => {
       const adapter = createAdapter();
       const result = await adapter.uploadBase64Image('iVBOR', 'screenshots');
       expect(mockSend).toHaveBeenCalledTimes(1);
-      expect(result).toStartWith('/storage/screenshots/');
+      expect(result).toStartWith('screenshots/');
       expect(result).toEndWith('.png');
     });
 
     it('defaults folder to feedback', async () => {
       const adapter = createAdapter();
       const result = await adapter.uploadBase64Image('iVBOR');
-      expect(result).toStartWith('/storage/feedback/');
+      expect(result).toStartWith('feedback/');
     });
 
     it('handles compound MIME subtypes like svg+xml', async () => {
       const adapter = createAdapter();
       const base64 = 'data:image/svg+xml;base64,PHN2Zz4=';
       const result = await adapter.uploadBase64Image(base64, 'images');
-      expect(result).toStartWith('/storage/images/');
+      expect(result).toStartWith('images/');
       expect(result).toEndWith('.svg');
     });
   });
