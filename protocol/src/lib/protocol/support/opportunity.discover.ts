@@ -43,6 +43,8 @@ export interface DiscoverInput {
   triggerIntentId?: string;
   /** When set, filter discovery candidates to this specific user only (direct connection). */
   targetUserId?: string;
+  /** When set, discover on behalf of this user (introducer flow). The caller (userId) becomes the introducer. */
+  onBehalfOfUserId?: string;
   /** When provided, each opportunity is enriched with personalized presentation (headline, personalizedSummary, suggestedAction). */
   presenter?: OpportunityPresenter;
   /**
@@ -286,8 +288,26 @@ async function enrichOpportunities(
       const name = counterpartName(item)?.trim();
       const reasoning = item.opportunity.interpretation?.reasoning ?? "";
       const introducerName = item.opportunity.detection?.createdByName ?? undefined;
+      const viewerIsIntroducer = item.opportunity.actors.some(
+        (a) => a.role === "introducer" && a.userId === userId,
+      );
+
+      // For introducer view, find the second party (target user) name
+      let secondPartyName: string | undefined;
+      if (viewerIsIntroducer) {
+        const otherPartyActors = item.opportunity.actors.filter(
+          (a) => a.role !== "introducer" && a.userId !== item.candidateUserId,
+        );
+        if (otherPartyActors.length > 0) {
+          const otherUserId = otherPartyActors[0].userId;
+          secondPartyName = nameByUserId.get(otherUserId) ?? undefined;
+        }
+      }
+
       return {
-        headline: name ? `Connection with ${name}` : "Suggested connection",
+        headline: viewerIsIntroducer && secondPartyName
+          ? `${name} → ${secondPartyName}`
+          : (name ? `Connection with ${name}` : "Suggested connection"),
         personalizedSummary:
           viewerCentricCardSummary(
             reasoning,
@@ -298,7 +318,7 @@ async function enrichOpportunities(
           ),
         suggestedAction: "Start a conversation to connect.",
         narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
-        primaryActionLabel: "Start Chat",
+        primaryActionLabel: viewerIsIntroducer ? "Introduce Them" : "Start Chat",
         secondaryActionLabel: "Skip",
         mutualIntentsLabel: "Suggested connection",
       };
@@ -364,22 +384,32 @@ async function enrichOpportunities(
       // Build narrator chip for home card format
       let narratorChip: FormattedDiscoveryCandidate["narratorChip"];
       if (homeCard) {
-        // Check if this is an introduction (has introducer actor)
-        const introducerActor = item.opportunity.actors.find(
-          (a) => a.role === "introducer" && a.userId !== userId,
+        const viewerIsIntroducer = item.opportunity.actors.some(
+          (a) => a.role === "introducer" && a.userId === userId,
         );
-        if (introducerActor && ctx?.introducerName) {
+        if (viewerIsIntroducer) {
           narratorChip = {
-            name: ctx.introducerName,
+            name: "You",
             text: homeCard.narratorRemark,
-            userId: introducerActor.userId,
-            avatar: avatarByUserId.get(introducerActor.userId) ?? null,
+            userId: userId,
           };
         } else {
-          narratorChip = {
-            name: "Index",
-            text: homeCard.narratorRemark,
-          };
+          const introducerActor = item.opportunity.actors.find(
+            (a) => a.role === "introducer" && a.userId !== userId,
+          );
+          if (introducerActor && ctx?.introducerName) {
+            narratorChip = {
+              name: ctx.introducerName,
+              text: homeCard.narratorRemark,
+              userId: introducerActor.userId,
+              avatar: avatarByUserId.get(introducerActor.userId) ?? null,
+            };
+          } else {
+            narratorChip = {
+              name: "Index",
+              text: homeCard.narratorRemark,
+            };
+          }
         }
       }
 
@@ -414,6 +444,7 @@ async function enrichOpportunities(
 interface CachedDiscoverySession {
   candidates: CandidateMatch[];
   userId: string;
+  onBehalfOfUserId?: string;
   query: string;
   indexScope: string[];
   options: OpportunityGraphOptions;
@@ -436,6 +467,7 @@ export async function runDiscoverFromQuery(
     limit = 5,
     triggerIntentId,
     targetUserId,
+    onBehalfOfUserId,
     chatSessionId,
     contactsOnly,
   } = input;
@@ -478,6 +510,7 @@ export async function runDiscoverFromQuery(
         indexId: indexScope.length === 1 ? indexScope[0] : undefined,
         triggerIntentId,
         targetUserId,
+        onBehalfOfUserId,
         options,
         contactsOnly: contactsOnly ?? false,
       });
@@ -513,6 +546,7 @@ export async function runDiscoverFromQuery(
           await input.cache.set(cacheKey, {
             candidates: remainingCandidates,
             userId,
+            onBehalfOfUserId,
             query: queryOrEmpty,
             indexScope,
             options,
@@ -731,6 +765,7 @@ export async function continueDiscovery(input: {
     searchQuery: cached.query || undefined,
     candidates: cached.candidates,
     operationMode: 'continue_discovery' as const,
+    onBehalfOfUserId: cached.onBehalfOfUserId,
     options: {
       ...cached.options,
       limit,
