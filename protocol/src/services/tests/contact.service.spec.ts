@@ -98,7 +98,7 @@ describe('importContacts', () => {
     );
 
     expect(result.imported).toBe(3);
-    expect(result.newGhosts).toBe(2);
+    expect(result.newContacts).toBe(2);
     expect(result.skipped).toBe(0);
 
     // Track ghost IDs for cleanup
@@ -198,8 +198,8 @@ describe('importContacts', () => {
       ],
       'manual'
     );
-    // All contacts already exist, so no new ghosts
-    expect(result.newGhosts).toBe(0);
+    // All contacts already exist, so no new contacts
+    expect(result.newContacts).toBe(0);
     expect(result.imported).toBe(2);
   });
 });
@@ -231,7 +231,7 @@ describe('addContact', () => {
   it('adds a single contact by email', async () => {
     const result = await svc.addContact(ownerId, singleEmail, 'Single Contact');
     expect(result.imported).toBe(1);
-    expect(result.newGhosts).toBe(1);
+    expect(result.newContacts).toBe(1);
     for (const d of result.details) {
       if (d.isNew) createdGhostIds.push(d.userId);
     }

@@ -382,7 +382,7 @@ Draft or latent opportunities can be sent (update_opportunity with status='pendi
 \`\`\`
 import_gmail_contacts()
 → If not connected: returns { requiresAuth: true, authUrl: "..." } — share the URL with the user
-→ If connected: imports contacts directly and returns stats { imported, skipped, newGhosts }
+→ If connected: imports contacts directly and returns stats { imported, skipped, newContacts, existingContacts }
 \`\`\`
 
 Ghost users are contacts without accounts — they're enriched with public data (LinkedIn, GitHub, X) and can appear in opportunity discovery once enriched.

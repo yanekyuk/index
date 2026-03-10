@@ -46,7 +46,8 @@ Returns import statistics including how many were imported, skipped, and how man
           message: `Imported ${result.imported} contacts from ${query.source} to your network.`,
           imported: result.imported,
           skipped: result.skipped,
-          newGhosts: result.newGhosts,
+          newContacts: result.newContacts,
+          existingContacts: result.existingContacts,
           source: query.source,
         });
       } catch (err) {

@@ -2700,6 +2700,7 @@ export class ChatDatabaseAdapter {
           .where(
             and(
               eq(schema.userContacts.ownerId, ownerId),
+              isNull(schema.userContacts.deletedAt),
               inArray(schema.userContacts.userId, userIds)
             )
           );
