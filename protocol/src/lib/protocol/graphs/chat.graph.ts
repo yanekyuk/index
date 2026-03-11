@@ -151,6 +151,7 @@ export class ChatGraphFactory {
       maxContextMessages?: number;
       indexId?: string;
       contactsOnly?: boolean;
+      prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
     },
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,

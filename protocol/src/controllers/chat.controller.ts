@@ -27,6 +27,10 @@ const streamBodySchema = z.object({
   fileIds: z.array(z.string()).optional(),
   indexId: z.string().nullish(),
   contactsOnly: z.boolean().optional().default(false),
+  prefillMessages: z.array(z.object({
+    role: z.enum(["assistant", "user"]),
+    content: z.string(),
+  })).optional(),
 });
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
@@ -244,6 +248,7 @@ export class ChatController {
               maxContextMessages: 20,
               indexId: indexIdForStream,
               contactsOnly: body.contactsOnly ?? false,
+              prefillMessages: body.prefillMessages,
             },
             checkpointer,
             req.signal,
@@ -268,6 +273,17 @@ export class ChatController {
                   [event.subgraph]: event.data,
                 };
               }
+            }
+          }
+
+          // Persist prefill messages (e.g. onboarding greeting) only for newly created sessions
+          if (body.prefillMessages?.length && !body.sessionId) {
+            for (const pm of body.prefillMessages) {
+              await chatSessionService.addMessage({
+                sessionId,
+                role: pm.role,
+                content: pm.content,
+              });
             }
           }
 

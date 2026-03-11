@@ -110,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (authenticated && !user && !userFetchAttempted) return;
 
     const isHomePage = pathname === '/';
+    const isOnboardingPage = pathname === '/onboarding';
     const isPublicPage = pathname.startsWith('/simulation') || pathname.startsWith('/l') || pathname.startsWith('/index/') || pathname.startsWith('/blog') || pathname.startsWith('/pages') || pathname.startsWith('/about') || pathname.startsWith('/login') || pathname.startsWith('/s/');
     const isProtectedPage = pathname.startsWith('/i/');
 
@@ -118,6 +119,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (shouldRedirectToHome) {
       navigate('/');
       return;
+    }
+
+    // Force redirect to /onboarding when onboarding is not complete
+    if (authenticated && user && !user.onboarding?.completedAt) {
+      if (!isOnboardingPage && !isPublicPage) {
+        navigate('/onboarding', { replace: true });
+        return;
+      }
     }
 
     setIsLoading(false);

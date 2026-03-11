@@ -90,7 +90,7 @@ interface AIChatContextType {
     message: string,
     fileIds?: string[],
     attachmentNames?: string[],
-    options?: { hidden?: boolean },
+    options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> },
   ) => Promise<void>;
   /** Clear messages and session state. Use { abortStream: false } when navigating away so the in-flight stream can finish and the new session appears in the sidebar. */
   clearChat: (options?: { abortStream?: boolean }) => void;
@@ -132,7 +132,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const skipSessionUpdateForRequestRef = useRef(false);
 
   const sendMessage = useCallback(
-    async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean }) => {
+    async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> }) => {
       const displayContent =
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
@@ -181,6 +181,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           ...(fileIds?.length ? { fileIds } : {}),
           ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
           ...(contactsOnly ? { contactsOnly: true } : {}),
+          ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
         };
 
         const response = await apiClient.stream("/chat/stream", bodyPayload, {
