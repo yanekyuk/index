@@ -1,19 +1,28 @@
-import { eq, and, sql, desc, asc, min, max, count } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, ne, isNull, isNotNull, min, max, count } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
 import { canUserSeeOpportunity, isActionableForViewer } from '../lib/protocol/support/opportunity.utils';
-import { Controller, Get, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorators';
 import {
   intents,
   hydeDocuments,
   intentIndexes,
   indexes,
   indexMembers,
+  userProfiles,
   opportunities,
   chatSessions,
   chatMessages,
 } from '../schemas/database.schema';
+import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { EmbedderAdapter } from '../adapters/embedder.adapter';
+import { RedisCacheAdapter } from '../adapters/cache.adapter';
+import type { OpportunityGraphDatabase, HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
+import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
+import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { DebugGuard } from '../guards/debug.guard';
@@ -434,6 +443,202 @@ export class DebugController {
         bottleneck,
       },
     });
+  }
+
+  /**
+   * Runs the opportunity discovery pipeline for a specific intent and returns
+   * the full graph trace. Does NOT persist results — dry-run only.
+   * Use this to diagnose why background discovery produces no matches.
+   * @param _req - Incoming request (unused beyond guard processing)
+   * @param user - Authenticated user from AuthGuard
+   * @param params - Route params containing the intent `id`
+   * @returns Full discovery trace with candidates, evaluation, and persist results
+   */
+  @Post('/intents/:id/discover')
+  @UseGuards(DebugGuard, AuthGuard)
+  async runIntentDiscoveryDebug(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const intentId = params?.id;
+    if (!intentId) {
+      return Response.json({ error: 'Intent ID is required' }, { status: 400 });
+    }
+
+    logger.verbose('Intent discovery debug request', { intentId, userId: user.id });
+
+    // ── 1. Validate intent exists and belongs to user ───────────────────
+    const [intent] = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
+        hasEmbedding: sql<boolean>`${intents.embedding} IS NOT NULL`.as('has_embedding'),
+        archivedAt: intents.archivedAt,
+      })
+      .from(intents)
+      .where(and(eq(intents.id, intentId), eq(intents.userId, user.id)))
+      .limit(1);
+
+    if (!intent) {
+      return Response.json({ error: 'Intent not found' }, { status: 404 });
+    }
+
+    // ── 2. Gather pre-flight diagnostics ────────────────────────────────
+    const intentIndexRows = await db
+      .select({ indexId: intentIndexes.indexId, title: indexes.title })
+      .from(intentIndexes)
+      .innerJoin(indexes, eq(intentIndexes.indexId, indexes.id))
+      .where(eq(intentIndexes.intentId, intentId));
+
+    const userIndexRows = await db
+      .select({ indexId: indexMembers.indexId, title: indexes.title })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(eq(indexMembers.userId, user.id));
+
+    // Count other members in user's indexes (potential candidates)
+    const userIndexIds = userIndexRows.map((r) => r.indexId);
+    let otherMembersInIndexes = 0;
+    let otherMembersWithProfiles = 0;
+    let otherIntentsInIndexes = 0;
+    if (userIndexIds.length > 0) {
+      const [memberCount] = await db
+        .select({ count: count().as('count') })
+        .from(indexMembers)
+        .where(
+          and(
+            sql`${indexMembers.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            ne(indexMembers.userId, user.id),
+          ),
+        );
+      otherMembersInIndexes = memberCount?.count ?? 0;
+
+      const [profileCount] = await db
+        .select({ count: count().as('count') })
+        .from(userProfiles)
+        .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+        .where(
+          and(
+            sql`${indexMembers.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            ne(userProfiles.userId, user.id),
+            isNotNull(userProfiles.embedding),
+          ),
+        );
+      otherMembersWithProfiles = profileCount?.count ?? 0;
+
+      const [intentCount] = await db
+        .select({ count: count().as('count') })
+        .from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(
+          and(
+            sql`${intentIndexes.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            ne(intents.userId, user.id),
+            isNull(intents.archivedAt),
+            isNotNull(intents.embedding),
+          ),
+        );
+      otherIntentsInIndexes = intentCount?.count ?? 0;
+    }
+
+    const preflight = {
+      intent: {
+        id: intent.id,
+        text: intent.payload?.slice(0, 120),
+        hasEmbedding: intent.hasEmbedding,
+        isArchived: !!intent.archivedAt,
+        assignedToIndexes: intentIndexRows.map((r) => ({ indexId: r.indexId, title: r.title })),
+      },
+      userIndexes: userIndexRows.map((r) => ({ indexId: r.indexId, title: r.title })),
+      candidatePool: {
+        otherMembersInIndexes,
+        otherMembersWithProfiles,
+        otherIntentsInIndexes,
+      },
+    };
+
+    // ── 3. Bail early if no candidate pool ──────────────────────────────
+    if (userIndexIds.length === 0) {
+      return Response.json({
+        exportedAt: new Date().toISOString(),
+        preflight,
+        result: null,
+        diagnosis: 'User has no index memberships — cannot discover opportunities.',
+      });
+    }
+    if (otherMembersInIndexes === 0) {
+      return Response.json({
+        exportedAt: new Date().toISOString(),
+        preflight,
+        result: null,
+        diagnosis: 'No other members in user\'s indexes — no candidates to match against.',
+      });
+    }
+
+    // ── 4. Run the opportunity graph ────────────────────────────────────
+    try {
+      const database = new ChatDatabaseAdapter();
+      const graphDb = database as unknown as OpportunityGraphDatabase & HydeGraphDatabase;
+      const embedder = new EmbedderAdapter();
+      const cache = new RedisCacheAdapter();
+      const inferrer = new LensInferrer();
+      const generator = new HydeGenerator();
+      const hydeGraph = new HydeGraphFactory(graphDb, embedder, cache, inferrer, generator).createGraph();
+      const opportunityGraph = new OpportunityGraphFactory(graphDb, embedder, hydeGraph).createGraph();
+
+      const result = await opportunityGraph.invoke({
+        userId: user.id,
+        searchQuery: intent.payload,
+        operationMode: 'create' as const,
+        triggerIntentId: intentId,
+        options: { initialStatus: 'latent' },
+      });
+
+      const trace = Array.isArray(result.trace) ? result.trace : [];
+      const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+      const evaluatedOpportunities = Array.isArray(result.evaluatedOpportunities) ? result.evaluatedOpportunities : [];
+      const createdOpportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+
+      return Response.json({
+        exportedAt: new Date().toISOString(),
+        preflight,
+        result: {
+          discoverySource: result.discoverySource ?? null,
+          resolvedTriggerIntentId: result.resolvedTriggerIntentId ?? null,
+          resolvedIntentInIndex: result.resolvedIntentInIndex ?? false,
+          targetIndexes: result.targetIndexes ?? [],
+          candidatesFound: candidates.length,
+          candidates: candidates.slice(0, 20).map((c) => ({
+            userId: c.candidateUserId,
+            intentId: c.candidateIntentId ?? null,
+            indexId: c.indexId,
+            similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 1000) / 1000 : null,
+            lens: c.lens,
+            discoverySource: c.discoverySource,
+          })),
+          evaluatedCount: evaluatedOpportunities.length,
+          evaluatedOpportunities: evaluatedOpportunities.slice(0, 20).map((e) => ({
+            score: e.score,
+            reasoning: e.reasoning?.slice(0, 200) ?? null,
+            actors: e.actors,
+          })),
+          opportunitiesCreated: createdOpportunities.length,
+          opportunities: createdOpportunities.map((o) => ({
+            id: o.id,
+            status: o.status,
+            actors: o.actors,
+          })),
+          error: result.error ?? null,
+          trace,
+        },
+      });
+    } catch (err) {
+      logger.error('Intent discovery debug failed', { intentId, error: err });
+      return Response.json({
+        exportedAt: new Date().toISOString(),
+        preflight,
+        result: null,
+        diagnosis: `Graph execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      }, { status: 500 });
+    }
   }
 
   /**

@@ -187,11 +187,19 @@ export class IntentQueue implements IntentGraphQueue {
       this.logger.warn('[IntentHyde] Intent not found, skipping', { intentId });
       return;
     }
+    this.logger.info('[IntentHyde] Starting HyDE generation', {
+      intentId,
+      userId,
+      payload: intent.payload?.slice(0, 80),
+    });
+    let assignedIndexCount = 0;
     try {
       const userIndexIds = await db.getUserIndexIds(userId);
+      this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
       for (const indexId of userIndexIds) {
         try {
           await db.assignIntentToIndex(intentId, indexId);
+          assignedIndexCount++;
         } catch (assignErr) {
           this.logger.debug('[IntentHyde] Assign intent to index skipped', {
             intentId,
@@ -207,6 +215,7 @@ export class IntentQueue implements IntentGraphQueue {
         error: err,
       });
     }
+    this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount });
     if (this.deps?.invokeHyde) {
       await this.deps.invokeHyde({
         sourceText: intent.payload,
@@ -227,7 +236,7 @@ export class IntentQueue implements IntentGraphQueue {
         forceRegenerate: true,
       });
     }
-    this.logger.verbose('[IntentHyde] Generated HyDE for intent', { intentId, userId });
+    this.logger.info('[IntentHyde] HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });
     const addJob =
       overrides?.addOpportunityJob ??
       this.deps?.addOpportunityJob ??

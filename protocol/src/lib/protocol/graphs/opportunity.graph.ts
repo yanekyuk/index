@@ -1533,11 +1533,12 @@ export class OpportunityGraphFactory {
                 const existingIndexId = (existing.context?.indexId ?? state.indexId ?? state.userIndexes?.[0] ?? '') as Id<'indexes'>;
 
                 if (existing.status === 'expired') {
-                  const reactivated = await this.database.updateOpportunityStatus(existing.id, 'draft');
+                  const reactivated = await this.database.updateOpportunityStatus(existing.id, initialStatus);
                   if (reactivated) {
-                    logger.verbose('[Graph:Persist] Reactivated expired opportunity as draft', {
+                    logger.verbose('[Graph:Persist] Reactivated expired opportunity', {
                       opportunityId: existing.id,
                       candidateUserId,
+                      newStatus: initialStatus,
                     });
                     reactivatedOpportunities.push(reactivated);
                   }

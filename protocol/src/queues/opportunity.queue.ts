@@ -142,6 +142,12 @@ export class OpportunityQueue {
       this.logger.warn('[OpportunityDiscovery] Intent not found, skipping', { intentId });
       return;
     }
+    this.logger.info('[OpportunityDiscovery] Starting discovery', {
+      intentId,
+      userId,
+      searchQuery: intent.payload?.slice(0, 80),
+      indexIds,
+    });
     const invokeOpts: OpportunityGraphInvokeOptions = {
       userId: userId as Id<'users'>,
       searchQuery: intent.payload,
@@ -169,7 +175,24 @@ export class OpportunityQueue {
         embedder,
         hydeGraph
       ).createGraph();
-      await opportunityGraph.invoke(invokeOpts);
+      const result = await opportunityGraph.invoke(invokeOpts);
+
+      // Log the graph trace for background job visibility
+      const trace = Array.isArray(result.trace) ? result.trace : [];
+      const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+      const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+      this.logger.info('[OpportunityDiscovery] Graph trace', {
+        intentId,
+        userId,
+        candidatesFound: candidates.length,
+        opportunitiesCreated: opportunities.length,
+        error: result.error ?? null,
+        trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
+          node: t.node,
+          detail: t.detail,
+          ...(t.data ? { data: t.data } : {}),
+        })),
+      });
     }
     this.logger.verbose('[OpportunityDiscovery] Discovery complete for intent', { intentId, userId });
   }
