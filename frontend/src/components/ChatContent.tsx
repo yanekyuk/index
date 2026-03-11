@@ -1333,10 +1333,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     return (
       <div className="px-6 lg:px-8 bg-white pb-12">
         <ContentContainer className="text-left">
-          <div className="mt-12 mb-6">
+          <div className="mt-12 mb-6 flex items-center justify-center gap-2">
             <h1 className="text-[28px] font-bold text-black font-ibm-plex-mono text-center">
               Find your others
             </h1>
+            <DebugCopyButton fetchPath="/debug/home" title="Copy home debug JSON" iconSize="w-5 h-5" />
           </div>
           <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
             <form
