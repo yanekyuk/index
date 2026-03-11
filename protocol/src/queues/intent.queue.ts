@@ -187,11 +187,8 @@ export class IntentQueue implements IntentGraphQueue {
       this.logger.warn('[IntentHyde] Intent not found, skipping', { intentId });
       return;
     }
-    this.logger.info('[IntentHyde] Starting HyDE generation', {
-      intentId,
-      userId,
-      payload: intent.payload?.slice(0, 80),
-    });
+    this.logger.info('[IntentHyde] Starting HyDE generation', { intentId, userId });
+    this.logger.debug('[IntentHyde] Intent payload preview', { intentId, payload: intent.payload?.slice(0, 80) });
     let assignedIndexCount = 0;
     try {
       const userIndexIds = await db.getUserIndexIds(userId);

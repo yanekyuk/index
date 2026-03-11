@@ -447,7 +447,8 @@ export class DebugController {
 
   /**
    * Runs the opportunity discovery pipeline for a specific intent and returns
-   * the full graph trace. Does NOT persist results — dry-run only.
+   * the full graph trace. WARNING: This DOES persist results (creates/reactivates
+   * opportunities). Gated by DebugGuard (dev/staging only).
    * Use this to diagnose why background discovery produces no matches.
    * @param _req - Incoming request (unused beyond guard processing)
    * @param user - Authenticated user from AuthGuard

@@ -406,12 +406,16 @@ export class ChatAgent {
    */
   private detectHallucinatedBlock(
     text: string,
-    toolsUsed: Array<{ name: string }>,
+    toolsUsed: Array<{ name: string; success: boolean }>,
   ): { type: string; tool: string; description: string } | null {
-    const calledTools = new Set(toolsUsed.map((t) => t.name));
+    // Only trust successful create_intent calls — a failed attempt doesn't produce
+    // a valid proposalId, so a subsequent inline block is still hallucinated.
+    const hasSuccessfulCreateIntent = toolsUsed.some(
+      (t) => t.name === "create_intent" && t.success,
+    );
 
     // Check for hallucinated intent_proposal
-    if (text.includes("```intent_proposal") && !calledTools.has("create_intent")) {
+    if (text.includes("```intent_proposal") && !hasSuccessfulCreateIntent) {
       const match = text.match(/```intent_proposal\s*\n\s*\{[^}]*"description"\s*:\s*"([^"]+)"/);
       if (match) {
         return { type: "intent_proposal", tool: "create_intent", description: match[1] };

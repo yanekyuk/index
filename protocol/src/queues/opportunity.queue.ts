@@ -142,12 +142,8 @@ export class OpportunityQueue {
       this.logger.warn('[OpportunityDiscovery] Intent not found, skipping', { intentId });
       return;
     }
-    this.logger.info('[OpportunityDiscovery] Starting discovery', {
-      intentId,
-      userId,
-      searchQuery: intent.payload?.slice(0, 80),
-      indexIds,
-    });
+    this.logger.info('[OpportunityDiscovery] Starting discovery', { intentId, userId, indexIds });
+    this.logger.debug('[OpportunityDiscovery] Search query preview', { intentId, searchQuery: intent.payload?.slice(0, 80) });
     const invokeOpts: OpportunityGraphInvokeOptions = {
       userId: userId as Id<'users'>,
       searchQuery: intent.payload,
@@ -181,12 +177,20 @@ export class OpportunityQueue {
       const trace = Array.isArray(result.trace) ? result.trace : [];
       const candidates = Array.isArray(result.candidates) ? result.candidates : [];
       const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
-      this.logger.info('[OpportunityDiscovery] Graph trace', {
+      // Throw on graph error so BullMQ retries the job
+      if (result.error) {
+        this.logger.error('[OpportunityDiscovery] Graph failed', { intentId, userId, error: result.error });
+        throw new Error(typeof result.error === 'string' ? result.error : 'Opportunity discovery graph failed');
+      }
+
+      this.logger.info('[OpportunityDiscovery] Graph complete', {
         intentId,
         userId,
         candidatesFound: candidates.length,
         opportunitiesCreated: opportunities.length,
-        error: result.error ?? null,
+      });
+      this.logger.verbose('[OpportunityDiscovery] Graph trace', {
+        intentId,
         trace: trace.map((t: { node: string; detail?: string; data?: Record<string, unknown> }) => ({
           node: t.node,
           detail: t.detail,
