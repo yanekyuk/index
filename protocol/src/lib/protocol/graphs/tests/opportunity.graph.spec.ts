@@ -45,6 +45,7 @@ function createMockEvaluator(
 
 function createMockGraph(deps?: {
   getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+  getIndexMemberships?: () => Promise<Array<{ indexId: string; indexTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; joinedAt: Date }>>;
   getActiveIntents?: () => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
   getIndex?: (id: string) => Promise<{ id: string; title: string } | null>;
   getIndexMemberCount?: (id: string) => Promise<number>;
@@ -70,10 +71,10 @@ function createMockGraph(deps?: {
     getOpportunityBetweenActors: () => Promise.resolve(null),
     findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
-    getIndexMemberships: async () => {
+    getIndexMemberships: deps?.getIndexMemberships ?? (async () => {
       const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'indexes'>[];
       return ids.map(id => ({ indexId: id, indexTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() }));
-    },
+    }),
     getActiveIntents:
       deps?.getActiveIntents ??
       (() =>
@@ -136,6 +137,7 @@ function createMockGraphWithFnOverrides(deps?: {
   getActiveIntentsFn?: (userId: string) => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
   evaluatorResult?: EvaluatedOpportunityWithActors[];
   getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+  getIndexMemberships?: () => Promise<Array<{ indexId: string; indexTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; joinedAt: Date }>>;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     getProfile: (userId: string) =>
@@ -159,10 +161,10 @@ function createMockGraphWithFnOverrides(deps?: {
     getOpportunityBetweenActors: () => Promise.resolve(null),
     findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
-    getIndexMemberships: async () => {
+    getIndexMemberships: deps?.getIndexMemberships ?? (async () => {
       const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'indexes'>[];
       return ids.map(id => ({ indexId: id, indexTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() }));
-    },
+    }),
     getActiveIntents: (userId: string) =>
       deps?.getActiveIntentsFn
         ? deps.getActiveIntentsFn(userId)

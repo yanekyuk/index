@@ -91,14 +91,6 @@ export const ChatGraphState = Annotation.Root({
   }),
 
   /**
-   * When true, restrict discovery results to the user's imported contacts only.
-   */
-  contactsOnly: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
-  /**
    * Conversation history using LangGraph's built-in message reducer.
    * Includes: HumanMessage, AIMessage, ToolMessage, SystemMessage
    * Automatically handles message appending, ID management, and ordering.

@@ -26,7 +26,6 @@ const streamBodySchema = z.object({
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
   indexId: z.string().nullish(),
-  contactsOnly: z.boolean().optional().default(false),
 });
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
@@ -106,7 +105,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null, contactsOnly?: boolean }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null }",
           },
           { status: 400 },
         );
@@ -243,7 +242,6 @@ export class ChatController {
               sessionId,
               maxContextMessages: 20,
               indexId: indexIdForStream,
-              contactsOnly: body.contactsOnly ?? false,
             },
             checkpointer,
             req.signal,

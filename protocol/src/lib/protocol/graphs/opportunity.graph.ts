@@ -1703,7 +1703,10 @@ export class OpportunityGraphFactory {
               const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
               const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
               const idsToResolve = introducer ? [...partyIds, introducer.userId] : partyIds;
-              const actorIndexId = opp.actors[0]?.indexId;
+              // Use the counterpart's (non-viewer) indexId — it reflects where the match was found.
+              // actors[0] is typically the viewer with an arbitrary first-target-index value.
+              const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== state.userId);
+              const actorIndexId = counterpartActor?.indexId ?? opp.actors[0]?.indexId;
               const [indexRecord, ...profileAndUserPairs] = await Promise.all([
                 actorIndexId ? this.database.getIndex(actorIndexId) : Promise.resolve(null),
                 ...idsToResolve.map(async (uid: string) => {

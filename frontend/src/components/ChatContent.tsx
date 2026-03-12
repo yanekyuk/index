@@ -52,7 +52,7 @@ import { DynamicIcon, type IconName } from "lucide-react/dynamic";
 const USE_HOME_API = true;
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
-const CONTACTS_SCOPE_ID = "__contacts__";
+
 
 interface PendingFile {
   id: string;
@@ -376,7 +376,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeIndexId,
     sessionIndexId,
     updateSessionTitle,
-    setContactsOnly: setContactsOnlyContext,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -533,7 +532,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [proposalIdsKey]);
 
   // Index filter
-  const { selectedIndexIds, setSelectedIndexIds, contactsOnly, setContactsOnly } = useIndexFilter();
+  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();
   const selectedIndexId =
     selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
@@ -548,29 +547,19 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIndexSelect = useCallback(
     (indexId: string | null) => {
-      if (indexId === CONTACTS_SCOPE_ID) {
-        setContactsOnly(true);
-        setSelectedIndexIds([]);
-      } else if (indexId === null) {
-        setContactsOnly(false);
+      if (indexId === null) {
         setSelectedIndexIds([]);
       } else {
-        setContactsOnly(false);
         setSelectedIndexIds([indexId]);
       }
     },
-    [setSelectedIndexIds, setContactsOnly],
+    [setSelectedIndexIds],
   );
 
   // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
   useEffect(() => {
     setScopeIndexId(selectedIndexId);
   }, [selectedIndexId, setScopeIndexId]);
-
-  // Sync contactsOnly to chat context so backend receives contactsOnly flag
-  useEffect(() => {
-    setContactsOnlyContext(contactsOnly);
-  }, [contactsOnly, setContactsOnlyContext]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -1038,9 +1027,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               isInputMultiline ? "px-1.5" : "px-3",
             )}
           >
-            {contactsOnly ? (
-              <Users className="w-4 h-4" />
-            ) : selectedIndex?.isPersonal ? (
+            {selectedIndex?.isPersonal ? (
               <Users className="w-4 h-4" />
             ) : selectedIndex?.permissions?.joinPolicy ===
               "invite_only" ? (
@@ -1050,7 +1037,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
             )}
             {!isInputMultiline && (
               <span>
-                {contactsOnly ? "My Contacts" : selectedIndex?.title || "Everywhere"}
+                {selectedIndex?.title || "Everywhere"}
               </span>
             )}
             <ChevronDown
@@ -1075,24 +1062,11 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    selectedIndexIds.length === 0 && !contactsOnly &&
+                    selectedIndexIds.length === 0 &&
                       "text-gray-900 font-medium",
                   )}
                 >
                   <Globe className="w-4 h-4" /> Everywhere
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleIndexSelect(CONTACTS_SCOPE_ID);
-                    setIsIndexDropdownOpen(false);
-                  }}
-                  className={cn(
-                    "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    contactsOnly && "text-gray-900 font-medium",
-                  )}
-                >
-                  <Users className="w-4 h-4" /> My Contacts
                 </button>
                 {personalIndex && (
                   <button
