@@ -524,6 +524,17 @@ export class IntentGraphFactory {
 
               results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
               logger.verbose(`Created intent: ${created.id}`);
+
+              // Auto-assign to personal indexes where this user is a contact
+              try {
+                const personalIndexes = await this.database.getPersonalIndexesForContact(state.userId);
+                for (const { indexId } of personalIndexes) {
+                  await this.database.assignIntentToIndex(created.id, indexId);
+                }
+              } catch (err) {
+                logger.error('Failed to auto-assign intent to personal indexes', { intentId: created.id, error: err });
+              }
+
               this.intentQueue?.addGenerateHydeJob({ intentId: created.id, userId: state.userId }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );

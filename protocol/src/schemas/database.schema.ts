@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, unique } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, unique, check } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
@@ -279,7 +279,7 @@ export const indexes = pgTable('indexes', {
   prompt: text('prompt'),
   imageUrl: text('image_url'),
   isPersonal: boolean('is_personal').default(false).notNull(),
-  isGlobal: boolean('is_global').default(false).notNull(),
+  ownerId: text('owner_id').references(() => users.id),
   permissions: json('permissions').$type<{
     joinPolicy: 'anyone' | 'invite_only';
     invitationLink: { code: string } | null;
@@ -293,7 +293,8 @@ export const indexes = pgTable('indexes', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (t) => ({
-  globalUnique: uniqueIndex('indexes_is_global_unique').on(t.isGlobal).where(sql`is_global = true`),
+  personalOwnerUnique: uniqueIndex('indexes_is_personal_owner').on(t.isPersonal, t.ownerId).where(sql`is_personal = true`),
+  personalOwnerCheck: check('personal_owner_check', sql`NOT is_personal OR owner_id IS NOT NULL`),
 }));
 
 export const indexMembers = pgTable('index_members', {
@@ -323,8 +324,12 @@ export const files = pgTable('files', {
 export const intentIndexes = pgTable('intent_indexes', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   indexId: text('index_id').notNull().references(() => indexes.id),
+  relevancyScore: numeric('relevancy_score'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (t) => ({
+  pk: primaryKey({ columns: [t.intentId, t.indexId] }),
+  indexIdIdx: index('intent_indexes_index_id_idx').on(t.indexId),
+}));
 
 export const userIntegrations = pgTable('integrations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -446,10 +451,11 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
   }),
 }));
 
-export const indexesRelations = relations(indexes, ({ many }) => ({
+export const indexesRelations = relations(indexes, ({ many, one }) => ({
   members: many(indexMembers),
   intents: many(intentIndexes),
   integrations: many(userIntegrations),
+  owner: one(users, { fields: [indexes.ownerId], references: [users.id] }),
 }));
 
 export const indexMembersRelations = relations(indexMembers, ({ one }) => ({

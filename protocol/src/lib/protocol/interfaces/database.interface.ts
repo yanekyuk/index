@@ -677,7 +677,12 @@ export interface Database {
   /**
    * Assigns an intent to an index (inserts intent_indexes row).
    */
-  assignIntentToIndex(intentId: string, indexId: string): Promise<void>;
+  assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void>;
+
+  /**
+   * Returns per-index relevancy scores for an intent's index assignments.
+   */
+  getIntentIndexScores(intentId: string): Promise<Array<{ indexId: string; relevancyScore: number | null }>>;
 
   /**
    * Removes an intent from an index (deletes intent_indexes row).
@@ -1159,6 +1164,15 @@ export interface Database {
   /** Soft-delete a contact. */
   removeContact(ownerId: string, contactId: string): Promise<void>;
 
+  /**
+   * Returns the IDs of personal indexes where the given user is a contact member.
+   * Used for auto-assigning new intents to personal indexes of contacts who imported this user.
+   *
+   * @param userId - The user whose contact memberships to look up
+   * @returns Array of personal index IDs
+   */
+  getPersonalIndexesForContact(userId: string): Promise<{ indexId: string }[]>;
+
   /** Find a user by email. */
   getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null>;
 }
@@ -1237,7 +1251,7 @@ export interface UserDatabase {
   associateIntentWithIndexes(intentId: string, indexIds: string[]): Promise<void>;
 
   /** Assign an intent to an index. */
-  assignIntentToIndex(intentId: string, indexId: string): Promise<void>;
+  assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void>;
 
   /** Unassign an intent from an index. */
   unassignIntentFromIndex(intentId: string, indexId: string): Promise<void>;
@@ -1569,8 +1583,11 @@ export type ChatGraphCompositeDatabase = Pick<
   | 'assignIntentToIndex'
   | 'unassignIntentFromIndex'
   | 'getIndexIdsForIntent'
+  | 'getIntentIndexScores'
   // Contact Operations (for contacts-only discovery)
   | 'getContactUserIds'
+  // Personal index auto-assignment (used by intent graph executor)
+  | 'getPersonalIndexesForContact'
   // Index Ownership Operations (owner-only)
   | 'getOwnedIndexes'
   | 'isIndexOwner'
@@ -1605,10 +1622,13 @@ export type OpportunityGraphDatabase = Pick<
   | 'getOpportunityBetweenActors'
   | 'findOverlappingOpportunities'
   | 'getUserIndexIds'
+  | 'getIndexMemberships'
   | 'getActiveIntents'
   | 'getIndexIdsForIntent'
   | 'getIndex'
   | 'getIndexMemberCount'
+  | 'getIntentIndexScores'
+  | 'getIndexMemberContext'
   // Read/update/send modes
   | 'getOpportunity'
   | 'getOpportunitiesForUser'
@@ -1645,6 +1665,7 @@ export type OpportunityControllerDatabase = Pick<
   | 'getIndexMemberships'
   | 'getProfile'
   | 'getActiveIntents'
+  | 'upsertContact'
 >;
 
 /**
@@ -1667,6 +1688,9 @@ export type IntentGraphDatabase = Pick<
   | 'getUser'
   // Profile check (prepNode gate for write operations)
   | 'getProfile'
+  // Personal index auto-assignment
+  | 'getPersonalIndexesForContact'
+  | 'assignIntentToIndex'
 >;
 
 /**

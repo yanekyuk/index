@@ -178,9 +178,9 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `users` - User accounts (Better Auth)
 - `user_profiles` - User identity with vector embeddings (2000-dim, text-embedding-3-large)
 - `intents` - User intents with vector embeddings and confidence scores
-- `indexes` - Communities/collections of related intents
+- `indexes` - Communities/collections of related intents; personal indexes have `ownerId` and `isPersonal=true` (one per user, created on registration)
 - `index_members` - Membership with custom prompts and auto-assignment settings
-- `intent_indexes` - Many-to-many junction (intents ↔ indexes)
+- `intent_indexes` - Many-to-many junction (intents ↔ indexes) with composite PK and optional `relevancyScore` (0.0–1.0)
 - `files` / `user_integrations` - Source tracking for intents
 - `chat_sessions` / `chat_messages` - Chat session and message storage (chat graph, chat.service)
 - `user_notification_settings` - User notification preferences
@@ -325,6 +325,12 @@ confidence: number // 0-1
 inferenceType: 'explicit' | 'implicit'
 ```
 
+### Personal Indexes
+
+Each user has a personal index (`isPersonal=true`, `ownerId` set) created on registration. Personal indexes contain the user's imported contacts and are used for network-scoped discovery. Contacts synced into a personal index automatically become members with `'contact'` permissions. When a user accepts an opportunity, the counterpart is auto-added as a contact.
+
+Personal indexes cannot be deleted, renamed, or listed publicly. They are filtered from public index listings by guards.
+
 ### Index Prompts & Auto-Assignment
 
 ```typescript
@@ -337,6 +343,10 @@ indexMembers.autoAssign: boolean // Auto-tag new intents?
 ```
 
 LLM agents evaluate whether intents belong in indexes based on these prompts rather than hardcoded rules.
+
+### Relevancy Scoring (Intent-Index Attribution)
+
+When intents are assigned to indexes, an `IntentIndexer` agent scores the fit as `relevancyScore` (0.0–1.0). This score is used during opportunity discovery to break ties when a candidate appears across multiple shared indexes — the index with the highest relevancy to the trigger intent wins. Indexes without prompts default to score 1.0.
 
 ### Queue-Based Processing
 

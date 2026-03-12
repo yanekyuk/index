@@ -89,6 +89,12 @@ const createMockDatabase = (): IntentGraphDatabase => {
         narrative: { context: 'Experienced developer' },
         attributes: { skills: ['TypeScript'], interests: ['Web Dev'] },
       } as any;
+    },
+    async assignIntentToIndex(_intentId: string, _indexId: string): Promise<void> {
+      // no-op for tests
+    },
+    async getPersonalIndexesForContact(_userId: string): Promise<{ indexId: string }[]> {
+      return [];
     }
   };
 };

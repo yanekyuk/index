@@ -16,82 +16,76 @@ import { IndexMembershipEvents } from '../events/index_membership.event';
 
 const logger = log.lib.from('database.adapter');
 
-/** Cached global index ID (queried once, reused). */
-let _globalIndexId: string | null | undefined;
-
-/** Returns the ID of the single index with isGlobal=true, or null if none exists. */
-async function getGlobalIndexId(): Promise<string | null> {
-  if (_globalIndexId !== undefined) return _globalIndexId;
-  const row = await db
+/**
+ * Creates a personal index for the user if one doesn't exist.
+ * Adds the user as the owner member.
+ * @param userId - The user to create a personal index for
+ * @returns The personal index ID
+ */
+export async function ensurePersonalIndex(userId: string): Promise<string> {
+  const existing = await db
     .select({ id: schema.indexes.id })
     .from(schema.indexes)
-    .where(eq(schema.indexes.isGlobal, true))
-    .limit(1)
-    .then((rows) => rows[0]);
-  _globalIndexId = row?.id ?? null;
-  return _globalIndexId;
-}
-
-/**
- * Ensures a global index exists in the database. Creates one if missing.
- * Also backfills any users (real or ghost) who are not yet members.
- * Should be called once at server startup before accepting requests.
- */
-export async function ensureGlobalIndex(): Promise<string> {
-  let globalId = await getGlobalIndexId();
-
-  if (!globalId) {
-    globalId = crypto.randomUUID();
-    await db.insert(schema.indexes).values({
-      id: globalId,
-      title: 'Index Global',
-      prompt: 'The global index containing all users for network-wide discovery.',
-      isGlobal: true,
-    });
-    _globalIndexId = globalId;
-    logger.info('Global index created', { id: globalId });
-  }
-
-  // Backfill: register every non-deleted user who isn't already a member
-  const missing = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .leftJoin(
-      schema.indexMembers,
+    .where(
       and(
-        eq(schema.indexMembers.userId, schema.users.id),
-        eq(schema.indexMembers.indexId, globalId),
-      ),
+        eq(schema.indexes.isPersonal, true),
+        eq(schema.indexes.ownerId, userId),
+      )
     )
-    .where(and(
-      isNull(schema.users.deletedAt),
-      isNull(schema.indexMembers.userId),
-    ));
+    .limit(1);
 
-  if (missing.length > 0) {
-    await db
-      .insert(schema.indexMembers)
-      .values(missing.map(u => ({ indexId: globalId, userId: u.id, permissions: ['member'] as string[] })))
-      .onConflictDoNothing();
-    logger.info('Global index backfill complete', { added: missing.length });
-  } else {
-    logger.info('Global index up to date, no backfill needed', { id: globalId });
-  }
+  if (existing.length > 0) return existing[0].id;
 
-  return globalId;
+  const indexId = crypto.randomUUID();
+
+  await db.insert(schema.indexes).values({
+    id: indexId,
+    title: 'My Network',
+    prompt: 'Personal index containing the owner\'s imported contacts for network-scoped discovery.',
+    isPersonal: true,
+    ownerId: userId,
+  }).onConflictDoNothing();
+
+  await db.insert(schema.indexMembers).values({
+    indexId,
+    userId,
+    permissions: ['owner'],
+    autoAssign: false,
+  }).onConflictDoNothing();
+
+  // Re-query to return the actual persisted ID (handles race with concurrent calls)
+  const persisted = await db
+    .select({ id: schema.indexes.id })
+    .from(schema.indexes)
+    .where(
+      and(
+        eq(schema.indexes.isPersonal, true),
+        eq(schema.indexes.ownerId, userId),
+      )
+    )
+    .limit(1);
+
+  return persisted[0]?.id ?? indexId;
 }
 
 /**
- * Adds a user to the global index if they are not already a member.
- * Safe to call for any user (ghost or real) — uses onConflictDoNothing.
+ * Returns the personal index ID for a user.
+ * @param userId - The user to look up
+ * @returns The personal index ID, or null if not found
  */
-export async function ensureGlobalIndexMembership(userId: string): Promise<void> {
-  const globalIndexId = await getGlobalIndexId();
-  if (!globalIndexId) return;
-  await db
-    .insert(schema.indexMembers)
-    .values({ indexId: globalIndexId, userId, permissions: ['member'] })
-    .onConflictDoNothing();
+export async function getPersonalIndexId(userId: string): Promise<string | null> {
+  const result = await db
+    .select({ id: schema.indexes.id })
+    .from(schema.indexes)
+    .where(
+      and(
+        eq(schema.indexes.isPersonal, true),
+        eq(schema.indexes.ownerId, userId),
+      )
+    )
+    .limit(1);
+
+  return result[0]?.id ?? null;
 }
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
@@ -515,8 +509,32 @@ export class IntentDatabaseAdapter {
    * @returns Promise that resolves when the row is inserted.
    * @throws May throw on database insertion errors (db.insert/schema.intentIndexes).
    */
-  async assignIntentToIndex(intentId: string, indexId: string): Promise<void> {
-    await db.insert(schema.intentIndexes).values({ intentId, indexId });
+  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(schema.intentIndexes)
+      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .onConflictDoUpdate({
+        target: [schema.intentIndexes.intentId, schema.intentIndexes.indexId],
+        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+      });
+  }
+
+  /**
+   * Returns personal index IDs where the given user is a contact member.
+   * @param userId - The user whose contact memberships to look up
+   * @returns Array of personal index IDs
+   */
+  async getPersonalIndexesForContact(userId: string): Promise<{ indexId: string }[]> {
+    return db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .innerJoin(schema.indexes, eq(schema.indexes.id, schema.indexMembers.indexId))
+      .where(
+        and(
+          eq(schema.indexMembers.userId, userId),
+          eq(schema.indexes.isPersonal, true),
+          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+        )
+      );
   }
 
   /**
@@ -1057,7 +1075,13 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.indexMembers.userId, userId),
             isNull(schema.indexes.deletedAt),
-            eq(schema.indexes.isGlobal, false),
+            or(
+              eq(schema.indexes.isPersonal, false),
+              and(
+                eq(schema.indexes.isPersonal, true),
+                eq(schema.indexes.ownerId, userId),
+              )
+            ),
           )
         );
       return result;
@@ -1106,6 +1130,20 @@ export class ChatDatabaseAdapter {
     return row ? { id: row.id, title: row.title } : null;
   }
 
+  /**
+   * Check whether an index is a personal index.
+   * @param indexId - The index to check
+   * @returns true if the index has isPersonal = true
+   */
+  async isPersonalIndex(indexId: string): Promise<boolean> {
+    const rows = await db
+      .select({ isPersonal: schema.indexes.isPersonal })
+      .from(schema.indexes)
+      .where(and(eq(schema.indexes.id, indexId), isNull(schema.indexes.deletedAt)))
+      .limit(1);
+    return rows[0]?.isPersonal === true;
+  }
+
   async getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
     const rows = await db
       .select({ id: indexes.id, title: indexes.title, permissions: indexes.permissions })
@@ -1149,29 +1187,22 @@ export class ChatDatabaseAdapter {
         prompt: schema.indexes.prompt,
         imageUrl: schema.indexes.imageUrl,
         permissions: schema.indexes.permissions,
-        isGlobal: schema.indexes.isGlobal,
+        isPersonal: schema.indexes.isPersonal,
+        ownerId: schema.indexes.ownerId,
         createdAt: schema.indexes.createdAt,
         updatedAt: schema.indexes.updatedAt,
-        ownerId: schema.indexMembers.userId,
-        userName: schema.users.name,
-        userAvatar: schema.users.avatar,
+        ownerName: schema.users.name,
+        ownerAvatar: schema.users.avatar,
       })
       .from(schema.indexes)
-      .leftJoin(
-        schema.indexMembers,
-        and(
-          eq(schema.indexes.id, schema.indexMembers.indexId),
-          sql`'owner' = ANY(${schema.indexMembers.permissions})`
-        )
-      )
-      .leftJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+      .leftJoin(schema.users, eq(schema.indexes.ownerId, schema.users.id))
       .where(
         and(
           isNull(schema.indexes.deletedAt),
           inArray(schema.indexes.id, ids)
         )
       )
-      .orderBy(desc(schema.indexes.isGlobal), desc(schema.indexes.createdAt));
+      .orderBy(desc(schema.indexes.isPersonal), desc(schema.indexes.createdAt));
 
     const indexesWithCounts = await Promise.all(
       rows.map(async (row) => {
@@ -1185,13 +1216,13 @@ export class ChatDatabaseAdapter {
           prompt: row.prompt,
           imageUrl: row.imageUrl,
           permissions: row.permissions,
-          isGlobal: row.isGlobal,
+          isPersonal: row.isPersonal,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
             id: row.ownerId ?? '',
-            name: row.userName ?? 'System',
-            avatar: row.userAvatar ?? null,
+            name: row.ownerName ?? 'System',
+            avatar: row.ownerAvatar ?? null,
           },
           _count: {
             members: Number(memberCount?.count ?? 0),
@@ -1225,8 +1256,9 @@ export class ChatDatabaseAdapter {
     
     const whereConditions = [
       isNull(schema.indexes.deletedAt),
+      eq(schema.indexes.isPersonal, false),
     ];
-    
+
     if (excludeIds.length > 0) {
       whereConditions.push(notInArray(schema.indexes.id, excludeIds));
     }
@@ -1411,8 +1443,27 @@ export class ChatDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async assignIntentToIndex(intentId: string, indexId: string): Promise<void> {
-    await db.insert(intentIndexes).values({ intentId, indexId });
+  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(intentIndexes)
+      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .onConflictDoUpdate({
+        target: [intentIndexes.intentId, intentIndexes.indexId],
+        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+      });
+  }
+
+  async getIntentIndexScores(intentId: string): Promise<Array<{ indexId: string; relevancyScore: number | null }>> {
+    const rows = await db
+      .select({
+        indexId: intentIndexes.indexId,
+        relevancyScore: intentIndexes.relevancyScore,
+      })
+      .from(intentIndexes)
+      .where(eq(intentIndexes.intentId, intentId));
+    return rows.map(r => ({
+      indexId: r.indexId,
+      relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
+    }));
   }
 
   async unassignIntentFromIndex(intentId: string, indexId: string): Promise<void> {
@@ -2335,7 +2386,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Create a ghost user (unregistered contact) with empty profile and Index Global membership.
+   * Create a ghost user (unregistered contact) with empty profile.
    * @param data - Name and email for the ghost user
    * @returns The created ghost user's ID
    */
@@ -2352,19 +2403,6 @@ export class ChatDatabaseAdapter {
     await db.insert(schema.userProfiles).values({
       userId: id,
     });
-
-    // Add to Index Global if one exists
-    const globalIndexId = await getGlobalIndexId();
-    if (globalIndexId) {
-      await db
-        .insert(schema.indexMembers)
-        .values({
-          indexId: globalIndexId,
-          userId: id,
-          permissions: ['member'],
-        })
-        .onConflictDoNothing();
-    }
 
     return { id };
   }
@@ -2446,13 +2484,77 @@ export class ChatDatabaseAdapter {
    * @param contactId - The contact record ID
    */
   async removeContact(ownerId: string, contactId: string): Promise<void> {
-    await db
-      .update(schema.userContacts)
-      .set({ deletedAt: new Date() })
+    await db.transaction(async (tx) => {
+      // Look up the contact's userId before soft-deleting
+      const [contact] = await tx
+        .select({ userId: schema.userContacts.userId })
+        .from(schema.userContacts)
+        .where(
+          and(
+            eq(schema.userContacts.id, contactId),
+            eq(schema.userContacts.ownerId, ownerId),
+          )
+        );
+
+      // Soft-delete the contact
+      await tx
+        .update(schema.userContacts)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(schema.userContacts.id, contactId),
+            eq(schema.userContacts.ownerId, ownerId)
+          )
+        );
+
+      // Clean up personal index membership and intent assignments
+      if (contact) {
+        const personalIndexId = await getPersonalIndexId(ownerId);
+        if (personalIndexId) {
+          await tx.delete(schema.indexMembers)
+            .where(
+              and(
+                eq(schema.indexMembers.indexId, personalIndexId),
+                eq(schema.indexMembers.userId, contact.userId),
+                sql`${schema.indexMembers.permissions} = ARRAY['contact']`,
+              )
+            );
+
+          // Remove contact's intents from the personal index
+          const contactIntentIds = await tx
+            .select({ id: schema.intents.id })
+            .from(schema.intents)
+            .where(eq(schema.intents.userId, contact.userId));
+
+          if (contactIntentIds.length > 0) {
+            await tx.delete(schema.intentIndexes)
+              .where(
+                and(
+                  eq(schema.intentIndexes.indexId, personalIndexId),
+                  inArray(schema.intentIndexes.intentId, contactIntentIds.map(i => i.id)),
+                )
+              );
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Returns personal index IDs where the given user is a contact member.
+   * @param userId - The user whose contact memberships to look up
+   * @returns Array of personal index IDs
+   */
+  async getPersonalIndexesForContact(userId: string): Promise<{ indexId: string }[]> {
+    return db
+      .select({ indexId: schema.indexMembers.indexId })
+      .from(schema.indexMembers)
+      .innerJoin(schema.indexes, eq(schema.indexes.id, schema.indexMembers.indexId))
       .where(
         and(
-          eq(schema.userContacts.id, contactId),
-          eq(schema.userContacts.ownerId, ownerId)
+          eq(schema.indexMembers.userId, userId),
+          eq(schema.indexes.isPersonal, true),
+          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
         )
       );
   }
@@ -2513,14 +2615,13 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Bulk create ghost users with empty profiles and Index Global membership.
+   * Bulk create ghost users with empty profiles.
    * @param data - Array of {name, email} for ghost users
    * @returns Array of created ghost users with their IDs
    */
   async createGhostUsersBulk(data: Array<{ name: string; email: string }>): Promise<Array<{ id: string; name: string; email: string }>> {
     if (data.length === 0) return [];
 
-    const globalIndexId = await getGlobalIndexId();
     const results: Array<{ id: string; name: string; email: string }> = [];
 
     // Create users
@@ -2554,18 +2655,6 @@ export class ChatDatabaseAdapter {
         .filter(u => actuallyCreatedIds.has(u.id))
         .map(u => ({ userId: u.id }));
       await db.insert(schema.userProfiles).values(profilesToInsert);
-
-      // Add to Index Global if configured
-      if (globalIndexId) {
-        const membersToInsert = usersToInsert
-          .filter(u => actuallyCreatedIds.has(u.id))
-          .map(u => ({
-            indexId: globalIndexId,
-            userId: u.id,
-            permissions: ['member'] as string[],
-          }));
-        await db.insert(schema.indexMembers).values(membersToInsert).onConflictDoNothing();
-      }
     }
 
     // Return results with correct IDs (actual DB IDs, not our generated ones)
@@ -2629,8 +2718,6 @@ export class ChatDatabaseAdapter {
       // Create ghost users
       const newGhosts: Array<{ id: string; name: string; email: string }> = [];
       if (ghosts.length > 0) {
-        const globalIndexId = await getGlobalIndexId();
-
         const usersToInsert = ghosts.map(d => ({
           id: crypto.randomUUID(),
           name: d.name,
@@ -2658,17 +2745,6 @@ export class ChatDatabaseAdapter {
             .filter(u => actuallyCreatedIds.has(u.id))
             .map(u => ({ userId: u.id }));
           await tx.insert(schema.userProfiles).values(profilesToInsert);
-
-          if (globalIndexId) {
-            const membersToInsert = usersToInsert
-              .filter(u => actuallyCreatedIds.has(u.id))
-              .map(u => ({
-                indexId: globalIndexId,
-                userId: u.id,
-                permissions: ['member'] as string[],
-              }));
-            await tx.insert(schema.indexMembers).values(membersToInsert).onConflictDoNothing();
-          }
         }
 
         for (const u of usersToInsert) {
@@ -2719,6 +2795,48 @@ export class ChatDatabaseAdapter {
               deletedAt: null,
             },
           });
+
+        // Sync new contacts to the owner's personal index
+        const newContactUserIds = contactsToUpsert
+          .filter(c => !existingUserIds.has(c.userId))
+          .map(c => c.userId);
+
+        if (newContactUserIds.length > 0) {
+          const personalIndexId = await getPersonalIndexId(ownerId);
+          if (personalIndexId) {
+            // Add new contacts as members of the personal index
+            const contactMemberValues = newContactUserIds.map(userId => ({
+              indexId: personalIndexId,
+              userId,
+              permissions: ['contact'] as string[],
+              autoAssign: false,
+            }));
+            await tx.insert(schema.indexMembers)
+              .values(contactMemberValues)
+              .onConflictDoNothing();
+
+            // Backfill active intents for new contacts into the personal index
+            const contactIntents = await tx
+              .select({ id: schema.intents.id })
+              .from(schema.intents)
+              .where(
+                and(
+                  inArray(schema.intents.userId, newContactUserIds),
+                  eq(schema.intents.status, 'ACTIVE'),
+                  isNull(schema.intents.archivedAt),
+                )
+              );
+
+            if (contactIntents.length > 0) {
+              await tx.insert(schema.intentIndexes)
+                .values(contactIntents.map(i => ({
+                  intentId: i.id,
+                  indexId: personalIndexId,
+                })))
+                .onConflictDoNothing();
+            }
+          }
+        }
       }
 
       return { newGhosts, newContacts };
@@ -3041,19 +3159,13 @@ export class OpportunityDatabaseAdapter {
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.indexId) {
-      // Global index means "show everything" — skip index filter.
-      const globalId = await getGlobalIndexId();
-      if (options.indexId !== globalId) {
-        // Match by context indexId OR any actor with this indexId (background-created
-        // opportunities may lack context.indexId but actors always carry it).
-        conditions.push(sql`(
-          ${opportunities.context}->>'indexId' = ${options.indexId}
-          OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
-            WHERE actor->>'indexId' = ${options.indexId}
-          )
-        )`);
-      }
+      conditions.push(sql`(
+        ${opportunities.context}->>'indexId' = ${options.indexId}
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+          WHERE actor->>'indexId' = ${options.indexId}
+        )
+      )`);
     }
     let q = db
       .select()
@@ -3363,8 +3475,13 @@ export class IndexGraphDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async assignIntentToIndex(intentId: string, indexId: string): Promise<void> {
-    await db.insert(intentIndexes).values({ intentId, indexId });
+  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(intentIndexes)
+      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+      .onConflictDoUpdate({
+        target: [intentIndexes.intentId, intentIndexes.indexId],
+        set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
+      });
   }
 
   async unassignIntentFromIndex(intentId: string, indexId: string): Promise<void> {
@@ -4250,11 +4367,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
         await db.assignIntentToIndex(intentId, indexId);
       }
     },
-    assignIntentToIndex: async (intentId, indexId) => {
+    assignIntentToIndex: async (intentId, indexId, relevancyScore?) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.assignIntentToIndex(intentId, indexId);
+      return db.assignIntentToIndex(intentId, indexId, relevancyScore);
     },
     unassignIntentFromIndex: async (intentId, indexId) => {
       const intent = await db.getIntent(intentId);
@@ -4342,14 +4459,20 @@ export function createSystemDatabase(
     if (userId === authUserId) return true;
     const theirMemberships = await db.getIndexMemberships(userId);
     if (theirMemberships.some((m) => indexScope.includes(m.indexId))) return true;
-    // getIndexMemberships excludes the global index from user-facing listings,
-    // but both users may share only the global index (e.g. ghost contacts).
-    const globalId = await getGlobalIndexId();
-    if (!globalId) return false;
-    const theirGlobalMembership = await db.getIndexMembership(globalId, userId);
-    if (!theirGlobalMembership) return false;
-    const myGlobalMembership = await db.getIndexMembership(globalId, authUserId);
-    return !!myGlobalMembership;
+
+    // Check if either user's personal index contains the other as a contact
+    const myPersonalId = await getPersonalIndexId(authUserId);
+    const theirPersonalId = await getPersonalIndexId(userId);
+
+    if (myPersonalId) {
+      const theirMembership = await db.getIndexMembership(myPersonalId, userId);
+      if (theirMembership) return true;
+    }
+    if (theirPersonalId) {
+      const myMembership = await db.getIndexMembership(theirPersonalId, authUserId);
+      if (myMembership) return true;
+    }
+    return false;
   };
 
   return {

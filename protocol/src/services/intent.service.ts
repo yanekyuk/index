@@ -166,6 +166,20 @@ export class IntentService {
       }
     }
 
+    // Auto-assign to personal indexes where this user is a contact
+    try {
+      const personalIndexes = await this.adapter.getPersonalIndexesForContact(userId);
+      for (const { indexId: pIndexId } of personalIndexes) {
+        await this.adapter.assignIntentToIndex(created.id, pIndexId);
+      }
+    } catch (err) {
+      logger.warn('[IntentService] Failed to auto-assign intent to personal indexes', {
+        intentId: created.id,
+        userId,
+        error: err,
+      });
+    }
+
     try {
       await intentQueue.addGenerateHydeJob({ intentId: created.id, userId });
     } catch (err) {

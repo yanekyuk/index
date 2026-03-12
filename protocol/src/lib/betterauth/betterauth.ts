@@ -26,7 +26,7 @@ export interface AuthDeps {
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
   ensureWallet?: (userId: string) => Promise<void>;
-  ensureGlobalIndexMembership?: (userId: string) => Promise<void>;
+  ensurePersonalIndex?: (userId: string) => Promise<string>;
 }
 
 /**
@@ -35,7 +35,7 @@ export interface AuthDeps {
  * follows the project layering rules (lib receives adapters via injection).
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, ensureWallet, ensureGlobalIndexMembership } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, ensureWallet, ensurePersonalIndex } = deps;
 
   /**
    * Tracks ghost IDs that were freed in `create.before` so `create.after` can claim them.
@@ -68,8 +68,8 @@ export function createAuth(deps: AuthDeps) {
             } catch (_) { /* wallet generation failure shouldn't block registration */ }
 
             try {
-              if (ensureGlobalIndexMembership) await ensureGlobalIndexMembership(user.id);
-            } catch (_) { /* global index membership failure shouldn't block registration */ }
+              if (ensurePersonalIndex) await ensurePersonalIndex(user.id);
+            } catch (_) { /* personal index creation failure shouldn't block registration */ }
 
             const ghostId = pendingGhostClaims.get(user.id);
             if (ghostId) {

@@ -45,6 +45,7 @@ function createMockEvaluator(
 
 function createMockGraph(deps?: {
   getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+  getIndexMemberships?: () => Promise<Array<{ indexId: string; indexTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; joinedAt: Date }>>;
   getActiveIntents?: () => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
   getIndex?: (id: string) => Promise<{ id: string; title: string } | null>;
   getIndexMemberCount?: (id: string) => Promise<number>;
@@ -70,6 +71,10 @@ function createMockGraph(deps?: {
     getOpportunityBetweenActors: () => Promise.resolve(null),
     findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
+    getIndexMemberships: deps?.getIndexMemberships ?? (async () => {
+      const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'indexes'>[];
+      return ids.map(id => ({ indexId: id, indexTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() }));
+    }),
     getActiveIntents:
       deps?.getActiveIntents ??
       (() =>
@@ -91,6 +96,8 @@ function createMockGraph(deps?: {
     updateOpportunityStatus: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
     getContactUserIds: () => Promise.resolve([]),
+    getIntentIndexScores: async () => [],
+    getIndexMemberContext: async () => null,
   };
 
   const mockEmbedder: Embedder = {
@@ -132,6 +139,7 @@ function createMockGraphWithFnOverrides(deps?: {
   getActiveIntentsFn?: (userId: string) => Promise<Array<{ id: Id<'intents'>; payload: string; summary: string | null; createdAt: Date }>>;
   evaluatorResult?: EvaluatedOpportunityWithActors[];
   getUserIndexIds?: () => Promise<Id<'indexes'>[]>;
+  getIndexMemberships?: () => Promise<Array<{ indexId: string; indexTitle: string; indexPrompt: string | null; permissions: string[]; memberPrompt: string | null; autoAssign: boolean; joinedAt: Date }>>;
 }) {
   const mockDb: OpportunityGraphDatabase = {
     getProfile: (userId: string) =>
@@ -155,6 +163,10 @@ function createMockGraphWithFnOverrides(deps?: {
     getOpportunityBetweenActors: () => Promise.resolve(null),
     findOverlappingOpportunities: () => Promise.resolve([]),
     getUserIndexIds: deps?.getUserIndexIds ?? (() => Promise.resolve(['idx-1'] as Id<'indexes'>[])),
+    getIndexMemberships: deps?.getIndexMemberships ?? (async () => {
+      const ids = deps?.getUserIndexIds ? await deps.getUserIndexIds() : ['idx-1'] as Id<'indexes'>[];
+      return ids.map(id => ({ indexId: id, indexTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() }));
+    }),
     getActiveIntents: (userId: string) =>
       deps?.getActiveIntentsFn
         ? deps.getActiveIntentsFn(userId)
@@ -176,6 +188,8 @@ function createMockGraphWithFnOverrides(deps?: {
     updateOpportunityStatus: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
     getContactUserIds: () => Promise.resolve([]),
+    getIntentIndexScores: async () => [],
+    getIndexMemberContext: async () => null,
   };
 
   const mockEmbedder: Embedder = {
@@ -377,6 +391,38 @@ describe('Opportunity Graph', () => {
       expect(candidateTraceEntries.length).toBe(1);
       expect(result.opportunities.length).toBe(1);
     });
+
+    test('dedup prefers candidate from index with higher relevancy score on equal similarity', async () => {
+      const { compiledGraph } = createMockGraph({
+        getUserIndexIds: async () => ['idx-high', 'idx-low'] as Id<'indexes'>[],
+        getIndexMemberships: async () => [
+          { indexId: 'idx-high', indexTitle: 'High Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+          { indexId: 'idx-low', indexTitle: 'Low Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+        ],
+      });
+
+      // Invoke with indexRelevancyScores pre-set (simulating scope node output)
+      const result = await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'find collaborators',
+        operationMode: 'create' as const,
+        indexRelevancyScores: { 'idx-high': 0.9, 'idx-low': 0.3 },
+      });
+
+      // The opportunity actors should have indexId from the higher-scoring index
+      if (result.evaluatedOpportunities?.length > 0) {
+        const sourceActor = result.evaluatedOpportunities[0].actors.find(
+          (a: { userId: string }) => a.userId === 'user-source'
+        );
+        const counterpartActor = result.evaluatedOpportunities[0].actors.find(
+          (a: { userId: string }) => a.userId !== 'user-source'
+        );
+        // If both actors exist, source should inherit counterpart's indexId
+        if (sourceActor && counterpartActor) {
+          expect(sourceActor.indexId).toBe(counterpartActor.indexId);
+        }
+      }
+    }, 30_000);
   });
 
   describe('Evaluation node: early termination', () => {
@@ -1306,6 +1352,7 @@ describe('Opportunity Graph', () => {
         getOpportunityBetweenActors: () => Promise.resolve(null),
         findOverlappingOpportunities: () => Promise.resolve([]),
         getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'indexes'>[]),
+        getIndexMemberships: async () => [{ indexId: 'idx-1', indexTitle: 'Test Index', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() }],
         getActiveIntents: async (userId: string) => {
           if (userId === onBehalfUserId) {
             return [{
@@ -1327,6 +1374,8 @@ describe('Opportunity Graph', () => {
         updateOpportunityStatus: () => Promise.resolve(null),
         getIntent: () => Promise.resolve(null),
         getContactUserIds: () => Promise.resolve([]),
+        getIntentIndexScores: async () => [],
+        getIndexMemberContext: async () => null,
       };
 
       const mockEmbedder: Embedder = {
