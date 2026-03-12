@@ -9,6 +9,7 @@ import type { IntentGraphQueue } from '../lib/protocol/interfaces/queue.interfac
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
+import { IntentIndexer } from '../lib/protocol/agents/intent.indexer';
 import { opportunityQueue } from './opportunity.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -31,7 +32,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToIndex' | 'deleteHydeDocumentsForSource'
+  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToIndex' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext'
 >;
 
 /**
@@ -193,16 +194,64 @@ export class IntentQueue implements IntentGraphQueue {
     try {
       const userIndexIds = await db.getUserIndexIds(userId);
       this.logger.info('[IntentHyde] User indexes found', { intentId, userId, indexCount: userIndexIds.length, indexIds: userIndexIds });
-      for (const indexId of userIndexIds) {
+
+      // Fetch prompts for each index to determine which need scoring
+      const indexContexts = await Promise.all(
+        userIndexIds.map(async (indexId) => {
+          const ctx = await db.getIndexMemberContext(indexId, userId);
+          return { indexId, ctx };
+        })
+      );
+
+      // Split: no-prompt indexes get score 1.0, others need IntentIndexer
+      const noPromptIndexes = indexContexts.filter(
+        ({ ctx }) => !ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()
+      );
+      const scorableIndexes = indexContexts.filter(
+        ({ ctx }) => ctx?.indexPrompt?.trim() || ctx?.memberPrompt?.trim()
+      );
+
+      // Assign no-prompt indexes with default score
+      for (const { indexId } of noPromptIndexes) {
         try {
-          await db.assignIntentToIndex(intentId, indexId);
+          await db.assignIntentToIndex(intentId, indexId, 1.0);
           assignedIndexCount++;
         } catch (assignErr) {
-          this.logger.debug('[IntentHyde] Assign intent to index skipped', {
-            intentId,
-            indexId,
-            error: assignErr,
-          });
+          this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, indexId, error: assignErr });
+        }
+      }
+
+      // Score and assign scorable indexes in parallel
+      if (scorableIndexes.length > 0) {
+        const indexer = new IntentIndexer();
+        const scoringResults = await Promise.all(
+          scorableIndexes.map(async ({ indexId, ctx }) => {
+            try {
+              const result = await indexer.invoke(
+                intent.payload,
+                ctx?.indexPrompt ?? null,
+                ctx?.memberPrompt ?? null,
+              );
+              const score = result
+                ? (ctx?.indexPrompt && ctx?.memberPrompt
+                    ? result.indexScore * 0.6 + result.memberScore * 0.4
+                    : ctx?.indexPrompt ? result.indexScore : result.memberScore)
+                : 1.0;
+              return { indexId, score };
+            } catch (err) {
+              this.logger.warn('[IntentHyde] IntentIndexer failed for index, using default score', { intentId, indexId, error: err });
+              return { indexId, score: 1.0 };
+            }
+          })
+        );
+
+        for (const { indexId, score } of scoringResults) {
+          try {
+            await db.assignIntentToIndex(intentId, indexId, score);
+            assignedIndexCount++;
+          } catch (assignErr) {
+            this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, indexId, error: assignErr });
+          }
         }
       }
     } catch (err) {
