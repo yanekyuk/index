@@ -2990,19 +2990,13 @@ export class OpportunityDatabaseAdapter {
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     if (options?.indexId) {
-      // Global index means "show everything" — skip index filter.
-      const globalId = await getGlobalIndexId();
-      if (options.indexId !== globalId) {
-        // Match by context indexId OR any actor with this indexId (background-created
-        // opportunities may lack context.indexId but actors always carry it).
-        conditions.push(sql`(
-          ${opportunities.context}->>'indexId' = ${options.indexId}
-          OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
-            WHERE actor->>'indexId' = ${options.indexId}
-          )
-        )`);
-      }
+      conditions.push(sql`(
+        ${opportunities.context}->>'indexId' = ${options.indexId}
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
+          WHERE actor->>'indexId' = ${options.indexId}
+        )
+      )`);
     }
     let q = db
       .select()
