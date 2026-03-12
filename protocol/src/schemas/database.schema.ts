@@ -324,6 +324,7 @@ export const files = pgTable('files', {
 export const intentIndexes = pgTable('intent_indexes', {
   intentId: text('intent_id').notNull().references(() => intents.id),
   indexId: text('index_id').notNull().references(() => indexes.id),
+  relevancyScore: numeric('relevancy_score'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.intentId, t.indexId] }),
