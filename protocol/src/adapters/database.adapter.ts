@@ -1039,7 +1039,13 @@ export class ChatDatabaseAdapter {
           and(
             eq(schema.indexMembers.userId, userId),
             isNull(schema.indexes.deletedAt),
-            eq(schema.indexes.isGlobal, false),
+            or(
+              eq(schema.indexes.isPersonal, false),
+              and(
+                eq(schema.indexes.isPersonal, true),
+                eq(schema.indexes.ownerId, userId),
+              )
+            ),
           )
         );
       return result;
@@ -4285,14 +4291,20 @@ export function createSystemDatabase(
     if (userId === authUserId) return true;
     const theirMemberships = await db.getIndexMemberships(userId);
     if (theirMemberships.some((m) => indexScope.includes(m.indexId))) return true;
-    // getIndexMemberships excludes the global index from user-facing listings,
-    // but both users may share only the global index (e.g. ghost contacts).
-    const globalId = await getGlobalIndexId();
-    if (!globalId) return false;
-    const theirGlobalMembership = await db.getIndexMembership(globalId, userId);
-    if (!theirGlobalMembership) return false;
-    const myGlobalMembership = await db.getIndexMembership(globalId, authUserId);
-    return !!myGlobalMembership;
+
+    // Check if either user's personal index contains the other as a contact
+    const myPersonalId = await getPersonalIndexId(authUserId);
+    const theirPersonalId = await getPersonalIndexId(userId);
+
+    if (myPersonalId) {
+      const theirMembership = await db.getIndexMembership(myPersonalId, userId);
+      if (theirMembership) return true;
+    }
+    if (theirPersonalId) {
+      const myMembership = await db.getIndexMembership(theirPersonalId, authUserId);
+      if (myMembership) return true;
+    }
+    return false;
   };
 
   return {
