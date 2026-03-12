@@ -48,5 +48,5 @@ INSERT INTO intent_indexes (intent_id, index_id, created_at)
 SELECT int.id, i.id, NOW()
 FROM user_contacts uc
 JOIN indexes i ON i.owner_id = uc.owner_id AND i.is_personal = true
-JOIN intents int ON int.user_id = uc.user_id AND int.status = 'ACTIVE' AND int.deleted_at IS NULL
+JOIN intents int ON int.user_id = uc.user_id AND int.status = 'ACTIVE' AND int.archived_at IS NULL
 WHERE uc.deleted_at IS NULL ON CONFLICT DO NOTHING;
