@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,35 @@ import IntentProposalCard, {
 } from "@/components/chat/IntentProposalCard";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
+import { MentionsTextInput } from "@/components/MentionsInput";
 import { cn } from "@/lib/utils";
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { Suggestion } from "@/hooks/useSuggestions";
+
+/** Step-specific suggestions for onboarding. */
+const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
+  identity: [
+    { label: "Yes, that's me!", type: "direct", followupText: "Yes, that's me!" },
+    { label: "No, here's my LinkedIn", type: "prompt", prefill: "No, here's my LinkedIn: " },
+    { label: "No, here's my Twitter", type: "prompt", prefill: "No, here's my Twitter: " },
+  ],
+  profile: [
+    { label: "Sounds great!", type: "direct", followupText: "Sounds great!" },
+    { label: "That's right", type: "direct", followupText: "That's right" },
+    { label: "No, let me fix that", type: "prompt", prefill: "No, let me fix that: " },
+    { label: "Add more about my work", type: "direct", followupText: "Can you add more details about my work?" },
+  ],
+  communities: [
+    { label: "Skip for now", type: "direct", followupText: "I'll skip for now" },
+    { label: "Tell me more", type: "direct", followupText: "Tell me more about these communities" },
+  ],
+  intent: [
+    { label: "Building something", type: "prompt", prefill: "Building something " },
+    { label: "Exploring partnerships", type: "prompt", prefill: "Exploring partnerships " },
+    { label: "Hiring", type: "prompt", prefill: "Hiring " },
+    { label: "Raising", type: "prompt", prefill: "Raising " },
+  ],
+};
 
 const GREETING_TEMPLATE = `Hey, I'm Index. I help the right people find you — and help you find them.
 
@@ -227,7 +253,6 @@ export default function OnboardingPage() {
     isLoading,
     stopStream,
     sessionId,
-    suggestions: contextSuggestions,
     clearChat,
   } = useAIChat();
 
@@ -235,7 +260,7 @@ export default function OnboardingPage() {
   const { error: showError } = useNotifications();
 
   const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Opportunity & intent proposal action state
@@ -245,13 +270,33 @@ export default function OnboardingPage() {
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
 
   // Build the greeting from the user's name
-  const greeting = GREETING_TEMPLATE.replace("{{userName}}", user?.name ?? "there");
+  const fullGreeting = GREETING_TEMPLATE.replace("{{userName}}", `**${user?.name ?? "there"}**`);
 
-  // Combine hardcoded greeting with live chat messages
+  // Stream the greeting on mount (typewriter effect)
+  const [streamedGreeting, setStreamedGreeting] = useState("");
+  const [greetingComplete, setGreetingComplete] = useState(false);
+  useEffect(() => {
+    if (greetingComplete || !fullGreeting || !user) return;
+    let index = 0;
+    const chunkSize = 2;
+    const intervalMs = 15;
+    const timer = setInterval(() => {
+      index = Math.min(index + chunkSize, fullGreeting.length);
+      setStreamedGreeting(fullGreeting.slice(0, index));
+      if (index >= fullGreeting.length) {
+        setGreetingComplete(true);
+        clearInterval(timer);
+      }
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [fullGreeting, greetingComplete, user]);
+
+  // Combine streamed greeting with live chat messages
   const greetingMessage: LocalMessage = {
     id: "onboarding-greeting",
     role: "assistant",
-    content: greeting,
+    content: streamedGreeting,
+    isStreaming: !greetingComplete,
   };
 
   const allMessages: LocalMessage[] = [
@@ -287,18 +332,17 @@ export default function OnboardingPage() {
     prevLoadingRef.current = isLoading;
   }, [isLoading, refetchUser]);
 
-  // Redirect once onboarding is complete
-  useEffect(() => {
-    if (user?.onboarding?.completedAt && sessionId) {
-      navigate(`/d/${sessionId}`, { replace: true });
-    }
-  }, [user?.onboarding?.completedAt, sessionId, navigate]);
+  // Slide transition: sidebar slides in from left, content shifts right
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const hasTriggeredRedirect = useRef(false);
 
-  // If user already completed onboarding, redirect to home
   useEffect(() => {
-    if (user?.onboarding?.completedAt && !sessionId) {
-      navigate("/", { replace: true });
-    }
+    if (!user?.onboarding?.completedAt || hasTriggeredRedirect.current) return;
+    hasTriggeredRedirect.current = true;
+    setIsTransitioning(true);
+    const target = sessionId ? `/d/${sessionId}` : "/";
+    const timer = setTimeout(() => navigate(target, { replace: true }), 700);
+    return () => clearTimeout(timer);
   }, [user?.onboarding?.completedAt, sessionId, navigate]);
 
   // Opportunity actions
@@ -381,21 +425,40 @@ export default function OnboardingPage() {
       const isFirstMessage = !sessionId;
       if (isFirstMessage) {
         return sendMessage(message, undefined, undefined, {
-          prefillMessages: [{ role: "assistant" as const, content: greeting }],
+          prefillMessages: [{ role: "assistant" as const, content: fullGreeting }],
         });
       }
       return sendMessage(message);
     },
-    [sessionId, sendMessage, greeting],
+    [sessionId, sendMessage, fullGreeting],
   );
 
-  // Suggestions
-  const suggestions: Suggestion[] = contextSuggestions ?? [];
+  // Infer onboarding step from last assistant message to show step-specific suggestions
+  const onboardingStep = useMemo(() => {
+    const lastAssistant = [...allMessages].reverse().find((m) => m.role === "assistant");
+    const content = (lastAssistant?.content ?? "").toLowerCase();
+    const userCount = chatMessages.filter((m) => m.role === "user").length;
+
+    if (userCount === 0) return "identity";
+    if (content.includes("does that sound right") || content.includes("here's what i found")) return "profile";
+    if (content.includes("want to join") || content.includes("communities")) return "communities";
+    if (content.includes("what are you open to") || content.includes("open to right now")) return "intent";
+    return "identity";
+  }, [allMessages, chatMessages]);
+
+  const stepSuggestions = ONBOARDING_STEP_SUGGESTIONS[onboardingStep] ?? [];
+  const suggestions: Suggestion[] = stepSuggestions;
 
   const handleSuggestionClick = useCallback(
-    (text: string) => {
+    (suggestion: Suggestion) => {
       if (isLoading) return;
-      sendOnboardingMessage(text);
+      if (suggestion.type === "prompt" && suggestion.prefill) {
+        setInput(suggestion.prefill);
+        inputRef.current?.focus();
+      } else {
+        const text = suggestion.followupText ?? suggestion.label;
+        sendOnboardingMessage(text);
+      }
     },
     [isLoading, sendOnboardingMessage],
   );
@@ -426,17 +489,30 @@ export default function OnboardingPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen bg-[#FDFDFD]">
-      {/* Minimal header */}
-      <header className="shrink-0 px-6 py-4">
-        <img
-          src="/logos/logo-black-full.svg"
-          alt="Index Network"
-          width={160}
-          height={28}
-          className="object-contain"
-        />
-      </header>
+    <div className="flex h-screen bg-[#FDFDFD] overflow-hidden">
+      {/* Sidebar panel that slides in on completion */}
+      <div
+        className={cn(
+          "shrink-0 h-full bg-white border-r border-gray-200 transition-all duration-600 ease-in-out overflow-hidden",
+          isTransitioning ? "w-64 opacity-100" : "w-0 opacity-0",
+        )}
+      />
+
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0 h-full">
+        {/* Minimal header - fades out during transition */}
+        <header className={cn(
+          "shrink-0 px-6 py-4 transition-opacity duration-400",
+          isTransitioning && "opacity-0",
+        )}>
+          <img
+            src="/logos/logo-black-full.svg"
+            alt="Index Network"
+            width={160}
+            height={28}
+            className="object-contain"
+          />
+        </header>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 lg:px-8 pb-32">
@@ -505,32 +581,27 @@ export default function OnboardingPage() {
       <div className="sticky bottom-0 z-20">
         <div className="px-6 lg:px-8">
           <div className="max-w-3xl mx-auto">
-            <SuggestionChips
-              suggestions={suggestions}
-              disabled={isLoading}
-              onSuggestionClick={handleSuggestionClick}
-            />
+            {!isLoading && (
+              <SuggestionChips
+                suggestions={suggestions}
+                disabled={false}
+                onSuggestionClick={handleSuggestionClick}
+              />
+            )}
             <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
               <form
                 onSubmit={handleSubmit}
                 className="flex flex-col bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3"
               >
                 <div className="flex gap-3 items-center">
-                  <textarea
-                    ref={inputRef}
+                  <MentionsTextInput
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit(e);
-                      }
-                    }}
-                    placeholder="Reply..."
+                    onChange={setInput}
+                    placeholder="What's on your mind?"
                     disabled={isLoading}
                     autoFocus
-                    rows={1}
-                    className="flex-1 min-w-0 resize-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none font-ibm-plex-mono"
+                    inputRef={inputRef}
+                    suggestionsAbove
                   />
                   {isLoading ? (
                     <Button
@@ -559,6 +630,7 @@ export default function OnboardingPage() {
             <div className="py-2 bg-white" />
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

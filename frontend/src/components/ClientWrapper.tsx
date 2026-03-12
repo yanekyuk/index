@@ -52,7 +52,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   [pathname]);
 
   if (isBareRoute) {
-    return <>{children}</>;
+    return <IndexesProvider>{children}</IndexesProvider>;
   }
 
   return (
