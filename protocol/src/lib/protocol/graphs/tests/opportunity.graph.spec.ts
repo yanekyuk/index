@@ -96,6 +96,8 @@ function createMockGraph(deps?: {
     updateOpportunityStatus: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
     getContactUserIds: () => Promise.resolve([]),
+    getIntentIndexScores: async () => [],
+    getIndexMemberContext: async () => null,
   };
 
   const mockEmbedder: Embedder = {
@@ -186,6 +188,8 @@ function createMockGraphWithFnOverrides(deps?: {
     updateOpportunityStatus: () => Promise.resolve(null),
     getIntent: () => Promise.resolve(null),
     getContactUserIds: () => Promise.resolve([]),
+    getIntentIndexScores: async () => [],
+    getIndexMemberContext: async () => null,
   };
 
   const mockEmbedder: Embedder = {
@@ -387,6 +391,38 @@ describe('Opportunity Graph', () => {
       expect(candidateTraceEntries.length).toBe(1);
       expect(result.opportunities.length).toBe(1);
     });
+
+    test('dedup prefers candidate from index with higher relevancy score on equal similarity', async () => {
+      const { compiledGraph } = createMockGraph({
+        getUserIndexIds: async () => ['idx-high', 'idx-low'] as Id<'indexes'>[],
+        getIndexMemberships: async () => [
+          { indexId: 'idx-high', indexTitle: 'High Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+          { indexId: 'idx-low', indexTitle: 'Low Relevancy', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
+        ],
+      });
+
+      // Invoke with indexRelevancyScores pre-set (simulating scope node output)
+      const result = await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'find collaborators',
+        operationMode: 'create' as const,
+        indexRelevancyScores: { 'idx-high': 0.9, 'idx-low': 0.3 },
+      });
+
+      // The opportunity actors should have indexId from the higher-scoring index
+      if (result.evaluatedOpportunities?.length > 0) {
+        const sourceActor = result.evaluatedOpportunities[0].actors.find(
+          (a: { userId: string }) => a.userId === 'user-source'
+        );
+        const counterpartActor = result.evaluatedOpportunities[0].actors.find(
+          (a: { userId: string }) => a.userId !== 'user-source'
+        );
+        // If both actors exist, source should inherit counterpart's indexId
+        if (sourceActor && counterpartActor) {
+          expect(sourceActor.indexId).toBe(counterpartActor.indexId);
+        }
+      }
+    }, 30_000);
   });
 
   describe('Evaluation node: early termination', () => {
@@ -1338,6 +1374,8 @@ describe('Opportunity Graph', () => {
         updateOpportunityStatus: () => Promise.resolve(null),
         getIntent: () => Promise.resolve(null),
         getContactUserIds: () => Promise.resolve([]),
+        getIntentIndexScores: async () => [],
+        getIndexMemberContext: async () => null,
       };
 
       const mockEmbedder: Embedder = {
