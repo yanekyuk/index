@@ -487,6 +487,36 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
+    // NODE: Use Pre-Populated Profile
+    // Converts pre-populated profile (from external enrichment like Parallel Chat API)
+    // into the format expected by the embedding step, skipping LLM generation.
+    // ─────────────────────────────────────────────────────────
+    const usePrePopulatedProfileNode = async (state: typeof ProfileGraphState.State) => {
+      return timed("ProfileGraph.usePrePopulatedProfile", async () => {
+        if (!state.prePopulatedProfile) {
+          logger.error("No pre-populated profile provided");
+          return { error: "Pre-populated profile required" };
+        }
+
+        logger.verbose("Using pre-populated profile from external enrichment", {
+          name: state.prePopulatedProfile.identity.name,
+          skillsCount: state.prePopulatedProfile.attributes.skills.length,
+          interestsCount: state.prePopulatedProfile.attributes.interests.length,
+        });
+
+        return {
+          profile: {
+            ...state.prePopulatedProfile,
+            userId: state.userId,
+            embedding: [] as number[] | number[][],
+          },
+          needsHydeGeneration: true,
+          operationsPerformed: { generatedProfile: true },
+        };
+      });
+    };
+
+    // ─────────────────────────────────────────────────────────
     // NODE: Generate Profile
     // Generates profile from input using ProfileGenerator agent.
     // If updating existing profile, merges new information intelligently.
@@ -716,6 +746,13 @@ export class ProfileGraphFactory {
         return END;
       }
 
+      // Pre-populated profile from external enrichment (e.g. Parallel Chat API)
+      // Skip profile generation, go directly to embedding
+      if (state.prePopulatedProfile) {
+        logger.verbose("Pre-populated profile detected - skipping generation, routing to embed");
+        return "use_prepopulated_profile";
+      }
+
       // Generate mode: use Parallels searchUser to auto-generate
       if (state.operationMode === 'generate') {
         logger.verbose("Generate mode - routing to auto_generate");
@@ -806,6 +843,7 @@ export class ProfileGraphFactory {
       .addNode("check_state", checkStateNode)
       .addNode("scrape", scrapeNode)
       .addNode("auto_generate", autoGenerateNode)
+      .addNode("use_prepopulated_profile", usePrePopulatedProfileNode)
       .addNode("generate_profile", generateProfileNode)
       .addNode("embed_save_profile", embedSaveProfileNode)
       .addNode("generate_hyde", generateHydeNode)
@@ -819,6 +857,7 @@ export class ProfileGraphFactory {
         "check_state",
         checkStateCondition,
         {
+          use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
           auto_generate: "auto_generate",       // Generate mode -> Parallels searchUser
           scrape: "scrape",                     // Need profile, no input -> scrape first
           generate_profile: "generate_profile", // Need profile, have input -> generate
@@ -828,6 +867,9 @@ export class ProfileGraphFactory {
           [END]: END                            // Query mode or everything exists
         }
       )
+
+      // Pre-populated profile feeds into embedding (skips generation)
+      .addEdge("use_prepopulated_profile", "embed_save_profile")
 
       // Auto-generate feeds into profile generation
       .addEdge("auto_generate", "generate_profile")

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import Parallel from 'parallel-web';
+import OpenAI from 'openai';
 
 import { log } from '../log';
 const logger = log.lib.from("lib/parallel/parallel.ts");
@@ -303,3 +304,170 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
 
 // Export the parallel client for direct access if needed
 export { parallelClient };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat API for Profile Enrichment
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PARALLEL_CHAT_URL = 'https://api.parallel.ai';
+
+/** Structured profile enrichment result from Parallel Chat API. */
+export interface ParallelEnrichmentResult {
+  identity: {
+    name: string;
+    bio: string;
+    location: string;
+  };
+  narrative: {
+    context: string;
+  };
+  attributes: {
+    skills: string[];
+    interests: string[];
+  };
+  socials: {
+    linkedin?: string;
+    twitter?: string;
+    github?: string;
+    websites?: string[];
+  };
+}
+
+/** JSON schema for profile enrichment response format. */
+const profileEnrichmentSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "profile_enrichment",
+    schema: {
+      type: "object",
+      properties: {
+        identity: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "The person's full name" },
+            bio: { type: "string", description: "A professional summary (2-3 sentences)" },
+            location: { type: "string", description: "City, Country or 'Remote' if unknown" },
+          },
+          required: ["name", "bio", "location"],
+        },
+        narrative: {
+          type: "object",
+          properties: {
+            context: { type: "string", description: "A rich, detailed narrative about the person's current situation, background, and what they are currently working on. Use raw, natural language." },
+          },
+          required: ["context"],
+        },
+        attributes: {
+          type: "object",
+          properties: {
+            skills: { type: "array", items: { type: "string" }, description: "Professional skills" },
+            interests: { type: "array", items: { type: "string" }, description: "Inferred or explicit interests" },
+          },
+          required: ["skills", "interests"],
+        },
+        socials: {
+          type: "object",
+          properties: {
+            linkedin: { type: "string", description: "LinkedIn profile URL if found" },
+            twitter: { type: "string", description: "Twitter/X profile URL if found" },
+            github: { type: "string", description: "GitHub profile URL if found" },
+            websites: { type: "array", items: { type: "string" }, description: "Other relevant website URLs" },
+          },
+        },
+      },
+      required: ["identity", "narrative", "attributes", "socials"],
+    },
+  },
+};
+
+/**
+ * Enriches a user profile using Parallel Chat API.
+ * Returns structured profile data including identity, narrative, attributes, and social links.
+ * @param request - User identifiers (name, email, social URLs)
+ * @returns Structured profile enrichment result, or null if enrichment failed
+ */
+export async function enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
+  const apiKey = process.env.PARALLELS_API_KEY;
+  if (!apiKey) {
+    throw new Error('PARALLELS_API_KEY is not defined');
+  }
+
+  const name = request.name?.trim() || '';
+  const email = request.email?.trim() || '';
+
+  if (!name && !email) {
+    logger.warn('enrichUserProfile called without name or email, skipping');
+    return null;
+  }
+
+  // Build the prompt for profile enrichment
+  const promptParts: string[] = [];
+  if (name) promptParts.push(`Find information about the person named ${name}.`);
+  else if (email) promptParts.push(`Find information about the person with email "${email}".`);
+
+  if (name && email) promptParts.push(`Email: ${email}`);
+  if (request.twitter) promptParts.push(`Twitter: ${request.twitter}`);
+  if (request.linkedin) promptParts.push(`LinkedIn: ${request.linkedin}`);
+  if (request.github) promptParts.push(`GitHub: ${request.github}`);
+  if (request.websites?.length) promptParts.push(`Websites: ${request.websites.join(', ')}`);
+
+  const userMessage = promptParts.join('\n');
+
+  logger.info('Parallel Chat API enrichment request', { name, email, hasTwitter: !!request.twitter });
+
+  const client = new OpenAI({
+    apiKey,
+    baseURL: PARALLEL_CHAT_URL,
+  });
+
+  for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: 'speed',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person. Extract their professional background, skills, interests, and social links. Be thorough but concise.',
+          },
+          { role: 'user', content: userMessage },
+        ],
+        response_format: profileEnrichmentSchema,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        logger.warn('Parallel Chat API returned empty content', { name, email });
+        return null;
+      }
+
+      const result = JSON.parse(content) as ParallelEnrichmentResult;
+      logger.info('Parallel Chat API enrichment completed', {
+        name: result.identity.name,
+        skillsCount: result.attributes.skills.length,
+        interestsCount: result.attributes.interests.length,
+        hasSocials: !!(result.socials.linkedin || result.socials.twitter || result.socials.github),
+      });
+
+      return result;
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < RATE_LIMIT_MAX_RETRIES) {
+        const delayMs = RATE_LIMIT_DEFAULT_DELAY_MS;
+        logger.warn('Parallel Chat API rate limited, retrying after delay', {
+          attempt,
+          maxRetries: RATE_LIMIT_MAX_RETRIES,
+          delayMs,
+        });
+        await sleep(delayMs);
+        continue;
+      }
+      logger.error('Parallel Chat API enrichment failed', {
+        name,
+        email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  return null;
+}
