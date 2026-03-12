@@ -16,6 +16,66 @@ import { IndexMembershipEvents } from '../events/index_membership.event';
 
 const logger = log.lib.from('database.adapter');
 
+/**
+ * Creates a personal index for the user if one doesn't exist.
+ * Adds the user as the owner member.
+ * @param userId - The user to create a personal index for
+ * @returns The personal index ID
+ */
+export async function ensurePersonalIndex(userId: string): Promise<string> {
+  const existing = await db
+    .select({ id: schema.indexes.id })
+    .from(schema.indexes)
+    .where(
+      and(
+        eq(schema.indexes.isPersonal, true),
+        eq(schema.indexes.ownerId, userId),
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) return existing[0].id;
+
+  const indexId = crypto.randomUUID();
+
+  await db.insert(schema.indexes).values({
+    id: indexId,
+    title: 'My Network',
+    prompt: 'Personal index containing the owner\'s imported contacts for network-scoped discovery.',
+    isPersonal: true,
+    ownerId: userId,
+  }).onConflictDoNothing();
+
+  await db.insert(schema.indexMembers).values({
+    indexId,
+    userId,
+    permissions: ['owner'],
+    autoAssign: false,
+  }).onConflictDoNothing();
+
+  return indexId;
+}
+
+/**
+ * Returns the personal index ID for a user.
+ * @param userId - The user to look up
+ * @returns The personal index ID, or null if not found
+ */
+export async function getPersonalIndexId(userId: string): Promise<string | null> {
+  const result = await db
+    .select({ id: schema.indexes.id })
+    .from(schema.indexes)
+    .where(
+      and(
+        eq(schema.indexes.isPersonal, true),
+        eq(schema.indexes.ownerId, userId),
+      )
+    )
+    .limit(1);
+
+  return result[0]?.id ?? null;
+}
+
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
   id: string;
