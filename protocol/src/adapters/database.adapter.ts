@@ -16,84 +16,6 @@ import { IndexMembershipEvents } from '../events/index_membership.event';
 
 const logger = log.lib.from('database.adapter');
 
-/** Cached global index ID (queried once, reused). */
-let _globalIndexId: string | null | undefined;
-
-/** Returns the ID of the single index with isGlobal=true, or null if none exists. */
-async function getGlobalIndexId(): Promise<string | null> {
-  if (_globalIndexId !== undefined) return _globalIndexId;
-  const row = await db
-    .select({ id: schema.indexes.id })
-    .from(schema.indexes)
-    .where(eq(schema.indexes.isGlobal, true))
-    .limit(1)
-    .then((rows) => rows[0]);
-  _globalIndexId = row?.id ?? null;
-  return _globalIndexId;
-}
-
-/**
- * Ensures a global index exists in the database. Creates one if missing.
- * Also backfills any users (real or ghost) who are not yet members.
- * Should be called once at server startup before accepting requests.
- */
-export async function ensureGlobalIndex(): Promise<string> {
-  let globalId = await getGlobalIndexId();
-
-  if (!globalId) {
-    globalId = crypto.randomUUID();
-    await db.insert(schema.indexes).values({
-      id: globalId,
-      title: 'Index Global',
-      prompt: 'The global index containing all users for network-wide discovery.',
-      isGlobal: true,
-    });
-    _globalIndexId = globalId;
-    logger.info('Global index created', { id: globalId });
-  }
-
-  // Backfill: register every non-deleted user who isn't already a member
-  const missing = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .leftJoin(
-      schema.indexMembers,
-      and(
-        eq(schema.indexMembers.userId, schema.users.id),
-        eq(schema.indexMembers.indexId, globalId),
-      ),
-    )
-    .where(and(
-      isNull(schema.users.deletedAt),
-      isNull(schema.indexMembers.userId),
-    ));
-
-  if (missing.length > 0) {
-    await db
-      .insert(schema.indexMembers)
-      .values(missing.map(u => ({ indexId: globalId, userId: u.id, permissions: ['member'] as string[] })))
-      .onConflictDoNothing();
-    logger.info('Global index backfill complete', { added: missing.length });
-  } else {
-    logger.info('Global index up to date, no backfill needed', { id: globalId });
-  }
-
-  return globalId;
-}
-
-/**
- * Adds a user to the global index if they are not already a member.
- * Safe to call for any user (ghost or real) — uses onConflictDoNothing.
- */
-export async function ensureGlobalIndexMembership(userId: string): Promise<void> {
-  const globalIndexId = await getGlobalIndexId();
-  if (!globalIndexId) return;
-  await db
-    .insert(schema.indexMembers)
-    .values({ indexId: globalIndexId, userId, permissions: ['member'] })
-    .onConflictDoNothing();
-}
-
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
 interface ActiveIntentRow {
   id: string;
@@ -2335,7 +2257,7 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Create a ghost user (unregistered contact) with empty profile and Index Global membership.
+   * Create a ghost user (unregistered contact) with empty profile.
    * @param data - Name and email for the ghost user
    * @returns The created ghost user's ID
    */
@@ -2352,19 +2274,6 @@ export class ChatDatabaseAdapter {
     await db.insert(schema.userProfiles).values({
       userId: id,
     });
-
-    // Add to Index Global if one exists
-    const globalIndexId = await getGlobalIndexId();
-    if (globalIndexId) {
-      await db
-        .insert(schema.indexMembers)
-        .values({
-          indexId: globalIndexId,
-          userId: id,
-          permissions: ['member'],
-        })
-        .onConflictDoNothing();
-    }
 
     return { id };
   }
@@ -2513,14 +2422,13 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Bulk create ghost users with empty profiles and Index Global membership.
+   * Bulk create ghost users with empty profiles.
    * @param data - Array of {name, email} for ghost users
    * @returns Array of created ghost users with their IDs
    */
   async createGhostUsersBulk(data: Array<{ name: string; email: string }>): Promise<Array<{ id: string; name: string; email: string }>> {
     if (data.length === 0) return [];
 
-    const globalIndexId = await getGlobalIndexId();
     const results: Array<{ id: string; name: string; email: string }> = [];
 
     // Create users
@@ -2554,18 +2462,6 @@ export class ChatDatabaseAdapter {
         .filter(u => actuallyCreatedIds.has(u.id))
         .map(u => ({ userId: u.id }));
       await db.insert(schema.userProfiles).values(profilesToInsert);
-
-      // Add to Index Global if configured
-      if (globalIndexId) {
-        const membersToInsert = usersToInsert
-          .filter(u => actuallyCreatedIds.has(u.id))
-          .map(u => ({
-            indexId: globalIndexId,
-            userId: u.id,
-            permissions: ['member'] as string[],
-          }));
-        await db.insert(schema.indexMembers).values(membersToInsert).onConflictDoNothing();
-      }
     }
 
     // Return results with correct IDs (actual DB IDs, not our generated ones)
@@ -2629,8 +2525,6 @@ export class ChatDatabaseAdapter {
       // Create ghost users
       const newGhosts: Array<{ id: string; name: string; email: string }> = [];
       if (ghosts.length > 0) {
-        const globalIndexId = await getGlobalIndexId();
-
         const usersToInsert = ghosts.map(d => ({
           id: crypto.randomUUID(),
           name: d.name,
@@ -2658,17 +2552,6 @@ export class ChatDatabaseAdapter {
             .filter(u => actuallyCreatedIds.has(u.id))
             .map(u => ({ userId: u.id }));
           await tx.insert(schema.userProfiles).values(profilesToInsert);
-
-          if (globalIndexId) {
-            const membersToInsert = usersToInsert
-              .filter(u => actuallyCreatedIds.has(u.id))
-              .map(u => ({
-                indexId: globalIndexId,
-                userId: u.id,
-                permissions: ['member'] as string[],
-              }));
-            await tx.insert(schema.indexMembers).values(membersToInsert).onConflictDoNothing();
-          }
         }
 
         for (const u of usersToInsert) {
