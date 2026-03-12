@@ -1137,29 +1137,22 @@ export class ChatDatabaseAdapter {
         prompt: schema.indexes.prompt,
         imageUrl: schema.indexes.imageUrl,
         permissions: schema.indexes.permissions,
-        isGlobal: schema.indexes.isGlobal,
+        isPersonal: schema.indexes.isPersonal,
+        ownerId: schema.indexes.ownerId,
         createdAt: schema.indexes.createdAt,
         updatedAt: schema.indexes.updatedAt,
-        ownerId: schema.indexMembers.userId,
-        userName: schema.users.name,
-        userAvatar: schema.users.avatar,
+        ownerName: schema.users.name,
+        ownerAvatar: schema.users.avatar,
       })
       .from(schema.indexes)
-      .leftJoin(
-        schema.indexMembers,
-        and(
-          eq(schema.indexes.id, schema.indexMembers.indexId),
-          sql`'owner' = ANY(${schema.indexMembers.permissions})`
-        )
-      )
-      .leftJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+      .leftJoin(schema.users, eq(schema.indexes.ownerId, schema.users.id))
       .where(
         and(
           isNull(schema.indexes.deletedAt),
           inArray(schema.indexes.id, ids)
         )
       )
-      .orderBy(desc(schema.indexes.isGlobal), desc(schema.indexes.createdAt));
+      .orderBy(desc(schema.indexes.isPersonal), desc(schema.indexes.createdAt));
 
     const indexesWithCounts = await Promise.all(
       rows.map(async (row) => {
@@ -1173,13 +1166,13 @@ export class ChatDatabaseAdapter {
           prompt: row.prompt,
           imageUrl: row.imageUrl,
           permissions: row.permissions,
-          isGlobal: row.isGlobal,
+          isPersonal: row.isPersonal,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
           user: {
             id: row.ownerId ?? '',
-            name: row.userName ?? 'System',
-            avatar: row.userAvatar ?? null,
+            name: row.ownerName ?? 'System',
+            avatar: row.ownerAvatar ?? null,
           },
           _count: {
             members: Number(memberCount?.count ?? 0),
