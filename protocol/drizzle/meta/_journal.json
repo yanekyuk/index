@@ -92,6 +92,13 @@
       "when": 1773380000000,
       "tag": "0012_add_intent_indexes_relevancy_score",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773390000000,
+      "tag": "0013_add_intent_indexes_index_id_idx",
+      "breakpoints": true
     }
   ]
 }

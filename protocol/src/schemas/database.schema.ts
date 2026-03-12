@@ -328,6 +328,7 @@ export const intentIndexes = pgTable('intent_indexes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
   pk: primaryKey({ columns: [t.intentId, t.indexId] }),
+  indexIdIdx: index('intent_indexes_index_id_idx').on(t.indexId),
 }));
 
 export const userIntegrations = pgTable('integrations', {
