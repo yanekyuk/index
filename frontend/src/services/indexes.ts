@@ -57,6 +57,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     };
   },
 
+  // Get non-personal indexes shared between the current user and a target user
+  getSharedIndexes: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
+    const response = await api.get<{ indexes: Array<{ id: string; title: string; _count: { members: number } }> }>(`/indexes/shared/${userId}`);
+    return response.indexes || [];
+  },
+
   // Discover public indexes (indexes that anyone can join)
   discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index & { isMember?: boolean }>> => {
     const response = await api.get<APIResponse<Index & { isMember?: boolean }>>(`/indexes/discovery/public?page=${page}&limit=${limit}`);

@@ -233,6 +233,18 @@ export class IndexController {
   }
 
   /**
+   * Get non-personal indexes shared between the authenticated user and a target user.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/shared/:userId')
+  @UseGuards(AuthGuard)
+  async getSharedIndexes(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    const indexes = await indexService.getSharedIndexes(user.id, params.userId);
+    logger.verbose('Shared indexes fetched', { currentUserId: user.id, targetUserId: params.userId, count: indexes.length });
+    return Response.json({ indexes });
+  }
+
+  /**
    * Delete (soft-delete) an index. Owner-only.
    */
   @Delete('/:id')

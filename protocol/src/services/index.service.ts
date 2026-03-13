@@ -146,6 +146,17 @@ export class IndexService {
   }
 
   /**
+   * Get non-personal indexes shared between the current user and a target user.
+   * @param currentUserId - Authenticated user ID.
+   * @param targetUserId - Profile user ID to compare memberships with.
+   * @returns Shared non-personal indexes with member counts.
+   */
+  async getSharedIndexes(currentUserId: string, targetUserId: string) {
+    logger.verbose('[IndexService] Getting shared indexes', { currentUserId, targetUserId });
+    return this.adapter.getSharedIndexes(currentUserId, targetUserId);
+  }
+
+  /**
    * Get public indexes that the user has not joined (for discovery).
    */
   async getPublicIndexes(userId: string) {
