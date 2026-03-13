@@ -2,20 +2,20 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Replace the text-only communities step in onboarding with an interactive network card panel matching the in-app Networks/Discover UI, showing both joinable and already-joined networks.
+**Goal:** Add a reusable `networks_panel` block type — identical in both the onboarding and main chat — that the agent emits whenever it wants to show the network join UI. The panel fetches and renders public networks (Discover + Joined sections) inline in any chat conversation.
 
-**Architecture:** A new `OnboardingNetworkPanel` component is injected inline into the message list when `onboardingStep === "communities"`. It fetches public networks independently and reads joined networks from context. Join clicks send chat messages to the agent. The system prompt is updated to stop listing communities as text.
+**Architecture:** The agent emits ` ```networks_panel\n{}\n``` ` as a marker block. `parseAllBlocks` (shared logic in both `ChatContent.tsx` and `onboarding/page.tsx`) parses it into a `networks_panel` segment. A new `NetworksPanel` chat component renders inline wherever the block appears. Clicking Join sends a chat message to the agent. The system prompt is updated to emit this block during onboarding step 6 and any future community discovery context.
 
-**Tech Stack:** React, TypeScript, Radix UI primitives, IndexAvatar, Lucide icons, `useIndexesState` context, `indexesService.discoverPublicIndexes()`
+**Tech Stack:** React, TypeScript, `IndexAvatar`, Lucide icons, `useIndexes` (APIContext), `useIndexesState` (IndexesContext)
 
 ---
 
-### Task 1: Create `OnboardingNetworkPanel` component
+### Task 1: Create `NetworksPanel` component
 
 **Files:**
-- Create: `frontend/src/components/onboarding/OnboardingNetworkPanel.tsx`
+- Create: `frontend/src/components/chat/NetworksPanel.tsx`
 
-**Step 1: Create the file**
+**Step 1: Write the component**
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -26,15 +26,16 @@ import { useIndexes } from "@/contexts/APIContext";
 import { useIndexesState } from "@/contexts/IndexesContext";
 import type { Index } from "@/lib/types";
 
-interface OnboardingNetworkPanelProps {
+interface NetworksPanelProps {
   onJoin: (networkId: string, networkTitle: string) => void;
-  pendingJoinIds: Set<string>;
+  pendingJoinIds?: Set<string>;
 }
 
-export default function OnboardingNetworkPanel({
-  onJoin,
-  pendingJoinIds,
-}: OnboardingNetworkPanelProps) {
+/**
+ * Inline network join panel rendered by the agent's networks_panel block.
+ * Shows already-joined networks with a badge and public networks with a Join button.
+ */
+export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: NetworksPanelProps) {
   const indexesService = useIndexes();
   const { indexes: joinedIndexes } = useIndexesState();
 
@@ -50,9 +51,8 @@ export default function OnboardingNetworkPanel({
   }, [indexesService]);
 
   const joinedIds = new Set(joinedIndexes.filter((i) => !i.isPersonal).map((i) => i.id));
-
-  const joinable = publicNetworks.filter((n) => !joinedIds.has(n.id));
   const joined = publicNetworks.filter((n) => joinedIds.has(n.id));
+  const joinable = publicNetworks.filter((n) => !joinedIds.has(n.id));
 
   if (loading) {
     return (
@@ -64,9 +64,7 @@ export default function OnboardingNetworkPanel({
 
   if (publicNetworks.length === 0) {
     return (
-      <div className="py-4 text-center">
-        <p className="text-sm text-gray-400">No public networks available</p>
-      </div>
+      <p className="text-sm text-gray-400 py-4">No public networks available</p>
     );
   }
 
@@ -143,109 +141,260 @@ export default function OnboardingNetworkPanel({
 **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/onboarding/OnboardingNetworkPanel.tsx
-git commit -m "feat(onboarding): add OnboardingNetworkPanel component"
+git add frontend/src/components/chat/NetworksPanel.tsx
+git commit -m "feat(chat): add reusable NetworksPanel component"
 ```
 
 ---
 
-### Task 2: Inject panel into `OnboardingPage` message list
+### Task 2: Add `networks_panel` block to `ChatContent.tsx`
+
+**Files:**
+- Modify: `frontend/src/components/ChatContent.tsx`
+
+This file has its own copy of `MessageSegment`, `parseAllBlocks`, `dedupeSegments`, and `AssistantMessageContent`. Update all four.
+
+**Step 1: Add import**
+
+After the existing chat component imports (around line 34), add:
+
+```tsx
+import NetworksPanel from "@/components/chat/NetworksPanel";
+```
+
+**Step 2: Extend `MessageSegment` type (line ~88)**
+
+Add the new variant:
+
+```ts
+type MessageSegment =
+  | { type: "text"; content: string }
+  | { type: "opportunity"; data: OpportunityCardData }
+  | { type: "opportunity_loading" }
+  | { type: "intent_proposal"; data: IntentProposalData }
+  | { type: "intent_proposal_loading" }
+  | { type: "networks_panel" }
+  | { type: "networks_panel_loading" };
+```
+
+**Step 3: Update `parseAllBlocks` regex and handler (line ~95)**
+
+Change the regex to include `networks_panel`:
+
+```ts
+const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
+```
+
+In the `blockType` switch, after the `intent_proposal` branch, add:
+
+```ts
+} else if (blockType === "networks_panel") {
+  segments.push({ type: "networks_panel" });
+}
+```
+
+In the partial block detection at the bottom, add `networks_panel` to the partial match:
+
+```ts
+const partialOpp = remainingContent.match(/```opportunity/);
+const partialIntent = remainingContent.match(/```intent_proposal/);
+const partialNetworks = remainingContent.match(/```networks_panel/);
+
+// Pick the earliest partial match
+const candidates = [partialOpp, partialIntent, partialNetworks].filter(Boolean) as RegExpMatchArray[];
+const partialMatch = candidates.length > 0
+  ? candidates.reduce((earliest, c) => c.index! < earliest.index! ? c : earliest)
+  : null;
+```
+
+Update the loading segment push:
+
+```ts
+if (partialMatch) {
+  const partialIndex = partialMatch.index!;
+  const textBefore = remainingContent.slice(0, partialIndex);
+  if (textBefore.trim()) segments.push({ type: "text", content: textBefore });
+  if (partialMatch === partialOpp) {
+    segments.push({ type: "opportunity_loading" });
+  } else if (partialMatch === partialIntent) {
+    segments.push({ type: "intent_proposal_loading" });
+  } else {
+    segments.push({ type: "networks_panel_loading" });
+  }
+}
+```
+
+**Step 4: Add `onNetworkJoin` prop to `AssistantMessageContent` (line ~192)**
+
+Add the prop to the function signature and type:
+
+```ts
+function AssistantMessageContent({
+  // ... existing props ...
+  onNetworkJoin,
+  networkPanelPendingJoinIds,
+}: {
+  // ... existing prop types ...
+  onNetworkJoin?: (networkId: string, networkTitle: string) => void;
+  networkPanelPendingJoinIds?: Set<string>;
+})
+```
+
+**Step 5: Render `NetworksPanel` in the segment map (after `intent_proposal_loading` branch)**
+
+In the `segments.map(...)` JSX, add after the last `else` (currently `intent_proposal_loading`):
+
+```tsx
+} else if (segment.type === "networks_panel") {
+  return (
+    <div key={`networks-panel-${idx}`} className="my-3">
+      <NetworksPanel
+        onJoin={onNetworkJoin ?? (() => {})}
+        pendingJoinIds={networkPanelPendingJoinIds}
+      />
+    </div>
+  );
+} else if (segment.type === "networks_panel_loading") {
+  return (
+    <div key={`networks-panel-loading-${idx}`} className="my-3 flex justify-center py-6">
+      <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
+    </div>
+  );
+}
+```
+
+Also add `Loader2` to the lucide-react import at the top if not already present (it's not — check line 6).
+
+**Step 6: Add `networkPanelPendingJoinIds` state and `handleNetworkJoin` in `ChatContent` (line ~311)**
+
+After the existing state declarations in `ChatContent`, add:
+
+```tsx
+const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
+
+const handleNetworkJoin = useCallback(
+  (networkId: string, networkTitle: string) => {
+    setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
+    sendMessage(`I'd like to join ${networkTitle}`);
+  },
+  [sendMessage],
+);
+```
+
+**Step 7: Pass props to `AssistantMessageContent` call site (line ~1476)**
+
+Add the two new props to the `<AssistantMessageContent>` JSX:
+
+```tsx
+onNetworkJoin={handleNetworkJoin}
+networkPanelPendingJoinIds={networkPanelPendingJoinIds}
+```
+
+**Step 8: Commit**
+
+```bash
+git add frontend/src/components/ChatContent.tsx
+git commit -m "feat(chat): support networks_panel block in ChatContent"
+```
+
+---
+
+### Task 3: Add `networks_panel` block to `onboarding/page.tsx`
 
 **Files:**
 - Modify: `frontend/src/app/onboarding/page.tsx`
 
-**Step 1: Add `pendingJoinIds` state and `handleJoin` callback**
+This file has its own duplicated `MessageSegment`, `parseAllBlocks`, `dedupeSegments`, and `AssistantMessageContent`. Apply the same changes as Task 2.
 
-At the top of `OnboardingPage`, after the existing state declarations, add:
+**Step 1: Add import**
 
 ```tsx
-const [pendingJoinIds, setPendingJoinIds] = useState<Set<string>>(new Set());
+import NetworksPanel from "@/components/chat/NetworksPanel";
+```
+
+**Step 2: Extend `MessageSegment` type (line ~69)**
+
+Same addition as Task 2:
+
+```ts
+| { type: "networks_panel" }
+| { type: "networks_panel_loading" }
+```
+
+**Step 3: Update `parseAllBlocks` (line ~76)**
+
+Same regex change and `networks_panel` handler as Task 2.
+
+**Step 4: Add `onNetworkJoin` prop to `AssistantMessageContent` (line ~147)**
+
+Same prop addition as Task 2.
+
+**Step 5: Render `NetworksPanel` segment**
+
+Same rendering logic as Task 2, including the `networks_panel_loading` case.
+
+**Step 6: Add `networkPanelPendingJoinIds` state and `handleNetworkJoin` in `OnboardingPage` (line ~268)**
+
+```tsx
+const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
 
 const handleNetworkJoin = useCallback(
   (networkId: string, networkTitle: string) => {
-    setPendingJoinIds((prev) => new Set([...prev, networkId]));
+    setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
     sendOnboardingMessage(`I'd like to join ${networkTitle}`);
   },
   [sendOnboardingMessage],
 );
 ```
 
-**Step 2: Add import for `OnboardingNetworkPanel`**
-
-At the top of the file, add:
+**Step 7: Pass props to `AssistantMessageContent` call site (line ~556)**
 
 ```tsx
-import OnboardingNetworkPanel from "@/components/onboarding/OnboardingNetworkPanel";
+onNetworkJoin={handleNetworkJoin}
+networkPanelPendingJoinIds={networkPanelPendingJoinIds}
 ```
 
-**Step 3: Inject the panel after the last assistant message**
+**Step 8: Remove the `communities` step detection injection**
 
-In the JSX, find the message list render (the `allMessages.map(...)` block). After the closing `</div>` of that block and before `<div ref={scrollRef} />`, add:
+The `onboardingStep` detection and step-based suggestions for `communities` are no longer needed since the agent controls the panel via the block. Remove or simplify the `communities` entry from `ONBOARDING_STEP_SUGGESTIONS`:
 
-```tsx
-{onboardingStep === "communities" && !isLoading && (
-  <div className="pl-0 pr-4 max-w-[90%]">
-    <OnboardingNetworkPanel
-      onJoin={handleNetworkJoin}
-      pendingJoinIds={pendingJoinIds}
-    />
-  </div>
-)}
-```
-
-**Step 4: Update `ONBOARDING_STEP_SUGGESTIONS` for the communities step**
-
-Find the `communities` key in `ONBOARDING_STEP_SUGGESTIONS` and replace it:
-
-```tsx
+```ts
+// Remove:
 communities: [
-  { label: "Continue", type: "direct", followupText: "I'll skip joining networks for now, let's continue" },
+  { label: "Skip for now", type: "direct", followupText: "I'll skip for now" },
+  { label: "Tell me more", type: "direct", followupText: "Tell me more about these communities" },
 ],
 ```
 
-**Step 5: Verify the page renders without errors**
+The agent's response after showing the networks panel will carry its own context — no extra chips needed for this step.
 
-Run the dev server (`bun run dev` from repo root, select the active branch) and navigate to `/onboarding`. Confirm the panel appears when the communities message is shown.
-
-**Step 6: Commit**
+**Step 9: Commit**
 
 ```bash
 git add frontend/src/app/onboarding/page.tsx
-git commit -m "feat(onboarding): inject network panel at communities step"
+git commit -m "feat(onboarding): support networks_panel block"
 ```
 
 ---
 
-### Task 3: Update system prompt to stop listing communities as text
+### Task 4: Update system prompt to emit `networks_panel` block
 
 **Files:**
 - Modify: `protocol/src/lib/protocol/agents/chat.prompt.ts` (lines ~132–142)
 
 **Step 1: Update step 6 instruction**
 
-Find this block in the onboarding flow (around line 132):
+Find the step 6 block (starts `6. **Discover communities**`) and replace it:
 
 ```
 6. **Discover communities**
    - Call \`read_indexes()\` to get available public indexes (returned in \`publicIndexes\` array)
-   - If public indexes exist, present them with brief relevance notes based on the user's profile
-   - Example: "Here are some communities you might find interesting:
-     - **AI Builders** — matches your work in ML infrastructure
-     - **Founders Network** — aligns with your startup experience
-     - **Open Source** — connects with your GitHub activity"
-   - Ask: "Want to join any of these? You can always explore more later."
-   - When presenting, you may use the index title; avoid being vocal about 'indexes' unless the user asks.
-   - For each index the user wants to join → call \`create_index_membership(indexId=X)\` (omit userId to self-join)
-   - After handling the user's response (joins processed, question answered, or user skips) → ALWAYS proceed to step 7 (intent capture). Do NOT end the conversation at communities.
-```
-
-Replace with:
-
-```
-6. **Discover communities**
-   - Call \`read_indexes()\` to get available public indexes (returned in \`publicIndexes\` array)
-   - **Do NOT list communities in text** — the UI displays them as interactive cards.
-   - Say exactly: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
+   - **Do NOT list communities in text.** The UI renders an interactive card panel automatically.
+   - Output this exact block in your response (do not include any JSON data — just the empty object):
+     \`\`\`networks_panel
+     {}
+     \`\`\`
+   - Immediately after the block, say: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
    - When presenting, avoid being vocal about 'indexes' unless the user asks.
    - For each index the user wants to join → call \`create_index_membership(indexId=X)\` (omit userId to self-join)
    - After handling the user's response (joins processed, question answered, or user skips) → ALWAYS proceed to step 7 (intent capture). Do NOT end the conversation at communities.
@@ -255,33 +404,31 @@ Replace with:
 
 ```bash
 git add protocol/src/lib/protocol/agents/chat.prompt.ts
-git commit -m "feat(onboarding): update communities prompt to defer list to UI"
+git commit -m "feat(onboarding): emit networks_panel block in communities step"
 ```
 
 ---
 
-### Task 4: Smoke test end-to-end
+### Task 5: Smoke test end-to-end
 
 **Step 1: Reset onboarding for your test user**
 
 ```bash
-cd protocol && bun run maintenance:reset-onboarding
+cd protocol && bun src/cli/reset-onboarding.ts
 ```
-
-(Or use the `reset-onboarding.ts` CLI directly: `bun src/cli/reset-onboarding.ts`)
 
 **Step 2: Run dev and go through onboarding**
 
-Start the dev server and navigate to `/onboarding`. Advance through the flow until the communities step appears. Confirm:
-- [ ] The agent message is short ("Here are some communities…") — no bulleted text list
-- [ ] The `OnboardingNetworkPanel` appears inline below the agent message
-- [ ] "Joined" section shows any already-joined networks with badge
+Start the dev server and navigate to `/onboarding`. Advance through the flow until the communities step. Confirm:
+- [ ] The agent outputs the `networks_panel` block (no bulleted text list)
+- [ ] `NetworksPanel` appears inline below the agent message
+- [ ] "Joined" section shows already-joined networks with badge
 - [ ] "Discover" section shows joinable networks with Join button
-- [ ] Clicking "Join" shows "Joining…" spinner and sends a message in the chat
-- [ ] After agent processes the join, the panel updates (joined network moves to Joined section on next render)
-- [ ] "Continue" chip skips the step and agent proceeds to intent capture
+- [ ] Clicking "Join" shows "Joining…" and sends a chat message
+- [ ] After agent processes the join, panel re-fetches on next render (networks move to Joined)
+- [ ] The panel also works in regular chat (test by typing "show me communities" or similar)
 
-**Step 3: Final commit if any fixes were needed**
+**Step 3: Fix any issues and commit**
 
 ```bash
 git add -A
