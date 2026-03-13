@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router";
 import { Link } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Loader2, Camera, ArrowUpRight, Trash2, Sparkles } from "lucide-react";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { Loader2, Camera, ArrowUpRight, Trash2, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -17,7 +18,7 @@ import { SaveBarProvider } from "@/contexts/SaveBarContext";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoading: authLoading, refetchUser } = useAuthContext();
+  const { user, isAuthenticated, isLoading: authLoading, refetchUser, signOut } = useAuthContext();
   const authService = useAuth();
   const { success, error } = useNotifications();
 
@@ -41,6 +42,11 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [generatingIntro, setGeneratingIntro] = useState(false);
+
+  const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -149,6 +155,18 @@ export default function ProfilePage() {
       error("Failed to generate intro");
     } finally {
       setGeneratingIntro(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await authService.deleteAccount();
+      await signOut();
+      navigate("/");
+    } catch {
+      error("Failed to delete account");
+      setIsDeletingAccount(false);
     }
   };
 
@@ -362,6 +380,34 @@ export default function ProfilePage() {
               )}
             </div>
 
+            {/* Danger Zone */}
+            <div className="pt-6 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
+                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
+              >
+                {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Danger Zone
+              </button>
+              {isDangerZoneExpanded && (
+                <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Delete your account</p>
+                    <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setDeleteConfirmationText(""); setShowDeleteConfirmation(true); }}
+                    className="border-red-200 text-red-600 hover:bg-red-100"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete
+                  </Button>
+                </div>
+              )}
+            </div>
+
           </div>
             </Tabs.Content>
 
@@ -452,6 +498,36 @@ export default function ProfilePage() {
         </div>
       )}
       </ClientLayout>
+
+      <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-100" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-100 focus:outline-none">
+            <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Delete your account</AlertDialog.Title>
+            <AlertDialog.Description className="text-sm text-gray-600 mb-4">
+              This action cannot be undone. Type your email address to confirm.
+            </AlertDialog.Description>
+            <Input
+              value={deleteConfirmationText}
+              onChange={(e) => setDeleteConfirmationText(e.target.value)}
+              placeholder={user?.email || "your@email.com"}
+              className="mb-4"
+            />
+            <div className="flex justify-end gap-3">
+              <AlertDialog.Cancel asChild>
+                <Button variant="outline" disabled={isDeletingAccount}>Cancel</Button>
+              </AlertDialog.Cancel>
+              <Button
+                onClick={handleDeleteAccount}
+                disabled={isDeletingAccount || deleteConfirmationText !== user?.email}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {isDeletingAccount ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </SaveBarProvider>
   );
 }
