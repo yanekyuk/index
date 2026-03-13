@@ -26,7 +26,7 @@ const NON_HUMAN_DOMAIN_PATTERNS = [
   /notifications\..+\.com$/i,
   /noreply\..+$/i,
   /mailer\..+$/i,
-  /^test\..+$/i,
+  /^test\.(com|dev|local|internal)$/i,
 ];
 
 /** Name patterns that indicate non-human contacts. */

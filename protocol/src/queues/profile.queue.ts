@@ -128,9 +128,11 @@ export class ProfileQueue {
       });
       await this.processJob(job.name, job.data);
     };
-    // Parallel Chat API allows 300 req/min. Keep concurrency well under that to
-    // leave headroom for other callers and avoid cascading 429s.
-    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, { concurrency: 50 });
+    // Parallel Chat API allows 300 req/min. Rate-limit at queue level to prevent bursts.
+    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, {
+      concurrency: 50,
+      limiter: { max: 4, duration: 1000 },
+    });
   }
 
   /**
@@ -176,8 +178,8 @@ export class ProfileQueue {
 
       this.queueLogger.info('[EnrichGhost] Starting enrichment via Chat API', {
         userId,
-        name: user.name,
-        email: user.email,
+        hasName: !!user.name,
+        hasEmail: !!user.email,
         hasSocials: !!(user.socials && Object.keys(user.socials).length > 0),
       });
 
@@ -198,20 +200,26 @@ export class ProfileQueue {
           websites: user.socials?.websites,
         });
 
-        if (enrichment) {
+        const hasMeaningfulEnrichment = !!enrichment && (
+          enrichment.identity.bio.trim().length > 0 ||
+          enrichment.narrative.context.trim().length > 0 ||
+          enrichment.attributes.skills.length > 0 ||
+          enrichment.attributes.interests.length > 0
+        );
+
+        if (hasMeaningfulEnrichment) {
           this.queueLogger.info('[EnrichGhost] Chat API enrichment completed', {
             userId,
-            name: enrichment.identity.name,
-            skillsCount: enrichment.attributes.skills.length,
-            interestsCount: enrichment.attributes.interests.length,
+            skillsCount: enrichment!.attributes.skills.length,
+            interestsCount: enrichment!.attributes.interests.length,
           });
 
           // Update user socials from enrichment
           const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
-          if (enrichment.socials.twitter) socials.x = enrichment.socials.twitter;
-          if (enrichment.socials.linkedin) socials.linkedin = enrichment.socials.linkedin;
-          if (enrichment.socials.github) socials.github = enrichment.socials.github;
-          if (enrichment.socials.websites?.length) socials.websites = enrichment.socials.websites;
+          if (enrichment!.socials.twitter) socials.x = enrichment!.socials.twitter;
+          if (enrichment!.socials.linkedin) socials.linkedin = enrichment!.socials.linkedin;
+          if (enrichment!.socials.github) socials.github = enrichment!.socials.github;
+          if (enrichment!.socials.websites?.length) socials.websites = enrichment!.socials.websites;
 
           if (Object.keys(socials).length > 0) {
             await chatDb.updateUser(userId, { socials });
@@ -219,10 +227,14 @@ export class ProfileQueue {
 
           // Prepare pre-populated profile for the graph
           prePopulatedProfile = {
-            identity: enrichment.identity,
-            narrative: enrichment.narrative,
-            attributes: enrichment.attributes,
+            identity: enrichment!.identity,
+            narrative: enrichment!.narrative,
+            attributes: enrichment!.attributes,
           };
+        } else if (enrichment) {
+          this.queueLogger.warn('[EnrichGhost] Chat API returned low-signal enrichment, falling back to graph generation', {
+            userId,
+          });
         }
       } catch (err) {
         this.queueLogger.warn('[EnrichGhost] Chat API enrichment failed, running profile graph without pre-populated profile', {

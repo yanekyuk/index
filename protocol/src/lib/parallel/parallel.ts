@@ -412,6 +412,8 @@ export function extractHandle(value: string, platform: 'x' | 'linkedin' | 'githu
  * Returns structured profile data including identity, narrative, attributes, and social links.
  * @param request - User identifiers (name, email, social URLs)
  * @returns Structured profile enrichment result, or null if enrichment failed
+ * @throws {Error} If `PARALLELS_API_KEY` is not defined.
+ * @throws {Error} If the chat request fails with a non-retryable error.
  */
 export async function enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
   const apiKey = process.env.PARALLELS_API_KEY;
@@ -421,9 +423,15 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
 
   const name = request.name?.trim() || '';
   const email = request.email?.trim() || '';
+  const hasSocialIdentifiers = !!(
+    request.twitter ||
+    request.linkedin ||
+    request.github ||
+    request.websites?.length
+  );
 
-  if (!name && !email) {
-    logger.warn('enrichUserProfile called without name or email, skipping');
+  if (!name && !email && !hasSocialIdentifiers) {
+    logger.warn('enrichUserProfile called without usable identifiers, skipping');
     return null;
   }
 
@@ -431,6 +439,7 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
   const promptParts: string[] = [];
   if (name) promptParts.push(`Find information about the person named ${name}.`);
   else if (email) promptParts.push(`Find information about the person with email "${email}".`);
+  else promptParts.push('Find information about this person.');
 
   if (name && email) promptParts.push(`Email: ${email}`);
   if (request.twitter) promptParts.push(`Twitter: ${request.twitter}`);
@@ -440,7 +449,14 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
 
   const userMessage = promptParts.join('\n');
 
-  logger.info('Parallel Chat API enrichment request', { name, email, hasTwitter: !!request.twitter });
+  logger.info('Parallel Chat API enrichment request', {
+    hasName: !!name,
+    hasEmail: !!email,
+    hasTwitter: !!request.twitter,
+    hasLinkedin: !!request.linkedin,
+    hasGithub: !!request.github,
+    websitesCount: request.websites?.length ?? 0,
+  });
 
   const client = new OpenAI({
     apiKey,
@@ -463,7 +479,7 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        logger.warn('Parallel Chat API returned empty content', { name, email });
+        logger.warn('Parallel Chat API returned empty content', { hasName: !!name, hasEmail: !!email });
         return null;
       }
 
@@ -471,7 +487,7 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
       const validation = enrichmentResultSchema.safeParse(parsed);
       if (!validation.success) {
         logger.warn('Parallel Chat API returned invalid profile structure', {
-          name, email, errors: validation.error.issues,
+          hasName: !!name, hasEmail: !!email, errors: validation.error.issues,
         });
         return null;
       }
@@ -489,7 +505,6 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
       }
 
       logger.info('Parallel Chat API enrichment completed', {
-        name: result.identity.name,
         skillsCount: result.attributes.skills.length,
         interestsCount: result.attributes.interests.length,
         hasSocials: !!(result.socials.linkedin || result.socials.twitter || result.socials.github),
@@ -508,8 +523,8 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
         continue;
       }
       logger.error('Parallel Chat API enrichment failed', {
-        name,
-        email,
+        hasName: !!name,
+        hasEmail: !!email,
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
