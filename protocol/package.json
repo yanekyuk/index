@@ -22,6 +22,7 @@
     "maintenance:backfill-profile-hyde": "bun ./src/cli/backfill-profile-hyde.ts",
     "maintenance:xmtp-sync-all": "bun ./src/cli/xmtp-sync-all.ts",
     "maintenance:xmtp-diagnose": "bun ./src/cli/xmtp-diagnose.ts",
+    "maintenance:xmtp-server-sync": "bun ./src/cli/xmtp-server-sync.ts",
     "maintenance:fix-migrations": "bash ./scripts/fix-migrations.sh",
     "maintenance:generate-profiles": "bun ./src/cli/generate-profiles.ts",
     "maintenance:reset-remote-db": "bun ./src/cli/db-reset-remote.ts",
