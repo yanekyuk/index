@@ -390,20 +390,24 @@ const profileEnrichmentSchema = {
  * Falls back to returning the cleaned value if URL parsing fails.
  */
 export function extractHandle(value: string, platform: 'x' | 'linkedin' | 'github'): string | undefined {
-  if (!value) return undefined;
+  const normalized = value.trim();
+  if (!normalized) return undefined;
 
   // Already a handle (no URL characters)
-  if (!value.includes('/') && !value.includes('.')) {
-    return value.replace(/^@/, '');
+  if (!normalized.includes('/') && !normalized.includes('.')) {
+    return normalized.replace(/^@/, '');
   }
 
-  // Extract from URL
+  // Extract from URL (prepend scheme if missing so new URL() doesn't throw)
   try {
-    const path = new URL(value).pathname.replace(/^\/+|\/+$/g, '').split('/');
-    if (platform === 'linkedin' && path[0] === 'in') return path[1] || undefined;
+    const candidate = /^[a-z]+:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
+    const path = new URL(candidate).pathname.replace(/^\/+|\/+$/g, '').split('/');
+    if (platform === 'linkedin') {
+      return path[0] === 'in' ? path[1] || undefined : undefined;
+    }
     return path[0] || undefined;
   } catch {
-    return value.replace(/^@/, '');
+    return normalized.replace(/^@/, '');
   }
 }
 

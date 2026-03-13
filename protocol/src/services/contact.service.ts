@@ -157,7 +157,7 @@ export class ContactService {
       }
       const name = contact.name?.trim() || '';
       if (!isHumanContact(email, name)) {
-        logger.debug('[ContactService] Skipped non-human contact', { email });
+        logger.debug('[ContactService] Skipped non-human contact', { domain: email.split('@')[1] });
         result.skipped++;
         continue;
       }
