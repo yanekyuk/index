@@ -16,7 +16,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/chat', '/profile'];
   const publicRoutes = ['/l', '/index', '/blog', '/about'];
-  const bareRoutes = ['/onboarding'];
+  const bareRoutes = ['/onboarding', '/oauth/callback'];
 
   const isBareRoute = useMemo(() => {
     return bareRoutes.some(route =>

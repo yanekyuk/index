@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
+import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
 import {
   Controller,
@@ -220,9 +221,11 @@ export class ChatController {
 
     // 4. Create SSE stream
     const encoder = new TextEncoder();
+    const originUrl = req.headers.get("origin") ?? undefined;
 
     const stream = new ReadableStream({
-      async start(controller) {
+      start(controller) {
+        return requestContext.run({ originUrl }, async () => {
         try {
           // Send initial status
           controller.enqueue(
@@ -345,6 +348,7 @@ export class ChatController {
         } finally {
           controller.close();
         }
+        }); // requestContext.run
       },
     });
 

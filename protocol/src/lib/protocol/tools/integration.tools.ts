@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { DefineTool, ToolDeps } from './tool.helpers';
 import { success, error } from './tool.helpers';
 import { contactService } from '../../../services/contact.service';
+import { requestContext } from '../../request-context';
 import { log } from '../../../lib/log';
 
 const logger = log.lib.from('integration.tools');
@@ -46,7 +47,10 @@ Returns import statistics or an auth URL if authentication is needed.`,
 
         if (!isConnected) {
           logger.info('Gmail not connected, returning auth URL', { userId: context.userId });
-          const authRequest = await session.authorize('gmail');
+          const originUrl = requestContext.getStore()?.originUrl;
+          const callbackUrl = originUrl ? `${originUrl}/oauth/callback` : undefined;
+          type AuthorizeFn = (toolkit: string, options?: { callbackUrl?: string }) => Promise<{ redirectUrl: string }>;
+          const authRequest = await (session.authorize as unknown as AuthorizeFn)('gmail', callbackUrl ? { callbackUrl } : undefined);
           return success({
             requiresAuth: true,
             message: 'Please connect your Gmail account to import contacts.',

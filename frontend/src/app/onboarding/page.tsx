@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -154,6 +155,7 @@ function AssistantMessageContent({
   onIntentProposalReject,
   onIntentProposalUndo,
   intentProposalStatusMap,
+  OAuthLink,
 }: {
   content: string;
   isStreaming: boolean;
@@ -165,6 +167,7 @@ function AssistantMessageContent({
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
+  OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
 }) {
   const displayed = normalizeBlockquotes(mentionsToMarkdownLinks(content));
   const showCursor = isStreaming;
@@ -189,7 +192,10 @@ function AssistantMessageContent({
                 showCursor && isLast && "chat-markdown-typing",
               )}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={OAuthLink ? { a: OAuthLink } : undefined}
+              >
                 {seg.content}
               </ReactMarkdown>
             </div>
@@ -262,6 +268,9 @@ export default function OnboardingPage() {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { OAuthLink } = useGmailConnect(useCallback(() => {
+    sendMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
+  }, [sendMessage]));
 
   // Opportunity & intent proposal action state
   const [opportunityActionLoading, setOpportunityActionLoading] = useState<Record<string, boolean>>({});
@@ -559,6 +568,7 @@ export default function OnboardingPage() {
                           onIntentProposalReject={handleIntentProposalReject}
                           onIntentProposalUndo={handleIntentProposalUndo}
                           intentProposalStatusMap={intentProposalStatusMap}
+                          OAuthLink={OAuthLink}
                         />
                       </>
                     ) : (
