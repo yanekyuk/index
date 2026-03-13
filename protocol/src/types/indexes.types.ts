@@ -30,7 +30,6 @@ export interface Index {
   prompt?: string | null;
   imageUrl?: string | null;
   isPersonal?: boolean;
-  ownerId?: string | null;
   permissions?: IndexPermissions | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
