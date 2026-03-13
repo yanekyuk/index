@@ -178,7 +178,8 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `users` - User accounts (Better Auth)
 - `user_profiles` - User identity with vector embeddings (2000-dim, text-embedding-3-large)
 - `intents` - User intents with vector embeddings and confidence scores
-- `indexes` - Communities/collections of related intents; personal indexes have `ownerId` and `isPersonal=true` (one per user, created on registration)
+- `indexes` - Communities/collections of related intents; personal indexes have `isPersonal=true` (one per user, created on registration)
+- `personal_indexes` - Mapping table enforcing one personal index per user (PK on `userId`, unique on `indexId`)
 - `index_members` - Membership with custom prompts and auto-assignment settings
 - `intent_indexes` - Many-to-many junction (intents ↔ indexes) with composite PK and optional `relevancyScore` (0.0–1.0)
 - `files` / `user_integrations` - Source tracking for intents
@@ -327,7 +328,7 @@ inferenceType: 'explicit' | 'implicit'
 
 ### Personal Indexes
 
-Each user has a personal index (`isPersonal=true`, `ownerId` set) created on registration. Personal indexes contain the user's imported contacts and are used for network-scoped discovery. Contacts synced into a personal index automatically become members with `'contact'` permissions. When a user accepts an opportunity, the counterpart is auto-added as a contact.
+Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table (one row per user). Ownership is determined through `index_members` with `permissions: ['owner']`, not a denormalized column. Personal indexes contain the user's imported contacts and are used for network-scoped discovery. Contacts synced into a personal index automatically become members with `'contact'` permissions. When a user accepts an opportunity, the counterpart is auto-added as a contact.
 
 Personal indexes cannot be deleted, renamed, or listed publicly. They are filtered from public index listings by guards.
 
