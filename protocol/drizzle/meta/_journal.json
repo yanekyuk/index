@@ -99,6 +99,13 @@
       "when": 1773390000000,
       "tag": "0013_add_intent_indexes_index_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773418618881,
+      "tag": "0014_add_personal_indexes_drop_owner_id",
+      "breakpoints": true
     }
   ]
 }
