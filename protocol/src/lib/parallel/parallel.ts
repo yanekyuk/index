@@ -368,10 +368,10 @@ const profileEnrichmentSchema = {
         socials: {
           type: "object",
           properties: {
-            linkedin: { type: "string", description: "LinkedIn profile URL if found" },
-            twitter: { type: "string", description: "Twitter/X profile URL if found" },
-            github: { type: "string", description: "GitHub profile URL if found" },
-            websites: { type: "array", items: { type: "string" }, description: "Other relevant website URLs" },
+            linkedin: { type: "string", description: "LinkedIn username only (the part after /in/ in the URL). NOT the full URL." },
+            twitter: { type: "string", description: "Twitter/X username only (without @ symbol). NOT the full URL, NOT tweet URLs." },
+            github: { type: "string", description: "GitHub username only. NOT the full URL." },
+            websites: { type: "array", items: { type: "string" }, description: "Only websites OWNED/CONTROLLED by this person (personal site, portfolio, blog they run). Exclude any third-party sites that merely mention them (news, company pages, aggregators, profiles on other platforms)." },
           },
         },
       },
@@ -379,6 +379,28 @@ const profileEnrichmentSchema = {
     },
   },
 };
+
+/**
+ * Extracts a username/handle from a value that may be a URL or already a handle.
+ * Falls back to returning the cleaned value if URL parsing fails.
+ */
+function extractHandle(value: string, platform: 'x' | 'linkedin' | 'github'): string | undefined {
+  if (!value) return undefined;
+
+  // Already a handle (no URL characters)
+  if (!value.includes('/') && !value.includes('.')) {
+    return value.replace(/^@/, '');
+  }
+
+  // Extract from URL
+  try {
+    const path = new URL(value).pathname.replace(/^\/+|\/+$/g, '').split('/');
+    if (platform === 'linkedin' && path[0] === 'in') return path[1] || undefined;
+    return path[0] || undefined;
+  } catch {
+    return value.replace(/^@/, '');
+  }
+}
 
 /**
  * Enriches a user profile using Parallel Chat API.
@@ -441,6 +463,18 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
       }
 
       const result = JSON.parse(content) as ParallelEnrichmentResult;
+
+      // Normalize socials to handles (in case LLM returned URLs)
+      if (result.socials.twitter) {
+        result.socials.twitter = extractHandle(result.socials.twitter, 'x');
+      }
+      if (result.socials.linkedin) {
+        result.socials.linkedin = extractHandle(result.socials.linkedin, 'linkedin');
+      }
+      if (result.socials.github) {
+        result.socials.github = extractHandle(result.socials.github, 'github');
+      }
+
       logger.info('Parallel Chat API enrichment completed', {
         name: result.identity.name,
         skillsCount: result.attributes.skills.length,
