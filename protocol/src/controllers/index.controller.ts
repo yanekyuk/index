@@ -371,6 +371,44 @@ export class IndexController {
   }
 
   /**
+   * Get an index by its invitation share code (no auth required).
+   * Used by the /l/[code] invitation page to preview the index before authentication.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Get('/share/:code')
+  async getIndexByShareCode(_req: Request, _user: unknown, params: Record<string, string>) {
+    const index = await indexService.getIndexByShareCode(params.code);
+    if (!index) {
+      return new Response(JSON.stringify({ error: 'Invalid or expired invitation link' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return Response.json({ index });
+  }
+
+  /**
+   * Accept an invitation to join an index using the invitation code.
+   * IMPORTANT: This must come before GET /:id to avoid route collision.
+   */
+  @Post('/invitation/:code/accept')
+  @UseGuards(AuthGuard)
+  async acceptInvitation(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      const result = await indexService.acceptInvitation(params.code, user.id);
+      return Response.json(result);
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
+      const isKnownError = msg.includes('Invalid or expired invitation link');
+      logger.warn('Failed to accept invitation', { error: msg, userId: user.id });
+      return new Response(JSON.stringify({ error: isKnownError ? msg : 'Failed to accept invitation' }), {
+        status: isKnownError ? 400 : 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  /**
    * Get a public index by ID (no auth required). Only works for indexes with joinPolicy 'anyone'.
    * IMPORTANT: This must come before GET /:id to avoid route collision.
    */

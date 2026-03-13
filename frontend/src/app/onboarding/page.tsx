@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunities } from "@/contexts/APIContext";
+import { useOpportunities, useIndexes } from "@/contexts/APIContext";
+import { useIndexesState } from "@/contexts/IndexesContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
@@ -300,6 +301,8 @@ export default function OnboardingPage() {
   } = useAIChat();
 
   const opportunitiesService = useOpportunities();
+  const indexesService = useIndexes();
+  const { refreshIndexes } = useIndexesState();
   const { error: showError } = useNotifications();
 
   const [input, setInput] = useState("");
@@ -388,11 +391,28 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (!user?.onboarding?.completedAt || hasTriggeredRedirect.current) return;
     hasTriggeredRedirect.current = true;
+
+    // Accept pending invitation deferred from /l/:code (only after onboarding completes)
+    const pendingCode = localStorage.getItem('pendingInviteCode');
+    if (pendingCode) {
+      indexesService
+        .acceptInvitation(pendingCode)
+        .then(async () => {
+          localStorage.removeItem('pendingInviteCode');
+          await refreshIndexes();
+        })
+        .catch((err) => {
+          // Keep code in localStorage so user can retry via the invitation link
+          console.error('Failed to accept deferred invitation:', err);
+          showError('Could not join the network from your invitation link. Please try the link again.');
+        });
+    }
+
     setIsTransitioning(true);
     const target = sessionId ? `/d/${sessionId}` : "/";
     const timer = setTimeout(() => navigate(target, { replace: true }), 700);
     return () => clearTimeout(timer);
-  }, [user?.onboarding?.completedAt, sessionId, navigate]);
+  }, [user?.onboarding?.completedAt, sessionId, navigate, indexesService, refreshIndexes, showError]);
 
   // Opportunity actions
   const handleOpportunityAction = useCallback(

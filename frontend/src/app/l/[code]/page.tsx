@@ -62,41 +62,25 @@ export default function InvitationPage() {
         }
 
         if (!isAuthenticated) {
+          // Persist the code so onboarding can pick it up after sign-up
+          localStorage.setItem('pendingInviteCode', code!);
           setState(prev => ({ ...prev, step: 'auth-required' }));
           return;
         }
 
-        // User is authenticated, fetch user data
+        // User is authenticated - check whether they've completed onboarding
         try {
           const response = await api.get<APIResponse<User>>('/auth/me');
           if (response.user) {
-            setState(prev => ({ ...prev, user: response.user || null }));
-
-            // Accept private invitation
-            try {
-              const joinResult = await indexesService.acceptInvitation(code!);
-              
-              // Check if user is already a member
-              if (joinResult?.alreadyMember) {
-                setState(prev => ({ ...prev, step: 'already-member' }));
-                return;
-              }
-              
-              await refreshIndexes();
-            } catch (err) {
-              console.error('Failed to accept invitation:', err);
-              setState(prev => ({ 
-                ...prev, 
-                step: 'error', 
-                error: 'Failed to accept invitation' 
-              }));
+            if (!response.user.onboarding?.completedAt) {
+              // Deferred join: code is in localStorage, redirect to onboarding
+              localStorage.setItem('pendingInviteCode', code!);
+              navigate('/onboarding');
               return;
             }
-
-
-            
-            // User is authenticated and member - go to root
-            navigate('/');
+            // Clean up deferred invite code since user will join explicitly via button
+            localStorage.removeItem('pendingInviteCode');
+            setState(prev => ({ ...prev, user: response.user || null, step: 'ready-to-join' }));
           }
         } catch (err) {
           console.error('Failed to fetch user:', err);
@@ -117,7 +101,7 @@ export default function InvitationPage() {
     };
 
     loadIndexAndCheckAuth();
-  }, [code, isAuthenticated, isReady, api, navigate, indexesService, refreshIndexes, refetchUser]);
+  }, [code, isAuthenticated, isReady, api, navigate]);
 
   // Trigger reload when user authenticates
   useEffect(() => {
