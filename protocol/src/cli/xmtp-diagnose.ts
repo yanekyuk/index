@@ -104,9 +104,9 @@ async function showStatus(
         continue;
       }
 
-      console.log(`  Recovery Identity: ${state.recoveryIdentifier}`);
-      console.log(`  Identities: ${state.identities?.length ?? 0}`);
-      state.identities?.forEach((id, i) => {
+      console.log(`  Recovery Identifier: ${state.recoveryIdentifier.identifier}`);
+      console.log(`  Identifiers: ${state.identifiers?.length ?? 0}`);
+      state.identifiers?.forEach((id, i) => {
         console.log(`    ${i + 1}. ${id.identifierKind}: ${id.identifier}`);
       });
 
@@ -180,12 +180,6 @@ async function syncHistory(
       console.log(`  Waiting ${waitSeconds}s...`);
       await sleep(waitSeconds * 1000);
 
-      // Sync device sync groups
-      try {
-        await client.syncAllDeviceSyncGroups();
-      } catch {
-        // May not be available
-      }
 
       // Sync all conversations
       await client.conversations.syncAll();
