@@ -77,7 +77,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
                     {network._count?.members ?? 0} members
                   </p>
                 </div>
-                <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-sm font-medium shrink-0">
+                <span className="text-xs px-1.5 py-0.5 bg-gray-900 text-white rounded-sm font-medium shrink-0">
                   Joined
                 </span>
               </div>
