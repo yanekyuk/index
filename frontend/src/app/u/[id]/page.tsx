@@ -149,7 +149,7 @@ export default function UserProfilePage() {
           )}
 
           {/* You're the connector — only shown when viewing someone else's profile */}
-          {user?.id !== id && (
+          {false && user?.id !== id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-0.5">You&apos;re the connector</h3>
               <p className="text-xs text-gray-400 mb-3">Intros you could make with {profileData?.name.split(' ')[0]}</p>
@@ -205,7 +205,7 @@ export default function UserProfilePage() {
 
 
           {/* Affiliations */}
-          {<div>
+          {false && <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Affiliations</h3>
             <div className="space-y-3">
               {[
