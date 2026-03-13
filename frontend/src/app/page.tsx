@@ -1127,7 +1127,7 @@ function LandingPage() {
 
 export default function RootPage() {
   const { isAuthenticated, isLoading } = useAuthContext();
-  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [isRedirecting] = useState(false);
 
   // Handle OAuth callback redirect (e.g., after Composio Gmail auth)
   useEffect(() => {
@@ -1138,19 +1138,7 @@ export default function RootPage() {
     const connectedAccountId = params.get("connected_account_id");
 
     if (status === "success" && connectedAccountId) {
-      const pendingRedirect = localStorage.getItem("pending_oauth_redirect");
-      if (pendingRedirect) {
-        localStorage.removeItem("pending_oauth_redirect");
-        try {
-          const redirectUrl = new URL(pendingRedirect, window.location.origin);
-          if (redirectUrl.origin === window.location.origin) {
-            setIsRedirecting(true);
-            window.location.href = pendingRedirect;
-          }
-        } catch {
-          // Invalid URL, ignore redirect
-        }
-      }
+      window.close();
     }
   }, []);
 

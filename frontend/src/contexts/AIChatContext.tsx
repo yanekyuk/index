@@ -77,10 +77,6 @@ interface AIChatContextType {
   scopeIndexId: string | null;
   /** Set the current index scope (e.g. from the index filter dropdown in ChatContent). Call with null for "Everywhere". */
   setScopeIndexId: (indexId: string | null) => void;
-  /** When true, discovery is restricted to the user's imported contacts only. */
-  contactsOnly: boolean;
-  /** Set contactsOnly mode for discovery. */
-  setContactsOnly: (value: boolean) => void;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
   isLoading: boolean;
@@ -90,7 +86,7 @@ interface AIChatContextType {
     message: string,
     fileIds?: string[],
     attachmentNames?: string[],
-    options?: { hidden?: boolean },
+    options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> },
   ) => Promise<void>;
   /** Clear messages and session state. Use { abortStream: false } when navigating away so the in-flight stream can finish and the new session appears in the sidebar. */
   clearChat: (options?: { abortStream?: boolean }) => void;
@@ -117,8 +113,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const [sessionIndexId, setSessionIndexId] = useState<string | null>(null);
   // Effective scope: session's bound index takes precedence, then UI override, then path
   const scopeIndexId = sessionIndexId ?? scopeIndexIdOverride ?? scopeFromPath;
-  // When true, discovery is restricted to the user's imported contacts only
-  const [contactsOnly, setContactsOnly] = useState<boolean>(false);
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -132,7 +126,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const skipSessionUpdateForRequestRef = useRef(false);
 
   const sendMessage = useCallback(
-    async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean }) => {
+    async (message: string, fileIds?: string[], attachmentNames?: string[], options?: { hidden?: boolean; prefillMessages?: Array<{ role: "assistant" | "user"; content: string }> }) => {
       const displayContent =
         message.trim() || (fileIds?.length ? "Attached file(s)." : "");
       if (!displayContent) return;
@@ -180,7 +174,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           sessionId,
           ...(fileIds?.length ? { fileIds } : {}),
           ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
-          ...(contactsOnly ? { contactsOnly: true } : {}),
+          ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
         };
 
         const response = await apiClient.stream("/chat/stream", bodyPayload, {
@@ -398,7 +392,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [sessionId, scopeIndexId, contactsOnly, refetchSessions],
+    [sessionId, scopeIndexId, refetchSessions],
   );
 
   const stopStream = useCallback(() => {
@@ -489,8 +483,6 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sessionIndexId,
         scopeIndexId,
         setScopeIndexId: setScopeIndexIdOverride,
-        contactsOnly,
-        setContactsOnly,
         suggestions,
         isLoading,
         stopStream,

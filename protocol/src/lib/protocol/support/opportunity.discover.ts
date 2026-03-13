@@ -61,8 +61,6 @@ export interface DiscoverInput {
   chatSessionId?: string;
   /** Redis cache for discovery pagination. When provided, remaining candidates are cached for continuation. */
   cache?: Cache;
-  /** When true, restrict discovery results to the user's imported contacts only. */
-  contactsOnly?: boolean;
 }
 
 /** Context used by the minimal (no-LLM) path; only introducerName is needed for narrator chip. */
@@ -465,7 +463,6 @@ export async function runDiscoverFromQuery(
     targetUserId,
     onBehalfOfUserId,
     chatSessionId,
-    contactsOnly,
   } = input;
 
   if (indexScope.length === 0) {
@@ -508,7 +505,6 @@ export async function runDiscoverFromQuery(
         targetUserId,
         onBehalfOfUserId,
         options,
-        contactsOnly: contactsOnly ?? false,
       });
 
       // Extract trace from graph and append to debugSteps

@@ -71,7 +71,7 @@ export class IntentIndexGraphFactory {
 
           // Direct assignment (skip evaluation)
           if (state.skipEvaluation) {
-            await this.database.assignIntentToIndex(intentId, indexId);
+            await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent saved to the index." },
@@ -87,7 +87,7 @@ export class IntentIndexGraphFactory {
           const indexContext = await this.database.getIndexMemberContext(indexId, intentForIndexing.userId);
           if (!indexContext) {
             // No prompts or not eligible - auto-assign
-            await this.database.assignIntentToIndex(intentId, indexId);
+            await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent assigned to index (auto-assign, no prompts)." },
@@ -96,7 +96,7 @@ export class IntentIndexGraphFactory {
 
           const hasNoPrompts = !indexContext.indexPrompt?.trim() && !indexContext.memberPrompt?.trim();
           if (hasNoPrompts) {
-            await this.database.assignIntentToIndex(intentId, indexId);
+            await this.database.assignIntentToIndex(intentId, indexId, 1.0);
             return {
               assignmentResult: { indexId, assigned: true, success: true } as AssignmentResult,
               mutationResult: { success: true, message: "Intent assigned to index (no prompts, auto-assign)." },
@@ -152,7 +152,7 @@ export class IntentIndexGraphFactory {
           }
 
           if (shouldAssign) {
-            await this.database.assignIntentToIndex(intentId, indexId);
+            await this.database.assignIntentToIndex(intentId, indexId, finalScore);
             return {
               evaluation: result,
               shouldAssign: true,

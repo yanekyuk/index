@@ -14,7 +14,7 @@ import { StorageController } from './controllers/storage.controller';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { fileService } from './services/file.service';
 import { MessagingController } from './controllers/messaging.controller';
-import { MessagingDatabaseAdapter, ensureGlobalIndex, ensureGlobalIndexMembership } from './adapters/database.adapter';
+import { MessagingDatabaseAdapter, ensurePersonalIndex } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
@@ -104,17 +104,13 @@ const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
 
 const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
 
-// Ensure the global index exists before accepting requests.
-// All users (real and ghost) are automatically added to this index.
-await ensureGlobalIndex();
-
 const authDb = new AuthDatabaseAdapter();
 const auth = createAuth({
   authDb,
   getTrustedOrigins,
   sendMagicLinkEmail,
   ensureWallet: (userId) => messagingStore.ensureWallet(userId),
-  ensureGlobalIndexMembership,
+  ensurePersonalIndex,
 });
 const messagingService = new MessagingService(messagingStore, {
   xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',

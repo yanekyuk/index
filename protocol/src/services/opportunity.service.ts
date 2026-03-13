@@ -284,6 +284,8 @@ export class OpportunityService {
 
     await this.db.acceptSiblingOpportunities(userId, counterpart.userId, opportunityId);
 
+    await this.db.upsertContact({ ownerId: userId, userId: counterpart.userId, source: 'manual' });
+
     return {
       opportunity: updated,
       counterpartUserId: counterpart.userId,
@@ -298,8 +300,8 @@ export class OpportunityService {
    * @param limit - Number of results
    * @returns Discovery results
    */
-  async discoverOpportunities(userId: string, query: string, limit: number = 5, contactsOnly: boolean = false) {
-    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit, contactsOnly });
+  async discoverOpportunities(userId: string, query: string, limit: number = 5) {
+    logger.verbose('[OpportunityService] Discovering opportunities', { userId, query, limit });
 
     if (!this.graph) {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
@@ -320,7 +322,6 @@ export class OpportunityService {
     const result = await this.graph!.invoke({
       userId: userId as Id<'users'>,
       searchQuery: query,
-      contactsOnly,
       options: { limit, initialStatus: 'latent' as const },
     });
 

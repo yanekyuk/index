@@ -27,10 +27,9 @@ export default function NetworksPage() {
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
   const allNetworks = [...(rawIndexes || [])].sort((a, b) => {
-    // Global indexes first, then by creation date
-    if (a.isGlobal && !b.isGlobal) return -1;
-    if (!a.isGlobal && b.isGlobal) return 1;
-    return 0;
+    if (a.isPersonal && !b.isPersonal) return -1;
+    if (!a.isPersonal && b.isPersonal) return 1;
+    return (a.title || '').localeCompare(b.title || '');
   });
 
   useEffect(() => {

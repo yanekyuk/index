@@ -1,4 +1,4 @@
-import { BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { AIMessage, BaseMessage, HumanMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { protocolLogger } from "../support/protocol.logger";
@@ -60,7 +60,7 @@ export class ChatStreamer {
       sessionId: string;
       maxContextMessages?: number;
       indexId?: string;
-      contactsOnly?: boolean;
+      prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
     },
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
@@ -71,7 +71,7 @@ export class ChatStreamer {
       sessionId,
       maxContextMessages = 20,
       indexId,
-      contactsOnly,
+      prefillMessages,
     } = input;
     logger.verbose("Starting context-aware streaming", {
       userId,
@@ -80,7 +80,6 @@ export class ChatStreamer {
       hasCheckpointer: !!checkpointer,
       hasIndexId: !!indexId,
       indexId: indexId ?? undefined,
-      contactsOnly: contactsOnly ?? false,
     });
 
     try {
@@ -90,8 +89,14 @@ export class ChatStreamer {
         maxContextMessages,
       );
 
-      // Add current message
-      const allMessages = [...previousMessages, new HumanMessage(message)];
+      // Inject prefill messages (e.g. hardcoded onboarding greeting) only for fresh sessions
+      const prefill: BaseMessage[] = previousMessages.length === 0
+        ? (prefillMessages ?? []).map((pm) =>
+            pm.role === "assistant" ? new AIMessage(pm.content) : new HumanMessage(pm.content),
+          )
+        : [];
+
+      const allMessages = [...previousMessages, ...prefill, new HumanMessage(message)];
 
       logger.verbose("Context prepared", {
         previousCount: previousMessages.length,
@@ -100,7 +105,7 @@ export class ChatStreamer {
 
       // Stream with context using the optional checkpointer
       yield* this.streamChatEvents(
-        { userId, messages: allMessages, indexId, contactsOnly },
+        { userId, messages: allMessages, indexId },
         sessionId,
         checkpointer,
         signal,
@@ -133,7 +138,7 @@ export class ChatStreamer {
    * @yields ChatStreamEvent objects
    */
   public async *streamChatEvents(
-    input: { userId: string; messages: BaseMessage[]; indexId?: string; contactsOnly?: boolean },
+    input: { userId: string; messages: BaseMessage[]; indexId?: string },
     sessionId: string,
     checkpointer?: MemorySaver | PostgresSaver,
     signal?: AbortSignal,
@@ -146,11 +151,9 @@ export class ChatStreamer {
         messages: BaseMessage[];
         indexId?: string;
         sessionId?: string;
-        contactsOnly: boolean;
       } = {
         userId: input.userId,
         messages: input.messages,
-        contactsOnly: input.contactsOnly ?? false,
       };
       if (input.indexId) initialState.indexId = input.indexId;
       initialState.sessionId = sessionId;

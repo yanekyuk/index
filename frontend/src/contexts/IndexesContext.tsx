@@ -65,7 +65,11 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
     if (isAuthenticated && !hasFetchedRef.current) {
       refreshIndexes();
     } else if (!isAuthenticated) {
+      setIndexes([]);
       setLoading(false);
+      setError(null);
+      hasFetchedRef.current = false;
+      hasDataRef.current = false;
       pendingJoinProcessedRef.current = false;
     }
   }, [isAuthenticated, refreshIndexes]);

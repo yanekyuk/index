@@ -78,6 +78,41 @@
       "when": 1772822884828,
       "tag": "0010_add_indexes_is_global",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1773311144047,
+      "tag": "0011_replace_global_with_personal_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1773380000000,
+      "tag": "0012_add_intent_indexes_relevancy_score",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1773390000000,
+      "tag": "0013_add_intent_indexes_index_id_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1773600000000,
+      "tag": "0014_fix_personal_index_intent_boundary",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1773418618881,
+      "tag": "0015_add_personal_indexes_drop_owner_id",
+      "breakpoints": true
     }
   ]
 }

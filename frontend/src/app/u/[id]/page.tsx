@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useUsers } from "@/contexts/APIContext";
+import { useUsers, useIndexes } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
@@ -14,8 +14,10 @@ export default function UserProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
+  const indexesService = useIndexes();
 
   const [profileData, setProfileData] = useState<User | null>(null);
+  const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +33,19 @@ export default function UserProfilePage() {
         setError(null);
         const profile = await usersService.getUserProfile(id);
         setProfileData(profile);
+
+        // Fetch shared networks separately so a failure doesn't break the profile
+        if (user?.id && user.id !== id) {
+          try {
+            const networks = await indexesService.getSharedIndexes(id!);
+            setSharedNetworks(networks);
+          } catch (err) {
+            console.error('Failed to fetch shared networks:', err);
+            setSharedNetworks([]);
+          }
+        } else {
+          setSharedNetworks([]);
+        }
       } catch (err) {
         console.error('Failed to fetch profile:', err);
         setError('User not found');
@@ -39,7 +54,7 @@ export default function UserProfilePage() {
       }
     };
     fetchData();
-  }, [id, isAuthenticated, authLoading, usersService]);
+  }, [id, user?.id, isAuthenticated, authLoading, usersService, indexesService]);
 
   if (authLoading || isLoading) {
     return (
@@ -128,23 +143,22 @@ export default function UserProfilePage() {
           )}
 
           {/* Shared Networks */}
-          {<div>
-            <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'mock-ai-founders', name: 'AI Founders & Builders', members: 142 },
-                { id: 'mock-web3-designers', name: 'Web3 Product Designers', members: 89 },
-              ].map((network) => (
-                <Link key={network.id} to={`/index/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
-                  {network.name}
-                  <span className="text-xs text-gray-400">{network.members}</span>
-                </Link>
-              ))}
+          {sharedNetworks.length > 0 && (
+            <div>
+              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Shared Networks</h3>
+              <div className="flex flex-wrap gap-2">
+                {sharedNetworks.map((network) => (
+                  <Link key={network.id} to={`/index/${network.id}`} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-full text-sm text-gray-700 hover:border-gray-400 transition-colors">
+                    {network.title}
+                    <span className="text-xs text-gray-400">{network._count.members}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>}
+          )}
 
           {/* You're the connector — only shown when viewing someone else's profile */}
-          {user?.id !== id && (
+          {false && user?.id !== id && (
             <div>
               <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-0.5">You&apos;re the connector</h3>
               <p className="text-xs text-gray-400 mb-3">Intros you could make with {profileData?.name.split(' ')[0]}</p>
@@ -200,7 +214,7 @@ export default function UserProfilePage() {
 
 
           {/* Affiliations */}
-          {<div>
+          {false && <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Affiliations</h3>
             <div className="space-y-3">
               {[

@@ -5,7 +5,7 @@ import { ProfileDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/databas
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
-import { searchUser } from '../lib/parallel/parallel';
+import { enrichUserProfile } from '../lib/parallel/parallel';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -128,7 +128,11 @@ export class ProfileQueue {
       });
       await this.processJob(job.name, job.data);
     };
-    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, { concurrency: 10 });
+    // Parallel Chat API allows 300 req/min. Rate-limit at queue level to prevent bursts.
+    this.worker = QueueFactory.createWorker<ProfileJobPayload>(QUEUE_NAME, processor, {
+      concurrency: 50,
+      limiter: { max: 4, duration: 1000 },
+    });
   }
 
   /**
@@ -172,60 +176,80 @@ export class ProfileQueue {
         return;
       }
 
-      this.queueLogger.info('[EnrichGhost] Starting enrichment', {
+      this.queueLogger.info('[EnrichGhost] Starting enrichment via Chat API', {
         userId,
-        name: user.name,
-        email: user.email,
+        hasName: !!user.name,
+        hasEmail: !!user.email,
         hasSocials: !!(user.socials && Object.keys(user.socials).length > 0),
       });
 
-      // Search for public data via Parallels API and pass results to profile graph
-      let enrichmentInput: string | undefined;
+      // Enrich via Parallel Chat API - returns structured profile directly
+      let prePopulatedProfile: {
+        identity: { name: string; bio: string; location: string };
+        narrative: { context: string };
+        attributes: { skills: string[]; interests: string[] };
+      } | undefined;
+
       try {
-        const searchResult = await searchUser({ name: user.name, email: user.email });
-        this.queueLogger.info('[EnrichGhost] Parallels search completed', {
-          userId,
-          resultCount: searchResult?.results?.length ?? 0,
+        const enrichment = await enrichUserProfile({
+          name: user.name,
+          email: user.email,
+          twitter: user.socials?.x,
+          linkedin: user.socials?.linkedin,
+          github: user.socials?.github,
+          websites: user.socials?.websites,
         });
 
-        if (searchResult?.results?.length) {
-          const socials: Record<string, string | string[]> = {};
-          const websites: string[] = [];
-          const inputParts: string[] = [];
+        const hasMeaningfulEnrichment = !!enrichment && (
+          enrichment.identity.bio.trim().length > 0 ||
+          enrichment.narrative.context.trim().length > 0 ||
+          enrichment.attributes.skills.length > 0 ||
+          enrichment.attributes.interests.length > 0
+        );
 
-          for (const result of searchResult.results) {
-            const url = result.url;
-            if (url.includes('linkedin.com')) socials.linkedin = url;
-            else if (url.includes('twitter.com') || url.includes('x.com')) socials.x = url;
-            else if (url.includes('github.com')) socials.github = url;
-            else websites.push(url);
+        if (hasMeaningfulEnrichment) {
+          this.queueLogger.info('[EnrichGhost] Chat API enrichment completed', {
+            userId,
+            skillsCount: enrichment!.attributes.skills.length,
+            interestsCount: enrichment!.attributes.interests.length,
+          });
 
-            // Collect excerpts for profile generation input
-            if (result.excerpts && result.excerpts.length > 0) {
-              inputParts.push(`Source: ${result.title || result.url}\n${result.excerpts.join('\n')}`);
-            }
-          }
-          if (websites.length > 0) socials.websites = websites;
+          // Update user socials from enrichment
+          const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
+          if (enrichment!.socials.twitter) socials.x = enrichment!.socials.twitter;
+          if (enrichment!.socials.linkedin) socials.linkedin = enrichment!.socials.linkedin;
+          if (enrichment!.socials.github) socials.github = enrichment!.socials.github;
+          if (enrichment!.socials.websites?.length) socials.websites = enrichment!.socials.websites;
+
           if (Object.keys(socials).length > 0) {
-            await chatDb.updateUser(userId, {
-              socials: socials as { x?: string; linkedin?: string; github?: string; websites?: string[] },
-            });
+            await chatDb.updateUser(userId, { socials });
           }
 
-          if (inputParts.length > 0) {
-            enrichmentInput = inputParts.join('\n\n');
-          }
+          // Prepare pre-populated profile for the graph
+          prePopulatedProfile = {
+            identity: enrichment!.identity,
+            narrative: enrichment!.narrative,
+            attributes: enrichment!.attributes,
+          };
+        } else if (enrichment) {
+          this.queueLogger.warn('[EnrichGhost] Chat API returned low-signal enrichment, falling back to graph generation', {
+            userId,
+          });
         }
       } catch (err) {
-        this.queueLogger.warn('[EnrichGhost] Parallels search failed, running profile graph without enrichment', {
+        this.queueLogger.warn('[EnrichGhost] Chat API enrichment failed, running profile graph without pre-populated profile', {
           userId,
           error: err instanceof Error ? err.message : String(err),
         });
       }
 
-      // Generate profile + HyDE — pass pre-fetched search results so graph skips redundant search
-      this.queueLogger.info('[EnrichGhost] Invoking profile graph', { userId, hasEnrichmentInput: !!enrichmentInput });
-      const result = await this.invokeProfileGraph(userId, enrichmentInput);
+      // Generate embedding + HyDE via profile graph
+      // If we have a pre-populated profile, the graph skips LLM generation
+      this.queueLogger.info('[EnrichGhost] Invoking profile graph', {
+        userId,
+        hasPrePopulatedProfile: !!prePopulatedProfile,
+      });
+      const result = await this.invokeProfileGraph(userId, prePopulatedProfile);
       this.queueLogger.info('[EnrichGhost] Profile graph completed', {
         userId,
         hasProfile: !!result.profile,
@@ -242,13 +266,24 @@ export class ProfileQueue {
     }
   }
 
-  private async invokeProfileGraph(userId: string, enrichmentInput?: string) {
+  private async invokeProfileGraph(
+    userId: string,
+    prePopulatedProfile?: {
+      identity: { name: string; bio: string; location: string };
+      narrative: { context: string };
+      attributes: { skills: string[]; interests: string[] };
+    }
+  ) {
     const database = new ProfileDatabaseAdapter();
     const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
     const factory = new ProfileGraphFactory(database, embedder, scraper);
     const graph = factory.createGraph();
-    return graph.invoke({ userId, operationMode: 'generate', enrichmentInput });
+    return graph.invoke({
+      userId,
+      operationMode: 'generate',
+      prePopulatedProfile,
+    });
   }
 }
 

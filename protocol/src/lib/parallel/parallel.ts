@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import Parallel from 'parallel-web';
+import OpenAI from 'openai';
+import { z } from 'zod';
 
 import { log } from '../log';
 const logger = log.lib.from("lib/parallel/parallel.ts");
@@ -188,9 +190,10 @@ export async function extractUrlContent(url: string, options?: ExtractUrlContent
         logger.verbose('Parallel extract response received', { url, resultsCount: extract.results?.length || 0 });
 
         if (extract.results && extract.results.length > 0) {
-          const result = extract.results[0];
+          const result = extract.results[0] as unknown as Record<string, unknown>;
           // Access content from result - check common property names
-          const content = (result as any).content || (result as any).excerpts?.[0] || (result as any).excerpt || (result as any).markdown || null;
+          const excerpts = result.excerpts as string[] | undefined;
+          const content = (result.content as string) || excerpts?.[0] || (result.excerpt as string) || (result.markdown as string) || null;
           logger.verbose('Extracted content', { url, contentLength: content?.length || 0, resultKeys: Object.keys(result) });
           return content;
         }
@@ -303,3 +306,234 @@ export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
 
 // Export the parallel client for direct access if needed
 export { parallelClient };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat API for Profile Enrichment
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PARALLEL_CHAT_URL = 'https://api.parallel.ai';
+
+/** Zod schema for validating Parallel Chat API enrichment responses. */
+const enrichmentResultSchema = z.object({
+  identity: z.object({
+    name: z.string(),
+    bio: z.string(),
+    location: z.string(),
+  }),
+  narrative: z.object({
+    context: z.string(),
+  }),
+  attributes: z.object({
+    skills: z.array(z.string()),
+    interests: z.array(z.string()),
+  }),
+  socials: z.object({
+    linkedin: z.string().optional(),
+    twitter: z.string().optional(),
+    github: z.string().optional(),
+    websites: z.array(z.string()).optional(),
+  }),
+});
+
+/** Structured profile enrichment result from Parallel Chat API. */
+export type ParallelEnrichmentResult = z.infer<typeof enrichmentResultSchema>;
+
+/** JSON schema for profile enrichment response format. */
+const profileEnrichmentSchema = {
+  type: "json_schema" as const,
+  json_schema: {
+    name: "profile_enrichment",
+    schema: {
+      type: "object",
+      properties: {
+        identity: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "The person's full name" },
+            bio: { type: "string", description: "A professional summary (2-3 sentences)" },
+            location: { type: "string", description: "City, Country or 'Remote' if unknown" },
+          },
+          required: ["name", "bio", "location"],
+        },
+        narrative: {
+          type: "object",
+          properties: {
+            context: { type: "string", description: "A rich, detailed narrative about the person's current situation, background, and what they are currently working on. Use raw, natural language." },
+          },
+          required: ["context"],
+        },
+        attributes: {
+          type: "object",
+          properties: {
+            skills: { type: "array", items: { type: "string" }, description: "Professional skills" },
+            interests: { type: "array", items: { type: "string" }, description: "Inferred or explicit interests" },
+          },
+          required: ["skills", "interests"],
+        },
+        socials: {
+          type: "object",
+          properties: {
+            linkedin: { type: "string", description: "LinkedIn username only (the part after /in/ in the URL). NOT the full URL." },
+            twitter: { type: "string", description: "Twitter/X username only (without @ symbol). NOT the full URL, NOT tweet URLs." },
+            github: { type: "string", description: "GitHub username only. NOT the full URL." },
+            websites: { type: "array", items: { type: "string" }, description: "Only websites OWNED/CONTROLLED by this person (personal site, portfolio, blog they run). Exclude any third-party sites that merely mention them (news, company pages, aggregators, profiles on other platforms)." },
+          },
+        },
+      },
+      required: ["identity", "narrative", "attributes", "socials"],
+    },
+  },
+};
+
+/**
+ * Extracts a username/handle from a value that may be a URL or already a handle.
+ * Falls back to returning the cleaned value if URL parsing fails.
+ */
+export function extractHandle(value: string, platform: 'x' | 'linkedin' | 'github'): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+
+  // Already a handle (no URL characters)
+  if (!normalized.includes('/') && !normalized.includes('.')) {
+    return normalized.replace(/^@/, '');
+  }
+
+  // Extract from URL (prepend scheme if missing so new URL() doesn't throw)
+  try {
+    const candidate = /^[a-z]+:\/\//i.test(normalized) ? normalized : `https://${normalized}`;
+    const path = new URL(candidate).pathname.replace(/^\/+|\/+$/g, '').split('/');
+    if (platform === 'linkedin') {
+      return path[0] === 'in' ? path[1] || undefined : undefined;
+    }
+    return path[0] || undefined;
+  } catch {
+    return normalized.replace(/^@/, '');
+  }
+}
+
+/**
+ * Enriches a user profile using Parallel Chat API.
+ * Returns structured profile data including identity, narrative, attributes, and social links.
+ * @param request - User identifiers (name, email, social URLs)
+ * @returns Structured profile enrichment result, or null if enrichment failed
+ * @throws {Error} If `PARALLELS_API_KEY` is not defined.
+ * @throws {Error} If the chat request fails with a non-retryable error.
+ */
+export async function enrichUserProfile(request: ParallelSearchRequestStruct): Promise<ParallelEnrichmentResult | null> {
+  const apiKey = process.env.PARALLELS_API_KEY;
+  if (!apiKey) {
+    throw new Error('PARALLELS_API_KEY is not defined');
+  }
+
+  const name = request.name?.trim() || '';
+  const email = request.email?.trim() || '';
+  const hasSocialIdentifiers = !!(
+    request.twitter ||
+    request.linkedin ||
+    request.github ||
+    request.websites?.length
+  );
+
+  if (!name && !email && !hasSocialIdentifiers) {
+    logger.warn('enrichUserProfile called without usable identifiers, skipping');
+    return null;
+  }
+
+  // Build the prompt for profile enrichment
+  const promptParts: string[] = [];
+  if (name) promptParts.push(`Find information about the person named ${name}.`);
+  else if (email) promptParts.push(`Find information about the person with email "${email}".`);
+  else promptParts.push('Find information about this person.');
+
+  if (name && email) promptParts.push(`Email: ${email}`);
+  if (request.twitter) promptParts.push(`Twitter: ${request.twitter}`);
+  if (request.linkedin) promptParts.push(`LinkedIn: ${request.linkedin}`);
+  if (request.github) promptParts.push(`GitHub: ${request.github}`);
+  if (request.websites?.length) promptParts.push(`Websites: ${request.websites.join(', ')}`);
+
+  const userMessage = promptParts.join('\n');
+
+  logger.info('Parallel Chat API enrichment request', {
+    hasName: !!name,
+    hasEmail: !!email,
+    hasTwitter: !!request.twitter,
+    hasLinkedin: !!request.linkedin,
+    hasGithub: !!request.github,
+    websitesCount: request.websites?.length ?? 0,
+  });
+
+  const client = new OpenAI({
+    apiKey,
+    baseURL: PARALLEL_CHAT_URL,
+  });
+
+  for (let attempt = 1; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model: 'speed',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person. Extract their professional background, skills, interests, and social links. Be thorough but concise.\n\nIMPORTANT: Only use data the person explicitly published on their profile (headline, about, experience, education, skills). Do NOT infer roles, programs, affiliations, or biographical facts from LinkedIn reactions, likes, comments, reposts, or engagement signals. Activity signals indicate interest, not participation.',
+          },
+          { role: 'user', content: userMessage },
+        ],
+        response_format: profileEnrichmentSchema,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        logger.warn('Parallel Chat API returned empty content', { hasName: !!name, hasEmail: !!email });
+        return null;
+      }
+
+      const parsed = JSON.parse(content);
+      const validation = enrichmentResultSchema.safeParse(parsed);
+      if (!validation.success) {
+        logger.warn('Parallel Chat API returned invalid profile structure', {
+          hasName: !!name, hasEmail: !!email, errors: validation.error.issues,
+        });
+        return null;
+      }
+      const result = validation.data;
+
+      // Normalize socials to handles (in case LLM returned URLs)
+      if (result.socials.twitter) {
+        result.socials.twitter = extractHandle(result.socials.twitter, 'x');
+      }
+      if (result.socials.linkedin) {
+        result.socials.linkedin = extractHandle(result.socials.linkedin, 'linkedin');
+      }
+      if (result.socials.github) {
+        result.socials.github = extractHandle(result.socials.github, 'github');
+      }
+
+      logger.info('Parallel Chat API enrichment completed', {
+        skillsCount: result.attributes.skills.length,
+        interestsCount: result.attributes.interests.length,
+        hasSocials: !!(result.socials.linkedin || result.socials.twitter || result.socials.github),
+      });
+
+      return result;
+    } catch (err) {
+      if (isRateLimitError(err) && attempt < RATE_LIMIT_MAX_RETRIES) {
+        const delayMs = RATE_LIMIT_DEFAULT_DELAY_MS;
+        logger.warn('Parallel Chat API rate limited, retrying after delay', {
+          attempt,
+          maxRetries: RATE_LIMIT_MAX_RETRIES,
+          delayMs,
+        });
+        await sleep(delayMs);
+        continue;
+      }
+      logger.error('Parallel Chat API enrichment failed', {
+        hasName: !!name,
+        hasEmail: !!email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  }
+
+  return null;
+}

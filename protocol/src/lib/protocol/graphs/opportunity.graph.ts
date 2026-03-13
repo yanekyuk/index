@@ -30,6 +30,7 @@ import {
   type EvaluatorInput,
 } from '../agents/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../interfaces/database.interface';
+import { IntentIndexer } from '../agents/intent.indexer';
 import { validateOpportunityActors } from '../support/opportunity.utils';
 
 /** Optional evaluator for testing (avoids LLM calls). */
@@ -120,7 +121,10 @@ export class OpportunityGraphFactory {
             requestedIndexId: state.indexId ?? undefined,
           },
           async () => {
-            const userIndexIds = await this.database.getUserIndexIds(state.userId);
+            // Use getIndexMemberships (all memberships) for search scope — NOT getUserIndexIds
+            // (which filters by autoAssign=true and is intended only for intent assignment).
+            const memberships = await this.database.getIndexMemberships(state.userId);
+            const userIndexIds = memberships.map(m => m.indexId) as Id<'indexes'>[];
             if (userIndexIds.length === 0) {
               logger.verbose('[Graph:Prep] User has no index memberships - cannot find opportunities');
               return {
@@ -217,9 +221,60 @@ export class OpportunityGraphFactory {
             targetIndexesCount: targetIndexes.length,
             indexes: targetIndexes.map(i => i.title),
           });
+
+          // ── Populate index relevancy scores for dedup tie-breaking ──
+          let indexRelevancyScores: Record<string, number> = {};
+
+          if (state.triggerIntentId) {
+            // Background path: look up persisted scores from intent_indexes
+            try {
+              const scores = await this.database.getIntentIndexScores(state.triggerIntentId);
+              for (const { indexId, relevancyScore } of scores) {
+                if (relevancyScore != null) {
+                  indexRelevancyScores[indexId] = relevancyScore;
+                }
+              }
+            } catch (err) {
+              logger.warn('[Graph:Scope] Failed to load intent index scores', { triggerIntentId: state.triggerIntentId, error: err });
+            }
+          } else if (state.searchQuery?.trim()) {
+            // Chat path: score query against target indexes in parallel
+            try {
+              const indexer = new IntentIndexer();
+              const scorableIndexes = targetIndexes.filter(ti => ti.title !== 'Unknown');
+              const scoringPromises = scorableIndexes.map(async (ti) => {
+                try {
+                  const ctx = await this.database.getIndexMemberContext(ti.indexId, state.userId);
+                  if (!ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()) {
+                    return { indexId: ti.indexId, score: 1.0 };
+                  }
+                  const result = await indexer.invoke(
+                    state.searchQuery!,
+                    ctx?.indexPrompt ?? null,
+                    ctx?.memberPrompt ?? null,
+                  );
+                  if (!result) return { indexId: ti.indexId, score: 1.0 };
+                  const score = ctx?.indexPrompt && ctx?.memberPrompt
+                    ? result.indexScore * 0.6 + result.memberScore * 0.4
+                    : ctx?.indexPrompt ? result.indexScore : result.memberScore;
+                  return { indexId: ti.indexId, score };
+                } catch {
+                  return { indexId: ti.indexId, score: 1.0 };
+                }
+              });
+              const results = await Promise.all(scoringPromises);
+              for (const { indexId, score } of results) {
+                indexRelevancyScores[indexId] = score;
+              }
+            } catch (err) {
+              logger.warn('[Graph:Scope] Failed to score query against indexes', { error: err });
+            }
+          }
+
           const totalMembers = targetIndexes.reduce((sum, i) => sum + i.memberCount, 0);
           return {
             targetIndexes,
+            indexRelevancyScores,
             trace: [{
               node: "scope",
               detail: `Searching ${targetIndexes.length} index(es): ${targetIndexes.map(i => `${i.title} (${i.memberCount})`).join(', ')}`,
@@ -801,13 +856,26 @@ export class OpportunityGraphFactory {
         const sortedCandidates = [...state.candidates]
           .sort((a, b) => b.similarity - a.similarity);
 
-        // Dedup by userId — keep the entry with highest similarity (first after sort)
-        const seenUserIds = new Set<string>();
-        const dedupedCandidates = sortedCandidates.filter((c) => {
-          if (seenUserIds.has(c.candidateUserId)) return false;
-          seenUserIds.add(c.candidateUserId);
-          return true;
-        });
+        // Dedup by userId — when same similarity, prefer index with highest relevancyScore
+        const bestByUser = new Map<string, CandidateMatch>();
+        for (const c of sortedCandidates) {
+          const existing = bestByUser.get(c.candidateUserId);
+          if (!existing) {
+            bestByUser.set(c.candidateUserId, c);
+          } else if (c.similarity > existing.similarity) {
+            bestByUser.set(c.candidateUserId, c);
+          } else if (c.similarity === existing.similarity) {
+            // Tie-break: prefer index with higher relevancy score
+            const cScore = state.indexRelevancyScores[c.indexId] ?? 0;
+            const existingScore = state.indexRelevancyScores[existing.indexId] ?? 0;
+            if (cScore > existingScore) {
+              bestByUser.set(c.candidateUserId, c);
+            }
+          }
+        }
+        const dedupedCandidates = Array.from(bestByUser.values());
+        // Re-sort by similarity descending (Map iteration order doesn't guarantee sort)
+        dedupedCandidates.sort((a, b) => b.similarity - a.similarity);
 
         if (dedupedCandidates.length < sortedCandidates.length) {
           logger.info("[Graph:Evaluation] Deduped candidates by userId", {
@@ -817,32 +885,8 @@ export class OpportunityGraphFactory {
           });
         }
 
-        // Contacts-only filter: restrict to user's imported contacts
-        let filteredCandidates = dedupedCandidates;
-        if (state.contactsOnly) {
-          try {
-            const contactUserIds = await this.database.getContactUserIds(state.userId);
-            if (contactUserIds.length === 0) {
-              logger.verbose('[Graph:Evaluation] contactsOnly=true but user has no contacts');
-              return { evaluatedOpportunities: [], remainingCandidates: [], trace: [{ node: 'evaluation', detail: 'Contacts filter: no contacts found' }] };
-            }
-            const contactSet = new Set(contactUserIds);
-            filteredCandidates = dedupedCandidates.filter((c) => contactSet.has(c.candidateUserId));
-            logger.verbose('[Graph:Evaluation] Contacts filter applied', {
-              before: dedupedCandidates.length,
-              after: filteredCandidates.length,
-            });
-            if (filteredCandidates.length === 0) {
-              return { evaluatedOpportunities: [], remainingCandidates: [], trace: [{ node: 'evaluation', detail: 'Contacts filter: no candidates in contacts' }] };
-            }
-          } catch (error) {
-            logger.error('[Graph:Evaluation] Failed to load contacts for contacts filter', { error, userId: state.userId });
-            return { evaluatedOpportunities: [], remainingCandidates: [], error: 'Failed to load contacts for contacts-only filtering.' };
-          }
-        }
-
-        const batchToEvaluate = filteredCandidates.slice(0, EVAL_BATCH_SIZE);
-        const remaining = filteredCandidates.slice(EVAL_BATCH_SIZE);
+        const batchToEvaluate = dedupedCandidates.slice(0, EVAL_BATCH_SIZE);
+        const remaining = dedupedCandidates.slice(EVAL_BATCH_SIZE);
 
         // Early termination: if search was query-driven and no query-sourced candidates remain,
         // clear remaining to prevent pointless pagination through profile-similarity leftovers
@@ -873,7 +917,6 @@ export class OpportunityGraphFactory {
         try {
           const discoveryUserId = state.onBehalfOfUserId ?? state.userId;
           const sourceProfile = await this.database.getProfile(discoveryUserId);
-          const sourceIndexId = state.targetIndexes[0]?.indexId ?? state.userIndexes[0];
           const sourceEntity: EvaluatorEntity = {
             userId: discoveryUserId,
             profile: {
@@ -889,7 +932,7 @@ export class OpportunityGraphFactory {
               payload: i.payload,
               summary: i.summary,
             })),
-            indexId: sourceIndexId ?? ('' as Id<'indexes'>),
+            indexId: '' as Id<'indexes'>,  // Placeholder — overwritten per-pairing below
             ragScore: undefined,
             matchedVia: undefined,
           };
@@ -1009,12 +1052,28 @@ export class OpportunityGraphFactory {
           const evaluatedOpportunities: EvaluatedOpportunity[] = pairwiseOpportunities.map((op) => ({
             reasoning: op.reasoning,
             score: op.score,
-            actors: op.actors.map((a) => ({
-              userId: a.userId as Id<'users'>,
-              role: a.role,
-              intentId: a.intentId as Id<'intents'> | undefined,
-              indexId: userIdToIndexId.get(a.userId) ?? (entities.find((e) => e.userId === a.userId)?.indexId as Id<'indexes'>),
-            })),
+            actors: op.actors.map((a) => {
+              const isSource = a.userId === discoveryUserId;
+              if (isSource) {
+                // Source actor inherits the counterpart's indexId (shared match context)
+                const counterpart = op.actors.find((other) => other.userId !== a.userId);
+                const counterpartIndexId = counterpart
+                  ? userIdToIndexId.get(counterpart.userId) ?? (entities.find((e) => e.userId === counterpart.userId)?.indexId as Id<'indexes'>)
+                  : undefined;
+                return {
+                  userId: a.userId as Id<'users'>,
+                  role: a.role,
+                  intentId: a.intentId as Id<'intents'> | undefined,
+                  indexId: counterpartIndexId ?? userIdToIndexId.get(a.userId) ?? ('' as Id<'indexes'>),
+                };
+              }
+              return {
+                userId: a.userId as Id<'users'>,
+                role: a.role,
+                intentId: a.intentId as Id<'intents'> | undefined,
+                indexId: userIdToIndexId.get(a.userId) ?? (entities.find((e) => e.userId === a.userId)?.indexId as Id<'indexes'>),
+              };
+            }),
           }));
 
           const passed = evaluatedOpportunities.filter((o) => o.score >= minScore);
@@ -1724,7 +1783,10 @@ export class OpportunityGraphFactory {
               const introducer = opp.actors.find((a: OpportunityActor) => a.role === 'introducer');
               const partyIds = otherParties.map((a: OpportunityActor) => a.userId);
               const idsToResolve = introducer ? [...partyIds, introducer.userId] : partyIds;
-              const actorIndexId = opp.actors[0]?.indexId;
+              // Use the counterpart's (non-viewer) indexId — it reflects where the match was found.
+              // actors[0] is typically the viewer with an arbitrary first-target-index value.
+              const counterpartActor = opp.actors.find((a: OpportunityActor) => a.userId !== state.userId);
+              const actorIndexId = counterpartActor?.indexId ?? opp.actors[0]?.indexId;
               const [indexRecord, ...profileAndUserPairs] = await Promise.all([
                 actorIndexId ? this.database.getIndex(actorIndexId) : Promise.resolve(null),
                 ...idsToResolve.map(async (uid: string) => {

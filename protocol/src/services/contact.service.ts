@@ -5,6 +5,56 @@ import { profileQueue } from '../queues/profile.queue';
 
 const logger = log.service.from('ContactService');
 
+/** Email prefixes that indicate automated/service accounts. */
+const NON_HUMAN_PREFIXES = new Set([
+  'noreply', 'no-reply', 'no_reply', 'donotreply', 'do-not-reply',
+  'support', 'info', 'help', 'sales', 'marketing', 'hello',
+  'notifications', 'notification', 'alerts', 'alert',
+  'newsletter', 'newsletters', 'news', 'updates', 'update',
+  'billing', 'invoices', 'receipts', 'orders',
+  'admin', 'administrator', 'system', 'mailer', 'mailer-daemon',
+  'daemon', 'postmaster', 'webmaster', 'hostmaster',
+  'feedback', 'contact', 'team', 'service', 'services',
+  'security', 'privacy', 'legal', 'compliance',
+  'calendar', 'calendar-server', 'calendar-notification',
+]);
+
+/** Domain patterns that indicate automated/service emails. */
+const NON_HUMAN_DOMAIN_PATTERNS = [
+  /calendar-notification\.google\.com$/i,
+  /accounts\.google\.com$/i,
+  /notifications\..+\.com$/i,
+  /noreply\..+$/i,
+  /mailer\..+$/i,
+  /^test\.(com|dev|local|internal)$/i,
+];
+
+/** Name patterns that indicate non-human contacts. */
+const NON_HUMAN_NAME_PATTERNS = [
+  /^no[ -_]?reply$/i,
+  /support$/i,
+  /team$/i,
+  /^(the )?.+ (team|support|notifications|alerts)$/i,
+];
+
+/**
+ * Determines if a contact appears to be a human (not a service/automated account).
+ * @param email - The contact's email address
+ * @param name - The contact's name (may be empty)
+ * @returns true if the contact appears to be human
+ */
+export function isHumanContact(email: string, name: string): boolean {
+  const [prefix, domain] = email.toLowerCase().split('@');
+
+  if (NON_HUMAN_PREFIXES.has(prefix)) return false;
+
+  if (NON_HUMAN_DOMAIN_PATTERNS.some(p => p.test(domain))) return false;
+
+  if (name && NON_HUMAN_NAME_PATTERNS.some(p => p.test(name))) return false;
+
+  return true;
+}
+
 /** Input for importing a single contact. */
 export interface ContactInput {
   name: string;
@@ -105,9 +155,15 @@ export class ContactService {
         result.skipped++;
         continue;
       }
+      const name = contact.name?.trim() || '';
+      if (!isHumanContact(email, name)) {
+        logger.debug('[ContactService] Skipped non-human contact', { domain: email.split('@')[1] });
+        result.skipped++;
+        continue;
+      }
       seenEmails.add(email);
       validContacts.push({
-        name: contact.name?.trim() || email.split('@')[0],
+        name: name || email.split('@')[0],
         email,
       });
     }

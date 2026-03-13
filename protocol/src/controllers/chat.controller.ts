@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedUser } from "../guards/auth.guard";
+import { requestContext } from "../lib/request-context";
 import { log } from "../lib/log";
 import {
   Controller,
@@ -26,7 +27,10 @@ const streamBodySchema = z.object({
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
   indexId: z.string().nullish(),
-  contactsOnly: z.boolean().optional().default(false),
+  prefillMessages: z.array(z.object({
+    role: z.enum(["assistant", "user"]),
+    content: z.string().max(10000),
+  })).max(10).optional(),
 });
 
 let suggestionGeneratorInstance: SuggestionGenerator | null = null;
@@ -106,7 +110,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null, contactsOnly?: boolean }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null }",
           },
           { status: 400 },
         );
@@ -217,9 +221,13 @@ export class ChatController {
 
     // 4. Create SSE stream
     const encoder = new TextEncoder();
+    const rawOrigin = req.headers.get("origin");
+    const trustedOrigins = (process.env.TRUSTED_ORIGINS ?? "").split(",").map(o => o.trim()).filter(Boolean);
+    const originUrl = rawOrigin && trustedOrigins.includes(rawOrigin) ? rawOrigin : undefined;
 
     const stream = new ReadableStream({
-      async start(controller) {
+      start(controller) {
+        return requestContext.run({ originUrl }, async () => {
         try {
           // Send initial status
           controller.enqueue(
@@ -243,7 +251,7 @@ export class ChatController {
               sessionId,
               maxContextMessages: 20,
               indexId: indexIdForStream,
-              contactsOnly: body.contactsOnly ?? false,
+              prefillMessages: body.prefillMessages,
             },
             checkpointer,
             req.signal,
@@ -268,6 +276,17 @@ export class ChatController {
                   [event.subgraph]: event.data,
                 };
               }
+            }
+          }
+
+          // Persist prefill messages (e.g. onboarding greeting) only for newly created sessions
+          if (body.prefillMessages?.length && !body.sessionId) {
+            for (const pm of body.prefillMessages) {
+              await chatSessionService.addMessage({
+                sessionId,
+                role: pm.role,
+                content: pm.content,
+              });
             }
           }
 
@@ -331,6 +350,7 @@ export class ChatController {
         } finally {
           controller.close();
         }
+        }); // requestContext.run
       },
     });
 

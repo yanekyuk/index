@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useGmailConnect } from "@/hooks/useGmailConnect";
 import { useNavigate } from "react-router";
 import {
   ArrowUp,
@@ -13,6 +14,7 @@ import {
   Share2,
   Check,
   Users,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -30,6 +32,7 @@ import IntentProposalCard, {
   type IntentProposalData,
   IntentProposalSkeleton,
 } from "@/components/chat/IntentProposalCard";
+import NetworksPanel from "@/components/chat/NetworksPanel";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
@@ -52,7 +55,7 @@ import { DynamicIcon, type IconName } from "lucide-react/dynamic";
 const USE_HOME_API = true;
 
 const CHAT_INPUT_PLACEHOLDER = "What's on your mind?";
-const CONTACTS_SCOPE_ID = "__contacts__";
+
 
 interface PendingFile {
   id: string;
@@ -89,11 +92,13 @@ type MessageSegment =
   | { type: "opportunity"; data: OpportunityCardData }
   | { type: "opportunity_loading" }
   | { type: "intent_proposal"; data: IntentProposalData }
-  | { type: "intent_proposal_loading" };
+  | { type: "intent_proposal_loading" }
+  | { type: "networks_panel" }
+  | { type: "networks_panel_loading" };
 
 function parseAllBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal)\s*\n([\s\S]*?)\n```/g;
+  const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
   let lastIndex = 0;
   let match;
 
@@ -106,29 +111,34 @@ function parseAllBlocks(content: string): MessageSegment[] {
     }
 
     const blockType = match[1];
-    try {
-      const jsonStr = match[2].trim();
-      const data = JSON.parse(jsonStr);
 
-      if (blockType === "opportunity" && data.opportunityId && data.userId) {
-        segments.push({ type: "opportunity", data: data as OpportunityCardData });
-      } else if (
-        blockType === "intent_proposal" &&
-        data.proposalId &&
-        (typeof data.description === "string" || !("description" in data))
-      ) {
-        segments.push({ type: "intent_proposal", data: data as IntentProposalData });
-      } else if (blockType === "intent_proposal") {
-        // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
-        segments.push({
-          type: "text",
-          content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
-        });
-      } else {
+    if (blockType === "networks_panel") {
+      segments.push({ type: "networks_panel" });
+    } else {
+      try {
+        const jsonStr = match[2].trim();
+        const data = JSON.parse(jsonStr);
+
+        if (blockType === "opportunity" && data.opportunityId && data.userId) {
+          segments.push({ type: "opportunity", data: data as OpportunityCardData });
+        } else if (
+          blockType === "intent_proposal" &&
+          data.proposalId &&
+          (typeof data.description === "string" || !("description" in data))
+        ) {
+          segments.push({ type: "intent_proposal", data: data as IntentProposalData });
+        } else if (blockType === "intent_proposal") {
+          // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
+          segments.push({
+            type: "text",
+            content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
+          });
+        } else {
+          segments.push({ type: "text", content: match[0] });
+        }
+      } catch {
         segments.push({ type: "text", content: match[0] });
       }
-    } catch {
-      segments.push({ type: "text", content: match[0] });
     }
 
     lastIndex = match.index + match[0].length;
@@ -137,13 +147,14 @@ function parseAllBlocks(content: string): MessageSegment[] {
   const remainingContent = content.slice(lastIndex);
   const partialOpp = remainingContent.match(/```opportunity/);
   const partialIntent = remainingContent.match(/```intent_proposal/);
+  const partialNetworks = remainingContent.match(/```networks_panel/);
 
-  let partialMatch: RegExpMatchArray | null = null;
-  if (partialOpp && partialIntent) {
-    partialMatch = partialOpp.index! <= partialIntent.index! ? partialOpp : partialIntent;
-  } else {
-    partialMatch = partialOpp ?? partialIntent;
-  }
+  const candidates = ([partialOpp, partialIntent, partialNetworks] as (RegExpMatchArray | null)[]).filter(
+    (c): c is RegExpMatchArray => c !== null,
+  );
+  const partialMatch = candidates.length > 0
+    ? candidates.reduce((earliest, c) => c.index! < earliest.index! ? c : earliest)
+    : null;
 
   if (partialMatch) {
     const partialIndex = partialMatch.index!;
@@ -151,11 +162,13 @@ function parseAllBlocks(content: string): MessageSegment[] {
     if (textBefore.trim()) {
       segments.push({ type: "text", content: textBefore });
     }
-    const isOpp = partialMatch === partialOpp;
-    segments.push(isOpp
-      ? { type: "opportunity_loading" as const }
-      : { type: "intent_proposal_loading" as const }
-    );
+    if (partialMatch === partialOpp) {
+      segments.push({ type: "opportunity_loading" });
+    } else if (partialMatch === partialIntent) {
+      segments.push({ type: "intent_proposal_loading" });
+    } else {
+      segments.push({ type: "networks_panel_loading" });
+    }
   } else if (lastIndex < content.length) {
     const remaining = content.slice(lastIndex);
     if (remaining.trim()) {
@@ -199,7 +212,9 @@ function AssistantMessageContent({
   onIntentProposalReject,
   onIntentProposalUndo,
   intentProposalStatusMap,
-  gmailConnected,
+  OAuthLink,
+  onNetworkJoin,
+  networkPanelPendingJoinIds,
 }: {
   content: string;
   isStreaming: boolean;
@@ -219,10 +234,12 @@ function AssistantMessageContent({
   /** Map of opportunityId -> current status from server */
   currentStatusMap?: Record<string, string>;
   onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
-  gmailConnected?: boolean;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
+  OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
+  onNetworkJoin?: (networkId: string, networkTitle: string) => void;
+  networkPanelPendingJoinIds?: Set<string>;
 }) {
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
@@ -253,60 +270,7 @@ function AssistantMessageContent({
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
-                components={{
-                  a: ({ href, children, ...props }) => {
-                    const isOAuthLink = href && (
-                      href.includes("composio.dev") ||
-                      href.includes("accounts.google.com/o/oauth")
-                    );
-                    if (isOAuthLink) {
-                      if (gmailConnected) {
-                        return (
-                          <span
-                            style={{ color: "#22c55e" }}
-                            className="flex items-center gap-2 px-4 py-2 mt-3 bg-neutral-100 text-sm font-medium rounded-md w-fit cursor-default"
-                          >
-                            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Gmail Connected
-                          </span>
-                        );
-                      }
-                      return (
-                        <a
-                          href={href}
-                          {...props}
-                          onClick={() => {
-                            localStorage.setItem(
-                              "pending_oauth_redirect",
-                              window.location.href
-                            );
-                            localStorage.setItem(
-                              "pending_oauth_action",
-                              "gmail_import"
-                            );
-                          }}
-                          style={{ color: "white", textDecoration: "none" }}
-                          className="flex items-center gap-2 px-4 py-2 mt-3 bg-black hover:bg-neutral-800 text-sm font-medium rounded-md transition-colors w-fit"
-                        >
-                          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                          </svg>
-                          Connect Gmail
-                        </a>
-                      );
-                    }
-                    return (
-                      <a href={href} {...props} target="_blank" rel="noopener noreferrer">
-                        {children}
-                      </a>
-                    );
-                  },
-                }}
+                components={OAuthLink ? { a: OAuthLink } : undefined}
               >
                 {segment.content}
               </ReactMarkdown>
@@ -347,11 +311,26 @@ function AssistantMessageContent({
               />
             </div>
           );
-        } else {
-          // intent_proposal_loading
+        } else if (segment.type === "intent_proposal_loading") {
           return (
             <div key={`intent-loading-${idx}`} className="my-3">
               <IntentProposalSkeleton />
+            </div>
+          );
+        } else if (segment.type === "networks_panel") {
+          return (
+            <div key={`networks-panel-${idx}`} className="my-3">
+              <NetworksPanel
+                onJoin={onNetworkJoin ?? (() => {})}
+                pendingJoinIds={networkPanelPendingJoinIds}
+              />
+            </div>
+          );
+        } else {
+          // networks_panel_loading
+          return (
+            <div key={`networks-panel-loading-${idx}`} className="my-3 flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
             </div>
           );
         }
@@ -376,7 +355,6 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     setScopeIndexId,
     sessionIndexId,
     updateSessionTitle,
-    setContactsOnly: setContactsOnlyContext,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
   const { error: showError, success: showSuccess, addNotification } = useNotifications();
@@ -396,7 +374,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [isInputMultiline, setIsInputMultiline] = useState(false);
   const [isTextareaMultiline, setIsTextareaMultiline] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
-  const [gmailConnected, setGmailConnected] = useState(false);
+  const { OAuthLink } = useGmailConnect(useCallback(() => {
+    sendMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
+  }, [sendMessage]));
 
   const handleShare = useCallback(async () => {
     if (!sessionId) return;
@@ -481,6 +461,26 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   >({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
 
+  // Networks panel join tracking
+  const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
+
+  // Clear pending join IDs when stream completes (agent processed the join)
+  const prevIsLoadingRef = useRef(isLoading);
+  useEffect(() => {
+    if (prevIsLoadingRef.current && !isLoading && networkPanelPendingJoinIds.size > 0) {
+      setNetworkPanelPendingJoinIds(new Set());
+    }
+    prevIsLoadingRef.current = isLoading;
+  }, [isLoading, networkPanelPendingJoinIds.size]);
+
+  const handleNetworkJoin = useCallback(
+    (networkId: string, networkTitle: string) => {
+      setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
+      sendMessage(`I'd like to join ${networkTitle}`);
+    },
+    [sendMessage],
+  );
+
   // Stable list of proposal IDs from assistant messages
   const proposalIdsArray = useMemo(() => {
     const ids = new Set<string>();
@@ -533,7 +533,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [proposalIdsKey]);
 
   // Index filter
-  const { selectedIndexIds, setSelectedIndexIds, contactsOnly, setContactsOnly } = useIndexFilter();
+  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   const { indexes } = useIndexesState();
   const selectedIndexId =
     selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
@@ -548,29 +548,19 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   const handleIndexSelect = useCallback(
     (indexId: string | null) => {
-      if (indexId === CONTACTS_SCOPE_ID) {
-        setContactsOnly(true);
-        setSelectedIndexIds([]);
-      } else if (indexId === null) {
-        setContactsOnly(false);
+      if (indexId === null) {
         setSelectedIndexIds([]);
       } else {
-        setContactsOnly(false);
         setSelectedIndexIds([indexId]);
       }
     },
-    [setSelectedIndexIds, setContactsOnly],
+    [setSelectedIndexIds],
   );
 
   // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
   useEffect(() => {
     setScopeIndexId(selectedIndexId);
   }, [selectedIndexId, setScopeIndexId]);
-
-  // Sync contactsOnly to chat context so backend receives contactsOnly flag
-  useEffect(() => {
-    setContactsOnlyContext(contactsOnly);
-  }, [contactsOnly, setContactsOnlyContext]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -630,36 +620,20 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
 
-  // Auto-send message after OAuth redirect (e.g., Gmail connected)
-  const [oauthHandled, setOauthHandled] = useState(false);
-  useEffect(() => {
-    if (oauthHandled) return;
-    if (!sessionLoaded) return;
-    if (isLoading) return;
-    
-    const pendingAction = localStorage.getItem("pending_oauth_action");
-    if (!pendingAction) return;
-    
-    // Mark as handled immediately to prevent double execution
-    setOauthHandled(true);
-    localStorage.removeItem("pending_oauth_action");
-    
-    // Mark Gmail as connected
-    if (pendingAction === "gmail_import") {
-      setGmailConnected(true);
-    }
-    
-    // Small delay then send a hidden follow-up message to continue the import
-    setTimeout(() => {
-      sendMessage("I've connected my account, please continue with the import.", undefined, undefined, { hidden: true });
-    }, 300);
-  }, [sessionLoaded, isLoading, oauthHandled, sendMessage]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // Snap to bottom immediately when a session finishes loading (covers the case
+  // where an in-memory session is restored and messages don't change).
+  useEffect(() => {
+    if (sessionLoaded && scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "instant" });
+    }
+  }, [sessionLoaded]);
 
   // Update URL when session changes: push so back from /d/id returns to /
   useEffect(() => {
@@ -1023,7 +997,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   // HOME STATE - No messages yet
   if (messages.length === 0) {
-    const globalIndex = indexes.find((i) => i.isGlobal);
+    const personalIndex = indexes.find((i) => i.isPersonal);
     const selectedIndex = indexes.find((i) => selectedIndexIds.includes(i.id));
 
     const renderScopeDropdown = () => {
@@ -1038,18 +1012,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               isInputMultiline ? "px-1.5" : "px-3",
             )}
           >
-            {contactsOnly ? (
+            {selectedIndex?.isPersonal ? (
               <Users className="w-4 h-4" />
-            ) : selectedIndex?.isGlobal ||
-              selectedIndex?.permissions?.joinPolicy ===
-                "invite_only" ? (
+            ) : selectedIndex?.permissions?.joinPolicy ===
+              "invite_only" ? (
               <Lock className="w-4 h-4" />
             ) : (
               <Globe className="w-4 h-4" />
             )}
             {!isInputMultiline && (
               <span>
-                {contactsOnly ? "My Contacts" : selectedIndex?.title || "Everywhere"}
+                {selectedIndex?.title || "Everywhere"}
               </span>
             )}
             <ChevronDown
@@ -1074,44 +1047,31 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    selectedIndexIds.length === 0 && !contactsOnly &&
+                    selectedIndexIds.length === 0 &&
                       "text-gray-900 font-medium",
                   )}
                 >
                   <Globe className="w-4 h-4" /> Everywhere
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleIndexSelect(CONTACTS_SCOPE_ID);
-                    setIsIndexDropdownOpen(false);
-                  }}
-                  className={cn(
-                    "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    contactsOnly && "text-gray-900 font-medium",
-                  )}
-                >
-                  <Users className="w-4 h-4" /> My Contacts
-                </button>
-                {globalIndex && (
+                {personalIndex && (
                   <button
                     type="button"
                     onClick={() => {
-                      handleIndexSelect(globalIndex.id);
+                      handleIndexSelect(personalIndex.id);
                       setIsIndexDropdownOpen(false);
                     }}
                     className={cn(
                       "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                      selectedIndexIds.includes(globalIndex.id) &&
+                      selectedIndexIds.includes(personalIndex.id) &&
                         "text-gray-900 font-medium",
                     )}
                   >
-                    <Lock className="w-4 h-4" /> {globalIndex.title}
+                    <Users className="w-4 h-4" /> {personalIndex.title}
                   </button>
                 )}
                 <div className="my-1 border-t border-gray-200" />
                 {[...indexes]
-                  .filter((i) => !i.isGlobal)
+                  .filter((i) => !i.isPersonal)
                   .sort(
                     (a, b) =>
                       (a.permissions?.joinPolicy === "invite_only"
@@ -1609,7 +1569,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             onIntentProposalReject={handleIntentProposalReject}
                             onIntentProposalUndo={handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
-                            gmailConnected={gmailConnected}
+                            OAuthLink={OAuthLink}
+                            onNetworkJoin={handleNetworkJoin}
+                            networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </>
                       ) : (

@@ -524,6 +524,7 @@ export class IntentGraphFactory {
 
               results.push({ actionType: 'create', success: true, intentId: created.id, payload: sanitizedPayload });
               logger.verbose(`Created intent: ${created.id}`);
+
               this.intentQueue?.addGenerateHydeJob({ intentId: created.id, userId: state.userId }).catch((err) =>
                 logger.error('Failed to enqueue intent HyDE job', { intentId: created.id, error: err })
               );

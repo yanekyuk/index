@@ -60,9 +60,11 @@ export class IndexService {
 
   /**
    * Update index settings (title, prompt, permissions). Owner-only.
+   * @throws Error if the index is a personal index.
    */
   async updateIndex(indexId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[IndexService] Updating index', { indexId, userId });
+    await this.assertNotPersonal(indexId);
     return this.adapter.updateIndexSettings(indexId, userId, data);
   }
 
@@ -70,6 +72,7 @@ export class IndexService {
    * Update index permissions. Owner-only.
    */
   async updatePermissions(indexId: string, userId: string, data: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+    await this.assertNotPersonal(indexId);
     logger.verbose('[IndexService] Updating permissions', { indexId, userId });
     return this.adapter.updateIndexSettings(indexId, userId, data);
   }
@@ -84,25 +87,31 @@ export class IndexService {
 
   /**
    * Add a member to an index. Only owners/admins can add members.
+   * @throws Error if the index is a personal index.
    */
   async addMember(indexId: string, userId: string, requestingUserId: string, role: 'admin' | 'member' = 'member') {
     logger.verbose('[IndexService] Adding member', { indexId, userId, role });
+    await this.assertNotPersonal(indexId);
     return this.adapter.addMemberForOwnerOrAdmin(indexId, userId, requestingUserId, role);
   }
 
   /**
    * Remove a member from an index. Owner-only.
+   * @throws Error if the index is a personal index.
    */
   async removeMember(indexId: string, memberId: string, userId: string) {
     logger.verbose('[IndexService] Removing member', { indexId, memberId, userId });
+    await this.assertNotPersonal(indexId);
     return this.adapter.removeMemberForOwner(indexId, memberId, userId);
   }
 
   /**
    * Soft-delete an index. Owner-only.
+   * @throws Error if the index is a personal index.
    */
   async deleteIndex(indexId: string, userId: string) {
     logger.verbose('[IndexService] Deleting index', { indexId, userId });
+    await this.assertNotPersonal(indexId);
     return this.adapter.deleteIndexForOwner(indexId, userId);
   }
 
@@ -137,6 +146,17 @@ export class IndexService {
   }
 
   /**
+   * Get non-personal indexes shared between the current user and a target user.
+   * @param currentUserId - Authenticated user ID.
+   * @param targetUserId - Profile user ID to compare memberships with.
+   * @returns Shared non-personal indexes with member counts.
+   */
+  async getSharedIndexes(currentUserId: string, targetUserId: string) {
+    logger.verbose('[IndexService] Getting shared indexes', { currentUserId, targetUserId });
+    return this.adapter.getSharedIndexes(currentUserId, targetUserId);
+  }
+
+  /**
    * Get public indexes that the user has not joined (for discovery).
    */
   async getPublicIndexes(userId: string) {
@@ -155,9 +175,11 @@ export class IndexService {
 
   /**
    * Leave an index. Members (non-owners) can leave.
+   * @throws Error if the index is a personal index.
    */
   async leaveIndex(indexId: string, userId: string) {
     logger.verbose('[IndexService] Leaving index', { indexId, userId });
+    await this.assertNotPersonal(indexId);
     await this.adapter.leaveIndex(indexId, userId);
   }
 
@@ -179,6 +201,17 @@ export class IndexService {
   async getMyIntentsInIndex(indexId: string, userId: string) {
     logger.verbose('[IndexService] Getting my intents in index', { indexId, userId });
     return this.adapter.getIndexIntentsForMember(indexId, userId);
+  }
+
+  /**
+   * Assert that an index is not a personal index.
+   * @throws Error if the index is personal.
+   */
+  private async assertNotPersonal(indexId: string): Promise<void> {
+    const isPersonal = await this.adapter.isPersonalIndex(indexId);
+    if (isPersonal) {
+      throw new Error('Access denied: personal indexes cannot be modified directly.');
+    }
   }
 }
 

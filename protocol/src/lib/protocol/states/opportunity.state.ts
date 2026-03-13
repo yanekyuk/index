@@ -199,12 +199,6 @@ export const OpportunityGraphState = Annotation.Root({
     default: () => undefined,
   }),
 
-  /** When true, restrict discovery results to the user's imported contacts only. */
-  contactsOnly: Annotation<boolean>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => false,
-  }),
-
   /** Target opportunity ID for update/delete/send modes. */
   opportunityId: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
@@ -235,6 +229,12 @@ export const OpportunityGraphState = Annotation.Root({
   targetIndexes: Annotation<TargetIndex[]>({
     reducer: (curr, next) => next ?? curr,
     default: () => [],
+  }),
+
+  /** Per-index relevancy scores for dedup tie-breaking. Background path: from intent_indexes. Chat path: transient from IntentIndexer. */
+  indexRelevancyScores: Annotation<Record<string, number>>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => ({}),
   }),
 
   /** Whether discovery used intent (path A) or profile (path B/C). Used by persist for triggeredBy. */

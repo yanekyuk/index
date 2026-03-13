@@ -27,8 +27,7 @@ const TEST_PREFIX = 'contact_svc_smoke_' + Date.now() + '_';
 // -- Test fixtures --
 let ownerId: string;
 let existingUserId: string;
-let globalIndexId: string;
-let createdGlobalIndex = false;
+let personalIndexId: string;
 
 const ownerEmail = `${TEST_PREFIX}owner@test.com`;
 const existingContactEmail = `${TEST_PREFIX}existing@test.com`;
@@ -44,7 +43,6 @@ const authDb = new AuthDatabaseAdapter();
 beforeAll(async () => {
   ownerId = crypto.randomUUID();
   existingUserId = crypto.randomUUID();
-  globalIndexId = crypto.randomUUID();
 
   // Create owner user
   await db.insert(users).values({
@@ -61,23 +59,9 @@ beforeAll(async () => {
     email: existingContactEmail,
   });
 
-  // Use existing global index, or create one if missing
-  const [existingGlobal] = await db
-    .select({ id: indexes.id })
-    .from(indexes)
-    .where(eq(indexes.isGlobal, true))
-    .limit(1);
-  if (existingGlobal) {
-    globalIndexId = existingGlobal.id;
-  } else {
-    await db.insert(indexes).values({
-      id: globalIndexId,
-      title: TEST_PREFIX + 'Global Index',
-      prompt: 'Global test index',
-      isGlobal: true,
-    });
-    createdGlobalIndex = true;
-  }
+  // Create owner's personal index
+  const { ensurePersonalIndex } = await import('../../adapters/database.adapter');
+  personalIndexId = await ensurePersonalIndex(ownerId);
 });
 
 afterAll(async () => {
@@ -86,9 +70,7 @@ afterAll(async () => {
   const allUserIds = [ownerId, existingUserId, ...createdGhostIds];
   await db.delete(indexMembers).where(inArray(indexMembers.userId, allUserIds));
   await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
-  if (createdGlobalIndex) {
-    await db.delete(indexes).where(eq(indexes.id, globalIndexId));
-  }
+  await db.delete(indexes).where(eq(indexes.id, personalIndexId));
   await db.delete(users).where(inArray(users.id, allUserIds));
 });
 
@@ -148,13 +130,13 @@ describe('importContacts', () => {
     expect(profile.userId).toBe(ghostId);
   });
 
-  it('adds ghost users to the global index', async () => {
+  it('adds contacts to the owner personal index as members', async () => {
     const ghostId = createdGhostIds[0];
     const memberships = await db
       .select()
       .from(indexMembers)
       .where(eq(indexMembers.userId, ghostId));
-    expect(memberships.some(m => m.indexId === globalIndexId)).toBe(true);
+    expect(memberships.some(m => m.indexId === personalIndexId)).toBe(true);
   });
 
   it('skips self-import (owner email)', async () => {

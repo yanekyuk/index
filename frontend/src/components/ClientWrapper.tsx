@@ -16,6 +16,13 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   const appRoutes = ['/', '/d', '/i', '/u', '/library', '/networks', '/chat', '/profile'];
   const publicRoutes = ['/l', '/index', '/blog', '/about'];
+  const bareRoutes = ['/onboarding', '/oauth/callback'];
+
+  const isBareRoute = useMemo(() => {
+    return bareRoutes.some(route =>
+      pathname === route || pathname?.startsWith(route + '/')
+    );
+  }, [pathname]);
 
   const isAppRoute = useMemo(() => {
     if (!isAuthenticated) return false;
@@ -30,8 +37,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     );
   }, [pathname]);
 
-  const showSidebar = isAppRoute && !isPublicRoute;
-  const showHeader = !showSidebar;
+  const showSidebar = isAppRoute && !isPublicRoute && !isBareRoute;
+  const showHeader = !showSidebar && !isBareRoute;
 
   const isLandingOrBlog = useMemo(() =>
     (pathname === '/' && !isAuthenticated) ||
@@ -43,6 +50,10 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const isMessagesView = useMemo(() => 
     pathname === '/chat' || (pathname?.includes('/chat') && pathname?.startsWith('/u/')),
   [pathname]);
+
+  if (isBareRoute) {
+    return <IndexesProvider>{children}</IndexesProvider>;
+  }
 
   return (
     <IndexesProvider>

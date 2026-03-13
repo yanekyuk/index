@@ -106,7 +106,7 @@ index/
 - `src/guards/` - Auth/validation guards for the decorator router (e.g. `auth.guard.ts`)
 - `src/types/` - Shared TypeScript types
 - `src/cli/` - CLI and maintenance scripts (db-seed, db-flush, db-apply-schema, db-reset-remote, backfill-profile-hyde, generate-profiles, opportunity-three-user-test, test-data). Note: some package.json maintenance scripts (trigger-integration, export-slack, import-slack-export, reset-brokers, update-embeddings, audit-intent-freshness) reference CLI files that no longer exist
-- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`, `lib/smartest/` (LLM-based test verification framework), `lib/performance/` (performance monitoring decorators/wrappers), `lib/parallel/` (parallel execution utilities)
+- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`, `lib/smartest/` (LLM-based test verification framework), `lib/performance/` (performance monitoring decorators/wrappers), `lib/parallel/` (parallel execution utilities), `lib/request-context.ts` (AsyncLocalStorage for request-scoped data like originUrl)
 - `src/lib/protocol/` - Protocol layer: `graphs/` (LangGraph state machines: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `agents/` (chat agent, intent inferrer/indexer/reconciler/verifier/clarifier, opportunity evaluator/presenter, profile/hyde generators, home categorizer, lens inferrer, suggestion generator, chat title generator), `states/` (graph state definitions: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `streamers/` (response streaming: chat.streamer, response.streamer), `support/` (protocol utilities: chat checkpointer/utils, opportunity card-text/constants/discover/enricher/persist/presentation/sanitize/utils, debug-meta sanitizer, lucide icon-catalog, protocol logger), `tools/` (agent tool definitions: contact, index, integration, intent, opportunity, profile, utility tools), `interfaces/` (database, embedder, cache, queue, scraper, storage), `docs/`
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters for agent system (intent events, index membership events)
@@ -178,9 +178,10 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `users` - User accounts (Better Auth)
 - `user_profiles` - User identity with vector embeddings (2000-dim, text-embedding-3-large)
 - `intents` - User intents with vector embeddings and confidence scores
-- `indexes` - Communities/collections of related intents
+- `indexes` - Communities/collections of related intents; personal indexes have `isPersonal=true` (one per user, created on registration)
+- `personal_indexes` - Mapping table enforcing one personal index per user (PK on `userId`, unique on `indexId`)
 - `index_members` - Membership with custom prompts and auto-assignment settings
-- `intent_indexes` - Many-to-many junction (intents ↔ indexes)
+- `intent_indexes` - Many-to-many junction (intents ↔ indexes) with composite PK and optional `relevancyScore` (0.0–1.0)
 - `files` / `user_integrations` - Source tracking for intents
 - `chat_sessions` / `chat_messages` - Chat session and message storage (chat graph, chat.service)
 - `user_notification_settings` - User notification preferences
@@ -259,6 +260,8 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
   - `/l/:code` - Link redirect (e.g. by code)
   - `/s/:token` - Shared session view (e.g. by share token)
   - `/blog` - Blog listing; `/blog/:slug` - Markdown-based blog posts
+  - `/onboarding` - First-user onboarding chat flow (identity, profile, communities, intent)
+  - `/oauth/callback` - OAuth popup callback (posts result to opener via postMessage)
   - `/pages/privacy-policy`, `/pages/terms-of-use` - Legal pages
   - `/dev/intent-proposal` - Dev tool for intent proposal testing
 - `src/components/` - Reusable React components
@@ -325,6 +328,12 @@ confidence: number // 0-1
 inferenceType: 'explicit' | 'implicit'
 ```
 
+### Personal Indexes
+
+Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table (one row per user). Ownership is determined through `index_members` with `permissions: ['owner']`, not a denormalized column. Personal indexes contain the user's imported contacts and are used for network-scoped discovery. Contacts synced into a personal index automatically become members with `'contact'` permissions. When a user accepts an opportunity, the counterpart is auto-added as a contact.
+
+Personal indexes cannot be deleted, renamed, or listed publicly. They are filtered from public index listings by guards.
+
 ### Index Prompts & Auto-Assignment
 
 ```typescript
@@ -337,6 +346,10 @@ indexMembers.autoAssign: boolean // Auto-tag new intents?
 ```
 
 LLM agents evaluate whether intents belong in indexes based on these prompts rather than hardcoded rules.
+
+### Relevancy Scoring (Intent-Index Attribution)
+
+When intents are assigned to indexes, an `IntentIndexer` agent scores the fit as `relevancyScore` (0.0–1.0). This score is used during opportunity discovery to break ties when a candidate appears across multiple shared indexes — the index with the highest relevancy to the trigger intent wins. Indexes without prompts default to score 1.0.
 
 ### Queue-Based Processing
 
