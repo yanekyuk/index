@@ -14,6 +14,7 @@ import {
   Share2,
   Check,
   Users,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MentionsTextInput } from "@/components/MentionsInput";
@@ -31,6 +32,7 @@ import IntentProposalCard, {
   type IntentProposalData,
   IntentProposalSkeleton,
 } from "@/components/chat/IntentProposalCard";
+import NetworksPanel from "@/components/chat/NetworksPanel";
 import { SuggestionChips } from "@/components/chat/SuggestionChips";
 import { ToolCallsDisplay } from "@/components/chat/ToolCallsDisplay";
 import { DebugCopyButton } from "@/components/DebugCopyButton";
@@ -90,11 +92,13 @@ type MessageSegment =
   | { type: "opportunity"; data: OpportunityCardData }
   | { type: "opportunity_loading" }
   | { type: "intent_proposal"; data: IntentProposalData }
-  | { type: "intent_proposal_loading" };
+  | { type: "intent_proposal_loading" }
+  | { type: "networks_panel" }
+  | { type: "networks_panel_loading" };
 
 function parseAllBlocks(content: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
-  const regex = /```(opportunity|intent_proposal)\s*\n([\s\S]*?)\n```/g;
+  const regex = /```(opportunity|intent_proposal|networks_panel)\s*\n([\s\S]*?)\n```/g;
   let lastIndex = 0;
   let match;
 
@@ -107,29 +111,34 @@ function parseAllBlocks(content: string): MessageSegment[] {
     }
 
     const blockType = match[1];
-    try {
-      const jsonStr = match[2].trim();
-      const data = JSON.parse(jsonStr);
 
-      if (blockType === "opportunity" && data.opportunityId && data.userId) {
-        segments.push({ type: "opportunity", data: data as OpportunityCardData });
-      } else if (
-        blockType === "intent_proposal" &&
-        data.proposalId &&
-        (typeof data.description === "string" || !("description" in data))
-      ) {
-        segments.push({ type: "intent_proposal", data: data as IntentProposalData });
-      } else if (blockType === "intent_proposal") {
-        // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
-        segments.push({
-          type: "text",
-          content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
-        });
-      } else {
+    if (blockType === "networks_panel") {
+      segments.push({ type: "networks_panel" });
+    } else {
+      try {
+        const jsonStr = match[2].trim();
+        const data = JSON.parse(jsonStr);
+
+        if (blockType === "opportunity" && data.opportunityId && data.userId) {
+          segments.push({ type: "opportunity", data: data as OpportunityCardData });
+        } else if (
+          blockType === "intent_proposal" &&
+          data.proposalId &&
+          (typeof data.description === "string" || !("description" in data))
+        ) {
+          segments.push({ type: "intent_proposal", data: data as IntentProposalData });
+        } else if (blockType === "intent_proposal") {
+          // Broken block (e.g. model wrote intent_proposal without calling create_intent — no proposalId)
+          segments.push({
+            type: "text",
+            content: "This proposal couldn't be loaded as a card. Ask again to add this as a signal.",
+          });
+        } else {
+          segments.push({ type: "text", content: match[0] });
+        }
+      } catch {
         segments.push({ type: "text", content: match[0] });
       }
-    } catch {
-      segments.push({ type: "text", content: match[0] });
     }
 
     lastIndex = match.index + match[0].length;
@@ -138,13 +147,14 @@ function parseAllBlocks(content: string): MessageSegment[] {
   const remainingContent = content.slice(lastIndex);
   const partialOpp = remainingContent.match(/```opportunity/);
   const partialIntent = remainingContent.match(/```intent_proposal/);
+  const partialNetworks = remainingContent.match(/```networks_panel/);
 
-  let partialMatch: RegExpMatchArray | null = null;
-  if (partialOpp && partialIntent) {
-    partialMatch = partialOpp.index! <= partialIntent.index! ? partialOpp : partialIntent;
-  } else {
-    partialMatch = partialOpp ?? partialIntent;
-  }
+  const candidates = ([partialOpp, partialIntent, partialNetworks] as (RegExpMatchArray | null)[]).filter(
+    (c): c is RegExpMatchArray => c !== null,
+  );
+  const partialMatch = candidates.length > 0
+    ? candidates.reduce((earliest, c) => c.index! < earliest.index! ? c : earliest)
+    : null;
 
   if (partialMatch) {
     const partialIndex = partialMatch.index!;
@@ -152,11 +162,13 @@ function parseAllBlocks(content: string): MessageSegment[] {
     if (textBefore.trim()) {
       segments.push({ type: "text", content: textBefore });
     }
-    const isOpp = partialMatch === partialOpp;
-    segments.push(isOpp
-      ? { type: "opportunity_loading" as const }
-      : { type: "intent_proposal_loading" as const }
-    );
+    if (partialMatch === partialOpp) {
+      segments.push({ type: "opportunity_loading" });
+    } else if (partialMatch === partialIntent) {
+      segments.push({ type: "intent_proposal_loading" });
+    } else {
+      segments.push({ type: "networks_panel_loading" });
+    }
   } else if (lastIndex < content.length) {
     const remaining = content.slice(lastIndex);
     if (remaining.trim()) {
@@ -201,6 +213,8 @@ function AssistantMessageContent({
   onIntentProposalUndo,
   intentProposalStatusMap,
   OAuthLink,
+  onNetworkJoin,
+  networkPanelPendingJoinIds,
 }: {
   content: string;
   isStreaming: boolean;
@@ -224,6 +238,8 @@ function AssistantMessageContent({
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
   OAuthLink?: React.ComponentType<React.ComponentPropsWithoutRef<"a">>;
+  onNetworkJoin?: (networkId: string, networkTitle: string) => void;
+  networkPanelPendingJoinIds?: Set<string>;
 }) {
   const displayedContent = normalizeBlockquotes(mentionsToMarkdownLinks(content));
 
@@ -295,11 +311,26 @@ function AssistantMessageContent({
               />
             </div>
           );
-        } else {
-          // intent_proposal_loading
+        } else if (segment.type === "intent_proposal_loading") {
           return (
             <div key={`intent-loading-${idx}`} className="my-3">
               <IntentProposalSkeleton />
+            </div>
+          );
+        } else if (segment.type === "networks_panel") {
+          return (
+            <div key={`networks-panel-${idx}`} className="my-3">
+              <NetworksPanel
+                onJoin={onNetworkJoin ?? (() => {})}
+                pendingJoinIds={networkPanelPendingJoinIds}
+              />
+            </div>
+          );
+        } else {
+          // networks_panel_loading
+          return (
+            <div key={`networks-panel-loading-${idx}`} className="my-3 flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
             </div>
           );
         }
@@ -429,6 +460,17 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     Record<string, "pending" | "created" | "rejected">
   >({});
   const [proposalIntentMap, setProposalIntentMap] = useState<Record<string, string>>({});
+
+  // Networks panel join tracking
+  const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
+
+  const handleNetworkJoin = useCallback(
+    (networkId: string, networkTitle: string) => {
+      setNetworkPanelPendingJoinIds((prev) => new Set([...prev, networkId]));
+      sendMessage(`I'd like to join ${networkTitle}`);
+    },
+    [sendMessage],
+  );
 
   // Stable list of proposal IDs from assistant messages
   const proposalIdsArray = useMemo(() => {
@@ -1511,6 +1553,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             onIntentProposalUndo={handleIntentProposalUndo}
                             intentProposalStatusMap={intentProposalStatusMap}
                             OAuthLink={OAuthLink}
+                            onNetworkJoin={handleNetworkJoin}
+                            networkPanelPendingJoinIds={networkPanelPendingJoinIds}
                           />
                         </>
                       ) : (
