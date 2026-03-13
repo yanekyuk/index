@@ -185,7 +185,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links } = schema;
+const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -3719,6 +3719,14 @@ export class UserDatabaseAdapter {
       .returning();
 
     return result[0] || null;
+  }
+
+  /**
+   * Deletes all sessions for a user (used before soft-delete to invalidate auth).
+   * @param userId - The user whose sessions should be removed
+   */
+  async deleteUserSessions(userId: string): Promise<void> {
+    await db.delete(sessions).where(eq(sessions.userId, userId));
   }
 
   /**

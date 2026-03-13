@@ -50,6 +50,7 @@ export class UserService {
 
     async softDelete(userId: string) {
         logger.verbose('[UserService] Soft deleting user', { userId });
+        await this.db.deleteUserSessions(userId);
         await this.db.softDelete(userId);
         return true;
     }
