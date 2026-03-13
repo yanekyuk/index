@@ -69,7 +69,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
               <p className="text-sm font-medium text-black truncate">{network.title}</p>
               <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                 <Users className="w-3 h-3" />
-                {network._count?.members ?? 0} members
+                {network._count?.members ?? (network as unknown as { memberCount?: number }).memberCount ?? 0} members
               </p>
             </div>
             <span className="text-xs px-1.5 py-0.5 bg-gray-900 text-white rounded-sm font-medium shrink-0">
@@ -94,7 +94,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
                 <p className="text-sm font-medium text-black truncate">{network.title}</p>
                 <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                   <Users className="w-3 h-3" />
-                  {network._count?.members ?? 0} members
+                  {network._count?.members ?? (network as unknown as { memberCount?: number }).memberCount ?? 0} members
                 </p>
               </div>
               <Button
