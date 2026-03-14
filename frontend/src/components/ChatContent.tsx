@@ -223,12 +223,14 @@ function AssistantMessageContent({
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
+    isGhost?: boolean,
   ) => void;
   onOpportunitySecondaryAction?: (
     opportunityId: string,
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
+    isGhost?: boolean,
   ) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
@@ -653,6 +655,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       fallbackUserId?: string,
       viewerRole?: string,
       counterpartName?: string,
+      isGhost?: boolean,
     ) => {
       setOpportunityActionLoading((prev) => ({
         ...prev,
@@ -678,7 +681,18 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         const counterpartUserId =
           result.counterpartUserId ?? fallbackUserId;
         if (action === "accepted" && !isIntroducer && counterpartUserId) {
-          navigate(`/u/${counterpartUserId}/chat`);
+          if (isGhost) {
+            // Fetch invite message and navigate with prefill for ghost users
+            try {
+              const { message } = await opportunitiesService.getInviteMessage(opportunityId);
+              navigate(`/u/${counterpartUserId}/chat`, { state: { prefill: message } });
+            } catch {
+              // Fallback: navigate without prefill
+              navigate(`/u/${counterpartUserId}/chat`);
+            }
+          } else {
+            navigate(`/u/${counterpartUserId}/chat`);
+          }
         } else if (action === "accepted" && isIntroducer) {
           showSuccess(
             "Introduction sent",
@@ -1251,6 +1265,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             userId,
                             viewerRole,
                             counterpartName,
+                            isGhost,
                           ) =>
                             handleHomeOpportunityAction(
                               oppId,
@@ -1258,6 +1273,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               userId,
                               viewerRole,
                               counterpartName,
+                              isGhost,
                             )
                           }
                           onSecondaryAction={(
@@ -1265,6 +1281,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                             userId,
                             viewerRole,
                             counterpartName,
+                            isGhost,
                           ) =>
                             handleHomeOpportunityAction(
                               oppId,
@@ -1272,6 +1289,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               userId,
                               viewerRole,
                               counterpartName,
+                              isGhost,
                             )
                           }
                           isLoading={
@@ -1540,6 +1558,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               userId,
                               viewerRole,
                               counterpartName,
+                              isGhost,
                             ) =>
                               handleHomeOpportunityAction(
                                 oppId,
@@ -1547,6 +1566,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                                 userId,
                                 viewerRole,
                                 counterpartName,
+                                isGhost,
                               )
                             }
                             onOpportunitySecondaryAction={(
@@ -1554,6 +1574,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                               userId,
                               viewerRole,
                               counterpartName,
+                              isGhost,
                             ) =>
                               handleHomeOpportunityAction(
                                 oppId,
@@ -1561,6 +1582,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                                 userId,
                                 viewerRole,
                                 counterpartName,
+                                isGhost,
                               )
                             }
                             opportunityLoadingMap={opportunityActionLoading}

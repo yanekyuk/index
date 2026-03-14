@@ -178,10 +178,14 @@ export class ContactService {
     const existingUsers = await this.db.getUsersByEmails(emails);
     const existingByEmail = new Map(existingUsers.map(u => [u.email.toLowerCase(), u]));
 
-    // Identify contacts that need ghost users
+    // Check for soft-deleted ghosts (opted out of emails — must not be re-created)
+    const softDeletedEmails = await this.db.getSoftDeletedGhostEmails(emails);
+    const softDeletedSet = new Set(softDeletedEmails.map(e => e.toLowerCase()));
+
+    // Identify contacts that need ghost users (excluding soft-deleted ghosts)
     const needGhosts: Array<{ name: string; email: string }> = [];
     for (const contact of validContacts) {
-      if (!existingByEmail.has(contact.email)) {
+      if (!existingByEmail.has(contact.email) && !softDeletedSet.has(contact.email)) {
         needGhosts.push(contact);
       }
     }

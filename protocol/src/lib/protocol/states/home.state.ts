@@ -21,6 +21,8 @@ export interface HomeCardItem {
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
+  /** Whether the counterpart is a ghost (not yet onboarded) user. */
+  isGhost?: boolean;
   /** For section assignment from LLM */
   _cardIndex: number;
 }

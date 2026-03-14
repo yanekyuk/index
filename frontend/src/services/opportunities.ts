@@ -54,6 +54,8 @@ export interface HomeViewCardItem {
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;
+  /** Whether the counterpart is a ghost (not yet onboarded) user. */
+  isGhost?: boolean;
 }
 
 /** Home view section (dynamic title, icon, items). */
@@ -165,5 +167,10 @@ export const createOpportunitiesService = (
 
   getOpportunity: async (opportunityId: string): Promise<OpportunityDetailResponse> => {
     return api.get<OpportunityDetailResponse>(`/opportunities/${opportunityId}`);
+  },
+
+  /** Fetch a pre-generated invite message for a ghost user opportunity. */
+  getInviteMessage: async (opportunityId: string): Promise<{ message: string }> => {
+    return api.get<{ message: string }>(`/opportunities/${opportunityId}/invite-message`);
   },
 });

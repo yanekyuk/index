@@ -371,6 +371,7 @@ export class HomeGraphFactory {
                 ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
                 : '') || 'A promising connection.';
 
+            const isCounterpartGhost = otherUser?.isGhost ?? false;
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
               userId: otherActor?.userId ?? '',
@@ -380,11 +381,12 @@ export class HomeGraphFactory {
               cta: isIntroducer
                 ? 'Share this introduction to get things started.'
                 : 'Take a look and decide whether to reach out.',
-              primaryActionLabel: isIntroducer ? 'Good match' : 'Start Chat',
+              primaryActionLabel: isIntroducer ? 'Good match' : (isCounterpartGhost ? 'Invite to chat' : 'Start Chat'),
               secondaryActionLabel: isIntroducer ? 'Pass' : 'Skip',
               mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
               narratorChip: { name: 'Index', text: 'Worth a look.' },
               viewerRole,
+              isGhost: isCounterpartGhost,
               _cardIndex: cardIndex,
             });
 
@@ -426,11 +428,12 @@ export class HomeGraphFactory {
                 mainText: presentation.personalizedSummary,
                 cta: presentation.suggestedAction,
                 headline: presentation.headline,
-                primaryActionLabel: presentation.primaryActionLabel,
+                primaryActionLabel: isCounterpartGhost && !isIntroducer ? 'Invite to chat' : presentation.primaryActionLabel,
                 secondaryActionLabel: presentation.secondaryActionLabel,
                 mutualIntentsLabel: presentation.mutualIntentsLabel,
                 narratorChip,
                 viewerRole,
+                isGhost: isCounterpartGhost,
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {

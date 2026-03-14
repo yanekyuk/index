@@ -19,6 +19,8 @@ export interface UserRecord {
   location?: string | null;
   socials?: UserSocials | null;
   onboarding?: OnboardingState | null;
+  isGhost?: boolean;
+  deletedAt?: Date | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
