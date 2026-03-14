@@ -32,7 +32,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToIndex' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext'
+  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToIndex' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -46,6 +46,7 @@ export interface IntentQueueDeps {
     sourceType: string;
     sourceId: string;
     forceRegenerate: boolean;
+    profileContext?: string;
   }) => Promise<void>;
   addOpportunityJob?: (data: { intentId: string; userId: string }) => Promise<unknown>;
 }
@@ -262,12 +263,50 @@ export class IntentQueue implements IntentGraphQueue {
       });
     }
     this.logger.info('[IntentHyde] Index assignment complete', { intentId, assignedIndexCount });
+
+    // Fetch discoverer profile + active intents for HyDE context (best-effort)
+    let profileContext: string | undefined;
+    try {
+      const [profile, activeIntents] = await Promise.all([
+        db.getProfile(userId),
+        db.getActiveIntents(userId),
+      ]);
+      const lines: string[] = [];
+      if (profile) {
+        const identity = profile.identity;
+        const attrs = profile.attributes;
+        if (identity?.name || identity?.bio) {
+          lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
+        }
+        if (attrs?.skills?.length) {
+          lines.push(`Skills: ${attrs.skills.join(', ')}`);
+        }
+        if (attrs?.interests?.length) {
+          lines.push(`Interests: ${attrs.interests.join(', ')}`);
+        }
+      }
+      if (activeIntents?.length) {
+        const capped = activeIntents.slice(0, 5);
+        lines.push('');
+        lines.push('Active intents:');
+        for (const ai of capped) {
+          lines.push(`- ${ai.payload}`);
+        }
+      }
+      if (lines.length > 0) {
+        profileContext = lines.join('\n');
+      }
+    } catch (ctxErr) {
+      this.logger.warn('[IntentHyde] Failed to fetch discoverer context for HyDE, proceeding without', { intentId, userId, error: ctxErr });
+    }
+
     if (this.deps?.invokeHyde) {
       await this.deps.invokeHyde({
         sourceText: intent.payload,
         sourceType: 'intent',
         sourceId: intentId,
         forceRegenerate: true,
+        profileContext,
       });
     } else {
       const embedder = new EmbedderAdapter();
@@ -280,6 +319,7 @@ export class IntentQueue implements IntentGraphQueue {
         sourceType: 'intent',
         sourceId: intentId,
         forceRegenerate: true,
+        profileContext,
       });
     }
     this.logger.info('[IntentHyde] HyDE generation complete, enqueuing opportunity discovery', { intentId, userId });

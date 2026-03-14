@@ -1591,4 +1591,42 @@ describe('Opportunity Graph', () => {
       expect(updateStatusSpy).toHaveBeenCalledWith(opportunityId, 'pending');
     });
   });
+
+  describe('Discovery node: discoverer context', () => {
+    test('passes profileContext with profile and intents to HyDE generator', async () => {
+      const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
+        getProfile: {
+          identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
+          narrative: { context: 'Alice is a software engineer' },
+          attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
+          embedding: dummyEmbedding,
+        } as ProfileDocument & { embedding: number[] },
+        getActiveIntents: () =>
+          Promise.resolve([
+            {
+              id: 'intent-1' as Id<'intents'>,
+              payload: 'Looking for an AI research collaborator',
+              summary: 'AI collaborator',
+              createdAt: new Date(),
+            },
+          ]),
+      });
+
+      const hydeSpy = spyOn(mockHydeGenerator, 'invoke');
+      spyOn(mockEmbedder, 'searchWithHydeEmbeddings').mockResolvedValue([]);
+
+      await compiledGraph.invoke({
+        userId: 'user-source' as Id<'users'>,
+        searchQuery: 'AI research partner',
+        options: {},
+      } as OpportunityGraphInvokeInput);
+
+      expect(hydeSpy).toHaveBeenCalled();
+      const invokeInput = (hydeSpy.mock.calls[0] as unknown[])[0] as { profileContext?: string };
+      expect(invokeInput.profileContext).toBeDefined();
+      expect(invokeInput.profileContext).toContain('Alice Chen');
+      expect(invokeInput.profileContext).toContain('Full-stack engineer building AI tools');
+      expect(invokeInput.profileContext).toContain('Active intents');
+    });
+  });
 });

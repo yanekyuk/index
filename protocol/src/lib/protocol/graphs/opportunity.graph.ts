@@ -17,6 +17,7 @@ import type { Id } from '../../../types/common.types';
 import {
   OpportunityGraphState,
   type IndexedIntent,
+  type SourceProfileData,
   type TargetIndex,
   type CandidateMatch,
   type EvaluatedCandidate,
@@ -70,6 +71,7 @@ export interface HydeGeneratorInvokeInput {
   sourceType: 'query';
   sourceText: string;
   forceRegenerate?: boolean;
+  profileContext?: string;
 }
 
 /** Optional notifier for opportunity send; when omitted, the real queue is used via dynamic import. */
@@ -78,6 +80,47 @@ export type QueueOpportunityNotificationFn = (
   recipientId: string,
   priority: 'immediate' | 'high' | 'low'
 ) => Promise<unknown>;
+
+/**
+ * Builds a compact text summary of the discoverer's profile and active intents
+ * for use as profileContext in HyDE generation.
+ * @param profile - The discoverer's profile data (identity, attributes)
+ * @param intents - The discoverer's indexed intents (capped at 5)
+ * @returns A context string, or undefined if no meaningful data is available
+ */
+function buildDiscovererContext(
+  profile: SourceProfileData | null | undefined,
+  intents: IndexedIntent[] | undefined
+): string | undefined {
+  const lines: string[] = [];
+
+  if (profile) {
+    const identity = profile.identity;
+    const attrs = profile.attributes;
+    if (identity?.name || identity?.bio) {
+      lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
+    }
+    if (attrs?.skills?.length) {
+      lines.push(`Skills: ${attrs.skills.join(', ')}`);
+    }
+    if (attrs?.interests?.length) {
+      lines.push(`Interests: ${attrs.interests.join(', ')}`);
+    }
+  }
+
+  if (intents?.length) {
+    // indexedIntents preserves DB order from getActiveIntents (newest first),
+    // so slice(0, 5) is deterministic without an explicit sort.
+    const capped = intents.slice(0, 5);
+    lines.push('');
+    lines.push('Active intents:');
+    for (const intent of capped) {
+      lines.push(`- ${intent.payload}`);
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
 
 /**
  * Factory class to build and compile the Opportunity Graph.
@@ -615,10 +658,12 @@ export class OpportunityGraphFactory {
             const searchText = state.searchQuery?.trim() ?? '';
             if (!searchText) return [];
             logger.verbose('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
+            const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
             const hydeResult = await self.hydeGenerator.invoke({
               sourceType: 'query',
               sourceText: searchText,
               forceRegenerate: false,
+              profileContext: discovererContext,
             });
             const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
             const lenses = hydeResult.lenses ?? [];
@@ -697,10 +742,12 @@ export class OpportunityGraphFactory {
             return { candidates: [] };
           }
 
+          const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
           const hydeResult = await this.hydeGenerator.invoke({
             sourceType: 'query',
             sourceText: searchText,
             forceRegenerate: false,
+            profileContext: discovererContext,
           });
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
