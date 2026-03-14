@@ -62,8 +62,8 @@ export class AuthDatabaseAdapter {
 
   /**
    * Claims a ghost user's data after a real user has been created.
-   * Transfers all ghost data (profiles, intents, index memberships, contacts, HyDE documents)
-   * to the real user, then deletes the ghost row.
+   * Transfers all ghost data (profiles, intents, index memberships, contacts, HyDE documents,
+   * chat sessions) to the real user, then deletes the ghost row.
    * @param realUserId - The real user's ID
    * @param ghostId - The ghost user's ID (from prepareGhostClaim)
    */
@@ -74,6 +74,7 @@ export class AuthDatabaseAdapter {
       await tx.update(schema.indexMembers).set({ userId: realUserId }).where(eq(schema.indexMembers.userId, ghostId));
       await tx.update(schema.hydeDocuments).set({ sourceId: realUserId }).where(eq(schema.hydeDocuments.sourceId, ghostId));
       await tx.update(schema.userContacts).set({ userId: realUserId }).where(eq(schema.userContacts.userId, ghostId));
+      await tx.update(schema.chatSessions).set({ userId: realUserId }).where(eq(schema.chatSessions.userId, ghostId));
       await tx.delete(schema.users).where(eq(schema.users.id, ghostId));
     });
   }
