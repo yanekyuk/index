@@ -342,5 +342,32 @@ describe('opportunity.utils', () => {
       ];
       expect(() => validateOpportunityActors(actors)).not.toThrow();
     });
+
+    test('accepts actors with valid UUID userIds', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'patient' },
+          { userId: 'a1234567-b234-c345-d456-e56789abcdef', role: 'agent' },
+        ])
+      ).not.toThrow();
+    });
+
+    test('rejects actors with non-UUID userIds', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'patient' },
+          { userId: 'TS9uwW4671WavtWJtSMrjeBLzL1KZJPb', role: 'agent' },
+        ])
+      ).toThrow('non-UUID userId');
+    });
+
+    test('accepts actors without userId field (backwards compatible)', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { role: 'patient' },
+          { role: 'agent' },
+        ])
+      ).not.toThrow();
+    });
   });
 });
