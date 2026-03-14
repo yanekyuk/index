@@ -7,7 +7,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray,
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
-import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
+import type { User, NotificationPreferences, OnboardingState, ChatMessageMetadata, ChatSessionMetadata } from '../schemas/database.schema';
 import type { Id } from '../types/common.types';
 import type { MessagingStore } from '../lib/xmtp';
 import { generateWallet, decryptKey } from '../lib/xmtp';
@@ -815,6 +815,71 @@ export class ChatDatabaseAdapter {
       routingDecision: msg.routingDecision as Record<string, unknown> | null,
       subgraphResults: msg.subgraphResults as Record<string, unknown> | null,
     }));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Chat Metadata Methods
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  async upsertMessageMetadata(params: {
+    id: string;
+    messageId: string;
+    traceEvents?: unknown;
+    debugMeta?: unknown;
+  }): Promise<void> {
+    await db
+      .insert(schema.chatMessageMetadata)
+      .values({
+        id: params.id,
+        messageId: params.messageId,
+        traceEvents: params.traceEvents,
+        debugMeta: params.debugMeta,
+      })
+      .onConflictDoUpdate({
+        target: schema.chatMessageMetadata.messageId,
+        set: {
+          ...(params.traceEvents !== undefined ? { traceEvents: params.traceEvents } : {}),
+          ...(params.debugMeta !== undefined ? { debugMeta: params.debugMeta } : {}),
+        },
+      });
+  }
+
+  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<ChatMessageMetadata[]> {
+    if (messageIds.length === 0) return [];
+    return db
+      .select()
+      .from(schema.chatMessageMetadata)
+      .where(inArray(schema.chatMessageMetadata.messageId, messageIds));
+  }
+
+  async upsertSessionMetadata(params: {
+    id: string;
+    sessionId: string;
+    metadata: unknown;
+  }): Promise<void> {
+    await db
+      .insert(schema.chatSessionMetadata)
+      .values({
+        id: params.id,
+        sessionId: params.sessionId,
+        metadata: params.metadata,
+      })
+      .onConflictDoUpdate({
+        target: schema.chatSessionMetadata.sessionId,
+        set: {
+          metadata: params.metadata,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getSessionMetadata(sessionId: string): Promise<ChatSessionMetadata | undefined> {
+    const [row] = await db
+      .select()
+      .from(schema.chatSessionMetadata)
+      .where(eq(schema.chatSessionMetadata.sessionId, sessionId))
+      .limit(1);
+    return row;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
