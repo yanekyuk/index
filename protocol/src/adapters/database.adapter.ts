@@ -570,6 +570,7 @@ export class IntentDatabaseAdapter {
       location: user.location ?? null,
       socials: user.socials ?? null,
       onboarding: user.onboarding ?? null,
+      isGhost: user.isGhost ?? false,
     };
   }
 

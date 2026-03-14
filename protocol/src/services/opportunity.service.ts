@@ -215,6 +215,8 @@ export class OpportunityService {
     });
 
     const otherPartyInfo = otherPartyIds[0] ? userMap.get(otherPartyIds[0])! : { id: '', name: 'Unknown', avatar: null as string | null };
+    const counterpartUser = userRecords[0];
+    const isCounterpartGhost = counterpartUser?.isGhost ?? false;
     const presentation = presentOpportunity(opp, viewerId, otherPartyInfo, introducerInfo, 'card');
 
     const otherParties = nonIntroducerActors.map((a) => {
@@ -236,6 +238,8 @@ export class OpportunityService {
       confidence: confidenceNum,
       index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (indexIdForDisplay ? { id: indexIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
+      isGhost: isCounterpartGhost,
+      primaryActionLabel: isCounterpartGhost ? 'Invite to chat' : 'Start chat',
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
       expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
     };
