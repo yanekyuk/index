@@ -1596,12 +1596,11 @@ describe('Opportunity Graph', () => {
     test('passes profileContext with profile and intents to HyDE generator', async () => {
       const { compiledGraph, mockHydeGenerator, mockEmbedder } = createMockGraph({
         getProfile: {
-          userId: 'user-source',
-          embedding: dummyEmbedding,
-          identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools' },
+          identity: { name: 'Alice Chen', bio: 'Full-stack engineer building AI tools', location: 'Remote' },
           narrative: { context: 'Alice is a software engineer' },
           attributes: { interests: ['machine learning', 'startups'], skills: ['TypeScript', 'Python'] },
-        } satisfies ProfileDocument,
+          embedding: dummyEmbedding,
+        } as ProfileDocument & { embedding: number[] },
         getActiveIntents: () =>
           Promise.resolve([
             {
@@ -1623,7 +1622,7 @@ describe('Opportunity Graph', () => {
       } as OpportunityGraphInvokeInput);
 
       expect(hydeSpy).toHaveBeenCalled();
-      const invokeInput = hydeSpy.mock.calls[0][0] as { profileContext?: string };
+      const invokeInput = (hydeSpy.mock.calls[0] as unknown[])[0] as { profileContext?: string };
       expect(invokeInput.profileContext).toBeDefined();
       expect(invokeInput.profileContext).toContain('Alice Chen');
       expect(invokeInput.profileContext).toContain('Full-stack engineer building AI tools');
