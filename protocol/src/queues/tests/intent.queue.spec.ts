@@ -14,6 +14,7 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   QueueFactory: {
     createQueue: () => ({ add: mockAdd }),
     createWorker: mockCreateWorker,
+    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
 mock.module('../opportunity.queue', () => ({
@@ -124,7 +125,6 @@ describe('IntentQueue', () => {
           sourceText: 'Build a SaaS',
           sourceType: 'intent',
           sourceId: 'i1',
-          strategies: ['mirror', 'reciprocal'],
           forceRegenerate: true,
         })
       );

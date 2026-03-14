@@ -55,7 +55,7 @@ describe('Email Handlers', () => {
 
       await sendConnectionRequestEmail(to, initiatorName, receiverName, synthesisHtml, subject);
 
-      const unsubscribeUrl = "https://index.network.api/api/notifications/unsubscribe?token=token&type=connectionUpdates";
+      const unsubscribeUrl = "https://protocol.index.network/api/notifications/unsubscribe?token=token&type=connectionUpdates";
       expect(templatesModule.connectionRequestTemplate).toHaveBeenCalledWith(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
       expect(emailModule.sendEmail).toHaveBeenCalledWith({
         to,
@@ -75,7 +75,7 @@ describe('Email Handlers', () => {
 
       await sendConnectionAcceptedEmail(to, initiatorName, accepterName, synthesisHtml);
 
-      const unsubscribeUrl = "https://index.network.api/api/notifications/unsubscribe?token=token&type=connectionUpdates";
+      const unsubscribeUrl = "https://protocol.index.network/api/notifications/unsubscribe?token=token&type=connectionUpdates";
       expect(connectionAcceptedTemplateModule.connectionAcceptedTemplate).toHaveBeenCalledWith(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
       expect(emailModule.sendEmail).toHaveBeenCalledWith({
         to,

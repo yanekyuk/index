@@ -7,7 +7,7 @@ import { eq, and, or, isNull, isNotNull, sql, count, desc, lt, lte, ne, inArray,
 
 import * as schema from '../schemas/database.schema';
 import db from '../lib/drizzle/drizzle';
-import type { User, NotificationPreferences, OnboardingState } from '../schemas/database.schema';
+import type { User, NotificationPreferences, OnboardingState, ChatMessageMetadata, ChatSessionMetadata } from '../schemas/database.schema';
 import type { Id } from '../types/common.types';
 import type { MessagingStore } from '../lib/xmtp';
 import { generateWallet, decryptKey } from '../lib/xmtp';
@@ -815,6 +815,96 @@ export class ChatDatabaseAdapter {
       routingDecision: msg.routingDecision as Record<string, unknown> | null,
       subgraphResults: msg.subgraphResults as Record<string, unknown> | null,
     }));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Chat Metadata Methods
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Verify that a message belongs to a session owned by the given user.
+   * @param messageId - The message ID to check
+   * @param userId - The user ID to verify ownership against
+   * @returns True if the message exists and its session is owned by the user
+   */
+  async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ sessionId: schema.chatMessages.sessionId })
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.id, messageId))
+      .limit(1);
+
+    if (!row) return false;
+
+    const [session] = await db
+      .select({ userId: schema.chatSessions.userId })
+      .from(schema.chatSessions)
+      .where(eq(schema.chatSessions.id, row.sessionId))
+      .limit(1);
+
+    return session?.userId === userId;
+  }
+
+  async upsertMessageMetadata(params: {
+    id: string;
+    messageId: string;
+    traceEvents?: unknown;
+    debugMeta?: unknown;
+  }): Promise<void> {
+    if (params.traceEvents === undefined && params.debugMeta === undefined) return;
+    await db
+      .insert(schema.chatMessageMetadata)
+      .values({
+        id: params.id,
+        messageId: params.messageId,
+        traceEvents: params.traceEvents,
+        debugMeta: params.debugMeta,
+      })
+      .onConflictDoUpdate({
+        target: schema.chatMessageMetadata.messageId,
+        set: {
+          ...(params.traceEvents !== undefined ? { traceEvents: params.traceEvents } : {}),
+          ...(params.debugMeta !== undefined ? { debugMeta: params.debugMeta } : {}),
+        },
+      });
+  }
+
+  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<ChatMessageMetadata[]> {
+    if (messageIds.length === 0) return [];
+    return db
+      .select()
+      .from(schema.chatMessageMetadata)
+      .where(inArray(schema.chatMessageMetadata.messageId, messageIds));
+  }
+
+  async upsertSessionMetadata(params: {
+    id: string;
+    sessionId: string;
+    metadata: unknown;
+  }): Promise<void> {
+    await db
+      .insert(schema.chatSessionMetadata)
+      .values({
+        id: params.id,
+        sessionId: params.sessionId,
+        metadata: params.metadata,
+      })
+      .onConflictDoUpdate({
+        target: schema.chatSessionMetadata.sessionId,
+        set: {
+          metadata: params.metadata,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getSessionMetadata(sessionId: string): Promise<ChatSessionMetadata | undefined> {
+    const [row] = await db
+      .select()
+      .from(schema.chatSessionMetadata)
+      .where(eq(schema.chatSessionMetadata.sessionId, sessionId))
+      .limit(1);
+    return row;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2128,6 +2218,108 @@ export class ChatDatabaseAdapter {
       updatedAt: row.updatedAt,
       user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
       _count: { members: memberCount },
+    };
+  }
+
+  /**
+   * Get an index by its invitation link code (public access, no auth required).
+   * @param code - The invitation link code from the URL
+   * @returns The index with owner info, member count, and joinPolicy, or null if not found
+   */
+  async getIndexByShareCode(code: string) {
+    const rows = await db
+      .select({
+        id: indexes.id,
+        title: indexes.title,
+        prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
+        permissions: indexes.permissions,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
+      })
+      .from(indexes)
+      .innerJoin(
+        indexMembers,
+        and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        )
+      )
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(
+        and(
+          sql`${indexes.permissions}->'invitationLink'->>'code' = ${code}`,
+          isNull(indexes.deletedAt),
+          eq(indexes.isPersonal, false)
+        )
+      )
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+
+    const memberCount = await this.getIndexMemberCount(row.id);
+
+    const perms = row.permissions as { joinPolicy?: string } | null;
+
+    return {
+      id: row.id,
+      title: row.title,
+      prompt: row.prompt,
+      imageUrl: row.imageUrl,
+      joinPolicy: (perms?.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+      _count: { members: memberCount },
+    };
+  }
+
+  /**
+   * Accept an invitation to join an index using the invitation code.
+   * @param code - The invitation link code
+   * @param userId - The authenticated user accepting the invitation
+   * @returns The index, membership details, and alreadyMember flag
+   * @throws Error if the code is invalid or the index is not found
+   */
+  async acceptIndexInvitation(code: string, userId: string) {
+    const index = await this.getIndexByShareCode(code);
+    if (!index) {
+      throw new Error('Invalid or expired invitation link');
+    }
+
+    const result = await this.addMemberToIndex(index.id, userId, 'member');
+
+    const [memberRow] = await db
+      .select({
+        userId: indexMembers.userId,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        permissions: indexMembers.permissions,
+        createdAt: indexMembers.createdAt,
+      })
+      .from(indexMembers)
+      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .where(and(eq(indexMembers.indexId, index.id), eq(indexMembers.userId, userId)))
+      .limit(1);
+
+    return {
+      index,
+      membership: memberRow
+        ? {
+            id: memberRow.userId,
+            name: memberRow.name,
+            email: memberRow.email,
+            avatar: memberRow.avatar,
+            permissions: memberRow.permissions,
+            createdAt: memberRow.createdAt,
+          }
+        : null,
+      alreadyMember: result.alreadyMember,
     };
   }
 

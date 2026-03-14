@@ -19,6 +19,8 @@ import {
   formatSSEEvent,
 } from "../types/chat-streaming.types";
 
+type RouteParams = Record<string, string>;
+
 const logger = log.controller.from("chat");
 
 const streamBodySchema = z.object({
@@ -242,6 +244,7 @@ export class ChatController {
           let fullResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
+          let debugMeta: { graph: string; iterations: number; tools: unknown[] } | undefined;
 
           // Use context-aware streaming to load previous messages
           for await (const event of factory.streamChatEventsWithContext(
@@ -275,6 +278,12 @@ export class ChatController {
                   ...subgraphResults,
                   [event.subgraph]: event.data,
                 };
+              } else if (event.type === "debug_meta") {
+                debugMeta = {
+                  graph: event.graph,
+                  iterations: event.iterations,
+                  tools: event.tools,
+                };
               }
             }
           }
@@ -296,14 +305,52 @@ export class ChatController {
             role: "user",
             content: messageContent,
           });
+          let assistantMessageId: string | undefined;
           if (fullResponse) {
-            await chatSessionService.addMessage({
+            assistantMessageId = await chatSessionService.addMessage({
               sessionId,
               role: "assistant",
               content: fullResponse,
               routingDecision,
               subgraphResults,
             });
+          }
+
+          // Persist debug metadata (non-blocking for user experience)
+          if (assistantMessageId && debugMeta) {
+            try {
+              // Save per-message metadata
+              await chatSessionService.saveMessageMetadata({
+                messageId: assistantMessageId,
+                debugMeta,
+              });
+
+              // Accumulate session-level metadata
+              const existingSessionMeta = await chatSessionService.getSessionMetadata(sessionId);
+              const existingTurns = Array.isArray(
+                (existingSessionMeta?.metadata as Record<string, unknown> | null)?.turns
+              )
+                ? (existingSessionMeta!.metadata as { turns: unknown[] }).turns
+                : [];
+
+              await chatSessionService.upsertSessionMetadata({
+                sessionId,
+                metadata: {
+                  lastUpdated: new Date().toISOString(),
+                  turns: [
+                    ...existingTurns,
+                    {
+                      messageId: assistantMessageId,
+                      graph: debugMeta.graph,
+                      iterations: debugMeta.iterations,
+                      toolCount: Array.isArray(debugMeta.tools) ? debugMeta.tools.length : 0,
+                    },
+                  ],
+                },
+              });
+            } catch (metaError) {
+              logger.error("Failed to persist debug metadata", { sessionId, error: metaError });
+            }
           }
 
           // Skip title/suggestions generation if client disconnected
@@ -326,6 +373,7 @@ export class ChatController {
               encoder.encode(
                 formatSSEEvent(
                   createDoneEvent(sessionId, fullResponse, {
+                    messageId: assistantMessageId,
                     routingDecision,
                     subgraphResults,
                     title: sessionTitle,
@@ -414,7 +462,29 @@ export class ChatController {
     const messages = await chatSessionService.getSessionMessages(
       body.sessionId,
     );
-    return Response.json({ session, messages });
+
+    // Fetch metadata for assistant messages (traceEvents, debugMeta)
+    const assistantIds = messages
+      .filter((m: { role: string }) => m.role === 'assistant')
+      .map((m: { id: string }) => m.id);
+
+    let metaMap = new Map<string, { traceEvents?: unknown; debugMeta?: unknown }>();
+    if (assistantIds.length > 0) {
+      const metadataRows = await chatSessionService.getMessageMetadataByMessageIds(assistantIds);
+      metaMap = new Map(metadataRows.map((m) => [m.messageId, m]));
+    }
+
+    const enrichedMessages = messages.map((m) => {
+      if (m.role !== 'assistant') return m;
+      const meta = metaMap.get(m.id);
+      return {
+        ...m,
+        traceEvents: meta?.traceEvents ?? null,
+        debugMeta: meta?.debugMeta ?? null,
+      };
+    });
+
+    return Response.json({ session, messages: enrichedMessages });
   }
 
   /**
@@ -554,6 +624,59 @@ export class ChatController {
     }
 
     return Response.json({ success: true });
+  }
+
+  /**
+   * Update message metadata with frontend trace events.
+   * Called after streaming completes to persist timing data collected client-side.
+   *
+   * @param req - The HTTP request object (body: { traceEvents: TraceEvent[] })
+   * @param user - The authenticated user from AuthGuard
+   * @param params - Route params containing the message ID
+   * @returns JSON response with success status
+   */
+  @Post("/message/:id/metadata")
+  @UseGuards(AuthGuard)
+  async updateMessageMetadata(
+    req: Request,
+    user: AuthenticatedUser,
+    params?: RouteParams,
+  ) {
+    const messageId = params?.id;
+    if (!messageId) {
+      return Response.json({ error: "Message ID required" }, { status: 400 });
+    }
+
+    let body: { traceEvents?: unknown };
+    try {
+      body = (await req.json()) as { traceEvents?: unknown };
+    } catch {
+      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const traceEventsSchema = z.array(z.unknown()).max(2000);
+    const parsed = traceEventsSchema.safeParse(body.traceEvents);
+    if (!parsed.success) {
+      return Response.json(
+        { error: "Invalid traceEvents payload" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      await chatSessionService.saveMessageMetadata({
+        messageId,
+        userId: user.id,
+        traceEvents: parsed.data,
+      });
+      return Response.json({ success: true });
+    } catch (error) {
+      logger.error("Failed to save message metadata", { messageId, error });
+      return Response.json(
+        { error: "Failed to save metadata" },
+        { status: 500 },
+      );
+    }
   }
 
   @Get("/shared/:token")

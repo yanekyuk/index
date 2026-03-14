@@ -165,6 +165,28 @@ export class IndexService {
   }
 
   /**
+   * Get an index by its invitation share code (public, no auth required).
+   * @param code - The invitation share code from the URL
+   * @returns The index with owner info and member count, or null if not found
+   */
+  async getIndexByShareCode(code: string) {
+    logger.verbose('[IndexService] Getting index by share code');
+    return this.adapter.getIndexByShareCode(code);
+  }
+
+  /**
+   * Accept an invitation to join an index using the invitation code.
+   * @param code - The invitation share code
+   * @param userId - The authenticated user accepting the invitation
+   * @returns The index, membership info, and whether user was already a member
+   * @throws Error if the invitation code is invalid or the index is not found
+   */
+  async acceptInvitation(code: string, userId: string) {
+    logger.verbose('[IndexService] Accepting invitation', { userId });
+    return this.adapter.acceptIndexInvitation(code, userId);
+  }
+
+  /**
    * Join a public index.
    */
   async joinPublicIndex(indexId: string, userId: string) {

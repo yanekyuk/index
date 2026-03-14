@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, min, max, count } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, inArray, min, max, count } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import { log } from '../lib/log';
@@ -13,6 +13,8 @@ import {
   opportunities,
   chatSessions,
   chatMessages,
+  chatMessageMetadata,
+  chatSessionMetadata,
 } from '../schemas/database.schema';
 import { debugService } from '../services/debug.service';
 
@@ -552,7 +554,33 @@ export class DebugController {
       .where(eq(chatMessages.sessionId, sessionId))
       .orderBy(asc(chatMessages.createdAt));
 
-    // ── 3. Build messages and turns ──────────────────────────────────────
+    // ── 3. Fetch metadata from dedicated tables ─────────────────────────
+    const assistantMessageIds = messageRows
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.id);
+
+    const messageMetadataRows = assistantMessageIds.length > 0
+      ? await db
+          .select({
+            messageId: chatMessageMetadata.messageId,
+            debugMeta: chatMessageMetadata.debugMeta,
+          })
+          .from(chatMessageMetadata)
+          .where(inArray(chatMessageMetadata.messageId, assistantMessageIds))
+      : [];
+
+    const metadataByMessageId = new Map(
+      messageMetadataRows.map((m) => [m.messageId, m]),
+    );
+
+    // Fetch session metadata
+    const [sessionMeta] = await db
+      .select({ metadata: chatSessionMetadata.metadata })
+      .from(chatSessionMetadata)
+      .where(eq(chatSessionMetadata.sessionId, sessionId))
+      .limit(1);
+
+    // ── 4. Build messages and turns ──────────────────────────────────────
     const messages: Array<{ role: string; content: string }> = [];
     const turns: Array<{
       messageIndex: number;
@@ -563,6 +591,7 @@ export class DebugController {
         args: Record<string, unknown>;
         resultSummary: string;
         success: boolean;
+        steps: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
       }>;
     }> = [];
 
@@ -571,27 +600,36 @@ export class DebugController {
       messages.push({ role: msg.role, content: msg.content });
 
       if (msg.role === 'assistant') {
-        // Extract debug metadata from subgraphResults if available
-        const subgraph = msg.subgraphResults as Record<string, unknown> | null;
-        const debugMeta = subgraph?.debugMeta as
-          | { graph?: string; iterations?: number; tools?: Array<{
-              name: string;
-              args?: Record<string, unknown>;
-              resultSummary?: string;
-              success?: boolean;
-            }> }
-          | undefined;
+        const meta = metadataByMessageId.get(msg.id);
+        const debugMetaFromMetadata = meta?.debugMeta as {
+          graph?: string;
+          iterations?: number;
+          tools?: Array<{
+            name: string;
+            args?: Record<string, unknown>;
+            resultSummary?: string;
+            success?: boolean;
+            steps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
+          }>;
+        } | undefined;
+
+        // Fall back to subgraphResults for older messages without metadata
+        const fallbackMeta = !debugMetaFromMetadata
+          ? (msg.subgraphResults as Record<string, unknown> | null)?.debugMeta as typeof debugMetaFromMetadata
+          : undefined;
+        const source = debugMetaFromMetadata ?? fallbackMeta;
 
         turns.push({
           messageIndex,
-          graph: debugMeta?.graph ?? null,
-          iterations: typeof debugMeta?.iterations === 'number' ? debugMeta.iterations : null,
-          tools: Array.isArray(debugMeta?.tools)
-            ? debugMeta.tools.map((t) => ({
+          graph: source?.graph ?? null,
+          iterations: typeof source?.iterations === 'number' ? source.iterations : null,
+          tools: Array.isArray(source?.tools)
+            ? source.tools.map((t) => ({
                 name: t.name ?? 'unknown',
                 args: t.args ?? {},
                 resultSummary: t.resultSummary ?? '',
                 success: t.success ?? true,
+                steps: t.steps ?? [],
               }))
             : [],
         });
@@ -605,6 +643,7 @@ export class DebugController {
       indexId: session.indexId ?? null,
       messages,
       turns,
+      sessionMetadata: sessionMeta?.metadata ?? null,
     });
   }
 }

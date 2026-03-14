@@ -380,6 +380,26 @@ export const chatMessages = pgTable('chat_messages', {
   sessionIdx: index('chat_messages_session_idx').on(table.sessionId),
 }));
 
+export const chatMessageMetadata = pgTable('chat_message_metadata', {
+  id: text('id').primaryKey(),
+  messageId: text('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
+  traceEvents: jsonb('trace_events'),
+  debugMeta: jsonb('debug_meta'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  messageIdUnique: uniqueIndex('chat_message_metadata_message_id_unique').on(table.messageId),
+}));
+
+export const chatSessionMetadata = pgTable('chat_session_metadata', {
+  id: text('id').primaryKey(),
+  sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  metadata: jsonb('metadata'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  sessionIdUnique: uniqueIndex('chat_session_metadata_session_id_unique').on(table.sessionId),
+}));
+
 // Links
 const linksTable = pgTable('links', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -511,11 +531,33 @@ export const chatSessionsRelations = relations(chatSessions, ({ one, many }) => 
     references: [users.id],
   }),
   messages: many(chatMessages),
+  metadata: one(chatSessionMetadata, {
+    fields: [chatSessions.id],
+    references: [chatSessionMetadata.sessionId],
+  }),
 }));
 
 export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   session: one(chatSessions, {
     fields: [chatMessages.sessionId],
+    references: [chatSessions.id],
+  }),
+  metadata: one(chatMessageMetadata, {
+    fields: [chatMessages.id],
+    references: [chatMessageMetadata.messageId],
+  }),
+}));
+
+export const chatMessageMetadataRelations = relations(chatMessageMetadata, ({ one }) => ({
+  message: one(chatMessages, {
+    fields: [chatMessageMetadata.messageId],
+    references: [chatMessages.id],
+  }),
+}));
+
+export const chatSessionMetadataRelations = relations(chatSessionMetadata, ({ one }) => ({
+  session: one(chatSessions, {
+    fields: [chatSessionMetadata.sessionId],
     references: [chatSessions.id],
   }),
 }));
@@ -598,3 +640,7 @@ export type NewUserContact = typeof userContacts.$inferInsert;
 export type ContactSource = typeof contactSourceEnum.enumValues[number];
 export type PersonalIndex = typeof personalIndexes.$inferSelect;
 export type NewPersonalIndex = typeof personalIndexes.$inferInsert;
+export type ChatMessageMetadata = typeof chatMessageMetadata.$inferSelect;
+export type NewChatMessageMetadata = typeof chatMessageMetadata.$inferInsert;
+export type ChatSessionMetadata = typeof chatSessionMetadata.$inferSelect;
+export type NewChatSessionMetadata = typeof chatSessionMetadata.$inferInsert;

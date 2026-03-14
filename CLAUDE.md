@@ -184,6 +184,8 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 - `intent_indexes` - Many-to-many junction (intents ↔ indexes) with composite PK and optional `relevancyScore` (0.0–1.0)
 - `files` / `user_integrations` - Source tracking for intents
 - `chat_sessions` / `chat_messages` - Chat session and message storage (chat graph, chat.service)
+- `chat_message_metadata` - Per-message debug metadata (trace events, debug_meta payload from agent execution)
+- `chat_session_metadata` - Per-session aggregated debug metadata (accumulated turn summaries for bug icon copy)
 - `user_notification_settings` - User notification preferences
 - `opportunities` - Opportunity records (detection, actors, interpretation, context, status)
 - `hyde_documents` - Stored HyDE documents for retrieval

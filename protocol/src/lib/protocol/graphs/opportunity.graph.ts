@@ -17,6 +17,7 @@ import type { Id } from '../../../types/common.types';
 import {
   OpportunityGraphState,
   type IndexedIntent,
+  type SourceProfileData,
   type TargetIndex,
   type CandidateMatch,
   type EvaluatedCandidate,
@@ -31,6 +32,7 @@ import {
 } from '../agents/opportunity.evaluator';
 import type { OpportunityGraphDatabase } from '../interfaces/database.interface';
 import { IntentIndexer } from '../agents/intent.indexer';
+import { getModelName } from '../agents/model.config';
 import { validateOpportunityActors } from '../support/opportunity.utils';
 
 /** Optional evaluator for testing (avoids LLM calls). */
@@ -70,6 +72,7 @@ export interface HydeGeneratorInvokeInput {
   sourceType: 'query';
   sourceText: string;
   forceRegenerate?: boolean;
+  profileContext?: string;
 }
 
 /** Optional notifier for opportunity send; when omitted, the real queue is used via dynamic import. */
@@ -78,6 +81,47 @@ export type QueueOpportunityNotificationFn = (
   recipientId: string,
   priority: 'immediate' | 'high' | 'low'
 ) => Promise<unknown>;
+
+/**
+ * Builds a compact text summary of the discoverer's profile and active intents
+ * for use as profileContext in HyDE generation.
+ * @param profile - The discoverer's profile data (identity, attributes)
+ * @param intents - The discoverer's indexed intents (capped at 5)
+ * @returns A context string, or undefined if no meaningful data is available
+ */
+function buildDiscovererContext(
+  profile: SourceProfileData | null | undefined,
+  intents: IndexedIntent[] | undefined
+): string | undefined {
+  const lines: string[] = [];
+
+  if (profile) {
+    const identity = profile.identity;
+    const attrs = profile.attributes;
+    if (identity?.name || identity?.bio) {
+      lines.push(`Profile: ${[identity.name, identity.bio].filter(Boolean).join(', ')}`);
+    }
+    if (attrs?.skills?.length) {
+      lines.push(`Skills: ${attrs.skills.join(', ')}`);
+    }
+    if (attrs?.interests?.length) {
+      lines.push(`Interests: ${attrs.interests.join(', ')}`);
+    }
+  }
+
+  if (intents?.length) {
+    // indexedIntents preserves DB order from getActiveIntents (newest first),
+    // so slice(0, 5) is deterministic without an explicit sort.
+    const capped = intents.slice(0, 5);
+    lines.push('');
+    lines.push('Active intents:');
+    for (const intent of capped) {
+      lines.push(`- ${intent.payload}`);
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
 
 /**
  * Factory class to build and compile the Opportunity Graph.
@@ -384,6 +428,11 @@ export class OpportunityGraphFactory {
           return filtered;
         };
 
+        // Shared variable to capture lens input data from runQueryHydeDiscovery or intent path
+        let discoveryLensInput: { profileContext: string | undefined; model: string } | undefined;
+        // Shared variable to capture HyDE output (lenses + documents) for trace entries
+        let discoveryHydeOutput: { lenses: Array<{ label: string; corpus: string }>; hydeDocuments: Record<string, { hydeText?: string }> } | undefined;
+
         logger.verbose('[Graph:Discovery] Starting semantic search', {
           targetIndexesCount: state.targetIndexes.length,
           discoverySource: state.discoverySource,
@@ -423,7 +472,36 @@ export class OpportunityGraphFactory {
               
               // Build trace entries for this path
               const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
-              
+
+              // Lens input trace (captured from runQueryHydeDiscovery)
+              if (discoveryLensInput) {
+                traceEntries.push({
+                  node: "lens_input",
+                  detail: "Profile context for lens inference",
+                  data: discoveryLensInput,
+                });
+              }
+
+              // Lens output and HyDE document traces (captured from runQueryHydeDiscovery)
+              if (discoveryHydeOutput) {
+                if (discoveryHydeOutput.lenses.length > 0) {
+                  traceEntries.push({
+                    node: "lens_output",
+                    detail: `Inferred ${discoveryHydeOutput.lenses.length} lens(es): ${discoveryHydeOutput.lenses.map(l => l.label).join(', ')}`,
+                    data: { lenses: discoveryHydeOutput.lenses, model: getModelName("lensInferrer") },
+                  });
+                }
+                for (const [lens, doc] of Object.entries(discoveryHydeOutput.hydeDocuments)) {
+                  if (doc?.hydeText) {
+                    traceEntries.push({
+                      node: "hyde_query",
+                      detail: `[${lens}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
+                      data: { lens, hydeTextPreview: doc.hydeText.slice(0, 300) + (doc.hydeText.length > 300 ? '...' : '') },
+                    });
+                  }
+                }
+              }
+
               // Compute per-lens stats from deduped candidates
               const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
               for (const c of queryCandidates) {
@@ -444,6 +522,7 @@ export class OpportunityGraphFactory {
                   byLens: lensStats,
                   searchQuery: state.searchQuery?.trim().slice(0, 80),
                   durationMs: Date.now() - startTime,
+                  model: getModelName("hydeGenerator"),
                 },
               });
               
@@ -615,13 +694,23 @@ export class OpportunityGraphFactory {
             const searchText = state.searchQuery?.trim() ?? '';
             if (!searchText) return [];
             logger.verbose('[Graph:Discovery] runQueryHydeDiscovery start', { searchText: searchText.slice(0, 80) });
+            const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
+            discoveryLensInput = {
+              profileContext: discovererContext,
+              model: getModelName("lensInferrer"),
+            };
             const hydeResult = await self.hydeGenerator.invoke({
               sourceType: 'query',
               sourceText: searchText,
               forceRegenerate: false,
+              profileContext: discovererContext,
             });
             const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
             const lenses = hydeResult.lenses ?? [];
+            discoveryHydeOutput = {
+              lenses: lenses as Array<{ label: string; corpus: string }>,
+              hydeDocuments: (hydeResult.hydeDocuments ?? {}) as Record<string, { hydeText?: string }>,
+            };
             const embeddingKeys = hydeEmbeddings ? Object.keys(hydeEmbeddings) : [];
             logger.verbose('[Graph:Discovery] HyDE generator result', {
               lensCount: embeddingKeys.length,
@@ -697,10 +786,16 @@ export class OpportunityGraphFactory {
             return { candidates: [] };
           }
 
+          const discovererContext = buildDiscovererContext(state.sourceProfile, state.indexedIntents);
+          discoveryLensInput = {
+            profileContext: discovererContext,
+            model: getModelName("lensInferrer"),
+          };
           const hydeResult = await this.hydeGenerator.invoke({
             sourceType: 'query',
             sourceText: searchText,
             forceRegenerate: false,
+            profileContext: discovererContext,
           });
           const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
           const lenses = hydeResult.lenses ?? [];
@@ -764,6 +859,24 @@ export class OpportunityGraphFactory {
           // Build trace with individual candidate similarity scores
           const traceEntries: Array<{ node: string; detail?: string; data?: Record<string, unknown> }> = [];
 
+          // Lens input trace
+          if (discoveryLensInput) {
+            traceEntries.push({
+              node: "lens_input",
+              detail: "Profile context for lens inference",
+              data: discoveryLensInput,
+            });
+          }
+
+          // Lens output trace
+          if (lenses.length > 0) {
+            traceEntries.push({
+              node: "lens_output",
+              detail: `Inferred ${lenses.length} lens(es): ${lenses.map(l => l.label).join(', ')}`,
+              data: { lenses, model: getModelName("lensInferrer") },
+            });
+          }
+
           // Compute per-lens stats from deduped candidates
           const lensStats: Record<string, { count: number; avgSimilarity: number }> = {};
           for (const c of candidates) {
@@ -785,6 +898,7 @@ export class OpportunityGraphFactory {
               candidateCount: candidates.length,
               byLens: lensStats,
               durationMs: Date.now() - startTime,
+              model: getModelName("hydeGenerator"),
             },
           });
 
@@ -1120,6 +1234,7 @@ export class OpportunityGraphFactory {
               remaining: effectiveRemaining.length,
               batchNumber: 1,
               durationMs: Date.now() - startTime,
+              model: getModelName("opportunityEvaluator"),
             },
           });
 
@@ -1147,6 +1262,15 @@ export class OpportunityGraphFactory {
                 reasoning: reasoning || 'No evaluation returned for this candidate',
                 matchedVia: entity.matchedVia,
                 ragScore: entity.ragScore,
+                model: getModelName("opportunityEvaluator"),
+                intents: entity.intents?.map((i: { intentId?: string; payload?: string; summary?: string }) => ({
+                  intentId: i.intentId,
+                  summary: (i.summary || i.payload || '').slice(0, 100),
+                })),
+                profile: entity.profile ? {
+                  name: entity.profile.name,
+                  location: entity.profile.location,
+                } : undefined,
               },
             });
           }

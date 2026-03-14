@@ -103,6 +103,32 @@ function getScopeIndexIdFromPathname(pathname: string | null): string | null {
   return match ? match[1] : null;
 }
 
+/**
+ * Merges tool step details from persisted debugMeta into trace events.
+ * When traceEvents are persisted without steps but debugMeta has them,
+ * this fills in the matching tool_end events so the UI can display steps on reload.
+ */
+function mergeDebugMetaIntoTraceEvents(
+  traceEvents: TraceEvent[] | undefined,
+  debugMeta: { tools?: Array<{ name: string; steps?: ToolCallStep[] }> } | undefined | null,
+): TraceEvent[] | undefined {
+  if (!traceEvents || !debugMeta?.tools?.length) return traceEvents;
+
+  const merged = [...traceEvents];
+  for (const toolDebug of debugMeta.tools) {
+    if (!toolDebug.steps?.length) continue;
+
+    // Find the matching tool_end event that doesn't already have steps
+    const toolEndIdx = merged.findIndex(
+      (e) => e.type === "tool_end" && e.name === toolDebug.name && !e.steps?.length,
+    );
+    if (toolEndIdx !== -1) {
+      merged[toolEndIdx] = { ...merged[toolEndIdx], steps: toolDebug.steps };
+    }
+  }
+  return merged;
+}
+
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   const [scopeIndexIdOverride, setScopeIndexIdOverride] = useState<
@@ -166,6 +192,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
 
       setIsLoading(true);
       abortControllerRef.current = new AbortController();
+      /** Local trace buffer scoped to this sendMessage call — avoids cross-message corruption. */
+      const streamTraceEvents: TraceEvent[] = [];
 
       try {
         const bodyPayload: Record<string, unknown> = {
@@ -218,34 +246,38 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                 const event = JSON.parse(line.slice(6));
 
                 switch (event.type) {
-                  case "iteration_start":
+                  case "iteration_start": {
+                    const iterTraceEvent: TraceEvent = {
+                      type: "iteration_start",
+                      timestamp: Date.now(),
+                      iteration: event.iteration,
+                    };
+                    streamTraceEvents.push(iterTraceEvent);
                     setMessages((prev) =>
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || [])];
-                        traceEvents.push({
-                          type: "iteration_start",
-                          timestamp: Date.now(),
-                          iteration: event.iteration,
-                        });
+                        const traceEvents = [...(msg.traceEvents || []), iterTraceEvent];
                         return { ...msg, traceEvents };
                       }),
                     );
                     break;
-                  case "llm_start":
+                  }
+                  case "llm_start": {
+                    const llmStartEvent: TraceEvent = {
+                      type: "llm_start",
+                      timestamp: Date.now(),
+                      iteration: event.iteration,
+                    };
+                    streamTraceEvents.push(llmStartEvent);
                     setMessages((prev) =>
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || [])];
-                        traceEvents.push({
-                          type: "llm_start",
-                          timestamp: Date.now(),
-                          iteration: event.iteration,
-                        });
+                        const traceEvents = [...(msg.traceEvents || []), llmStartEvent];
                         return { ...msg, traceEvents };
                       }),
                     );
                     break;
+                  }
                   case "token":
                     setMessages((prev) =>
                       prev.map((msg) =>
@@ -255,45 +287,46 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
-                  case "llm_end":
+                  case "llm_end": {
+                    const llmEndEvent: TraceEvent = {
+                      type: "llm_end",
+                      timestamp: Date.now(),
+                      iteration: event.iteration,
+                      hasToolCalls: event.hasToolCalls,
+                      toolNames: event.toolNames,
+                    };
+                    streamTraceEvents.push(llmEndEvent);
                     setMessages((prev) =>
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || [])];
-                        traceEvents.push({
-                          type: "llm_end",
-                          timestamp: Date.now(),
-                          iteration: event.iteration,
-                          hasToolCalls: event.hasToolCalls,
-                          toolNames: event.toolNames,
-                        });
+                        const traceEvents = [...(msg.traceEvents || []), llmEndEvent];
                         return { ...msg, traceEvents };
                       }),
                     );
                     break;
+                  }
                   case "tool_activity": {
                     const now = Date.now();
+                    const toolTraceEvent: TraceEvent = event.phase === "start"
+                      ? {
+                          type: "tool_start",
+                          timestamp: now,
+                          name: event.toolName,
+                          status: "running",
+                        }
+                      : {
+                          type: "tool_end",
+                          timestamp: now,
+                          name: event.toolName,
+                          status: event.success === true ? "success" : event.success === false ? "error" : undefined,
+                          summary: event.summary,
+                          steps: event.steps,
+                        };
+                    streamTraceEvents.push(toolTraceEvent);
                     setMessages((prev) =>
                       prev.map((msg) => {
                         if (msg.id !== assistantMessageId) return msg;
-                        const traceEvents = [...(msg.traceEvents || [])];
-                        if (event.phase === "start") {
-                          traceEvents.push({
-                            type: "tool_start",
-                            timestamp: now,
-                            name: event.toolName,
-                            status: "running",
-                          });
-                        } else {
-                          traceEvents.push({
-                            type: "tool_end",
-                            timestamp: now,
-                            name: event.toolName,
-                            status: event.success === true ? "success" : event.success === false ? "error" : undefined,
-                            summary: event.summary,
-                            steps: event.steps,
-                          });
-                        }
+                        const traceEvents = [...(msg.traceEvents || []), toolTraceEvent];
                         return { ...msg, traceEvents };
                       }),
                     );
@@ -328,6 +361,22 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     // Refetch sessions after streaming completes (title is generated on backend)
                     refetchSessions();
+                    // Persist trace events for this message (non-blocking)
+                    {
+                      const serverMessageId = event.messageId as
+                        | string
+                        | undefined;
+                      if (serverMessageId && streamTraceEvents.length > 0) {
+                        apiClient
+                          .post(
+                            `/chat/message/${serverMessageId}/metadata`,
+                            { traceEvents: streamTraceEvents },
+                          )
+                          .catch(() => {
+                            // Non-critical — trace persistence failure shouldn't break the chat
+                          });
+                      }
+                    }
                     break;
                   case "error":
                     setMessages((prev) =>
@@ -430,6 +479,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           role: string;
           content: string;
           createdAt: string;
+          traceEvents?: TraceEvent[];
+          debugMeta?: { tools?: Array<{ name: string; steps?: ToolCallStep[] }> } | null;
         }>;
       }>("/chat/session", { sessionId: id });
       setSessionId(data.session.id);
@@ -444,6 +495,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: m.content,
           timestamp: new Date(m.createdAt),
           isStreaming: false,
+          traceEvents: mergeDebugMetaIntoTraceEvents(m.traceEvents, m.debugMeta) ?? undefined,
         })),
       );
     } catch (err) {

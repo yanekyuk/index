@@ -13,6 +13,7 @@ mock.module('../../lib/bullmq/bullmq', () => ({
   QueueFactory: {
     createQueue: () => ({ add: mockAdd }),
     createWorker: mockCreateWorker,
+    createQueueEvents: () => ({ on: () => {}, close: async () => {} }),
   },
 }));
 

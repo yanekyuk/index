@@ -1,0 +1,4 @@
+[test]
+
+# Exclude dist/ from test discovery to avoid running stale compiled files
+ignore = ["dist/"]

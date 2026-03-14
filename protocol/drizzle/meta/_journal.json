@@ -113,6 +113,13 @@
       "when": 1773418618881,
       "tag": "0015_add_personal_indexes_drop_owner_id",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1773497228139,
+      "tag": "0016_create_chat_metadata_tables",
+      "breakpoints": true
     }
   ]
 }

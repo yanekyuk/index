@@ -89,6 +89,47 @@ describe('OpportunityEvaluator', () => {
       expect(result).toHaveLength(0);
     });
 
+    it('includes same-side matching rule in entity bundle prompt', async () => {
+      let capturedMessages: unknown[] = [];
+      const mockEntityBundleModel = {
+        invoke: async (messages: unknown[]) => {
+          capturedMessages = messages;
+          return { opportunities: [] };
+        },
+      } as unknown as Runnable;
+
+      const evaluatorWithMock = new OpportunityEvaluator({ entityBundleModel: mockEntityBundleModel });
+
+      const input: EvaluatorInput = {
+        discovererId: 'user-1',
+        entities: [
+          {
+            userId: 'user-1',
+            profile: { name: 'Alice', bio: 'Founder raising capital' },
+            intents: [{ intentId: 'i1', payload: 'Looking for investors' }],
+            indexId: 'idx-1',
+          },
+          {
+            userId: 'user-2',
+            profile: { name: 'Bob', bio: 'Founder raising capital' },
+            intents: [{ intentId: 'i2', payload: 'Seeking investors for my startup' }],
+            indexId: 'idx-1',
+          },
+        ],
+        discoveryQuery: 'find me investors',
+      };
+
+      await evaluatorWithMock.invokeEntityBundle(input, { minScore: 30 });
+
+      // Verify the system prompt contains same-side matching rule
+      const systemMsg = capturedMessages[0] as { content: string };
+      expect(systemMsg.content).toContain('SAME-SIDE MATCHING');
+
+      // Verify the human message contains same-side check in discovery query rules
+      const humanMsg = capturedMessages[1] as { content: string };
+      expect(humanMsg.content).toContain('SAME-SIDE CHECK');
+    }, 10000);
+
     it.skip('returns no opportunity when entities clearly already know each other (e.g. co-founders) [integration: live LLM]', async () => {
       const input: EvaluatorInput = {
         discovererId: 'discoverer-1',

@@ -17,9 +17,15 @@ const mockSearchUser = mock(async (request: { objective: string }) => ({
 
 const mockExtractUrlContent = mock(async (url: string) => `Extracted content from ${url}`);
 
+const { extractHandle: realExtractHandle } = await import('../../lib/parallel/parallel');
+
 mock.module('../../lib/parallel/parallel', () => ({
   searchUser: mockSearchUser,
   extractUrlContent: mockExtractUrlContent,
+  enrichUserProfile: mock(async () => null),
+  extractHandle: realExtractHandle,
+  crawlLinksForIndex: mock(async () => ({ files: [] })),
+  parallelClient: null,
 }));
 
 let ScraperAdapter: typeof import('../scraper.adapter').ScraperAdapter;

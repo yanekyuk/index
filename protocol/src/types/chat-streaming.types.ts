@@ -158,6 +158,8 @@ export interface DoneEvent extends ChatStreamEventBase {
   type: "done";
   /** Complete response text */
   response: string;
+  /** Server-generated assistant message ID (for trace event persistence) */
+  messageId?: string;
   /** Optional routing decision metadata */
   routingDecision?: Record<string, unknown>;
   /** Optional subgraph results metadata */
@@ -466,6 +468,7 @@ export function createTokenEvent(
  * Options for the done event (optional metadata).
  */
 export interface CreateDoneEventOptions {
+  messageId?: string;
   routingDecision?: Record<string, unknown>;
   subgraphResults?: Record<string, unknown>;
   title?: string;

@@ -72,6 +72,7 @@ const systemPrompt = `
     4. Be specific about the "Why" for BOTH sides in the reasoning.
     5. DEDUPLICATION: Do NOT suggest opportunities that duplicate "Existing Opportunities".
     6. Do not suggest an opportunity if the source and candidate clearly already know each other (e.g. same company, co-founders, same team).
+    7. SAME-SIDE MATCHING: If both the source and candidate are SEEKING the same resource (e.g., both looking for investors, both seeking a co-founder), this is not an opportunity. Return an empty list unless one side clearly OFFERS what the other SEEKS.
 `;
 
 // Entity-bundle system prompt (C2): entities + four match patterns + actors output
@@ -120,6 +121,10 @@ Rules:
 4. Write reasoning from an objective observer's perspective; be specific about the "Why" for each side.
 5. When in introduction mode, each opportunity must have exactly two actors — the two people being introduced. The discoverer (introducer) is added by the system and must not be included in your actors list.
 6. ALREADY KNOW EACH OTHER: Do NOT suggest an opportunity if the entities clearly already know each other. Examples: co-founders of the same company, same team at the same organization, same employer, or any relationship that is obviously existing from their profiles (bio, context). When in doubt, if both profiles mention the same company/org/team in a way that implies they work together, return an empty list for that pair.
+7. SAME-SIDE MATCHING: Before scoring, check whether the DISCOVERER and CANDIDATE are both SEEKING the same thing. Look at both parties' intents for directionality:
+   - SEEKING signals: "looking for", "seeking", "want to find", "need", "raising", "hiring"
+   - OFFERING signals: "can offer", "expert in", "investing in", "mentoring", "available for"
+   If both parties have SEEKING intents targeting the same resource (e.g., both seeking investors, both seeking co-founders, both seeking mentorship), this is NOT an opportunity — score <30. An opportunity requires one side to OFFER what the other SEEKS.
 `;
 
 // ──────────────────────────────────────────────────────────────
@@ -386,6 +391,7 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
    - 50-69: Weak match - candidate is tangentially related but doesn't fit the primary request
    - <50: Does not match the request - exclude or heavily down-rank
 4. DO NOT score collaborators/builders highly when the user explicitly asks for investors, and vice versa.
+5. SAME-SIDE CHECK: If the candidate's intents show they are ALSO SEEKING what the discoverer is seeking (e.g., both looking for investors, both looking for co-founders), this is a same-side match. Score <30 regardless of keyword overlap in bios. The candidate must BE or OFFER what the discoverer is looking for, not also be looking for it.
 `
       : '';
     const entitiesBlock = input.entities.map((e) => {
