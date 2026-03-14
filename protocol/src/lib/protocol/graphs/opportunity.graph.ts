@@ -430,6 +430,8 @@ export class OpportunityGraphFactory {
 
         // Shared variable to capture lens input data from runQueryHydeDiscovery or intent path
         let discoveryLensInput: { profileContext: string | undefined; model: string } | undefined;
+        // Shared variable to capture HyDE output (lenses + documents) for trace entries
+        let discoveryHydeOutput: { lenses: Array<{ label: string; corpus: string }>; hydeDocuments: Record<string, { hydeText?: string }> } | undefined;
 
         logger.verbose('[Graph:Discovery] Starting semantic search', {
           targetIndexesCount: state.targetIndexes.length,
@@ -478,6 +480,26 @@ export class OpportunityGraphFactory {
                   detail: "Profile context for lens inference",
                   data: discoveryLensInput,
                 });
+              }
+
+              // Lens output and HyDE document traces (captured from runQueryHydeDiscovery)
+              if (discoveryHydeOutput) {
+                if (discoveryHydeOutput.lenses.length > 0) {
+                  traceEntries.push({
+                    node: "lens_output",
+                    detail: `Inferred ${discoveryHydeOutput.lenses.length} lens(es): ${discoveryHydeOutput.lenses.map(l => l.label).join(', ')}`,
+                    data: { lenses: discoveryHydeOutput.lenses, model: getModelName("lensInferrer") },
+                  });
+                }
+                for (const [lens, doc] of Object.entries(discoveryHydeOutput.hydeDocuments)) {
+                  if (doc?.hydeText) {
+                    traceEntries.push({
+                      node: "hyde_query",
+                      detail: `[${lens}] "${doc.hydeText.slice(0, 120)}${doc.hydeText.length > 120 ? '...' : ''}"`,
+                      data: { lens, hydeTextPreview: doc.hydeText.slice(0, 300) + (doc.hydeText.length > 300 ? '...' : '') },
+                    });
+                  }
+                }
               }
 
               // Compute per-lens stats from deduped candidates
@@ -686,6 +708,10 @@ export class OpportunityGraphFactory {
             });
             const hydeEmbeddings = hydeResult.hydeEmbeddings as Record<string, number[]>;
             const lenses = hydeResult.lenses ?? [];
+            discoveryHydeOutput = {
+              lenses: lenses as Array<{ label: string; corpus: string }>,
+              hydeDocuments: (hydeResult.hydeDocuments ?? {}) as Record<string, { hydeText?: string }>,
+            };
             const embeddingKeys = hydeEmbeddings ? Object.keys(hydeEmbeddings) : [];
             logger.verbose('[Graph:Discovery] HyDE generator result', {
               lensCount: embeddingKeys.length,
@@ -840,6 +866,15 @@ export class OpportunityGraphFactory {
               node: "lens_input",
               detail: "Profile context for lens inference",
               data: discoveryLensInput,
+            });
+          }
+
+          // Lens output trace
+          if (lenses.length > 0) {
+            traceEntries.push({
+              node: "lens_output",
+              detail: `Inferred ${lenses.length} lens(es): ${lenses.map(l => l.label).join(', ')}`,
+              data: { lenses, model: getModelName("lensInferrer") },
             });
           }
 

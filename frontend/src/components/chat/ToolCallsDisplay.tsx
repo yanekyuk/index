@@ -630,6 +630,20 @@ export function ToolCallsDisplay({
                             {step.data && isSearchQuery && (
                               <SearchQueryDisplay data={step.data as SearchQueryData} />
                             )}
+                            {step.data && !isCandidate && !isFelicity && !isSearchQuery && (
+                              <div className="ml-4 mt-1 text-xs text-gray-500 space-y-0.5">
+                                {Object.entries(step.data).map(([key, value]) => (
+                                  <div key={key} className="flex gap-2">
+                                    <span className="text-gray-600 flex-shrink-0">{key}:</span>
+                                    <span className="text-gray-400 break-all">
+                                      {typeof value === 'string'
+                                        ? value.length > 200 ? value.slice(0, 200) + '...' : value
+                                        : JSON.stringify(value)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
