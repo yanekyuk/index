@@ -325,6 +325,62 @@ export class ChatSessionService {
   }
 
   /**
+   * Save trace events and debug metadata for a chat message.
+   *
+   * @param params - Message metadata to persist
+   */
+  async saveMessageMetadata(params: {
+    messageId: string;
+    traceEvents?: unknown;
+    debugMeta?: unknown;
+  }): Promise<void> {
+    const id = generateSnowflakeId();
+    await this.db.upsertMessageMetadata({
+      id,
+      messageId: params.messageId,
+      traceEvents: params.traceEvents,
+      debugMeta: params.debugMeta,
+    });
+  }
+
+  /**
+   * Upsert session-level metadata (e.g. aggregated debug info).
+   *
+   * @param params - Session metadata to persist
+   */
+  async upsertSessionMetadata(params: {
+    sessionId: string;
+    metadata: unknown;
+  }): Promise<void> {
+    const id = generateSnowflakeId();
+    await this.db.upsertSessionMetadata({
+      id,
+      sessionId: params.sessionId,
+      metadata: params.metadata,
+    });
+  }
+
+  /**
+   * Retrieve message metadata for a list of message IDs.
+   *
+   * @param messageIds - The message IDs to look up
+   * @returns Array of message metadata records
+   */
+  async getMessageMetadataByMessageIds(messageIds: string[]) {
+    return this.db.getMessageMetadataByMessageIds(messageIds);
+  }
+
+  /**
+   * Retrieve session metadata by session ID.
+   *
+   * @param sessionId - The session ID
+   * @returns The session metadata record or undefined
+   */
+  async getSessionMetadata(sessionId: string) {
+    return this.db.getSessionMetadata(sessionId);
+  }
+
+  /**
    * Auto-generate a session title based on conversation history.
    * 
    * @param sessionId - The session ID
