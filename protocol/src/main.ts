@@ -12,6 +12,7 @@ import { ProfileController } from './controllers/profile.controller';
 import { UserController } from './controllers/user.controller';
 import { StorageController } from './controllers/storage.controller';
 import { SubscribeController } from './controllers/subscribe.controller';
+import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { MessagingController } from './controllers/messaging.controller';
 import { MessagingDatabaseAdapter, ensurePersonalIndex } from './adapters/database.adapter';
@@ -133,6 +134,7 @@ controllerInstances.set(UserController, new UserController());
 controllerInstances.set(MessagingController, new MessagingController(messagingService));
 controllerInstances.set(StorageController, new StorageController(storageAdapter));
 controllerInstances.set(SubscribeController, new SubscribeController());
+controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(DebugController, new DebugController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
