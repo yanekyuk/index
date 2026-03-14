@@ -242,6 +242,7 @@ export class ChatController {
           let fullResponse = "";
           let routingDecision: Record<string, unknown> | undefined;
           let subgraphResults: Record<string, unknown> | undefined;
+          let debugMeta: { graph: string; iterations: number; tools: unknown[] } | undefined;
 
           // Use context-aware streaming to load previous messages
           for await (const event of factory.streamChatEventsWithContext(
@@ -275,6 +276,12 @@ export class ChatController {
                   ...subgraphResults,
                   [event.subgraph]: event.data,
                 };
+              } else if (event.type === "debug_meta") {
+                debugMeta = {
+                  graph: event.graph,
+                  iterations: event.iterations,
+                  tools: event.tools,
+                };
               }
             }
           }
@@ -296,14 +303,52 @@ export class ChatController {
             role: "user",
             content: messageContent,
           });
+          let assistantMessageId: string | undefined;
           if (fullResponse) {
-            await chatSessionService.addMessage({
+            assistantMessageId = await chatSessionService.addMessage({
               sessionId,
               role: "assistant",
               content: fullResponse,
               routingDecision,
               subgraphResults,
             });
+          }
+
+          // Persist debug metadata (non-blocking for user experience)
+          if (assistantMessageId && debugMeta) {
+            try {
+              // Save per-message metadata
+              await chatSessionService.saveMessageMetadata({
+                messageId: assistantMessageId,
+                debugMeta,
+              });
+
+              // Accumulate session-level metadata
+              const existingSessionMeta = await chatSessionService.getSessionMetadata(sessionId);
+              const existingTurns = Array.isArray(
+                (existingSessionMeta?.metadata as Record<string, unknown> | null)?.turns
+              )
+                ? (existingSessionMeta!.metadata as { turns: unknown[] }).turns
+                : [];
+
+              await chatSessionService.upsertSessionMetadata({
+                sessionId,
+                metadata: {
+                  lastUpdated: new Date().toISOString(),
+                  turns: [
+                    ...existingTurns,
+                    {
+                      messageId: assistantMessageId,
+                      graph: debugMeta.graph,
+                      iterations: debugMeta.iterations,
+                      toolCount: Array.isArray(debugMeta.tools) ? debugMeta.tools.length : 0,
+                    },
+                  ],
+                },
+              });
+            } catch (metaError) {
+              logger.error("Failed to persist debug metadata", { sessionId, error: metaError });
+            }
           }
 
           // Skip title/suggestions generation if client disconnected
