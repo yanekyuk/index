@@ -35,6 +35,15 @@ export const MODEL_CONFIG = {
  * @param agent - Key from MODEL_CONFIG identifying which agent's settings to use.
  * @returns A ChatOpenAI instance ready for use (call .withStructuredOutput() as needed).
  */
+/**
+ * Returns the model name string for the given agent key.
+ * @param agent - Key from MODEL_CONFIG identifying which agent's settings to use.
+ * @returns The model identifier string (e.g. "google/gemini-2.5-flash").
+ */
+export function getModelName(agent: keyof typeof MODEL_CONFIG): string {
+  return MODEL_CONFIG[agent].model;
+}
+
 export function createModel(agent: keyof typeof MODEL_CONFIG): ChatOpenAI {
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
     throw new Error(`createModel(${agent}): OPENROUTER_API_KEY is required.`);
