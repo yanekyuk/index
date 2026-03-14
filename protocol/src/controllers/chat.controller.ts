@@ -19,6 +19,8 @@ import {
   formatSSEEvent,
 } from "../types/chat-streaming.types";
 
+type RouteParams = Record<string, string>;
+
 const logger = log.controller.from("chat");
 
 const streamBodySchema = z.object({
@@ -371,6 +373,7 @@ export class ChatController {
               encoder.encode(
                 formatSSEEvent(
                   createDoneEvent(sessionId, fullResponse, {
+                    messageId: assistantMessageId,
                     routingDecision,
                     subgraphResults,
                     title: sessionTitle,
@@ -621,6 +624,56 @@ export class ChatController {
     }
 
     return Response.json({ success: true });
+  }
+
+  /**
+   * Update message metadata with frontend trace events.
+   * Called after streaming completes to persist timing data collected client-side.
+   *
+   * @param req - The HTTP request object (body: { traceEvents: TraceEvent[] })
+   * @param user - The authenticated user from AuthGuard
+   * @param params - Route params containing the message ID
+   * @returns JSON response with success status
+   */
+  @Post("/message/:id/metadata")
+  @UseGuards(AuthGuard)
+  async updateMessageMetadata(
+    req: Request,
+    _user: AuthenticatedUser,
+    params?: RouteParams,
+  ) {
+    const messageId = params?.id;
+    if (!messageId) {
+      return Response.json({ error: "Message ID required" }, { status: 400 });
+    }
+
+    let body: { traceEvents?: unknown };
+    try {
+      body = (await req.json()) as { traceEvents?: unknown };
+    } catch {
+      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    if (!body.traceEvents) {
+      return Response.json(
+        { error: "traceEvents required" },
+        { status: 400 },
+      );
+    }
+
+    try {
+      await chatSessionService.saveMessageMetadata({
+        messageId,
+        traceEvents: body.traceEvents,
+      });
+      return Response.json({ success: true });
+    } catch (error) {
+      logger.error("Failed to save message metadata", { messageId, error });
+      return Response.json(
+        { error: "Failed to save metadata" },
+        { status: 500 },
+      );
+    }
   }
 
   @Get("/shared/:token")

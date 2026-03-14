@@ -354,6 +354,30 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     }
                     // Refetch sessions after streaming completes (title is generated on backend)
                     refetchSessions();
+                    // Persist trace events for this message (non-blocking)
+                    {
+                      const serverMessageId = event.messageId as
+                        | string
+                        | undefined;
+                      if (serverMessageId) {
+                        setMessages((prev) => {
+                          const msg = prev.find(
+                            (m) => m.id === assistantMessageId,
+                          );
+                          if (msg?.traceEvents?.length) {
+                            apiClient
+                              .post(
+                                `/chat/message/${serverMessageId}/metadata`,
+                                { traceEvents: msg.traceEvents },
+                              )
+                              .catch(() => {
+                                // Non-critical — trace persistence failure shouldn't break the chat
+                              });
+                          }
+                          return prev;
+                        });
+                      }
+                    }
                     break;
                   case "error":
                     setMessages((prev) =>
