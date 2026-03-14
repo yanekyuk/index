@@ -385,16 +385,16 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
-                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
+                className="flex items-center gap-2 text-xs font-semibold text-red-600 uppercase tracking-wider font-ibm-plex-mono hover:text-red-700 transition-colors duration-150 pt-4"
               >
                 {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 Danger Zone
               </button>
               {isDangerZoneExpanded && (
-                <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
+                <div className="mt-3 flex items-center justify-between p-3 border border-red-200 rounded-sm bg-red-50">
                   <div>
-                    <p className="text-sm font-medium text-red-800">Delete your account</p>
-                    <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
+                    <p className="text-sm font-medium text-red-600">Delete your account</p>
+                    <p className="text-xs text-red-600/70 mt-1">This action cannot be undone.</p>
                   </div>
                   <Button
                     variant="outline"
@@ -497,12 +497,10 @@ export default function ProfilePage() {
           </div>
         </div>
       )}
-      </ClientLayout>
-
       <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
         <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-100" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-100 focus:outline-none">
+          <AlertDialog.Overlay className="fixed inset-0 bg-black/50 z-[100]" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-sm shadow-lg p-6 w-full max-w-md z-[100] focus:outline-none">
             <AlertDialog.Title className="text-lg font-bold text-gray-900 mb-4">Delete your account</AlertDialog.Title>
             <AlertDialog.Description className="text-sm text-gray-600 mb-4">
               This action cannot be undone. Type your email address to confirm.
@@ -528,6 +526,7 @@ export default function ProfilePage() {
           </AlertDialog.Content>
         </AlertDialog.Portal>
       </AlertDialog.Root>
+      </ClientLayout>
     </SaveBarProvider>
   );
 }
