@@ -86,9 +86,9 @@ Post-claim: user sees the chat session with the invite as the first message. XMT
 **CTA label** — Server-driven via `primaryActionLabel`. Backend sets "Invite to chat" for ghost, "Start chat" for onboarded. No frontend label logic.
 
 **Click handler** — In `ChatContent.tsx`:
-- Ghost: call `GET /opportunities/:id/invite-message`, navigate to `/u/${userId}/chat?prefill={encodedMessage}`
+- Ghost: call `GET /opportunities/:id/invite-message`, navigate to `/u/${userId}/chat` with `{ state: { prefill: message } }` via React Router navigation state
 - Onboarded: existing flow (navigate to `/u/${userId}/chat`)
 
-**Chat input pre-fill** — Chat page reads `prefill` query param, populates message input with decoded text. User edits and sends. Query param cleared after populating.
+**Chat input pre-fill** — Chat page reads `location.state.prefill`, passes it as `initialMessage` to `ChatView`. User edits and sends.
 
 **No new components** — no modals, no drawers. Reuses existing chat UI.

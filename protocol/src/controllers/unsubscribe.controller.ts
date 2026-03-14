@@ -33,7 +33,7 @@ export class UnsubscribeController {
       if (!result) {
         return new Response(
           '<html><body style="font-family:Arial,sans-serif;text-align:center;padding:60px"><h2>Not Found</h2><p>This unsubscribe link is no longer valid.</p></body></html>',
-          { headers: { 'Content-Type': 'text/html' } }
+          { status: 404, headers: { 'Content-Type': 'text/html' } }
         );
       }
 
@@ -42,7 +42,7 @@ export class UnsubscribeController {
         { headers: { 'Content-Type': 'text/html' } }
       );
     } catch (err) {
-      logger.error('Unsubscribe failed', { token, error: err });
+      logger.error('Unsubscribe failed', { error: err });
       return Response.json({ error: 'Internal error' }, { status: 500 });
     }
   }

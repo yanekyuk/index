@@ -2692,24 +2692,22 @@ export class ChatDatabaseAdapter {
    * @returns The notification settings row (includes unsubscribeToken)
    */
   async getOrCreateNotificationSettings(userId: string): Promise<{ id: string; userId: string; unsubscribeToken: string }> {
-    const [existing] = await db.select({
+    const projection = {
       id: schema.userNotificationSettings.id,
       userId: schema.userNotificationSettings.userId,
       unsubscribeToken: schema.userNotificationSettings.unsubscribeToken,
-    })
+    };
+
+    // Atomic upsert: insert with onConflictDoNothing, then select
+    await db.insert(schema.userNotificationSettings)
+      .values({ userId })
+      .onConflictDoNothing({ target: schema.userNotificationSettings.userId });
+
+    const [row] = await db.select(projection)
       .from(schema.userNotificationSettings)
       .where(eq(schema.userNotificationSettings.userId, userId))
       .limit(1);
-    if (existing) return existing;
-
-    const [created] = await db.insert(schema.userNotificationSettings)
-      .values({ userId })
-      .returning({
-        id: schema.userNotificationSettings.id,
-        userId: schema.userNotificationSettings.userId,
-        unsubscribeToken: schema.userNotificationSettings.unsubscribeToken,
-      });
-    return created;
+    return row;
   }
 
   /**

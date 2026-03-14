@@ -241,7 +241,6 @@ export class ChatSessionService {
 
               logger.verbose('Ghost invite email queued', {
                 sessionId: params.sessionId,
-                recipientId: params.recipientUserId,
               });
             }
           }
