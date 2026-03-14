@@ -2707,6 +2707,9 @@ export class ChatDatabaseAdapter {
       .from(schema.userNotificationSettings)
       .where(eq(schema.userNotificationSettings.userId, userId))
       .limit(1);
+    if (!row) {
+      throw new Error(`Failed to get or create notification settings for user ${userId}`);
+    }
     return row;
   }
 
