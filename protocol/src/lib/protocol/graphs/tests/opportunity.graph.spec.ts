@@ -435,7 +435,7 @@ describe('Opportunity Graph', () => {
       const queryCandidates = Array.from({ length: 5 }, (_, i) => ({
         type: 'intent' as const,
         id: `intent-query-${i}`,
-        userId: `user-query-${i}`,
+        userId: `${String(i + 1).padStart(8, '0')}-0000-4000-8000-0000000000a0`,
         score: 0.9 - i * 0.01,
         matchedVia: 'Painters' as const,
         indexId: 'idx-1',
@@ -443,7 +443,7 @@ describe('Opportunity Graph', () => {
       const profileCandidates = Array.from({ length: 25 }, (_, i) => ({
         type: 'profile' as const,
         id: `user-profile-${i}`,
-        userId: `user-profile-${i}`,
+        userId: `${String(i + 1).padStart(8, '0')}-0000-4000-8000-0000000000b0`,
         score: 0.6 - i * 0.005,
         matchedVia: 'profile-similarity' as const,
         indexId: 'idx-1',
