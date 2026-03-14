@@ -166,4 +166,9 @@ export const createOpportunitiesService = (
   getOpportunity: async (opportunityId: string): Promise<OpportunityDetailResponse> => {
     return api.get<OpportunityDetailResponse>(`/opportunities/${opportunityId}`);
   },
+
+  /** Fetch a pre-generated invite message for a ghost user opportunity. */
+  getInviteMessage: async (opportunityId: string): Promise<{ message: string }> => {
+    return api.get<{ message: string }>(`/opportunities/${opportunityId}/invite-message`);
+  },
 });

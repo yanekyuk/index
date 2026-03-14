@@ -41,6 +41,8 @@ export interface OpportunityCardData {
   score?: number;
   /** Opportunity status at the time the card was created. */
   status?: string;
+  /** Whether the counterpart is a ghost (not yet onboarded) user. */
+  isGhost?: boolean;
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
@@ -110,6 +112,7 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
+    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Handler for secondary action (reject/skip). */
   onSecondaryAction?: (
@@ -117,6 +120,7 @@ interface OpportunityCardProps {
     userId: string,
     viewerRole?: string,
     counterpartName?: string,
+    isGhost?: boolean,
   ) => void | Promise<void>;
   /** Whether an action is currently loading for this card. */
   isLoading?: boolean;
@@ -200,6 +204,7 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
+          card.isGhost,
         );
         setActionTaken("accepted");
       } catch {
@@ -217,6 +222,7 @@ export default function OpportunityCard({
           card.userId,
           card.viewerRole,
           card.name,
+          card.isGhost,
         );
         setActionTaken("rejected");
       } catch {

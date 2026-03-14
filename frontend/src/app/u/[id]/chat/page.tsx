@@ -11,6 +11,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialGroupId = searchParams.get('groupId') ?? undefined;
+  const prefillMessage = searchParams.get('prefill') ?? undefined;
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
 
@@ -82,6 +83,7 @@ export default function ChatPage() {
       userAvatar={profileData.avatar || undefined}
       userTitle={profileData.location || undefined}
       initialGroupId={initialGroupId}
+      initialMessage={prefillMessage}
       onClose={handleClose}
       onBack={handleBack}
     />

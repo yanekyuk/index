@@ -16,16 +16,18 @@ interface ChatViewProps {
   userAvatar?: string;
   userTitle?: string;
   initialGroupId?: string;
+  /** Pre-fill the message input (e.g. invite text for ghost users). */
+  initialMessage?: string;
   onClose: () => void;
   onBack?: () => void;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, onClose, onBack }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, onClose, onBack }: ChatViewProps) {
   const { user } = useAuthContext();
   const { isConnected, myInboxId, sendMessage: xmtpSend, loadMessages, messages: allMessages, getChatContext, deleteConversation } = useXMTP();
   const [groupId, setGroupId] = useState<string | null>(initialGroupId ?? null);
   const [chatContext, setChatContext] = useState<XmtpChatContext | null>(null);
-  const [messageText, setMessageText] = useState('');
+  const [messageText, setMessageText] = useState(initialMessage ?? '');
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);
