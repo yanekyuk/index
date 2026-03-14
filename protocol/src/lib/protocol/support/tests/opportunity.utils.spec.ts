@@ -369,5 +369,14 @@ describe('opportunity.utils', () => {
         ])
       ).not.toThrow();
     });
+
+    test('rejects actors with empty string userId', () => {
+      expect(() =>
+        validateOpportunityActors([
+          { userId: '', role: 'patient' },
+          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'agent' },
+        ])
+      ).toThrow('non-UUID userId');
+    });
   });
 });

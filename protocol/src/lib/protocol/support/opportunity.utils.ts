@@ -52,7 +52,9 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
  */
 export function validateOpportunityActors(actors: Array<{ userId?: string; role: string }>): void {
   // Validate userId format for all actors that have one
-  const invalidActors = actors.filter((a) => a.userId && !isValidUUID(a.userId));
+  const invalidActors = actors.filter(
+    (a) => a.userId !== undefined && !isValidUUID(a.userId)
+  );
   if (invalidActors.length > 0) {
     throw new Error(
       `Opportunity has actor(s) with non-UUID userId: ${invalidActors.map((a) => a.userId).join(', ')}`

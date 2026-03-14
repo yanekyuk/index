@@ -18,6 +18,7 @@ import type {
 import type { Embedder } from '../../interfaces/embedder.interface';
 import type { EvaluatedOpportunityWithActors } from '../../agents/opportunity.evaluator';
 import type { ProfileDocument } from '../../agents/profile.generator';
+import { isValidUUID } from '../../support/validation.utils';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
@@ -1632,8 +1633,6 @@ describe('Opportunity Graph', () => {
 });
 
 /** Standalone unit tests for candidate filtering logic (no graph invocation needed). */
-import { isValidUUID } from '../../support/validation.utils';
-
 describe('Opportunity graph candidate filtering', () => {
   test('filters out candidates with non-UUID userIds', () => {
     const candidates = [

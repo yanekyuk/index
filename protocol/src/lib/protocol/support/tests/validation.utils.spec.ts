@@ -1,3 +1,6 @@
+import { config } from 'dotenv';
+config({ path: '.env.test' });
+
 import { describe, expect, test } from 'bun:test';
 
 import { isValidUUID } from '../validation.utils';
