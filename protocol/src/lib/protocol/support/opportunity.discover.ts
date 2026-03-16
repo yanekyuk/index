@@ -95,6 +95,8 @@ export interface FormattedDiscoveryCandidate {
   homeCardPresentation?: HomeCardPresentationResult;
   /** Viewer's role in this opportunity. */
   viewerRole?: string;
+  /** Whether the counterpart is a ghost (not yet onboarded) user. */
+  isGhost?: boolean;
   /** Narrator chip for home card display (name + remark, with optional avatar/userId for introducer). */
   narratorChip?: {
     name: string;
@@ -228,10 +230,12 @@ async function enrichOpportunities(
   ]);
   const avatarByUserId = new Map<string, string | null>();
   const nameByUserId = new Map<string, string | null>();
+  const isGhostByUserId = new Map<string, boolean>();
   candidateUserIds.forEach((id, i) => {
     const user = userResults[i] ?? null;
     avatarByUserId.set(id, user?.avatar ?? null);
     nameByUserId.set(id, user?.name ?? null);
+    isGhostByUserId.set(id, user?.isGhost ?? false);
   });
   const viewerName = viewerUser?.name ?? undefined;
 
@@ -301,6 +305,7 @@ async function enrichOpportunities(
         }
       }
 
+      const isCounterpartGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
       return {
         headline: viewerIsIntroducer && secondPartyName
           ? `${name} → ${secondPartyName}`
@@ -315,7 +320,7 @@ async function enrichOpportunities(
           ),
         suggestedAction: "Start a conversation to connect.",
         narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
-        primaryActionLabel: viewerIsIntroducer ? "Introduce Them" : "Start Chat",
+        primaryActionLabel: viewerIsIntroducer ? "Introduce Them" : (isCounterpartGhost ? "Invite to chat" : "Start Chat"),
         secondaryActionLabel: "Skip",
         mutualIntentsLabel: "Suggested connection",
       };
@@ -410,6 +415,7 @@ async function enrichOpportunities(
         }
       }
 
+      const isGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
       return {
         opportunityId: item.opportunity.id,
         userId: item.candidateUserId,
@@ -423,8 +429,17 @@ async function enrichOpportunities(
         score: item.confidence,
         status: chatSessionId && !existingOpportunityIds?.has(item.opportunity.id) ? "draft" : item.opportunity.status,
         viewerRole: item.viewerRole,
+        isGhost,
         ...(presentations?.[idx] && { presentation: presentations[idx] }),
-        ...(homeCard && { homeCardPresentation: homeCard }),
+        ...(homeCard && {
+          homeCardPresentation: {
+            ...homeCard,
+            // Override primaryActionLabel for ghost counterparts (LLM doesn't know ghost status)
+            primaryActionLabel: isGhost && item.viewerRole !== 'introducer'
+              ? 'Invite to chat'
+              : homeCard.primaryActionLabel,
+          },
+        }),
         ...(narratorChip && { narratorChip }),
       };
     },

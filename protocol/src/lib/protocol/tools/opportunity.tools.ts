@@ -47,6 +47,7 @@ export function buildMinimalOpportunityCard(
   introducerAvatar?: string | null,
   viewerName?: string,
   secondPartyName?: string,
+  isCounterpartGhost?: boolean,
 ): {
   opportunityId: string;
   userId: string;
@@ -62,6 +63,7 @@ export function buildMinimalOpportunityCard(
   viewerRole: string;
   score: number | undefined;
   status: string;
+  isGhost: boolean;
 } {
   const viewerActor = opp.actors.find((a) => a.userId === viewerId);
   const viewerRole = viewerActor?.role ?? "party";
@@ -89,7 +91,7 @@ export function buildMinimalOpportunityCard(
   const primaryActionLabel =
     viewerRole === "introducer"
       ? "Introduce Them"
-      : "Start Chat";
+      : (isCounterpartGhost ? "Invite to chat" : "Start Chat");
   return {
     opportunityId: opp.id,
     userId: counterpartUserId,
@@ -115,6 +117,7 @@ export function buildMinimalOpportunityCard(
     viewerRole,
     score,
     status: opp.status ?? "latent",
+    isGhost: isCounterpartGhost ?? false,
   };
 }
 
@@ -265,6 +268,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             mutualIntentsLabel: opp.homeCardPresentation?.mutualIntentsLabel,
             narratorChip: opp.narratorChip,
             viewerRole: opp.viewerRole,
+            isGhost: opp.isGhost ?? false,
             score: opp.score,
             status: opp.status,
           };
@@ -395,8 +399,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
+        const isCounterpartGhost = counterpartUser?.isGhost ?? false;
         const primaryActionLabel = viewerIsParty
-          ? "Start Chat"
+          ? (isCounterpartGhost ? "Invite to chat" : "Start Chat")
           : "Introduce Them";
         const narratorChip = viewerIsParty
           ? {
@@ -437,6 +442,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mutualIntentsLabel: "Suggested connection",
           narratorChip,
           viewerRole,
+          isGhost: isCounterpartGhost,
           score: confidence,
           status: created.status ?? "draft",
         };
@@ -595,6 +601,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           mutualIntentsLabel: opp.homeCardPresentation?.mutualIntentsLabel,
           narratorChip: opp.narratorChip,
           viewerRole: opp.viewerRole,
+          isGhost: opp.isGhost ?? false,
           score: opp.score,
           status: opp.status,
         };
