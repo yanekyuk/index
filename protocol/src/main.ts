@@ -15,7 +15,7 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { MessagingController } from './controllers/messaging.controller';
-import { MessagingDatabaseAdapter, ensurePersonalIndex } from './adapters/database.adapter';
+import { MessagingDatabaseAdapter } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
@@ -111,7 +111,6 @@ const auth = createAuth({
   getTrustedOrigins,
   sendMagicLinkEmail,
   ensureWallet: (userId) => messagingStore.ensureWallet(userId),
-  ensurePersonalIndex,
 });
 const messagingService = new MessagingService(messagingStore, {
   xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',

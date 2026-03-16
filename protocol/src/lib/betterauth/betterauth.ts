@@ -15,6 +15,7 @@ export interface AuthDbContract {
   prepareGhostClaim(email: string): Promise<string | null>;
   claimGhostUser(realUserId: string, ghostId: string): Promise<void>;
   restoreGhostEmail(ghostId: string, email: string): Promise<void>;
+  ensurePersonalIndex(userId: string): Promise<string>;
 }
 
 /**
@@ -26,7 +27,6 @@ export interface AuthDeps {
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
   ensureWallet?: (userId: string) => Promise<void>;
-  ensurePersonalIndex?: (userId: string) => Promise<string>;
 }
 
 /**
@@ -35,7 +35,7 @@ export interface AuthDeps {
  * follows the project layering rules (lib receives adapters via injection).
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, ensureWallet, ensurePersonalIndex } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail, ensureWallet } = deps;
 
   /**
    * Tracks ghost IDs that were freed in `create.before` so `create.after` can claim them.
@@ -47,6 +47,17 @@ export function createAuth(deps: AuthDeps) {
     baseURL: BASE_URL,
     database: authDb.createDrizzleAdapter(),
     databaseHooks: {
+      session: {
+        create: {
+          after: async (session) => {
+            try {
+              await authDb.ensurePersonalIndex(session.userId);
+            } catch (err) {
+              logger.error('Failed to ensure personal index on sign-in', { userId: session.userId, error: err });
+            }
+          },
+        },
+      },
       user: {
         create: {
           before: async (user) => {
@@ -68,8 +79,10 @@ export function createAuth(deps: AuthDeps) {
             } catch (_) { /* wallet generation failure shouldn't block registration */ }
 
             try {
-              if (ensurePersonalIndex) await ensurePersonalIndex(user.id);
-            } catch (_) { /* personal index creation failure shouldn't block registration */ }
+              await authDb.ensurePersonalIndex(user.id);
+            } catch (err) {
+              logger.error('Failed to create personal index on registration', { userId: user.id, error: err });
+            }
 
             const ghostId = pendingGhostClaims.get(user.id);
             if (ghostId) {
