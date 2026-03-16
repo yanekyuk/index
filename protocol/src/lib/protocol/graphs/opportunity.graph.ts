@@ -1109,81 +1109,107 @@ export class OpportunityGraphFactory {
             })
           );
 
-          const entities: EvaluatorEntity[] = [sourceEntity, ...candidateEntities];
           const userIdToIndexId = new Map<string, Id<'indexes'>>();
-          for (const e of entities) {
+          for (const e of candidateEntities) {
             if (!userIdToIndexId.has(e.userId)) userIdToIndexId.set(e.userId, e.indexId as Id<'indexes'>);
           }
 
-          const input: EvaluatorInput = {
-            discovererId: discoveryUserId,
-            entities,
-            existingOpportunities: state.options.existingOpportunities,
-            ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
-          };
-
           // Lower default threshold to 50 for better recall
           const minScore = state.options.minScore ?? 50;
-          // Get ALL scored results for tracing (returnAll: true), filter for persistence later
-          const opportunitiesWithActors =
-            typeof (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
-              ? await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore, returnAll: true })
-              : await (async () => {
-                  const realEvaluator = new OpportunityEvaluator();
-                  return realEvaluator.invokeEntityBundle(input, { minScore, returnAll: true });
-                })();
 
-          // Split multi-actor evaluator results into pairwise (viewer + candidate).
-          // Each persisted discovery opportunity should have exactly 2 actors.
-          // When splitting, build per-candidate reasoning from entity data because
-          // the shared reasoning typically describes only one candidate.
-          const pairwiseOpportunities: typeof opportunitiesWithActors = [];
-          for (const op of opportunitiesWithActors) {
-            const pairwiseSourceId = state.onBehalfOfUserId ?? state.userId;
-            const nonViewerActors = op.actors.filter(a => a.userId !== pairwiseSourceId);
-            if (nonViewerActors.length <= 1) {
-              pairwiseOpportunities.push(op);
-            } else {
-              logger.warn('[Graph:Evaluation] Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
-                actorCount: nonViewerActors.length,
-                userIds: nonViewerActors.map(a => a.userId),
-              });
-              const viewerActor = op.actors.find(a => a.userId === pairwiseSourceId);
-              for (const candidate of nonViewerActors) {
-                // Check if the shared reasoning actually mentions this candidate's name.
-                // If not, build a fallback from their entity profile to avoid misattribution.
-                const entity = candidateEntities.find(e => e.userId === candidate.userId);
-                const candidateName = entity?.profile?.name ?? '';
-                const reasoningLower = op.reasoning.toLowerCase();
-                const mentionsCandidate =
-                  candidateName !== '' &&
-                  reasoningLower.includes(candidateName.toLowerCase());
-                const mentionsOtherCandidate = nonViewerActors
-                  .filter((actor) => actor.userId !== candidate.userId)
-                  .map((actor) =>
-                    candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
-                  )
-                  .some((name) => name != null && reasoningLower.includes(name));
-                let reasoning: string;
-                if (mentionsCandidate && !mentionsOtherCandidate) {
-                  reasoning = op.reasoning;
-                } else if (entity?.profile) {
-                  const p = entity.profile;
-                  const parts = [p.name, p.bio].filter(Boolean);
-                  if (p.skills?.length) parts.push(`Skills: ${p.skills.join(', ')}`);
-                  if (p.interests?.length) parts.push(`Interests: ${p.interests.join(', ')}`);
-                  reasoning = parts.join('. ') || op.reasoning;
-                } else {
-                  reasoning = op.reasoning;
-                }
-                pairwiseOpportunities.push({
-                  reasoning,
-                  score: op.score,
-                  actors: [
-                    viewerActor ?? { userId: pairwiseSourceId, role: 'patient' as const, intentId: null },
-                    candidate,
-                  ],
+          const evaluator = typeof (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle === 'function'
+            ? (evaluatorAgent as OpportunityEvaluator)
+            : new OpportunityEvaluator();
+
+          const runParallel = process.env.RUN_OPPORTUNITY_EVAL_IN_PARALLEL === 'true';
+
+          let pairwiseOpportunities: Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }> }>;
+
+          if (runParallel) {
+            // Experimental: one LLM call per candidate, all fired in parallel
+            logger.verbose('[Graph:Evaluation] Running parallel evaluation', { candidates: candidateEntities.length });
+            const parallelResults = await Promise.all(
+              candidateEntities.map((candidateEntity) => {
+                const input: EvaluatorInput = {
+                  discovererId: discoveryUserId,
+                  entities: [sourceEntity, candidateEntity],
+                  existingOpportunities: state.options.existingOpportunities,
+                  ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
+                };
+                return evaluator.invokeEntityBundle(input, { minScore, returnAll: true })
+                  .catch((err) => {
+                    logger.warn('[Graph:Evaluation] Parallel eval failed for candidate', {
+                      candidateUserId: candidateEntity.userId,
+                      error: err,
+                    });
+                    return [] as Array<{ reasoning: string; score: number; actors: Array<{ userId: string; role: 'agent' | 'patient' | 'peer'; intentId?: string | null }> }>;
+                  });
+              })
+            );
+            // Each call is already pairwise (source + 1 candidate) — flatten directly
+            pairwiseOpportunities = parallelResults.flat();
+          } else {
+            // Default: single bundled LLM call with all candidates
+            const entities: EvaluatorEntity[] = [sourceEntity, ...candidateEntities];
+            const input: EvaluatorInput = {
+              discovererId: discoveryUserId,
+              entities,
+              existingOpportunities: state.options.existingOpportunities,
+              ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
+            };
+            // Get ALL scored results for tracing (returnAll: true), filter for persistence later
+            const opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true });
+
+            // Split multi-actor evaluator results into pairwise (viewer + candidate).
+            // Each persisted discovery opportunity should have exactly 2 actors.
+            // When splitting, build per-candidate reasoning from entity data because
+            // the shared reasoning typically describes only one candidate.
+            pairwiseOpportunities = [];
+            for (const op of opportunitiesWithActors) {
+              const pairwiseSourceId = state.onBehalfOfUserId ?? state.userId;
+              const nonViewerActors = op.actors.filter(a => a.userId !== pairwiseSourceId);
+              if (nonViewerActors.length <= 1) {
+                pairwiseOpportunities.push(op);
+              } else {
+                logger.warn('[Graph:Evaluation] Splitting multi-actor opportunity; LLM returned bundled actors instead of one-per-candidate', {
+                  actorCount: nonViewerActors.length,
+                  userIds: nonViewerActors.map(a => a.userId),
                 });
+                const viewerActor = op.actors.find(a => a.userId === pairwiseSourceId);
+                for (const candidate of nonViewerActors) {
+                  const entity = candidateEntities.find(e => e.userId === candidate.userId);
+                  const candidateName = entity?.profile?.name ?? '';
+                  const reasoningLower = op.reasoning.toLowerCase();
+                  const mentionsCandidate =
+                    candidateName !== '' &&
+                    reasoningLower.includes(candidateName.toLowerCase());
+                  const mentionsOtherCandidate = nonViewerActors
+                    .filter((actor) => actor.userId !== candidate.userId)
+                    .map((actor) =>
+                      candidateEntities.find((e) => e.userId === actor.userId)?.profile?.name?.toLowerCase()
+                    )
+                    .some((name) => name != null && reasoningLower.includes(name));
+                  let reasoning: string;
+                  if (mentionsCandidate && !mentionsOtherCandidate) {
+                    reasoning = op.reasoning;
+                  } else if (entity?.profile) {
+                    const p = entity.profile;
+                    const parts = [p.name, p.bio].filter(Boolean);
+                    if (p.skills?.length) parts.push(`Skills: ${p.skills.join(', ')}`);
+                    if (p.interests?.length) parts.push(`Interests: ${p.interests.join(', ')}`);
+                    reasoning = parts.join('. ') || op.reasoning;
+                  } else {
+                    reasoning = op.reasoning;
+                  }
+                  pairwiseOpportunities.push({
+                    reasoning,
+                    score: op.score,
+                    actors: [
+                      viewerActor ?? { userId: pairwiseSourceId, role: 'patient' as const, intentId: null },
+                      candidate,
+                    ],
+                  });
+                }
               }
             }
           }
@@ -1197,7 +1223,7 @@ export class OpportunityGraphFactory {
                 // Source actor inherits the counterpart's indexId (shared match context)
                 const counterpart = op.actors.find((other) => other.userId !== a.userId);
                 const counterpartIndexId = counterpart
-                  ? userIdToIndexId.get(counterpart.userId) ?? (entities.find((e) => e.userId === counterpart.userId)?.indexId as Id<'indexes'>)
+                  ? userIdToIndexId.get(counterpart.userId) ?? (candidateEntities.find((e) => e.userId === counterpart.userId)?.indexId as Id<'indexes'>)
                   : undefined;
                 return {
                   userId: a.userId as Id<'users'>,
@@ -1210,7 +1236,7 @@ export class OpportunityGraphFactory {
                 userId: a.userId as Id<'users'>,
                 role: a.role,
                 intentId: a.intentId as Id<'intents'> | undefined,
-                indexId: userIdToIndexId.get(a.userId) ?? (entities.find((e) => e.userId === a.userId)?.indexId as Id<'indexes'>),
+                indexId: userIdToIndexId.get(a.userId) ?? (candidateEntities.find((e) => e.userId === a.userId)?.indexId as Id<'indexes'>),
               };
             }),
           }));
