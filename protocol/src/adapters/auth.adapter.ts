@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
+import { ensurePersonalIndex } from './database.adapter';
 
 /**
  * Database adapter for Better Auth integration.
@@ -58,6 +59,16 @@ export class AuthDatabaseAdapter {
     await db.update(schema.users)
       .set({ email })
       .where(eq(schema.users.id, ghostId));
+  }
+
+  /**
+   * Creates a personal index for the user if one doesn't exist.
+   * Idempotent — safe to call on every sign-in.
+   * @param userId - The authenticated user
+   * @returns The personal index ID
+   */
+  async ensurePersonalIndex(userId: string): Promise<string> {
+    return ensurePersonalIndex(userId);
   }
 
   /**
