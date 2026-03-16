@@ -1299,7 +1299,13 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           isNull(schema.indexes.deletedAt),
-          inArray(schema.indexes.id, ids)
+          inArray(schema.indexes.id, ids),
+          // Only include personal indexes owned by the requesting user;
+          // contacts in someone else's personal index must not see it.
+          or(
+            eq(schema.indexes.isPersonal, false),
+            eq(ownerMembers.userId, userId)
+          )
         )
       )
       .orderBy(desc(schema.indexes.isPersonal), desc(schema.indexes.createdAt));
