@@ -588,7 +588,8 @@ export class IntentDatabaseAdapter {
         and(
           eq(schema.indexMembers.indexId, indexId),
           eq(schema.indexMembers.userId, userId),
-          isNull(schema.indexes.deletedAt)
+          isNull(schema.indexes.deletedAt),
+          sql`${schema.indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
@@ -1258,7 +1259,8 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           eq(schema.indexMembers.userId, userId),
-          isNull(schema.indexes.deletedAt)
+          isNull(schema.indexes.deletedAt),
+          sql`${schema.indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       );
 
@@ -1901,7 +1903,8 @@ export class ChatDatabaseAdapter {
         and(
           eq(indexMembers.indexId, indexId),
           eq(indexMembers.userId, userId),
-          isNull(indexes.deletedAt)
+          isNull(indexes.deletedAt),
+          sql`${indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
@@ -1917,16 +1920,17 @@ export class ChatDatabaseAdapter {
         and(
           eq(indexMembers.indexId, indexId),
           eq(indexMembers.userId, userId),
-          isNull(indexes.deletedAt)
+          isNull(indexes.deletedAt),
+          sql`${indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
-    
+
     if (rows.length === 0) return null;
-    
+
     const permissions = rows[0]?.permissions || [];
     const isOwner = permissions.includes('owner');
-    
+
     return { permissions, isOwner };
   }
 
