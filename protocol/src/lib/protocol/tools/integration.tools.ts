@@ -108,8 +108,7 @@ Returns import statistics or an auth URL if authentication is needed.`,
 
         const importResult = await contactService.importContacts(
           context.userId,
-          contacts,
-          'gmail'
+          contacts
         );
 
         logger.info('Gmail contacts imported', {
