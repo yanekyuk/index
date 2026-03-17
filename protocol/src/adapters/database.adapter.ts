@@ -2620,36 +2620,60 @@ export class ChatDatabaseAdapter {
 
   /**
    * Create a ghost user (unregistered contact) with empty profile.
-   * Uses onConflictDoNothing so concurrent creates are safe.
+   * Uses the same ON CONFLICT DO UPDATE pattern as the auth adapter:
+   * - New email → inserts ghost row
+   * - Existing ghost → updates name, returns existing ghost ID
+   * - Existing real user → setWhere doesn't match, returns existing real user ID
+   *
+   * This ensures one consistent user-upsert mechanism across the codebase
+   * (auth adapter for real-user signup/ghost-claim, this method for ghost creation).
+   *
    * @param data - Name and email for the ghost user
-   * @returns The created ghost user's ID
+   * @returns The created ghost user's ID (or existing user's ID if email taken)
    */
   async createGhostUser(data: { name: string; email: string }): Promise<{ id: string }> {
     const id = crypto.randomUUID();
-    await db.insert(schema.users).values({
-      id,
-      name: data.name,
-      email: data.email,
-      isGhost: true,
-    }).onConflictDoNothing();
 
-    // Re-query to get actual ID (may have existed already)
+    // Same onConflictDoUpdate + setWhere pattern as AuthDatabaseAdapter.createDrizzleAdapter().
+    // If a ghost already exists with this email, update its name.
+    // If a real user exists, setWhere won't match → RETURNING is empty.
+    const result = await db
+      .insert(schema.users)
+      .values({
+        id,
+        name: data.name,
+        email: data.email,
+        isGhost: true,
+      })
+      .onConflictDoUpdate({
+        target: schema.users.email,
+        set: {
+          name: sql`EXCLUDED."name"`,
+          updatedAt: sql`now()`,
+        },
+        setWhere: sql`${schema.users.isGhost} = true`,
+      })
+      .returning({ id: schema.users.id });
+
+    if (result[0]) {
+      // New ghost created or existing ghost updated
+      if (result[0].id === id) {
+        // Truly new ghost — create empty profile
+        await db.insert(schema.userProfiles).values({
+          userId: id,
+        }).onConflictDoNothing();
+      }
+      return { id: result[0].id };
+    }
+
+    // Real user already exists with this email — return their ID
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
       .where(eq(schema.users.email, data.email))
       .limit(1);
 
-    const actualId = existing?.id ?? id;
-
-    // Create empty profile (only for newly created users)
-    if (actualId === id) {
-      await db.insert(schema.userProfiles).values({
-        userId: id,
-      }).onConflictDoNothing();
-    }
-
-    return { id: actualId };
+    return { id: existing.id };
   }
 
   /**
