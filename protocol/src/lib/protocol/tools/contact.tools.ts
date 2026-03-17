@@ -86,7 +86,7 @@ If no account exists for that email, a ghost user is created and enriched with p
     }),
     handler: async ({ context, query }) => {
       try {
-        const result = await contactService.addContact(context.userId, query.email, { name: query.name });
+        const result = await contactService.addContact(context.userId, query.email, { name: query.name, restore: true });
 
         return success({
           added: true,

@@ -2899,8 +2899,7 @@ export class ChatDatabaseAdapter {
     contactUserId: string,
     options: { restore?: boolean } = {}
   ): Promise<void> {
-    const personalIndexId = await getPersonalIndexId(ownerId);
-    if (!personalIndexId) return;
+    const personalIndexId = await ensurePersonalIndex(ownerId);
 
     if (options.restore) {
       await db

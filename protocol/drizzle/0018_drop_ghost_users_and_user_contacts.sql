@@ -20,7 +20,7 @@ DELETE FROM "intent_indexes" WHERE "intent_id" IN (
 );
 DELETE FROM "intents" WHERE "user_id" IN (SELECT id FROM ghost_ids);
 DELETE FROM "index_members" WHERE "user_id" IN (SELECT id FROM ghost_ids);
-DELETE FROM "hyde_documents" WHERE "source_id" IN (SELECT id FROM ghost_ids);
+DELETE FROM "hyde_documents" WHERE "source_type" = 'profile' AND "source_id" IN (SELECT id FROM ghost_ids);
 DELETE FROM "user_profiles" WHERE "user_id" IN (SELECT id FROM ghost_ids);
 DELETE FROM "user_notification_settings" WHERE "user_id" IN (SELECT id FROM ghost_ids);
 DELETE FROM "opportunities" WHERE "id" IN (
