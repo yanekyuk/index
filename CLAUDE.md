@@ -106,7 +106,7 @@ index/
 - `src/guards/` - Auth/validation guards for the decorator router (e.g. `auth.guard.ts`)
 - `src/types/` - Shared TypeScript types
 - `src/cli/` - CLI and maintenance scripts (db-seed, db-flush, db-apply-schema, db-reset-remote, backfill-profile-hyde, generate-profiles, opportunity-three-user-test, test-data). Note: some package.json maintenance scripts (trigger-integration, export-slack, import-slack-export, reset-brokers, update-embeddings, audit-intent-freshness) reference CLI files that no longer exist
-- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`, `lib/smartest/` (LLM-based test verification framework), `lib/performance/` (performance monitoring decorators/wrappers), `lib/parallel/` (parallel execution utilities), `lib/request-context.ts` (AsyncLocalStorage for request-scoped data like originUrl)
+- `src/lib/` - Utilities, infrastructure; includes `lib/protocol/` (graphs, agents, interfaces, docs), `lib/drizzle/`, `lib/router/`, `lib/smartest/` (LLM-based test verification framework), `lib/performance/` (performance monitoring decorators/wrappers), `lib/parallel/` (parallel execution utilities), `lib/request-context.ts` (AsyncLocalStorage for request-scoped data: `originUrl`, `traceEmitter` for streaming graph/agent trace events)
 - `src/lib/protocol/` - Protocol layer: `graphs/` (LangGraph state machines: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `agents/` (chat agent, intent inferrer/indexer/reconciler/verifier/clarifier, opportunity evaluator/presenter, profile/hyde generators, home categorizer, lens inferrer, suggestion generator, chat title generator), `states/` (graph state definitions: chat, home, hyde, index, index_membership, intent, intent_index, opportunity, profile), `streamers/` (response streaming: chat.streamer, response.streamer), `support/` (protocol utilities: chat checkpointer/utils, opportunity card-text/constants/discover/enricher/persist/presentation/sanitize/utils, debug-meta sanitizer, lucide icon-catalog, protocol logger), `tools/` (agent tool definitions: contact, index, integration, intent, opportunity, profile, utility tools), `interfaces/` (database, embedder, cache, queue, scraper, storage), `docs/`
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters for agent system (intent events, index membership events)
@@ -170,6 +170,31 @@ IntentEvents.onCreated({ intentId, userId, payload?, previousStatus? });
 
 // Brokers react to events asynchronously (they implement onIntentCreated(intentId), etc.)
 ```
+
+**Trace Event Instrumentation** (real-time TRACE panel in chat UI):
+
+`requestContext` carries a `traceEmitter?` callback injected by `chat.agent.ts` per tool invocation. Tool files and graph files use it to stream `graph_start`/`graph_end`/`agent_start`/`agent_end` events to the frontend.
+
+- **Tool files** (`tools/*.tools.ts`): emit `graph_start`/`graph_end` around every `graphs.X.invoke()` call
+- **Graph files** (`graphs/*.graph.ts`): emit `agent_start`/`agent_end` around every agent call inside nodes
+
+```typescript
+// In tool files — wrap graph invocations
+const traceEmitter = requestContext.getStore()?.traceEmitter;
+const graphStart = Date.now();
+traceEmitter?.({ type: "graph_start", name: "opportunity" });
+const result = await graphs.opportunity.invoke(input, config);
+traceEmitter?.({ type: "graph_end", name: "opportunity", durationMs: Date.now() - graphStart });
+
+// In graph files — wrap agent calls inside nodes
+const traceEmitter = requestContext.getStore()?.traceEmitter;
+const agentStart = Date.now();
+traceEmitter?.({ type: "agent_start", name: "opportunity-evaluator" });
+const result = await agent.run(input);
+traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: Date.now() - agentStart, summary: "Evaluated 3 candidates" });
+```
+
+When adding a new tool file or graph file, follow this same pattern. Use kebab-case agent names (e.g. `"intent-inferrer"`, `"profile-generator"`).
 
 ### Database Layer (Drizzle ORM)
 
