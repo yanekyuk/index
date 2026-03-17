@@ -134,6 +134,13 @@
       "when": 1773780529000,
       "tag": "0018_drop_ghost_users_and_user_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1773780617911,
+      "tag": "0019_sync_drop_user_contacts_schema",
+      "breakpoints": true
     }
   ]
 }

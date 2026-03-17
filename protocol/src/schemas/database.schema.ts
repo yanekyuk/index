@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey, unique } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
@@ -435,8 +435,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     references: [userProfiles.userId],
   }),
   chatSessions: many(chatSessions),
-  ownedContacts: many(userContacts, { relationName: 'owned_contacts' }),
-  contactOf: many(userContacts, { relationName: 'contact_of' }),
 }));
 
 export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
@@ -576,39 +574,6 @@ export const hiddenConversations = pgTable('hidden_conversations', {
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// User Contacts (My Network)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export const contactSourceEnum = pgEnum('contact_source', ['gmail', 'google_calendar', 'manual']);
-
-export const userContacts = pgTable('user_contacts', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  source: contactSourceEnum('source').notNull(),
-  importedAt: timestamp('imported_at').defaultNow().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at'),
-}, (t) => ({
-  ownerUserUnique: unique().on(t.ownerId, t.userId),
-  ownerIdx: index('user_contacts_owner_idx').on(t.ownerId),
-}));
-
-export const userContactsRelations = relations(userContacts, ({ one }) => ({
-  owner: one(users, {
-    fields: [userContacts.ownerId],
-    references: [users.id],
-    relationName: 'owned_contacts',
-  }),
-  user: one(users, {
-    fields: [userContacts.userId],
-    references: [users.id],
-    relationName: 'contact_of',
-  }),
-}));
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // Export types
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -636,9 +601,6 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type UserContact = typeof userContacts.$inferSelect;
-export type NewUserContact = typeof userContacts.$inferInsert;
-export type ContactSource = typeof contactSourceEnum.enumValues[number];
 export type PersonalIndex = typeof personalIndexes.$inferSelect;
 export type NewPersonalIndex = typeof personalIndexes.$inferInsert;
 export type ChatMessageMetadata = typeof chatMessageMetadata.$inferSelect;
