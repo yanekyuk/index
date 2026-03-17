@@ -696,6 +696,48 @@ function CandidateFailedGroup({ steps }: { steps: ToolCallStep[] }) {
   );
 }
 
+// ─── Agent grouping types and helpers ─────────────────────────────────────────
+
+type AgentEntry =
+  | { kind: "single"; agent: AgentNode }
+  | { kind: "group"; name: string; agents: AgentNode[] };
+
+/**
+ * Groups consecutive agents with the same name into AgentEntry items.
+ * Consecutive agents sharing a name become a "group"; lone agents become "single".
+ */
+function groupConsecutiveAgents(agents: AgentNode[]): AgentEntry[] {
+  const entries: AgentEntry[] = [];
+  let i = 0;
+
+  while (i < agents.length) {
+    const current = agents[i];
+    // Collect consecutive agents with the same name
+    const run: AgentNode[] = [current];
+    while (i + 1 < agents.length && agents[i + 1].name === current.name) {
+      i++;
+      run.push(agents[i]);
+    }
+    if (run.length === 1) {
+      entries.push({ kind: "single", agent: current });
+    } else {
+      entries.push({ kind: "group", name: current.name, agents: run });
+    }
+    i++;
+  }
+
+  return entries;
+}
+
+/**
+ * Checks whether an agent summary indicates a "pass" (contains a numeric score).
+ * e.g. "Ryan Noble: 75" → true, "Seref Yarar: not scored" → false
+ */
+function isAgentSummaryPassed(summary: string | undefined): boolean {
+  if (!summary) return false;
+  return /.+:\s*\d+/.test(summary);
+}
+
 // ─── Sub-components for hierarchical rendering ───────────────────────────────
 
 interface TraceDisplayProps {
@@ -769,6 +811,127 @@ function AgentRow({ agent, wasStoppedByUser, stoppedAt }: AgentRowProps) {
   );
 }
 
+interface AgentGroupRowProps {
+  name: string;
+  agents: AgentNode[];
+  wasStoppedByUser?: boolean;
+  stoppedAt?: number;
+}
+
+function AgentGroupRow({ name, agents, wasStoppedByUser, stoppedAt }: AgentGroupRowProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const displayName = getAgentDisplayName(name);
+
+  const runningCount = agents.filter((a) => a.isRunning && !wasStoppedByUser).length;
+  const stoppedCount = agents.filter((a) => a.isRunning && wasStoppedByUser).length;
+  const anyRunning = runningCount > 0;
+  const anyStopped = stoppedCount > 0 && !anyRunning;
+
+  // Total duration: sum of completed durations. If any are still running, show a live timer
+  // from the earliest start timestamp.
+  const earliestStart = agents.reduce<number | undefined>(
+    (min, a) => (a.startTimestamp !== undefined ? (min === undefined ? a.startTimestamp : Math.min(min, a.startTimestamp)) : min),
+    undefined,
+  );
+  const totalCompletedMs = agents.reduce((sum, a) => sum + (a.durationMs ?? 0), 0);
+
+  return (
+    <div>
+      {/* Collapsed summary row */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "flex items-center gap-2 pl-12 pr-3 py-0.5 w-full text-left hover:bg-gray-800/50 transition-colors",
+          anyRunning && "bg-orange-900/10",
+          anyStopped && "bg-amber-900/10",
+        )}
+      >
+        <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+        {isExpanded ? (
+          <ChevronDown className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+        ) : (
+          <ChevronRight className="w-2.5 h-2.5 text-gray-500 flex-shrink-0" />
+        )}
+        {anyRunning ? (
+          <Loader2 className="w-2.5 h-2.5 text-orange-400 animate-spin flex-shrink-0" />
+        ) : anyStopped ? (
+          <Square className="w-2.5 h-2.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+        ) : (
+          <Circle className="w-2.5 h-2.5 text-orange-400 fill-orange-400 flex-shrink-0" />
+        )}
+        <span className={cn(
+          "flex-1 truncate",
+          anyStopped ? "text-amber-300" : "text-orange-300",
+        )}>
+          {anyStopped ? "Stopped" : displayName}
+          <span className="text-gray-500"> ({agents.length})</span>
+          {anyRunning && runningCount < agents.length && (
+            <span className="text-gray-600"> — {agents.length - runningCount} done, {runningCount} running</span>
+          )}
+        </span>
+        <span className="tabular-nums flex-shrink-0 text-gray-500">
+          {anyRunning && earliestStart ? (
+            <RunningTimer startedAt={earliestStart} />
+          ) : anyStopped && stoppedAt && earliestStart ? (
+            formatDuration(stoppedAt - earliestStart)
+          ) : totalCompletedMs > 0 ? (
+            <>{formatDuration(totalCompletedMs)} total</>
+          ) : null}
+        </span>
+      </button>
+
+      {/* Expanded: individual agent sub-rows */}
+      {isExpanded && agents.map((agent, aIdx) => {
+        const agentIsRunning = agent.isRunning && !wasStoppedByUser;
+        const agentIsStopped = agent.isRunning && wasStoppedByUser && !!stoppedAt;
+        const passed = isAgentSummaryPassed(agent.summary);
+
+        return (
+          <div
+            key={`${agent.name}-group-${aIdx}`}
+            className={cn(
+              "flex items-center gap-2 pl-16 pr-3 py-0.5",
+              agentIsRunning && "bg-orange-900/5",
+              agentIsStopped && "bg-amber-900/5",
+            )}
+          >
+            <span className="text-gray-700 flex-shrink-0 select-none">└─</span>
+            {agentIsRunning ? (
+              <Loader2 className="w-2 h-2 text-orange-400 animate-spin flex-shrink-0" />
+            ) : agentIsStopped ? (
+              <Square className="w-2 h-2 text-amber-400 fill-amber-400 flex-shrink-0" />
+            ) : passed ? (
+              <Circle className="w-2 h-2 text-green-400 fill-green-400 flex-shrink-0" />
+            ) : (
+              <Circle className="w-2 h-2 text-gray-500 fill-gray-500 flex-shrink-0" />
+            )}
+            <span className={cn(
+              "flex-1 truncate",
+              agentIsStopped ? "text-amber-300" : agentIsRunning ? "text-orange-300" : "text-gray-400",
+            )}>
+              {agentIsStopped
+                ? "Stopped"
+                : agentIsRunning
+                  ? "Running..."
+                  : agent.summary ?? getAgentDisplayName(agent.name)}
+            </span>
+            <span className="tabular-nums flex-shrink-0 text-gray-600">
+              {agentIsRunning && agent.startTimestamp ? (
+                <RunningTimer startedAt={agent.startTimestamp} />
+              ) : agentIsStopped && stoppedAt && agent.startTimestamp ? (
+                formatDuration(stoppedAt - agent.startTimestamp)
+              ) : agent.durationMs !== undefined ? (
+                formatDuration(agent.durationMs)
+              ) : null}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface GraphRowProps {
   graph: GraphNode;
   wasStoppedByUser?: boolean;
@@ -813,14 +976,27 @@ function GraphRow({ graph, wasStoppedByUser, stoppedAt }: GraphRowProps) {
           ) : null}
         </span>
       </div>
-      {graph.agents.map((agent, aIdx) => (
-        <AgentRow
-          key={`${agent.name}-${aIdx}`}
-          agent={agent}
-          wasStoppedByUser={wasStoppedByUser}
-          stoppedAt={stoppedAt}
-        />
-      ))}
+      {groupConsecutiveAgents(graph.agents).map((entry, eIdx) => {
+        if (entry.kind === "single") {
+          return (
+            <AgentRow
+              key={`${entry.agent.name}-${eIdx}`}
+              agent={entry.agent}
+              wasStoppedByUser={wasStoppedByUser}
+              stoppedAt={stoppedAt}
+            />
+          );
+        }
+        return (
+          <AgentGroupRow
+            key={`${entry.name}-group-${eIdx}`}
+            name={entry.name}
+            agents={entry.agents}
+            wasStoppedByUser={wasStoppedByUser}
+            stoppedAt={stoppedAt}
+          />
+        );
+      })}
     </>
   );
 }
