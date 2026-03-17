@@ -341,6 +341,17 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                       ),
                     );
                     break;
+                  case "response_reset":
+                    // Discard all previously streamed tokens — the agent detected
+                    // hallucinated code blocks and is forcing a correction iteration.
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMessageId
+                          ? { ...msg, content: "" }
+                          : msg,
+                      ),
+                    );
+                    break;
                   case "llm_end": {
                     const llmEndEvent: TraceEvent = {
                       type: "llm_end",

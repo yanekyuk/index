@@ -61,6 +61,7 @@ export type AgentStreamEvent =
       summary?: string;
       steps?: Array<{ step: string; detail?: string; data?: Record<string, unknown> }>;
     }
+  | { type: "response_reset"; reason: string }
   | { type: "graph_start"; name: string }
   | { type: "graph_end"; name: string; durationMs: number }
   | { type: "agent_start"; name: string }
@@ -412,10 +413,13 @@ export class ChatAgent {
     text: string,
     toolsUsed: Array<{ name: string; success: boolean }>,
   ): { type: string; tool: string; description: string } | null {
-    // Only trust successful create_intent calls — a failed attempt doesn't produce
-    // a valid proposalId, so a subsequent inline block is still hallucinated.
+    // Only trust successful tool calls — a failed attempt doesn't produce
+    // a valid proposalId / data, so a subsequent inline block is still hallucinated.
     const hasSuccessfulCreateIntent = toolsUsed.some(
       (t) => t.name === "create_intent" && t.success,
+    );
+    const hasSuccessfulCreateOpportunities = toolsUsed.some(
+      (t) => t.name === "create_opportunities" && t.success,
     );
 
     // Check for hallucinated intent_proposal
@@ -426,7 +430,59 @@ export class ChatAgent {
       }
     }
 
+    // Check for hallucinated opportunity blocks
+    if (text.includes("```opportunity") && !hasSuccessfulCreateOpportunities) {
+      // Extract a search query from the hallucinated block for the correction call
+      const nameMatch = text.match(/```opportunity\s*\n\s*\{[^}]*"name"\s*:\s*"([^"]+)"/);
+      const reasoningMatch = text.match(/```opportunity\s*\n\s*\{[^}]*"reasoning"\s*:\s*"([^"]+)"/);
+      const description = nameMatch?.[1] || reasoningMatch?.[1] || "find connections";
+      return { type: "opportunity", tool: "create_opportunities", description };
+    }
+
     return null;
+  }
+
+  /**
+   * Strip ```opportunity and ```intent_proposal code blocks from text
+   * when no corresponding successful tool call was made.
+   * Defense-in-depth: catches hallucinated blocks that slip past detectHallucinatedBlock
+   * (e.g. after a correction iteration that still hallucinates).
+   *
+   * @param text - The response text to sanitize
+   * @param toolsUsed - Tool call records from the agent loop
+   * @returns Sanitized text with unbacked blocks removed
+   */
+  private stripUnbackedBlocks(
+    text: string,
+    toolsUsed: Array<{ name: string; success: boolean }>,
+  ): string {
+    let result = text;
+    let removedBlock = false;
+
+    const hasSuccessfulCreateOpportunities = toolsUsed.some(
+      (t) => t.name === "create_opportunities" && t.success,
+    );
+    const hasSuccessfulCreateIntent = toolsUsed.some(
+      (t) => t.name === "create_intent" && t.success,
+    );
+
+    if (!hasSuccessfulCreateOpportunities && result.includes("```opportunity")) {
+      const next = result.replace(/```opportunity\s*\n[\s\S]*?```/g, "");
+      removedBlock ||= next !== result;
+      result = next;
+    }
+    if (!hasSuccessfulCreateIntent && result.includes("```intent_proposal")) {
+      const next = result.replace(/```intent_proposal\s*\n[\s\S]*?```/g, "");
+      removedBlock ||= next !== result;
+      result = next;
+    }
+
+    // Clean up leftover double blank lines only when a block was actually removed
+    if (removedBlock) {
+      result = result.replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    return result;
   }
 
   /**
@@ -806,13 +862,20 @@ export class ChatAgent {
           blockType: hallucinatedBlock.type,
           extractedDescription: hallucinatedBlock.description,
         });
+        // Tell the frontend to discard all streamed tokens from this iteration
+        emit({ type: "response_reset", reason: `Hallucinated ${hallucinatedBlock.type} block detected` });
+
+        const correctionHint = hallucinatedBlock.type === "opportunity"
+          ? `You MUST call ${hallucinatedBlock.tool}(searchQuery="${hallucinatedBlock.description}") now.`
+          : `You MUST call ${hallucinatedBlock.tool}(description="${hallucinatedBlock.description}") now.`;
+
         messages = [
           ...messages,
           accumulated,
           new SystemMessage(
             `CORRECTION: You wrote a \`\`\`${hallucinatedBlock.type} block in your response without calling the required tool. ` +
-            `That block is INVALID — it has no proposalId and will not work. ` +
-            `You MUST call ${hallucinatedBlock.tool}(description="${hallucinatedBlock.description}") now. ` +
+            `That block is INVALID — it contains fabricated data and will not work. ` +
+            `${correctionHint} ` +
             `Only the tool generates valid blocks. Do NOT write the block yourself again.`
           ),
         ];
@@ -821,15 +884,30 @@ export class ChatAgent {
       }
 
       // ── Final response already streamed ─────────────────────────────
+      // Defense-in-depth: strip any code blocks that require tool backing
+      // but slipped through without a successful tool call.
+      const sanitizedText = this.stripUnbackedBlocks(iterationText, toolsDebug);
+      if (sanitizedText !== iterationText) {
+        logger.warn("Streaming: stripped unbacked code blocks from final response", {
+          originalLength: iterationText.length,
+          sanitizedLength: sanitizedText.length,
+        });
+        emit({ type: "response_reset", reason: "Sanitized unbacked blocks from response" });
+        // Re-emit the sanitized text so the frontend displays clean content
+        if (sanitizedText.trim()) {
+          emit({ type: "text_chunk", content: sanitizedText });
+        }
+      }
+
       logger.verbose("Streaming: agent produced response", {
         iteration: iterationCount,
-        responseLength: iterationText.length,
+        responseLength: sanitizedText.length,
       });
       messages = [...messages, accumulated];
       iterationCount++;
 
       return {
-        responseText: iterationText,
+        responseText: sanitizedText,
         messages,
         iterationCount,
         debugMeta: { graph: "agent_loop", iterations: iterationCount, tools: toolsDebug },

@@ -27,6 +27,7 @@ export type ChatStreamEventType =
   | "llm_end"
   // Internal response tracking events
   | "response_complete"
+  | "response_reset"
   // Debug meta (per-turn graph/tool usage for copy debug)
   | "debug_meta"
   | "graph_start"
@@ -287,6 +288,16 @@ export interface ResponseCompleteEvent extends ChatStreamEventBase {
 }
 
 /**
+ * Response reset event — tells the frontend to discard all previously streamed tokens.
+ * Emitted when the agent detects hallucinated code blocks and forces a correction iteration.
+ */
+export interface ResponseResetEvent extends ChatStreamEventBase {
+  type: "response_reset";
+  /** Human-readable reason for the reset */
+  reason: string;
+}
+
+/**
  * One internal step reported by a tool for debug visibility (e.g. subgraph, subtask).
  */
 export interface DebugMetaStep {
@@ -396,6 +407,7 @@ export type ChatStreamEvent =
   | LlmEndEvent
   // Internal response tracking events
   | ResponseCompleteEvent
+  | ResponseResetEvent
   // Debug meta
   | DebugMetaEvent
   // Trace hierarchy events
@@ -708,6 +720,17 @@ export function createResponseCompleteEvent(
   response: string,
 ): ResponseCompleteEvent {
   return createStreamEvent<ResponseCompleteEvent>("response_complete", sessionId, { response });
+}
+
+/**
+ * Creates a formatted response reset event.
+ * Tells the frontend to discard all previously streamed tokens.
+ */
+export function createResponseResetEvent(
+  sessionId: string,
+  reason: string,
+): ResponseResetEvent {
+  return createStreamEvent<ResponseResetEvent>("response_reset", sessionId, { reason });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

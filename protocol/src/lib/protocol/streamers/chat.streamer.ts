@@ -17,6 +17,7 @@ import {
   createLlmStartEvent,
   createLlmEndEvent,
   createResponseCompleteEvent,
+  createResponseResetEvent,
   createStatusEvent,
   createTokenEvent,
   createToolActivityEvent,
@@ -194,6 +195,10 @@ export class ChatStreamer {
 
           if (event.type === "text_chunk" && event.content) {
             yield createTokenEvent(sessionId, event.content);
+          }
+
+          if (event.type === "response_reset") {
+            yield createResponseResetEvent(sessionId, event.reason);
           }
 
           if (event.type === "llm_end") {
