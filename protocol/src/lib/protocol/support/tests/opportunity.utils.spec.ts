@@ -343,7 +343,7 @@ describe('opportunity.utils', () => {
       expect(() => validateOpportunityActors(actors)).not.toThrow();
     });
 
-    test('accepts actors with valid UUID userIds', () => {
+    test('accepts actors with userId', () => {
       expect(() =>
         validateOpportunityActors([
           { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'patient' },
@@ -352,31 +352,13 @@ describe('opportunity.utils', () => {
       ).not.toThrow();
     });
 
-    test('rejects actors with non-UUID userIds', () => {
-      expect(() =>
-        validateOpportunityActors([
-          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'patient' },
-          { userId: 'TS9uwW4671WavtWJtSMrjeBLzL1KZJPb', role: 'agent' },
-        ])
-      ).toThrow('non-UUID userId');
-    });
-
-    test('accepts actors without userId field (backwards compatible)', () => {
+    test('accepts actors without userId field', () => {
       expect(() =>
         validateOpportunityActors([
           { role: 'patient' },
           { role: 'agent' },
         ])
       ).not.toThrow();
-    });
-
-    test('rejects actors with empty string userId', () => {
-      expect(() =>
-        validateOpportunityActors([
-          { userId: '', role: 'patient' },
-          { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', role: 'agent' },
-        ])
-      ).toThrow('non-UUID userId');
     });
   });
 });

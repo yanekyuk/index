@@ -7,7 +7,6 @@
  */
 
 import type { HydeTargetCorpus } from '../agents/lens.inferrer';
-import { isValidUUID } from './validation.utils';
 
 /** Actor roles in the opportunity model (agent / patient / peer). */
 export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
@@ -42,25 +41,14 @@ export function deriveRolesFromCorpus(corpus: HydeTargetCorpus): DerivedRoles {
 }
 
 /**
- * Validates opportunity actors against two rules:
- * 1. All actors with a userId must have a valid UUID (safety net against non-UUID identifiers).
- * 2. If an opportunity has an introducer, it must have one or two non-introducer actors
- *    (1 = 1:1 intro e.g. "I want to connect with X"; 2 = introducer connecting two others).
+ * Validates opportunity actors: if an opportunity has an introducer, it must have
+ * one or two non-introducer actors (1 = 1:1 intro e.g. "I want to connect with X";
+ * 2 = introducer connecting two others).
  *
  * @param actors - Array of actors with at least a role and optional userId
- * @throws Error when the actor set is invalid or contains non-UUID userIds
+ * @throws Error when the actor set is invalid
  */
 export function validateOpportunityActors(actors: Array<{ userId?: string; role: string }>): void {
-  // Validate userId format for all actors that have one
-  const invalidActors = actors.filter(
-    (a) => a.userId !== undefined && !isValidUUID(a.userId)
-  );
-  if (invalidActors.length > 0) {
-    throw new Error(
-      `Opportunity has actor(s) with non-UUID userId: ${invalidActors.map((a) => a.userId).join(', ')}`
-    );
-  }
-
   const introducerCount = actors.filter((a) => a.role === 'introducer').length;
   const nonIntroducerCount = actors.filter((a) => a.role !== 'introducer').length;
 

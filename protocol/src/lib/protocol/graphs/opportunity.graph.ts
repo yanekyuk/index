@@ -35,7 +35,6 @@ import type { OpportunityGraphDatabase } from '../interfaces/database.interface'
 import { IntentIndexer } from '../agents/intent.indexer';
 import { getModelName } from '../agents/model.config';
 import { validateOpportunityActors } from '../support/opportunity.utils';
-import { isValidUUID } from '../support/validation.utils';
 
 /** Optional evaluator for testing (avoids LLM calls). */
 export type OpportunityEvaluatorLike = {
@@ -557,10 +556,6 @@ export class OpportunityGraphFactory {
                     minScore,
                   });
                   for (const result of results) {
-                    if (!isValidUUID(result.userId)) {
-                      logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: result.userId });
-                      continue;
-                    }
                     profileCandidates.push({
                       candidateUserId: result.userId as Id<'users'>,
                       candidateIntentId: result.type === 'intent' ? result.id as Id<'intents'> : undefined,
@@ -617,10 +612,6 @@ export class OpportunityGraphFactory {
                 minScore,
               });
               for (const result of results) {
-                if (!isValidUUID(result.userId)) {
-                  logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: result.userId });
-                  continue;
-                }
                 if (result.type === 'intent') {
                   allCandidates.push({
                     candidateUserId: result.userId as Id<'users'>,
@@ -763,10 +754,6 @@ export class OpportunityGraphFactory {
                   minScore,
                 });
                 for (const r of results.filter((x) => x.type === 'intent')) {
-                  if (!isValidUUID(r.userId)) {
-                    logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: r.userId });
-                    continue;
-                  }
                   all.push({
                     candidateUserId: r.userId as Id<'users'>,
                     candidateIntentId: r.id as Id<'intents'>,
@@ -779,10 +766,6 @@ export class OpportunityGraphFactory {
                   });
                 }
                 for (const r of results.filter((x) => x.type === 'profile')) {
-                  if (!isValidUUID(r.userId)) {
-                    logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: r.userId });
-                    continue;
-                  }
                   all.push({
                     candidateUserId: r.userId as Id<'users'>,
                     indexId: targetIndex.indexId,
@@ -856,10 +839,6 @@ export class OpportunityGraphFactory {
                 minScore,
               });
               for (const result of results.filter((r) => r.type === 'intent')) {
-                if (!isValidUUID(result.userId)) {
-                  logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: result.userId });
-                  continue;
-                }
                 allCandidates.push({
                   candidateUserId: result.userId as Id<'users'>,
                   candidateIntentId: result.id as Id<'intents'>,
@@ -872,10 +851,6 @@ export class OpportunityGraphFactory {
                 });
               }
               for (const result of results.filter((r) => r.type === 'profile')) {
-                if (!isValidUUID(result.userId)) {
-                  logger.warn('[Graph:Discovery] Skipping candidate with non-UUID userId', { userId: result.userId });
-                  continue;
-                }
                 allCandidates.push({
                   candidateUserId: result.userId as Id<'users'>,
                   indexId: targetIndex.indexId,

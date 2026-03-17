@@ -18,7 +18,6 @@ import type {
 import type { Embedder } from '../../interfaces/embedder.interface';
 import type { EvaluatedOpportunityWithActors } from '../../agents/opportunity.evaluator';
 import type { ProfileDocument } from '../../agents/profile.generator';
-import { isValidUUID } from '../../support/validation.utils';
 
 type OpportunityGraphInvokeInput = Parameters<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>[0];
 type OpportunityGraphInvokeResult = Awaited<ReturnType<ReturnType<OpportunityGraphFactory['createGraph']>['invoke']>>;
@@ -1629,21 +1628,5 @@ describe('Opportunity Graph', () => {
       expect(invokeInput.profileContext).toContain('Full-stack engineer building AI tools');
       expect(invokeInput.profileContext).toContain('Active intents');
     });
-  });
-});
-
-/** Standalone unit tests for candidate filtering logic (no graph invocation needed). */
-describe('Opportunity graph candidate filtering', () => {
-  test('filters out candidates with non-UUID userIds', () => {
-    const candidates = [
-      { userId: 'c2505011-2e45-426e-81dd-b9abb9b72023', score: 0.9, id: 'intent-1', type: 'intent' as const, matchedVia: 'lens-1' },
-      { userId: 'TS9uwW4671WavtWJtSMrjeBLzL1KZJPb', score: 0.85, id: 'intent-2', type: 'intent' as const, matchedVia: 'lens-2' },
-      { userId: '', score: 0.7, id: 'intent-3', type: 'intent' as const, matchedVia: 'lens-3' },
-    ];
-
-    const filtered = candidates.filter(r => isValidUUID(r.userId));
-
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].userId).toBe('c2505011-2e45-426e-81dd-b9abb9b72023');
   });
 });

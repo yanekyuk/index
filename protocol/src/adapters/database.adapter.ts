@@ -13,7 +13,6 @@ import type { MessagingStore } from '../lib/xmtp';
 import { generateWallet, decryptKey } from '../lib/xmtp';
 import { log } from '../lib/log';
 import { IndexMembershipEvents } from '../events/index_membership.event';
-import { isValidUUID } from '../lib/protocol/support/validation.utils';
 
 const logger = log.lib.from('database.adapter');
 
@@ -237,9 +236,6 @@ export class IntentDatabaseAdapter {
   }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
-    if (!isValidUUID(data.userId)) {
-      throw new Error('Invalid userId: must be a valid UUID');
-    }
     try {
       const [created] = await db.insert(schema.intents)
         .values({
@@ -1063,9 +1059,6 @@ export class ChatDatabaseAdapter {
   }
 
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
-    if (!isValidUUID(data.userId)) {
-      throw new Error('Invalid userId: must be a valid UUID');
-    }
     try {
       const [created] = await db.insert(schema.intents)
         .values({
