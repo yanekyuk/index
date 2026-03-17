@@ -66,6 +66,7 @@ import type {
 import { persistOpportunities } from '../support/opportunity.persist';
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
+import { requestContext } from "../../request-context";
 
 const logger = protocolLogger('OpportunityGraph');
 
@@ -1156,13 +1157,19 @@ export class OpportunityGraphFactory {
                   ...(state.searchQuery?.trim() ? { discoveryQuery: state.searchQuery.trim() } : {}),
                 };
                 const _evalStart = Date.now();
+                const _traceEmitter = requestContext.getStore()?.traceEmitter;
+                _traceEmitter?.({ type: "agent_start", name: "opportunity-evaluator" });
                 return evaluator.invokeEntityBundle(input, { minScore, returnAll: true })
                   .then((res) => {
-                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
+                    const _evalDuration = Date.now() - _evalStart;
+                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
+                    _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated 1 candidate` });
                     return res;
                   })
                   .catch((err) => {
-                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
+                    const _evalDuration = Date.now() - _evalStart;
+                    agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
+                    _traceEmitter?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: "opportunity-evaluator completed" });
                     logger.warn('[Graph:Evaluation] Parallel eval failed for candidate', {
                       candidateUserId: candidateEntity.userId,
                       error: err,
@@ -1184,8 +1191,12 @@ export class OpportunityGraphFactory {
             };
             // Get ALL scored results for tracing (returnAll: true), filter for persistence later
             const _evalStart = Date.now();
+            const _traceEmitterSerial = requestContext.getStore()?.traceEmitter;
+            _traceEmitterSerial?.({ type: "agent_start", name: "opportunity-evaluator" });
             const opportunitiesWithActors = await evaluator.invokeEntityBundle(input, { minScore, returnAll: true });
-            agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
+            const _evalDuration = Date.now() - _evalStart;
+            agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _evalDuration });
+            _traceEmitterSerial?.({ type: "agent_end", name: "opportunity-evaluator", durationMs: _evalDuration, summary: `Evaluated ${candidateEntities.length} candidate(s)` });
 
             // Split multi-actor evaluator results into pairwise (viewer + candidate).
             // Each persisted discovery opportunity should have exactly 2 actors.
@@ -1537,8 +1548,12 @@ export class OpportunityGraphFactory {
           };
 
           const _evalStart = Date.now();
+          const _traceEmitterIntro = requestContext.getStore()?.traceEmitter;
+          _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
           const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
-          agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: Date.now() - _evalStart });
+          const _introDuration = Date.now() - _evalStart;
+          agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
+          _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introDuration, summary: "Evaluated introduction" });
           if (evaluated.length > 0) {
             const best = evaluated[0];
             reasoning = best.reasoning;
