@@ -35,7 +35,11 @@ export type TraceEventType =
   | "llm_start"
   | "llm_end"
   | "tool_start"
-  | "tool_end";
+  | "tool_end"
+  | "graph_start"
+  | "graph_end"
+  | "agent_start"
+  | "agent_end";
 
 export interface TraceEvent {
   type: TraceEventType;
@@ -44,6 +48,7 @@ export interface TraceEvent {
   name?: string;
   status?: "running" | "success" | "error";
   summary?: string;
+  durationMs?: number;
   steps?: ToolCallStep[];
   hasToolCalls?: boolean;
   toolNames?: string[];
@@ -107,23 +112,72 @@ function getScopeIndexIdFromPathname(pathname: string | null): string | null {
  * Merges tool step details from persisted debugMeta into trace events.
  * When traceEvents are persisted without steps but debugMeta has them,
  * this fills in the matching tool_end events so the UI can display steps on reload.
+ * Also synthesizes graph_start/graph_end/agent_start/agent_end events from persisted graphs data.
  */
 function mergeDebugMetaIntoTraceEvents(
   traceEvents: TraceEvent[] | undefined,
-  debugMeta: { tools?: Array<{ name: string; steps?: ToolCallStep[] }> } | undefined | null,
+  debugMeta: {
+    tools?: Array<{
+      name: string;
+      steps?: ToolCallStep[];
+      graphs?: Array<{
+        name: string;
+        durationMs?: number;
+        agents?: Array<{ name: string; durationMs?: number }>;
+      }>;
+    }>;
+  } | undefined | null,
 ): TraceEvent[] | undefined {
   if (!traceEvents || !debugMeta?.tools?.length) return traceEvents;
 
   const merged = [...traceEvents];
   for (const toolDebug of debugMeta.tools) {
-    if (!toolDebug.steps?.length) continue;
+    // Merge step details into the matching tool_end event
+    if (toolDebug.steps?.length) {
+      const toolEndIdx = merged.findIndex(
+        (e) => e.type === "tool_end" && e.name === toolDebug.name && !e.steps?.length,
+      );
+      if (toolEndIdx !== -1) {
+        merged[toolEndIdx] = { ...merged[toolEndIdx], steps: toolDebug.steps };
+      }
+    }
 
-    // Find the matching tool_end event that doesn't already have steps
-    const toolEndIdx = merged.findIndex(
-      (e) => e.type === "tool_end" && e.name === toolDebug.name && !e.steps?.length,
-    );
-    if (toolEndIdx !== -1) {
-      merged[toolEndIdx] = { ...merged[toolEndIdx], steps: toolDebug.steps };
+    // Synthesize graph/agent events from persisted graphs data
+    if (toolDebug.graphs?.length) {
+      // Insert synthesized events before the tool_end for this tool
+      const toolEndIdx = merged.findIndex(
+        (e) => e.type === "tool_end" && e.name === toolDebug.name,
+      );
+      const insertAt = toolEndIdx !== -1 ? toolEndIdx : merged.length;
+
+      const synthesized: TraceEvent[] = [];
+      for (const graph of toolDebug.graphs) {
+        synthesized.push({
+          type: "graph_start",
+          timestamp: 0,
+          name: graph.name,
+        });
+        for (const agent of graph.agents ?? []) {
+          synthesized.push({
+            type: "agent_start",
+            timestamp: 0,
+            name: agent.name,
+          });
+          synthesized.push({
+            type: "agent_end",
+            timestamp: 0,
+            name: agent.name,
+            durationMs: agent.durationMs,
+          });
+        }
+        synthesized.push({
+          type: "graph_end",
+          timestamp: 0,
+          name: graph.name,
+          durationMs: graph.durationMs,
+        });
+      }
+      merged.splice(insertAt, 0, ...synthesized);
     }
   }
   return merged;
@@ -332,6 +386,73 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     );
                     break;
                   }
+                  case "graph_start": {
+                    const graphStartEvent: TraceEvent = {
+                      type: "graph_start",
+                      timestamp: Date.now(),
+                      name: event.name,
+                    };
+                    streamTraceEvents.push(graphStartEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), graphStartEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "graph_end": {
+                    const graphEndEvent: TraceEvent = {
+                      type: "graph_end",
+                      timestamp: Date.now(),
+                      name: event.name,
+                      durationMs: event.durationMs,
+                    };
+                    streamTraceEvents.push(graphEndEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), graphEndEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "agent_start": {
+                    const agentStartEvent: TraceEvent = {
+                      type: "agent_start",
+                      timestamp: Date.now(),
+                      name: event.name,
+                    };
+                    streamTraceEvents.push(agentStartEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), agentStartEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
+                  case "agent_end": {
+                    const agentEndEvent: TraceEvent = {
+                      type: "agent_end",
+                      timestamp: Date.now(),
+                      name: event.name,
+                      durationMs: event.durationMs,
+                      summary: event.summary,
+                    };
+                    streamTraceEvents.push(agentEndEvent);
+                    setMessages((prev) =>
+                      prev.map((msg) => {
+                        if (msg.id !== assistantMessageId) return msg;
+                        const traceEvents = [...(msg.traceEvents || []), agentEndEvent];
+                        return { ...msg, traceEvents };
+                      }),
+                    );
+                    break;
+                  }
                   case "done":
                     setMessages((prev) =>
                       prev.map((msg) => {
@@ -480,7 +601,17 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
           content: string;
           createdAt: string;
           traceEvents?: TraceEvent[];
-          debugMeta?: { tools?: Array<{ name: string; steps?: ToolCallStep[] }> } | null;
+          debugMeta?: {
+            tools?: Array<{
+              name: string;
+              steps?: ToolCallStep[];
+              graphs?: Array<{
+                name: string;
+                durationMs?: number;
+                agents?: Array<{ name: string; durationMs?: number }>;
+              }>;
+            }>;
+          } | null;
         }>;
       }>("/chat/session", { sessionId: id });
       setSessionId(data.session.id);
