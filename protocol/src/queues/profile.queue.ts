@@ -1,11 +1,10 @@
 import { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
-import { ProfileDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ProfileDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
-import { enrichUserProfile } from '../lib/parallel/parallel';
 
 /** BullMQ queue name for profile HyDE (ensure profile + HyDE) jobs. */
 export const QUEUE_NAME = 'profile-hyde-queue';
@@ -15,20 +14,20 @@ export interface EnsureProfileHydeData {
   userId: string;
 }
 
-/** Payload for ghost.enrich jobs. */
-export interface EnrichGhostData {
+/** Payload for profile.enrich jobs. */
+export interface EnrichUserData {
   userId: string;
 }
 
 /** Union of all job payloads accepted by the profile queue. */
-export type ProfileJobPayload = EnsureProfileHydeData | EnrichGhostData;
+export type ProfileJobPayload = EnsureProfileHydeData | EnrichUserData;
 
 /**
  * Optional dependencies for testing.
  */
 export interface ProfileQueueDeps {
   invokeProfileWrite?: (userId: string) => Promise<void>;
-  invokeEnrichGhost?: (userId: string) => Promise<void>;
+  invokeEnrichUser?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -37,8 +36,8 @@ export interface ProfileQueueDeps {
  * Handles `ensure_profile_hyde`: invokes the profile graph in write mode so the user has
  * a profile and HyDE documents for discovery (index members can be found).
  *
- * Handles `ghost.enrich`: enriches ghost users with public data from Parallels API,
- * then runs the profile graph to generate profile + HyDE documents.
+ * Handles `profile.enrich`: enriches users (ghost or real) via Chat API enrichment
+ * inside the profile graph, then generates profile + HyDE documents.
  *
  * @remarks
  * Workers are started only by the protocol server via {@link ProfileQueue.startWorker}.
@@ -67,13 +66,14 @@ export class ProfileQueue {
   }
 
   /**
-   * Enqueue a job to enrich a ghost user with public data and generate their profile.
-   * @param data - userId of the ghost user
+   * Enqueue a job to enrich a user with public data and generate their profile.
+   * Works for both ghost users (imported contacts) and real users (onboarding).
+   * @param data - userId to enrich
    * @returns The BullMQ job
    */
-  addEnrichGhostJob(data: { userId: string }): Promise<Job<ProfileJobPayload>> {
-    return this.addJob('ghost.enrich', data, {
-      jobId: `ghost.enrich.${data.userId}.${Date.now()}`,
+  addEnrichUserJob(data: { userId: string }): Promise<Job<ProfileJobPayload>> {
+    return this.addJob('profile.enrich', data, {
+      jobId: `profile.enrich.${data.userId}.${Date.now()}`,
     });
   }
 
@@ -85,7 +85,7 @@ export class ProfileQueue {
    * @returns The BullMQ job
    */
   async addJob(
-    name: 'ensure_profile_hyde' | 'ghost.enrich',
+    name: 'ensure_profile_hyde' | 'profile.enrich',
     data: ProfileJobPayload,
     options?: { jobId?: string; priority?: number }
   ): Promise<Job<ProfileJobPayload>> {
@@ -109,8 +109,8 @@ export class ProfileQueue {
       case 'ensure_profile_hyde':
         await this.handleEnsureProfileHyde(data);
         break;
-      case 'ghost.enrich':
-        await this.handleEnrichGhost(data);
+      case 'profile.enrich':
+        await this.handleEnrichUser(data);
         break;
       default:
         this.queueLogger.warn(`[ProfileProcessor] Unknown job name: ${name}`);
@@ -154,7 +154,7 @@ export class ProfileQueue {
       return;
     }
     try {
-      await this.invokeProfileGraph(userId);
+      await this.invokeProfileGraph(userId, 'write');
       this.logger.verbose('[ProfileHyde] Ensured profile HyDE for user', { userId });
     } catch (err) {
       this.logger.error('[ProfileHyde] Failed to ensure profile HyDE', { userId, error: err });
@@ -162,119 +162,17 @@ export class ProfileQueue {
     }
   }
 
-  private async handleEnrichGhost(data: EnrichGhostData): Promise<void> {
+  private async handleEnrichUser(data: EnrichUserData): Promise<void> {
     const { userId } = data;
-    if (this.deps?.invokeEnrichGhost) {
-      await this.deps.invokeEnrichGhost(userId);
+    if (this.deps?.invokeEnrichUser) {
+      await this.deps.invokeEnrichUser(userId);
       return;
     }
     try {
-      const chatDb = new ChatDatabaseAdapter();
-      const user = await chatDb.getUser(userId);
-      if (!user) {
-        this.queueLogger.warn('[EnrichGhost] User not found, skipping', { userId });
-        return;
-      }
-
-      this.queueLogger.info('[EnrichGhost] Starting enrichment via Chat API', {
-        userId,
-        hasName: !!user.name,
-        hasEmail: !!user.email,
-        hasSocials: !!(user.socials && Object.keys(user.socials).length > 0),
-      });
-
-      // Enrich via Parallel Chat API - returns structured profile directly
-      let prePopulatedProfile: {
-        identity: { name: string; bio: string; location: string };
-        narrative: { context: string };
-        attributes: { skills: string[]; interests: string[] };
-      } | undefined;
-
-      try {
-        const enrichment = await enrichUserProfile({
-          name: user.name,
-          email: user.email,
-          twitter: user.socials?.x,
-          linkedin: user.socials?.linkedin,
-          github: user.socials?.github,
-          websites: user.socials?.websites,
-        });
-
-        const hasMeaningfulEnrichment = !!enrichment && (
-          enrichment.identity.bio.trim().length > 0 ||
-          enrichment.narrative.context.trim().length > 0 ||
-          enrichment.attributes.skills.length > 0 ||
-          enrichment.attributes.interests.length > 0
-        );
-
-        if (hasMeaningfulEnrichment) {
-          this.queueLogger.info('[EnrichGhost] Chat API enrichment completed', {
-            userId,
-            skillsCount: enrichment!.attributes.skills.length,
-            interestsCount: enrichment!.attributes.interests.length,
-          });
-
-          // Build update payload for user fields from enrichment
-          const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
-
-          // Update intro (bio) if available
-          if (enrichment!.identity.bio?.trim()) {
-            updatePayload.intro = enrichment!.identity.bio.trim();
-          }
-
-          // Update location if available
-          if (enrichment!.identity.location?.trim()) {
-            updatePayload.location = enrichment!.identity.location.trim();
-          }
-
-          // Update socials from enrichment
-          const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
-          if (enrichment!.socials.twitter) socials.x = enrichment!.socials.twitter;
-          if (enrichment!.socials.linkedin) socials.linkedin = enrichment!.socials.linkedin;
-          if (enrichment!.socials.github) socials.github = enrichment!.socials.github;
-          if (enrichment!.socials.websites?.length) socials.websites = enrichment!.socials.websites;
-          if (Object.keys(socials).length > 0) {
-            updatePayload.socials = socials;
-          }
-
-          if (Object.keys(updatePayload).length > 0) {
-            await chatDb.updateUser(userId, updatePayload);
-          }
-
-          // Prepare pre-populated profile for the graph
-          prePopulatedProfile = {
-            identity: enrichment!.identity,
-            narrative: enrichment!.narrative,
-            attributes: enrichment!.attributes,
-          };
-        } else if (enrichment) {
-          this.queueLogger.warn('[EnrichGhost] Chat API returned low-signal enrichment, falling back to graph generation', {
-            userId,
-          });
-        }
-      } catch (err) {
-        this.queueLogger.warn('[EnrichGhost] Chat API enrichment failed, running profile graph without pre-populated profile', {
-          userId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-
-      // Generate embedding + HyDE via profile graph
-      // If we have a pre-populated profile, the graph skips LLM generation
-      this.queueLogger.info('[EnrichGhost] Invoking profile graph', {
-        userId,
-        hasPrePopulatedProfile: !!prePopulatedProfile,
-      });
-      const result = await this.invokeProfileGraph(userId, prePopulatedProfile);
-      this.queueLogger.info('[EnrichGhost] Profile graph completed', {
-        userId,
-        hasProfile: !!result.profile,
-        hasError: !!result.error,
-        error: result.error,
-        needsUserInfo: result.needsUserInfo,
-      });
+      await this.invokeProfileGraph(userId, 'generate');
+      this.queueLogger.info('[EnrichUser] Profile enrichment completed', { userId });
     } catch (err) {
-      this.queueLogger.error('[EnrichGhost] Failed to enrich ghost user', {
+      this.queueLogger.error('[EnrichUser] Failed to enrich user', {
         userId,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -282,24 +180,13 @@ export class ProfileQueue {
     }
   }
 
-  private async invokeProfileGraph(
-    userId: string,
-    prePopulatedProfile?: {
-      identity: { name: string; bio: string; location: string };
-      narrative: { context: string };
-      attributes: { skills: string[]; interests: string[] };
-    }
-  ) {
+  private async invokeProfileGraph(userId: string, operationMode: 'write' | 'generate') {
     const database = new ProfileDatabaseAdapter();
     const embedder = new EmbedderAdapter();
     const scraper = new ScraperAdapter();
     const factory = new ProfileGraphFactory(database, embedder, scraper);
     const graph = factory.createGraph();
-    return graph.invoke({
-      userId,
-      operationMode: 'generate',
-      prePopulatedProfile,
-    });
+    return graph.invoke({ userId, operationMode });
   }
 }
 

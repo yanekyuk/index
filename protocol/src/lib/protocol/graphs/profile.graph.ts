@@ -5,7 +5,7 @@ import { HydeGenerator } from "../agents/profile.hyde.generator";
 import { ProfileGraphDatabase } from "../interfaces/database.interface";
 import { Embedder } from "../interfaces/embedder.interface";
 import { Scraper } from "../interfaces/scraper.interface";
-import { searchUser } from "../../../lib/parallel/parallel";
+import { enrichUserProfile } from "../../../lib/parallel/parallel";
 import { protocolLogger } from "../support/protocol.logger";
 import { timed } from "../../performance";
 import { requestContext } from "../../request-context";
@@ -360,62 +360,34 @@ export class ProfileGraphFactory {
     };
 
     // ─────────────────────────────────────────────────────────
-    // NODE: Auto-Generate (Parallels searchUser)
-    // Calls Parallels API with structured user data (name, email,
-    // socials, websites) to auto-generate profile input.
+    // NODE: Auto-Generate (Parallel Chat API enrichment)
+    // Calls enrichUserProfile to get a structured profile directly.
+    // On success, sets prePopulatedProfile (skips LLM generation).
+    // On failure, falls back to basic user info for LLM generation.
     // Used in 'generate' mode only.
     // ─────────────────────────────────────────────────────────
     const autoGenerateNode = async (state: typeof ProfileGraphState.State) => {
       return timed("ProfileGraph.autoGenerate", async () => {
-        logger.verbose("Starting auto-generate", {
+        logger.verbose("Starting auto-generate via Chat API enrichment", {
           userId: state.userId,
-          hasEnrichmentInput: !!state.enrichmentInput,
         });
 
         try {
-          // If enrichment input was pre-fetched (e.g. by handleEnrichGhost), use it directly
-          if (state.enrichmentInput) {
-            logger.verbose("Using pre-fetched enrichment input, skipping Parallels search", {
-              inputLength: state.enrichmentInput.length,
-            });
-            return {
-              input: state.enrichmentInput,
-              needsUserInfo: false,
-              needsProfileGeneration: true,
-              operationsPerformed: { scraped: true },
-            };
-          }
-
-          // Load user from DB
           const user = await this.database.getUser(state.userId);
           if (!user) {
             logger.error("User not found for auto-generate", { userId: state.userId });
             return { error: `User not found: ${state.userId}` };
           }
 
-          // Build structured request for searchUser
-          const request: {
-            name?: string;
-            email?: string;
-            linkedin?: string;
-            twitter?: string;
-            github?: string;
-            websites?: string[];
-          } = {};
+          const request = {
+            name: user.name || undefined,
+            email: user.email || undefined,
+            linkedin: user.socials?.linkedin || undefined,
+            twitter: user.socials?.x || undefined,
+            github: user.socials?.github || undefined,
+            websites: user.socials?.websites?.length ? user.socials.websites : undefined,
+          };
 
-          if (user.name) request.name = user.name;
-          if (user.email) request.email = user.email;
-          if (user.socials?.linkedin) request.linkedin = user.socials.linkedin;
-          if (user.socials?.x) request.twitter = user.socials.x;
-          if (user.socials?.github) request.github = user.socials.github;
-          if (user.socials?.websites && user.socials.websites.length > 0) {
-            request.websites = user.socials.websites;
-          }
-
-          const hasSocials = !!(request.linkedin || request.twitter || request.github || (request.websites && request.websites.length > 0));
-          const hasMeaningfulName = request.name && request.name.trim() !== '' && !request.name.includes('@') && request.name.split(/\s+/).filter(Boolean).length >= 2;
-
-          // Helper: build basic profile input from whatever user info we have
           const buildBasicInfo = () => {
             const parts = [
               user.name ? `Name: ${user.name}` : '',
@@ -426,52 +398,58 @@ export class ProfileGraphFactory {
             return parts || "No information available";
           };
 
-          // Try Parallels search if we have enough info for a meaningful lookup
-          if (hasSocials || hasMeaningfulName) {
-            logger.verbose("Calling Parallels searchUser", {
-              hasName: !!request.name,
-              hasEmail: !!request.email,
-              hasSocials,
-            });
+          try {
+            const enrichment = await enrichUserProfile(request);
 
-            try {
-              const searchResult = await searchUser(request);
+            const hasMeaningfulEnrichment = !!enrichment && (
+              enrichment.identity.bio.trim().length > 0 ||
+              enrichment.narrative.context.trim().length > 0 ||
+              enrichment.attributes.skills.length > 0 ||
+              enrichment.attributes.interests.length > 0
+            );
 
-              const inputParts: string[] = [];
-              if (searchResult.results && searchResult.results.length > 0) {
-                for (const r of searchResult.results) {
-                  if (r.excerpts && r.excerpts.length > 0) {
-                    inputParts.push(`Source: ${r.title || r.url}\n${r.excerpts.join('\n')}`);
-                  }
-                }
-              }
-
-              if (inputParts.length > 0) {
-                const combinedInput = inputParts.join('\n\n');
-                logger.verbose("Auto-generate input ready", {
-                  sourceCount: inputParts.length,
-                  inputLength: combinedInput.length,
-                });
-                return {
-                  input: combinedInput,
-                  needsUserInfo: false,
-                  needsProfileGeneration: true,
-                  operationsPerformed: { scraped: true },
-                };
-              }
-
-              logger.warn("Parallels searchUser returned no usable content, falling back to basic info", { userId: state.userId });
-            } catch (searchErr) {
-              logger.warn("Parallels searchUser failed, falling back to basic info", {
+            if (hasMeaningfulEnrichment) {
+              logger.verbose("Chat API enrichment succeeded", {
                 userId: state.userId,
-                error: searchErr instanceof Error ? searchErr.message : String(searchErr),
+                skillsCount: enrichment!.attributes.skills.length,
+                interestsCount: enrichment!.attributes.interests.length,
               });
+
+              // Update user record with enriched data
+              const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
+              if (enrichment!.identity.bio?.trim()) updatePayload.intro = enrichment!.identity.bio.trim();
+              if (enrichment!.identity.location?.trim()) updatePayload.location = enrichment!.identity.location.trim();
+
+              const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
+              if (enrichment!.socials.twitter) socials.x = enrichment!.socials.twitter;
+              if (enrichment!.socials.linkedin) socials.linkedin = enrichment!.socials.linkedin;
+              if (enrichment!.socials.github) socials.github = enrichment!.socials.github;
+              if (enrichment!.socials.websites?.length) socials.websites = enrichment!.socials.websites;
+              if (Object.keys(socials).length > 0) updatePayload.socials = socials;
+
+              if (Object.keys(updatePayload).length > 0) {
+                await this.database.updateUser(state.userId, updatePayload);
+              }
+
+              return {
+                prePopulatedProfile: {
+                  identity: enrichment!.identity,
+                  narrative: enrichment!.narrative,
+                  attributes: enrichment!.attributes,
+                },
+                needsUserInfo: false,
+                operationsPerformed: { scraped: true },
+              };
             }
-          } else {
-            logger.verbose("Minimal user info — skipping Parallels, generating from name/email", { userId: state.userId });
+
+            logger.warn("Chat API returned low-signal enrichment, falling back to basic info", { userId: state.userId });
+          } catch (enrichErr) {
+            logger.warn("Chat API enrichment failed, falling back to basic info", {
+              userId: state.userId,
+              error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),
+            });
           }
 
-          // Fall back to basic user info (name, email, etc.)
           return {
             input: buildBasicInfo(),
             needsUserInfo: false,
@@ -771,7 +749,7 @@ export class ProfileGraphFactory {
         return "use_prepopulated_profile";
       }
 
-      // Generate mode: use Parallels searchUser to auto-generate
+      // Generate mode: use enrichUserProfile Chat API to auto-generate
       if (state.operationMode === 'generate') {
         logger.verbose("Generate mode - routing to auto_generate");
         return "auto_generate";
@@ -876,7 +854,7 @@ export class ProfileGraphFactory {
         checkStateCondition,
         {
           use_prepopulated_profile: "use_prepopulated_profile", // Pre-populated profile -> skip generation
-          auto_generate: "auto_generate",       // Generate mode -> Parallels searchUser
+          auto_generate: "auto_generate",       // Generate mode -> Chat API enrichment
           scrape: "scrape",                     // Need profile, no input -> scrape first
           generate_profile: "generate_profile", // Need profile, have input -> generate
           embed_save_profile: "embed_save_profile", // Have profile, need embedding
@@ -889,8 +867,22 @@ export class ProfileGraphFactory {
       // Pre-populated profile feeds into embedding (skips generation)
       .addEdge("use_prepopulated_profile", "embed_save_profile")
 
-      // Auto-generate feeds into profile generation
-      .addEdge("auto_generate", "generate_profile")
+      // Auto-generate routes based on enrichment result
+      .addConditionalEdges(
+        "auto_generate",
+        (state: typeof ProfileGraphState.State) => {
+          if (state.prePopulatedProfile) {
+            logger.verbose("Enrichment succeeded — using pre-populated profile");
+            return "use_prepopulated_profile";
+          }
+          logger.verbose("Enrichment failed — falling back to LLM profile generation");
+          return "generate_profile";
+        },
+        {
+          use_prepopulated_profile: "use_prepopulated_profile",
+          generate_profile: "generate_profile",
+        }
+      )
 
       // Scrape -> Generate profile (linear)
       .addEdge("scrape", "generate_profile")

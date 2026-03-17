@@ -137,7 +137,7 @@ export class ContactService {
 
     // Enqueue enrichment for new ghosts
     if (isNew && isGhost) {
-      await profileQueue.addEnrichGhostJob({ userId: user.id });
+      await profileQueue.addEnrichUserJob({ userId: user.id });
       logger.info('[ContactService] Enrichment job enqueued for new ghost', { userId: user.id });
     }
 
