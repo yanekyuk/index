@@ -1034,7 +1034,7 @@ export class ChatDatabaseAdapter {
 
   async updateUser(
     userId: string,
-    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
   ) {
     // Delegate to ProfileDatabaseAdapter which has the merge logic
     const profileAdapter = new ProfileDatabaseAdapter();
@@ -3222,13 +3222,13 @@ export class ProfileDatabaseAdapter {
   }
 
   /**
-   * Update user account fields (name, location, socials).
+   * Update user account fields (name, intro, location, socials).
    * Merges socials with existing values so callers can set individual social
    * fields (e.g. only linkedin) without overwriting the rest.
    */
   async updateUser(
     userId: string,
-    data: { name?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
+    data: { name?: string; intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] }; onboarding?: OnboardingState }
   ): Promise<{ id: string; name: string; email: string; intro?: string | null; avatar?: string | null; location?: string | null; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } | null; onboarding?: OnboardingState | null } | null> {
     // Load current user to merge socials
     const current = await this.getUser(userId);
@@ -3237,6 +3237,7 @@ export class ProfileDatabaseAdapter {
     const updateFields: Record<string, unknown> = { updatedAt: new Date() };
 
     if (data.name !== undefined) updateFields.name = data.name;
+    if (data.intro !== undefined) updateFields.intro = data.intro;
     if (data.location !== undefined) updateFields.location = data.location;
     if (data.onboarding !== undefined) updateFields.onboarding = data.onboarding;
 

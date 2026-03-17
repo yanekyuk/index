@@ -214,15 +214,31 @@ export class ProfileQueue {
             interestsCount: enrichment!.attributes.interests.length,
           });
 
-          // Update user socials from enrichment
+          // Build update payload for user fields from enrichment
+          const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
+
+          // Update intro (bio) if available
+          if (enrichment!.identity.bio?.trim()) {
+            updatePayload.intro = enrichment!.identity.bio.trim();
+          }
+
+          // Update location if available
+          if (enrichment!.identity.location?.trim()) {
+            updatePayload.location = enrichment!.identity.location.trim();
+          }
+
+          // Update socials from enrichment
           const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
           if (enrichment!.socials.twitter) socials.x = enrichment!.socials.twitter;
           if (enrichment!.socials.linkedin) socials.linkedin = enrichment!.socials.linkedin;
           if (enrichment!.socials.github) socials.github = enrichment!.socials.github;
           if (enrichment!.socials.websites?.length) socials.websites = enrichment!.socials.websites;
-
           if (Object.keys(socials).length > 0) {
-            await chatDb.updateUser(userId, { socials });
+            updatePayload.socials = socials;
+          }
+
+          if (Object.keys(updatePayload).length > 0) {
+            await chatDb.updateUser(userId, updatePayload);
           }
 
           // Prepare pre-populated profile for the graph
