@@ -618,6 +618,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigatingToHomeRef.current = true;
       // Don't abort in-flight stream so the new session can finish and appear in the sidebar
       clearChat({ abortStream: false });
+      setSelectedIndexIds([]);
       setSessionLoaded(true);
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
@@ -1433,6 +1434,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           type="button"
           onClick={() => {
             clearChat({ abortStream: false });
+            setSelectedIndexIds([]);
             navigate("/");
           }}
           className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"

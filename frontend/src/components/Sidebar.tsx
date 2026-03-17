@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
 import { Compass, MessagesSquare, Loader2, ChevronDown, User as UserIcon, LogOut, Library, History, Network } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useXMTP } from '@/contexts/XMTPContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
@@ -30,6 +31,7 @@ export default function Sidebar() {
   const { isConnected: isReady, totalUnreadCount: xmtpUnreadCount } = useXMTP();
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
+  const { setSelectedIndexIds } = useIndexFilter();
   const indexesService = useIndexes();
   const opportunitiesService = useOpportunities();
   const { indexes, addIndex } = useIndexesState();
@@ -74,6 +76,7 @@ export default function Sidebar() {
 
   const handleDiscoverClick = () => {
     clearChat({ abortStream: false });
+    setSelectedIndexIds([]);
     navigate('/');
   };
 
