@@ -218,7 +218,6 @@ When adding a new tool file or graph file, follow this same pattern. Use kebab-c
 - `sessions` / `accounts` / `verifications` / `jwks` - Better Auth tables
 - `links` - Shareable link records
 - `hidden_conversations` - Hidden conversation tracking
-- `user_contacts` - My Network contacts (owner/user pairs with source: gmail|google_calendar|manual)
 
 **Key Features**:
 - pgvector extension for 2000-dimensional embeddings
@@ -359,7 +358,9 @@ inferenceType: 'explicit' | 'implicit'
 
 ### Personal Indexes
 
-Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table (one row per user). Ownership is determined through `index_members` with `permissions: ['owner']`, not a denormalized column. Personal indexes contain the user's imported contacts and are used for network-scoped discovery. Contacts synced into a personal index automatically become members with `'contact'` permissions. When a user accepts an opportunity, the counterpart is auto-added as a contact.
+Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table (one row per user). Ownership is determined through `index_members` with `permissions: ['owner']`, not a denormalized column.
+
+Contacts are stored as `index_members` rows with `'contact'` permission on the owner's personal index — there is no separate contacts table. The `addContact(email)` primitive in `ContactService` handles finding or creating users (including ghost users for unknown emails) and upserting the membership. When a user accepts an opportunity, the counterpart is auto-added as a contact via `addContact` with `restore: true`.
 
 Personal indexes cannot be deleted, renamed, or listed publicly. They are filtered from public index listings by guards.
 

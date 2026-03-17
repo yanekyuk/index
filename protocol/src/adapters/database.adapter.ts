@@ -2653,24 +2653,6 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Soft-delete a ghost user (opt-out from emails).
-   * Only deletes users where isGhost=true and not already deleted.
-   * @param userId - The ghost user's ID
-   * @returns true if user was soft-deleted, false if not found or not eligible
-   */
-  async softDeleteGhostUser(userId: string): Promise<boolean> {
-    const result = await db.update(schema.users)
-      .set({ deletedAt: new Date() })
-      .where(and(
-        eq(schema.users.id, userId),
-        eq(schema.users.isGhost, true),
-        isNull(schema.users.deletedAt)
-      ))
-      .returning({ id: schema.users.id });
-    return result.length > 0;
-  }
-
-  /**
    * Soft-delete a ghost user by unsubscribe token.
    * Looks up the user via userNotificationSettings.unsubscribeToken,
    * then soft-deletes if the user is a ghost and not already deleted.
