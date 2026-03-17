@@ -390,7 +390,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const graphStartEvent: TraceEvent = {
                       type: "graph_start",
                       timestamp: Date.now(),
-                      name: event.name,
+                      name: event.graphName,
                     };
                     streamTraceEvents.push(graphStartEvent);
                     setMessages((prev) =>
@@ -406,7 +406,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const graphEndEvent: TraceEvent = {
                       type: "graph_end",
                       timestamp: Date.now(),
-                      name: event.name,
+                      name: event.graphName,
                       durationMs: event.durationMs,
                     };
                     streamTraceEvents.push(graphEndEvent);
@@ -423,7 +423,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const agentStartEvent: TraceEvent = {
                       type: "agent_start",
                       timestamp: Date.now(),
-                      name: event.name,
+                      name: event.agentName,
                     };
                     streamTraceEvents.push(agentStartEvent);
                     setMessages((prev) =>
@@ -439,7 +439,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
                     const agentEndEvent: TraceEvent = {
                       type: "agent_end",
                       timestamp: Date.now(),
-                      name: event.name,
+                      name: event.agentName,
                       durationMs: event.durationMs,
                       summary: event.summary,
                     };

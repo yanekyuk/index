@@ -488,9 +488,9 @@ function parseTraceEvents(events: TraceEvent[]): ParsedTrace {
           (g) => g.name === (event.name ?? "") && g.isRunning,
         );
         if (graphNode) {
-          if (graphNode.startTimestamp && event.timestamp) {
-            graphNode.durationMs = event.timestamp - graphNode.startTimestamp;
-          }
+          graphNode.durationMs = event.durationMs ?? (graphNode.startTimestamp && event.timestamp
+            ? event.timestamp - graphNode.startTimestamp
+            : undefined);
           graphNode.isRunning = false;
           if (currentGraph === graphNode) {
             currentGraph = null;
