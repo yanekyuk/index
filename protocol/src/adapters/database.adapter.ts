@@ -2633,6 +2633,7 @@ export class ChatDatabaseAdapter {
    */
   async createGhostUser(data: { name: string; email: string }): Promise<{ id: string }> {
     const id = crypto.randomUUID();
+    const email = data.email.toLowerCase().trim();
 
     // Same onConflictDoUpdate + setWhere pattern as AuthDatabaseAdapter.createDrizzleAdapter().
     // If a ghost already exists with this email, update its name.
@@ -2642,7 +2643,7 @@ export class ChatDatabaseAdapter {
       .values({
         id,
         name: data.name,
-        email: data.email,
+        email,
         isGhost: true,
       })
       .onConflictDoUpdate({
@@ -2670,11 +2671,11 @@ export class ChatDatabaseAdapter {
     const [existing] = await db
       .select({ id: schema.users.id })
       .from(schema.users)
-      .where(and(eq(schema.users.email, data.email), isNull(schema.users.deletedAt)))
+      .where(and(eq(schema.users.email, email), isNull(schema.users.deletedAt)))
       .limit(1);
 
     if (!existing) {
-      throw new Error(`Cannot create ghost: email belongs to a deleted user (${data.email})`);
+      throw new Error(`Cannot create ghost: email belongs to a deleted user (${email})`);
     }
 
     return { id: existing.id };
@@ -2849,7 +2850,7 @@ export class ChatDatabaseAdapter {
     const usersToInsert = data.map(d => ({
       id: crypto.randomUUID(),
       name: d.name,
-      email: d.email,
+      email: d.email.toLowerCase().trim(),
       isGhost: true,
     }));
 
