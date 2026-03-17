@@ -1781,6 +1781,7 @@ export class ChatDatabaseAdapter {
         userId: indexMembers.userId,
         name: users.name,
         avatar: users.avatar,
+        intro: users.intro,
         email: users.email,
         isGhost: users.isGhost,
         permissions: indexMembers.permissions,
@@ -1803,6 +1804,7 @@ export class ChatDatabaseAdapter {
           userId: m.userId,
           name: m.name,
           avatar: m.avatar,
+          intro: m.intro ?? null,
           email: m.email,
           isGhost: m.isGhost ?? false,
           permissions: m.permissions ?? [],
@@ -3905,7 +3907,7 @@ export class UserDatabaseAdapter {
       .where(eq(users.id, userId))
       .limit(1);
 
-    return result[0] || null;
+    return result[0] ?? null;
   }
 
   /**

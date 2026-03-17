@@ -50,4 +50,11 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
       return profileMap;
     }
   },
+
+  /**
+   * Manually add a contact by email. Creates a ghost user if not registered.
+   */
+  addContact: async (email: string, name?: string): Promise<void> => {
+    await api.post('/users/contacts', { email, name });
+  },
 });

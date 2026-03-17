@@ -124,6 +124,7 @@ export class IndexService {
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
+      intro: m.intro,
       email: m.email,
       avatar: m.avatar,
       isGhost: m.isGhost ?? false,

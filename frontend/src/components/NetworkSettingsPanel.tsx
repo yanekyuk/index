@@ -10,6 +10,7 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService } from '@/services/integrations';
+import { createUsersService } from '@/services/users';
 import { DirectorySyncConfig } from '@/lib/types';
 import { Member } from '@/services/indexes';
 import { INTEGRATIONS, getIndexIntegrations } from '@/config/integrations';
@@ -17,6 +18,9 @@ import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
 import SlackChannelModal from '@/components/modals/SlackChannelModal';
 import { validateFiles } from '@/lib/file-validation';
 import IndexAvatar, { resolveIndexImageSrc } from '@/components/IndexAvatar';
+import UserAvatar from '@/components/UserAvatar';
+import GhostBadge from '@/components/GhostBadge';
+import { useNavigate } from 'react-router';
 
 interface IntegrationItem {
   id: string | null;
@@ -35,6 +39,7 @@ interface NetworkSettingsPanelProps {
 
 export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
   const indexesService = useIndexes();
+  const navigate = useNavigate();
   const { indexes, updateIndex, removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -61,11 +66,16 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const [members, setMembers] = useState<Member[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
+  const [isMembersLoading, setIsMembersLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchIsLoading, setSearchIsLoading] = useState(false);
+  const [searchHasQueried, setSearchHasQueried] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [invitationLink, setInvitationLink] = useState<{ code: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  const usersService = createUsersService(api);
 
   const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
   const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
@@ -122,11 +132,14 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   }, []);
 
   const loadMembers = useCallback(async () => {
+    setIsMembersLoading(true);
     try {
       const response = await indexesService.getMembers(index.id, {});
       setMembers(response.members);
     } catch (err) {
       console.error('Error loading members:', err);
+    } finally {
+      setIsMembersLoading(false);
     }
   }, [indexesService, index.id]);
 
@@ -137,24 +150,39 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
       setSuggestedUsers([]);
+      setSearchHasQueried(false);
       return;
     }
+    setSearchIsLoading(true);
     try {
       const users = await indexesService.searchUsers(query, index.id);
       setSuggestedUsers(users.map(u => ({ ...u, permissions: [] })));
+      setSearchHasQueried(true);
     } catch (err) {
       console.error('Error searching users:', err);
       setSuggestedUsers([]);
+    } finally {
+      setSearchIsLoading(false);
     }
   }, [indexesService, index.id]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) searchUsers(memberSearchQuery);
-      else setSuggestedUsers([]);
+      else { setSuggestedUsers([]); setSearchHasQueried(false); }
     }, 300);
     return () => clearTimeout(timeoutId);
   }, [memberSearchQuery, searchUsers]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadIntegrations = useCallback(async () => {
     try {
@@ -285,7 +313,9 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       const newMember = await indexesService.addMember(index.id, memberUser.id, ['member']);
       setMembers(prev => [...prev, newMember]);
       setMemberSearchQuery('');
+      setSuggestedUsers([]);
       setShowSuggestions(false);
+      setSearchHasQueried(false);
     } catch (err) {
       console.error('Error adding member:', err);
     }
@@ -297,6 +327,27 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       console.error('Error removing member:', err);
+    }
+  };
+
+  const [isAddingContact, setIsAddingContact] = useState(false);
+
+  const handleAddContact = async (email: string) => {
+    if (isAddingContact) return;
+    setIsAddingContact(true);
+    try {
+      await usersService.addContact(email);
+      setMemberSearchQuery('');
+      setSuggestedUsers([]);
+      setShowSuggestions(false);
+      setSearchHasQueried(false);
+      await loadMembers();
+      success('Contact added');
+    } catch (err) {
+      console.error('Error adding contact:', err);
+      error('Failed to add contact');
+    } finally {
+      setIsAddingContact(false);
     }
   };
 
@@ -360,6 +411,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt || hasImageChanged;
   const isDeleteConfirmationValid = deleteConfirmationText === currentIndex.title;
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
+  const filteredMembers = (memberSearchQuery.trim()
+    ? members.filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+    : members
+  ).slice().sort((a, b) => (a.isGhost ? 1 : 0) - (b.isGhost ? 1 : 0));
+  const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
 
   return (
     <>
@@ -415,11 +471,13 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             </label>
             <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Network title" />
           </div>
-          <div>
-            <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
-            <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
-            <p className="text-xs text-gray-400 mt-1.5">Guides what kind of intents people can share.</p>
-          </div>
+          {!index.isPersonal && (
+            <div>
+              <label className="block text-sm font-medium font-ibm-plex-mono text-gray-700 mb-1.5">Prompt</label>
+              <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="What people can share in this network..." className="min-h-[100px]" rows={4} />
+              <p className="text-xs text-gray-400 mt-1.5">Guides what kind of intents people can share.</p>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => { setTitle(originalTitle); setPrompt(originalPrompt); setImageUrl(originalImageUrl); setImageFile(null); setImagePreview(null); setRemoveImageRequested(false); if (imageInputRef.current) imageInputRef.current.value = ''; }} disabled={isSavingSettings || !hasSettingsChanged}>
               Cancel
@@ -429,26 +487,28 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             </Button>
           </div>
 
-          <div className="pt-6 border-t border-gray-100">
-            <button
-              onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
-              className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
-            >
-              {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-              Danger Zone
-            </button>
-            {isDangerZoneExpanded && (
-              <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
-                <div>
-                  <p className="text-sm font-medium text-red-800">Delete this network</p>
-                  <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
+          {!index.isPersonal && (
+            <div className="pt-6 border-t border-gray-100">
+              <button
+                onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
+                className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition-colors"
+              >
+                {isDangerZoneExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                Danger Zone
+              </button>
+              {isDangerZoneExpanded && (
+                <div className="mt-3 flex items-center justify-between p-3 border border-red-100 rounded-sm bg-red-50">
+                  <div>
+                    <p className="text-sm font-medium text-red-800">Delete this network</p>
+                    <p className="text-xs text-red-500 mt-0.5">This action cannot be undone.</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirmation(true)} className="border-red-200 text-red-600 hover:bg-red-100">
+                    <Trash2 className="h-4 w-4 mr-1" /> Delete
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setShowDeleteConfirmation(true)} className="border-red-200 text-red-600 hover:bg-red-100">
-                  <Trash2 className="h-4 w-4 mr-1" /> Delete
-                </Button>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -456,101 +516,155 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         <div className="space-y-8">
 
           {/* Who can join */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
-                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-              >
-                <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-                <div>
-                  <p className="text-sm font-medium text-black">Public</p>
-                  <p className="text-xs text-gray-400">Anyone can join</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
-                className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
-              >
-                <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
-                <div>
-                  <p className="text-sm font-medium text-black">Private</p>
-                  <p className="text-xs text-gray-400">Invite only</p>
-                </div>
-              </button>
+          {!index.isPersonal && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">Visibility</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setAnyoneCanJoin(true); handleUpdatePermissions(true); }}
+                  className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+                >
+                  <Globe className={`h-4 w-4 flex-shrink-0 ${anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-black">Public</p>
+                    <p className="text-xs text-gray-400">Anyone can join</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAnyoneCanJoin(false); handleUpdatePermissions(false); }}
+                  className={`flex items-center gap-2.5 p-3 border rounded-sm text-left transition-colors duration-150 ${!anyoneCanJoin ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-400'}`}
+                >
+                  <Lock className={`h-4 w-4 flex-shrink-0 ${!anyoneCanJoin ? 'text-black' : 'text-gray-400'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-black">Private</p>
+                    <p className="text-xs text-gray-400">Invite only</p>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Share link */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
-            </p>
-            <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
-              <code className="flex-1 text-xs text-gray-500 truncate">
-                {anyoneCanJoin
-                  ? `${typeof window !== 'undefined' ? window.location.origin : ''}/index/${index.id}`
-                  : invitationLink ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}` : 'Loading...'}
-              </code>
-              <button onClick={handleCopyLink} className={`flex-shrink-0 p-1 rounded-sm transition-colors ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}>
-                {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
+          {!index.isPersonal && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+                {anyoneCanJoin ? 'Network Link' : 'Invitation Link'}
+              </p>
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-sm bg-gray-50">
+                <code className="flex-1 text-xs text-gray-500 truncate">
+                  {anyoneCanJoin
+                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/index/${index.id}`
+                    : invitationLink ? `${typeof window !== 'undefined' ? window.location.origin : ''}/l/${invitationLink.code}` : 'Loading...'}
+                </code>
+                <button onClick={handleCopyLink} className={`flex-shrink-0 p-1 rounded-sm transition-colors ${isCopied ? 'text-green-600' : 'text-gray-400 hover:text-black'}`}>
+                  {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Members */}
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
-              Members <span className="normal-case font-normal">({members.length})</span>
-            </p>
-            <div className="space-y-1.5 mb-3">
-              {members.map((member) => (
-                <div key={member.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors group">
-                  <div className="h-7 w-7 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0">
-                    {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+            {!index.isPersonal && (
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-4">
+                Members <span className="normal-case font-normal">({members.length})</span>
+              </p>
+            )}
+
+            {/* Smart search input — at top */}
+            <div ref={searchContainerRef} className="relative mb-3">
+              <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search by name or add by email..."
+                value={memberSearchQuery}
+                onChange={(e) => {
+                  setMemberSearchQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                className="pl-9"
+              />
+
+              {/* Dropdown: new users to add (not already in list) */}
+              {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && filteredSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10 max-h-40 overflow-y-auto">
+                  {filteredSuggestions.map((u) => (
+                    <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left">
+                      <UserAvatar id={u.id} name={u.name} avatar={(u as Member).avatar} size={24} />
+                      <span className="text-sm text-black flex-1 truncate">{u.name}</span>
+                      <span className="text-xs text-gray-400 flex-shrink-0">Add</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* No results: add by email or show empty state */}
+              {showSuggestions && memberSearchQuery.trim() && !searchIsLoading && noResults && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10">
+                  {memberSearchQuery.includes('@') ? (
+                    <button
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 text-left disabled:opacity-50"
+                      onClick={() => handleAddContact(memberSearchQuery)}
+                      disabled={isAddingContact}
+                    >
+                      <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Plus className="h-3.5 w-3.5 text-gray-500" />
+                      </div>
+                      <span className="text-sm text-black flex-1 truncate">Add "{memberSearchQuery}"</span>
+                    </button>
+                  ) : (
+                    <div className="px-3 py-2.5 text-sm text-gray-400">No results found</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {isMembersLoading ? (
+              <div className="space-y-0.5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2">
+                    <div className="h-7 w-7 rounded-full bg-gray-100 animate-pulse flex-shrink-0" />
+                    <div className="h-3.5 rounded bg-gray-100 animate-pulse flex-1" style={{ maxWidth: `${60 + (i % 3) * 15}%` }} />
                   </div>
-                  <span className="text-sm text-black flex-1 truncate">{member.name}</span>
-                  <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium ${
-                    member.permissions.includes('owner')
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {member.permissions.includes('owner') ? 'Owner' : 'Member'}
-                  </span>
+                ))}
+              </div>
+            ) : (
+            <div className="space-y-0.5">
+              {filteredMembers.map((member) => (
+                <div key={member.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors group">
+                  <button
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    onClick={() => navigate(`/u/${member.id}`)}
+                  >
+                    <UserAvatar
+                      id={member.id}
+                      name={member.name}
+                      avatar={member.avatar}
+                      size={28}
+                      blur={member.isGhost}
+                    />
+                    <span className="text-sm flex-1 truncate flex items-center gap-1.5 text-black">
+                      {member.name}
+                      {member.isGhost && <GhostBadge />}
+                    </span>
+                  </button>
+                  {member.permissions.includes('owner') && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-sm font-medium bg-gray-900 text-white flex-shrink-0">
+                      Owner
+                    </span>
+                  )}
                   {!member.permissions.includes('owner') && (
-                    <button onClick={() => handleRemoveMember(member.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-colors">
+                    <button onClick={() => handleRemoveMember(member.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
               ))}
             </div>
-            <div className="relative">
-              <Plus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-              <Input
-                ref={searchInputRef}
-                placeholder="Add people by name..."
-                value={memberSearchQuery}
-                onChange={(e) => { setMemberSearchQuery(e.target.value); setShowSuggestions(e.target.value.length > 0); }}
-                onFocus={() => memberSearchQuery && setShowSuggestions(true)}
-                className="pl-9"
-              />
-              {showSuggestions && filteredSuggestions.length > 0 && (
-                <div ref={suggestionsRef} className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-sm shadow-sm z-10 max-h-40 overflow-y-auto">
-                  {filteredSuggestions.map((u) => (
-                    <button key={u.id} onClick={() => handleAddMember(u)} className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-left">
-                      <div className="h-6 w-6 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                        {u.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                      </div>
-                      <span className="text-sm text-black">{u.name}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
         </div>

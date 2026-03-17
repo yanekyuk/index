@@ -13,6 +13,8 @@ export interface IntegrationSession {
 /** Options for creating an integration session. */
 export interface IntegrationSessionOptions {
   manageConnections?: boolean | { callbackUrl?: string };
+  /** Toolkit slug → auth config ID mapping to pin existing auth configs. */
+  authConfigs?: Record<string, string>;
 }
 
 /** Response from executing a tool action on the integration platform. */

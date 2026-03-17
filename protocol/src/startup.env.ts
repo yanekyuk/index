@@ -74,7 +74,6 @@ const envSchema = z.object({
 
   // 8. Integrations
   COMPOSIO_API_KEY: z.string().optional(),
-  COMPOSIO_CALLBACK_URL: z.string().url().optional(),
   UNSTRUCTURED_API_URL: z.string().url().optional(),
   PARALLELS_API_KEY: z.string().optional(),
 

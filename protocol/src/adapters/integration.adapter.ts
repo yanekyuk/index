@@ -1,4 +1,4 @@
-import { getComposioClient } from '../lib/composio/composio.client';
+import { getComposioClient, getAuthConfigMap } from '../lib/composio/composio.client';
 import type {
   IntegrationAdapter,
   IntegrationSession,
@@ -15,22 +15,31 @@ const logger = log.lib.from('integration.adapter');
  * @remarks
  * Wraps the Composio SDK to provide session creation and tool execution.
  * The underlying client is lazily initialized from `lib/composio/composio.client.ts`.
+ * Auth configs are auto-discovered from the Composio dashboard so existing
+ * configurations are always preferred over auto-created managed ones.
  */
 export class ComposioIntegrationAdapter implements IntegrationAdapter {
   /** @inheritdoc */
   async createSession(userId: string, options?: IntegrationSessionOptions): Promise<IntegrationSession> {
     const composio = getComposioClient();
 
-    const callbackUrl = process.env.COMPOSIO_CALLBACK_URL || process.env.FRONTEND_URL;
+    const baseUrl = process.env.FRONTEND_URL;
+    const callbackUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/oauth/callback` : undefined;
+    const authConfigs = await getAuthConfigMap();
 
     const sessionOptions: IntegrationSessionOptions = {
       manageConnections: callbackUrl
         ? { callbackUrl }
         : true,
+      ...(Object.keys(authConfigs).length > 0 && { authConfigs }),
       ...options,
     };
 
-    logger.info('Creating integration session', { userId, hasCallbackUrl: !!callbackUrl });
+    logger.info('Creating integration session', {
+      userId,
+      hasCallbackUrl: !!callbackUrl,
+      authConfigToolkits: Object.keys(authConfigs),
+    });
 
     // Composio SDK's create() method exists at runtime but isn't exposed in @composio/core's public types.
     // Using a typed cast until the SDK exports proper session creation types.
