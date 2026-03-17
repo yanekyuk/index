@@ -457,6 +457,7 @@ export class ChatAgent {
     toolsUsed: Array<{ name: string; success: boolean }>,
   ): string {
     let result = text;
+    let removedBlock = false;
 
     const hasSuccessfulCreateOpportunities = toolsUsed.some(
       (t) => t.name === "create_opportunities" && t.success,
@@ -466,14 +467,20 @@ export class ChatAgent {
     );
 
     if (!hasSuccessfulCreateOpportunities && result.includes("```opportunity")) {
-      result = result.replace(/```opportunity\s*\n[\s\S]*?```/g, "");
+      const next = result.replace(/```opportunity\s*\n[\s\S]*?```/g, "");
+      removedBlock ||= next !== result;
+      result = next;
     }
     if (!hasSuccessfulCreateIntent && result.includes("```intent_proposal")) {
-      result = result.replace(/```intent_proposal\s*\n[\s\S]*?```/g, "");
+      const next = result.replace(/```intent_proposal\s*\n[\s\S]*?```/g, "");
+      removedBlock ||= next !== result;
+      result = next;
     }
 
-    // Clean up leftover double blank lines from block removal
-    result = result.replace(/\n{3,}/g, "\n\n").trim();
+    // Clean up leftover double blank lines only when a block was actually removed
+    if (removedBlock) {
+      result = result.replace(/\n{3,}/g, "\n\n").trim();
+    }
 
     return result;
   }
