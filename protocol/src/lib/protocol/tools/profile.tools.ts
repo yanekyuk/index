@@ -23,6 +23,7 @@ async function enrichFromUserRecord(user: { name?: string | null; email?: string
 function isMeaningfulEnrichment(enrichment: Awaited<ReturnType<typeof enrichUserProfile>>): enrichment is NonNullable<typeof enrichment> {
   return !!enrichment && (
     enrichment.identity.bio.trim().length > 0 ||
+    enrichment.narrative.context.trim().length > 0 ||
     enrichment.attributes.skills.length > 0 ||
     enrichment.attributes.interests.length > 0
   );
@@ -253,7 +254,7 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         if (existingProfile) {
           return success({
             alreadyExists: true,
-            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use update_user_profile().",
+            message: "Profile already exists. If the user confirmed it, call complete_onboarding() to finish setup. If they want changes, use create_user_profile(bioOrDescription=\"...\", confirm=true).",
             profile: {
               name: existingProfile.identity.name,
               bio: existingProfile.identity.bio,
@@ -264,13 +265,41 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           });
         }
 
-        // Preview mode: enrich only, no DB writes
+        // Persist any query fields (name, location, socials) to user record before enrichment
+        const hasSocialsFromQuery = !!(query.linkedinUrl || query.githubUrl || query.twitterUrl || (query.websites && query.websites.length));
+        if (query.name || query.location || hasSocialsFromQuery) {
+          const socialsUpdate: { linkedin?: string; github?: string; x?: string; websites?: string[] } = {};
+          if (query.linkedinUrl) socialsUpdate.linkedin = query.linkedinUrl;
+          if (query.githubUrl) socialsUpdate.github = query.githubUrl;
+          if (query.twitterUrl) socialsUpdate.x = query.twitterUrl;
+          if (query.websites && query.websites.length) socialsUpdate.websites = query.websites;
+          await userDb.updateUser({
+            ...(query.name ? { name: query.name } : {}),
+            ...(query.location ? { location: query.location } : {}),
+            ...(hasSocialsFromQuery ? { socials: socialsUpdate } : {}),
+          });
+          logger.verbose("Persisted query fields to user record before onboarding enrichment", { userId: context.userId });
+        }
+
+        // Preview mode: enrich and persist enrichment results, but don't generate full profile
         if (!query.confirm) {
           try {
             const user = await userDb.getUser();
             const enrichment = user ? await enrichFromUserRecord(user) : null;
 
             if (isMeaningfulEnrichment(enrichment)) {
+              // Persist enrichment data to user record so confirm path has it
+              const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
+              if (enrichment.identity.bio?.trim()) updatePayload.intro = enrichment.identity.bio.trim();
+              if (enrichment.identity.location?.trim()) updatePayload.location = enrichment.identity.location.trim();
+              const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
+              if (enrichment.socials.twitter) socials.x = enrichment.socials.twitter;
+              if (enrichment.socials.linkedin) socials.linkedin = enrichment.socials.linkedin;
+              if (enrichment.socials.github) socials.github = enrichment.socials.github;
+              if (enrichment.socials.websites?.length) socials.websites = enrichment.socials.websites;
+              if (Object.keys(socials).length > 0) updatePayload.socials = socials;
+              if (Object.keys(updatePayload).length > 0) await userDb.updateUser(updatePayload);
+
               return success({
                 preview: true,
                 message: "Profile preview generated. Call create_user_profile(confirm=true) to save.",
@@ -295,60 +324,41 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
           });
         }
 
-        // Confirm mode: enrich, update user record, pass prePopulatedProfile to graph
+        // Confirm mode: invoke graph in generate mode (enrichment data already persisted during preview)
+        // Do NOT re-run enrichFromUserRecord — the graph's autoGenerateNode handles enrichment
+        // from the (now well-populated) user record, avoiding non-deterministic drift.
         try {
-          const user = await userDb.getUser();
-          const enrichment = user ? await enrichFromUserRecord(user) : null;
+          const _confirmGraphStart = Date.now();
+          const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
+          _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
+          const result = await graphs.profile.invoke({
+            userId: context.userId,
+            operationMode: 'generate' as const,
+          });
+          const _confirmGraphMs = Date.now() - _confirmGraphStart;
+          _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
 
-          if (isMeaningfulEnrichment(enrichment)) {
-            const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
-            if (enrichment.identity.bio?.trim()) updatePayload.intro = enrichment.identity.bio.trim();
-            if (enrichment.identity.location?.trim()) updatePayload.location = enrichment.identity.location.trim();
-            const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
-            if (enrichment.socials.twitter) socials.x = enrichment.socials.twitter;
-            if (enrichment.socials.linkedin) socials.linkedin = enrichment.socials.linkedin;
-            if (enrichment.socials.github) socials.github = enrichment.socials.github;
-            if (enrichment.socials.websites?.length) socials.websites = enrichment.socials.websites;
-            if (Object.keys(socials).length > 0) updatePayload.socials = socials;
-            if (Object.keys(updatePayload).length > 0) await userDb.updateUser(updatePayload);
-
-            const _confirmGraphStart = Date.now();
-            const _confirmTraceEmitter = requestContext.getStore()?.traceEmitter;
-            _confirmTraceEmitter?.({ type: "graph_start", name: "profile" });
-            const result = await graphs.profile.invoke({
-              userId: context.userId,
-              operationMode: 'generate' as const,
-              prePopulatedProfile: {
-                identity: enrichment.identity,
-                narrative: enrichment.narrative,
-                attributes: enrichment.attributes,
+          if (result.error) return error(result.error);
+          if (result.profile) {
+            return success({
+              created: true,
+              message: "Profile saved.",
+              profile: {
+                name: result.profile.identity.name,
+                bio: result.profile.identity.bio,
+                location: result.profile.identity.location,
+                skills: result.profile.attributes.skills,
+                interests: result.profile.attributes.interests,
               },
+              _graphTimings: [{ name: 'profile', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
             });
-            const _confirmGraphMs = Date.now() - _confirmGraphStart;
-            _confirmTraceEmitter?.({ type: "graph_end", name: "profile", durationMs: _confirmGraphMs });
-
-            if (result.error) return error(result.error);
-            if (result.profile) {
-              return success({
-                created: true,
-                message: "Profile saved.",
-                profile: {
-                  name: result.profile.identity.name,
-                  bio: result.profile.identity.bio,
-                  location: result.profile.identity.location,
-                  skills: result.profile.attributes.skills,
-                  interests: result.profile.attributes.interests,
-                },
-                _graphTimings: [{ name: 'profile', durationMs: _confirmGraphMs, agents: result.agentTimings ?? [] }],
-              });
-            }
           }
         } catch (err) {
-          logger.warn("Enrichment on confirm failed, falling back to full graph", {
+          logger.warn("Profile generation on confirm failed, falling back to full graph", {
             error: err instanceof Error ? err.message : String(err),
           });
         }
-        // Fallback: enrichment failed on confirm, fall through to full graph invocation
+        // Fallback: graph invocation failed on confirm, fall through to full graph invocation
       }
 
       const hasBioOrDescription = !!query.bioOrDescription?.trim();

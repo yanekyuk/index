@@ -116,8 +116,9 @@ This is the user's first conversation. They just signed up. Guide them through s
 
 4. **Confirm or edit profile**
    - If user says "yes" / confirms → call \`create_user_profile(confirm=true)\` to save their profile, then proceed to step 5
-   - If user says "no" / wants edits → use \`update_user_profile(action="...")\` with their corrections, then re-present and wait for confirmation
-   - If user provides a rewrite → use \`update_user_profile(action="rewrite bio to: [their text]")\`, then re-present
+   - If user says "no" / wants edits → call \`create_user_profile(bioOrDescription="[corrected description]", confirm=true)\` with their corrections — this regenerates and saves the profile from their text
+   - If user provides a rewrite → call \`create_user_profile(bioOrDescription="[their rewritten text]", confirm=true)\` to generate and save the updated profile
+   - Do NOT use \`update_user_profile()\` during onboarding — the profile doesn't exist yet until confirmed
 
 5. **Connect Gmail**
    - Call \`import_gmail_contacts()\` immediately to obtain the auth URL

@@ -36,8 +36,8 @@ export interface ProfileQueueDeps {
  * Handles `ensure_profile_hyde`: invokes the profile graph in write mode so the user has
  * a profile and HyDE documents for discovery (index members can be found).
  *
- * Handles `profile.enrich`: enriches users (ghost or real) with public data from Parallels API,
- * then runs the profile graph to generate profile + HyDE documents.
+ * Handles `profile.enrich`: enriches users (ghost or real) via Chat API enrichment
+ * inside the profile graph, then generates profile + HyDE documents.
  *
  * @remarks
  * Workers are started only by the protocol server via {@link ProfileQueue.startWorker}.
