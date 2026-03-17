@@ -49,6 +49,9 @@ export class UserController {
 
   /**
    * POST /users/contacts — manually add a contact by email (creates ghost user if not registered).
+   * @param req - Request with JSON body `{ email: string; name?: string }`
+   * @param user - Authenticated user from AuthGuard
+   * @returns JSON `{ result }` with the import outcome, or 400 if email is invalid
    */
   @Post('/contacts')
   @UseGuards(AuthGuard)

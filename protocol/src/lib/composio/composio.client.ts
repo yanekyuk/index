@@ -1,5 +1,6 @@
 import { Composio } from '@composio/core';
 import { LangchainProvider } from '@composio/langchain';
+
 import { log } from '../log';
 
 const logger = log.lib.from('composio.client');
@@ -28,6 +29,7 @@ export function getComposioClient(): ComposioLangchain {
 /**
  * Fetches all enabled auth configs from Composio and builds a toolkit→authConfigId map.
  * Cached after first successful call. Keeps the first enabled config encountered per toolkit.
+ * @returns Toolkit slug → authConfigId map (empty object on transient failure, allowing retry)
  */
 export async function getAuthConfigMap(): Promise<Record<string, string>> {
   if (authConfigMap) return authConfigMap;
