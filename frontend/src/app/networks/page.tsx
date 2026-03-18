@@ -26,7 +26,7 @@ export default function NetworksPage() {
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
-  const allNetworks = [...(rawIndexes || [])].sort((a, b) => {
+  const allNetworks = [...(rawIndexes || [])].filter(Boolean).sort((a, b) => {
     if (a.isPersonal && !b.isPersonal) return -1;
     if (!a.isPersonal && b.isPersonal) return 1;
     return (a.title || '').localeCompare(b.title || '');

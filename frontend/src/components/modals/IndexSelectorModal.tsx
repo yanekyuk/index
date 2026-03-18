@@ -46,7 +46,7 @@ export default function IndexSelectorModal({
               </div>
             ) : rawIndexes && rawIndexes.length > 0 ? (
               <div className="py-2">
-                {rawIndexes.map((index) => (
+                {rawIndexes.filter(Boolean).map((index) => (
                   <div
                     key={index.id}
                     className="group flex items-center gap-3 justify-between px-4 py-3 hover:bg-gray-50 transition-colors"

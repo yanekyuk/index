@@ -34,7 +34,7 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
       }
       setError(null);
       const response = await indexesV2.getIndexes();
-      setIndexes(response.data ?? []);
+      setIndexes((response.data ?? []).filter(Boolean));
       hasFetchedRef.current = true;
       hasDataRef.current = true;
     } catch (err) {
