@@ -1793,29 +1793,30 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(indexMembers.userId, users.id))
       .where(eq(indexMembers.indexId, indexId));
 
-    const result = await Promise.all(
-      members.map(async (m) => {
-        const [intentCountRow] = await db
-          .select({ count: count() })
+    const memberUserIds = members.map((m) => m.userId);
+    const intentCountRows = memberUserIds.length > 0
+      ? await db
+          .select({ userId: intents.userId, count: count() })
           .from(intentIndexes)
           .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-          .where(and(eq(intentIndexes.indexId, indexId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
-        return {
-          userId: m.userId,
-          name: m.name,
-          avatar: m.avatar,
-          intro: m.intro ?? null,
-          email: m.email,
-          isGhost: m.isGhost ?? false,
-          permissions: m.permissions ?? [],
-          memberPrompt: m.memberPrompt,
-          autoAssign: m.autoAssign,
-          joinedAt: m.joinedAt,
-          intentCount: Number(intentCountRow?.count ?? 0),
-        };
-      })
-    );
-    return result;
+          .where(and(eq(intentIndexes.indexId, indexId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
+          .groupBy(intents.userId)
+      : [];
+    const intentCountMap = new Map(intentCountRows.map((r) => [r.userId, Number(r.count)]));
+
+    return members.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+      avatar: m.avatar,
+      intro: m.intro ?? null,
+      email: m.email,
+      isGhost: m.isGhost ?? false,
+      permissions: m.permissions ?? [],
+      memberPrompt: m.memberPrompt,
+      autoAssign: m.autoAssign,
+      joinedAt: m.joinedAt,
+      intentCount: intentCountMap.get(m.userId) ?? 0,
+    }));
   }
 
   async getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]> {

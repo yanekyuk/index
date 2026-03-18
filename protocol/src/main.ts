@@ -14,7 +14,9 @@ import { StorageController } from './controllers/storage.controller';
 import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
+import { IntegrationController } from './controllers/integration.controller';
 import { MessagingController } from './controllers/messaging.controller';
+import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { MessagingDatabaseAdapter } from './adapters/database.adapter';
 import { MessagingService } from './services/messaging.service';
 import path from 'path';
@@ -134,6 +136,7 @@ controllerInstances.set(MessagingController, new MessagingController(messagingSe
 controllerInstances.set(StorageController, new StorageController(storageAdapter));
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
+controllerInstances.set(IntegrationController, new IntegrationController(new ComposioIntegrationAdapter()));
 controllerInstances.set(DebugController, new DebugController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
