@@ -78,9 +78,10 @@ export class OpportunityService {
 
   constructor(
     database?: OpportunityControllerDatabase,
+    cache?: OpportunityCache,
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
-    this.cache = new RedisCacheAdapter();
+    this.cache = cache ?? new RedisCacheAdapter();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
