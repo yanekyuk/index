@@ -90,11 +90,6 @@ export const users = pgTable('users', {
   // Ghost users (imported contacts who haven't signed up yet)
   isGhost: boolean('is_ghost').default(false).notNull(),
 
-  // XMTP wallet
-  walletAddress: text('wallet_address').unique(),
-  walletEncryptedKey: text('wallet_encrypted_key'),
-  xmtpInboxId: text('xmtp_inbox_id'),
-
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -232,7 +227,7 @@ export interface OpportunityInterpretation {
 
 export interface OpportunityContext {
   indexId?: Id<'indexes'>;
-  conversationId?: Id<'chatSessions'>;
+  conversationId?: Id<'conversations'>;
 }
 
 export const opportunities = pgTable('opportunities', {
@@ -352,60 +347,6 @@ export const userIntegrations = pgTable('integrations', {
   deletedAt: timestamp('deleted_at')
 });
 
-/** @deprecated Replaced by conversation.schema.ts */
-export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system']);
-
-/** @deprecated Replaced by conversation.schema.ts */
-export const chatSessions = pgTable('chat_sessions', {
-  id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  title: text('title'),
-  indexId: text('index_id').references(() => indexes.id, { onDelete: 'set null' }),
-  shareToken: text('share_token'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  metadata: jsonb('metadata'),
-}, (table) => ({
-  userIdx: index('chat_sessions_user_idx').on(table.userId),
-  shareTokenUnique: uniqueIndex('chat_sessions_share_token_unique').on(table.shareToken),
-}));
-
-/** @deprecated Replaced by conversation.schema.ts */
-export const chatMessages = pgTable('chat_messages', {
-  id: text('id').primaryKey(),
-  sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
-  role: chatMessageRoleEnum('role').notNull(),
-  content: text('content').notNull(),
-  routingDecision: jsonb('routing_decision'),
-  subgraphResults: jsonb('subgraph_results'),
-  tokenCount: integer('token_count'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  sessionIdx: index('chat_messages_session_idx').on(table.sessionId),
-}));
-
-/** @deprecated Replaced by conversation.schema.ts */
-export const chatMessageMetadata = pgTable('chat_message_metadata', {
-  id: text('id').primaryKey(),
-  messageId: text('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
-  traceEvents: jsonb('trace_events'),
-  debugMeta: jsonb('debug_meta'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  messageIdUnique: uniqueIndex('chat_message_metadata_message_id_unique').on(table.messageId),
-}));
-
-/** @deprecated Replaced by conversation.schema.ts */
-export const chatSessionMetadata = pgTable('chat_session_metadata', {
-  id: text('id').primaryKey(),
-  sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
-  metadata: jsonb('metadata'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => ({
-  sessionIdUnique: uniqueIndex('chat_session_metadata_session_id_unique').on(table.sessionId),
-}));
-
 // Links
 const linksTable = pgTable('links', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -439,7 +380,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.id],
     references: [userProfiles.userId],
   }),
-  chatSessions: many(chatSessions),
 }));
 
 export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
@@ -529,56 +469,6 @@ export const userIntegrationsRelations = relations(userIntegrations, ({ one }) =
   }),
 }));
 
-export const chatSessionsRelations = relations(chatSessions, ({ one, many }) => ({
-  user: one(users, {
-    fields: [chatSessions.userId],
-    references: [users.id],
-  }),
-  messages: many(chatMessages),
-  metadata: one(chatSessionMetadata, {
-    fields: [chatSessions.id],
-    references: [chatSessionMetadata.sessionId],
-  }),
-}));
-
-export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
-  session: one(chatSessions, {
-    fields: [chatMessages.sessionId],
-    references: [chatSessions.id],
-  }),
-  metadata: one(chatMessageMetadata, {
-    fields: [chatMessages.id],
-    references: [chatMessageMetadata.messageId],
-  }),
-}));
-
-export const chatMessageMetadataRelations = relations(chatMessageMetadata, ({ one }) => ({
-  message: one(chatMessages, {
-    fields: [chatMessageMetadata.messageId],
-    references: [chatMessages.id],
-  }),
-}));
-
-export const chatSessionMetadataRelations = relations(chatSessionMetadata, ({ one }) => ({
-  session: one(chatSessions, {
-    fields: [chatSessionMetadata.sessionId],
-    references: [chatSessions.id],
-  }),
-}));
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Hidden conversations (persistent chat deletion)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/** @deprecated Replaced by conversation.schema.ts */
-export const hiddenConversations = pgTable('hidden_conversations', {
-  userId: text('user_id').notNull().references(() => users.id),
-  conversationId: text('conversation_id').notNull(),
-  hiddenAt: timestamp('hidden_at').defaultNow().notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.userId, table.conversationId] }),
-}));
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Export types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -599,19 +489,11 @@ export type UserIntegration = typeof userIntegrations.$inferSelect;
 export type NewUserIntegration = typeof userIntegrations.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
-export type ChatSession = typeof chatSessions.$inferSelect;
-export type NewChatSession = typeof chatSessions.$inferInsert;
-export type ChatMessage = typeof chatMessages.$inferSelect;
-export type NewChatMessage = typeof chatMessages.$inferInsert;
 export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
 export type PersonalIndex = typeof personalIndexes.$inferSelect;
 export type NewPersonalIndex = typeof personalIndexes.$inferInsert;
-export type ChatMessageMetadata = typeof chatMessageMetadata.$inferSelect;
-export type NewChatMessageMetadata = typeof chatMessageMetadata.$inferInsert;
-export type ChatSessionMetadata = typeof chatSessionMetadata.$inferSelect;
-export type NewChatSessionMetadata = typeof chatSessionMetadata.$inferInsert;
 
 export * from './conversation.schema';

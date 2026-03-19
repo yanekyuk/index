@@ -148,6 +148,13 @@
       "when": 1773952790085,
       "tag": "0020_create_conversations_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773955520222,
+      "tag": "0021_drop_old_chat_and_xmtp_tables",
+      "breakpoints": true
     }
   ]
 }
