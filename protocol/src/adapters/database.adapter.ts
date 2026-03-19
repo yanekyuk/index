@@ -2859,12 +2859,16 @@ export class ChatDatabaseAdapter {
 
     await db.insert(schema.users).values(usersToInsert).onConflictDoNothing();
 
-    // Re-query to find which users actually exist (created now vs already existed)
+    // Re-query to find which live users actually exist (created now vs already existed)
+    // Excludes soft-deleted users so they don't flow into membership upserts or enrichment
     const insertedEmails = new Set(usersToInsert.map(u => u.email));
     const existingAfterInsert = await db
       .select({ id: schema.users.id, email: schema.users.email })
       .from(schema.users)
-      .where(inArray(schema.users.email, [...insertedEmails]));
+      .where(and(
+        inArray(schema.users.email, [...insertedEmails]),
+        isNull(schema.users.deletedAt),
+      ));
 
     // Map back to our generated IDs vs actual IDs
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
