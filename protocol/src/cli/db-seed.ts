@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
@@ -157,11 +157,12 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
     websites: account.website ? [account.website] : [],
   };
 
+  const normalizedEmail = account.email.toLowerCase().trim();
   try {
     const [user] = await db
       .insert(users)
       .values({
-        email: account.email,
+        email: normalizedEmail,
         name: account.name,
         intro: `Test account for ${account.name}`,
         socials,
@@ -170,9 +171,9 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
       .returning({ id: users.id });
     return user!;
   } catch {
-    const [byEmail] = await db.select({ id: users.id }).from(users).where(eq(users.email, account.email)).limit(1);
+    const [byEmail] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${normalizedEmail}`).limit(1);
     if (byEmail) return byEmail;
-    throw new Error(`createUser failed for ${account.email}: insert failed and no existing user found by email`);
+    throw new Error(`createUser failed for ${normalizedEmail}: insert failed and no existing user found by email`);
   }
 }
 

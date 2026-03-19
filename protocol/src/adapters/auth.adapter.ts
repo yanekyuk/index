@@ -41,6 +41,11 @@ export class AuthDatabaseAdapter {
         ...resolved,
         create: async (params: { model: string; data: Record<string, unknown>; [key: string]: unknown }) => {
           if (params.model === 'user') {
+            // Normalize email to lowercase to prevent case-variant duplicates (IND-166).
+            const data = { ...params.data } as typeof schema.users.$inferInsert;
+            if (typeof data.email === 'string') {
+              data.email = data.email.toLowerCase().trim();
+            }
             // Use ON CONFLICT to handle ghost claim atomically.
             // If a ghost exists with this email, update it in-place.
             // The WHERE clause ensures we only upsert over ghosts, not real users.
@@ -48,7 +53,7 @@ export class AuthDatabaseAdapter {
             // match, RETURNING is empty, and we throw to signal a duplicate signup.
             const result = await db
               .insert(schema.users)
-              .values(params.data as typeof schema.users.$inferInsert)
+              .values(data)
               .onConflictDoUpdate({
                 target: schema.users.email,
                 set: {

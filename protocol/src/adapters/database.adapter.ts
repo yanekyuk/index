@@ -2788,11 +2788,12 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Find a user by email.
+   * Find a user by email (case-insensitive).
    * @param email - The email to search for
    * @returns User record or null
    */
   async getUserByEmail(email: string): Promise<{ id: string; name: string; email: string; isGhost: boolean } | null> {
+    const normalized = email.toLowerCase().trim();
     const [row] = await db
       .select({
         id: schema.users.id,
@@ -2801,7 +2802,10 @@ export class ChatDatabaseAdapter {
         isGhost: schema.users.isGhost,
       })
       .from(schema.users)
-      .where(eq(schema.users.email, email))
+      .where(and(
+        sql`lower(${schema.users.email}) = ${normalized}`,
+        isNull(schema.users.deletedAt),
+      ))
       .limit(1);
     return row ?? null;
   }
