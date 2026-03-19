@@ -49,10 +49,10 @@ const activeIntents = [
   { id: "intent-2", payload: "Seeking co-founders", summary: "Co-founders", createdAt: new Date() },
 ];
 
-function createMockCache(overrides?: { getReturn?: unknown }): OpportunityCache {
+function createMockCache(overrides?: { getReturn?: unknown; getThrows?: boolean }): OpportunityCache {
   return {
     get: mock((_key: string) =>
-      Promise.resolve(overrides?.getReturn ?? null)
+      overrides?.getThrows ? Promise.reject(new Error("Redis connection lost")) : Promise.resolve(overrides?.getReturn ?? null)
     ) as unknown as OpportunityCache['get'],
     set: mock((_key: string, _value: unknown, _options?: { ttl?: number }) =>
       Promise.resolve()
@@ -92,7 +92,8 @@ function createService(opts: {
 
 describe("OpportunityService.getHomeView — rediscovery trigger", () => {
   beforeEach(() => {
-    mockAddJob.mockClear();
+    mockAddJob.mockReset();
+    mockAddJob.mockImplementation(() => Promise.resolve({ id: "job-1" }));
   });
 
   it("triggers rediscovery when home view returns 0 items and user has active intents", async () => {
@@ -209,5 +210,20 @@ describe("OpportunityService.getHomeView — rediscovery trigger", () => {
     expect(mockAddJob).toHaveBeenCalledTimes(2);
     // Cooldown should NOT be set — partial failure means retry is needed
     expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it("still triggers rediscovery when cache.get throws (Redis down)", async () => {
+    const cache = createMockCache({ getThrows: true });
+    const { service } = createService({
+      homeGraphResult: { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } },
+      activeIntents,
+      cache,
+    });
+
+    await service.getHomeView(USER_ID);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Should proceed past the failed cache read and enqueue jobs
+    expect(mockAddJob).toHaveBeenCalledTimes(2);
   });
 });

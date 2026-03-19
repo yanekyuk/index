@@ -627,8 +627,14 @@ export class OpportunityService {
    */
   private async triggerRediscoveryIfNeeded(userId: string): Promise<void> {
     const cacheKey = `rediscovery:throttle:${userId}`;
-    const existing = await this.cache.get(cacheKey);
-    if (existing) return;
+
+    // Best-effort throttle: cache errors should not block self-healing
+    try {
+      const existing = await this.cache.get(cacheKey);
+      if (existing) return;
+    } catch (err) {
+      logger.warn('[OpportunityService] Rediscovery throttle read failed; continuing without cooldown', { userId, error: err });
+    }
 
     const activeIntents = await this.db.getActiveIntents(userId);
     if (!activeIntents?.length) return;
@@ -663,7 +669,11 @@ export class OpportunityService {
     // Only arm cooldown if all jobs were enqueued; partial failures should allow
     // retries on the next home view load (bucketed jobId deduplicates the successful ones)
     if (succeeded > 0 && failedCount === 0) {
-      await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
+      try {
+        await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
+      } catch (err) {
+        logger.warn('[OpportunityService] Rediscovery throttle write failed', { userId, error: err });
+      }
     }
   }
 
