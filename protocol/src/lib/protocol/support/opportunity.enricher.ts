@@ -57,18 +57,19 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 /**
  * Resolve enriched opportunity status from related opportunities' statuses and the incoming status.
- * Priority: accepted > pending > rejected > draft (preserve chat drafts) > latent.
+ * Priority: accepted > pending > rejected > draft (only when incoming is draft) > latent.
  * The incoming status is included so we do not wrongly downgrade when the new opportunity has a higher-priority status.
  * When incoming is 'draft' (e.g. from in-chat discovery), we preserve draft so the opportunity stays chat-only and
- * does not appear on the home view (home excludes draft). This holds even when merging with expired (or latent)
- * opportunities: the result stays draft so it remains chat-only.
+ * does not appear on the home view (home excludes draft).
+ * When incoming is NOT draft (e.g. 'latent' from the background broker), existing draft status does NOT contaminate
+ * the result — the broker-created opportunity retains its own status and can appear on the home view.
  */
 function resolveEnrichedStatus(relatedStatuses: string[], incomingStatus?: string): OpportunityStatus {
   const statuses = incomingStatus ? [...relatedStatuses, incomingStatus] : relatedStatuses;
   if (statuses.includes('accepted')) return 'accepted';
   if (statuses.includes('pending')) return 'pending';
   if (statuses.includes('rejected')) return 'rejected';
-  if (incomingStatus === 'draft' || statuses.includes('draft')) return 'draft';
+  if (incomingStatus === 'draft') return 'draft';
   return 'latent';
 }
 

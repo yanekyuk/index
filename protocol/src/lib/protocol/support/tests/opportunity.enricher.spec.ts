@@ -78,7 +78,7 @@ function existingOpportunity(
   id: string,
   actors: Array<{ indexId: string; userId: string; role: string; intent?: string }>,
   reasoning: string,
-  status: 'latent' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' = 'pending'
+  status: 'latent' | 'draft' | 'pending' | 'viewed' | 'accepted' | 'rejected' | 'expired' = 'pending'
 ): Opportunity {
   return {
     id,
@@ -367,6 +367,35 @@ describe('Opportunity enricher', () => {
     if (result.enriched) {
       expect(result.expiredIds).toEqual(['opp-expired']);
       expect(result.resolvedStatus).toBe('draft');
+    }
+  });
+
+  test('when incoming status is latent and enrichment merges with draft, resolved status stays latent (broker not downgraded by chat draft)', async () => {
+    const sharedIntent = MEANINGFUL.intentIds.aliceMlCofounder;
+    const existing = existingOpportunity(
+      'opp-draft',
+      [
+        { indexId: 'idx-1', userId: 'user-a', role: 'agent', intent: sharedIntent },
+        { indexId: 'idx-1', userId: 'user-b', role: 'patient' },
+      ],
+      'Short.',
+      'draft'
+    );
+    const db = { findOverlappingOpportunities: async () => [existing] };
+    const embedder = { generate: async () => [] } as unknown as Embedder;
+    const newData: CreateOpportunityData = {
+      ...minimalNewData(['user-a', 'user-b'], 'idx-1', 'Hi'),
+      status: 'latent',
+      actors: [
+        { indexId: 'idx-1', userId: 'user-a', role: 'party', intent: sharedIntent },
+        { indexId: 'idx-1', userId: 'user-b', role: 'party' },
+      ],
+    };
+    const result = await enrichOrCreate(db, embedder, newData);
+    expect(result.enriched).toBe(true);
+    if (result.enriched) {
+      expect(result.expiredIds).toEqual(['opp-draft']);
+      expect(result.resolvedStatus).toBe('latent');
     }
   });
 
