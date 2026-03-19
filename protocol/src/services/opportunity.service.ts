@@ -632,30 +632,36 @@ export class OpportunityService {
     const activeIntents = await this.db.getActiveIntents(userId);
     if (!activeIntents?.length) return;
 
-    // Set throttle before enqueuing (6-hour cooldown)
-    await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
-
     logger.info('[OpportunityService] Triggering rediscovery for stale user', {
       userId,
       intentCount: activeIntents.length,
     });
 
+    // Bucket jobId by 6-hour window so completed/failed job retention (24h) doesn't block the next cycle
+    const bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
     const results = await Promise.allSettled(
       activeIntents.map((intent) =>
         opportunityQueue.addJob(
           { intentId: intent.id, userId },
-          { priority: 10, jobId: `rediscovery:${userId}:${intent.id}` },
+          { priority: 10, jobId: `rediscovery:${userId}:${intent.id}:${bucket}` },
         )
       )
     );
 
-    const failed = results.filter((r) => r.status === 'rejected');
-    if (failed.length > 0) {
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failedCount = results.length - succeeded;
+
+    if (failedCount > 0) {
       logger.warn('[OpportunityService] Some rediscovery jobs failed to enqueue', {
         userId,
-        failedCount: failed.length,
+        failedCount,
         totalCount: activeIntents.length,
       });
+    }
+
+    // Only arm cooldown if at least one job was enqueued
+    if (succeeded > 0) {
+      await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
     }
   }
 
