@@ -31,7 +31,7 @@ const ConversationContext = createContext<ConversationContextType | null>(null);
  * Provides real-time conversation state via SSE and REST API calls.
  */
 export function ConversationProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthContext();
+  const { isAuthenticated, user } = useAuthContext();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
@@ -74,7 +74,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const optimistic: ConversationMessage = {
       id: optimisticId,
       conversationId,
-      senderId: '', // will be corrected by real response
+      senderId: user?.id ?? '',
       role: 'user',
       parts,
       createdAt: new Date().toISOString(),
