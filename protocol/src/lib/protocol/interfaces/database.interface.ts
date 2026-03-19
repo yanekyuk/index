@@ -190,6 +190,8 @@ export interface IndexMembership {
   memberPrompt: string | null;
   /** Whether new intents are auto-assigned to this index */
   autoAssign: boolean;
+  /** Whether this is the user's personal index ("My Network") */
+  isPersonal: boolean;
   /** When the user joined the index */
   joinedAt: Date;
 }

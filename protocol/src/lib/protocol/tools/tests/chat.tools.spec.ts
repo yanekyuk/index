@@ -812,7 +812,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
   const scopedIndexId = "a1b2c3d4-0000-4000-8000-000000000010";
 
   test("when context.indexId is set and showAll not true, returns only current index membership with scopeNote", async () => {
-    const oneMembership = [{ indexId: scopedIndexId, indexTitle: "Current Index", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, joinedAt: new Date() }];
+    const oneMembership = [{ indexId: scopedIndexId, indexTitle: "Current Index", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }];
     const mockDb = createMockDatabase(async () => [], {
       getIndexMemberships: async (uid) => (uid === testUserId ? oneMembership : []),
       getOwnedIndexes: async () => [],
@@ -831,8 +831,8 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
 
   test("when context.indexId is set, showAll parameter is ignored (strict scope enforcement)", async () => {
     const allMemberships = [
-      { indexId: scopedIndexId, indexTitle: "Index A", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, joinedAt: new Date() },
-      { indexId: "b2c3d4e5-0000-4000-8000-000000000011", indexTitle: "Index B", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: false, joinedAt: new Date() },
+      { indexId: scopedIndexId, indexTitle: "Index A", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() },
+      { indexId: "b2c3d4e5-0000-4000-8000-000000000011", indexTitle: "Index B", indexPrompt: null, permissions: [], memberPrompt: null, autoAssign: false, isPersonal: false, joinedAt: new Date() },
     ];
     const mockDb = createMockDatabase(async () => [], {
       getIndexMemberships: async (uid) => (uid === testUserId ? allMemberships : []),
@@ -1198,6 +1198,7 @@ describe("create_opportunities tool", () => {
         permissions: [],
         memberPrompt: null,
         autoAssign: false,
+        isPersonal: false,
         joinedAt: new Date(),
       }],
     });
@@ -1237,6 +1238,7 @@ describe("create_opportunities tool", () => {
         permissions: [],
         memberPrompt: null,
         autoAssign: false,
+        isPersonal: false,
         joinedAt: new Date(),
       }],
     });
@@ -1274,6 +1276,7 @@ describe("create_opportunities tool", () => {
         permissions: [],
         memberPrompt: null,
         autoAssign: false,
+        isPersonal: false,
         joinedAt: new Date(),
       }],
     });
@@ -1317,6 +1320,7 @@ describe("create_opportunities tool", () => {
         permissions: [],
         memberPrompt: null,
         autoAssign: false,
+        isPersonal: false,
         joinedAt: new Date(),
       }],
     });

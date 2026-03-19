@@ -36,6 +36,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
         permissions: ["member"],
         memberPrompt: null,
         autoAssign: true,
+        isPersonal: false,
         joinedAt: new Date("2026-01-01"),
       },
     ]),
@@ -49,6 +50,7 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
             permissions: ["member"],
             memberPrompt: null,
             autoAssign: true,
+            isPersonal: false,
             joinedAt: new Date("2026-01-01"),
           }
         : null,
@@ -144,6 +146,7 @@ describe("resolveChatContext", () => {
               permissions: ["member"],
               memberPrompt: null,
               autoAssign: true,
+              isPersonal: false,
               joinedAt: new Date("2026-01-01"),
             }
           : null,

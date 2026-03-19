@@ -166,6 +166,7 @@ interface IndexMembershipRow {
   permissions: string[];
   memberPrompt: string | null;
   autoAssign: boolean;
+  isPersonal: boolean;
   joinedAt: Date;
 }
 
@@ -1150,6 +1151,7 @@ export class ChatDatabaseAdapter {
           permissions: schema.indexMembers.permissions,
           memberPrompt: schema.indexMembers.prompt,
           autoAssign: schema.indexMembers.autoAssign,
+          isPersonal: schema.indexes.isPersonal,
           joinedAt: schema.indexMembers.createdAt,
         })
         .from(schema.indexMembers)
@@ -1185,6 +1187,7 @@ export class ChatDatabaseAdapter {
           permissions: schema.indexMembers.permissions,
           memberPrompt: schema.indexMembers.prompt,
           autoAssign: schema.indexMembers.autoAssign,
+          isPersonal: schema.indexes.isPersonal,
           joinedAt: schema.indexMembers.createdAt,
         })
         .from(schema.indexMembers)
