@@ -214,9 +214,15 @@ export class OpportunityGraphFactory {
           },
           { context: { userId: state.userId }, logOutput: true }
         ).catch((error) => {
+          const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Prep] Failed', { error });
           return {
             error: 'Failed to prepare opportunity search. Please try again.',
+            trace: [{
+              node: "prep_fatal",
+              detail: `Prep failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         })
       );
@@ -348,10 +354,16 @@ export class OpportunityGraphFactory {
             }],
           };
         } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Scope] Failed', { error });
           return {
             targetIndexes: [],
             error: 'Failed to determine search scope.',
+            trace: [{
+              node: "scope_fatal",
+              detail: `Scope failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         }
       });
@@ -413,6 +425,7 @@ export class OpportunityGraphFactory {
             discoverySource: 'profile' as const,
           };
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           logger.error('[Graph:Resolve] Failed', {
             triggerIntentId: state.triggerIntentId,
             searchQuery: state.searchQuery,
@@ -422,7 +435,12 @@ export class OpportunityGraphFactory {
             resolvedTriggerIntentId: undefined,
             resolvedIntentInIndex: false,
             discoverySource: 'profile' as const,
-            error: err instanceof Error ? err.message : 'Resolve failed',
+            error: errMsg || 'Resolve failed',
+            trace: [{
+              node: "resolve_fatal",
+              detail: `Resolve failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         }
       });
@@ -962,10 +980,16 @@ export class OpportunityGraphFactory {
             trace: traceEntries,
           };
         } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Discovery] Failed', { error });
           return {
             candidates: [],
             error: 'Failed to search for candidates.',
+            trace: [{
+              node: "discovery_fatal",
+              detail: `Discovery failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         }
       });
@@ -1448,8 +1472,16 @@ export class OpportunityGraphFactory {
           });
           return { evaluatedOpportunities: deduplicated };
         } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Ranking] Failed', { error });
-          return { error: 'Failed to rank opportunities.' };
+          return {
+            error: 'Failed to rank opportunities.',
+            trace: [{
+              node: "ranking_fatal",
+              detail: `Ranking failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
+          };
         }
       });
     };
@@ -1507,13 +1539,19 @@ export class OpportunityGraphFactory {
           logger.verbose('[Graph:IntroValidation] Validation passed');
           return {};
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
           logger.error('[Graph:IntroValidation] Failed', {
             userId: state.userId,
             indexId: state.indexId,
             error: err,
           });
           return {
-            error: err instanceof Error ? err.message : 'Introduction validation failed.',
+            error: errMsg || 'Introduction validation failed.',
+            trace: [{
+              node: "intro_validation_fatal",
+              detail: `IntroValidation failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         }
       });
@@ -1600,11 +1638,23 @@ export class OpportunityGraphFactory {
             actors = fallback.actors;
           }
         } catch (evalErr) {
+          const errMsg = evalErr instanceof Error ? evalErr.message : String(evalErr);
           logger.warn('[Graph:IntroEvaluation] Evaluator or getUser failed, using fallback', { error: evalErr });
           const fallback = buildIntroFallback(entities, state, primaryIndexId, introducerName);
           reasoning = fallback.reasoning;
           score = fallback.score;
           actors = fallback.actors;
+          return {
+            evaluatedOpportunities: [{ actors, score, reasoning }],
+            introductionContext: { createdByName: introducerName },
+            options: { ...state.options, initialStatus: state.options.initialStatus ?? 'latent' },
+            agentTimings: agentTimingsAccum,
+            trace: [{
+              node: "intro_evaluation_fatal",
+              detail: `IntroEvaluation failed (using fallback): ${errMsg}`,
+              data: { error: errMsg },
+            }],
+          };
         }
 
         const evaluatedOpportunity: EvaluatedOpportunity = {
@@ -1943,11 +1993,17 @@ export class OpportunityGraphFactory {
             }],
           };
         } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Persist] Failed', { error });
           return {
             opportunities: [],
             existingBetweenActors: [],
             error: 'Failed to persist opportunities.',
+            trace: [{
+              node: "persist_fatal",
+              detail: `Persist failed: ${errMsg}`,
+              data: { error: errMsg },
+            }],
           };
         }
       });
