@@ -17,10 +17,6 @@ import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
-import { MessagingController } from './controllers/messaging.controller';
-import { MessagingDatabaseAdapter } from './adapters/database.adapter';
-import { MessagingService } from './services/messaging.service';
-import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
 import { createAuth } from './lib/betterauth/betterauth';
@@ -99,26 +95,11 @@ const storageAdapter = new S3StorageAdapter({
   bucket: process.env.S3_BUCKET,
 });
 
-const walletMasterKeyHex = process.env.WALLET_ENCRYPTION_KEY;
-if (!walletMasterKeyHex || walletMasterKeyHex.length !== 64) {
-  logger.error('WALLET_ENCRYPTION_KEY must be a 64-char hex string (32 bytes)');
-  process.exit(1);
-}
-const walletMasterKey = Buffer.from(walletMasterKeyHex, 'hex');
-
-const messagingStore = new MessagingDatabaseAdapter(walletMasterKey);
-
 const authDb = new AuthDatabaseAdapter();
 const auth = createAuth({
   authDb,
   getTrustedOrigins,
   sendMagicLinkEmail,
-  ensureWallet: (userId) => messagingStore.ensureWallet(userId),
-});
-const messagingService = new MessagingService(messagingStore, {
-  xmtpEnv: (process.env.XMTP_ENV as 'dev' | 'production' | 'local') || 'dev',
-  xmtpDbDir: path.resolve(import.meta.dir, '../.xmtp'),
-  walletMasterKey,
 });
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
@@ -133,7 +114,6 @@ controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
 controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
 controllerInstances.set(UserController, new UserController());
-controllerInstances.set(MessagingController, new MessagingController(messagingService));
 controllerInstances.set(StorageController, new StorageController(storageAdapter));
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());

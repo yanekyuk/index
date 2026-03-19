@@ -55,11 +55,7 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_DB: z.string().regex(/^\d+$/).optional(),
 
-  // 5. Messaging (XMTP)
-  WALLET_ENCRYPTION_KEY: requiredUnlessTest,
-  XMTP_ENV: z.enum(['dev', 'production']).default('dev'),
-
-  // 6. Storage (S3-compatible)
+  // 5. Storage (S3-compatible)
   S3_ENDPOINT: z.string().url().optional(),
   S3_REGION: z.string().optional(),
   S3_BUCKET: z.string().optional(),

@@ -23,7 +23,6 @@ export interface AuthDeps {
   authDb: AuthDbContract;
   getTrustedOrigins: (req?: Request) => Promise<string[]> | string[];
   sendMagicLinkEmail: (email: string, url: string) => Promise<void>;
-  ensureWallet?: (userId: string) => Promise<void>;
 }
 
 /**
@@ -35,7 +34,7 @@ export interface AuthDeps {
  * in the Drizzle adapter's create method — no hooks needed.
  */
 export function createAuth(deps: AuthDeps) {
-  const { authDb, getTrustedOrigins, sendMagicLinkEmail, ensureWallet } = deps;
+  const { authDb, getTrustedOrigins, sendMagicLinkEmail } = deps;
 
   return betterAuth({
     baseURL: BASE_URL,
@@ -55,10 +54,6 @@ export function createAuth(deps: AuthDeps) {
       user: {
         create: {
           after: async (user) => {
-            try {
-              if (ensureWallet) await ensureWallet(user.id);
-            } catch (_) { /* wallet generation failure shouldn't block registration */ }
-
             try {
               await authDb.ensurePersonalIndex(user.id);
             } catch (err) {
