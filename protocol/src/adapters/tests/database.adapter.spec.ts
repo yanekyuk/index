@@ -344,6 +344,62 @@ describe('ChatDatabaseAdapter', () => {
     expect(await adapter.isIndexMember(fixture.indexId, uuidv4())).toBe(false);
   });
 
+  describe('getUserByEmail (IND-166)', () => {
+    const caseTestUserId = uuidv4();
+    const caseTestEmail = TEST_PREFIX + 'CaseSensitive@Test.COM';
+    const softDeleteUserId = uuidv4();
+    const softDeleteEmail = TEST_PREFIX + 'softdeleted@test.com';
+
+    it('setup: create test users for email lookup tests', async () => {
+      // User with mixed-case email stored as-is (simulating pre-normalization data)
+      await db.insert(users).values({
+        id: caseTestUserId,
+        email: caseTestEmail.toLowerCase(), // stored normalized
+        name: TEST_PREFIX + 'CaseUser',
+      });
+      // Soft-deleted user
+      await db.insert(users).values({
+        id: softDeleteUserId,
+        email: softDeleteEmail,
+        name: TEST_PREFIX + 'DeletedUser',
+        deletedAt: new Date(),
+      });
+    });
+
+    it('should find user with case-insensitive email lookup', async () => {
+      // Search with uppercase variant
+      const found = await adapter.getUserByEmail(caseTestEmail);
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should find user when searching with lowercase email', async () => {
+      const found = await adapter.getUserByEmail(caseTestEmail.toLowerCase());
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should find user when searching with all-uppercase email', async () => {
+      const found = await adapter.getUserByEmail(caseTestEmail.toUpperCase());
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(caseTestUserId);
+    });
+
+    it('should NOT find soft-deleted user', async () => {
+      const found = await adapter.getUserByEmail(softDeleteEmail);
+      expect(found).toBeNull();
+    });
+
+    it('should return null for non-existent email', async () => {
+      const found = await adapter.getUserByEmail('nonexistent-' + Date.now() + '@test.com');
+      expect(found).toBeNull();
+    });
+
+    it('cleanup: remove test users', async () => {
+      await db.delete(users).where(inArray(users.id, [caseTestUserId, softDeleteUserId]));
+    });
+  });
+
   it('should update index settings as owner', async () => {
     const updated = await adapter.updateIndexSettings(fixture.indexId, fixture.userAId, {
       title: TEST_PREFIX + 'Updated Title',

@@ -147,6 +147,68 @@ describe('AuthDatabaseAdapter', () => {
       expect(typeof adapterInstance.update).toBe('function');
     });
 
+    it('should normalize email to lowercase before insert (IND-166)', async () => {
+      const userId = crypto.randomUUID();
+      testIds.push(userId);
+      const mixedCaseEmail = `MixedCase-${userId}@Test.COM`;
+
+      const adapterFactory = adapter.createDrizzleAdapter();
+      const adapterInstance = (adapterFactory as Function)({});
+
+      const result = await adapterInstance.create({
+        model: 'user',
+        data: {
+          id: userId,
+          name: 'Mixed Case User',
+          email: mixedCaseEmail,
+          isGhost: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      expect(result.id).toBe(userId);
+      // Email should be stored lowercase
+      expect(result.email).toBe(mixedCaseEmail.toLowerCase());
+    });
+
+    it('should claim ghost even when signup email has different casing (IND-166)', async () => {
+      const ghostId = crypto.randomUUID();
+      testIds.push(ghostId);
+      const lowercaseEmail = `ghost-case-${ghostId}@test.com`;
+
+      // Create ghost with lowercase email
+      await db.insert(schema.users).values({
+        id: ghostId,
+        name: 'Ghost',
+        email: lowercaseEmail,
+        isGhost: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Signup with mixed-case variant of the same email
+      const adapterFactory = adapter.createDrizzleAdapter();
+      const adapterInstance = (adapterFactory as Function)({});
+
+      const newId = crypto.randomUUID();
+      const result = await adapterInstance.create({
+        model: 'user',
+        data: {
+          id: newId,
+          name: 'Real User',
+          email: lowercaseEmail.replace('ghost-case', 'Ghost-Case'), // different casing
+          isGhost: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      // Should claim the ghost (same ID) since normalization makes emails match
+      expect(result.id).toBe(ghostId);
+      expect(result.isGhost).toBe(false);
+    });
+
     it('should preserve existing ghost data after claim', async () => {
       const ghostId = crypto.randomUUID();
       testIds.push(ghostId);
