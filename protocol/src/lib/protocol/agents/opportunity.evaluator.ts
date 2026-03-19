@@ -409,6 +409,7 @@ CRITICAL REASONING INSTRUCTIONS FOR INTRODUCTIONS:
       ? `\nDISCOVERY REQUEST: The user asked: "${input.discoveryQuery.trim()}"
 
 CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
+0. QUERY IS PRIMARY: The DISCOVERY REQUEST above is the primary evaluation criterion. The source user's stored INTENTS (if listed below) are background context — use them ONLY to fill in blanks when the query is too broad or vague to evaluate on its own. If the query is specific enough to score candidates, score strictly against the query and IGNORE stored intents. Never let a stored intent override or replace the query as the basis for scoring.
 1. MATCH THE REQUEST TYPE FIRST: If the user asks for "investors", prioritize candidates who are ACTUALLY investors (VCs, angels, fund partners). Engineers and collaborators should score LOWER unless they are also investors.
 2. ROLE KEYWORDS MATTER: Look for keywords in bios like "investor", "VC", "venture", "fund", "partner at [fund]", "angel", "mentor", etc. that match what the user asked for.
 3. SCORING HIERARCHY:
@@ -424,9 +425,14 @@ CRITICAL SCORING RULES FOR DISCOVERY REQUESTS:
    - MATCH or COMPATIBLE (e.g., "Bay Area" ≈ "SF", "Remote" ≈ any): Score normally.
 `
       : '';
+    const hasDiscoveryQuery = !!input.discoveryQuery?.trim();
     const entitiesBlock = input.entities.map((e) => {
+      const isSource = e.userId === input.discovererId;
+      // When an explicit discovery query is active, label the source user's stored
+      // intents as background context so the LLM treats the query as primary.
+      const intentsLabel = isSource && hasDiscoveryQuery ? 'BACKGROUND INTENTS (use only if query is too vague)' : 'INTENTS';
       const intentsPart = e.intents?.length
-        ? `\n  INTENTS:\n${e.intents.map((i) => `    - ${i.intentId}: ${i.payload}`).join('\n')}`
+        ? `\n  ${intentsLabel}:\n${e.intents.map((i) => `    - ${i.intentId}: ${i.payload}`).join('\n')}`
         : '';
       // Mask the discoverer's name so the LLM cannot leak it into reasoning.
       // The system prompt already says "use third-party references", but the LLM
