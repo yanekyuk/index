@@ -11,11 +11,13 @@ import {
   indexes,
   indexMembers,
   opportunities,
-  chatSessions,
-  chatMessages,
-  chatMessageMetadata,
-  chatSessionMetadata,
 } from '../schemas/database.schema';
+import {
+  conversations,
+  conversationParticipants,
+  conversationMetadata,
+  messages,
+} from '../schemas/conversation.schema';
 import { debugService } from '../services/debug.service';
 
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
@@ -525,63 +527,90 @@ export class DebugController {
     logger.verbose('Chat debug request', { sessionId, userId: user.id });
 
     // ── 1. Fetch session (scoped to authenticated user) ──────────────────
-    const [session] = await db
-      .select({
-        id: chatSessions.id,
-        title: chatSessions.title,
-        indexId: chatSessions.indexId,
-        userId: chatSessions.userId,
-      })
-      .from(chatSessions)
-      .where(and(eq(chatSessions.id, sessionId), eq(chatSessions.userId, user.id)))
+    // Verify the user is a participant of this conversation
+    const [participant] = await db
+      .select({ participantId: conversationParticipants.participantId })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, sessionId),
+          eq(conversationParticipants.participantId, user.id),
+          eq(conversationParticipants.participantType, 'user'),
+        ),
+      )
       .limit(1);
 
-    if (!session) {
+    if (!participant) {
       return Response.json({ error: 'Chat session not found' }, { status: 404 });
     }
 
+    // Fetch conversation + metadata
+    const [conv] = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, sessionId))
+      .limit(1);
+
+    if (!conv) {
+      return Response.json({ error: 'Chat session not found' }, { status: 404 });
+    }
+
+    const [convMeta] = await db
+      .select({ metadata: conversationMetadata.metadata })
+      .from(conversationMetadata)
+      .where(eq(conversationMetadata.conversationId, sessionId))
+      .limit(1);
+
+    const meta = (convMeta?.metadata ?? {}) as { title?: string; indexId?: string; _sessionMeta?: unknown };
+    const session = {
+      id: conv.id,
+      title: meta.title ?? null,
+      indexId: meta.indexId ?? null,
+      userId: user.id,
+    };
+
     // ── 2. Fetch messages ordered by creation time ───────────────────────
-    const messageRows = await db
+    const rawMessageRows = await db
       .select({
-        id: chatMessages.id,
-        role: chatMessages.role,
-        content: chatMessages.content,
-        routingDecision: chatMessages.routingDecision,
-        subgraphResults: chatMessages.subgraphResults,
-        createdAt: chatMessages.createdAt,
+        id: messages.id,
+        role: messages.role,
+        parts: messages.parts,
+        metadata: messages.metadata,
+        createdAt: messages.createdAt,
       })
-      .from(chatMessages)
-      .where(eq(chatMessages.sessionId, sessionId))
-      .orderBy(asc(chatMessages.createdAt));
+      .from(messages)
+      .where(eq(messages.conversationId, sessionId))
+      .orderBy(asc(messages.createdAt));
 
-    // ── 3. Fetch metadata from dedicated tables ─────────────────────────
-    const assistantMessageIds = messageRows
-      .filter((m) => m.role === 'assistant')
-      .map((m) => m.id);
+    // Map to a shape compatible with the rest of the method
+    const messageRows = rawMessageRows.map((m) => {
+      const parts = m.parts as Array<{ type?: string; text?: string }>;
+      const content = parts?.[0]?.text ?? '';
+      const msgMeta = (m.metadata ?? {}) as Record<string, unknown>;
+      const mappedRole = m.role === 'agent' ? 'assistant' : 'user';
+      return {
+        id: m.id,
+        role: mappedRole as 'user' | 'assistant' | 'system',
+        content,
+        routingDecision: msgMeta.routingDecision ?? null,
+        subgraphResults: msgMeta.subgraphResults ?? null,
+        debugMeta: msgMeta.debugMeta ?? null,
+        createdAt: m.createdAt,
+      };
+    });
 
-    const messageMetadataRows = assistantMessageIds.length > 0
-      ? await db
-          .select({
-            messageId: chatMessageMetadata.messageId,
-            debugMeta: chatMessageMetadata.debugMeta,
-          })
-          .from(chatMessageMetadata)
-          .where(inArray(chatMessageMetadata.messageId, assistantMessageIds))
-      : [];
-
+    // ── 3. Build metadata map from messages.metadata ─────────────────────
     const metadataByMessageId = new Map(
-      messageMetadataRows.map((m) => [m.messageId, m]),
+      messageRows
+        .filter((m) => m.role === 'assistant' && m.debugMeta)
+        .map((m) => [m.id, { messageId: m.id, debugMeta: m.debugMeta }]),
     );
 
     // Fetch session metadata
-    const [sessionMeta] = await db
-      .select({ metadata: chatSessionMetadata.metadata })
-      .from(chatSessionMetadata)
-      .where(eq(chatSessionMetadata.sessionId, sessionId))
-      .limit(1);
+    const sessionMeta = meta._sessionMeta ? { metadata: meta._sessionMeta } : null;
 
     // ── 4. Build messages and turns ──────────────────────────────────────
-    const messages: Array<{ role: string; content: string }> = [];
+    const chatMessages: Array<{ role: string; content: string }> = [];
     const turns: Array<{
       messageIndex: number;
       graph: string | null;
@@ -602,12 +631,12 @@ export class DebugController {
     }> = [];
 
     for (const msg of messageRows) {
-      const messageIndex = messages.length;
-      messages.push({ role: msg.role, content: msg.content });
+      const messageIndex = chatMessages.length;
+      chatMessages.push({ role: msg.role, content: msg.content });
 
       if (msg.role === 'assistant') {
-        const meta = metadataByMessageId.get(msg.id);
-        const debugMetaFromMetadata = meta?.debugMeta as {
+        const msgMetadata = metadataByMessageId.get(msg.id);
+        const debugMetaFromMetadata = msgMetadata?.debugMeta as {
           graph?: string;
           iterations?: number;
           tools?: Array<{
@@ -655,7 +684,7 @@ export class DebugController {
       exportedAt: new Date().toISOString(),
       title: session.title ?? null,
       indexId: session.indexId ?? null,
-      messages,
+      messages: chatMessages,
       turns,
       sessionMetadata: sessionMeta?.metadata ?? null,
     });
