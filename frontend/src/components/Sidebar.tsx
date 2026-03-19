@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
+import { useConversation } from '@/contexts/ConversationContext';
 import { apiClient } from '@/lib/api';
 import UserAvatar from '@/components/UserAvatar';
 import { useIndexesState } from '@/contexts/IndexesContext';
@@ -27,9 +28,8 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user, signOut } = useAuthContext();
-  // TODO(Task 8): restore isConnected / totalUnreadCount from new ConversationContext
-  const isConnected = false;
-  const totalUnreadCount = 0;
+  const { isConnected } = useConversation();
+  const totalUnreadCount = 0; // Unread tracking out of scope for now
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
   const { setSelectedIndexIds } = useIndexFilter();

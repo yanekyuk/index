@@ -7,12 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
-
-// TODO(Task 8): replace with real type from ConversationContext
-interface XmtpChatContext {
-  groupId?: string;
-  opportunities?: Array<{ opportunityId: string; headline?: string; personalizedSummary?: string }>;
-}
+import { useConversation } from '@/contexts/ConversationContext';
 
 interface ChatViewProps {
   userId: string;
@@ -28,56 +23,56 @@ interface ChatViewProps {
 
 export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, onClose, onBack }: ChatViewProps) {
   const { user } = useAuthContext();
-  // TODO(Task 8): wire up real ConversationContext here
-  const isConnected = false;
-  const myInboxId: string | null = null;
-  const allMessages: Map<string, Array<{ id: string; senderInboxId: string; content: unknown; sentAt: string }>> = new Map();
-  const xmtpSend = async (_: unknown): Promise<string | null> => { console.warn('TODO(Task 8): sendMessage not implemented'); return null; };
-  const loadMessages = async (_groupId: string, _limit: number): Promise<void> => {};
-  const getChatContext = async (_userId: string): Promise<XmtpChatContext | null> => { return null; };
-  const deleteConversation = async (_groupId: string): Promise<void> => {};
-  const [groupId, setGroupId] = useState<string | null>(initialGroupId ?? null);
-  const [chatContext, setChatContext] = useState<XmtpChatContext | null>(null);
+  const {
+    isConnected,
+    messages: allMessages,
+    sendMessage: conversationSend,
+    loadMessages,
+    getOrCreateDM,
+    hideConversation,
+  } = useConversation();
+
+  const [conversationId, setConversationId] = useState<string | null>(initialGroupId ?? null);
   const [messageText, setMessageText] = useState(initialMessage ?? '');
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [contextLoading, setContextLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [opportunities, setOpportunities] = useState<Array<{ opportunityId: string; headline?: string; personalizedSummary?: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const messages = groupId ? (allMessages.get(groupId) || []) : [];
+  const messages = conversationId ? (allMessages.get(conversationId) || []) : [];
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Load messages eagerly (fast — XMTP local)
+  // Load messages when connected and we have a conversationId
   useEffect(() => {
     if (!isConnected) return;
-    const gid = initialGroupId ?? groupId;
-    if (gid) {
-      loadMessages(gid, 50).finally(() => setMessagesLoading(false));
+    const cid = initialGroupId ?? conversationId;
+    if (cid) {
+      loadMessages(cid, { limit: 50 }).finally(() => setMessagesLoading(false));
     } else {
       setMessagesLoading(false);
     }
-  }, [isConnected, initialGroupId, groupId, loadMessages]);
+  }, [isConnected, initialGroupId, conversationId, loadMessages]);
 
-  // Load chat context independently (slow — involves LLM presenter)
+  // Get or create DM conversation
   useEffect(() => {
     if (!isConnected) return;
 
     let mounted = true;
     const init = async () => {
       try {
-        const ctx = await getChatContext(userId);
+        const conv = await getOrCreateDM(userId);
         if (!mounted) return;
-        setChatContext(ctx);
-        const gid = initialGroupId ?? ctx?.groupId ?? null;
-        if (gid && !groupId) setGroupId(gid);
+        const cid = initialGroupId ?? conv.id;
+        if (cid && !conversationId) setConversationId(cid);
       } catch (err) {
-        console.error('[ChatView] Chat context error:', err);
+        console.error('[ChatView] DM init error:', err);
       } finally {
         if (mounted) setContextLoading(false);
       }
@@ -85,7 +80,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
     init();
     return () => { mounted = false; };
-  }, [isConnected, userId, initialGroupId, getChatContext]);
+  }, [isConnected, userId, initialGroupId, getOrCreateDM, conversationId]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -95,14 +90,14 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     setMessageText('');
     setSending(true);
     try {
-      const newGroupId = await xmtpSend(
-        groupId
-          ? { groupId, text }
-          : { peerUserId: userId, text },
-      );
-      if (!groupId && newGroupId) {
-        setGroupId(newGroupId);
-        loadMessages(newGroupId, 50);
+      if (conversationId) {
+        await conversationSend(conversationId, [{ text }]);
+      } else {
+        // Create DM first, then send
+        const conv = await getOrCreateDM(userId);
+        setConversationId(conv.id);
+        await conversationSend(conv.id, [{ text }]);
+        loadMessages(conv.id, { limit: 50 });
       }
       inputRef.current?.focus();
     } catch (err) {
@@ -111,7 +106,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     } finally {
       setSending(false);
     }
-  }, [groupId, userId, messageText, sending, xmtpSend]);
+  }, [conversationId, userId, messageText, sending, conversationSend, getOrCreateDM, loadMessages]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -137,13 +132,12 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
 
   const handleBack = () => { if (onBack) onBack(); else onClose(); };
 
-  const formatTime = (sentAt: string | undefined) => {
-    if (!sentAt) return '';
-    const ms = Number(sentAt) / 1_000_000;
-    return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const formatTime = (createdAt: string) => {
+    if (!createdAt) return '';
+    return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
-  const opportunityCards = chatContext?.opportunities ?? [];
+  const opportunityCards = opportunities;
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -184,7 +178,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               <button
                 onClick={async () => {
                   setShowMenu(false);
-                  if (groupId) await deleteConversation(groupId);
+                  if (conversationId) await hideConversation(conversationId);
                   onClose();
                 }}
                 className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
@@ -280,15 +274,17 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               ) : null}
 
               {messages.map((message, index) => {
-                const isOwn = message.senderInboxId === 'self' || (myInboxId != null && message.senderInboxId === myInboxId);
-                const content = typeof message.content === 'string' ? message.content : String(message.content ?? '');
+                const isOwn = message.senderId === user?.id;
+                const textPart = (message.parts?.[0] as { text?: string } | undefined)?.text;
+                const content = textPart ?? '';
                 if (!content.trim()) return null;
-                const showTimestamp = index === 0 || (messages[index - 1] && Number(message.sentAt) - Number(messages[index - 1].sentAt) > 300_000_000_000);
+                const prevMessage = messages[index - 1];
+                const showTimestamp = index === 0 || (prevMessage && new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() > 300_000);
 
                 return (
                   <div key={message.id}>
-                    {showTimestamp && message.sentAt && (
-                      <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">Today, {formatTime(message.sentAt)}</div>
+                    {showTimestamp && message.createdAt && (
+                      <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">Today, {formatTime(message.createdAt)}</div>
                     )}
                     <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
                       {!isOwn && <UserAvatar avatar={userAvatar} id={userId} name={userName} size={32} className="flex-shrink-0" />}

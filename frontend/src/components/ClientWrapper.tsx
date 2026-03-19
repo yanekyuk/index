@@ -6,6 +6,7 @@ import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 import { IndexesProvider } from "@/contexts/IndexesContext";
+import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
@@ -56,6 +57,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
 
   return (
     <IndexesProvider>
+      <ConversationProvider>
       <IndexFilterProvider>
           <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
             <style jsx>{`
@@ -163,6 +165,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             )}
           </div>
       </IndexFilterProvider>
+      </ConversationProvider>
     </IndexesProvider>
   );
 }
