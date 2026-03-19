@@ -41,6 +41,19 @@ describe('Non-onboarded user filtering in opportunity enrichment', () => {
     expect(shouldSkip).toBe(false);
   });
 
+  it('should skip real users with null onboarding', () => {
+    const candidateUser = {
+      id: 'null-onboarding-user',
+      name: 'Null Onboarding',
+      isGhost: false,
+      onboarding: null as { completedAt?: string } | null,
+      deletedAt: null,
+    };
+
+    const shouldSkip = candidateUser && !candidateUser.isGhost && !candidateUser.onboarding?.completedAt;
+    expect(shouldSkip).toBe(true);
+  });
+
   it('should still skip soft-deleted users regardless of onboarding', () => {
     const candidateUser = {
       id: 'deleted-user-1',
