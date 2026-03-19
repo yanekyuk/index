@@ -4808,3 +4808,465 @@ export function createSystemDatabase(
     getStaleHydeDocuments: (threshold) => db.getStaleHydeDocuments(threshold),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversation Database Adapter
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type {
+  Conversation,
+  ConversationParticipant,
+  Message,
+  Task,
+  Artifact,
+} from '../schemas/conversation.schema';
+
+/** Summary returned by getConversationsForUser. */
+export interface ConversationSummary {
+  id: string;
+  lastMessageAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  participants: ConversationParticipant[];
+}
+
+/**
+ * Database adapter for the A2A-aligned conversation tables.
+ *
+ * @remarks
+ * Covers conversations, participants, messages, tasks, artifacts, and metadata.
+ * Uses Drizzle ORM against the `conversations` family of tables.
+ */
+export class ConversationDatabaseAdapter {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Conversations
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a conversation and inserts participants in a single transaction.
+   * @param participants - List of participant descriptors
+   * @returns The newly created conversation row
+   */
+  async createConversation(
+    participants: { participantId: string; participantType: 'user' | 'agent' }[],
+  ): Promise<Conversation> {
+    const id = crypto.randomUUID();
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({ id, createdAt: now, updatedAt: now });
+      if (participants.length > 0) {
+        await tx.insert(schema.conversationParticipants).values(
+          participants.map((p) => ({
+            conversationId: id,
+            participantId: p.participantId,
+            participantType: p.participantType,
+          })),
+        );
+      }
+    });
+
+    return { id, lastMessageAt: null, createdAt: now, updatedAt: now };
+  }
+
+  /**
+   * Retrieves a conversation by ID with its participants.
+   * @param id - Conversation ID
+   * @returns Conversation with participants, or null if not found
+   */
+  async getConversation(
+    id: string,
+  ): Promise<(Conversation & { participants: ConversationParticipant[] }) | null> {
+    const [conv] = await db
+      .select()
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, id))
+      .limit(1);
+
+    if (!conv) return null;
+
+    const participants = await db
+      .select()
+      .from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.conversationId, id));
+
+    return { ...conv, participants };
+  }
+
+  /**
+   * Lists conversations for a user, ordered by most recent message.
+   * @param userId - The user whose conversations to list
+   * @returns Summaries with participant lists
+   */
+  async getConversationsForUser(userId: string): Promise<ConversationSummary[]> {
+    const rows = await db
+      .select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.participantId, userId),
+          isNull(schema.conversationParticipants.hiddenAt),
+        ),
+      );
+
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.conversationId);
+
+    const convs = await db
+      .select()
+      .from(schema.conversations)
+      .where(inArray(schema.conversations.id, ids))
+      .orderBy(desc(schema.conversations.lastMessageAt));
+
+    const allParticipants = await db
+      .select()
+      .from(schema.conversationParticipants)
+      .where(inArray(schema.conversationParticipants.conversationId, ids));
+
+    const participantsByConv = new Map<string, ConversationParticipant[]>();
+    for (const p of allParticipants) {
+      const list = participantsByConv.get(p.conversationId) ?? [];
+      list.push(p);
+      participantsByConv.set(p.conversationId, list);
+    }
+
+    return convs.map((c) => ({
+      ...c,
+      participants: participantsByConv.get(c.id) ?? [],
+    }));
+  }
+
+  /**
+   * Finds an existing DM between exactly two users, or creates one.
+   * @param userA - First user ID
+   * @param userB - Second user ID
+   * @returns The existing or newly created conversation
+   */
+  async getOrCreateDM(userA: string, userB: string): Promise<Conversation> {
+    // Find existing DM: a conversation with exactly these two user participants
+    const existing = await db.execute(sql`
+      SELECT cp1."conversation_id" AS id
+      FROM conversation_participants cp1
+      JOIN conversation_participants cp2 ON cp1."conversation_id" = cp2."conversation_id"
+      WHERE cp1."participant_id" = ${userA}
+        AND cp2."participant_id" = ${userB}
+        AND cp1."participant_type" = 'user'
+        AND cp2."participant_type" = 'user'
+        AND (SELECT count(*) FROM conversation_participants cp3
+             WHERE cp3."conversation_id" = cp1."conversation_id") = 2
+      LIMIT 1
+    `);
+
+    const rows = Array.isArray(existing) ? existing : (existing as any).rows ?? [];
+    if (rows.length > 0) {
+      const convId = (rows[0] as { id: string }).id;
+      const [conv] = await db
+        .select()
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, convId))
+        .limit(1);
+      return conv;
+    }
+
+    // No existing DM — create one
+    return this.createConversation([
+      { participantId: userA, participantType: 'user' },
+      { participantId: userB, participantType: 'user' },
+    ]);
+  }
+
+  /**
+   * Deletes a conversation (cascades to participants, messages, tasks, artifacts).
+   * @param id - Conversation ID
+   */
+  async deleteConversation(id: string): Promise<void> {
+    await db.delete(schema.conversations).where(eq(schema.conversations.id, id));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Messages
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a message and updates the conversation's lastMessageAt.
+   * @param data - Message payload
+   * @returns The inserted message row
+   */
+  async createMessage(data: {
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: any[];
+    taskId?: string;
+    metadata?: any;
+    extensions?: string[];
+    referenceTaskIds?: string[];
+  }): Promise<Message> {
+    const id = crypto.randomUUID();
+
+    const [msg] = await db
+      .insert(schema.messages)
+      .values({
+        id,
+        conversationId: data.conversationId,
+        senderId: data.senderId,
+        role: data.role,
+        parts: data.parts,
+        taskId: data.taskId ?? null,
+        metadata: data.metadata ?? null,
+        extensions: data.extensions ?? null,
+        referenceTaskIds: data.referenceTaskIds ?? null,
+      })
+      .returning();
+
+    await this.updateLastMessageAt(data.conversationId);
+
+    return msg;
+  }
+
+  /**
+   * Retrieves messages for a conversation, ordered by creation time ascending.
+   * @param conversationId - Conversation ID
+   * @param opts - Optional limit, cursor (before), or taskId filter
+   * @returns Ordered list of messages
+   */
+  async getMessages(
+    conversationId: string,
+    opts?: { limit?: number; before?: string; taskId?: string },
+  ): Promise<Message[]> {
+    const conditions = [eq(schema.messages.conversationId, conversationId)];
+
+    if (opts?.taskId) {
+      conditions.push(eq(schema.messages.taskId, opts.taskId));
+    }
+
+    if (opts?.before) {
+      // Cursor-based: get messages created before the given message
+      const [ref] = await db
+        .select({ createdAt: schema.messages.createdAt })
+        .from(schema.messages)
+        .where(eq(schema.messages.id, opts.before))
+        .limit(1);
+
+      if (ref) {
+        conditions.push(lt(schema.messages.createdAt, ref.createdAt));
+      }
+    }
+
+    let query = db
+      .select()
+      .from(schema.messages)
+      .where(and(...conditions))
+      .orderBy(schema.messages.createdAt);
+
+    if (opts?.limit) {
+      query = query.limit(opts.limit) as typeof query;
+    }
+
+    return query;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Conversation State
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Bumps the lastMessageAt timestamp on a conversation to now.
+   * @param conversationId - Conversation ID
+   */
+  async updateLastMessageAt(conversationId: string): Promise<void> {
+    await db
+      .update(schema.conversations)
+      .set({ lastMessageAt: new Date(), updatedAt: new Date() })
+      .where(eq(schema.conversations.id, conversationId));
+  }
+
+  /**
+   * Hides a conversation for a specific user by setting hiddenAt.
+   * @param userId - The user hiding the conversation
+   * @param conversationId - Conversation ID
+   */
+  async hideConversation(userId: string, conversationId: string): Promise<void> {
+    await db
+      .update(schema.conversationParticipants)
+      .set({ hiddenAt: new Date() })
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      );
+  }
+
+  /**
+   * Unhides a conversation for a specific user by clearing hiddenAt.
+   * @param userId - The user unhiding the conversation
+   * @param conversationId - Conversation ID
+   */
+  async unhideConversation(userId: string, conversationId: string): Promise<void> {
+    await db
+      .update(schema.conversationParticipants)
+      .set({ hiddenAt: null })
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Metadata
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Upserts metadata for a conversation.
+   * @param conversationId - Conversation ID
+   * @param metadata - Arbitrary JSON metadata
+   */
+  async upsertMetadata(conversationId: string, metadata: Record<string, any>): Promise<void> {
+    await db
+      .insert(schema.conversationMetadata)
+      .values({ conversationId, metadata })
+      .onConflictDoUpdate({
+        target: schema.conversationMetadata.conversationId,
+        set: { metadata, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Retrieves metadata for a conversation.
+   * @param conversationId - Conversation ID
+   * @returns The metadata object, or null if none exists
+   */
+  async getMetadata(conversationId: string): Promise<Record<string, any> | null> {
+    const [row] = await db
+      .select({ metadata: schema.conversationMetadata.metadata })
+      .from(schema.conversationMetadata)
+      .where(eq(schema.conversationMetadata.conversationId, conversationId))
+      .limit(1);
+
+    return (row?.metadata as Record<string, any>) ?? null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tasks
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates a task in the submitted state.
+   * @param conversationId - Conversation the task belongs to
+   * @param metadata - Optional task metadata
+   * @returns The newly created task
+   */
+  async createTask(conversationId: string, metadata?: Record<string, any>): Promise<Task> {
+    const [task] = await db
+      .insert(schema.tasks)
+      .values({
+        conversationId,
+        metadata: metadata ?? null,
+      })
+      .returning();
+
+    return task;
+  }
+
+  /**
+   * Transitions a task to a new state.
+   * @param taskId - Task ID
+   * @param state - New task state
+   * @param statusMessage - Optional status message payload
+   * @returns The updated task
+   * @throws If the task is not found
+   */
+  async updateTaskState(taskId: string, state: string, statusMessage?: any): Promise<Task> {
+    const [task] = await db
+      .update(schema.tasks)
+      .set({
+        state: state as any,
+        statusMessage: statusMessage ?? null,
+        statusTimestamp: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId))
+      .returning();
+
+    if (!task) throw new Error(`Task ${taskId} not found`);
+    return task;
+  }
+
+  /**
+   * Retrieves a task by ID.
+   * @param taskId - Task ID
+   * @returns The task, or null if not found
+   */
+  async getTask(taskId: string): Promise<Task | null> {
+    const [task] = await db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.id, taskId))
+      .limit(1);
+
+    return task ?? null;
+  }
+
+  /**
+   * Lists all tasks for a conversation.
+   * @param conversationId - Conversation ID
+   * @returns Ordered list of tasks
+   */
+  async getTasksByConversation(conversationId: string): Promise<Task[]> {
+    return db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.conversationId, conversationId))
+      .orderBy(schema.tasks.createdAt);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Artifacts
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Creates an artifact linked to a task.
+   * @param data - Artifact payload
+   * @returns The newly created artifact
+   */
+  async createArtifact(data: {
+    taskId: string;
+    name?: string;
+    description?: string;
+    parts: any[];
+    metadata?: any;
+  }): Promise<Artifact> {
+    const [artifact] = await db
+      .insert(schema.artifacts)
+      .values({
+        taskId: data.taskId,
+        name: data.name ?? null,
+        description: data.description ?? null,
+        parts: data.parts,
+        metadata: data.metadata ?? null,
+      })
+      .returning();
+
+    return artifact;
+  }
+
+  /**
+   * Lists all artifacts for a task.
+   * @param taskId - Task ID
+   * @returns Ordered list of artifacts
+   */
+  async getArtifacts(taskId: string): Promise<Artifact[]> {
+    return db
+      .select()
+      .from(schema.artifacts)
+      .where(eq(schema.artifacts.taskId, taskId))
+      .orderBy(schema.artifacts.createdAt);
+  }
+}
+
+/** Singleton instance of the conversation database adapter. */
+export const conversationDatabaseAdapter = new ConversationDatabaseAdapter();
