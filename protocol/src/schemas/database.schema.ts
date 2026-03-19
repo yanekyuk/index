@@ -352,8 +352,10 @@ export const userIntegrations = pgTable('integrations', {
   deletedAt: timestamp('deleted_at')
 });
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system']);
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const chatSessions = pgTable('chat_sessions', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -368,6 +370,7 @@ export const chatSessions = pgTable('chat_sessions', {
   shareTokenUnique: uniqueIndex('chat_sessions_share_token_unique').on(table.shareToken),
 }));
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const chatMessages = pgTable('chat_messages', {
   id: text('id').primaryKey(),
   sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
@@ -381,6 +384,7 @@ export const chatMessages = pgTable('chat_messages', {
   sessionIdx: index('chat_messages_session_idx').on(table.sessionId),
 }));
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const chatMessageMetadata = pgTable('chat_message_metadata', {
   id: text('id').primaryKey(),
   messageId: text('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
@@ -391,6 +395,7 @@ export const chatMessageMetadata = pgTable('chat_message_metadata', {
   messageIdUnique: uniqueIndex('chat_message_metadata_message_id_unique').on(table.messageId),
 }));
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const chatSessionMetadata = pgTable('chat_session_metadata', {
   id: text('id').primaryKey(),
   sessionId: text('session_id').notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
@@ -565,6 +570,7 @@ export const chatSessionMetadataRelations = relations(chatSessionMetadata, ({ on
 // Hidden conversations (persistent chat deletion)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/** @deprecated Replaced by conversation.schema.ts */
 export const hiddenConversations = pgTable('hidden_conversations', {
   userId: text('user_id').notNull().references(() => users.id),
   conversationId: text('conversation_id').notNull(),
@@ -607,3 +613,5 @@ export type ChatMessageMetadata = typeof chatMessageMetadata.$inferSelect;
 export type NewChatMessageMetadata = typeof chatMessageMetadata.$inferInsert;
 export type ChatSessionMetadata = typeof chatSessionMetadata.$inferSelect;
 export type NewChatSessionMetadata = typeof chatSessionMetadata.$inferInsert;
+
+export * from './conversation.schema';
