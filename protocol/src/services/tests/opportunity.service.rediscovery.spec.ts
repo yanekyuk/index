@@ -187,4 +187,27 @@ describe("OpportunityService.getHomeView — rediscovery trigger", () => {
     // But cooldown should NOT be set since all failed
     expect(cache.set).not.toHaveBeenCalled();
   });
+
+  it("does NOT set cooldown on partial failure — allows retry for failed intents", async () => {
+    // First intent succeeds, second fails
+    let callCount = 0;
+    mockAddJob.mockImplementation(() => {
+      callCount++;
+      return callCount === 1
+        ? Promise.resolve({ id: "job-1" })
+        : Promise.reject(new Error("Queue full"));
+    });
+
+    const { service, cache } = createService({
+      homeGraphResult: { sections: [], meta: { totalOpportunities: 0, totalSections: 0 } },
+      activeIntents,
+    });
+
+    await service.getHomeView(USER_ID);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockAddJob).toHaveBeenCalledTimes(2);
+    // Cooldown should NOT be set — partial failure means retry is needed
+    expect(cache.set).not.toHaveBeenCalled();
+  });
 });

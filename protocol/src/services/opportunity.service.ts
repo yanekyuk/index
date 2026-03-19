@@ -660,8 +660,9 @@ export class OpportunityService {
       });
     }
 
-    // Only arm cooldown if at least one job was enqueued
-    if (succeeded > 0) {
+    // Only arm cooldown if all jobs were enqueued; partial failures should allow
+    // retries on the next home view load (bucketed jobId deduplicates the successful ones)
+    if (succeeded > 0 && failedCount === 0) {
       await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
     }
   }
