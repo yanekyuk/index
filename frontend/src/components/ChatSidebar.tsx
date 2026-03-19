@@ -53,7 +53,7 @@ export default function ChatSidebar() {
 
   // Map ConversationSummary[] to RecentChat[] for rendering
   const recentChats: RecentChat[] = conversations.map((conv) => {
-    const peer = conv.participants.find((p) => p.participantId !== user?.id && p.participantType === 'user');
+    const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
     const lastText = (conv.lastMessage?.parts?.[0] as { text?: string } | undefined)?.text ?? '';
     return {
       groupId: conv.id,

@@ -4976,6 +4976,8 @@ export interface ConversationSummary {
   createdAt: Date;
   updatedAt: Date;
   participants: ConversationParticipant[];
+  lastMessage: { parts: unknown[]; senderId: string; createdAt: Date } | null;
+  metadata: Record<string, unknown> | null;
 }
 
 /**
@@ -5079,9 +5081,44 @@ export class ConversationDatabaseAdapter {
       participantsByConv.set(p.conversationId, list);
     }
 
+    // Fetch last message per conversation
+    const allMessages = ids.length > 0
+      ? await db
+          .select()
+          .from(schema.messages)
+          .where(inArray(schema.messages.conversationId, ids))
+          .orderBy(desc(schema.messages.createdAt))
+      : [];
+
+    const lastMessageByConv = new Map<string, { parts: unknown[]; senderId: string; createdAt: Date }>();
+    for (const m of allMessages) {
+      if (!lastMessageByConv.has(m.conversationId)) {
+        lastMessageByConv.set(m.conversationId, {
+          parts: m.parts as unknown[],
+          senderId: m.senderId,
+          createdAt: m.createdAt,
+        });
+      }
+    }
+
+    // Fetch metadata per conversation
+    const allMeta = ids.length > 0
+      ? await db
+          .select()
+          .from(schema.conversationMetadata)
+          .where(inArray(schema.conversationMetadata.conversationId, ids))
+      : [];
+
+    const metaByConv = new Map<string, Record<string, unknown>>();
+    for (const m of allMeta) {
+      metaByConv.set(m.conversationId, m.metadata as Record<string, unknown>);
+    }
+
     return convs.map((c) => ({
       ...c,
       participants: participantsByConv.get(c.id) ?? [],
+      lastMessage: lastMessageByConv.get(c.id) ?? null,
+      metadata: metaByConv.get(c.id) ?? null,
     }));
   }
 
