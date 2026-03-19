@@ -877,13 +877,22 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       if (opportunityBlocks.length === 0) {
+        if (skippedCards.length > 0) {
+          return success({
+            found: false,
+            count: 0,
+            summary: "Some opportunities couldn't be displayed",
+            message:
+              "I found opportunities, but couldn't render them. Please try again.",
+            ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
+          });
+        }
         return success({
           found: false,
           count: 0,
           summary: "No opportunities yet",
           message:
             "You have no opportunities yet. Use create_opportunities to find connections.",
-          ...(listDebugSteps.length ? { debugSteps: listDebugSteps } : {}),
         });
       }
 

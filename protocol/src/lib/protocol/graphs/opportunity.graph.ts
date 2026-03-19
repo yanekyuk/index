@@ -1475,6 +1475,7 @@ export class OpportunityGraphFactory {
           const errMsg = error instanceof Error ? error.message : String(error);
           logger.error('[Graph:Ranking] Failed', { error });
           return {
+            evaluatedOpportunities: [],
             error: 'Failed to rank opportunities.',
             trace: [{
               node: "ranking_fatal",
@@ -1546,7 +1547,7 @@ export class OpportunityGraphFactory {
             error: err,
           });
           return {
-            error: errMsg || 'Introduction validation failed.',
+            error: 'Introduction validation failed.',
             trace: [{
               node: "intro_validation_fatal",
               detail: `IntroValidation failed: ${errMsg}`,
@@ -1603,6 +1604,9 @@ export class OpportunityGraphFactory {
         let score: number;
         let actors: EvaluatedOpportunityActor[] = [];
 
+        const _traceEmitterIntro = requestContext.getStore()?.traceEmitter;
+        let _introEvalStarted = false;
+        let _evalStart = Date.now();
         try {
           const introducerUser = await this.database.getUser(state.userId);
           introducerName = introducerUser?.name ?? undefined;
@@ -1614,9 +1618,9 @@ export class OpportunityGraphFactory {
             introductionHint: state.introductionHint ?? undefined,
           };
 
-          const _evalStart = Date.now();
-          const _traceEmitterIntro = requestContext.getStore()?.traceEmitter;
+          _evalStart = Date.now();
           _traceEmitterIntro?.({ type: "agent_start", name: "intro-evaluator" });
+          _introEvalStarted = true;
           const evaluated = await (evaluatorAgent as OpportunityEvaluator).invokeEntityBundle(input, { minScore: 0 });
           const _introDuration = Date.now() - _evalStart;
           agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introDuration });
@@ -1639,6 +1643,12 @@ export class OpportunityGraphFactory {
           }
         } catch (evalErr) {
           const errMsg = evalErr instanceof Error ? evalErr.message : String(evalErr);
+          // Close the intro-evaluator span if it was started before the error
+          if (_introEvalStarted) {
+            const _introErrDuration = Date.now() - _evalStart;
+            _traceEmitterIntro?.({ type: "agent_end", name: "intro-evaluator", durationMs: _introErrDuration, summary: `error — ${errMsg}` });
+            agentTimingsAccum.push({ name: 'opportunity.evaluator', durationMs: _introErrDuration });
+          }
           logger.warn('[Graph:IntroEvaluation] Evaluator or getUser failed, using fallback', { error: evalErr });
           const fallback = buildIntroFallback(entities, state, primaryIndexId, introducerName);
           reasoning = fallback.reasoning;
