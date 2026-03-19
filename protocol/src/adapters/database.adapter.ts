@@ -2955,6 +2955,7 @@ export class ChatDatabaseAdapter {
    * Respects opt-outs: skips contacts that have a soft-deleted membership row.
    * @param ownerId - The owner of the personal index
    * @param contactUserIds - User IDs to add as contacts
+   * @returns Resolves when all non-opted-out memberships are upserted
    */
   async upsertContactMembershipBulk(ownerId: string, contactUserIds: string[]): Promise<void> {
     if (contactUserIds.length === 0) return;

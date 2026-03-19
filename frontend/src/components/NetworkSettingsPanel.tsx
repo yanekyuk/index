@@ -171,9 +171,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       const integrationsService = createIntegrationsService(api);
       const response = await integrationsService.getConnections();
       setConnections(response.connections);
-      setConnectionsLoaded(true);
     } catch (err) {
       console.error('Failed to load connections:', err);
+      setConnections([]);
+    } finally {
+      setConnectionsLoaded(true);
     }
   }, [api]);
 
@@ -317,12 +319,24 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       const top = window.screen.height / 2 - height / 2;
       const popup = window.open(response.redirectUrl, 'oauth', `width=${width},height=${height},left=${left},top=${top}`);
 
+      if (!popup) {
+        error('Popup blocked. Please allow popups and try again.');
+        setPendingToolkit(null);
+        return;
+      }
+
       const onMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'oauth_complete') {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === 'oauth_callback' && event.data?.status === 'success') {
           window.removeEventListener('message', onMessage);
           popup?.close();
           success(`${toolkit} connected`);
           loadConnections();
+          setPendingToolkit(null);
+        } else if (event.data?.type === 'oauth_callback') {
+          window.removeEventListener('message', onMessage);
+          popup?.close();
+          error(`Failed to connect ${toolkit}`);
           setPendingToolkit(null);
         }
       };

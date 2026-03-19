@@ -239,6 +239,11 @@ export class ContactService {
     }
     await this.db.upsertContactMembershipBulk(ownerId, allUserIds);
 
+    // Phase 4b: Clear reverse opt-outs (matches addContact() behavior)
+    for (const userId of allUserIds) {
+      await this.db.clearReverseOptOut(ownerId, userId);
+    }
+
     // Phase 5: Bulk enqueue enrichment for new ghosts
     if (newGhostIds.length > 0) {
       await profileQueue.addEnrichUserJobBulk(newGhostIds.map(id => ({ userId: id })));

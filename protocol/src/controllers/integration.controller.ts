@@ -27,9 +27,9 @@ export class IntegrationController {
    */
   @Post('/connect/:toolkit')
   @UseGuards(AuthGuard)
-  async connect(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
-    const origin = req.headers.get('origin') || process.env.FRONTEND_URL || '';
-    const callbackUrl = `${origin.replace(/\/$/, '')}/oauth/callback`;
+  async connect(_req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
+    const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
+    const callbackUrl = `${baseUrl}/oauth/callback`;
     const result = await this.adapter.getAuthUrl(user.id, params.toolkit, callbackUrl);
     return result;
   }
