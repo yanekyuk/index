@@ -3673,7 +3673,7 @@ export class OpportunityDatabaseAdapter {
     return updated.length;
   }
 
-  /** Set status to expired for opportunities with expires_at <= now. Used by cron. */
+  /** Set status to expired for opportunities with expires_at <= now. Skips terminal statuses (accepted, rejected, expired). */
   async expireStaleOpportunities(): Promise<number> {
     const now = new Date();
     const updated = await db
@@ -3683,7 +3683,7 @@ export class OpportunityDatabaseAdapter {
         and(
           isNotNull(opportunities.expiresAt),
           lte(opportunities.expiresAt, now),
-          ne(opportunities.status, 'expired')
+          notInArray(opportunities.status, ['accepted', 'rejected', 'expired'])
         )
       )
       .returning({ id: opportunities.id });

@@ -712,6 +712,101 @@ describe('OpportunityDatabaseAdapter', () => {
       expect(forConv2.some((o) => o.id === draft1.id)).toBe(false);
     });
   });
+
+  describe('expireStaleOpportunities', () => {
+    it('should expire opportunities past their expiresAt', async () => {
+      const past = new Date(Date.now() - 60_000);
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Stale opp', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        expiresAt: past,
+      });
+      expect(created.status).toBe('pending');
+
+      const count = await adapter.expireStaleOpportunities();
+      expect(count).toBeGreaterThanOrEqual(1);
+
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('expired');
+    });
+
+    it('should not expire opportunities with future expiresAt', async () => {
+      const future = new Date(Date.now() + 3_600_000);
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Future opp', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+        expiresAt: future,
+      });
+
+      await adapter.expireStaleOpportunities();
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('pending');
+    });
+
+    it('should not expire accepted or rejected opportunities even if past expiresAt', async () => {
+      const past = new Date(Date.now() - 60_000);
+      const accepted = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Accepted opp', confidence: 0.9 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.9',
+        status: 'accepted',
+        expiresAt: past,
+      });
+      const rejected = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'Rejected opp', confidence: 0.7 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.7',
+        status: 'rejected',
+        expiresAt: past,
+      });
+
+      await adapter.expireStaleOpportunities();
+
+      const refetchedAccepted = await adapter.getOpportunity(accepted.id);
+      const refetchedRejected = await adapter.getOpportunity(rejected.id);
+      expect(refetchedAccepted!.status).toBe('accepted');
+      expect(refetchedRejected!.status).toBe('rejected');
+    });
+
+    it('should not expire opportunities without expiresAt', async () => {
+      const created = await adapter.createOpportunity({
+        detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
+        actors: [
+          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        ],
+        interpretation: { category: 'collaboration', reasoning: 'No expiry opp', confidence: 0.8 },
+        context: { indexId: fixture.indexId },
+        confidence: '0.8',
+      });
+
+      await adapter.expireStaleOpportunities();
+      const refetched = await adapter.getOpportunity(created.id);
+      expect(refetched!.status).toBe('pending');
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
