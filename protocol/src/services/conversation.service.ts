@@ -8,6 +8,17 @@ export class ConversationService {
   constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {}
 
   /**
+   * Verifies a user is a participant in a conversation.
+   * @param userId - User ID to verify
+   * @param conversationId - Conversation ID
+   * @throws Error if the user is not a participant
+   */
+  async verifyParticipant(userId: string, conversationId: string): Promise<void> {
+    const ok = await this.db.isParticipant(conversationId, userId);
+    if (!ok) throw new Error('Forbidden: not a participant in this conversation');
+  }
+
+  /**
    * Creates a new conversation with the given participants.
    * @param participants - List of participant descriptors (user or agent)
    * @returns The newly created conversation
@@ -47,11 +58,12 @@ export class ConversationService {
   /**
    * Sends a message in a conversation.
    * @param conversationId - Conversation ID
-   * @param senderId - ID of the sender
+   * @param senderId - ID of the sender (must be a participant)
    * @param role - Role of the sender ('user' or 'agent')
    * @param parts - Message content parts
    * @param opts - Optional task association and metadata
    * @returns The created message
+   * @throws Error if senderId is not a participant
    */
   async sendMessage(
     conversationId: string,
@@ -60,6 +72,7 @@ export class ConversationService {
     parts: unknown[],
     opts?: { taskId?: string; metadata?: Record<string, unknown> },
   ) {
+    await this.verifyParticipant(senderId, conversationId);
     return this.db.createMessage({
       conversationId,
       senderId,
@@ -73,19 +86,25 @@ export class ConversationService {
   /**
    * Retrieves messages for a conversation.
    * @param conversationId - Conversation ID
-   * @param opts - Optional limit, cursor (before), or taskId filter
+   * @param opts - Optional limit, cursor (before), taskId filter, or userId for authorization
    * @returns Ordered list of messages
+   * @throws Error if opts.userId is provided and is not a participant
    */
   async getMessages(conversationId: string, opts?: { limit?: number; before?: string; taskId?: string; userId?: string }) {
+    if (opts?.userId) {
+      await this.verifyParticipant(opts.userId, conversationId);
+    }
     return this.db.getMessages(conversationId, opts);
   }
 
   /**
    * Hides a conversation for a specific user by setting hiddenAt.
-   * @param userId - The user hiding the conversation
+   * @param userId - The user hiding the conversation (must be a participant)
    * @param conversationId - Conversation ID
+   * @throws Error if userId is not a participant
    */
   async hideConversation(userId: string, conversationId: string) {
+    await this.verifyParticipant(userId, conversationId);
     return this.db.hideConversation(userId, conversationId);
   }
 
@@ -93,8 +112,11 @@ export class ConversationService {
    * Upserts arbitrary JSON metadata on a conversation.
    * @param conversationId - Conversation ID
    * @param metadata - Metadata to store
+   * @param userId - User requesting the update (must be a participant)
+   * @throws Error if userId is not a participant
    */
-  async updateMetadata(conversationId: string, metadata: Record<string, unknown>) {
+  async updateMetadata(conversationId: string, metadata: Record<string, unknown>, userId: string) {
+    await this.verifyParticipant(userId, conversationId);
     return this.db.upsertMetadata(conversationId, metadata);
   }
 }

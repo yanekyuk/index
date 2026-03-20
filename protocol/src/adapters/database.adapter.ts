@@ -5367,6 +5367,26 @@ export class ConversationDatabaseAdapter {
   }
 
   /**
+   * Checks whether a user is a participant in a conversation.
+   * @param conversationId - Conversation ID
+   * @param userId - User ID to check
+   * @returns True if the user is a participant
+   */
+  async isParticipant(conversationId: string, userId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ participantId: schema.conversationParticipants.participantId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  /**
    * Hides a conversation for a specific user by setting hiddenAt.
    * @param userId - The user hiding the conversation
    * @param conversationId - Conversation ID

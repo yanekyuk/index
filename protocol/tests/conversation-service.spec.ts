@@ -56,6 +56,61 @@ describe('ConversationService', () => {
     await conversationService.hideConversation('svc-hide-user', conv.id);
     // No error thrown = success
   }, 15000);
+
+  describe('authorization', () => {
+    it('should reject getMessages for non-participant', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      await expect(
+        conversationService.getMessages(conv.id, { userId: 'non-participant-user' }),
+      ).rejects.toThrow(/not a participant/i);
+    }, 15000);
+
+    it('should reject sendMessage for non-participant', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      await expect(
+        conversationService.sendMessage(conv.id, 'non-participant-user', 'user', [{ type: 'text', text: 'hello' }]),
+      ).rejects.toThrow(/not a participant/i);
+    }, 15000);
+
+    it('should reject hideConversation for non-participant', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      await expect(
+        conversationService.hideConversation('non-participant-user', conv.id),
+      ).rejects.toThrow(/not a participant/i);
+    }, 15000);
+
+    it('should allow getMessages for valid participant', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      const messages = await conversationService.getMessages(conv.id, { userId: 'auth-user-a' });
+      expect(messages).toEqual([]);
+    }, 15000);
+
+    it('should allow getMessages without userId (internal call)', async () => {
+      const conv = await conversationService.createConversation([
+        { participantId: 'auth-user-a', participantType: 'user' },
+      ]);
+      cleanupIds.push(conv.id);
+
+      const messages = await conversationService.getMessages(conv.id);
+      expect(messages).toEqual([]);
+    }, 15000);
+  });
 });
 
 describe('TaskService', () => {

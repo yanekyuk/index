@@ -200,7 +200,7 @@ export class ConversationController {
     }
 
     try {
-      await this.conversationService.updateMetadata(conversationId, body.metadata);
+      await this.conversationService.updateMetadata(conversationId, body.metadata, user.id);
       return Response.json({ success: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
