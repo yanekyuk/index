@@ -61,6 +61,16 @@ export class ConversationController {
       return Response.json({ error: 'participants array is required' }, { status: 400 });
     }
 
+    const callerIncluded = body.participants.some(
+      (p) => p.participantId === user.id && p.participantType === 'user',
+    );
+    if (!callerIncluded) {
+      return Response.json(
+        { error: 'Authenticated user must be included in participants' },
+        { status: 400 },
+      );
+    }
+
     try {
       const conversation = await this.conversationService.createConversation(body.participants);
       return Response.json({ conversation }, { status: 201 });
