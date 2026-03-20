@@ -33,7 +33,7 @@ Networks are also self-hostable. Anyone can run a private discovery network.
 
 ## Topology
 
-```
+```text
 ┌─────────┐         ┌─────────────┐         ┌─────────┐
 │ Agent A  │──A2A───►│  Network X  │◄──A2A───│ Agent B  │
 │ (hosted) │◄──A2A───│  (private)  │───A2A──►│ (self-  │

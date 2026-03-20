@@ -250,16 +250,23 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       // Persist user-info fields (name, location, socials) to users table before any branching.
       // This ensures users.name is always updated regardless of which code path runs.
-      const hasSocialsFromQuery = !!(query.linkedinUrl || query.githubUrl || query.twitterUrl || (query.websites && query.websites.length));
-      if (query.name || query.location || hasSocialsFromQuery) {
+      // Trim all string fields to avoid persisting whitespace-only values.
+      const name = query.name?.trim();
+      const location = query.location?.trim();
+      const linkedinUrl = query.linkedinUrl?.trim();
+      const githubUrl = query.githubUrl?.trim();
+      const twitterUrl = query.twitterUrl?.trim();
+      const websites = query.websites?.map((url) => url.trim()).filter(Boolean);
+      const hasSocialsFromQuery = Boolean(linkedinUrl || githubUrl || twitterUrl || websites?.length);
+      if (name || location || hasSocialsFromQuery) {
         const socialsUpdate: { linkedin?: string; github?: string; x?: string; websites?: string[] } = {};
-        if (query.linkedinUrl) socialsUpdate.linkedin = query.linkedinUrl;
-        if (query.githubUrl) socialsUpdate.github = query.githubUrl;
-        if (query.twitterUrl) socialsUpdate.x = query.twitterUrl;
-        if (query.websites && query.websites.length) socialsUpdate.websites = query.websites;
+        if (linkedinUrl) socialsUpdate.linkedin = linkedinUrl;
+        if (githubUrl) socialsUpdate.github = githubUrl;
+        if (twitterUrl) socialsUpdate.x = twitterUrl;
+        if (websites?.length) socialsUpdate.websites = websites;
         await userDb.updateUser({
-          ...(query.name ? { name: query.name } : {}),
-          ...(query.location ? { location: query.location } : {}),
+          ...(name ? { name } : {}),
+          ...(location ? { location } : {}),
           ...(hasSocialsFromQuery ? { socials: socialsUpdate } : {}),
         });
         logger.verbose("Persisted user-info fields to user record", { userId: context.userId });
@@ -368,8 +375,8 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
         // Create/update profile from user's explicit text only; do not persist to user record
         // Include name and location in the input if provided so the ProfileGenerator can use them
         const inputParts: string[] = [];
-        if (query.name) inputParts.push(`Name: ${query.name}`);
-        if (query.location) inputParts.push(`Location: ${query.location}`);
+        if (name) inputParts.push(`Name: ${name}`);
+        if (location) inputParts.push(`Location: ${location}`);
         inputParts.push(query.bioOrDescription!.trim());
         const profileInput = inputParts.join('\n');
         
