@@ -145,8 +145,9 @@ export class ContactService {
   }
 
   /**
-   * Import contacts in bulk.
-   * Filters non-human contacts, deduplicates, then calls addContact for each.
+   * Import contacts in bulk using batched DB operations.
+   * Filters non-human contacts, deduplicates, then resolves/creates users, upserts
+   * memberships, and enqueues enrichment jobs — all in bulk instead of per-contact.
    *
    * @param ownerId - The user importing contacts
    * @param contacts - Array of contact data (name, email)
@@ -169,11 +170,10 @@ export class ContactService {
       details: [],
     };
 
-    // Fetch owner once
     const owner = await this.db.getUser(ownerId);
     const ownerEmail = owner?.email.toLowerCase();
 
-    // Normalize, filter, and deduplicate contacts
+    // Phase 1: Normalize, filter, deduplicate (in-memory)
     const seenEmails = new Set<string>();
     const validContacts: Array<{ name: string; email: string }> = [];
     for (const contact of contacts) {
@@ -197,10 +197,7 @@ export class ContactService {
         continue;
       }
       seenEmails.add(email);
-      validContacts.push({
-        name: name || email.split('@')[0],
-        email,
-      });
+      validContacts.push({ name: name || email.split('@')[0], email });
     }
 
     if (validContacts.length === 0) {
@@ -208,32 +205,47 @@ export class ContactService {
       return result;
     }
 
-    // Process each contact with restore=false (skip soft-deleted)
-    for (const contact of validContacts) {
-      try {
-        const contactResult = await this.addContact(ownerId, contact.email, {
-          name: contact.name,
-          restore: false,
-        });
+    // Phase 2: Bulk user lookup (1 query)
+    const emails = validContacts.map(c => c.email);
+    const existingUsers = await this.db.getUsersByEmails(emails);
+    const emailToUser = new Map(existingUsers.map(u => [u.email, u]));
 
-        result.details.push({
-          email: contact.email,
-          userId: contactResult.userId,
-          isNew: contactResult.isNew,
-        });
+    // Phase 3: Bulk ghost creation for unknown emails (1 INSERT + 1 SELECT)
+    const newContactData = validContacts.filter(c => !emailToUser.has(c.email));
+    const createdGhosts = await this.db.createGhostUsersBulk(newContactData);
+    const newGhostIds: string[] = [];
+    for (const ghost of createdGhosts) {
+      const wasAlreadyKnown = existingUsers.some(u => u.email === ghost.email);
+      if (!wasAlreadyKnown) {
+        newGhostIds.push(ghost.id);
+      }
+      emailToUser.set(ghost.email, { ...ghost, isGhost: true });
+    }
+
+    // Phase 4: Bulk membership upsert (1 SELECT + 1 INSERT)
+    const allUserIds: string[] = [];
+    for (const vc of validContacts) {
+      const user = emailToUser.get(vc.email);
+      if (user) {
+        allUserIds.push(user.id);
+        const isNew = newGhostIds.includes(user.id);
+        result.details.push({ email: vc.email, userId: user.id, isNew });
         result.imported++;
-        if (contactResult.isNew) {
-          result.newContacts++;
-        } else {
-          result.existingContacts++;
-        }
-      } catch (error) {
-        logger.error('[ContactService] Failed to add contact', {
-          email: contact.email,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (isNew) result.newContacts++;
+        else result.existingContacts++;
+      } else {
         result.skipped++;
       }
+    }
+    await this.db.upsertContactMembershipBulk(ownerId, allUserIds);
+
+    // Phase 4b: Clear reverse opt-outs (matches addContact() behavior)
+    await this.db.clearReverseOptOutBulk(ownerId, allUserIds);
+
+    // Phase 5: Bulk enqueue enrichment for new ghosts
+    if (newGhostIds.length > 0) {
+      await profileQueue.addEnrichUserJobBulk(newGhostIds.map(id => ({ userId: id })));
+      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIds.length });
     }
 
     logger.info('[ContactService] Import completed', {

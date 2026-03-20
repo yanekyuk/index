@@ -3,12 +3,11 @@ import { useNavigate } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Loader2, Trash2, ExternalLink } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAPI, useIntegrations } from "@/contexts/APIContext";
+import { useAPI } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
-import { IntegrationName, getIntegrationsList } from "@/config/integrations";
 import IntentList from "@/components/IntentList";
 import NegotiationList from "@/components/NegotiationList";
 import ClientLayout from "@/components/ClientLayout";
@@ -42,23 +41,14 @@ type LinkItem = {
   lastSyncAt?: string | null;
 };
 
-type Integration = {
-  id: string | null;
-  type: IntegrationName;
-  name: string;
-  connected: boolean;
-  indexId?: string | null;
-};
-
 export default function LibraryPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { filesService, linksService, intentsService } = useAPI();
-  const integrationsService = useIntegrations();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<'intents' | 'negotiations' | 'connections' | 'files' | 'links'>('intents');
+  const [activeTab, setActiveTab] = useState<'intents' | 'negotiations' | 'files' | 'links'>('intents');
   const [isLoading, setIsLoading] = useState(true);
   const tabDescriptions = {
     intents: {
@@ -74,13 +64,6 @@ export default function LibraryPage() {
         "Your agent negotiates with other agents to coordinate discovery. They continuously align on intent, timing, trust, value, and data sharing before any connection is made.",
       privacy:
         "Negotiations are private between participating agents. You see only your side."
-    },
-    connections: {
-      title: "Connections",
-      description:
-        "Accounts and tools linked to your library. Activity from these sources helps keep your intents accurate and up to date.",
-      privacy:
-        "AI agents use connected sources to keep your intents up to date."
     },
     files: {
       title: "Files",
@@ -100,18 +83,13 @@ export default function LibraryPage() {
 
   // Data states
   const [intents, setIntents] = useState<LibrarySourceIntent[]>([]);
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [links, setLinks] = useState<LinkItem[]>([]);
 
   // Loading states per tab
   const [loadingIntents, setLoadingIntents] = useState(false);
-  const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [loadingLinks, setLoadingLinks] = useState(false);
-
-  // Integration connection state
-  const [pendingIntegration, setPendingIntegration] = useState<IntegrationName | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -139,49 +117,6 @@ export default function LibraryPage() {
       setLoadingIntents(false);
     }
   }, [api]);
-
-  // Load integrations
-  const loadIntegrations = useCallback(async () => {
-    try {
-      setLoadingIntegrations(true);
-      const response = await integrationsService.getIntegrations();
-      
-      const connectedIntegrations = response.integrations || [];
-      const availableTypes = response.availableTypes || [];
-      
-      // Filter to only show single-user integrations
-      const singleUserIntegrationTypes = ['notion', 'airtable'];
-      const filteredAvailableTypes = availableTypes.filter(type => 
-        singleUserIntegrationTypes.includes(type.type.toLowerCase())
-      );
-      
-      // Filter out index integrations - only show user integrations (no indexId)
-      const userOnlyIntegrations = connectedIntegrations.filter(i => !i.indexId);
-      
-      // Create integration state combining connected and available types
-      const updatedIntegrations = filteredAvailableTypes.map(availableType => {
-        const connectedIntegration = userOnlyIntegrations.find(i => i.type === availableType.type);
-        return {
-          id: connectedIntegration?.id || null,
-          type: availableType.type as IntegrationName,
-          name: availableType.name,
-          connected: !!connectedIntegration,
-          indexId: null
-        };
-      });
-      
-      setIntegrations(updatedIntegrations);
-    } catch {
-      // Fallback to default integrations if API fails
-      const singleUserIntegrationTypes = ['notion', 'airtable'];
-      const filteredIntegrations = getIntegrationsList().filter(int =>
-        singleUserIntegrationTypes.includes(int.type.toLowerCase())
-      );
-      setIntegrations(filteredIntegrations.map(i => ({ ...i, id: null, connected: false })));
-    } finally {
-      setLoadingIntegrations(false);
-    }
-  }, [integrationsService]);
 
   // Load files
   const loadFiles = useCallback(async () => {
@@ -214,93 +149,18 @@ export default function LibraryPage() {
     }
   }, [linksService]);
 
-  // Connect integration
-  const handleConnectIntegration = useCallback(async (type: IntegrationName) => {
-    const item = integrations.find(i => i.type === type);
-    if (!item) return;
-    
-    try {
-      setPendingIntegration(type);
-      const popup = typeof window !== 'undefined' ? window.open('', `oauth_${type}`, 'width=560,height=720') : null;
-      const res = await integrationsService.connectIntegration(type, {});
-      const redirect = res.redirectUrl;
-      const integrationId = res.integrationId;
-      
-      if (popup && redirect) {
-        popup.location.href = redirect;
-      } else if (redirect) {
-        window.location.href = redirect;
-        return;
-      }
-      
-      if (integrationId) {
-        const started = Date.now();
-        
-        const poll = setInterval(async () => {
-          if (popup && popup.closed) {
-            clearInterval(poll);
-            setPendingIntegration(null);
-            return;
-          }
-          
-          try {
-            const s = await integrationsService.getIntegrationStatus(integrationId);
-            
-            if (s.status === 'connected') {
-              clearInterval(poll);
-              if (popup && !popup.closed) popup.close();
-              setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: true, id: integrationId } : x));
-              success(`${item.name} connected`);
-              setPendingIntegration(null);
-            }
-            if (Date.now() - started > 90000) {
-              clearInterval(poll);
-              if (popup && !popup.closed) popup.close();
-              error('Connection timeout - please try again');
-              setPendingIntegration(null);
-            }
-          } catch (err) {
-            console.error('Error checking connection status:', err);
-          }
-        }, 1500);
-      }
-    } catch (err) {
-      console.error('Error connecting integration:', err);
-      error(`Failed to connect ${item.name}`);
-      setPendingIntegration(null);
-    }
-  }, [integrationsService, integrations, success, error]);
-
-  // Disconnect integration
-  const handleDisconnectIntegration = useCallback(async (type: IntegrationName) => {
-    const item = integrations.find(i => i.type === type);
-    if (!item?.connected || !item.id) return;
-    
-    try {
-      setPendingIntegration(type);
-      await integrationsService.disconnectIntegration(item.id);
-      setIntegrations(prev => prev.map(x => x.type === type ? { ...x, connected: false, id: null } : x));
-      success(`${item.name} disconnected`);
-    } catch (err) {
-      console.error('Error disconnecting integration:', err);
-      error(`Failed to disconnect ${item.name}`);
-    } finally {
-      setPendingIntegration(null);
-    }
-  }, [integrationsService, integrations, success, error]);
-
   // Initial load
   useEffect(() => {
     if (!isAuthenticated || authLoading) return;
 
     const loadAll = async () => {
       setIsLoading(true);
-      await Promise.all([loadIntents(), loadIntegrations(), loadFiles(), loadLinks()]);
+      await Promise.all([loadIntents(), loadFiles(), loadLinks()]);
       setIsLoading(false);
     };
 
     loadAll();
-  }, [isAuthenticated, authLoading, loadIntents, loadIntegrations, loadFiles, loadLinks]);
+  }, [isAuthenticated, authLoading, loadIntents, loadFiles, loadLinks]);
 
   // Archive intent handler
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
@@ -367,15 +227,6 @@ export default function LibraryPage() {
               )}
             </Tabs.Trigger>
             <Tabs.Trigger 
-              value="connections" 
-              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-            >
-              Connections
-              {integrations.filter(i => i.connected).length > 0 && (
-                <span className="ml-2 text-xs text-gray-500">({integrations.filter(i => i.connected).length})</span>
-              )}
-            </Tabs.Trigger>
-            <Tabs.Trigger 
               value="files" 
               className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
             >
@@ -429,74 +280,6 @@ export default function LibraryPage() {
           {/* Negotiations Tab */}
           <Tabs.Content value="negotiations" className="w-full">
             <NegotiationList />
-          </Tabs.Content>
-
-          {/* Connections (Integrations) Tab */}
-          <Tabs.Content value="connections" className="w-full">
-            {loadingIntegrations ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-              </div>
-            ) : integrations.length === 0 ? (
-              <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-                <p>No integrations available</p>
-              </div>
-            ) : (
-              <div className="space-y-2 w-full">
-                {integrations.map((integration) => (
-                  <div
-                    key={integration.type}
-                    className="group flex items-center gap-3 p-3 border border-gray-200 rounded-sm hover:border-gray-300 transition-colors"
-                  >
-
-                    <img 
-                      src={`/integrations/${integration.type}.png`} 
-                      width={24} 
-                      height={24} 
-                      alt={integration.name}
-                      className="flex-shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-black">
-                        {integration.name}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {integration.connected ? 'Connected' : 'Not connected'}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (integration.connected) {
-                          handleDisconnectIntegration(integration.type);
-                        } else {
-                          handleConnectIntegration(integration.type);
-                        }
-                      }}
-                      disabled={pendingIntegration === integration.type}
-                      className={`relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                        integration.connected ? 'bg-[#006D4B]' : 'bg-gray-300'
-                      } ${pendingIntegration === integration.type ? 'opacity-70' : ''}`}
-                      aria-pressed={integration.connected}
-                      aria-label={`${integration.name} ${integration.connected ? 'connected' : 'disconnected'}`}
-                    >
-                      <span
-                        className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform duration-200 shadow-sm ${
-                          integration.connected ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                      {pendingIntegration === integration.type && (
-                        <span className="absolute inset-0 grid place-items-center">
-                          <span
-                            className="h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin"
-                            style={{ marginLeft: integration.connected ? '-20px' : '20px' }}
-                          />
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </Tabs.Content>
 
           {/* Files Tab */}

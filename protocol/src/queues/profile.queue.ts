@@ -78,6 +78,29 @@ export class ProfileQueue {
   }
 
   /**
+   * Enqueue enrichment jobs for multiple users in a single BullMQ call.
+   * @param items - Array of { userId } to enrich
+   * @returns Array of BullMQ jobs
+   */
+  addEnrichUserJobBulk(items: Array<{ userId: string }>): Promise<Job<ProfileJobPayload>[]> {
+    if (items.length === 0) return Promise.resolve([]);
+    const now = Date.now();
+    return this.queue.addBulk(
+      items.map((item, i) => ({
+        name: 'profile.enrich' as const,
+        data: { userId: item.userId },
+        opts: {
+          jobId: `profile.enrich.${item.userId}.${now}.${i}`,
+          attempts: 3,
+          backoff: { type: 'exponential' as const, delay: 1000 },
+          removeOnComplete: { age: 24 * 60 * 60 },
+          removeOnFail: { age: 7 * 24 * 60 * 60 },
+        },
+      }))
+    );
+  }
+
+  /**
    * Add a job to the profile HyDE queue.
    * @param name - Job type: `ensure_profile_hyde`
    * @param data - Payload for the job

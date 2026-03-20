@@ -3,7 +3,6 @@ export * from './users.types';
 export * from './indexes.types';
 export * from './intents.types';
 export * from './connections.types';
-export * from './integrations.types';
 export * from './files.types';
 export * from './links.types';
 export * from './common.types';

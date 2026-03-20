@@ -141,6 +141,20 @@
       "when": 1773780617911,
       "tag": "0019_sync_drop_user_contacts_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1773916279485,
+      "tag": "0020_drop_integrations_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1773916380000,
+      "tag": "0021_cleanup_ghost_orphan_rows",
+      "breakpoints": true
     }
   ]
 }

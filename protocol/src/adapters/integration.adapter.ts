@@ -1,6 +1,7 @@
 import { getComposioClient, getAuthConfigMap } from '../lib/composio/composio.client';
 import type {
   IntegrationAdapter,
+  IntegrationConnection,
   IntegrationSession,
   IntegrationSessionOptions,
   ToolActionResponse,
@@ -67,5 +68,53 @@ export class ComposioIntegrationAdapter implements IntegrationAdapter {
       arguments: args,
       dangerouslySkipVersionCheck: true,
     });
+  }
+
+  /** @inheritdoc */
+  async listConnections(userId: string): Promise<IntegrationConnection[]> {
+    const composio = getComposioClient();
+
+    type ConnectedAccount = {
+      id: string;
+      toolkit?: { slug?: string };
+      status?: string;
+      created_at?: string;
+    };
+    type ListResult = { items: ConnectedAccount[] };
+    type CA = { connectedAccounts: { list: (opts: { userIds: string[] }) => Promise<ListResult> } };
+
+    const result = await (composio as unknown as CA).connectedAccounts.list({ userIds: [userId] });
+
+    return result.items.map((item) => ({
+      id: item.id,
+      toolkit: item.toolkit?.slug ?? 'unknown',
+      status: item.status ?? 'unknown',
+      createdAt: item.created_at ?? new Date().toISOString(),
+    }));
+  }
+
+  /** @inheritdoc */
+  async getAuthUrl(userId: string, toolkit: string, callbackUrl?: string): Promise<{ redirectUrl: string }> {
+    const session = await this.createSession(userId, callbackUrl ? { manageConnections: { callbackUrl } } : undefined);
+    const result = await session.authorize(toolkit);
+    return { redirectUrl: result.redirectUrl };
+  }
+
+  /** @inheritdoc */
+  async disconnect(connectedAccountId: string): Promise<{ success: boolean }> {
+    const composio = getComposioClient();
+
+    type CA = { connectedAccounts: { delete: (id: string) => Promise<unknown> } };
+
+    try {
+      await (composio as unknown as CA).connectedAccounts.delete(connectedAccountId);
+      return { success: true };
+    } catch (err) {
+      logger.error('Failed to disconnect account', {
+        connectedAccountId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { success: false };
+    }
   }
 }

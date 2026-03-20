@@ -24,6 +24,14 @@ export interface ToolActionResponse {
   data?: Record<string, unknown>;
 }
 
+/** A connected integration account for a user. */
+export interface IntegrationConnection {
+  id: string;
+  toolkit: string;
+  status: string;
+  createdAt: string;
+}
+
 /**
  * Adapter for external integration platforms (OAuth sessions, tool execution).
  *
@@ -48,4 +56,26 @@ export interface IntegrationAdapter {
    * @returns The tool execution response
    */
   executeToolAction(slug: string, userId: string, args: Record<string, unknown>): Promise<ToolActionResponse>;
+
+  /**
+   * List all connected accounts for a user.
+   * @param userId - User to list connections for
+   * @returns Array of connected integration accounts
+   */
+  listConnections(userId: string): Promise<IntegrationConnection[]>;
+
+  /**
+   * Get an OAuth authorization URL to connect a toolkit.
+   * @param userId - User to authorize
+   * @param toolkit - Toolkit slug (e.g. 'gmail')
+   * @param callbackUrl - URL to redirect to after OAuth
+   * @returns The redirect URL for OAuth
+   */
+  getAuthUrl(userId: string, toolkit: string, callbackUrl?: string): Promise<{ redirectUrl: string }>;
+
+  /**
+   * Disconnect (delete) a connected account.
+   * @param connectedAccountId - The connected account ID to remove
+   */
+  disconnect(connectedAccountId: string): Promise<{ success: boolean }>;
 }

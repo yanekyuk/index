@@ -47,7 +47,6 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
       'links',
       'index_members',
       'indexes',
-      'integrations',
       'users',
     ];
 

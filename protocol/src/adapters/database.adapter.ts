@@ -1796,29 +1796,30 @@ export class ChatDatabaseAdapter {
       .innerJoin(users, eq(indexMembers.userId, users.id))
       .where(eq(indexMembers.indexId, indexId));
 
-    const result = await Promise.all(
-      members.map(async (m) => {
-        const [intentCountRow] = await db
-          .select({ count: count() })
+    const memberUserIds = members.map((m) => m.userId);
+    const intentCountRows = memberUserIds.length > 0
+      ? await db
+          .select({ userId: intents.userId, count: count() })
           .from(intentIndexes)
           .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-          .where(and(eq(intentIndexes.indexId, indexId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
-        return {
-          userId: m.userId,
-          name: m.name,
-          avatar: m.avatar,
-          intro: m.intro ?? null,
-          email: m.email,
-          isGhost: m.isGhost ?? false,
-          permissions: m.permissions ?? [],
-          memberPrompt: m.memberPrompt,
-          autoAssign: m.autoAssign,
-          joinedAt: m.joinedAt,
-          intentCount: Number(intentCountRow?.count ?? 0),
-        };
-      })
-    );
-    return result;
+          .where(and(eq(intentIndexes.indexId, indexId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
+          .groupBy(intents.userId)
+      : [];
+    const intentCountMap = new Map(intentCountRows.map((r) => [r.userId, Number(r.count)]));
+
+    return members.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+      avatar: m.avatar,
+      intro: m.intro ?? null,
+      email: m.email,
+      isGhost: m.isGhost ?? false,
+      permissions: m.permissions ?? [],
+      memberPrompt: m.memberPrompt,
+      autoAssign: m.autoAssign,
+      joinedAt: m.joinedAt,
+      intentCount: intentCountMap.get(m.userId) ?? 0,
+    }));
   }
 
   async getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]> {
@@ -2869,12 +2870,16 @@ export class ChatDatabaseAdapter {
 
     await db.insert(schema.users).values(usersToInsert).onConflictDoNothing();
 
-    // Re-query to find which users actually exist (created now vs already existed)
+    // Re-query to find which live users actually exist (created now vs already existed)
+    // Excludes soft-deleted users so they don't flow into membership upserts or enrichment
     const insertedEmails = new Set(usersToInsert.map(u => u.email));
     const existingAfterInsert = await db
       .select({ id: schema.users.id, email: schema.users.email })
       .from(schema.users)
-      .where(inArray(schema.users.email, [...insertedEmails]));
+      .where(and(
+        inArray(schema.users.email, [...insertedEmails]),
+        isNull(schema.users.deletedAt),
+      ));
 
     // Map back to our generated IDs vs actual IDs
     const emailToId = new Map(existingAfterInsert.map(u => [u.email, u.id]));
@@ -2961,6 +2966,44 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Bulk upsert contact memberships in the owner's personal index.
+   * Respects opt-outs: skips contacts that have a soft-deleted membership row.
+   * @param ownerId - The owner of the personal index
+   * @param contactUserIds - User IDs to add as contacts
+   * @returns Resolves when all non-opted-out memberships are upserted
+   */
+  async upsertContactMembershipBulk(ownerId: string, contactUserIds: string[]): Promise<void> {
+    if (contactUserIds.length === 0) return;
+    const personalIndexId = await ensurePersonalIndex(ownerId);
+
+    const softDeleted = new Set(
+      (await db
+        .select({ userId: schema.indexMembers.userId })
+        .from(schema.indexMembers)
+        .where(
+          and(
+            eq(schema.indexMembers.indexId, personalIndexId),
+            inArray(schema.indexMembers.userId, contactUserIds),
+            sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+            isNotNull(schema.indexMembers.deletedAt),
+          )
+        )
+      ).map(r => r.userId)
+    );
+
+    const idsToInsert = contactUserIds.filter(id => !softDeleted.has(id));
+    if (idsToInsert.length === 0) return;
+
+    const values = idsToInsert.map(userId => ({
+      indexId: personalIndexId,
+      userId,
+      permissions: ['contact'],
+      autoAssign: false,
+    }));
+    await db.insert(schema.indexMembers).values(values).onConflictDoNothing();
+  }
+
+  /**
    * Hard-delete a contact membership from the owner's personal index.
    * @param ownerId - The owner of the personal index
    * @param contactUserId - The contact user to remove
@@ -2993,6 +3036,36 @@ export class ChatDatabaseAdapter {
       .where(
         and(
           eq(schema.indexMembers.indexId, otherPersonalIndexId),
+          eq(schema.indexMembers.userId, ownerId),
+          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+          isNotNull(schema.indexMembers.deletedAt),
+        )
+      );
+  }
+
+  /**
+   * Bulk clear soft-deleted contact memberships (reverse opt-outs) for multiple users.
+   * Removes rows where `ownerId` appears as a soft-deleted contact in each user's personal index.
+   * @param ownerId - The user being added as a contact
+   * @param otherUserIds - The users whose personal indexes may have soft-deleted rows for ownerId
+   */
+  async clearReverseOptOutBulk(ownerId: string, otherUserIds: string[]): Promise<void> {
+    if (otherUserIds.length === 0) return;
+
+    // Batch lookup personal indexes for all other users
+    const personalIndexRows = await db
+      .select({ userId: schema.personalIndexes.userId, indexId: schema.personalIndexes.indexId })
+      .from(schema.personalIndexes)
+      .where(inArray(schema.personalIndexes.userId, otherUserIds));
+
+    const personalIndexIds = personalIndexRows.map(r => r.indexId);
+    if (personalIndexIds.length === 0) return;
+
+    // Single DELETE across all matching personal indexes
+    await db.delete(schema.indexMembers)
+      .where(
+        and(
+          inArray(schema.indexMembers.indexId, personalIndexIds),
           eq(schema.indexMembers.userId, ownerId),
           sql`'contact' = ANY(${schema.indexMembers.permissions})`,
           isNotNull(schema.indexMembers.deletedAt),

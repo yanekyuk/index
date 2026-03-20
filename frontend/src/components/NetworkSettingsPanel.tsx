@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, Camera } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera } from 'lucide-react';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,27 +9,17 @@ import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
-import { createIntegrationsService } from '@/services/integrations';
+import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
-import { DirectorySyncConfig } from '@/lib/types';
 import { Member } from '@/services/indexes';
-import { INTEGRATIONS, getIndexIntegrations } from '@/config/integrations';
-import DirectoryConfigModal from '@/components/modals/DirectoryConfigModal';
-import SlackChannelModal from '@/components/modals/SlackChannelModal';
 import { validateFiles } from '@/lib/file-validation';
+
+/** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
+const AVAILABLE_TOOLKITS = ['gmail'] as const;
 import IndexAvatar, { resolveIndexImageSrc } from '@/components/IndexAvatar';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
-
-interface IntegrationItem {
-  id: string | null;
-  type: string;
-  name: string;
-  connected: boolean;
-  connectedAt?: string | null;
-  lastSyncAt?: string | null;
-}
 
 interface NetworkSettingsPanelProps {
   index: Index;
@@ -77,15 +67,9 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const usersService = createUsersService(api);
 
-  const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
-  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
-  const [pendingIntegration, setPendingIntegration] = useState<string | null>(null);
-  const [directoryConfigs, setDirectoryConfigs] = useState<Record<string, DirectorySyncConfig>>({});
-  const [configModalOpen, setConfigModalOpen] = useState(false);
-  const [selectedIntegrationForConfig, setSelectedIntegrationForConfig] = useState<IntegrationItem | null>(null);
-  const [syncingDirectory, setSyncingDirectory] = useState<string | null>(null);
-  const [slackChannelModalOpen, setSlackChannelModalOpen] = useState(false);
-  const [selectedSlackIntegration, setSelectedSlackIntegration] = useState<IntegrationItem | null>(null);
+  const [connections, setConnections] = useState<ComposioConnection[]>([]);
+  const [connectionsLoaded, setConnectionsLoaded] = useState(false);
+  const [pendingToolkit, setPendingToolkit] = useState<string | null>(null);
 
   useEffect(() => {
     setTitle(currentIndex.title);
@@ -167,6 +151,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   }, [indexesService, index.id]);
 
   useEffect(() => {
+    setContactsPage(1);
     const timeoutId = setTimeout(() => {
       if (memberSearchQuery) searchUsers(memberSearchQuery);
       else { setSuggestedUsers([]); setSearchHasQueried(false); }
@@ -184,48 +169,22 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadIntegrations = useCallback(async () => {
+  const loadConnections = useCallback(async () => {
     try {
       const integrationsService = createIntegrationsService(api);
-      const response = await integrationsService.getIntegrations(index.id);
-      const indexIntegrations = getIndexIntegrations();
-      const filtered = response.integrations.filter(int =>
-        indexIntegrations.some(s => s.type === int.type.toLowerCase())
-      );
-      const integrationsMap = new Map(filtered.map(int => [int.type.toLowerCase(), int]));
-      const formattedIntegrations: IntegrationItem[] = indexIntegrations.map(({ type, name }) => {
-        const existing = integrationsMap.get(type);
-        return {
-          id: existing?.id || null,
-          type,
-          name,
-          connected: existing?.connected || false,
-          connectedAt: existing?.connectedAt,
-          lastSyncAt: existing?.lastSyncAt
-        };
-      });
-      setIntegrations(formattedIntegrations);
-      setIntegrationsLoaded(true);
-
-      const configs: Record<string, DirectorySyncConfig> = {};
-      for (const integration of formattedIntegrations) {
-        const integrationDef = INTEGRATIONS.find(i => i.type === integration.type);
-        if (integrationDef?.requiresDirectoryConfig && integration.id) {
-          try {
-            const configResponse = await integrationsService.getDirectoryConfig(integration.id);
-            if (configResponse.config) configs[integration.id] = configResponse.config;
-          } catch { /* Config not set yet */ }
-        }
-      }
-      setDirectoryConfigs(configs);
+      const response = await integrationsService.getConnections();
+      setConnections(response.connections);
     } catch (err) {
-      console.error('Failed to load integrations:', err);
+      console.error('Failed to load connections:', err);
+      setConnections([]);
+    } finally {
+      setConnectionsLoaded(true);
     }
-  }, [index.id, api]);
+  }, [api]);
 
   useEffect(() => {
-    if (activeTab === 'integrations') loadIntegrations();
-  }, [activeTab, loadIntegrations]);
+    if (activeTab === 'integrations') loadConnections();
+  }, [activeTab, loadConnections]);
 
   const handleSaveSettings = async () => {
     if (!title.trim()) {
@@ -331,6 +290,8 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   };
 
   const [isAddingContact, setIsAddingContact] = useState(false);
+  const CONTACTS_PAGE_SIZE = 10;
+  const [contactsPage, setContactsPage] = useState(1);
 
   const handleAddContact = async (email: string) => {
     if (isAddingContact) return;
@@ -351,58 +312,64 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
-  const handleToggleIntegration = async (integration: IntegrationItem) => {
+  const handleConnect = async (toolkit: string) => {
     const integrationsService = createIntegrationsService(api);
-    if (integration.connected) {
-      if (!integration.id) return;
-      setPendingIntegration(integration.type);
-      try {
-        await integrationsService.disconnectIntegration(integration.id);
-        success(`${integration.name} disconnected`);
-        await loadIntegrations();
-      } catch {
-        error(`Failed to disconnect ${integration.name}`);
-      } finally {
-        setPendingIntegration(null);
+    setPendingToolkit(toolkit);
+    try {
+      const response = await integrationsService.connect(toolkit);
+      const width = 600, height = 700;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      const popup = window.open(response.redirectUrl, 'oauth', `width=${width},height=${height},left=${left},top=${top}`);
+
+      if (!popup) {
+        error('Popup blocked. Please allow popups and try again.');
+        setPendingToolkit(null);
+        return;
       }
-    } else {
-      setPendingIntegration(integration.type);
-      try {
-        const response = await integrationsService.connectIntegration(integration.type, { indexId: index.id });
-        const width = 600, height = 700;
-        const left = window.screen.width / 2 - width / 2;
-        const top = window.screen.height / 2 - height / 2;
-        const popup = window.open(response.redirectUrl, 'oauth', `width=${width},height=${height},left=${left},top=${top}`);
-        const integrationId = response.integrationId;
-        const checkInterval = setInterval(async () => {
-          if (popup?.closed) {
-            clearInterval(checkInterval);
-            setPendingIntegration(null);
-            return;
-          }
-          try {
-            const status = await integrationsService.getIntegrationStatus(integrationId);
-            if (status.status === 'connected') {
-              clearInterval(checkInterval);
-              popup?.close();
-              success(`${integration.name} connected`);
-              await loadIntegrations();
-              if (integration.type === 'slack') {
-                setSelectedSlackIntegration({ ...integration, id: integrationId });
-                setSlackChannelModalOpen(true);
-              }
-              setPendingIntegration(null);
-            }
-          } catch { /* ignore */ }
-        }, 2000);
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          if (pendingIntegration === integration.type) setPendingIntegration(null);
-        }, 300000);
-      } catch {
-        error(`Failed to connect ${integration.name}`);
-        setPendingIntegration(null);
-      }
+
+      const onMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === 'oauth_callback' && event.data?.status === 'success') {
+          window.removeEventListener('message', onMessage);
+          popup?.close();
+          success(`${toolkit} connected`);
+          loadConnections();
+          setPendingToolkit(null);
+        } else if (event.data?.type === 'oauth_callback') {
+          window.removeEventListener('message', onMessage);
+          popup?.close();
+          error(`Failed to connect ${toolkit}`);
+          setPendingToolkit(null);
+        }
+      };
+      window.addEventListener('message', onMessage);
+
+      const checkClosed = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkClosed);
+          window.removeEventListener('message', onMessage);
+          loadConnections();
+          setPendingToolkit(null);
+        }
+      }, 1000);
+    } catch {
+      error(`Failed to connect ${toolkit}`);
+      setPendingToolkit(null);
+    }
+  };
+
+  const handleDisconnect = async (connection: ComposioConnection) => {
+    const integrationsService = createIntegrationsService(api);
+    setPendingToolkit(connection.toolkit);
+    try {
+      await integrationsService.disconnect(connection.id);
+      success(`${connection.toolkit} disconnected`);
+      await loadConnections();
+    } catch {
+      error(`Failed to disconnect ${connection.toolkit}`);
+    } finally {
+      setPendingToolkit(null);
     }
   };
 
@@ -411,10 +378,19 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt || hasImageChanged;
   const isDeleteConfirmationValid = deleteConfirmationText === currentIndex.title;
   const filteredSuggestions = suggestedUsers.filter(u => !members.find(m => m.id === u.id));
-  const filteredMembers = (memberSearchQuery.trim()
-    ? members.filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
-    : members
-  ).slice().sort((a, b) => (a.isGhost ? 1 : 0) - (b.isGhost ? 1 : 0));
+  const filteredMembers = useMemo(() =>
+    (memberSearchQuery.trim()
+      ? members.filter(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+      : members
+    ).slice().sort((a, b) => (a.isGhost ? 1 : 0) - (b.isGhost ? 1 : 0)),
+    [members, memberSearchQuery]
+  );
+  const totalContactsPages = Math.max(1, Math.ceil(filteredMembers.length / CONTACTS_PAGE_SIZE));
+  const safePage = Math.min(contactsPage, totalContactsPages);
+  const paginatedMembers = filteredMembers.slice(
+    (safePage - 1) * CONTACTS_PAGE_SIZE,
+    safePage * CONTACTS_PAGE_SIZE
+  );
   const noResults = searchHasQueried && filteredSuggestions.length === 0 && filteredMembers.length === 0;
 
   return (
@@ -447,21 +423,16 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
               onChange={handleImageChange}
               className="hidden"
             />
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold text-gray-900 font-ibm-plex-mono truncate leading-tight">
-                {title.trim() || "Network title"}
-              </div>
-              {displayImageUrl && (
-                <button
-                  type="button"
-                  onClick={handleRemoveImage}
-                  disabled={isSavingSettings}
-                  className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50 mt-1"
-                >
-                  Remove image
-                </button>
-              )}
-            </div>
+            {displayImageUrl && (
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                disabled={isSavingSettings}
+                className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+              >
+                Remove image
+              </button>
+            )}
           </div>
 
           {/* Title field at bottom */}
@@ -632,8 +603,9 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                 ))}
               </div>
             ) : (
+            <>
             <div className="space-y-0.5">
-              {filteredMembers.map((member) => (
+              {paginatedMembers.map((member) => (
                 <div key={member.id} className="flex items-center gap-3 px-3 py-2 rounded-sm hover:bg-gray-50 transition-colors group">
                   <button
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
@@ -664,6 +636,33 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                 </div>
               ))}
             </div>
+            {totalContactsPages > 1 && (
+              <div className="flex items-center justify-between pt-3 mt-1 border-t border-gray-100">
+                <span className="text-xs text-gray-400">
+                  {(safePage - 1) * CONTACTS_PAGE_SIZE + 1}–{Math.min(safePage * CONTACTS_PAGE_SIZE, filteredMembers.length)} of {filteredMembers.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setContactsPage(p => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="text-xs text-gray-500 min-w-[3rem] text-center">
+                    {safePage} / {totalContactsPages}
+                  </span>
+                  <button
+                    onClick={() => setContactsPage(p => Math.min(totalContactsPages, p + 1))}
+                    disabled={safePage === totalContactsPages}
+                    className="p-1 rounded-sm text-gray-400 hover:text-black disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
             )}
           </div>
 
@@ -672,62 +671,35 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
       {activeTab === 'integrations' && (
         <div className="space-y-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider font-ibm-plex-mono mb-6">Integrations</p>
-          <div className="space-y-2">
-            {integrations.map((it) => {
-              const integrationDef = INTEGRATIONS.find(i => i.type === it.type);
-              const requiresDirectoryConfig = integrationDef?.requiresDirectoryConfig;
-              const directoryConfig = it.id ? directoryConfigs[it.id] : null;
-              return (
-                <div key={it.type} className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm hover:border-gray-300 transition-colors">
 
-                  <img src={`/integrations/${it.type}.png`} width={24} height={24} alt={it.name} className="flex-shrink-0" />
+          <div className="space-y-2">
+            {AVAILABLE_TOOLKITS.map((toolkit) => {
+              const conn = connections.find((c) => c.toolkit === toolkit);
+              const isConnected = !!conn;
+              const isPending = pendingToolkit === toolkit;
+              return (
+                <div key={toolkit} className="flex items-center gap-3 p-3 border border-gray-200 rounded-sm hover:border-gray-300 transition-colors">
+                  <img src={`/integrations/${toolkit}.png`} width={24} height={24} alt={toolkit} className="flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-black">{it.name}</div>
+                    <div className="text-sm font-medium text-black capitalize">{toolkit}</div>
                     <div className="text-xs text-gray-500">
-                      {it.connected ? 'Connected' : 'Not connected'}
-                      {it.connected && requiresDirectoryConfig && directoryConfig && ` · ${directoryConfig.source.name}`}
+                      {!connectionsLoaded ? 'Loading...' : isConnected ? 'Connected' : 'Not connected'}
                     </div>
                   </div>
-                  {it.connected && requiresDirectoryConfig && it.id && (
-                    <div className="flex gap-1">
-                      <button onClick={() => { setSelectedIntegrationForConfig(it); setConfigModalOpen(true); }} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-sm">
-                        {directoryConfig ? 'Edit' : 'Configure'}
-                      </button>
-                      {directoryConfig && (
-                        <button
-                          onClick={async () => {
-                            if (!it.id) return;
-                            setSyncingDirectory(it.id);
-                            try {
-                              await createIntegrationsService(api).syncDirectory(it.id);
-                              success('Sync started');
-                              await loadIntegrations();
-                            } catch { error('Failed to sync'); }
-                            finally { setSyncingDirectory(null); }
-                          }}
-                          disabled={syncingDirectory === it.id}
-                          className="text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded-sm disabled:opacity-50"
-                        >
-                          {syncingDirectory === it.id ? 'Syncing...' : 'Sync'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {it.connected && it.type === 'slack' && it.id && (
-                    <button onClick={() => { setSelectedSlackIntegration(it); setSlackChannelModalOpen(true); }} className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded-sm">
-                      Channels
-                    </button>
-                  )}
-                  {!integrationsLoaded ? (
+                  {!connectionsLoaded ? (
                     <div className="w-11 h-6 bg-gray-100 rounded-full animate-pulse" />
                   ) : (
                     <button
-                      onClick={() => handleToggleIntegration(it)}
-                      disabled={pendingIntegration === it.type}
-                      className={`relative h-6 w-11 rounded-full transition-colors ${it.connected ? 'bg-[#006D4B]' : 'bg-gray-300'} ${pendingIntegration === it.type ? 'opacity-70' : ''}`}
+                      onClick={() => isConnected ? handleDisconnect(conn) : handleConnect(toolkit)}
+                      disabled={isPending}
+                      className={`relative h-6 w-11 rounded-full transition-colors ${isConnected ? 'bg-[#006D4B]' : 'bg-gray-300'} ${isPending ? 'opacity-70' : ''}`}
                     >
-                      <span className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform shadow-sm ${it.connected ? 'translate-x-5' : ''}`} />
+                      <span className={`absolute top-[1px] left-[1px] h-[22px] w-[22px] rounded-full bg-white transition-transform shadow-sm ${isConnected ? 'translate-x-5' : ''}`} />
+                      {isPending && (
+                        <span className="absolute inset-0 grid place-items-center">
+                          <span className="h-3 w-3 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                        </span>
+                      )}
                     </button>
                   )}
                 </div>
@@ -735,24 +707,6 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             })}
           </div>
         </div>
-      )}
-
-      {selectedIntegrationForConfig?.id && (
-        <DirectoryConfigModal
-          open={configModalOpen}
-          onOpenChange={setConfigModalOpen}
-          integration={{ id: selectedIntegrationForConfig.id, type: selectedIntegrationForConfig.type as 'notion' | 'airtable' | 'googledocs', name: selectedIntegrationForConfig.name }}
-          onSuccess={loadIntegrations}
-        />
-      )}
-
-      {selectedSlackIntegration?.id && (
-        <SlackChannelModal
-          open={slackChannelModalOpen}
-          onOpenChange={setSlackChannelModalOpen}
-          integration={{ id: selectedSlackIntegration.id, type: selectedSlackIntegration.type, name: selectedSlackIntegration.name }}
-          onSuccess={loadIntegrations}
-        />
       )}
 
       <AlertDialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>

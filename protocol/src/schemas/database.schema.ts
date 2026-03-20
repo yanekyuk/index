@@ -30,45 +30,6 @@ export interface NotificationPreferences {
   weeklyNewsletter: boolean;
 }
 
-export interface DirectorySyncConfig {
-  enabled: boolean;
-  source: {
-    id: string;
-    name: string;
-    subId?: string;
-    subName?: string;
-  };
-  columnMappings: {
-    email: string;
-    name?: string;
-    intro?: string;
-    location?: string;
-    twitter?: string;
-    linkedin?: string;
-    github?: string;
-    website?: string;
-  };
-  excludedColumns?: string[];
-  lastSyncAt?: string;
-  lastSyncStatus?: 'success' | 'error' | 'partial';
-  lastSyncError?: string;
-  memberCount?: number;
-}
-
-export interface SlackConfig {
-  selectedChannels?: string[];
-}
-
-export interface TwitterConfig {
-  username: string;
-}
-
-export interface IntegrationConfigType {
-  directorySync?: DirectorySyncConfig;
-  slack?: SlackConfig;
-  twitter?: TwitterConfig;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Users table (unified: Better Auth + domain fields)
 // Better Auth maps "image" -> "avatar" via auth config
@@ -336,22 +297,6 @@ export const intentIndexes = pgTable('intent_indexes', {
   indexIdIdx: index('intent_indexes_index_id_idx').on(t.indexId),
 }));
 
-export const userIntegrations = pgTable('integrations', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  integrationType: varchar('integration_type', { length: 50 }).notNull(),
-  connectedAccountId: varchar('connected_account_id', { length: 255 }),
-  status: varchar('status', { length: 20 }).notNull().default('pending'),
-  redirectUrl: text('redirect_url'),
-  connectedAt: timestamp('connected_at'),
-  lastSyncAt: timestamp('last_sync_at'),
-  indexId: text('index_id').references(() => indexes.id),
-  config: json('config').$type<IntegrationConfigType>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at')
-});
-
 export const chatMessageRoleEnum = pgEnum('chat_message_role', ['user', 'assistant', 'system']);
 
 export const chatSessions = pgTable('chat_sessions', {
@@ -462,11 +407,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
     references: [files.id],
     relationName: 'intent_file',
   }),
-  integration: one(userIntegrations, {
-    fields: [intents.sourceId],
-    references: [userIntegrations.id],
-    relationName: 'intent_integration',
-  }),
   link: one(indexLinks, {
     fields: [intents.sourceId],
     references: [indexLinks.id],
@@ -477,7 +417,6 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
 export const indexesRelations = relations(indexes, ({ many }) => ({
   members: many(indexMembers),
   intents: many(intentIndexes),
-  integrations: many(userIntegrations),
 }));
 
 export const indexMembersRelations = relations(indexMembers, ({ one }) => ({
@@ -509,17 +448,6 @@ export const intentIndexesRelations = relations(intentIndexes, ({ one }) => ({
   }),
   index: one(indexes, {
     fields: [intentIndexes.indexId],
-    references: [indexes.id],
-  }),
-}));
-
-export const userIntegrationsRelations = relations(userIntegrations, ({ one }) => ({
-  user: one(users, {
-    fields: [userIntegrations.userId],
-    references: [users.id],
-  }),
-  index: one(indexes, {
-    fields: [userIntegrations.indexId],
     references: [indexes.id],
   }),
 }));
@@ -589,8 +517,6 @@ export type IndexMember = typeof indexMembers.$inferSelect;
 export type NewIndexMember = typeof indexMembers.$inferInsert;
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
-export type UserIntegration = typeof userIntegrations.$inferSelect;
-export type NewUserIntegration = typeof userIntegrations.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
 export type NewUserNotificationSettings = typeof userNotificationSettings.$inferInsert;
 export type ChatSession = typeof chatSessions.$inferSelect;

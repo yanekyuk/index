@@ -61,7 +61,7 @@ export class UserController {
       return Response.json({ error: 'A valid email is required' }, { status: 400 });
     }
     logger.verbose('Add contact requested', { userId: user.id });
-    const result = await contactService.addContact(user.id, parsed.data.email, parsed.data.name);
+    const result = await contactService.addContact(user.id, parsed.data.email, { name: parsed.data.name });
     return Response.json({ result });
   }
 
