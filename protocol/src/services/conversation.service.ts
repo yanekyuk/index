@@ -1,4 +1,9 @@
+import { log } from '../lib/log';
+
+import { getRedisClient } from '../adapters/cache.adapter';
 import { conversationDatabaseAdapter, ConversationDatabaseAdapter } from '../adapters/database.adapter';
+
+const logger = log.service.from('ConversationService');
 
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
@@ -73,7 +78,8 @@ export class ConversationService {
     opts?: { taskId?: string; metadata?: Record<string, unknown> },
   ) {
     await this.verifyParticipant(senderId, conversationId);
-    return this.db.createMessage({
+
+    const msg = await this.db.createMessage({
       conversationId,
       senderId,
       role,
@@ -81,6 +87,28 @@ export class ConversationService {
       taskId: opts?.taskId,
       metadata: opts?.metadata,
     });
+
+    // Publish to all participants' SSE channels (best-effort)
+    try {
+      const participants = await this.db.getParticipants(conversationId);
+      const event = JSON.stringify({
+        type: 'message',
+        conversationId,
+        message: msg,
+      });
+      const pubClient = getRedisClient();
+      for (const p of participants) {
+        if (p.participantId === senderId) continue;
+        await pubClient.publish(`conversations:user:${p.participantId}`, event);
+      }
+    } catch (err) {
+      logger.error('[sendMessage] Failed to publish SSE event', {
+        conversationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return msg;
   }
 
   /**

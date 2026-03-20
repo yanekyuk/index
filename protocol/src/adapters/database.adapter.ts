@@ -11,7 +11,6 @@ import type { User, NotificationPreferences, OnboardingState } from '../schemas/
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
 import { IndexMembershipEvents } from '../events/index_membership.event';
-import { getRedisClient } from './cache.adapter';
 
 const logger = log.lib.from('database.adapter');
 
@@ -5261,33 +5260,6 @@ export class ConversationDatabaseAdapter {
         eq(schema.conversationParticipants.participantId, data.senderId),
       ));
 
-    // Publish to all participants' SSE channels via Redis pub/sub
-    try {
-      const participants = await db
-        .select({ participantId: schema.conversationParticipants.participantId })
-        .from(schema.conversationParticipants)
-        .where(eq(schema.conversationParticipants.conversationId, data.conversationId));
-
-      const event = JSON.stringify({
-        type: 'message',
-        conversationId: data.conversationId,
-        message: msg,
-      });
-
-      const pubClient = getRedisClient();
-      for (const p of participants) {
-        // Skip the sender — they already get the message from the POST response
-        if (p.participantId === data.senderId) continue;
-        await pubClient.publish(`conversations:user:${p.participantId}`, event);
-      }
-    } catch (err) {
-      // Non-fatal: message is persisted, real-time delivery is best-effort
-      logger.error('[createMessage] Failed to publish SSE event', {
-        conversationId: data.conversationId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-
     return msg;
   }
 
@@ -5372,6 +5344,21 @@ export class ConversationDatabaseAdapter {
    * @param userId - User ID to check
    * @returns True if the user is a participant
    */
+  /**
+   * Retrieves participant info for a conversation.
+   * @param conversationId - Conversation ID
+   * @returns Array of participant records
+   */
+  async getParticipants(conversationId: string) {
+    return db
+      .select({
+        participantId: schema.conversationParticipants.participantId,
+        participantType: schema.conversationParticipants.participantType,
+      })
+      .from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.conversationId, conversationId));
+  }
+
   async isParticipant(conversationId: string, userId: string): Promise<boolean> {
     const [row] = await db
       .select({ participantId: schema.conversationParticipants.participantId })
