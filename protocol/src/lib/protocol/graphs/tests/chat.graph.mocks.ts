@@ -66,14 +66,19 @@ const defaultOwnedIndex = (): OwnedIndex => ({
   id: "",
   title: "",
   prompt: null,
+  imageUrl: null,
   permissions: {
     joinPolicy: "anyone",
     allowGuestVibeCheck: false,
     invitationLink: null,
   },
+  isPersonal: false,
   createdAt: new Date(),
+  updatedAt: new Date(),
   memberCount: 0,
   intentCount: 0,
+  user: { id: "", name: "", avatar: null },
+  _count: { members: 0 },
 });
 
 /** Actor shape for opportunity mocks (role determines visibility). */

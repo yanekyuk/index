@@ -1670,11 +1670,18 @@ export class ChatDatabaseAdapter {
         indexId: indexMembers.indexId,
         title: indexes.title,
         prompt: indexes.prompt,
+        imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
+        isPersonal: indexes.isPersonal,
         createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        ownerId: indexMembers.userId,
+        userName: users.name,
+        userAvatar: users.avatar,
       })
       .from(indexMembers)
       .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .innerJoin(users, eq(indexMembers.userId, users.id))
       .where(
         and(
           eq(indexMembers.userId, userId),
@@ -1690,18 +1697,24 @@ export class ChatDatabaseAdapter {
           db.select({ count: count() }).from(intentIndexes).where(eq(intentIndexes.indexId, row.indexId)),
         ]);
         const perms = row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean } | null;
+        const memberCount = Number(memberCountResult[0]?.count ?? 0);
         return {
           id: row.indexId,
           title: row.title,
           prompt: row.prompt,
+          imageUrl: row.imageUrl,
           permissions: {
             joinPolicy: (perms?.joinPolicy ?? 'invite_only') as 'anyone' | 'invite_only',
             allowGuestVibeCheck: perms?.allowGuestVibeCheck ?? false,
             invitationLink: perms?.invitationLink ?? null,
           },
+          isPersonal: row.isPersonal,
           createdAt: row.createdAt,
-          memberCount: Number(memberCountResult[0]?.count ?? 0),
+          updatedAt: row.updatedAt,
+          memberCount,
           intentCount: Number(intentCountResult[0]?.count ?? 0),
+          user: { id: row.ownerId, name: row.userName, avatar: row.userAvatar },
+          _count: { members: memberCount },
         };
       })
     );
@@ -2016,6 +2029,7 @@ export class ChatDatabaseAdapter {
         prompt: indexes.prompt,
         imageUrl: indexes.imageUrl,
         permissions: indexes.permissions,
+        isPersonal: indexes.isPersonal,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         ownerId: indexMembers.userId,
@@ -2053,6 +2067,7 @@ export class ChatDatabaseAdapter {
         allowGuestVibeCheck: perms.allowGuestVibeCheck ?? false,
         invitationLink: perms.invitationLink ?? null,
       },
+      isPersonal: updatedRow.isPersonal,
       createdAt: updatedRow.createdAt,
       updatedAt: updatedRow.updatedAt,
       memberCount,

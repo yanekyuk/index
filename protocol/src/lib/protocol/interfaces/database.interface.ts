@@ -210,18 +210,28 @@ export interface OwnedIndex {
   title: string;
   /** Index purpose/scope prompt */
   prompt: string | null;
+  /** Cover image URL */
+  imageUrl: string | null;
   /** Permission settings */
   permissions: {
     joinPolicy: 'anyone' | 'invite_only';
     allowGuestVibeCheck: boolean;
     invitationLink: { code: string } | null;
   };
+  /** Whether this is a personal index */
+  isPersonal: boolean;
   /** When the index was created */
   createdAt: Date;
+  /** When the index was last updated */
+  updatedAt: Date;
   /** Member count */
   memberCount: number;
   /** Total intents indexed */
   intentCount: number;
+  /** Owner summary */
+  user: { id: string; name: string; avatar: string | null };
+  /** Aggregate counts for frontend compatibility */
+  _count: { members: number };
 }
 
 /**
