@@ -106,6 +106,9 @@ export class ConversationController {
       return Response.json({ messages });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
       logger.error('[getMessages] Error', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
@@ -145,6 +148,9 @@ export class ConversationController {
       return Response.json({ message: msg }, { status: 201 });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
       logger.error('[sendMessage] Error', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
@@ -213,6 +219,9 @@ export class ConversationController {
       return Response.json({ success: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
       logger.error('[updateMetadata] Error', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
@@ -239,6 +248,9 @@ export class ConversationController {
       return Response.json({ success: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
       logger.error('[hideConversation] Error', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
@@ -261,10 +273,14 @@ export class ConversationController {
     }
 
     try {
+      await this.conversationService.verifyParticipant(user.id, conversationId);
       const tasks = await this.taskService.getTasksByConversation(conversationId);
       return Response.json({ tasks });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith('Forbidden')) {
+        return Response.json({ error: message }, { status: 403 });
+      }
       logger.error('[listTasks] Error', { userId: user.id, conversationId, error: message });
       return Response.json({ error: message }, { status: 500 });
     }
@@ -288,6 +304,7 @@ export class ConversationController {
     }
 
     try {
+      await this.conversationService.verifyParticipant(user.id, conversationId);
       const task = await this.taskService.getTask(taskId, conversationId);
       if (!task) {
         return Response.json({ error: 'Task not found' }, { status: 404 });
@@ -321,6 +338,7 @@ export class ConversationController {
     }
 
     try {
+      await this.conversationService.verifyParticipant(user.id, conversationId);
       const artifacts = await this.taskService.getArtifacts(taskId, conversationId);
       return Response.json({ artifacts });
     } catch (err: unknown) {
