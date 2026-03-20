@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Expire stale opportunities: transitions opportunities whose expiresAt <= now
- * from any non-expired status to 'expired'.
+ * from non-terminal statuses to 'expired' (skips accepted/rejected/expired).
  *
  * Usage: bun run maintenance:expire-opportunities
  */
