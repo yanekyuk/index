@@ -58,7 +58,7 @@ export default function IndexSelectorModal({
                       {index.title}
                     </span>
                     <div className="flex items-center gap-1">
-                      {user?.id === index.user.id && (
+                      {user?.id === index.user?.id && (
                         <button
                           onClick={() => {
                             onOpenChange(false);

@@ -2042,6 +2042,7 @@ export class ChatDatabaseAdapter {
       db.select({ count: count() }).from(intentIndexes).where(eq(intentIndexes.indexId, indexId)),
     ]);
     const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
+    const memberCount = Number(memberCountResult[0]?.count ?? 0);
     return {
       id: updatedRow.id,
       title: updatedRow.title,
@@ -2053,8 +2054,11 @@ export class ChatDatabaseAdapter {
         invitationLink: perms.invitationLink ?? null,
       },
       createdAt: updatedRow.createdAt,
-      memberCount: Number(memberCountResult[0]?.count ?? 0),
+      updatedAt: updatedRow.updatedAt,
+      memberCount,
       intentCount: Number(intentCountResult[0]?.count ?? 0),
+      user: { id: updatedRow.ownerId, name: updatedRow.userName, avatar: updatedRow.userAvatar },
+      _count: { members: memberCount },
     };
   }
 

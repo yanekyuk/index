@@ -130,7 +130,7 @@ export default function NetworksPage() {
                 ) : allNetworks.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {allNetworks.map((network) => {
-                      const isOwner = user?.id === network.user.id;
+                      const isOwner = user?.id === network.user?.id;
                       return (
                         <button
                           key={network.id}
