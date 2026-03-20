@@ -132,7 +132,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       });
       return null;
     }
-  }, []);
+  }, [user, apiClient]);
 
   const hideConversation = useCallback(async (conversationId: string) => {
     try {
