@@ -113,8 +113,9 @@ export function getFileCategoryBadge(filename: string, mimetype?: string): strin
 // ----- Browser-Native Validation Functions -----
 
 export function validateFileType(file: File, uploadType: UploadType = 'general'): ValidationResult {
-  // Validate required inputs
-  if (!file.name || !file.type) {
+  // Validate required inputs — file.name is always required, but file.type can
+  // be empty for extensions the browser doesn't recognise (e.g. .md, .csv, .tsv).
+  if (!file.name) {
     return {
       isValid: false,
       error: ValidationError.INVALID_FILE,
@@ -124,7 +125,7 @@ export function validateFileType(file: File, uploadType: UploadType = 'general')
 
   // Extract extension
   const ext = getFileExtension(file.name).toLowerCase();
-  const mimeType = file.type.toLowerCase();
+  const mimeType = (file.type || '').toLowerCase();
 
   if (uploadType === 'avatar') {
     const allowedMimeTypes = SUPPORTED_FILE_TYPES.IMAGES[ext as keyof typeof SUPPORTED_FILE_TYPES.IMAGES];
@@ -137,16 +138,21 @@ export function validateFileType(file: File, uploadType: UploadType = 'general')
       };
     }
   } else {
-    // For general files, require BOTH extension and MIME type to be valid for security
     const allowedMimeTypes = GENERAL_ALLOWED_TYPES[ext as keyof typeof GENERAL_ALLOWED_TYPES];
     const hasValidExtension = ext && allowedMimeTypes;
-    const hasValidMimeType = allowedMimeTypes && (allowedMimeTypes as readonly string[]).includes(mimeType);
-    
+    // Accept when extension is valid AND MIME type either matches our whitelist,
+    // is the generic fallback, or is empty. Browsers often report
+    // application/octet-stream or empty string for .md, .csv, .tsv, etc.
+    const isGenericMime = !mimeType || mimeType === 'application/octet-stream';
+    const hasValidMimeType = allowedMimeTypes && (
+      (allowedMimeTypes as readonly string[]).includes(mimeType) || isGenericMime
+    );
+
     if (!hasValidExtension || !hasValidMimeType) {
       return {
         isValid: false,
         error: ValidationError.UNSUPPORTED_FILE_TYPE,
-        message: `File "${file.name}" (${file.type}) is not supported. Both extension and MIME type must be valid. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
+        message: `File "${file.name}" (${file.type || 'unknown'}) is not supported. Allowed: CSV, DOC, DOCX, EPUB, HTML, JSON, MD, PDF, PPT, PPTX, RTF, TSV, TXT, XLS, XLSX, XML`
       };
     }
   }
