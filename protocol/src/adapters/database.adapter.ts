@@ -850,15 +850,31 @@ export class ChatDatabaseAdapter {
 
     if (rows.length === 0) return [];
 
-    // Batch-fetch metadata for all conversations
+    // Filter to only chat sessions (conversations that include the system agent)
     const convIds = rows.map((r) => r.id);
+    const agentParticipants = await db
+      .select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          inArray(schema.conversationParticipants.conversationId, convIds),
+          eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+        ),
+      );
+    const chatConvIds = new Set(agentParticipants.map((p) => p.conversationId));
+    const chatRows = rows.filter((r) => chatConvIds.has(r.id));
+
+    if (chatRows.length === 0) return [];
+
+    // Batch-fetch metadata for chat conversations
+    const chatConvIdList = chatRows.map((r) => r.id);
     const metaRows = await db
       .select()
       .from(schema.conversationMetadata)
-      .where(inArray(schema.conversationMetadata.conversationId, convIds));
+      .where(inArray(schema.conversationMetadata.conversationId, chatConvIdList));
     const metaMap = new Map(metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]));
 
-    return rows.map((conv) => this._toChatSession(conv, userId, metaMap.get(conv.id) ?? null));
+    return chatRows.map((conv) => this._toChatSession(conv, userId, metaMap.get(conv.id) ?? null));
   }
 
   /**
@@ -5090,7 +5106,7 @@ export class ConversationDatabaseAdapter {
       .select()
       .from(schema.conversations)
       .where(inArray(schema.conversations.id, ids))
-      .orderBy(desc(schema.conversations.lastMessageAt));
+      .orderBy(sql`${schema.conversations.lastMessageAt} DESC NULLS LAST`);
 
     const allParticipants = await db
       .select()

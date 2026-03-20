@@ -59,16 +59,24 @@ export function getRedisClient(): Redis {
  */
 export function createRedisClient(): Redis {
   const redisUrl = process.env.REDIS_URL;
+  let client: Redis;
   if (redisUrl) {
-    return new Redis(redisUrl, { maxRetriesPerRequest: 3 });
+    client = new Redis(redisUrl, { maxRetriesPerRequest: 3 });
+  } else {
+    client = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: parseInt(process.env.REDIS_DB || '0'),
+      maxRetriesPerRequest: 3,
+    });
   }
-  return new Redis({
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    password: process.env.REDIS_PASSWORD,
-    db: parseInt(process.env.REDIS_DB || '0'),
-    maxRetriesPerRequest: 3,
+
+  client.on('error', (err: Error) => {
+    logger.error('Redis client error', { error: err.message });
   });
+
+  return client;
 }
 
 /**

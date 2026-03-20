@@ -37,6 +37,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
@@ -177,6 +178,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       eventSourceRef.current = es;
 
       es.onopen = () => {
+        retryCountRef.current = 0;
         setIsConnected(true);
       };
 
@@ -229,17 +231,21 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         setIsConnected(false);
         es.close();
         eventSourceRef.current = null;
-        // Retry after 5 seconds
-        retryTimeoutRef.current = setTimeout(() => {
-          connectSSE();
-        }, 5000);
+        retryCountRef.current += 1;
+        if (retryCountRef.current <= 10) {
+          const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);
+          retryTimeoutRef.current = setTimeout(() => { connectSSE(); }, delay);
+        } else {
+          console.error('[ConversationContext] SSE max retries reached, giving up');
+        }
       };
     } catch (err) {
       console.error('[ConversationContext] SSE connection failed:', err);
-      // Retry after 5 seconds
-      retryTimeoutRef.current = setTimeout(() => {
-        connectSSE();
-      }, 5000);
+      retryCountRef.current += 1;
+      if (retryCountRef.current <= 10) {
+        const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);
+        retryTimeoutRef.current = setTimeout(() => { connectSSE(); }, delay);
+      }
     }
   }, []);
 

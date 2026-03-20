@@ -67,7 +67,7 @@ export default function ChatSidebar() {
       lastMessage: lastText,
       sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
     };
-  });
+  }).sort((a, b) => b.sortTimestamp - a.sortTimestamp);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -134,7 +134,7 @@ export default function ChatSidebar() {
                         e.stopPropagation();
                         setChatMenuOpen(null);
                         await hideConversation(chat.groupId);
-                        if (pathname?.includes(chat.peerUserId ?? '')) {
+                        if (chat.peerUserId && pathname?.includes(chat.peerUserId)) {
                           navigate('/');
                         }
                       }}
