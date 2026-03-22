@@ -265,4 +265,53 @@ describe('AuthDatabaseAdapter', () => {
       expect(member).toBeDefined();
     });
   });
+
+  describe('claimGhostUser', () => {
+    it('should flip isGhost to false for a ghost user', async () => {
+      const ghostId = crypto.randomUUID();
+      testIds.push(ghostId);
+      const email = `claim-ghost-${ghostId}@test.com`;
+
+      await db.insert(schema.users).values({
+        id: ghostId,
+        name: 'Ghost To Claim',
+        email,
+        isGhost: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      await adapter.claimGhostUser(ghostId);
+
+      const [user] = await db.select().from(schema.users).where(eq(schema.users.id, ghostId));
+      expect(user.isGhost).toBe(false);
+      expect(user.name).toBe('Ghost To Claim');
+    });
+
+    it('should be a no-op for a non-ghost user', async () => {
+      const userId = crypto.randomUUID();
+      testIds.push(userId);
+      const email = `real-claim-${userId}@test.com`;
+
+      await db.insert(schema.users).values({
+        id: userId,
+        name: 'Real User',
+        email,
+        isGhost: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const beforeUpdate = new Date();
+      await adapter.claimGhostUser(userId);
+
+      const [user] = await db.select().from(schema.users).where(eq(schema.users.id, userId));
+      expect(user.isGhost).toBe(false);
+      expect(user.updatedAt <= beforeUpdate).toBe(true);
+    });
+
+    it('should be a no-op for a non-existent user', async () => {
+      await adapter.claimGhostUser(crypto.randomUUID());
+    });
+  });
 });
