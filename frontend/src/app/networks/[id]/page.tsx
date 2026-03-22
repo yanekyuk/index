@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -13,19 +13,50 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { Index } from '@/lib/types';
 
-export default function NetworkDetailPage() {
+export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
+
+export const URL_TO_TAB: Record<string, TabValue> = {
+  settings: 'settings',
+  contacts: 'access',
+  integrations: 'integrations',
+};
+
+export const TAB_TO_URL: Record<TabValue, string | undefined> = {
+  overview: undefined,
+  settings: 'settings',
+  access: 'contacts',
+  integrations: 'integrations',
+};
+
+export interface NetworkDetailProps {
+  networkIdOverride?: string;
+  basePath?: string;
+}
+
+export default function NetworkDetailPage({ networkIdOverride, basePath }: NetworkDetailProps = {}) {
   const params = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { indexes } = useIndexesState();
   const indexesService = useIndexes();
 
-  const networkId = params.id as string;
+  const networkId = networkIdOverride || (params.id as string);
+  const tabParam = params.tab as string | undefined;
+  const resolvedBasePath = basePath || `/networks/${networkId}`;
+  const activeTab = useMemo<TabValue>(() => {
+    if (tabParam && URL_TO_TAB[tabParam]) return URL_TO_TAB[tabParam];
+    return 'overview';
+  }, [tabParam]);
+
+  const handleTabChange = useCallback((value: string) => {
+    const segment = TAB_TO_URL[value as TabValue];
+    navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: true });
+  }, [navigate, resolvedBasePath]);
+
   const [network, setNetwork] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'access' | 'integrations'>('overview');
   const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
 
@@ -168,7 +199,7 @@ export default function NetworkDetailPage() {
               </div>
 
               {isOwner ? (
-                <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+                <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
                   <Tabs.List className="flex border-b border-gray-200 mb-8">
                     {(['overview', 'settings', 'access', ...(network?.isPersonal ? ['integrations'] : [])] as const).map((tab) => (
                       <Tabs.Trigger

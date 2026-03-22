@@ -134,7 +134,7 @@ export default function NetworksPage() {
                       return (
                         <button
                           key={network.id}
-                          onClick={() => navigate(`/networks/${network.id}`)}
+                          onClick={() => navigate(network.isPersonal ? '/mynetwork' : `/networks/${network.id}`)}
                           className={`w-full flex items-center gap-3 py-3 -mx-2 px-2 rounded-sm transition-colors text-left group ${
                             network.isPersonal ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50'
                           }`}
