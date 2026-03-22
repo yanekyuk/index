@@ -183,6 +183,13 @@
       "when": 1774011557244,
       "tag": "0025_add_conversations_dm_pair",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1774873200000,
+      "tag": "0026_drop_user_wallet_xmtp_columns",
+      "breakpoints": true
     }
   ]
 }
