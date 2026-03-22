@@ -388,11 +388,11 @@ const profileEnrichmentSchema = {
             websites: { type: "array", items: { type: "string" }, description: "Only websites OWNED/CONTROLLED by this person (personal site, portfolio, blog they run). Exclude any third-party sites that merely mention them (news, company pages, aggregators, profiles on other platforms)." },
           },
         },
-      },
         confidentMatch: {
           type: "boolean",
           description: "true when public sources clearly identify this person and the profile data is reliable; false when the person could not be found or data is too thin/ambiguous.",
         },
+      },
       required: ["identity", "narrative", "attributes", "socials", "confidentMatch"],
     },
   },
