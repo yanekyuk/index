@@ -162,7 +162,7 @@ export class NegotiationGraphFactory {
       const scores = history.map((t) => t.assessment.fitScore);
       const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-      let agreedRoles: Array<{ userId: string; role: string }> = [];
+      let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
       if (consensus && history.length >= 2) {
         const lastTwo = history.slice(-2);
         agreedRoles = [
@@ -269,4 +269,24 @@ export async function negotiateCandidates(
   );
 
   return results.filter((r): r is NegotiationResult => r !== null);
+}
+
+/**
+ * Creates a default negotiation graph with real services and agents.
+ * Used as the default parameter for OpportunityGraphFactory.
+ */
+export function createDefaultNegotiationGraph() {
+  // Lazy imports to avoid circular dependencies
+  const { ConversationService } = require("../../../services/conversation.service");
+  const { TaskService } = require("../../../services/task.service");
+  const { NegotiationProposer } = require("../agents/negotiation.proposer");
+  const { NegotiationResponder } = require("../agents/negotiation.responder");
+
+  const factory = new NegotiationGraphFactory(
+    new ConversationService(),
+    new TaskService(),
+    new NegotiationProposer(),
+    new NegotiationResponder(),
+  );
+  return factory.createGraph();
 }

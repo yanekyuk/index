@@ -64,7 +64,7 @@ import type {
   ActiveIntent,
 } from '../interfaces/database.interface';
 import { persistOpportunities } from '../support/opportunity.persist';
-import { negotiateCandidates } from "./negotiation.graph";
+import { negotiateCandidates, createDefaultNegotiationGraph } from "./negotiation.graph";
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 import { requestContext } from "../../request-context";
@@ -147,7 +147,7 @@ export class OpportunityGraphFactory {
     },
     private optionalEvaluator?: OpportunityEvaluatorLike,
     private queueNotification?: QueueOpportunityNotificationFn,
-    private negotiationGraph?: { invoke: (input: any) => Promise<{ outcome: any }> },
+    private negotiationGraph: { invoke: (input: any) => Promise<{ outcome: any }> } = createDefaultNegotiationGraph(),
   ) {}
 
   public createGraph() {
@@ -1545,10 +1545,6 @@ export class OpportunityGraphFactory {
      * Filters out candidates that fail to reach consensus; updates scores for those that pass.
      */
     const negotiateNode = async (state: typeof OpportunityGraphState.State) => {
-      if (!this.negotiationGraph) {
-        return {};
-      }
-
       const traceEmitter = requestContext.getStore()?.traceEmitter;
       const graphStart = Date.now();
       traceEmitter?.({ type: "graph_start", name: "negotiation" });
@@ -2669,7 +2665,6 @@ export class OpportunityGraphFactory {
       .addNode('negotiate', negotiateNode)
       .addConditionalEdges('evaluation', (state) => {
         if (state.operationMode === 'continue_discovery') return 'ranking';
-        if (!this.negotiationGraph) return 'ranking';
         return 'negotiate';
       }, {
         negotiate: 'negotiate',
