@@ -25,11 +25,11 @@ const systemPrompt = `
 const responseFormat = z.object({
   identity: z.object({
     name: z.string().describe("The user's full name"),
-    bio: z.string().describe("Professional summary (2-3 sentences) only; no email, phone, or contact identifiers"),
+    bio: z.string().describe("Professional summary (2-3 sentences) only; no email, phone, physical address, government ID, or other contact identifiers"),
     location: z.string().describe("Inferred location (City, Country) or 'Remote'"),
   }),
   narrative: z.object({
-    context: z.string().describe("Rich narrative without email, phone, or other contact identifiers"),
+    context: z.string().describe("Rich narrative without email, phone, physical address, government ID, or other contact identifiers"),
   }),
   attributes: z.object({
     interests: z.array(z.string()).describe("Inferred or explicit interests"),

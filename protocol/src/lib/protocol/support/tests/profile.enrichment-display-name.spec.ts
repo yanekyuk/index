@@ -1,3 +1,6 @@
+import { config } from "dotenv";
+config({ path: ".env.development", override: true });
+
 import { describe, it, expect } from "bun:test";
 import { shouldEnrichGhostDisplayNameFromParallel } from "../profile.enrichment-display-name";
 

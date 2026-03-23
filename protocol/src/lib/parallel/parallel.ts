@@ -366,7 +366,7 @@ const profileEnrichmentSchema = {
             context: {
               type: "string",
               description:
-                "Rich narrative: background and current focus in natural language. Do not include email addresses, phone numbers, or other contact identifiers.",
+                "Rich narrative: background and current focus in natural language. Do not include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers.",
             },
           },
           required: ["context"],

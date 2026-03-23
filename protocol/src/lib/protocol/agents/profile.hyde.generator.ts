@@ -39,15 +39,15 @@ const systemPrompt = `
     Do NOT invent a name for the candidate. Refer to them as "The candidate", "They", or "This individual".
     Do NOT include locations.
 
-    PRIVACY: Never include email addresses, phone numbers, or other contact identifiers in bio or narrative — even if they appear in the source profile.
+    PRIVACY: Never include email addresses, phone numbers, physical addresses, government IDs, or other contact identifiers in bio or narrative — even if they appear in the source profile.
 `;
 
 const responseFormat = z.object({
   identity: z.object({
-    bio: z.string().describe("Professional summary only; no email, phone, or contact identifiers"),
+    bio: z.string().describe("Professional summary only; no email, phone, physical address, government ID, or other contact identifiers"),
   }),
   narrative: z.object({
-    context: z.string().describe("Rich narrative without email, phone, or contact identifiers"),
+    context: z.string().describe("Rich narrative without email, phone, physical address, government ID, or other contact identifiers"),
   }),
   attributes: z.object({
     interests: z.array(z.string()).describe("Inferred or explicit interests"),
