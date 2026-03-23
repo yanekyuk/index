@@ -20,9 +20,9 @@ The current `smartest` framework introduces unnecessary abstractions (`defineSce
 Two components:
 
 1. **Test Harness** — a `createTestHarness()` factory that wires real adapters for testing
-2. **Custom Matchers** — `toMatchSchema()` for deterministic checks, `toLLMEvaluate()` for semantic checks
+2. **Assertion Functions** — `assertMatchesSchema()` for deterministic checks, `assertLLMEvaluate()` for semantic checks
 
-No framework, no scenario DSL, no fixture system. Just bun tests with infra injection and two matchers.
+No framework, no scenario DSL, no fixture system. Just bun tests with infra injection and two assertion functions.
 
 ### Test Harness
 
@@ -32,7 +32,7 @@ No framework, no scenario DSL, no fixture system. Just bun tests with infra inje
 import { createTestHarness } from "../lib/test-harness";
 
 const harness = createTestHarness();
-const { db, queue, embedder, graphs, agents } = harness;
+const { db, queue, embedder, graphs } = harness;
 
 beforeAll(async () => {
   await harness.setup();     // connects, runs migrations on test DB
@@ -51,33 +51,89 @@ afterEach(async () => {
 
 - Uses real database, embedder, queue — not mocks
 - Database URL from `DATABASE_TEST_URL` env var (or derived from `DATABASE_URL` with `_test` suffix)
-- `setup()` connects and ensures schema is up to date
-- `reset()` truncates all tables between tests for isolation
+- `setup()` creates a dedicated Drizzle client pointed at `DATABASE_TEST_URL` and ensures schema is up to date
+- `reset()` truncates all tables using `TRUNCATE ... CASCADE` (handles FK ordering automatically)
 - `teardown()` closes connections
-- Graphs and agents are constructed with injected adapters, same wiring as production
 
-### Custom Matchers
+### Harness Wiring Details
 
-#### `toMatchSchema(zodSchema)`
+The harness constructs adapters and graphs explicitly — same wiring as production, different database:
+
+```typescript
+function createTestHarness() {
+  let sql: postgres.Sql;
+  let testDb: DrizzleClient;
+  let embedderAdapter: EmbedderAdapter;
+  let cacheAdapter: CacheAdapter;
+  let queueAdapter: QueueAdapter;
+  let compiledGraphs: Record<string, CompiledStateGraph>;
+
+  return {
+    get db() { return testDb; },
+    get embedder() { return embedderAdapter; },
+    get queue() { return queueAdapter; },
+    get graphs() { return compiledGraphs; },
+
+    async setup() {
+      // 1. Create dedicated postgres connection to test DB
+      const testUrl = process.env.DATABASE_TEST_URL
+        ?? process.env.DATABASE_URL + "_test";
+      sql = postgres(testUrl);
+      testDb = drizzle(sql, { schema });
+
+      // 2. Create adapters with test DB
+      embedderAdapter = new EmbedderAdapter(testDb);
+      cacheAdapter = new CacheAdapter();
+      queueAdapter = new QueueAdapter();
+
+      // 3. Construct graph factories with injected adapters
+      const opportunityGraph = new OpportunityGraph(testDb, embedderAdapter);
+      compiledGraphs = {
+        opportunity: opportunityGraph.compile(),
+        // ... other graphs as needed
+      };
+    },
+
+    async reset() {
+      // TRUNCATE CASCADE handles FK ordering
+      await testDb.execute(
+        sql`TRUNCATE TABLE users, intents, opportunities, intent_indexes, index_members CASCADE`
+      );
+    },
+
+    async teardown() {
+      await sql.end();
+    }
+  };
+}
+```
+
+Graphs receive adapters via constructor injection (same as production). No module-level singletons are used — the harness creates its own instances.
+
+### Assertion Functions
+
+Standalone async functions, not custom `expect` matchers. This avoids bun `expect.extend()` compatibility issues and keeps the API explicit.
+
+#### `assertMatchesSchema(value, zodSchema)`
 
 Deterministic Zod validation on output shape.
 
 ```typescript
-expect(result).toMatchSchema(z.object({
+assertMatchesSchema(result, z.object({
   status: z.enum(["too_broad", "valid", "unclear"]),
   confidence: z.number().min(0).max(1),
   intents: z.array(z.object({ text: z.string(), type: z.string() }))
 }));
 ```
 
-On failure, shows Zod error paths: `intents[2].type: expected string, received undefined`.
+On failure, throws with Zod error paths: `intents[2].type: expected string, received undefined`.
 
-#### `toLLMEvaluate(config)`
+#### `assertLLMEvaluate(value, config)`
 
 Semantic scoring via LLM judge. Each criterion gets a score (0.0–1.0).
 
 ```typescript
-await expect(result.reasoning).toLLMEvaluate({
+await assertLLMEvaluate(result.reasoning, {
   criteria: [
     { text: "identifies Alice's frontend need", required: true },
     { text: "identifies Bob's backend expertise", required: true, min: 0.8 },
@@ -103,7 +159,8 @@ await expect(result.reasoning).toLLMEvaluate({
 |-------|------|---------|-------------|
 | `criteria` | `Criterion[]` | — | List of criteria to evaluate (required) |
 | `minScore` | `number` | `0.7` | Overall threshold (average of all criteria scores) |
-| `context` | `string` | — | Background context for the judge (optional) |
+| `context` | `string` | — | Describes the test scenario and expected conditions for the judge (optional) |
+| `timeout` | `number` | `30000` | Timeout in ms for the judge LLM call |
 
 **Failure output:**
 
@@ -116,9 +173,20 @@ Overall: 0.55 — below threshold 0.7
 FAILED: 1 required criterion not met
 ```
 
+**Returns** the full evaluation result for programmatic inspection:
+
+```typescript
+const evaluation = await assertLLMEvaluate(result.reasoning, config);
+// evaluation.criteria[0].score === 0.9
+// evaluation.criteria[0].passed === true
+// evaluation.overallScore === 0.55
+```
+
 **Test fails when:**
 - Any required criterion scores below its `min` threshold
 - Overall average score is below `minScore`
+
+**When `OPENROUTER_API_KEY` is not set:** the function throws a skip signal (`test.skip`) instead of failing, so tests that use the LLM judge are skipped in environments without API access.
 
 ### LLM Judge
 
@@ -130,6 +198,9 @@ A single function that scores all criteria in one LLM call.
 
 ```
 You are a test judge. Score how well the given value satisfies each criterion.
+
+Context describes the test scenario setup and expected conditions.
+Value is the actual output being evaluated.
 
 Context: {context}
 Value: {value}
@@ -147,26 +218,30 @@ For each criterion, return a score (0.0-1.0) and a one-sentence reasoning.
 ```typescript
 z.object({
   scores: z.array(z.object({
-    index: z.number(),
+    criterion: z.string(),    // echoes back the criterion text for reliable matching
     score: z.number().min(0).max(1),
     reasoning: z.string()
   }))
 })
 ```
 
+Criteria are matched back by `criterion` string echo rather than by array index, avoiding off-by-one issues with LLM responses.
+
 **Key decisions:**
 - Temperature 0 for consistency across runs
-- Single LLM call per `toLLMEvaluate` — all criteria scored together
-- Value truncated to ~4000 chars if large
+- Single LLM call per `assertLLMEvaluate` — all criteria scored together
+- Value truncated to ~10000 chars if large (flash models handle large contexts cheaply; 4000 was too aggressive for rich test outputs)
 - No retry on judge failure — test fails with "judge unavailable" error
 - Structured output via Zod ensures predictable responses
+- Per-evaluation timeout (default 30s) prevents a hanging judge call from blocking the suite
 
 ### Full Test Example
 
 ```typescript
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { createTestHarness } from "../lib/test-harness";
+import { createTestHarness, assertMatchesSchema, assertLLMEvaluate } from "../../lib/test-harness";
 import { alice, bob, aliceIntents, bobIntents } from "./fixtures/users";
+import { opportunitySchema } from "./fixtures/schemas";
 
 const harness = createTestHarness();
 const { db, graphs } = harness;
@@ -198,10 +273,10 @@ describe("opportunity graph", () => {
     expect(result.opportunities).toHaveLength(1);
     expect(result.opportunities[0].actorId).toBe(bob.id);
     expect(result.opportunities[0].score).toBeGreaterThan(50);
-    expect(result.opportunities[0]).toMatchSchema(opportunitySchema);
+    assertMatchesSchema(result.opportunities[0], opportunitySchema);
 
     // Semantic assertion
-    await expect(result.opportunities[0].reasoning).toLLMEvaluate({
+    await assertLLMEvaluate(result.opportunities[0].reasoning, {
       criteria: [
         { text: "identifies Alice's frontend need", required: true },
         { text: "identifies Bob's backend expertise", required: true },
@@ -229,9 +304,9 @@ describe("opportunity graph", () => {
 
 ```
 protocol/src/lib/test-harness/
-├── index.ts                    # exports createTestHarness, matchers
+├── index.ts                    # exports createTestHarness, assertMatchesSchema, assertLLMEvaluate
 ├── harness.ts                  # setup/teardown/reset, adapter wiring
-├── matchers.ts                 # toMatchSchema, toLLMEvaluate
+├── assertions.ts               # assertMatchesSchema, assertLLMEvaluate
 ├── judge.ts                    # LLM judge function
 └── judge.prompt.ts             # judge system prompt + response schema
 ```
@@ -239,9 +314,11 @@ protocol/src/lib/test-harness/
 ### Migration from Smartest
 
 - Delete `protocol/src/lib/smartest/` entirely
-- Rewrite `*.smartest.spec.ts` test files as standard bun tests using the harness
+- Rewrite these test files as standard bun tests using the harness:
+  - `protocol/src/lib/protocol/agents/tests/opportunity.evaluator.smartest.spec.ts`
+  - `protocol/src/lib/protocol/graphs/tests/opportunity.graph.direct-connection.smartest.spec.ts`
 - Remove smartest-related env vars (`SMARTEST_VERIFIER_MODEL`, `SMARTEST_GENERATOR_MODEL`)
-- Add `TEST_JUDGE_MODEL` env var (defaults to `google/gemini-2.5-flash`)
+- Add `TEST_JUDGE_MODEL` and `DATABASE_TEST_URL` env vars
 
 ### Environment Variables
 
@@ -249,4 +326,4 @@ protocol/src/lib/test-harness/
 |----------|----------|---------|-------------|
 | `DATABASE_TEST_URL` | No | `{DATABASE_URL}_test` | Test database connection |
 | `TEST_JUDGE_MODEL` | No | `google/gemini-2.5-flash` | LLM model for semantic scoring |
-| `OPENROUTER_API_KEY` | Yes | — | Required for LLM judge calls |
+| `OPENROUTER_API_KEY` | Yes (for LLM tests) | — | Required for LLM judge calls; tests skip if missing |
