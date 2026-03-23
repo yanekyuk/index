@@ -160,6 +160,8 @@ interface EnrichOpportunitiesInput {
   debugSteps: DiscoverDebugStep[];
   /** IDs of pre-existing opportunities merged into the list; these preserve their real status. */
   existingOpportunityIds?: Set<string>;
+  /** When set (direct connection), skip onboarding filter for this user — they were explicitly @-mentioned. */
+  targetUserId?: string;
 }
 
 /**
@@ -183,6 +185,7 @@ async function enrichOpportunities(
     useHomeCardFormat,
     debugSteps,
     existingOpportunityIds,
+    targetUserId,
   } = input;
 
   const baseEnrichedRaw = await Promise.all(
@@ -195,8 +198,10 @@ async function enrichOpportunities(
         : [null, null];
       // Skip soft-deleted users (deletedAt is set)
       if (candidateUser && 'deletedAt' in candidateUser && candidateUser.deletedAt) return null;
-      // Skip non-onboarded real users (registered but haven't completed onboarding)
-      if (candidateUser && !candidateUser.isGhost && !candidateUser.onboarding?.completedAt) return null;
+      // Skip non-onboarded real users — unless this is a direct-connection target
+      // (the user explicitly @-mentioned them, so we must return them regardless of onboarding state)
+      const isDirectTarget = targetUserId && candidateUserId === targetUserId;
+      if (candidateUser && !candidateUser.isGhost && !candidateUser.onboarding?.completedAt && !isDirectTarget) return null;
       const confidence =
         typeof opp.interpretation?.confidence === "number"
           ? opp.interpretation.confidence
@@ -695,6 +700,7 @@ export async function runDiscoverFromQuery(
         useHomeCardFormat: input.useHomeCardFormat,
         debugSteps,
         existingOpportunityIds,
+        targetUserId,
       });
 
       return {

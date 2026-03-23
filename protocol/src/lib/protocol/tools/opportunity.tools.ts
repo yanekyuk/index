@@ -132,15 +132,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
       "Four modes:\n" +
-      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
+      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap. " +
+      "No pre-fetching needed — the tool handles all data retrieval internally.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n" +
       "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
-      "Creates an opportunity between the current user and the target user.\n" +
+      "Creates an opportunity between the current user and the target user. " +
+      "No pre-fetching needed — do NOT call read_intents first; the tool fetches everything internally.\n" +
       "4. **Introducer discovery**: pass introTargetUserId (user ID to find matches FOR). " +
       "Discovers matches for that person; current user becomes the introducer. " +
       "Use when user asks 'who should I introduce to @Person'.\n\n" +
+      "Only Introduction mode (2) requires pre-gathered data. All other modes handle data retrieval internally.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z

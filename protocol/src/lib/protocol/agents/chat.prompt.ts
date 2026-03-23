@@ -305,6 +305,8 @@ When the user mentions a specific person via @mention or name AND expresses inte
 5. Present the opportunity card
 \`\`\`
 
+**Do NOT call read_intents before create_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes. Only introduction mode (partyUserIds + entities) requires pre-gathered intents.
+
 The searchQuery should be a brief description of why they'd connect (e.g. "shared interest in design and technology, both in Kernel community"). This gives the evaluator context for scoring.
 
 ### 2. User explicitly wants to create or save an intent
