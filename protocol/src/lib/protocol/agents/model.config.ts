@@ -24,6 +24,8 @@ export const MODEL_CONFIG = {
   lensInferrer:         { model: "google/gemini-2.5-flash" },
   opportunityEvaluator: { model: "google/gemini-2.5-flash" },
   opportunityPresenter: { model: "google/gemini-2.5-flash" },
+  negotiationProposer:  { model: "google/gemini-2.5-flash" },
+  negotiationResponder: { model: "google/gemini-2.5-flash" },
   homeCategorizer:      { model: "google/gemini-2.5-flash" },
   suggestionGenerator:  { model: "google/gemini-2.5-flash", temperature: 0.4, maxTokens: 512 },
   chatTitleGenerator:   { model: "google/gemini-2.5-flash", temperature: 0.3, maxTokens: 32 },
