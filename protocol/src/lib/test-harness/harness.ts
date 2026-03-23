@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import * as schema from "../../schemas/database.schema";
 import { EmbedderAdapter } from "../../adapters/embedder.adapter";
 import { RedisCacheAdapter } from "../../adapters/cache.adapter";
+import type { Cache } from "../protocol/interfaces/cache.interface";
 
 export type TestDB = PostgresJsDatabase<typeof schema>;
 
@@ -23,8 +24,8 @@ export interface TestHarness {
   db: TestDB;
   /** Embedder adapter for generating vectors. */
   embedder: EmbedderAdapter;
-  /** Redis cache adapter. */
-  cache: RedisCacheAdapter;
+  /** Cache adapter. */
+  cache: Cache;
   /**
    * Initialises the database connection and adapters.
    * @throws If neither DATABASE_TEST_URL nor DATABASE_URL is set.
