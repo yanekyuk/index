@@ -2342,6 +2342,8 @@ export class ChatDatabaseAdapter {
   }
 
   async softDeleteIndex(indexId: string): Promise<void> {
+    await db.delete(intentIndexes).where(eq(intentIndexes.indexId, indexId));
+    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
     await db.update(indexes).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(indexes.id, indexId));
   }
 
