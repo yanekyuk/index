@@ -41,7 +41,8 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const indexesService = useIndexes();
 
   const networkId = networkIdOverride || (params.id as string);
-  const tabParam = params.tab as string | undefined;
+  // Splat route (*) captures the tab segment; avoids remounts between tab navigations
+  const tabParam = (params['*'] || undefined) as string | undefined;
   const resolvedBasePath = useMemo(() => basePath || `/networks/${networkId}`, [basePath, networkId]);
   const activeTab = useMemo<TabValue>(() => {
     if (tabParam && URL_TO_TAB[tabParam]) return URL_TO_TAB[tabParam];
@@ -50,8 +51,10 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   const handleTabChange = useCallback((value: string) => {
     const segment = TAB_TO_URL[value as TabValue];
-    navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: true });
-  }, [navigate, resolvedBasePath]);
+    // Replace when leaving the default overview (no tabParam in URL yet);
+    // push when switching between explicit tabs so back traverses them.
+    navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: !tabParam });
+  }, [navigate, resolvedBasePath, tabParam]);
 
   const [network, setNetwork] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
