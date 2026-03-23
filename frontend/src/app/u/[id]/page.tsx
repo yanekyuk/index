@@ -145,8 +145,12 @@ export default function UserProfilePage() {
 
             <button
               onClick={() => {
-                setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
-                setShowInviteModal(true);
+                if (profileData.isGhost) {
+                  setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
+                  setShowInviteModal(true);
+                } else {
+                  navigate(`/u/${id}/chat`);
+                }
               }}
               className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
             >

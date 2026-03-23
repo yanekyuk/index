@@ -468,7 +468,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
 
   // Invite message modal state
-  const [inviteModal, setInviteModal] = useState<{ userId: string; userName: string; message: string } | null>(null);
+  const [inviteModal, setInviteModal] = useState<{ userId: string; userName: string; message: string; loading: boolean; opportunityId: string } | null>(null);
   const inviteModalResolveRef = useRef<((msg: string | null) => void) | null>(null);
 
   // Clear pending join IDs when stream completes (agent processed the join)
@@ -665,28 +665,30 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     ) => {
       const isIntroducer = viewerRole === "introducer";
 
-      // Ghost + accepted + non-introducer: show modal with AI message first
+      // Ghost + accepted + non-introducer: show modal immediately, fetch AI message in background
       if (action === "accepted" && !isIntroducer && isGhost) {
-        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         const name = counterpartName ?? "them";
         const displayUserId = fallbackUserId ?? "";
 
-        let defaultMessage = "";
-        try {
-          const { message } = await opportunitiesService.getInviteMessage(opportunityId);
-          defaultMessage = message;
-        } catch { /* use empty */ }
+        setInviteModal({ userId: displayUserId, userName: name, message: "", loading: true, opportunityId });
+
+        opportunitiesService.getInviteMessage(opportunityId)
+          .then(({ message }) => {
+            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, message, loading: false } : prev);
+          })
+          .catch(() => {
+            setInviteModal((prev) => prev?.opportunityId === opportunityId ? { ...prev, loading: false } : prev);
+          });
 
         const finalMessage = await new Promise<string | null>((resolve) => {
           inviteModalResolveRef.current = resolve;
-          setInviteModal({ userId: displayUserId, userName: name, message: defaultMessage });
         });
 
         if (finalMessage === null) {
-          setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: false }));
           throw new Error("user_cancelled");
         }
 
+        setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
         try {
           const result = await opportunitiesService.updateStatus(opportunityId, "accepted");
           setOpportunityStatusMap((prev) => ({ ...prev, [opportunityId]: "accepted" }));
@@ -1180,6 +1182,28 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         (homeViewData && homeViewData.sections.length > 0)
       ) {
         return (
+          <>
+          {inviteModal && (
+            <InviteMessageModal
+              userName={inviteModal.userName}
+              message={inviteModal.message}
+              loading={inviteModal.loading}
+              onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
+              onConfirm={() => {
+                const resolve = inviteModalResolveRef.current;
+                const msg = inviteModal.message;
+                inviteModalResolveRef.current = null;
+                setInviteModal(null);
+                resolve?.(msg);
+              }}
+              onCancel={() => {
+                const resolve = inviteModalResolveRef.current;
+                inviteModalResolveRef.current = null;
+                setInviteModal(null);
+                resolve?.(null);
+              }}
+            />
+          )}
           <div className="px-6 lg:px-8 pb-12">
             <ContentContainer className="text-left">
               <div className="mt-12 mb-6 flex items-center justify-center gap-2">
@@ -1348,6 +1372,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               )}
             </ContentContainer>
           </div>
+          </>
         );
       }
     }
@@ -1476,6 +1501,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         <InviteMessageModal
           userName={inviteModal.userName}
           message={inviteModal.message}
+          loading={inviteModal.loading}
           onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
           onConfirm={() => {
             const resolve = inviteModalResolveRef.current;
