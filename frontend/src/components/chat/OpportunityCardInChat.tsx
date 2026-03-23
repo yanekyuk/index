@@ -208,7 +208,8 @@ export default function OpportunityCard({
           card.isGhost,
         );
         setActionTaken("accepted");
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message === "user_cancelled") return;
         setActionError(true);
       }
     }
