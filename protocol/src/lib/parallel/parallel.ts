@@ -354,7 +354,7 @@ const profileEnrichmentSchema = {
             bio: {
               type: "string",
               description:
-                "Professional summary (2-3 sentences): role, domain, and trajectory only. Never include email addresses, phone numbers, mailing addresses, or other contact identifiers — even if they appear in sources.",
+                "Professional summary (2-3 sentences): role, domain, and trajectory only. Never include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers — even if they appear in sources.",
             },
             location: { type: "string", description: "City, Country or 'Remote' if unknown" },
           },
