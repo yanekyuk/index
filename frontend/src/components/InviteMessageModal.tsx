@@ -4,7 +4,6 @@ import { X, Loader2 } from "lucide-react";
 
 interface InviteMessageModalProps {
   userName: string;
-  defaultMessage?: string;
   message: string;
   loading?: boolean;
   onMessageChange: (message: string) => void;

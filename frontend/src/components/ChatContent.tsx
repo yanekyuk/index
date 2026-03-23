@@ -685,7 +685,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
         });
 
         if (finalMessage === null) {
-          return;
+          throw new Error("user_cancelled");
         }
 
         setOpportunityActionLoading((prev) => ({ ...prev, [opportunityId]: true }));
@@ -945,6 +945,28 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     await updateSessionTitle(sessionId, trimmed);
   };
 
+  const inviteModalElement = inviteModal ? (
+    <InviteMessageModal
+      userName={inviteModal.userName}
+      message={inviteModal.message}
+      loading={inviteModal.loading}
+      onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
+      onConfirm={() => {
+        const resolve = inviteModalResolveRef.current;
+        const msg = inviteModal.message;
+        inviteModalResolveRef.current = null;
+        setInviteModal(null);
+        resolve?.(msg);
+      }}
+      onCancel={() => {
+        const resolve = inviteModalResolveRef.current;
+        inviteModalResolveRef.current = null;
+        setInviteModal(null);
+        resolve?.(null);
+      }}
+    />
+  ) : null;
+
   if (!sessionLoaded) {
     return (
       <div className="px-6 lg:px-8 min-h-full animate-pulse">
@@ -1183,27 +1205,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       ) {
         return (
           <>
-          {inviteModal && (
-            <InviteMessageModal
-              userName={inviteModal.userName}
-              message={inviteModal.message}
-              loading={inviteModal.loading}
-              onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
-              onConfirm={() => {
-                const resolve = inviteModalResolveRef.current;
-                const msg = inviteModal.message;
-                inviteModalResolveRef.current = null;
-                setInviteModal(null);
-                resolve?.(msg);
-              }}
-              onCancel={() => {
-                const resolve = inviteModalResolveRef.current;
-                inviteModalResolveRef.current = null;
-                setInviteModal(null);
-                resolve?.(null);
-              }}
-            />
-          )}
+          {inviteModalElement}
           <div className="px-6 lg:px-8 pb-12">
             <ContentContainer className="text-left">
               <div className="mt-12 mb-6 flex items-center justify-center gap-2">
@@ -1497,27 +1499,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
 
   return (
     <>
-      {inviteModal && (
-        <InviteMessageModal
-          userName={inviteModal.userName}
-          message={inviteModal.message}
-          loading={inviteModal.loading}
-          onMessageChange={(msg) => setInviteModal((prev) => prev ? { ...prev, message: msg } : null)}
-          onConfirm={() => {
-            const resolve = inviteModalResolveRef.current;
-            const msg = inviteModal.message;
-            inviteModalResolveRef.current = null;
-            setInviteModal(null);
-            resolve?.(msg);
-          }}
-          onCancel={() => {
-            const resolve = inviteModalResolveRef.current;
-            inviteModalResolveRef.current = null;
-            setInviteModal(null);
-            resolve?.(null);
-          }}
-        />
-      )}
+      {inviteModalElement}
       {/* Sticky header - full width, min-h-17 matches ChatView header height */}
       <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-17">
         <button

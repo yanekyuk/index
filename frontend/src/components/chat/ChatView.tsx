@@ -123,7 +123,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         setSending(false);
       }
     })();
-  }, [contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages, onFirstMessageSent]);
+  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages, onFirstMessageSent]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sending) return;
