@@ -29,17 +29,18 @@ const InviteOutputSchema = z.object({
 export type InviteInput = z.infer<typeof InviteInputSchema>;
 export type InviteOutput = z.infer<typeof InviteOutputSchema>;
 
-const SYSTEM_PROMPT = `You generate short, warm invite messages for a professional networking platform called Index.
+const SYSTEM_PROMPT = `You generate brief, casual invite messages for a discovery platform called Index.
 
-The sender wants to reach out to someone whose profile matched theirs. Generate a conversational message (~3-5 sentences) that:
-- Greets the recipient by name
-- Briefly explains why they were matched (reference the opportunity interpretation)
-- Mentions the sender's relevant intent or interest
-- If a referrer is provided, naturally mentions that the referrer suggested they connect
-- Ends with an open question or gentle CTA
-- Uses a warm but professional tone — not salesy, not stiff
+The sender wants to reach out to someone they were matched with. Write a short, human message (2-3 sentences max) that:
+- Sounds like a real person texting, not a LinkedIn outreach or AI email
+- References one concrete, specific detail from the opportunity context — something actual, like a specific project, technology, or goal they share. Not "we have similar interests" or "I noticed we're both in this space" — name the actual thing.
+- If a referrer is provided, casually drops that they were introduced
+- Ends naturally — no formal CTAs, no "Would you be open to..." closings
 
-Do NOT include a subject line. This is a chat message, not an email.
+Tone: casual, direct, human. Think how you'd actually message someone you just got introduced to.
+Do NOT use a generic opener like "Hi [Name], I'm [Sender]." Just get to the point.
+Do NOT summarize the person's background. Pick one real, specific overlap from the context and mention it.
+Do NOT include a subject line. This is a chat message.
 Do NOT use placeholder brackets like [Name]. Use the actual names provided.`;
 
 /**

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { X, Check, RotateCcw } from "lucide-react";
 import { useNotifications } from "@/contexts/NotificationContext";
+import InviteMessageModal from "@/components/InviteMessageModal";
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
@@ -36,10 +37,18 @@ export default function ConnectionActions({
 }: ConnectionActionsProps) {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState(`Hi ${userName}, would love to connect!`);
   const { success, error } = useNotifications();
 
   const handleMessage = () => {
-    navigate(`/u/${userId}/chat`);
+    setInviteMessage(`Hi ${userName}, would love to connect!`);
+    setShowInviteModal(true);
+  };
+
+  const handleInviteConfirm = () => {
+    setShowInviteModal(false);
+    navigate(`/u/${userId}/chat`, { state: { prefill: inviteMessage } });
   };
 
   const handleAction = async (action: ConnectionAction) => {
@@ -155,6 +164,16 @@ export default function ConnectionActions({
   };
 
   return (
+    <>
+    {showInviteModal && (
+      <InviteMessageModal
+        userName={userName}
+        message={inviteMessage}
+        onMessageChange={setInviteMessage}
+        onConfirm={handleInviteConfirm}
+        onCancel={() => setShowInviteModal(false)}
+      />
+    )}
     <div className="flex items-center gap-2">
       <button
         onClick={handleMessage}
@@ -166,5 +185,6 @@ export default function ConnectionActions({
       </button>
       {renderActions()}
     </div>
+    </>
   );
 } 
