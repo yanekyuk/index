@@ -1,5 +1,5 @@
 /**
- * Smartest test: evaluator behavior for direct-connection candidates.
+ * Test: evaluator behavior for direct-connection candidates.
  *
  * Validates that the OpportunityEvaluator produces a meaningful opportunity
  * when given candidates shaped like the direct-connection fast path
@@ -10,9 +10,10 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { describe, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { z } from "zod";
-import { runScenario, defineScenario, expectSmartest } from "../../../smartest";
+
+import { assertMatchesSchema, assertLLMEvaluate } from "../../../test-harness";
 import {
   OpportunityEvaluator,
   type EvaluatorInput,
@@ -67,14 +68,6 @@ const resultSchema = z.object({
   durationMs: z.number(),
 });
 
-const verificationCriteria =
-  'The discoverer (Yankı) was directly @-mentioned with target user (Samuel). ' +
-  'Both share strong technical overlap: Laravel, Vue.js, game development interests, and web engineering. ' +
-  'Samuel is explicitly seeking a co-founder with ML/data engineering background, and Yankı has CTO experience with AI/ML interests. ' +
-  'PASS criteria: the opportunities list must contain at least one result with score >= 50. ' +
-  'These two users have genuine alignment that should produce a meaningful opportunity. ' +
-  'FAIL if the list is empty or all scores are below 50 — that means the system failed to recognize an obvious match between directly connected users.';
-
 async function runDirectConnectionEval(): Promise<{ opportunities: Array<{ reasoning: string; score: number; candidateUserId: string }>; durationMs: number }> {
   const evaluator = new OpportunityEvaluator();
   const input: EvaluatorInput = {
@@ -105,34 +98,28 @@ async function runDirectConnectionEval(): Promise<{ opportunities: Array<{ reaso
   return { opportunities: [], durationMs: totalDurationMs };
 }
 
-describe('OpportunityEvaluator: direct-connection candidates (Smartest)', () => {
-  it('produces an opportunity when evaluating explicitly-mentioned users with genuine alignment', async () => {
+describe("OpportunityEvaluator: direct-connection candidates", () => {
+  it("produces an opportunity when evaluating explicitly-mentioned users with genuine alignment", async () => {
     const { opportunities, durationMs } = await runDirectConnectionEval();
 
-    console.log(`\n[Direct Connection] duration=${durationMs}ms, results=${opportunities.length}`);
-    for (const o of [...opportunities].sort((a, b) => b.score - a.score)) {
-      console.log(`  score=${o.score}  ${o.candidateUserId}  "${o.reasoning.slice(0, 100)}..."`);
-    }
+    // Deterministic: schema
+    assertMatchesSchema({ opportunities, durationMs }, resultSchema);
 
-    const result = await runScenario(
-      defineScenario({
-        name: 'opportunity-direct-connection-aligned-users',
-        description: 'Direct connection test: discoverer explicitly @-mentioned a target user. Both have shared tech skills (Laravel, Vue) and complementary intents (game dev + co-founder search). Must produce a match.',
-        fixtures: { opportunities, durationMs },
-        sut: {
-          type: 'graph',
-          factory: () => null,
-          invoke: async (_instance, resolvedInput) => resolvedInput,
-          input: { opportunities: '@fixtures.opportunities', durationMs: '@fixtures.durationMs' },
-        },
-        verification: {
-          schema: resultSchema,
-          criteria: verificationCriteria,
-          llmVerify: true,
-        },
-      })
-    );
+    // Deterministic: at least one match with score >= 50
+    expect(opportunities.length).toBeGreaterThanOrEqual(1);
+    const topMatch = opportunities.sort((a, b) => b.score - a.score)[0];
+    expect(topMatch.score).toBeGreaterThanOrEqual(50);
+    expect(topMatch.candidateUserId).toBe(TARGET_ID);
 
-    expectSmartest(result);
-  }, 120000);
+    // Semantic: verify the reasoning is grounded
+    await assertLLMEvaluate(topMatch.reasoning, {
+      criteria: [
+        { text: "mentions shared technical skills like Laravel or Vue.js", required: true },
+        { text: "identifies complementary goals between the two users", required: true },
+        { text: "does not fabricate skills or interests not present in the profiles", required: true, min: 0.7 },
+      ],
+      minScore: 0.6,
+      context: "Yankı (CTO, Laravel/Vue/game dev) was @-mentioned with Samuel (full-stack Laravel/Vue dev seeking ML co-founder). Both share web tech expertise and gaming interest.",
+    });
+  }, 120_000);
 });
