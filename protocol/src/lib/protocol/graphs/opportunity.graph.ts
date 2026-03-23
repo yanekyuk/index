@@ -1590,14 +1590,69 @@ export class OpportunityGraphFactory {
 
         const isChatPath = !!state.options?.conversationId;
         const maxTurns = isChatPath ? 4 : 6;
+        const indexContext = { indexId: state.indexId as string ?? '', prompt: '' };
 
-        const consensusResults = await negotiateCandidates(
-          this.negotiationGraph, sourceUser, negotiationCandidates as any[],
-          { indexId: state.indexId as string ?? '', prompt: '' },
-          maxTurns,
+        // Run negotiations in parallel with per-candidate trace events
+        const negotiationResults = await Promise.all(
+          (negotiationCandidates as any[]).map(async (candidate: any) => {
+            const candidateStart = Date.now();
+            const candidateName = candidate.candidateUser?.profile?.name || candidate.userId;
+            traceEmitter?.({ type: "agent_start", name: "negotiation" });
+
+            try {
+              const result = await this.negotiationGraph.invoke({
+                sourceUser,
+                candidateUser: candidate.candidateUser,
+                indexContext,
+                seedAssessment: {
+                  score: candidate.score,
+                  reasoning: candidate.reasoning,
+                  valencyRole: candidate.valencyRole,
+                },
+                maxTurns,
+              });
+
+              const durationMs = Date.now() - candidateStart;
+              const outcome = result.outcome;
+
+              // Build inline turn flow: "propose:85 → counter:70 → accept:78"
+              const turnFlow = (result.messages ?? [])
+                .map((m: any) => {
+                  const dataPart = (m.parts as Array<{ kind?: string; data?: any }>)?.find((p: any) => p.kind === "data");
+                  if (!dataPart?.data) return null;
+                  const turn = dataPart.data;
+                  const actionShort = turn.action === 'propose' ? 'propose' : turn.action === 'accept' ? 'accept' : turn.action === 'reject' ? 'reject' : 'counter';
+                  return `${actionShort}:${turn.assessment?.fitScore ?? '?'}`;
+                })
+                .filter(Boolean)
+                .join(' → ');
+
+              const consensus = outcome?.consensus === true;
+              const statusTag = consensus ? '✓ consensus' : '✗ rejected';
+              const summary = `${candidateName}: ${turnFlow} ${statusTag}`;
+
+              traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary });
+
+              if (consensus) {
+                return {
+                  userId: candidate.userId,
+                  negotiationScore: outcome.finalScore,
+                  agreedRoles: outcome.agreedRoles,
+                  reasoning: outcome.reasoning,
+                  turnCount: outcome.turnCount,
+                };
+              }
+              return null;
+            } catch (err) {
+              const durationMs = Date.now() - candidateStart;
+              traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary: `${candidateName}: error` });
+              return null;
+            }
+          }),
         );
 
-        const consensusUserIds = new Set(consensusResults.map(r => r.userId));
+        const consensusResults = negotiationResults.filter((r: any): r is NonNullable<typeof r> => r !== null);
+        const consensusUserIds = new Set(consensusResults.map((r: any) => r.userId));
         const filtered = state.evaluatedOpportunities.filter(opp => {
           const candidateActor = opp.actors.find(a => a.userId !== state.userId);
           return candidateActor && consensusUserIds.has(candidateActor.userId as string);
@@ -1606,7 +1661,7 @@ export class OpportunityGraphFactory {
         for (const opp of filtered) {
           const candidateActor = opp.actors.find(a => a.userId !== state.userId);
           if (!candidateActor) continue;
-          const negResult = consensusResults.find(r => r.userId === (candidateActor.userId as string));
+          const negResult = consensusResults.find((r: any) => r.userId === (candidateActor.userId as string));
           if (negResult) {
             opp.score = negResult.negotiationScore;
           }
