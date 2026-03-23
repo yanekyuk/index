@@ -204,6 +204,7 @@ export default function OpportunityCard({ card }: { card: OpportunityCardData })
         </ReactMarkdown>
       </div>
 
+      {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}
       {card.narratorChip && card.narratorChip.name !== "Index" && (
         <div className="mt-3">
           <div className={`inline-flex items-center gap-2.5 px-3 py-1 rounded-md ${getNarratorChipClass(card.status)}`}>

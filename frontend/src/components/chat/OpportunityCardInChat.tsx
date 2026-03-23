@@ -370,7 +370,8 @@ export default function OpportunityCard({
         </ReactMarkdown>
       </div>
 
-      {/* Narrator Chip — only shown for human-introduced opportunities (not agent-led "Index") */}
+      {/* Narrator Chip — only shown for human-introduced opportunities */}
+      {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}
       {card.narratorChip && card.narratorChip.name !== "Index" && (
         <div className="mt-3">
           <div

@@ -408,8 +408,6 @@ async function enrichOpportunities(
               userId: introducerActor.userId,
               avatar: avatarByUserId.get(introducerActor.userId) ?? null,
             };
-            } else {
-            narratorChip = undefined;
           }
         }
       }

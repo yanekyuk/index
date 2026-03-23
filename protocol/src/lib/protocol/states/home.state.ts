@@ -18,7 +18,7 @@ export interface HomeCardItem {
   secondaryActionLabel: string;
   /** Presenter-generated subtitle under the other party name (e.g. "1 mutual intent"). */
   mutualIntentsLabel: string;
-  /** e.g. { name: 'Index', text: '...' } or introducer name + remark; avatar set when narrator is a user */
+  /** Narrator chip for human-introduced opportunities; avatar set when narrator is a user */
   narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   /** Viewer's role in this opportunity (e.g. 'introducer', 'party', 'agent', 'patient', 'peer'). */
   viewerRole?: string;

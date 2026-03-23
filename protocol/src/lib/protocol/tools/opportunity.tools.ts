@@ -93,7 +93,7 @@ export function buildMinimalOpportunityCard(
   if (hasHumanIntroducer) {
     const narratorName = viewerIsIntroducer
       ? "You"
-      : introducerName ?? (introducerActor ? "Someone" : "Index");
+      : introducerName ?? "Someone";
     narratorChip = {
       name: narratorName,
       text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
