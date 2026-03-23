@@ -241,9 +241,7 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
                       </article>
                     </div>
                     {isOwn && (
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#3D3D3D]">
-                        {user?.name?.charAt(0) || 'U'}
-                      </div>
+                      <UserAvatar avatar={user?.avatar} id={user?.id} name={user?.name} size={32} className="flex-shrink-0" />
                     )}
                   </div>
                 </div>
