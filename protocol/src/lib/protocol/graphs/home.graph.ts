@@ -387,7 +387,6 @@ export class HomeGraphFactory {
               primaryActionLabel: isIntroducer ? 'Good match' : (isCounterpartGhost ? 'Invite to chat' : 'Start Chat'),
               secondaryActionLabel: isIntroducer ? 'Pass' : 'Skip',
               mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-              narratorChip: { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               isGhost: isCounterpartGhost,
               _cardIndex: cardIndex,
@@ -427,7 +426,7 @@ export class HomeGraphFactory {
                   userId: introducer.userId,
                 };
               } else {
-                narratorChip = { name: 'Index', text: presentation.narratorRemark };
+                narratorChip = undefined;
               }
               return {
                 opportunityId: opportunity.id,

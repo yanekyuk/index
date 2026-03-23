@@ -62,7 +62,7 @@ export function buildMinimalOpportunityCard(
   primaryActionLabel: string;
   secondaryActionLabel: string;
   mutualIntentsLabel: string;
-  narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
+  narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
   viewerRole: string;
   score: number | undefined;
   status: string;
@@ -88,9 +88,22 @@ export function buildMinimalOpportunityCard(
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
       : undefined;
-  const narratorName = viewerIsIntroducer
-    ? "You"
-    : introducerName ?? (introducerActor ? "Someone" : "Index");
+  const hasHumanIntroducer = viewerIsIntroducer || !!introducerActor;
+  let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
+  if (hasHumanIntroducer) {
+    const narratorName = viewerIsIntroducer
+      ? "You"
+      : introducerName ?? "Someone";
+    narratorChip = {
+      name: narratorName,
+      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
+      ...(viewerIsIntroducer
+        ? { userId: viewerId, avatar: null }
+        : introducerActor
+          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
+          : {}),
+    };
+  }
   const primaryActionLabel =
     viewerRole === "introducer"
       ? "Introduce Them"
@@ -108,15 +121,7 @@ export function buildMinimalOpportunityCard(
     primaryActionLabel,
     secondaryActionLabel: "Skip",
     mutualIntentsLabel: "Suggested connection",
-    narratorChip: {
-      name: narratorName,
-      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(viewerIsIntroducer
-        ? { userId: viewerId, avatar: null }
-        : introducerActor
-          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-          : {}),
-    },
+    ...(narratorChip ? { narratorChip } : {}),
     viewerRole,
     score,
     status: opp.status ?? "latent",
@@ -132,15 +137,18 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
       "Four modes:\n" +
-      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
+      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap. " +
+      "No pre-fetching needed — the tool handles all data retrieval internally.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n" +
       "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
-      "Creates an opportunity between the current user and the target user.\n" +
+      "Creates an opportunity between the current user and the target user. " +
+      "No pre-fetching needed — do NOT call read_intents first; the tool fetches everything internally.\n" +
       "4. **Introducer discovery**: pass introTargetUserId (user ID to find matches FOR). " +
       "Discovers matches for that person; current user becomes the introducer. " +
       "Use when user asks 'who should I introduce to @Person'.\n\n" +
+      "Only Introduction mode (2) requires pre-gathered data. All other modes handle data retrieval internally.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z
@@ -422,10 +430,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           ? (isCounterpartGhost ? "Invite to chat" : "Start Chat")
           : "Introduce Them";
         const narratorChip = viewerIsParty
-          ? {
-              name: "Index",
-              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
-            }
+          ? undefined
           : {
               name: "You",
               text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
@@ -458,7 +463,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           primaryActionLabel,
           secondaryActionLabel: "Skip",
           mutualIntentsLabel: "Suggested connection",
-          narratorChip,
+          ...(narratorChip ? { narratorChip } : {}),
           viewerRole,
           isGhost: isCounterpartGhost,
           score: confidence,

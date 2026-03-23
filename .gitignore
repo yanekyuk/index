@@ -5,7 +5,7 @@
 !.vscode/index.code-workspace
 !.vscode/index.code-workspace.default
 # .cursor
-.claude
+.claude/settings.local.json
 .agent
 
 # ===================

@@ -142,7 +142,7 @@ describe('HomeGraph', () => {
     expect(result.error).toBeUndefined();
     expect(result.sections.length).toBeGreaterThanOrEqual(1);
     const firstItem = result.sections[0]?.items[0];
-    expect(firstItem?.narratorChip?.name).toBe('Index');
+    expect(firstItem?.narratorChip).toBeUndefined();
   }, 70000);
 
   test('actor-dedupes multiple opportunities between same actors to one card', async () => {
@@ -414,7 +414,7 @@ describe('HomeGraph caching', () => {
       primaryActionLabel: 'Start Chat',
       secondaryActionLabel: 'Skip',
       mutualIntentsLabel: 'Shared interests',
-      narratorChip: { name: 'Index', text: 'Cached remark' },
+      narratorChip: undefined,
       viewerRole: 'agent',
       _cardIndex: cardIndex,
     };
