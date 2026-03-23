@@ -118,6 +118,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/dev/intent-proposal/page"),
       },
       {
+        path: "/dev/intro-requests",
+        lazy: () => import("@/app/dev/intro-requests/page"),
+      },
+      {
         path: "*",
         lazy: () => import("@/app/not-found"),
       },

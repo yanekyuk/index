@@ -47,6 +47,7 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 
 import { mentionsToMarkdownLinks } from "@/lib/mentions";
 import type { HomeViewSection } from "@/services/opportunities";
+import IntroductionRequestFeed from "@/components/IntroductionRequestFeed";
 import { DynamicIcon, type IconName } from "lucide-react/dynamic";
 
 /**
@@ -1302,6 +1303,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   </div>
                 ))
               )}
+              <div className="mt-10">
+                <IntroductionRequestFeed />
+              </div>
             </ContentContainer>
           </div>
         );
@@ -1416,6 +1420,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
               more about what you&apos;re working on, connect your network, or
               ask me to research someone specific.
             </p>
+          </div>
+          <div className="mt-10 w-full text-left">
+            <IntroductionRequestFeed />
           </div>
         </ContentContainer>
       </div>
