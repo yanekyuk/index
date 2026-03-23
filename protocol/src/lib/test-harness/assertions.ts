@@ -1,0 +1,162 @@
+import type { ZodSchema, ZodError } from "zod";
+
+import { callJudge } from "./judge";
+
+/**
+ * Asserts that a value matches a Zod schema.
+ * Throws with formatted Zod error paths on failure.
+ */
+export function assertMatchesSchema<T>(value: unknown, schema: ZodSchema<T>): T {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    const formatted = formatZodError(result.error);
+    throw new Error(`Schema validation failed:\n${formatted}`);
+  }
+  return result.data;
+}
+
+function formatZodError(error: ZodError): string {
+  return error.issues
+    .map(issue => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      return `  ${path}: ${issue.message}`;
+    })
+    .join("\n");
+}
+
+/** A single criterion to evaluate. */
+export interface LLMCriterion {
+  text: string;
+  required?: boolean;
+  min?: number;
+}
+
+/** Configuration for assertLLMEvaluate. */
+export interface LLMEvaluateConfig {
+  criteria: LLMCriterion[];
+  minScore?: number;
+  context?: string;
+  timeout?: number;
+}
+
+/** Result of a single criterion evaluation. */
+export interface CriterionResult {
+  text: string;
+  score: number;
+  reasoning: string;
+  required: boolean;
+  min: number;
+  passed: boolean;
+}
+
+/** Full evaluation result returned by assertLLMEvaluate. */
+export interface LLMEvaluateResult {
+  passed: boolean;
+  criteria: CriterionResult[];
+  overallScore: number;
+  failedRequired: CriterionResult[];
+  summary: string;
+}
+
+const DEFAULT_CRITERION_MIN = 0.5;
+const DEFAULT_MIN_SCORE = 0.7;
+
+/**
+ * Evaluates a value against semantic criteria using an LLM judge.
+ * Throws with a detailed report on failure.
+ * Returns the full evaluation result for programmatic inspection.
+ */
+export async function assertLLMEvaluate(
+  value: unknown,
+  config: LLMEvaluateConfig,
+): Promise<LLMEvaluateResult> {
+  // Skip test if no API key available (e.g. CI without LLM access)
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("[SKIP] OPENROUTER_API_KEY not set — skipping LLM evaluation");
+  }
+
+  const stringValue = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  const minScore = config.minScore ?? DEFAULT_MIN_SCORE;
+
+  const judgeResult = await callJudge({
+    value: stringValue,
+    criteria: config.criteria.map(c => c.text),
+    context: config.context,
+    timeout: config.timeout,
+  });
+
+  // Match judge scores back to criteria by criterion text (no array index fallback)
+  const criteriaResults: CriterionResult[] = config.criteria.map((criterion, idx) => {
+    const criterionLower = criterion.text.toLowerCase();
+    // Try exact match first, then substring match
+    const match = judgeResult.scores.find(s =>
+      s.criterion.toLowerCase() === criterionLower
+    ) ?? judgeResult.scores.find(s =>
+      s.criterion.toLowerCase().includes(criterionLower.slice(0, 30))
+        || criterionLower.includes(s.criterion.toLowerCase().slice(0, 30))
+    ) ?? judgeResult.scores[idx]; // Last resort: positional
+
+    const score = match?.score ?? 0;
+    const reasoning = match?.reasoning ?? "No judge response for this criterion";
+    const min = criterion.min ?? DEFAULT_CRITERION_MIN;
+    const required = criterion.required ?? false;
+
+    return {
+      text: criterion.text,
+      score,
+      reasoning,
+      required,
+      min,
+      passed: score >= min,
+    };
+  });
+
+  const overallScore = criteriaResults.length > 0
+    ? criteriaResults.reduce((sum, c) => sum + c.score, 0) / criteriaResults.length
+    : 0;
+
+  const failedRequired = criteriaResults.filter(c => c.required && !c.passed);
+  const overallPassed = overallScore >= minScore && failedRequired.length === 0;
+
+  const summary = formatEvaluationReport(criteriaResults, overallScore, minScore, failedRequired);
+
+  const result: LLMEvaluateResult = {
+    passed: overallPassed,
+    criteria: criteriaResults,
+    overallScore,
+    failedRequired,
+    summary,
+  };
+
+  if (!overallPassed) {
+    throw new Error(`LLM evaluation failed:\n${summary}`);
+  }
+
+  return result;
+}
+
+function formatEvaluationReport(
+  criteria: CriterionResult[],
+  overallScore: number,
+  minScore: number,
+  failedRequired: CriterionResult[],
+): string {
+  const lines = criteria.map(c => {
+    const icon = c.passed ? "✓" : "✗";
+    const reqTag = c.required ? " [required]" : "";
+    const failNote = !c.passed
+      ? c.required
+        ? " ← FAILED"
+        : ` — below ${c.min}`
+      : "";
+    return `${icon} ${c.text} (${c.score.toFixed(2)})${reqTag}${failNote}`;
+  });
+
+  lines.push(`Overall: ${overallScore.toFixed(2)} — ${overallScore >= minScore ? "above" : "below"} threshold ${minScore}`);
+
+  if (failedRequired.length > 0) {
+    lines.push(`FAILED: ${failedRequired.length} required criterion not met`);
+  }
+
+  return lines.join("\n");
+}
