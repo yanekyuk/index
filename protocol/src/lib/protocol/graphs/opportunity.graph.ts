@@ -64,6 +64,7 @@ import type {
   ActiveIntent,
 } from '../interfaces/database.interface';
 import { persistOpportunities } from '../support/opportunity.persist';
+import { negotiateCandidates } from "./negotiation.graph";
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 import { requestContext } from "../../request-context";
@@ -145,7 +146,8 @@ export class OpportunityGraphFactory {
       }>;
     },
     private optionalEvaluator?: OpportunityEvaluatorLike,
-    private queueNotification?: QueueOpportunityNotificationFn
+    private queueNotification?: QueueOpportunityNotificationFn,
+    private negotiationGraph?: { invoke: (input: any) => Promise<{ outcome: any }> },
   ) {}
 
   public createGraph() {
@@ -1538,6 +1540,91 @@ export class OpportunityGraphFactory {
     };
 
     /**
+     * Node 3b: Negotiate
+     * Runs bilateral negotiation between source user and each evaluated candidate.
+     * Filters out candidates that fail to reach consensus; updates scores for those that pass.
+     */
+    const negotiateNode = async (state: typeof OpportunityGraphState.State) => {
+      if (!this.negotiationGraph) {
+        return {};
+      }
+
+      const traceEmitter = requestContext.getStore()?.traceEmitter;
+      const graphStart = Date.now();
+      traceEmitter?.({ type: "graph_start", name: "negotiation" });
+
+      try {
+        const sourceUser = {
+          id: state.userId as string,
+          intents: state.indexedIntents?.map(i => ({
+            id: i.intentId as string,
+            title: i.summary ?? '',
+            description: i.payload ?? '',
+            confidence: 1,
+          })) ?? [],
+          profile: {
+            name: state.sourceProfile?.identity?.name,
+            bio: state.sourceProfile?.identity?.bio,
+            location: state.sourceProfile?.identity?.location,
+            skills: state.sourceProfile?.attributes?.skills,
+            interests: state.sourceProfile?.attributes?.interests,
+          },
+          hydeDocuments: [] as string[],
+        };
+
+        const negotiationCandidates = state.evaluatedOpportunities.map(opp => {
+          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+          if (!candidateActor) return null;
+
+          return {
+            userId: candidateActor.userId as string,
+            score: opp.score,
+            reasoning: opp.reasoning,
+            valencyRole: candidateActor.role ?? 'peer',
+            candidateUser: {
+              id: candidateActor.userId as string,
+              intents: candidateActor.intentId
+                ? [{ id: candidateActor.intentId as string, title: '', description: '', confidence: 1 }]
+                : [],
+              profile: { name: '' },
+              hydeDocuments: [] as string[],
+            },
+          };
+        }).filter(Boolean);
+
+        const isChatPath = !!state.options?.conversationId;
+        const maxTurns = isChatPath ? 4 : 6;
+
+        const consensusResults = await negotiateCandidates(
+          this.negotiationGraph, sourceUser, negotiationCandidates as any[],
+          { indexId: state.indexId as string ?? '', prompt: '' },
+          maxTurns,
+        );
+
+        const consensusUserIds = new Set(consensusResults.map(r => r.userId));
+        const filtered = state.evaluatedOpportunities.filter(opp => {
+          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+          return candidateActor && consensusUserIds.has(candidateActor.userId as string);
+        });
+
+        for (const opp of filtered) {
+          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+          if (!candidateActor) continue;
+          const negResult = consensusResults.find(r => r.userId === (candidateActor.userId as string));
+          if (negResult) {
+            opp.score = negResult.negotiationScore;
+          }
+        }
+
+        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
+        return { evaluatedOpportunities: filtered };
+      } catch (err) {
+        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
+        return {};
+      }
+    };
+
+    /**
      * Node 4: Ranking
      * Sorts evaluated opportunities by score, applies limit, dedupes by actor-set hash.
      */
@@ -2578,8 +2665,17 @@ export class OpportunityGraphFactory {
         [END]: END,
       })
 
-      // Linear edges for main flow
-      .addEdge('evaluation', 'ranking')
+      // Negotiation step (optional, skipped for continue_discovery or when no negotiation graph)
+      .addNode('negotiate', negotiateNode)
+      .addConditionalEdges('evaluation', (state) => {
+        if (state.operationMode === 'continue_discovery') return 'ranking';
+        if (!this.negotiationGraph) return 'ranking';
+        return 'negotiate';
+      }, {
+        negotiate: 'negotiate',
+        ranking: 'ranking',
+      })
+      .addEdge('negotiate', 'ranking')
       .addEdge('ranking', 'persist')
       .addEdge('persist', END);
 
