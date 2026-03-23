@@ -99,8 +99,8 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
     if (!initialMessage?.trim()) return;
     if (contextLoading) return;
 
-    hasAutoSentRef.current = true;
     const text = initialMessage.trim();
+    hasAutoSentRef.current = true;
     setSending(true);
     (async () => {
       try {
@@ -112,13 +112,18 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
           await conversationSend(conv.id, [{ text }]);
           loadMessages(conv.id, { limit: 50 });
         }
+        if (!hasFiredFirstMessageRef.current) {
+          hasFiredFirstMessageRef.current = true;
+          onFirstMessageSent?.();
+        }
       } catch (err) {
+        hasAutoSentRef.current = false;
         console.error('[ChatView] Auto-send error:', err);
       } finally {
         setSending(false);
       }
     })();
-  }, [contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages]);
+  }, [autoSend, contextLoading, conversationId, initialMessage, conversationSend, getOrCreateDM, userId, loadMessages, onFirstMessageSent]);
 
   const handleSend = useCallback(async () => {
     if (!messageText.trim() || sending) return;
@@ -231,7 +236,18 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               return (
                 <div key={message.id}>
                   {showTimestamp && message.createdAt && (
-                    <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">Today, {formatTime(message.createdAt)}</div>
+                    <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
+                      {(() => {
+                        const d = new Date(message.createdAt);
+                        const now = new Date();
+                        const isToday = d.toDateString() === now.toDateString();
+                        const yesterday = new Date(now);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        const isYesterday = d.toDateString() === yesterday.toDateString();
+                        const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        return `${label}, ${formatTime(message.createdAt)}`;
+                      })()}
+                    </div>
                   )}
                   <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
                     {!isOwn && <UserAvatar avatar={userAvatar} id={userId} name={userName} size={32} className="flex-shrink-0" />}
