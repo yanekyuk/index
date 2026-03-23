@@ -1,6 +1,6 @@
 import { StateGraph } from "@langchain/langgraph";
 
-import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome } from "../states/negotiation.state";
+import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext } from "../states/negotiation.state";
 
 interface ConversationServiceLike {
   createConversation(participants: { participantId: string; participantType: "user" | "agent" }[]): Promise<{ id: string }>;
@@ -208,4 +208,65 @@ export class NegotiationGraphFactory {
 
     return workflow.compile();
   }
+}
+
+interface NegotiationCandidate {
+  userId: string;
+  score: number;
+  reasoning: string;
+  valencyRole: string;
+  candidateUser: UserNegotiationContext;
+}
+
+interface NegotiationResult {
+  userId: string;
+  negotiationScore: number;
+  agreedRoles: Array<{ userId: string; role: string }>;
+  reasoning: string;
+  turnCount: number;
+}
+
+/**
+ * Runs bilateral negotiation for each candidate in parallel.
+ * Returns only candidates that achieved consensus.
+ */
+export async function negotiateCandidates(
+  negotiationGraph: { invoke: (input: any) => Promise<{ outcome: any }> },
+  sourceUser: UserNegotiationContext,
+  candidates: NegotiationCandidate[],
+  indexContext: { indexId: string; prompt: string },
+  maxTurns?: number,
+): Promise<NegotiationResult[]> {
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        const result = await negotiationGraph.invoke({
+          sourceUser,
+          candidateUser: candidate.candidateUser,
+          indexContext,
+          seedAssessment: {
+            score: candidate.score,
+            reasoning: candidate.reasoning,
+            valencyRole: candidate.valencyRole,
+          },
+          ...(maxTurns !== undefined && { maxTurns }),
+        });
+
+        if (result.outcome?.consensus) {
+          return {
+            userId: candidate.userId,
+            negotiationScore: result.outcome.finalScore,
+            agreedRoles: result.outcome.agreedRoles,
+            reasoning: result.outcome.reasoning,
+            turnCount: result.outcome.turnCount,
+          };
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return results.filter((r): r is NegotiationResult => r !== null);
 }
