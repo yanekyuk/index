@@ -1,17 +1,11 @@
 import { z } from 'zod';
 import type { DefineTool, ToolDeps } from './tool.helpers';
 import { success, error } from './tool.helpers';
-import { contactService } from '../../../services/contact.service';
 import { requestContext } from '../../request-context';
 import { log } from '../../../lib/log';
+import { IntegrationService } from '../../../services/integration.service';
 
 const logger = log.lib.from('integration.tools');
-
-/** A single contact entry returned by the Gmail People API. */
-interface GmailContact {
-  names?: Array<{ displayName?: string }>;
-  emailAddresses?: Array<{ value?: string }>;
-}
 
 /**
  * Creates integration tools for the chat agent.
@@ -25,6 +19,7 @@ interface GmailContact {
  */
 export function createIntegrationTools(defineTool: DefineTool, deps: ToolDeps) {
   const { integration } = deps;
+  const integrationService = new IntegrationService(integration);
 
   const import_gmail_contacts = defineTool({
     name: 'import_gmail_contacts',
@@ -37,7 +32,7 @@ After successful import, contacts are added to the user's network as ghost users
 
 Returns import statistics or an auth URL if authentication is needed.`,
     querySchema: z.object({}),
-    handler: async ({ context, query }) => {
+    handler: async ({ context }) => {
       try {
         const session = await integration.createSession(context.userId);
         const toolkits = await session.toolkits();
@@ -58,58 +53,7 @@ Returns import statistics or an auth URL if authentication is needed.`,
           });
         }
 
-        logger.info('Fetching Gmail contacts', { userId: context.userId });
-
-        const contacts: Array<{ name: string; email: string }> = [];
-        let nextPageToken: string | undefined;
-
-        do {
-          const result = await integration.executeToolAction('GMAIL_GET_CONTACTS', context.userId, {
-            resource_name: 'people/me',
-            person_fields: 'names,emailAddresses',
-            include_other_contacts: true,
-            ...(nextPageToken ? { pageToken: nextPageToken } : {}),
-          });
-
-          if (!result.successful) {
-            logger.error('Gmail contacts fetch failed', { userId: context.userId, error: result.error });
-            return error(`Failed to fetch contacts: ${result.error}`);
-          }
-
-          const data = result.data as { connections?: GmailContact[]; otherContacts?: GmailContact[]; nextPageToken?: string } | undefined;
-          const allContacts = [
-            ...(data?.connections || []),
-            ...(data?.otherContacts || []),
-          ];
-
-          for (const contact of allContacts) {
-            const email = contact.emailAddresses?.[0]?.value;
-            if (email) {
-              const name = contact.names?.[0]?.displayName || email.split('@')[0];
-              contacts.push({ name, email });
-            }
-          }
-
-          nextPageToken = data?.nextPageToken;
-        } while (nextPageToken);
-
-        logger.info('Parsed contacts from Gmail', {
-          userId: context.userId,
-          validContacts: contacts.length,
-        });
-
-        if (contacts.length === 0) {
-          return success({
-            message: 'No contacts with valid name and email found in your Gmail account.',
-            imported: 0,
-            skipped: 0,
-          });
-        }
-
-        const importResult = await contactService.importContacts(
-          context.userId,
-          contacts
-        );
+        const importResult = await integrationService.importContacts(context.userId, 'gmail');
 
         logger.info('Gmail contacts imported', {
           userId: context.userId,
@@ -122,7 +66,9 @@ Returns import statistics or an auth URL if authentication is needed.`,
         return success({
           message: importResult.newContacts > 0
             ? `Imported ${importResult.imported} contacts from Gmail. ${importResult.newContacts} new, ${importResult.existingContacts} already in your network.`
-            : `All ${importResult.imported} contacts from Gmail were already in your network. No new contacts added.`,
+            : importResult.imported > 0
+              ? `All ${importResult.imported} contacts from Gmail were already in your network. No new contacts added.`
+              : 'No contacts with valid name and email found in your Gmail account.',
           imported: importResult.imported,
           newContacts: importResult.newContacts,
           existingContacts: importResult.existingContacts,

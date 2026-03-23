@@ -19,14 +19,21 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [socialProviders, setSocialProviders] = useState<string[]>([]);
+  const [emailPasswordEnabled, setEmailPasswordEnabled] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     fetch(`${API_BASE}/auth/providers`)
       .then((r) => r.json())
-      .then((data: { providers?: string[] }) => setSocialProviders(data.providers ?? []))
-      .catch(() => setSocialProviders([]));
+      .then((data: { providers?: string[]; emailPassword?: boolean }) => {
+        setSocialProviders(data.providers ?? []);
+        setEmailPasswordEnabled(data.emailPassword ?? false);
+      })
+      .catch(() => {
+        setSocialProviders([]);
+        setEmailPasswordEnabled(false);
+      });
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -208,19 +215,21 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
-              Or{' '}
-              <button
-                onClick={() => setView('email-password')}
-                className="text-gray-900 font-medium hover:underline"
-              >
-                sign in with password
-              </button>
-            </p>
+            {emailPasswordEnabled && (
+              <p className="mt-6 text-center text-sm text-gray-500">
+                Or{' '}
+                <button
+                  onClick={() => setView('email-password')}
+                  className="text-gray-900 font-medium hover:underline"
+                >
+                  sign in with password
+                </button>
+              </p>
+            )}
           </>
         )}
 
-        {view === 'email-password' && (
+        {view === 'email-password' && emailPasswordEnabled && (
           <>
             <div className="mb-6 flex items-center gap-3">
               <button

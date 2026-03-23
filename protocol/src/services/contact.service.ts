@@ -76,6 +76,18 @@ export interface ImportResult {
   details: Array<{ email: string; userId: string; isNew: boolean }>;
 }
 
+/** Result of resolving contacts to user IDs (without membership changes). */
+export interface ResolveResult {
+  /** All resolved user IDs (existing + newly created ghosts). */
+  userIds: string[];
+  /** IDs of users that were newly created as ghosts. */
+  newGhostIds: string[];
+  /** Number of input contacts that were filtered or invalid. */
+  skipped: number;
+  /** Per-user details. */
+  details: Array<{ email: string; userId: string; isNew: boolean }>;
+}
+
 /**
  * ContactService
  *
@@ -145,9 +157,84 @@ export class ContactService {
   }
 
   /**
+   * Resolve contacts to user IDs without creating any memberships.
+   * Normalizes, filters non-human, deduplicates, looks up existing users,
+   * creates ghost users for unknowns, and enqueues enrichment for new ghosts.
+   *
+   * @param ownerId - The requesting user (excluded from results)
+   * @param contacts - Raw contact data (name, email)
+   * @returns Resolved user IDs, new ghost IDs, skip count, and per-user details
+   */
+  async resolveUsers(
+    ownerId: string,
+    contacts: ContactInput[]
+  ): Promise<ResolveResult> {
+    const owner = await this.db.getUser(ownerId);
+    const ownerEmail = owner?.email.toLowerCase();
+
+    const seenEmails = new Set<string>();
+    const validContacts: Array<{ name: string; email: string }> = [];
+    let skipped = 0;
+
+    for (const contact of contacts) {
+      const email = contact.email.toLowerCase().trim();
+      if (!email || !email.includes('@')) { skipped++; continue; }
+      if (ownerEmail === email) { skipped++; continue; }
+      if (seenEmails.has(email)) { skipped++; continue; }
+      const name = contact.name?.trim() || '';
+      if (!isHumanContact(email, name)) {
+        logger.debug('[ContactService] Skipped non-human contact', { domain: email.split('@')[1] });
+        skipped++;
+        continue;
+      }
+      seenEmails.add(email);
+      validContacts.push({ name: name || email.split('@')[0], email });
+    }
+
+    if (validContacts.length === 0) {
+      return { userIds: [], newGhostIds: [], skipped, details: [] };
+    }
+
+    const emails = validContacts.map(c => c.email);
+    const existingUsers = await this.db.getUsersByEmails(emails);
+    const emailToUser = new Map(existingUsers.map(u => [u.email, u]));
+    const existingEmails = new Set(existingUsers.map(u => u.email));
+
+    const newContactData = validContacts.filter(c => !emailToUser.has(c.email));
+    const createdGhosts = await this.db.createGhostUsersBulk(newContactData);
+    const newGhostIds = new Set<string>();
+    for (const ghost of createdGhosts) {
+      if (!existingEmails.has(ghost.email)) {
+        newGhostIds.add(ghost.id);
+      }
+      emailToUser.set(ghost.email, { ...ghost, isGhost: true });
+    }
+
+    const userIds: string[] = [];
+    const details: ResolveResult['details'] = [];
+    for (const vc of validContacts) {
+      const user = emailToUser.get(vc.email);
+      if (user) {
+        userIds.push(user.id);
+        details.push({ email: vc.email, userId: user.id, isNew: newGhostIds.has(user.id) });
+      } else {
+        skipped++;
+      }
+    }
+
+    const newGhostIdsArray = [...newGhostIds];
+    if (newGhostIdsArray.length > 0) {
+      await profileQueue.addEnrichUserJobBulk(newGhostIdsArray.map(id => ({ userId: id })));
+      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIdsArray.length });
+    }
+
+    return { userIds, newGhostIds: newGhostIdsArray, skipped, details };
+  }
+
+  /**
    * Import contacts in bulk using batched DB operations.
-   * Filters non-human contacts, deduplicates, then resolves/creates users, upserts
-   * memberships, and enqueues enrichment jobs — all in bulk instead of per-contact.
+   * Resolves users, upserts contact memberships on the owner's personal index,
+   * and clears reverse opt-outs.
    *
    * @param ownerId - The user importing contacts
    * @param contacts - Array of contact data (name, email)
@@ -157,96 +244,25 @@ export class ContactService {
     ownerId: string,
     contacts: ContactInput[]
   ): Promise<ImportResult> {
-    logger.info('[ContactService] Importing contacts', {
-      ownerId,
-      count: contacts.length,
-    });
+    logger.info('[ContactService] Importing contacts', { ownerId, count: contacts.length });
 
+    const resolved = await this.resolveUsers(ownerId, contacts);
+
+    if (resolved.userIds.length === 0) {
+      return { imported: 0, skipped: resolved.skipped, newContacts: 0, existingContacts: 0, details: [] };
+    }
+
+    await this.db.upsertContactMembershipBulk(ownerId, resolved.userIds);
+    await this.db.clearReverseOptOutBulk(ownerId, resolved.userIds);
+
+    const newCount = resolved.details.filter(d => d.isNew).length;
     const result: ImportResult = {
-      imported: 0,
-      skipped: 0,
-      newContacts: 0,
-      existingContacts: 0,
-      details: [],
+      imported: resolved.userIds.length,
+      skipped: resolved.skipped,
+      newContacts: newCount,
+      existingContacts: resolved.userIds.length - newCount,
+      details: resolved.details,
     };
-
-    const owner = await this.db.getUser(ownerId);
-    const ownerEmail = owner?.email.toLowerCase();
-
-    // Phase 1: Normalize, filter, deduplicate (in-memory)
-    const seenEmails = new Set<string>();
-    const validContacts: Array<{ name: string; email: string }> = [];
-    for (const contact of contacts) {
-      const email = contact.email.toLowerCase().trim();
-      if (!email || !email.includes('@')) {
-        result.skipped++;
-        continue;
-      }
-      if (ownerEmail === email) {
-        result.skipped++;
-        continue;
-      }
-      if (seenEmails.has(email)) {
-        result.skipped++;
-        continue;
-      }
-      const name = contact.name?.trim() || '';
-      if (!isHumanContact(email, name)) {
-        logger.debug('[ContactService] Skipped non-human contact', { domain: email.split('@')[1] });
-        result.skipped++;
-        continue;
-      }
-      seenEmails.add(email);
-      validContacts.push({ name: name || email.split('@')[0], email });
-    }
-
-    if (validContacts.length === 0) {
-      logger.info('[ContactService] No valid contacts to import', { ownerId });
-      return result;
-    }
-
-    // Phase 2: Bulk user lookup (1 query)
-    const emails = validContacts.map(c => c.email);
-    const existingUsers = await this.db.getUsersByEmails(emails);
-    const emailToUser = new Map(existingUsers.map(u => [u.email, u]));
-
-    // Phase 3: Bulk ghost creation for unknown emails (1 INSERT + 1 SELECT)
-    const newContactData = validContacts.filter(c => !emailToUser.has(c.email));
-    const createdGhosts = await this.db.createGhostUsersBulk(newContactData);
-    const newGhostIds: string[] = [];
-    for (const ghost of createdGhosts) {
-      const wasAlreadyKnown = existingUsers.some(u => u.email === ghost.email);
-      if (!wasAlreadyKnown) {
-        newGhostIds.push(ghost.id);
-      }
-      emailToUser.set(ghost.email, { ...ghost, isGhost: true });
-    }
-
-    // Phase 4: Bulk membership upsert (1 SELECT + 1 INSERT)
-    const allUserIds: string[] = [];
-    for (const vc of validContacts) {
-      const user = emailToUser.get(vc.email);
-      if (user) {
-        allUserIds.push(user.id);
-        const isNew = newGhostIds.includes(user.id);
-        result.details.push({ email: vc.email, userId: user.id, isNew });
-        result.imported++;
-        if (isNew) result.newContacts++;
-        else result.existingContacts++;
-      } else {
-        result.skipped++;
-      }
-    }
-    await this.db.upsertContactMembershipBulk(ownerId, allUserIds);
-
-    // Phase 4b: Clear reverse opt-outs (matches addContact() behavior)
-    await this.db.clearReverseOptOutBulk(ownerId, allUserIds);
-
-    // Phase 5: Bulk enqueue enrichment for new ghosts
-    if (newGhostIds.length > 0) {
-      await profileQueue.addEnrichUserJobBulk(newGhostIds.map(id => ({ userId: id })));
-      logger.info('[ContactService] Enrichment jobs enqueued for new ghosts', { count: newGhostIds.length });
-    }
 
     logger.info('[ContactService] Import completed', {
       ownerId,

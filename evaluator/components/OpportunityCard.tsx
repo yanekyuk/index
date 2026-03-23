@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, Clock, X } from "lucide-react";
+import { Check, Clock, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -204,20 +204,18 @@ export default function OpportunityCard({ card }: { card: OpportunityCardData })
         </ReactMarkdown>
       </div>
 
-      {card.narratorChip && (
+      {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}
+      {card.narratorChip && card.narratorChip.name !== "Index" && (
         <div className="mt-3">
           <div className={`inline-flex items-center gap-2.5 px-3 py-1 rounded-md ${getNarratorChipClass(card.status)}`}>
             <div className="relative shrink-0">
-              {card.narratorChip.name === "Index" ? (
-                <Bot className="w-7 h-7 text-[#3D3D3D]" />
-              ) : card.narratorChip.avatar ? (
-                  <img src={card.narratorChip.avatar} alt={card.narratorChip.name} className="w-7 h-7 rounded-full object-cover" />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-[10px] font-semibold text-white overflow-hidden">
-                    {getInitials(card.narratorChip.name)}
-                  </div>
-                )
-              }
+              {card.narratorChip.avatar ? (
+                <img src={card.narratorChip.avatar} alt={card.narratorChip.name} className="w-7 h-7 rounded-full object-cover" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-black flex items-center justify-center text-[10px] font-semibold text-white overflow-hidden">
+                  {getInitials(card.narratorChip.name)}
+                </div>
+              )}
             </div>
             <span className="text-[13px] text-[#3D3D3D]">
               <span className="font-semibold">{card.narratorChip.name}:</span>{" "}

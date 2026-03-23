@@ -440,8 +440,7 @@ describe("opportunity.discover", () => {
 
       expect(result.found).toBe(true);
       const card = result.opportunities![0];
-      expect(card.narratorChip?.name).toBe("Index");
-      expect(card.narratorChip?.userId).toBeUndefined();
+      expect(card.narratorChip).toBeUndefined();
       expect(card.homeCardPresentation?.primaryActionLabel).toBe("Start Chat");
       expect(card.homeCardPresentation?.headline).toContain("Connection with");
     });

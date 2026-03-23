@@ -141,7 +141,7 @@ export interface OpportunityCardPayload {
   secondaryActionLabel?: string;
   /** Subtitle under the other party name (e.g. "1 mutual intent"). */
   mutualIntentsLabel?: string;
-  /** Narrator chip (Index or introducer). */
+  /** Narrator chip for human-introduced opportunities. */
   narratorChip?: {
     name: string;
     text: string;

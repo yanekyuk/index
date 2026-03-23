@@ -19,6 +19,7 @@ import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
+import { IntegrationService } from './services/integration.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
@@ -130,7 +131,8 @@ controllerInstances.set(StorageController, new StorageController(storageAdapter)
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
-controllerInstances.set(IntegrationController, new IntegrationController(new ComposioIntegrationAdapter()));
+const integrationAdapter = new ComposioIntegrationAdapter();
+controllerInstances.set(IntegrationController, new IntegrationController(integrationAdapter, new IntegrationService(integrationAdapter)));
 controllerInstances.set(DebugController, new DebugController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });
