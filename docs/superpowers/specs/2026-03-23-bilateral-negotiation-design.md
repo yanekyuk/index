@@ -8,6 +8,22 @@ Bilateral agent-to-agent negotiation that determines whether discovered candidat
 
 The current opportunity pipeline discovers candidates via semantic search (HyDE) and scores them with a unilateral evaluator. This works but has a fundamental limitation: a single scoring function decides mutual fit from one perspective. Bilateral negotiation introduces adversarial evaluation — one agent argues for the match, the other evaluates against its user's interests — producing higher-quality consensus decisions.
 
+## Design Interview Summary
+
+| # | Question | Options | Answer |
+|---|----------|---------|--------|
+| 1 | **Who are the two sides? What do agents represent?** | (a) User's intents/interests autonomously, (b) The user themselves with input, (c) Mix — autonomous up to threshold then escalate | **(a)** Fully autonomous, advocating based on intents |
+| 2 | **What is the negotiation deciding?** | (a) Mutual fit only (yes/no gate), (b) Fit + terms/framing, (c) Fit + visibility tier | **(a)** Mutual fit consensus |
+| 3 | **How many turns?** | (a) Fixed 2-turn, (b) Fixed 3-turn, (c) Variable with cap | **(c)** Variable with cap |
+| 4 | **What happens when agents can't agree within the cap?** | (a) Default reject, (b) Fall back to unilateral evaluator, (c) Surface as low-confidence | **(a)** Default reject — no consensus means not strong enough |
+| 5 | **How does this map to A2A?** | Proposed conversation-per-negotiation mapping | Redirected to read the actual A2A spec (`a2a-llms-full.txt`) |
+| 6 | **How much do agents reveal to each other?** | (a) Full transparency, (b) Opaque signals, (c) HyDE-mediated | **(a)** Full transparency — privacy is at human level, not agent level |
+| 7 | **Where in the pipeline does negotiation sit?** | (a) Replaces evaluation, (b) After evaluation as second stage, (c) Parallel to evaluation | **(b)** After evaluation — two-stage funnel |
+| 8 | **Sync or async execution?** | (a) Fully synchronous, (b) Async via queue | **Both** — design the interface as async A2A (b), execute synchronously for now (a). Federation-ready shape, pragmatic runtime. |
+| 9 | **contextId or conversationId?** | New A2A `contextId` concept vs existing `conversationId` | **conversationId** — it's already the `contextId` equivalent in the existing schema |
+| 10 | **What's the turn cap?** | (a) 4 turns, (b) 6 turns, (c) Configurable per index | **(b)** 6 turns (3 per agent) |
+| 11 | **Which architecture approach?** | (1) New node in opportunity graph, (2) Separate negotiation graph, (3) Queue job | **(2)** Separate negotiation graph |
+
 ## Design Decisions
 
 | Decision | Choice | Rationale |
@@ -115,32 +131,19 @@ const NegotiationState = Annotation.Root({
 ```typescript
 NegotiationTurn {
   action: 'propose' | 'accept' | 'reject' | 'counter'
-
-  // What the agent reveals about its user
-  evidence: {
-    intents: { id, title, description, confidence }[]
-    profileSummary: string
-    hydeDocuments: string[]
-    indexContext: { indexId, prompt, relevancyScore }
-  }
-
-  // The agent's assessment
   assessment: {
     fitScore: number           // 0-100, this agent's view of the match
-    reasoning: string          // Why this is/isn't a good match
+    reasoning: string          // Why this is/isn't a good match (includes objections naturally)
     suggestedRoles: {
       ownUser: 'agent' | 'patient' | 'peer'
       otherUser: 'agent' | 'patient' | 'peer'
     }
   }
-
-  // On counter: what the agent wants addressed
-  objections?: string[]        // e.g., "Intent alignment is weak in area X"
 }
 
-// Note: `evidence` is included in full on the first turn (propose) only.
-// Subsequent turns (counter/accept/reject) include only the relevant subset
-// of evidence that supports the agent's argument, not a full context dump.
+// Agents receive full user context (intents, profile, HyDE docs) via graph state.
+// No need to echo evidence back in messages — they argue from context they already hold.
+// Reasoning naturally covers objections ("intent alignment is weak in X").
 
 ```
 
