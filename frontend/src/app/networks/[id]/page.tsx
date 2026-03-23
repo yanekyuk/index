@@ -42,7 +42,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
 
   const networkId = networkIdOverride || (params.id as string);
   const tabParam = params.tab as string | undefined;
-  const resolvedBasePath = basePath || `/networks/${networkId}`;
+  const resolvedBasePath = useMemo(() => basePath || `/networks/${networkId}`, [basePath, networkId]);
   const activeTab = useMemo<TabValue>(() => {
     if (tabParam && URL_TO_TAB[tabParam]) return URL_TO_TAB[tabParam];
     return 'overview';
@@ -122,6 +122,15 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     };
     updateNetworkFromContext();
   }, [indexes, network, checkOwnership, user?.id, isOwner]);
+
+  // Redirect invalid tab slugs and non-owner tab access to the base path
+  useEffect(() => {
+    if (!tabParam || loading) return;
+    const invalidSlug = !URL_TO_TAB[tabParam];
+    if (invalidSlug || !isOwner) {
+      navigate(resolvedBasePath, { replace: true });
+    }
+  }, [tabParam, loading, isOwner, resolvedBasePath, navigate]);
 
   const handleDeleted = () => navigate('/networks');
   const handleLeft = () => navigate('/networks');
