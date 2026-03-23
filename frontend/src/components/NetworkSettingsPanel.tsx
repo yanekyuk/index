@@ -15,7 +15,10 @@ import { Member } from '@/services/indexes';
 import { validateFiles } from '@/lib/file-validation';
 
 /** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
-const AVAILABLE_TOOLKITS = ['gmail'] as const;
+const AVAILABLE_TOOLKITS = ['gmail', 'slack'] as const;
+
+const TOOLKIT_LABELS: Record<string, string> = { gmail: 'Gmail', slack: 'Slack' };
+const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
 import IndexAvatar, { resolveIndexImageSrc } from '@/components/IndexAvatar';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
@@ -31,7 +34,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const indexesService = useIndexes();
   const navigate = useNavigate();
   const { indexes, updateIndex, removeIndex } = useIndexesState();
-  const { success, error } = useNotifications();
+  const { success, error, info } = useNotifications();
   const api = useAuthenticatedAPI();
 
   const currentIndex = indexes?.find(idx => idx.id === index.id) || index;
@@ -172,7 +175,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const loadConnections = useCallback(async () => {
     try {
       const integrationsService = createIntegrationsService(api);
-      const response = await integrationsService.getConnections();
+      const response = await integrationsService.getConnections(index.id);
       setConnections(response.connections);
     } catch (err) {
       console.error('Failed to load connections:', err);
@@ -180,7 +183,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     } finally {
       setConnectionsLoaded(true);
     }
-  }, [api]);
+  }, [api, index.id]);
 
   useEffect(() => {
     if (activeTab === 'integrations') loadConnections();
@@ -312,9 +315,48 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
     }
   };
 
+  const autoImportContacts = async (toolkit: string) => {
+    const svc = createIntegrationsService(api);
+    info(`Importing contacts from ${toolkitLabel(toolkit)}...`, undefined, 30000);
+    try {
+      const result = await svc.importContacts(toolkit, index.id);
+      const label = index.isPersonal ? 'contacts' : 'members';
+      success(`Imported ${result.imported} ${label}`, `${result.newContacts} new, ${result.existingContacts} already in your network`);
+    } catch {
+      error(`Failed to import ${toolkitLabel(toolkit)} contacts`);
+    }
+  };
+
+  const linkAndImport = async (toolkit: string) => {
+    const svc = createIntegrationsService(api);
+    try {
+      await svc.linkIntegration(toolkit, index.id);
+      await loadConnections();
+      autoImportContacts(toolkit);
+    } catch {
+      error(`Failed to link ${toolkitLabel(toolkit)} to this index`);
+    }
+  };
+
   const handleConnect = async (toolkit: string) => {
     const integrationsService = createIntegrationsService(api);
     setPendingToolkit(toolkit);
+
+    // Check if user already has a Composio connection for this toolkit (user-level)
+    try {
+      const allConns = await integrationsService.getConnections();
+      const existingConn = allConns.connections.find(c => c.toolkit === toolkit);
+      if (existingConn) {
+        // Already OAuth'd -- just link to this index
+        success(`${toolkitLabel(toolkit)} connected`);
+        await linkAndImport(toolkit);
+        setPendingToolkit(null);
+        return;
+      }
+    } catch {
+      // Fall through to OAuth flow
+    }
+
     try {
       const response = await integrationsService.connect(toolkit);
       const width = 600, height = 700;
@@ -328,18 +370,21 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         return;
       }
 
+      let oauthSucceeded = false;
+
       const onMessage = (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
         if (event.data?.type === 'oauth_callback' && event.data?.status === 'success') {
+          oauthSucceeded = true;
           window.removeEventListener('message', onMessage);
           popup?.close();
-          success(`${toolkit} connected`);
-          loadConnections();
+          success(`${toolkitLabel(toolkit)} connected`);
           setPendingToolkit(null);
+          linkAndImport(toolkit);
         } else if (event.data?.type === 'oauth_callback') {
           window.removeEventListener('message', onMessage);
           popup?.close();
-          error(`Failed to connect ${toolkit}`);
+          error(`Failed to connect ${toolkitLabel(toolkit)}`);
           setPendingToolkit(null);
         }
       };
@@ -349,25 +394,27 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
         if (popup?.closed) {
           clearInterval(checkClosed);
           window.removeEventListener('message', onMessage);
-          loadConnections();
-          setPendingToolkit(null);
+          if (!oauthSucceeded) {
+            loadConnections();
+            setPendingToolkit(null);
+          }
         }
       }, 1000);
     } catch {
-      error(`Failed to connect ${toolkit}`);
+      error(`Failed to connect ${toolkitLabel(toolkit)}`);
       setPendingToolkit(null);
     }
   };
 
-  const handleDisconnect = async (connection: ComposioConnection) => {
+  const handleUnlink = async (toolkit: string) => {
     const integrationsService = createIntegrationsService(api);
-    setPendingToolkit(connection.toolkit);
+    setPendingToolkit(toolkit);
     try {
-      await integrationsService.disconnect(connection.id);
-      success(`${connection.toolkit} disconnected`);
+      await integrationsService.unlinkIntegration(toolkit, index.id);
+      success(`${toolkitLabel(toolkit)} removed from this index`);
       await loadConnections();
     } catch {
-      error(`Failed to disconnect ${connection.toolkit}`);
+      error(`Failed to remove ${toolkitLabel(toolkit)}`);
     } finally {
       setPendingToolkit(null);
     }
@@ -629,9 +676,14 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     </span>
                   )}
                   {!member.permissions.includes('owner') && (
-                    <button onClick={() => handleRemoveMember(member.id)} className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <>
+                      <span className="group-hover:hidden text-xs px-1.5 py-0.5 rounded-sm font-medium flex-shrink-0 bg-gray-200 text-gray-700">
+                        {member.permissions.includes('member') ? 'Member' : 'Contact'}
+                      </span>
+                      <button onClick={() => handleRemoveMember(member.id)} className="hidden group-hover:block p-1 text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
                   )}
                 </div>
               ))}
@@ -690,7 +742,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
                     <div className="w-11 h-6 bg-gray-100 rounded-full animate-pulse" />
                   ) : (
                     <button
-                      onClick={() => isConnected ? handleDisconnect(conn) : handleConnect(toolkit)}
+                      onClick={() => isConnected ? handleUnlink(toolkit) : handleConnect(toolkit)}
                       disabled={isPending}
                       className={`relative h-6 w-11 rounded-full transition-colors ${isConnected ? 'bg-[#006D4B]' : 'bg-gray-300'} ${isPending ? 'opacity-70' : ''}`}
                     >
