@@ -8,7 +8,12 @@ import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import type { ResolvedToolContext } from "../tools";
 
 import { buildSystemContent } from "./chat.prompt";
-import { extractRecentToolCalls, resolveModules, type IterationContext } from "./chat.prompt.modules";
+import {
+  extractRecentToolCalls,
+  resolveModules,
+  PROMPT_MODULES,
+  type IterationContext,
+} from "./chat.prompt.modules";
 
 describe("extractRecentToolCalls", () => {
   test("returns empty array when no tool calls in messages", () => {
@@ -139,6 +144,181 @@ describe("resolveModules", () => {
     const result = resolveModules(iterCtx);
     expect(result).toBe("");
   });
+
+  test("activates discovery module on create_opportunities trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "create_opportunities", args: { searchQuery: "mentor" } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 1. User wants to find connections or discover");
+    expect(result).toContain("### 1a. User wants to connect with a specific mentioned person");
+    expect(result).toContain("### 7. Opportunities in chat");
+    expect(result).toContain("### Discovery-first; intent as follow-up");
+  });
+
+  test("activates introduction module (excludes discovery) when partyUserIds present", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "create_opportunities", args: { partyUserIds: ["a", "b"] } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 6. Introduce two people");
+    expect(result).toContain("### 6a. Discover who to introduce to someone");
+    // discovery should be excluded
+    expect(result).not.toContain("### 1. User wants to find connections or discover");
+  });
+
+  test("activates introduction module when introTargetUserId present", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "create_opportunities", args: { introTargetUserId: "user-x" } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 6. Introduce two people");
+    expect(result).not.toContain("### 1. User wants to find connections or discover");
+  });
+
+  test("activates intent-creation module on create_intent trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "create_intent", args: { description: "test" } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 2. User explicitly wants to create or save an intent");
+  });
+
+  test("activates intent-management module on update_intent trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "update_intent", args: {} }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 4. Update or delete an intent");
+  });
+
+  test("activates person-lookup module on read_user_profiles trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "read_user_profiles", args: { query: "Alice" } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 0. User asks about a specific person by name");
+  });
+
+  test("activates url-scraping module on scrape_url trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "scrape_url", args: { url: "https://example.com" } }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 3. User includes a URL");
+  });
+
+  test("activates url-scraping module via regex when message contains URL", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [],
+      currentMessage: "check out https://example.com",
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 3. User includes a URL");
+  });
+
+  test("activates community module on read_indexes trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "read_indexes", args: {} }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 8. Explore what a community is about");
+    expect(result).toContain("### When to mention community/index");
+  });
+
+  test("activates contacts module on import_gmail_contacts trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "import_gmail_contacts", args: {} }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 9. Import contacts from Gmail");
+    expect(result).toContain("### 10. Add or manage contacts manually");
+  });
+
+  test("activates shared-context module on read_index_memberships trigger", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "read_index_memberships", args: {} }],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 5. Find shared context between two users");
+  });
+
+  test("activates mentions module via regex on @mention in message", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [],
+      currentMessage: "what about @[Alice](user-123)?",
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("@[Display Name](userId)");
+  });
+
+  test("does not activate mentions module without @mention", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [],
+      currentMessage: "hello world",
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).not.toContain("@[Display Name](userId)");
+  });
+
+  test("multiple modules can activate simultaneously", () => {
+    const iterCtx: IterationContext = {
+      recentTools: [
+        { name: "create_opportunities", args: { searchQuery: "AI" } },
+        { name: "read_user_profiles", args: { query: "Bob" } },
+      ],
+      ctx: mockCtx(),
+    };
+    const result = resolveModules(iterCtx);
+    expect(result).toContain("### 1. User wants to find connections or discover");
+    expect(result).toContain("### 0. User asks about a specific person by name");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROMPT_MODULES registry sanity checks
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("PROMPT_MODULES registry", () => {
+  test("has exactly 10 modules", () => {
+    expect(PROMPT_MODULES).toHaveLength(10);
+  });
+
+  test("all module IDs are unique", () => {
+    const ids = PROMPT_MODULES.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  test("expected module IDs are present", () => {
+    const ids = new Set(PROMPT_MODULES.map((m) => m.id));
+    for (const expected of [
+      "discovery",
+      "introduction",
+      "intent-creation",
+      "intent-management",
+      "person-lookup",
+      "url-scraping",
+      "community",
+      "contacts",
+      "shared-context",
+      "mentions",
+    ]) {
+      expect(ids.has(expected)).toBe(true);
+    }
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -185,19 +365,17 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
 }
 
 describe("buildSystemContent snapshot identity", () => {
-  test("general chat (no index scope, no onboarding) — section order is correct", () => {
+  test("general chat (no index scope, no onboarding) — patterns are NOT in base prompt", () => {
     const ctx = makeCtx();
     const output = buildSystemContent(ctx);
 
-    // Verify key sections are present in the correct order
+    // Verify key core sections are present in the correct order
     const missionIdx = output.indexOf("You are Index.");
     const voiceIdx = output.indexOf("## Voice and constraints");
     const sessionIdx = output.indexOf("## Session");
     const preloadedIdx = output.indexOf("### Current User (preloaded context)");
     const architectureIdx = output.indexOf("## Architecture Philosophy");
     const toolsIdx = output.indexOf("## Tools Reference");
-    const patternsIdx = output.indexOf("## Orchestration Patterns");
-    const behavioralIdx = output.indexOf("## Behavioral Rules");
     const scopingIdx = output.indexOf("### Index Scope");
     const urlsIdx = output.indexOf("### URLs");
     const narrationIdx = output.indexOf("### Narration Style");
@@ -210,13 +388,16 @@ describe("buildSystemContent snapshot identity", () => {
     expect(preloadedIdx).toBeGreaterThan(sessionIdx);
     expect(architectureIdx).toBeGreaterThan(preloadedIdx);
     expect(toolsIdx).toBeGreaterThan(architectureIdx);
-    expect(patternsIdx).toBeGreaterThan(toolsIdx);
-    expect(behavioralIdx).toBeGreaterThan(patternsIdx);
-    expect(scopingIdx).toBeGreaterThan(behavioralIdx);
+    expect(scopingIdx).toBeGreaterThan(toolsIdx);
     expect(urlsIdx).toBeGreaterThan(scopingIdx);
     expect(narrationIdx).toBeGreaterThan(urlsIdx);
     expect(outputFmtIdx).toBeGreaterThan(narrationIdx);
     expect(generalIdx).toBeGreaterThan(outputFmtIdx);
+
+    // Patterns and behavioral rules should NOT be in base prompt (no iterCtx)
+    expect(output).not.toContain("## Orchestration Patterns");
+    expect(output).not.toContain("## Behavioral Rules");
+    expect(output).not.toContain("### 1. User wants to find connections");
 
     // Onboarding section must NOT be present
     expect(output).not.toContain("## ONBOARDING MODE");
@@ -263,14 +444,30 @@ describe("buildSystemContent snapshot identity", () => {
     expect(output.length).toMatchSnapshot();
   });
 
-  test("without iterCtx, modules section is empty and result matches empty-tools call", () => {
+  test("without iterCtx, modules section is empty; with empty iterCtx, result matches", () => {
     const ctx = makeCtx();
     const withoutIter = buildSystemContent(ctx);
     const withEmptyIter = buildSystemContent(ctx, {
       recentTools: [],
       ctx,
     });
-    // With no modules registered and no tools called, result should be identical
+    // With no tools called and no regex match, result should be identical
     expect(withEmptyIter).toBe(withoutIter);
+  });
+
+  test("with iterCtx containing discovery tools, output includes discovery patterns", () => {
+    const ctx = makeCtx();
+    const iterCtx: IterationContext = {
+      recentTools: [{ name: "create_opportunities", args: { searchQuery: "AI" } }],
+      ctx,
+    };
+    const output = buildSystemContent(ctx, iterCtx);
+    expect(output).toContain("### 1. User wants to find connections or discover");
+    expect(output).toContain("### 7. Opportunities in chat");
+
+    // The base prompt sections should still be present
+    expect(output).toContain("You are Index.");
+    expect(output).toContain("### Index Scope");
+    expect(output).toContain("### Output Format");
   });
 });

@@ -1,9 +1,9 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`buildSystemContent snapshot identity general chat (no index scope, no onboarding) — section order is correct 1`] = `30718`;
+exports[`buildSystemContent snapshot identity general chat (no index scope, no onboarding) — patterns are NOT in base prompt 1`] = `16039`;
 
-exports[`buildSystemContent snapshot identity scoped chat (index scope, owner) produces stable output 1`] = `31390`;
+exports[`buildSystemContent snapshot identity scoped chat (index scope, owner) produces stable output 1`] = `16711`;
 
-exports[`buildSystemContent snapshot identity onboarding mode produces stable output 1`] = `37484`;
+exports[`buildSystemContent snapshot identity onboarding mode produces stable output 1`] = `22805`;
 
-exports[`buildSystemContent snapshot identity onboarding without name produces stable output 1`] = `38004`;
+exports[`buildSystemContent snapshot identity onboarding without name produces stable output 1`] = `23325`;
