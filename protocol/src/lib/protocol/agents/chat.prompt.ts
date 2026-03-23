@@ -393,23 +393,15 @@ What NOT to narrate (group silently with the main action):
 - Keep iterating until you have a good answer. Don't give up after one call.`;
 }
 
-/**
- * Convenience wrapper: all non-conditional core sections concatenated.
- * Used for reference; individual segments are composed in buildSystemContent.
- */
-function buildCore(ctx: ResolvedToolContext): string {
-  return buildCoreHead(ctx) + buildCoreBody(ctx) + buildCoreTail(ctx);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Builds the full system prompt for the chat agent.
- * Composes core, onboarding, scoping, and dynamic modules into a
- * single prompt string. Without iterCtx the output is identical to the
- * original monolithic prompt.
+ * Composes core, onboarding, scoping, and dynamic modules into a single
+ * prompt string. Without iterCtx only core sections are included; modules
+ * are omitted, producing a leaner first-iteration prompt.
  *
  * @param ctx - Resolved tool context for the current session
  * @param iterCtx - Optional iteration context for dynamic module resolution

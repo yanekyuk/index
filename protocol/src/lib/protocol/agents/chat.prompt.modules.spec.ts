@@ -455,6 +455,29 @@ describe("buildSystemContent snapshot identity", () => {
     expect(withEmptyIter).toBe(withoutIter);
   });
 
+  test("with all modules active, full prompt is snapshot-stable", () => {
+    const ctx = makeCtx();
+    // Craft iterCtx that triggers all 10 modules (introduction excludes discovery,
+    // so use discovery-style args to get discovery + skip introduction)
+    const iterCtx: IterationContext = {
+      recentTools: [
+        { name: "create_opportunities", args: { searchQuery: "AI" } }, // discovery
+        { name: "update_opportunity", args: {} },
+        { name: "create_intent", args: {} },                          // intent-creation
+        { name: "update_intent", args: {} },                          // intent-management
+        { name: "read_user_profiles", args: {} },                     // person-lookup
+        { name: "scrape_url", args: {} },                             // url-scraping
+        { name: "read_indexes", args: {} },                           // community
+        { name: "add_contact", args: {} },                            // contacts
+        { name: "read_index_memberships", args: {} },                 // shared-context
+      ],
+      currentMessage: "check @[Alice](user-1) and https://example.com", // mentions + url regex
+      ctx,
+    };
+    const output = buildSystemContent(ctx, iterCtx);
+    expect(output).toMatchSnapshot();
+  });
+
   test("with iterCtx containing discovery tools, output includes discovery patterns", () => {
     const ctx = makeCtx();
     const iterCtx: IterationContext = {
