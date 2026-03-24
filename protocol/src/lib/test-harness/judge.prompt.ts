@@ -1,4 +1,3 @@
-// protocol/src/lib/test-harness/judge.prompt.ts
 import { z } from "zod";
 
 export const judgeResponseSchema = z.object({

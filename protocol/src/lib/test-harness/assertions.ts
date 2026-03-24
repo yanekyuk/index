@@ -65,6 +65,13 @@ const DEFAULT_MIN_SCORE = 0.7;
  * Evaluates a value against semantic criteria using an LLM judge.
  * Throws with a detailed report on failure.
  * Returns the full evaluation result for programmatic inspection.
+ *
+ * When `OPENROUTER_API_KEY` is not set, returns a passing no-op result and
+ * logs a warning. This prevents CI environments without LLM access from
+ * failing, but means semantic checks are silently skipped. For tests where
+ * the LLM check is the primary assertion, wrap with
+ * `describe.skipIf(!process.env.OPENROUTER_API_KEY)` so bun reports the
+ * skip explicitly.
  */
 export async function assertLLMEvaluate(
   value: unknown,
@@ -112,6 +119,10 @@ export async function assertLLMEvaluate(
       s.criterion.toLowerCase().includes(criterionLower.slice(0, 30))
         || criterionLower.includes(s.criterion.toLowerCase().slice(0, 30))
     ) ?? judgeResult.scores[idx]; // Last resort: positional
+
+    if (match === judgeResult.scores[idx] && match?.criterion.toLowerCase() !== criterionLower) {
+      console.warn(`[test-harness] Criterion "${criterion.text}" matched by positional fallback (judge returned "${match?.criterion}")`);
+    }
 
     const score = match?.score ?? 0;
     const reasoning = match?.reasoning ?? "No judge response for this criterion";
