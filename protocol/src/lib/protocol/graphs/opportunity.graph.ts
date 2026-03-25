@@ -1586,13 +1586,25 @@ export class OpportunityGraphFactory {
         const candidates: NegotiationCandidate[] = await Promise.all(
           candidateEntries.map(async ({ opp, candidateActor }) => {
             const userId = candidateActor.userId as string;
-            const [profile, user, intent] = await Promise.all([
+            const [profile, user, activeIntents, intent] = await Promise.all([
               this.database.getProfile(userId).catch(() => null),
               this.database.getUser(userId).catch(() => null),
+              this.database.getActiveIntents(userId).catch(() => []),
               candidateActor.intentId
                 ? this.database.getIntent(candidateActor.intentId as string).catch(() => null)
                 : null,
             ]);
+
+            // Prefer active intents (capped at 5, trigger intent first); fall back to single intent
+            const orderedIntents = [
+              ...activeIntents.filter(ai => ai.id === candidateActor.intentId),
+              ...activeIntents.filter(ai => ai.id !== candidateActor.intentId),
+            ].slice(0, 5);
+            const candidateIntents = orderedIntents.length > 0
+              ? orderedIntents.map(ai => ({ id: ai.id as string, title: ai.summary ?? '', description: ai.payload ?? '', confidence: 1 }))
+              : intent
+                ? [{ id: intent.id ?? (candidateActor.intentId as string), title: intent.summary ?? '', description: intent.payload ?? '', confidence: 1 }]
+                : [];
 
             return {
               userId,
@@ -1602,9 +1614,7 @@ export class OpportunityGraphFactory {
               indexId: candidateActor.indexId as string,
               candidateUser: {
                 id: userId,
-                intents: intent
-                  ? [{ id: intent.id ?? (candidateActor.intentId as string), title: intent.summary ?? '', description: intent.payload ?? '', confidence: 1 }]
-                  : [],
+                intents: candidateIntents,
                 profile: {
                   name: profile?.identity?.name ?? user?.name,
                   bio: profile?.identity?.bio ?? user?.intro ?? undefined,
@@ -1626,7 +1636,10 @@ export class OpportunityGraphFactory {
         await Promise.all(
           uniqueIndexIds.map(async (indexId) => {
             const ctx = await this.database.getIndexMemberContext(indexId, discoveryUserId).catch(() => null);
-            if (ctx?.indexPrompt) indexContextMap.set(indexId, ctx.indexPrompt);
+            const prompt = [ctx?.indexPrompt, ctx?.memberPrompt]
+              .filter((v): v is string => !!v?.trim())
+              .join('\n\n');
+            if (prompt) indexContextMap.set(indexId, prompt);
           }),
         );
 
