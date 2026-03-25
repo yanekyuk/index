@@ -1558,7 +1558,7 @@ export class OpportunityGraphFactory {
 
         const sourceUser = {
           id: discoveryUserId,
-          intents: state.indexedIntents?.map(i => ({
+          intents: state.indexedIntents?.slice(0, 5).map(i => ({
             id: i.intentId as string,
             title: i.summary ?? '',
             description: i.payload ?? '',
