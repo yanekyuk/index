@@ -4,13 +4,16 @@ config({ path: ".env.development", override: true });
 import { describe, expect, it, mock } from "bun:test";
 import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter";
 
+/** Test-only type to override the private invokeWithTimeout method. */
+type PresenterWithInvokeOverride = OpportunityPresenter & {
+  invokeWithTimeout: (...args: unknown[]) => unknown;
+};
+
 // ---------------------------------------------------------------------------
 // Zero mutual intents – fallback path (no LLM needed)
 // ---------------------------------------------------------------------------
 
 describe("OpportunityPresenter – zero mutual intents label", () => {
-  // Force the LLM to fail so we exercise the catch/fallback path.
-  // We subclass and override the private invokeWithTimeout via prototype patch.
   let presenter: OpportunityPresenter;
 
   const baseInput: HomeCardPresenterInput = {
@@ -27,12 +30,12 @@ describe("OpportunityPresenter – zero mutual intents label", () => {
 
   // Patch the presenter to always hit the fallback path
   function createFallbackPresenter(): OpportunityPresenter {
-    const p = new OpportunityPresenter();
+    const p = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
     // Force the LLM call to throw, triggering the catch/fallback branch
-    (p as any).invokeWithTimeout = mock(() => {
+    p.invokeWithTimeout = mock(() => {
       throw new Error("Forced fallback for testing");
     });
-    return p;
+    return p as unknown as OpportunityPresenter;
   }
 
   it("should return 'Shared interests' when mutualIntentCount is 0", async () => {
@@ -49,7 +52,7 @@ describe("OpportunityPresenter – zero mutual intents label", () => {
 
   it("should return 'Shared interests' when mutualIntentCount is null", async () => {
     presenter = createFallbackPresenter();
-    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: null as any });
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: null as unknown as number });
     expect(result.mutualIntentsLabel).toBe("Shared interests");
   });
 
@@ -96,8 +99,8 @@ describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", ()
   };
 
   function createLlmMockPresenter(mutualIntentsLabel: string): OpportunityPresenter {
-    const p = new OpportunityPresenter();
-    (p as any).invokeWithTimeout = mock(() => ({
+    const p = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
+    p.invokeWithTimeout = mock(() => ({
       presentation: {
         headline: "A great match",
         personalizedSummary: "You both care about design systems.",
@@ -108,7 +111,7 @@ describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", ()
         mutualIntentsLabel,
       },
     }));
-    return p;
+    return p as unknown as OpportunityPresenter;
   }
 
   it("should rewrite '0 mutual intents' to 'Shared interests'", async () => {
