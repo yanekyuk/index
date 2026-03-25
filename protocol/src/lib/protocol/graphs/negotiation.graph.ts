@@ -1,7 +1,10 @@
 import { StateGraph } from "@langchain/langgraph";
 
-import { requestContext } from "../../request-context";
+import { requestContext, type TraceEmitter } from "../../request-context";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "../states/negotiation.state";
+import { protocolLogger } from "../support/protocol.logger";
+
+const logger = protocolLogger("NegotiationGraph");
 
 interface ConversationServiceLike {
   createConversation(participants: { participantId: string; participantType: "user" | "agent" }[]): Promise<{ id: string }>;
@@ -20,20 +23,14 @@ interface TaskServiceLike {
   createArtifact(taskId: string, data: { name?: string; parts: unknown[]; metadata?: Record<string, unknown> }): Promise<{ id: string }>;
 }
 
-interface NegotiationAgentInput {
-  ownUser: UserNegotiationContext;
-  otherUser: UserNegotiationContext;
-  indexContext: { indexId: string; prompt: string };
-  seedAssessment: SeedAssessment;
-  history: NegotiationTurn[];
-}
-
-interface ProposerLike {
-  invoke(input: NegotiationAgentInput): Promise<NegotiationTurn>;
-}
-
-interface ResponderLike {
-  invoke(input: NegotiationAgentInput): Promise<NegotiationTurn>;
+interface NegotiationAgentLike {
+  invoke(input: {
+    ownUser: UserNegotiationContext;
+    otherUser: UserNegotiationContext;
+    indexContext: { indexId: string; prompt: string };
+    seedAssessment: SeedAssessment;
+    history: NegotiationTurn[];
+  }): Promise<NegotiationTurn>;
 }
 
 /**
@@ -44,8 +41,8 @@ export class NegotiationGraphFactory {
   constructor(
     private conversationService: ConversationServiceLike,
     private taskService: TaskServiceLike,
-    private proposer: ProposerLike,
-    private responder: ResponderLike,
+    private proposer: NegotiationAgentLike,
+    private responder: NegotiationAgentLike,
   ) {}
 
   createGraph() {
@@ -105,7 +102,7 @@ export class NegotiationGraphFactory {
 
         // First turn must be "propose"
         if (state.turnCount === 0 && turn.action !== "propose") {
-          console.warn(`[NegotiationGraph] Proposer returned "${turn.action}" on turn 0, forcing to "propose"`);
+          logger.warn("[Graph:Turn] Proposer returned unexpected action on turn 0, forcing to propose", { action: turn.action });
           turn.action = "propose";
         }
 
@@ -201,7 +198,7 @@ export class NegotiationGraphFactory {
           metadata: { consensus, turnCount: state.turnCount },
         });
       } catch (err) {
-        // DB failure is non-blocking
+        logger.error("[Graph:Finalize] Failed to persist outcome", { error: err });
       }
 
       return { outcome };
@@ -240,8 +237,6 @@ export interface NegotiationResult {
   reasoning: string;
   turnCount: number;
 }
-
-type TraceEmitter = (event: { type: "graph_start" | "graph_end" | "agent_start" | "agent_end"; name: string; durationMs?: number; summary?: string }) => void;
 
 /**
  * Runs bilateral negotiation for each candidate in parallel.
@@ -310,7 +305,7 @@ export async function negotiateCandidates(
       } catch (err) {
         const durationMs = Date.now() - start;
         traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary: `${candidate.userId}: error` });
-        console.error(`[negotiateCandidates] Negotiation failed for candidate ${candidate.userId}:`, err);
+        logger.error("[negotiateCandidates] Negotiation failed", { candidateUserId: candidate.userId, error: err });
         return null;
       }
     }),

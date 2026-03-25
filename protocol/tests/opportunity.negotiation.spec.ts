@@ -34,7 +34,6 @@ describe("Opportunity Graph — Negotiation Integration", () => {
       id: "source",
       intents: [{ id: "i1", title: "Test", description: "Test intent", confidence: 0.9 }],
       profile: { name: "Alice" },
-      hydeDocuments: [],
     };
 
     const results = await negotiateCandidates(
@@ -46,8 +45,7 @@ describe("Opportunity Graph — Negotiation Integration", () => {
           id: c.userId,
           intents: [{ id: "i2", title: "Test", description: "Counter intent", confidence: 0.8 }],
           profile: { name: c.userId },
-          hydeDocuments: [],
-        },
+            },
       })),
       { indexId: "idx-1", prompt: "Test" },
     );

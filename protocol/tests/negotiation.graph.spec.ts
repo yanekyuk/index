@@ -9,14 +9,12 @@ const sourceUser: UserNegotiationContext = {
   id: "user-source",
   intents: [{ id: "i1", title: "Looking for ML engineer", description: "Need ML expertise", confidence: 0.9 }],
   profile: { name: "Alice", bio: "PM at startup", skills: ["product"] },
-  hydeDocuments: [],
 };
 
 const candidateUser: UserNegotiationContext = {
   id: "user-candidate",
   intents: [{ id: "i2", title: "Seeking PM", description: "ML eng seeking product co-founder", confidence: 0.85 }],
   profile: { name: "Bob", bio: "ML engineer", skills: ["ML"] },
-  hydeDocuments: [],
 };
 
 const seed: SeedAssessment = { score: 78, reasoning: "Complementary skills", valencyRole: "Peer" };

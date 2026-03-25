@@ -1568,7 +1568,6 @@ export class OpportunityGraphFactory {
             skills: state.sourceProfile?.attributes?.skills,
             interests: state.sourceProfile?.attributes?.interests,
           },
-          hydeDocuments: [] as string[],
         };
 
         // Build candidates with enriched context from database
@@ -1608,7 +1607,6 @@ export class OpportunityGraphFactory {
                   skills: profile?.attributes?.skills,
                   interests: profile?.attributes?.interests,
                 },
-                hydeDocuments: [] as string[],
               },
             };
           }),
@@ -1616,7 +1614,9 @@ export class OpportunityGraphFactory {
 
         const isChatPath = !!state.options?.conversationId;
         const maxTurns = isChatPath ? 4 : 6;
-        const indexContext = { indexId: state.indexId as string ?? '', prompt: '' };
+        const indexId = state.indexId as string ?? '';
+        const memberCtx = indexId ? await this.database.getIndexMemberContext(indexId, state.userId as string).catch(() => null) : null;
+        const indexContext = { indexId, prompt: memberCtx?.indexPrompt ?? '' };
 
         const consensusResults = await negotiateCandidates(
           this.negotiationGraph, sourceUser, candidates, indexContext,
@@ -1639,7 +1639,7 @@ export class OpportunityGraphFactory {
         traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
         return { evaluatedOpportunities: updatedOpportunities };
       } catch (err) {
-        console.error("[OpportunityGraph:negotiateNode] Negotiation stage failed:", err);
+        logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
         traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
         return {};
       }

@@ -10,14 +10,12 @@ const sourceUser: UserNegotiationContext = {
   id: "user-source",
   intents: [{ id: "i1", title: "Looking for ML engineer", description: "Need ML expertise for recommendation system", confidence: 0.9 }],
   profile: { name: "Alice", bio: "Product manager at a startup", skills: ["product management", "AI strategy"] },
-  hydeDocuments: ["A product leader seeking technical ML collaboration"],
 };
 
 const candidateUser: UserNegotiationContext = {
   id: "user-candidate",
   intents: [{ id: "i2", title: "Seeking PM collaboration", description: "ML engineer looking for product-minded co-founder", confidence: 0.85 }],
   profile: { name: "Bob", bio: "Senior ML engineer", skills: ["machine learning", "PyTorch", "recommendations"] },
-  hydeDocuments: ["An ML engineer seeking product leadership for a startup venture"],
 };
 
 const seedAssessment: SeedAssessment = {
