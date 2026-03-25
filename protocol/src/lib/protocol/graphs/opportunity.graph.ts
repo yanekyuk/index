@@ -1553,8 +1553,11 @@ export class OpportunityGraphFactory {
       traceEmitter?.({ type: "graph_start", name: "negotiation" });
 
       try {
+        // Use the same discoveryUserId pattern as evaluationNode
+        const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
+
         const sourceUser = {
-          id: state.userId as string,
+          id: discoveryUserId,
           intents: state.indexedIntents?.map(i => ({
             id: i.intentId as string,
             title: i.summary ?? '',
@@ -1570,10 +1573,11 @@ export class OpportunityGraphFactory {
           },
         };
 
-        // Build candidates with enriched context from database
+        // Build candidates with enriched context from database.
+        // Each actor carries its own indexId — use it for per-candidate index context.
         const candidateEntries = state.evaluatedOpportunities
           .map(opp => {
-            const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
             if (!candidateActor) return null;
             return { opp, candidateActor };
           })
@@ -1595,6 +1599,7 @@ export class OpportunityGraphFactory {
               score: opp.score,
               reasoning: opp.reasoning,
               valencyRole: candidateActor.role ?? 'peer',
+              indexId: candidateActor.indexId as string,
               candidateUser: {
                 id: userId,
                 intents: intent
@@ -1614,24 +1619,34 @@ export class OpportunityGraphFactory {
 
         const isChatPath = !!state.options?.conversationId;
         const maxTurns = isChatPath ? 4 : 6;
-        const indexId = state.indexId as string ?? '';
-        const memberCtx = indexId ? await this.database.getIndexMemberContext(indexId, state.userId as string).catch(() => null) : null;
-        const indexContext = { indexId, prompt: memberCtx?.indexPrompt ?? '' };
 
+        // Fetch per-candidate index context (group by indexId to avoid duplicate lookups)
+        const uniqueIndexIds = [...new Set(candidates.map(c => c.indexId).filter((id): id is string => !!id))];
+        const indexContextMap = new Map<string, string>();
+        await Promise.all(
+          uniqueIndexIds.map(async (indexId) => {
+            const ctx = await this.database.getIndexMemberContext(indexId, discoveryUserId).catch(() => null);
+            if (ctx?.indexPrompt) indexContextMap.set(indexId, ctx.indexPrompt);
+          }),
+        );
+
+        // Run negotiations per candidate with their actual index context
         const consensusResults = await negotiateCandidates(
-          this.negotiationGraph, sourceUser, candidates, indexContext,
-          { maxTurns, traceEmitter: traceEmitter ?? undefined },
+          this.negotiationGraph, sourceUser, candidates,
+          { indexId: '', prompt: '' }, // base context, overridden per-candidate below
+          { maxTurns, traceEmitter: traceEmitter ?? undefined,
+            indexContextOverrides: indexContextMap },
         );
 
         // Filter opportunities to only those with consensus, update scores
         const consensusMap = new Map(consensusResults.map(r => [r.userId, r]));
         const updatedOpportunities = state.evaluatedOpportunities
           .filter(opp => {
-            const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
             return candidateActor && consensusMap.has(candidateActor.userId as string);
           })
           .map(opp => {
-            const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
             const negResult = candidateActor && consensusMap.get(candidateActor.userId as string);
             return negResult ? { ...opp, score: negResult.negotiationScore } : opp;
           });
@@ -1641,7 +1656,7 @@ export class OpportunityGraphFactory {
       } catch (err) {
         logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
         traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
-        return {};
+        return { evaluatedOpportunities: [] };
       }
     };
 

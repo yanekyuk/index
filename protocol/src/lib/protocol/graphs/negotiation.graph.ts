@@ -227,6 +227,7 @@ export interface NegotiationCandidate {
   score: number;
   reasoning: string;
   valencyRole: string;
+  indexId?: string;
   candidateUser: UserNegotiationContext;
 }
 
@@ -252,9 +253,9 @@ export async function negotiateCandidates(
   sourceUser: UserNegotiationContext,
   candidates: NegotiationCandidate[],
   indexContext: { indexId: string; prompt: string },
-  opts?: { maxTurns?: number; traceEmitter?: TraceEmitter },
+  opts?: { maxTurns?: number; traceEmitter?: TraceEmitter; indexContextOverrides?: Map<string, string> },
 ): Promise<NegotiationResult[]> {
-  const { maxTurns, traceEmitter } = opts ?? {};
+  const { maxTurns, traceEmitter, indexContextOverrides } = opts ?? {};
 
   const results = await Promise.all(
     candidates.map(async (candidate) => {
@@ -262,10 +263,15 @@ export async function negotiateCandidates(
       traceEmitter?.({ type: "agent_start", name: "negotiation" });
 
       try {
+        // Use per-candidate index context if available
+        const candidateIndexContext = candidate.indexId && indexContextOverrides?.has(candidate.indexId)
+          ? { indexId: candidate.indexId, prompt: indexContextOverrides.get(candidate.indexId)! }
+          : indexContext;
+
         const result = await negotiationGraph.invoke({
           sourceUser,
           candidateUser: candidate.candidateUser,
-          indexContext,
+          indexContext: candidateIndexContext,
           seedAssessment: {
             score: candidate.score,
             reasoning: candidate.reasoning,
