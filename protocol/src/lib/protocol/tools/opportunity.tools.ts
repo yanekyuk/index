@@ -410,10 +410,11 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
 
-        // Second party name — used in the headline for the introducer view ("A → B")
+        // Second party — used in the headline for the introducer view ("A → B")
         const secondPartyId = introducedPartyUserIds[1];
         const secondEntity = query.entities?.find((e) => e.userId === secondPartyId);
         const secondPartyName = (secondEntity?.profile as { name?: string } | undefined)?.name;
+        const secondPartyUser = secondPartyId ? await database.getUser(secondPartyId) : null;
 
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
@@ -463,6 +464,20 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           isGhost: isCounterpartGhost,
           score: confidence,
           status: created.status ?? "draft",
+          ...(!viewerIsParty && secondPartyId && {
+            parties: [
+              {
+                userId: firstPartyId,
+                name: counterpartName,
+                avatar: counterpartUser?.avatar ?? (firstEntity?.profile as { avatar?: string | null } | undefined)?.avatar ?? null,
+              },
+              {
+                userId: secondPartyId,
+                name: secondPartyName ?? secondPartyId,
+                avatar: secondPartyUser?.avatar ?? (secondEntity?.profile as { avatar?: string | null } | undefined)?.avatar ?? null,
+              },
+            ],
+          }),
         };
         const block =
           CODE_FENCE + "opportunity\n" +

@@ -24,6 +24,8 @@ export interface HomeCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Both parties in the opportunity (for introducer view header with dual avatars). */
+  parties?: Array<{ userId: string; name: string; avatar?: string | null }>;
   /** For section assignment from LLM */
   _cardIndex: number;
 }

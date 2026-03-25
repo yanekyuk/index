@@ -154,6 +154,8 @@ export interface OpportunityCardPayload {
   score?: number;
   /** Opportunity status. */
   status?: string;
+  /** Both parties in the opportunity (for introducer view header with dual avatars). */
+  parties?: Array<{ userId: string; name: string; avatar?: string | null }>;
 }
 
 /**

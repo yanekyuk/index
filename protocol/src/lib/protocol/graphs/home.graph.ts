@@ -375,6 +375,13 @@ export class HomeGraphFactory {
                 : '') || 'A promising connection.';
 
             const isCounterpartGhost = otherUser?.isGhost ?? false;
+            const introducerParties = isIntroducer && introducerCounterparts.length >= 2
+              ? introducerCounterparts.slice(0, 2).map((a) => ({
+                  userId: a.userId,
+                  name: userMap.get(a.userId)?.name ?? 'Unknown',
+                  avatar: userMap.get(a.userId)?.avatar ?? null,
+                }))
+              : undefined;
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
               userId: otherActor?.userId ?? '',
@@ -390,6 +397,7 @@ export class HomeGraphFactory {
               narratorChip: { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               isGhost: isCounterpartGhost,
+              ...(introducerParties && { parties: introducerParties }),
               _cardIndex: cardIndex,
             });
 
@@ -443,6 +451,7 @@ export class HomeGraphFactory {
                 narratorChip,
                 viewerRole,
                 isGhost: isCounterpartGhost,
+                ...(introducerParties && { parties: introducerParties }),
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {

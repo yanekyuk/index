@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Bot, Check, CheckCircle2, Clock, X } from "lucide-react";
+import { ArrowRight, Bot, Check, CheckCircle2, Clock, X } from "lucide-react";
 import GhostBadge from "@/components/GhostBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -44,6 +44,8 @@ export interface OpportunityCardData {
   status?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Both parties in the opportunity (for introducer view header with dual avatars). */
+  parties?: Array<{ userId: string; name: string; avatar?: string | null }>;
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
@@ -263,41 +265,85 @@ export default function OpportunityCard({
 
   return (
     <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
-      {/* Header: Avatar, Name, Mutual Intents, Actions */}
+      {/* Header: Avatar(s), Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
-        <div
-          className="flex items-center gap-2 min-w-0 cursor-pointer"
-          role="link"
-          tabIndex={0}
-          onClick={handleProfileClick}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleProfileClick();
-            }
-          }}
-          aria-label={`View profile of ${card.name || "Someone"}`}
-        >
-          <UserAvatar
-            id={card.userId}
-            name={card.name || "User"}
-            avatar={card.avatar || null}
-            size={32}
-            className="shrink-0"
-            blur={card.isGhost}
-          />
-          <div className="min-w-0">
-            <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
-              {card.viewerRole === "introducer" && card.headline
-                ? card.headline
-                : card.name || "Someone"}
-              {card.isGhost && <GhostBadge />}
-            </h4>
-            <p className="text-[11px] text-[#3D3D3D]">
-              {card.mutualIntentsLabel || "Potential connection"}
-            </p>
-          </div>
-        </div>
+        {(() => {
+          const parties = card.viewerRole === "introducer"
+            ? card.parties?.length === 2
+              ? card.parties
+              : card.headline?.includes("→")
+                ? card.headline.split("→").map((n, i) => ({
+                    userId: i === 0 ? card.userId : "",
+                    name: n.trim(),
+                    avatar: i === 0 ? (card.avatar ?? null) : null,
+                  }))
+                : null
+            : null;
+
+          if (parties) {
+            return (
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <UserAvatar
+                      id={parties[0].userId}
+                      name={parties[0].name}
+                      avatar={parties[0].avatar ?? null}
+                      size={24}
+                      className="shrink-0"
+                    />
+                    <span className="font-bold text-gray-900 text-sm truncate">{parties[0].name}</span>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <UserAvatar
+                      id={parties[1].userId}
+                      name={parties[1].name}
+                      avatar={parties[1].avatar ?? null}
+                      size={24}
+                      className="shrink-0"
+                    />
+                    <span className="font-bold text-gray-900 text-sm truncate">{parties[1].name}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              className="flex items-center gap-2 min-w-0 cursor-pointer"
+              role="link"
+              tabIndex={0}
+              onClick={handleProfileClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleProfileClick();
+                }
+              }}
+              aria-label={`View profile of ${card.name || "Someone"}`}
+            >
+              <UserAvatar
+                id={card.userId}
+                name={card.name || "User"}
+                avatar={card.avatar || null}
+                size={32}
+                className="shrink-0"
+                blur={card.isGhost}
+              />
+              <div className="min-w-0">
+                <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
+                  {card.name || "Someone"}
+                  {card.isGhost && <GhostBadge />}
+                </h4>
+                <p className="text-[11px] text-[#3D3D3D]">
+                  {card.mutualIntentsLabel || "Potential connection"}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
         {hasActions && (
           <div className="flex gap-1.5 shrink-0">
             {onPrimaryAction && (

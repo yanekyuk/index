@@ -56,6 +56,8 @@ export interface HomeViewCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Both parties in the opportunity (for introducer view header with dual avatars). */
+  parties?: Array<{ userId: string; name: string; avatar?: string | null }>;
 }
 
 /** Home view section (dynamic title, icon, items). */

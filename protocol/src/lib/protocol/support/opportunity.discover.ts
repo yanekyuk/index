@@ -104,6 +104,8 @@ export interface FormattedDiscoveryCandidate {
     avatar?: string | null;
     userId?: string;
   };
+  /** Both parties in the opportunity (for introducer view header with dual avatars). */
+  parties?: Array<{ userId: string; name: string; avatar?: string | null }>;
 }
 
 /** One step for debug visibility (subgraph/subtask). */
@@ -443,6 +445,21 @@ async function enrichOpportunities(
           },
         }),
         ...(narratorChip && { narratorChip }),
+        ...(item.viewerRole === "introducer" && (() => {
+          const nonIntroducerActors = item.opportunity.actors.filter(
+            (a) => a.role !== "introducer" && a.userId !== userId,
+          );
+          if (nonIntroducerActors.length >= 2) {
+            return {
+              parties: nonIntroducerActors.slice(0, 2).map((a) => ({
+                userId: a.userId,
+                name: nameByUserId.get(a.userId) ?? a.userId,
+                avatar: avatarByUserId.get(a.userId) ?? null,
+              })),
+            };
+          }
+          return {};
+        })()),
       };
     },
   );

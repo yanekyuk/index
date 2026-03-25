@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Bot, Check, ChevronDown, Users } from 'lucide-react';
+import { Check, ChevronDown, Users } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { cn } from '@/lib/utils';
@@ -93,8 +93,8 @@ export default function IntroductionRequestFeed({
 
   return (
     <div>
-      <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono flex items-center gap-2">
-        <span className="w-3.5 h-3.5 shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5">
+      <h3 className="text-sm font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono flex items-center gap-2">
+        <span className="w-4 h-4 shrink-0 [&_svg]:w-4 [&_svg]:h-4">
           <Users />
         </span>
         Help someone in your network
@@ -104,74 +104,51 @@ export default function IntroductionRequestFeed({
         <p className="text-xs text-gray-400 py-4">All caught up — check back later.</p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         {visibleRequests.map((request) => {
           const isSent = sentIds.has(request.id);
 
           return (
-            <div
-              key={request.id}
-              className={cn(
-                'rounded-lg border',
-                isSent ? 'bg-green-50/60 border-green-200' : 'bg-white border-gray-200'
-              )}
-            >
-              <div className="p-4">
-                {/* Post body with inline avatar */}
-                <div className="flex items-start gap-2 mb-3">
+            <div key={request.id} className="flex items-start justify-between gap-3 py-2">
+              <p className={cn(
+                'text-[14px] text-[#3D3D3D] leading-relaxed',
+                isSent && 'opacity-50'
+              )}>
+                <span className="inline-flex items-center gap-1 bg-gray-100 rounded-full px-1.5 py-0.5 align-middle mr-0.5">
                   <UserAvatar
                     id={request.seeker.id}
                     name={request.seeker.name}
                     avatar={request.seeker.avatar}
-                    size={20}
-                    className="shrink-0 mt-0.5"
+                    size={18}
+                    className="shrink-0"
                   />
-                  <p className="text-[14px] text-[#3D3D3D] leading-relaxed">
-                    <span className="font-semibold text-gray-900">{request.seeker.name}</span>
-                    {' '}is looking for {request.intent.charAt(0).toLowerCase() + request.intent.slice(1)}
-                  </p>
-                </div>
+                  <span className="font-semibold text-gray-900 text-[13px]">{request.seeker.name}</span>
+                </span>
+                {' '}is looking for {request.intent.charAt(0).toLowerCase() + request.intent.slice(1)}
+              </p>
 
-                {/* Actions */}
-                <div className="flex items-center justify-between gap-2">
-                  <div />{/* spacer */}
-                  {isSent ? (
-                    <div className="flex items-center gap-1.5 shrink-0 text-sm text-gray-500">
-                      <Check className="w-4 h-4 text-green-600 shrink-0" />
-                      <span>On it</span>
-                    </div>
-                  ) : (
-                    <div className="flex gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleSearchNetwork(request)}
-                        className="px-3 py-1.5 bg-[#041729] text-white text-xs font-medium rounded-sm hover:bg-[#0a2d4a] transition-colors"
-                      >
-                        Check my network
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDismissedIds((prev) => new Set([...prev, request.id]))}
-                        className="px-3 py-1.5 text-xs border border-gray-400 text-[#3D3D3D] rounded-sm hover:bg-gray-200 transition-colors"
-                      >
-                        Skip
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Narrator chip */}
-                {!isSent && (
-                  <div className="mt-3">
-                    <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-md bg-[#F0F0F0] border border-gray-200">
-                      <div className="relative shrink-0">
-                        <Bot className="w-7 h-7 text-[#3D3D3D]" />
-                      </div>
-                      <span className="text-[13px] text-[#3D3D3D]">
-                        <span className="font-semibold">Index:</span>{' '}
-                        {request.relevanceHook}
-                      </span>
-                    </div>
+              <div className="shrink-0 pt-0.5">
+                {isSent ? (
+                  <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                    <Check className="w-4 h-4 text-green-600 shrink-0" />
+                    <span>On it</span>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSearchNetwork(request)}
+                      className="px-3 py-1.5 bg-[#041729] text-white text-xs font-medium rounded-sm hover:bg-[#0a2d4a] transition-colors"
+                    >
+                      Who fits
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDismissedIds((prev) => new Set([...prev, request.id]))}
+                      className="px-3 py-1.5 text-xs border border-gray-400 text-[#3D3D3D] rounded-sm hover:bg-gray-200 transition-colors"
+                    >
+                      Skip
+                    </button>
                   </div>
                 )}
               </div>

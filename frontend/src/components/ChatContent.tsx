@@ -1230,8 +1230,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   {[1, 2].map((s) => (
                     <div key={s} className={s === 1 ? "mt-12" : "mt-6"}>
                       <div className="flex items-center gap-2 mb-3">
-                        <div className="w-3.5 h-3.5 bg-gray-200 rounded-sm" />
-                        <div className="h-3 w-32 bg-gray-200 rounded-sm" />
+                        <div className="w-4 h-4 bg-gray-200 rounded-sm" />
+                        <div className="h-3.5 w-32 bg-gray-200 rounded-sm" />
                       </div>
                       <div className="space-y-3">
                         {[1, 2].map((c) => (
@@ -1251,8 +1251,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                         : "mt-6"
                     }
                   >
-                    <h3 className="text-xs font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left flex items-center gap-2">
-                      <span className="w-3.5 h-3.5 shrink-0 [&_svg]:w-3.5 [&_svg]:h-3.5">
+                    <h3 className="text-sm font-semibold text-[#3D3D3D] uppercase tracking-wider mb-3 font-ibm-plex-mono text-left flex items-center gap-2">
+                      <span className="w-4 h-4 shrink-0 [&_svg]:w-4 [&_svg]:h-4">
                         <DynamicIcon name={section.iconName as IconName} />
                       </span>
                       {section.title}
