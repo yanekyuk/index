@@ -1,6 +1,7 @@
 import { StateGraph } from "@langchain/langgraph";
 
-import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext } from "../states/negotiation.state";
+import { requestContext } from "../../request-context";
+import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "../states/negotiation.state";
 
 interface ConversationServiceLike {
   createConversation(participants: { participantId: string; participantType: "user" | "agent" }[]): Promise<{ id: string }>;
@@ -19,24 +20,20 @@ interface TaskServiceLike {
   createArtifact(taskId: string, data: { name?: string; parts: unknown[]; metadata?: Record<string, unknown> }): Promise<{ id: string }>;
 }
 
+interface NegotiationAgentInput {
+  ownUser: UserNegotiationContext;
+  otherUser: UserNegotiationContext;
+  indexContext: { indexId: string; prompt: string };
+  seedAssessment: SeedAssessment;
+  history: NegotiationTurn[];
+}
+
 interface ProposerLike {
-  invoke(input: {
-    ownUser: any;
-    otherUser: any;
-    indexContext: any;
-    seedAssessment: any;
-    history: NegotiationTurn[];
-  }): Promise<NegotiationTurn>;
+  invoke(input: NegotiationAgentInput): Promise<NegotiationTurn>;
 }
 
 interface ResponderLike {
-  invoke(input: {
-    ownUser: any;
-    otherUser: any;
-    indexContext: any;
-    seedAssessment: any;
-    history: NegotiationTurn[];
-  }): Promise<NegotiationTurn>;
+  invoke(input: NegotiationAgentInput): Promise<NegotiationTurn>;
 }
 
 /**
@@ -91,6 +88,11 @@ export class NegotiationGraphFactory {
         const otherUser = isSource ? state.candidateUser : state.sourceUser;
         const senderId = `agent:${ownUser.id}`;
 
+        const traceEmitter = requestContext.getStore()?.traceEmitter;
+        const agentName = isSource ? "negotiation-proposer" : "negotiation-responder";
+        const agentStart = Date.now();
+        traceEmitter?.({ type: "agent_start", name: agentName });
+
         const turn = await agent.invoke({
           ownUser,
           otherUser,
@@ -98,6 +100,8 @@ export class NegotiationGraphFactory {
           seedAssessment: state.seedAssessment,
           history,
         });
+
+        traceEmitter?.({ type: "agent_end", name: agentName, durationMs: Date.now() - agentStart, summary: `${turn.action}:${turn.assessment.fitScore}` });
 
         // First turn must be "propose"
         if (state.turnCount === 0 && turn.action !== "propose") {
@@ -164,10 +168,19 @@ export class NegotiationGraphFactory {
 
       let agreedRoles: NegotiationOutcome["agreedRoles"] = [];
       if (consensus && history.length >= 2) {
-        const lastTwo = history.slice(-2);
+        // The accept turn is always last; the preceding turn is from the other side.
+        // Use currentSpeaker (who would speak NEXT) to determine who spoke last.
+        const acceptTurn = history[history.length - 1];
+        const precedingTurn = history[history.length - 2];
+        // currentSpeaker flips after each turn; after the accept turn it points to who would go next.
+        // The accepter is the one who just spoke (opposite of currentSpeaker).
+        const accepterIsSource = state.currentSpeaker === "candidate";
+        const [sourceRole, candidateRole] = accepterIsSource
+          ? [acceptTurn.assessment.suggestedRoles.ownUser, precedingTurn.assessment.suggestedRoles.ownUser]
+          : [precedingTurn.assessment.suggestedRoles.ownUser, acceptTurn.assessment.suggestedRoles.ownUser];
         agreedRoles = [
-          { userId: state.sourceUser.id, role: lastTwo[0].assessment.suggestedRoles.ownUser },
-          { userId: state.candidateUser.id, role: lastTwo[1].assessment.suggestedRoles.ownUser },
+          { userId: state.sourceUser.id, role: sourceRole },
+          { userId: state.candidateUser.id, role: candidateRole },
         ];
       }
 
@@ -221,7 +234,7 @@ interface NegotiationCandidate {
 interface NegotiationResult {
   userId: string;
   negotiationScore: number;
-  agreedRoles: Array<{ userId: string; role: string }>;
+  agreedRoles: NegotiationOutcome["agreedRoles"];
   reasoning: string;
   turnCount: number;
 }
@@ -231,7 +244,7 @@ interface NegotiationResult {
  * Returns only candidates that achieved consensus.
  */
 export async function negotiateCandidates(
-  negotiationGraph: { invoke: (input: any) => Promise<{ outcome: any }> },
+  negotiationGraph: NegotiationGraphLike,
   sourceUser: UserNegotiationContext,
   candidates: NegotiationCandidate[],
   indexContext: { indexId: string; prompt: string },
@@ -262,7 +275,8 @@ export async function negotiateCandidates(
           };
         }
         return null;
-      } catch {
+      } catch (err) {
+        console.error(`[negotiateCandidates] Negotiation failed for candidate ${candidate.userId}:`, err);
         return null;
       }
     }),

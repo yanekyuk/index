@@ -47,6 +47,17 @@ export interface SeedAssessment {
   actors?: Array<{ userId: string; role: string }>;
 }
 
+/** Typed interface for a negotiation graph's invoke signature. */
+export interface NegotiationGraphLike {
+  invoke(input: {
+    sourceUser: UserNegotiationContext;
+    candidateUser: UserNegotiationContext;
+    indexContext: { indexId: string; prompt: string };
+    seedAssessment: Omit<SeedAssessment, "actors">;
+    maxTurns?: number;
+  }): Promise<{ outcome: NegotiationOutcome | null; messages?: NegotiationMessage[] }>;
+}
+
 /** A2A message record shape (matches messages table). */
 export interface NegotiationMessage {
   id: string;
@@ -60,11 +71,11 @@ export interface NegotiationMessage {
 export const NegotiationGraphState = Annotation.Root({
   sourceUser: Annotation<UserNegotiationContext>({
     reducer: (curr, next) => next ?? curr,
-    default: () => ({} as UserNegotiationContext),
+    default: () => ({ id: "", intents: [], profile: {}, hydeDocuments: [] }),
   }),
   candidateUser: Annotation<UserNegotiationContext>({
     reducer: (curr, next) => next ?? curr,
-    default: () => ({} as UserNegotiationContext),
+    default: () => ({ id: "", intents: [], profile: {}, hydeDocuments: [] }),
   }),
   indexContext: Annotation<{ indexId: string; prompt: string }>({
     reducer: (curr, next) => next ?? curr,
