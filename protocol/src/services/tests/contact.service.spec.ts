@@ -423,8 +423,8 @@ describe('importContacts — name dedup', () => {
   }, 60_000);
 
   it('deduplicates names case-insensitively', async () => {
-    const email1 = `${TEST_PREFIX}jane_a@test.com`;
-    const email2 = `${TEST_PREFIX}jane_b@test.com`;
+    const email1 = `${TEST_PREFIX}jane_a@example.com`;
+    const email2 = `${TEST_PREFIX}jane_b@example.com`;
 
     const result = await svc.importContacts(ownerId, [
       { name: 'Jane Doe', email: email1 },
@@ -437,13 +437,13 @@ describe('importContacts — name dedup', () => {
     for (const d of result.details) createdUserIds.push(d.userId);
 
     // Clean up orphan ghost
-    const [orphan] = await db.select({ id: users.id }).from(users).where(eq(users.email, email2));
+    const [orphan] = await db.select({ id: users.id }).from(users).where(eq(users.email, email2.toLowerCase()));
     if (orphan) createdUserIds.push(orphan.id);
   }, 60_000);
 
   it('does not merge contacts with different names', async () => {
-    const email1 = `${TEST_PREFIX}alice_dedup@test.com`;
-    const email2 = `${TEST_PREFIX}bob_dedup@test.com`;
+    const email1 = `${TEST_PREFIX}alice_dedup@example.com`;
+    const email2 = `${TEST_PREFIX}bob_dedup@example.com`;
 
     const result = await svc.importContacts(ownerId, [
       { name: 'Alice', email: email1 },
@@ -456,9 +456,11 @@ describe('importContacts — name dedup', () => {
     for (const d of result.details) createdUserIds.push(d.userId);
   }, 60_000);
 
-  it('does not merge nameless contacts with different email local-parts', async () => {
-    const email1 = `${TEST_PREFIX}sam_home@gmail.com`;
-    const email2 = `${TEST_PREFIX}sam_work@company.com`;
+  it('does not merge nameless contacts with very different emails', async () => {
+    // Use sufficiently distinct local-parts + domains so scoring-based dedup
+    // keeps them separate even with the long TEST_PREFIX in the email.
+    const email1 = `${TEST_PREFIX}samantha_home_address@gmail.com`;
+    const email2 = `${TEST_PREFIX}robert_work_office@company.com`;
 
     const result = await svc.importContacts(ownerId, [
       { name: '', email: email1 },

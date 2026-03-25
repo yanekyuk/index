@@ -2,7 +2,9 @@ import { log } from '../lib/log';
 import type { IntegrationAdapter } from '../lib/protocol/interfaces/integration.interface';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 
-import { contactService, deduplicateByName, type ImportResult } from './contact.service';
+import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
+
+import { contactService, type ImportResult } from './contact.service';
 
 const logger = log.service.from('IntegrationService');
 
@@ -86,19 +88,32 @@ export class IntegrationService {
       return { ...empty, skipped: resolved.skipped };
     }
 
-    const dedupedDetails = deduplicateByName(contacts, resolved.details);
-    const dedupedUserIds = dedupedDetails.map(d => d.userId);
-    const nameSkipped = resolved.details.length - dedupedDetails.length;
+    const preset = getPreset(process.env.CONTACT_DEDUP_STRATEGY);
+    const dedupResult = deduplicateContacts(contacts, resolved.details, preset);
+    const dedupedUserIds = dedupResult.kept.map(d => d.userId);
+    const nameSkipped = dedupResult.removed.length;
+
+    if (dedupResult.removed.length > 0) {
+      logger.info('[IntegrationService] Dedup removed contacts', {
+        indexId,
+        removed: dedupResult.removed.map(r => ({
+          email: r.email,
+          matchedWith: r.matchedWith,
+          nameScore: r.nameScore.toFixed(3),
+          emailScore: r.emailScore.toFixed(3),
+        })),
+      });
+    }
 
     await this.db.addMembersBulkToIndex(indexId, dedupedUserIds);
 
-    const newCount = dedupedDetails.filter(d => d.isNew).length;
+    const newCount = dedupResult.kept.filter(d => d.isNew).length;
     return {
       imported: dedupedUserIds.length,
       skipped: resolved.skipped + nameSkipped,
       newContacts: newCount,
       existingContacts: dedupedUserIds.length - newCount,
-      details: dedupedDetails,
+      details: dedupResult.kept,
     };
   }
 
