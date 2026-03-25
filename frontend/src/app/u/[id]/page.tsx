@@ -10,6 +10,7 @@ import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import InviteMessageModal from "@/components/InviteMessageModal";
+import NegotiationHistory from "@/components/NegotiationHistory";
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -181,6 +182,14 @@ export default function UserProfilePage() {
                   </Link>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Past Negotiations */}
+          {id && (
+            <div>
+              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-2">Negotiations</h3>
+              <NegotiationHistory userId={id} />
             </div>
           )}
 

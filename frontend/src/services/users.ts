@@ -5,6 +5,29 @@ interface BatchUsersResponse {
   users: User[];
 }
 
+export interface NegotiationTurnSummary {
+  speaker: { id: string; name: string; avatar: string | null };
+  action: string;
+  fitScore: number;
+  reasoning: string;
+  suggestedRoles: { ownUser?: string; otherUser?: string } | null;
+  createdAt: string;
+}
+
+export interface NegotiationSummary {
+  id: string;
+  counterparty: { id: string; name: string; avatar: string | null };
+  outcome: {
+    consensus: boolean;
+    finalScore: number;
+    role: string | null;
+    turnCount: number;
+    reason?: string;
+  } | null;
+  turns: NegotiationTurnSummary[];
+  createdAt: string;
+}
+
 export const createUsersService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get user profile by ID
   getUserProfile: async (userId: string): Promise<User> => {
@@ -56,5 +79,18 @@ export const createUsersService = (api: ReturnType<typeof import('../lib/api').u
    */
   addContact: async (email: string, name?: string): Promise<void> => {
     await api.post('/users/contacts', { email, name });
+  },
+
+  /**
+   * Get past negotiations for a user. Returns mutual negotiations when viewing another user's profile.
+   */
+  getUserNegotiations: async (userId: string, opts?: { limit?: number; offset?: number; result?: string }): Promise<NegotiationSummary[]> => {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set('limit', String(opts.limit));
+    if (opts?.offset) params.set('offset', String(opts.offset));
+    if (opts?.result) params.set('result', opts.result);
+    const qs = params.toString();
+    const response = await api.get<{ negotiations: NegotiationSummary[] }>(`/users/${userId}/negotiations${qs ? `?${qs}` : ''}`);
+    return response.negotiations ?? [];
   },
 });

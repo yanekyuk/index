@@ -5797,6 +5797,94 @@ export class ConversationDatabaseAdapter {
       .where(eq(schema.artifacts.taskId, taskId))
       .orderBy(schema.artifacts.createdAt);
   }
+
+  /**
+   * Retrieves messages for multiple tasks in a single query.
+   * @param taskIds - Task IDs to fetch messages for
+   * @returns Map of taskId to ordered messages
+   */
+  async getMessagesByTaskIds(taskIds: string[]): Promise<Map<string, Message[]>> {
+    if (taskIds.length === 0) return new Map();
+
+    const rows = await db
+      .select()
+      .from(schema.messages)
+      .where(inArray(schema.messages.taskId, taskIds))
+      .orderBy(asc(schema.messages.createdAt));
+
+    const map = new Map<string, Message[]>();
+    for (const row of rows) {
+      if (!row.taskId) continue;
+      const list = map.get(row.taskId) ?? [];
+      list.push(row);
+      map.set(row.taskId, list);
+    }
+    return map;
+  }
+
+  /**
+   * Retrieves negotiation tasks for a user, with their outcome artifacts.
+   * @param userId - User to find negotiations for (as source or candidate)
+   * @param opts - Optional pagination and mutual-only filtering
+   * @returns Tasks with joined outcome artifacts, ordered by most recent first
+   */
+  async getNegotiationsByUser(
+    userId: string,
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'consensus' | 'no_consensus' | 'in_progress' },
+  ): Promise<Array<Task & { artifact: Artifact | null }>> {
+    const limit = opts?.limit ?? 10;
+    const offset = opts?.offset ?? 0;
+
+    const userFilter = opts?.mutualWithUserId
+      ? and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          or(
+            and(
+              sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
+              sql`${schema.tasks.metadata}->>'candidateUserId' = ${opts.mutualWithUserId}`,
+            ),
+            and(
+              sql`${schema.tasks.metadata}->>'sourceUserId' = ${opts.mutualWithUserId}`,
+              sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
+            ),
+          ),
+        )
+      : and(
+          sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+          or(
+            sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
+            sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
+          ),
+        );
+
+    const resultFilter = opts?.result === 'consensus'
+      ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = true)`
+      : opts?.result === 'no_consensus'
+        ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = false)`
+        : opts?.result === 'in_progress'
+          ? isNull(schema.artifacts.id)
+          : undefined;
+
+    const rows = await db
+      .select({
+        task: schema.tasks,
+        artifact: schema.artifacts,
+      })
+      .from(schema.tasks)
+      .leftJoin(
+        schema.artifacts,
+        and(
+          eq(schema.artifacts.taskId, schema.tasks.id),
+          eq(schema.artifacts.name, 'negotiation-outcome'),
+        ),
+      )
+      .where(resultFilter ? and(userFilter, resultFilter) : userFilter)
+      .orderBy(desc(schema.tasks.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return rows.map((r) => ({ ...r.task, artifact: r.artifact }));
+  }
 }
 
 /** Singleton instance of the conversation database adapter. */

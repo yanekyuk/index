@@ -80,4 +80,26 @@ export class TaskService {
     }
     return this.db.getArtifacts(taskId);
   }
+
+  /**
+   * Retrieves negotiation tasks for a user, with outcome artifacts.
+   * @param userId - User to find negotiations for
+   * @param opts - Optional limit, offset, and mutual-only filter
+   * @returns Tasks with joined outcome artifacts
+   */
+  async getNegotiationsByUser(
+    userId: string,
+    opts?: { limit?: number; offset?: number; mutualWithUserId?: string; result?: 'consensus' | 'no_consensus' | 'in_progress' },
+  ) {
+    return this.db.getNegotiationsByUser(userId, opts);
+  }
+
+  /**
+   * Retrieves messages for multiple tasks in a single query.
+   * @param taskIds - Task IDs to fetch messages for
+   * @returns Map of taskId to ordered messages
+   */
+  async getMessagesByTaskIds(taskIds: string[]) {
+    return this.db.getMessagesByTaskIds(taskIds);
+  }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Loader2, Trash2, ExternalLink } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
@@ -9,7 +9,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { formatDate } from "@/lib/utils";
 import { formatFileSize, getFileCategoryBadge } from "@/lib/file-validation";
 import IntentList from "@/components/IntentList";
-import NegotiationList from "@/components/NegotiationList";
+import NegotiationHistory from "@/components/NegotiationHistory";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 
@@ -41,14 +41,19 @@ type LinkItem = {
   lastSyncAt?: string | null;
 };
 
+const VALID_TABS = ['intents', 'negotiations', 'files', 'links'] as const;
+type TabValue = typeof VALID_TABS[number];
+
 export default function LibraryPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { tab } = useParams<{ tab?: string }>();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const { filesService, linksService, intentsService } = useAPI();
   const api = useAuthenticatedAPI();
   const { success, error } = useNotifications();
 
-  const [activeTab, setActiveTab] = useState<'intents' | 'negotiations' | 'files' | 'links'>('intents');
+  const activeTab: TabValue = VALID_TABS.includes(tab as TabValue) ? (tab as TabValue) : 'intents';
+  const setActiveTab = (v: string) => navigate(`/library/${v}`, { replace: true });
   const [isLoading, setIsLoading] = useState(true);
   const tabDescriptions = {
     intents: {
@@ -61,7 +66,7 @@ export default function LibraryPage() {
     negotiations: {
       title: "Negotiations",
       description:
-        "Your agent negotiates with other agents to coordinate discovery. They continuously align on intent, timing, trust, value, and data sharing before any connection is made.",
+        "Past negotiations between your agent and others. Expand any to see the full dialogue.",
       privacy:
         "Negotiations are private between participating agents. You see only your side."
     },
@@ -215,7 +220,7 @@ export default function LibraryPage() {
         <ContentContainer>
           <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-6">Library</h1>
 
-          <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+          <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
             <Tabs.List className="flex border-b border-gray-200 mb-6">
             <Tabs.Trigger 
               value="intents" 
@@ -225,6 +230,12 @@ export default function LibraryPage() {
               {intents.length > 0 && (
                 <span className="ml-2 text-xs text-gray-500">({intents.length})</span>
               )}
+            </Tabs.Trigger>
+            <Tabs.Trigger 
+              value="negotiations" 
+              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+            >
+              Negotiations
             </Tabs.Trigger>
             <Tabs.Trigger 
               value="files" 
@@ -243,12 +254,6 @@ export default function LibraryPage() {
               {links.length > 0 && (
                 <span className="ml-2 text-xs text-gray-500">({links.length})</span>
               )}
-            </Tabs.Trigger>
-            <Tabs.Trigger 
-              value="negotiations" 
-              className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-            >
-              Negotiations
             </Tabs.Trigger>
           </Tabs.List>
           <div className="mb-6 space-y-1">
@@ -279,7 +284,7 @@ export default function LibraryPage() {
 
           {/* Negotiations Tab */}
           <Tabs.Content value="negotiations" className="w-full">
-            <NegotiationList />
+            <NegotiationHistory userId={user?.id ?? ""} />
           </Tabs.Content>
 
           {/* Files Tab */}
