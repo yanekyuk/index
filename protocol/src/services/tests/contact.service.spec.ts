@@ -379,3 +379,97 @@ describe('importContacts', () => {
     expect(result.existingContacts).toBe(1);
   }, 60_000);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. importContacts — name-based dedup
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('importContacts — name dedup', () => {
+  it('deduplicates same-name contacts with different emails', async () => {
+    const email1 = `${TEST_PREFIX}john_personal@gmail.com`;
+    const email2 = `${TEST_PREFIX}john_work@company.com`;
+
+    const result = await svc.importContacts(ownerId, [
+      { name: 'John Smith', email: email1 },
+      { name: 'John Smith', email: email2 },
+    ]);
+
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(1);
+
+    // Track for cleanup
+    for (const d of result.details) {
+      createdUserIds.push(d.userId);
+    }
+
+    // Only one contact membership should exist
+    const contacts = await svc.listContacts(ownerId);
+    const johns = contacts.filter(c =>
+      c.user.email === email1 || c.user.email === email2
+    );
+    expect(johns.length).toBe(1);
+
+    // But both ghost user rows should exist in the users table
+    const [ghost1] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email1));
+    const [ghost2] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email2));
+    expect(ghost1).toBeDefined();
+    expect(ghost2).toBeDefined();
+    createdUserIds.push(ghost2.id);
+  }, 60_000);
+
+  it('deduplicates names case-insensitively', async () => {
+    const email1 = `${TEST_PREFIX}jane_a@example.com`;
+    const email2 = `${TEST_PREFIX}jane_b@example.com`;
+
+    const result = await svc.importContacts(ownerId, [
+      { name: 'Jane Doe', email: email1 },
+      { name: 'jane doe', email: email2 },
+    ]);
+
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(1);
+
+    for (const d of result.details) createdUserIds.push(d.userId);
+
+    // Clean up orphan ghost
+    const [orphan] = await db.select({ id: users.id }).from(users).where(eq(users.email, email2.toLowerCase()));
+    if (orphan) createdUserIds.push(orphan.id);
+  }, 60_000);
+
+  it('does not merge contacts with different names', async () => {
+    const email1 = `${TEST_PREFIX}alice_dedup@example.com`;
+    const email2 = `${TEST_PREFIX}bob_dedup@example.com`;
+
+    const result = await svc.importContacts(ownerId, [
+      { name: 'Alice', email: email1 },
+      { name: 'Bob', email: email2 },
+    ]);
+
+    expect(result.imported).toBe(2);
+    expect(result.skipped).toBe(0);
+
+    for (const d of result.details) createdUserIds.push(d.userId);
+  }, 60_000);
+
+  it('does not merge nameless contacts with very different emails', async () => {
+    // Use sufficiently distinct local-parts + domains so scoring-based dedup
+    // keeps them separate even with the long TEST_PREFIX in the email.
+    const email1 = `${TEST_PREFIX}samantha_home_address@gmail.com`;
+    const email2 = `${TEST_PREFIX}robert_work_office@company.com`;
+
+    const result = await svc.importContacts(ownerId, [
+      { name: '', email: email1 },
+      { name: '', email: email2 },
+    ]);
+
+    expect(result.imported).toBe(2);
+    expect(result.skipped).toBe(0);
+
+    for (const d of result.details) createdUserIds.push(d.userId);
+  }, 60_000);
+});

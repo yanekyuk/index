@@ -125,3 +125,95 @@ export function isActionableForViewer(
     }
   });
 }
+
+/** Feed category for home composition. */
+export type FeedCategory = 'connection' | 'connector-flow' | 'expired';
+
+/** Soft targets for home feed composition. */
+export const FEED_SOFT_TARGETS = {
+  connection: 3,
+  connectorFlow: 2,
+  expired: 2,
+} as const;
+
+/**
+ * Classify an actionable opportunity into a feed category.
+ * Assumes the opportunity already passed isActionableForViewer or is expired.
+ *
+ * @param opp - Opportunity with actors and status
+ * @param viewerId - The viewing user's ID
+ * @returns Feed category
+ */
+export function classifyOpportunity(
+  opp: { actors: Array<{ userId: string; role: string }>; status: string },
+  viewerId: string
+): FeedCategory {
+  if (opp.status === 'expired') return 'expired';
+  const hasIntroducer = opp.actors.some((a) => a.role === 'introducer');
+  if (hasIntroducer) return 'connector-flow';
+  return 'connection';
+}
+
+/**
+ * Select opportunities for the home feed using soft composition targets.
+ * Fills each category up to its target, then redistributes unused slots
+ * to categories that have more items available. Preserves input order.
+ *
+ * @param opportunities - Pre-sorted opportunities (by confidence/recency)
+ * @param viewerId - The viewing user's ID
+ * @returns Composition-balanced subset
+ */
+export function selectByComposition<T extends { actors: Array<{ userId: string; role: string }>; status: string }>(
+  opportunities: T[],
+  viewerId: string
+): T[] {
+  const buckets: Record<FeedCategory, T[]> = {
+    connection: [],
+    'connector-flow': [],
+    expired: [],
+  };
+
+  for (const opp of opportunities) {
+    const category = classifyOpportunity(opp, viewerId);
+    buckets[category].push(opp);
+  }
+
+  const targets: Record<FeedCategory, number> = {
+    connection: FEED_SOFT_TARGETS.connection,
+    'connector-flow': FEED_SOFT_TARGETS.connectorFlow,
+    expired: FEED_SOFT_TARGETS.expired,
+  };
+
+  // First pass: fill each category up to its target
+  const selected: Record<FeedCategory, T[]> = {
+    connection: buckets.connection.slice(0, targets.connection),
+    'connector-flow': buckets['connector-flow'].slice(0, targets['connector-flow']),
+    expired: buckets.expired.slice(0, targets.expired),
+  };
+
+  // Calculate unused slots and remaining items
+  const totalTarget = targets.connection + targets['connector-flow'] + targets.expired;
+  const usedSlots = selected.connection.length + selected['connector-flow'].length + selected.expired.length;
+  let unusedSlots = totalTarget - usedSlots;
+
+  // Second pass: redistribute unused slots to categories with remaining items
+  // Priority: connection > connector-flow > expired
+  const redistOrder: FeedCategory[] = ['connection', 'connector-flow', 'expired'];
+  for (const category of redistOrder) {
+    if (unusedSlots <= 0) break;
+    const remaining = buckets[category].slice(selected[category].length);
+    const take = Math.min(remaining.length, unusedSlots);
+    selected[category].push(...remaining.slice(0, take));
+    unusedSlots -= take;
+  }
+
+  // Merge and sort by original position to preserve input order
+  const indexMap = new Map(opportunities.map((opp, i) => [opp, i]));
+  const result = [
+    ...selected.connection,
+    ...selected['connector-flow'],
+    ...selected.expired,
+  ].sort((a, b) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0));
+
+  return result;
+}

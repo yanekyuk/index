@@ -9,6 +9,7 @@ import { User } from "@/lib/types";
 import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
+import InviteMessageModal from "@/components/InviteMessageModal";
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -21,6 +22,8 @@ export default function UserProfilePage() {
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState('');
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) navigate('/');
@@ -84,6 +87,19 @@ export default function UserProfilePage() {
   if (!profileData) return null;
 
   return (
+    <>
+    {showInviteModal && (
+      <InviteMessageModal
+        userName={profileData.name}
+        message={inviteMessage}
+        onMessageChange={setInviteMessage}
+        onConfirm={() => {
+          setShowInviteModal(false);
+          navigate(`/u/${id}/chat`, { state: { prefill: inviteMessage } });
+        }}
+        onCancel={() => setShowInviteModal(false)}
+      />
+    )}
     <ClientLayout>
       <div className="px-6 lg:px-8 py-6 pb-20">
         <ContentContainer className="space-y-8">
@@ -128,7 +144,14 @@ export default function UserProfilePage() {
             </div>
 
             <button
-              onClick={() => navigate(`/u/${id}/chat`)}
+              onClick={() => {
+                if (profileData.isGhost) {
+                  setInviteMessage(`Hey ${profileData.name}, would love to connect!`);
+                  setShowInviteModal(true);
+                } else {
+                  navigate(`/u/${id}/chat`);
+                }
+              }}
               className="flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors flex-shrink-0"
             >
               <MessageCircle className="w-4 h-4" />
@@ -243,6 +266,7 @@ export default function UserProfilePage() {
         </ContentContainer>
       </div>
     </ClientLayout>
+    </>
   );
 }
 

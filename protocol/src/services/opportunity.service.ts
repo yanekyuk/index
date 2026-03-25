@@ -15,6 +15,7 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { presentOpportunity, type UserInfo } from '../lib/protocol/support/opportunity.presentation';
 import { canUserSeeOpportunity, validateOpportunityActors } from '../lib/protocol/support/opportunity.utils';
 import { persistOpportunities } from '../lib/protocol/support/opportunity.persist';
+import { getPrimaryActionLabel } from '../lib/protocol/support/opportunity.constants';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../lib/protocol/agents/opportunity.presenter';
 import { stripUuids, stripIntroducerMentions } from '../lib/protocol/support/opportunity.sanitize';
 import { opportunityQueue } from '../queues/opportunity.queue';
@@ -144,7 +145,7 @@ export class OpportunityService {
       const totalItems = sections.reduce(
         (sum: number, s: { items: unknown[] }) => sum + (s.items?.length ?? 0), 0
       );
-      if (totalItems === 0) {
+      if (totalItems === 0 && !options?.indexId) {
         this.triggerRediscoveryIfNeeded(userId).catch((err) =>
           logger.warn('[OpportunityService] Rediscovery trigger failed', { userId, error: err })
         );
@@ -251,7 +252,7 @@ export class OpportunityService {
       index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (indexIdForDisplay ? { id: indexIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       isGhost: isCounterpartGhost,
-      primaryActionLabel: isCounterpartGhost ? 'Invite to chat' : 'Start chat',
+      primaryActionLabel: getPrimaryActionLabel(myActor.role),
       createdAt: opp.createdAt instanceof Date ? opp.createdAt.toISOString() : opp.createdAt,
       expiresAt: opp.expiresAt ? (opp.expiresAt instanceof Date ? opp.expiresAt.toISOString() : opp.expiresAt) : undefined,
     };

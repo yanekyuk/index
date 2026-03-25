@@ -485,6 +485,106 @@ export class OpportunityGraphFactory {
             return { candidates: [] };
           }
 
+          // ── Direct-connection fast path ──
+          // When targetUserId is set (user @-mentioned someone), bypass vector search
+          // and construct candidates directly from shared indexes.
+          if (state.targetUserId) {
+            if (state.targetUserId === discoveryUserId) {
+              logger.warn('[Graph:Discovery] Direct-connection target matches discoverer; skipping self-match', {
+                targetUserId: state.targetUserId,
+              });
+              return {
+                candidates: [],
+                trace: [{
+                  node: "discovery",
+                  detail: "Direct connection skipped: target user is discoverer",
+                  data: { targetUserId: state.targetUserId },
+                }],
+              };
+            }
+            logger.verbose('[Graph:Discovery] Direct-connection mode — bypassing vector search', {
+              targetUserId: state.targetUserId,
+            });
+            const targetMemberships = await this.database.getIndexMemberships(state.targetUserId);
+            const targetUserIndexIds = targetMemberships.map(m => m.indexId);
+            const sharedIndexIds = state.targetIndexes
+              .filter(ti => targetUserIndexIds.includes(ti.indexId))
+              .map(ti => ti.indexId);
+
+            if (sharedIndexIds.length === 0) {
+              logger.warn('[Graph:Discovery] Target user shares no indexes with discoverer', {
+                targetUserId: state.targetUserId,
+                discovererIndexes: state.targetIndexes.map(ti => ti.indexId),
+              });
+              return {
+                candidates: [],
+                trace: [{
+                  node: "discovery",
+                  detail: `Direct connection: target user shares no indexes`,
+                  data: { targetUserId: state.targetUserId },
+                }],
+              };
+            }
+
+            // Fetch target user's active intents to build intent-level candidates
+            const targetIntents = await this.database.getActiveIntents(state.targetUserId);
+            const directCandidates: CandidateMatch[] = [];
+
+            if (targetIntents.length > 0) {
+              // Build one candidate per intent per shared index it belongs to
+              for (const intent of targetIntents) {
+                const intentIndexIds = await this.database.getIndexIdsForIntent(intent.id);
+                const overlapping = sharedIndexIds.filter(id => intentIndexIds.includes(id));
+                for (const indexId of overlapping) {
+                  directCandidates.push({
+                    candidateUserId: state.targetUserId,
+                    candidateIntentId: intent.id as Id<'intents'>,
+                    indexId,
+                    similarity: 1.0,
+                    lens: 'explicit_mention',
+                    candidatePayload: intent.payload,
+                    candidateSummary: intent.summary ?? undefined,
+                    discoverySource: 'query',
+                  });
+                }
+              }
+            }
+
+            // Always add a profile-level candidate (so evaluation runs even without intents)
+            if (directCandidates.length === 0) {
+              directCandidates.push({
+                candidateUserId: state.targetUserId,
+                candidateIntentId: undefined,
+                indexId: sharedIndexIds[0] as Id<'indexes'>,
+                similarity: 1.0,
+                lens: 'explicit_mention',
+                candidatePayload: '',
+                candidateSummary: undefined,
+                discoverySource: 'query',
+              });
+            }
+
+            logger.verbose('[Graph:Discovery] Direct candidates constructed', {
+              count: directCandidates.length,
+              sharedIndexes: sharedIndexIds.length,
+              targetIntents: targetIntents.length,
+            });
+
+            return {
+              candidates: directCandidates,
+              trace: [{
+                node: "discovery",
+                detail: `Direct connection → ${directCandidates.length} candidate(s) from ${sharedIndexIds.length} shared index(es)`,
+                data: {
+                  targetUserId: state.targetUserId,
+                  candidateCount: directCandidates.length,
+                  sharedIndexes: sharedIndexIds.length,
+                  durationMs: Date.now() - startTime,
+                },
+              }],
+            };
+          }
+
           // Search limits - fixed values for candidate retrieval
           // (The options.limit controls final output, not search pool)
           const limitPerStrategy = 30;

@@ -6,6 +6,7 @@ import { ProfileGraphDatabase } from "../interfaces/database.interface";
 import { Embedder } from "../interfaces/embedder.interface";
 import { Scraper } from "../interfaces/scraper.interface";
 import { enrichUserProfile } from "../../../lib/parallel/parallel";
+import { shouldEnrichGhostDisplayNameFromParallel } from "../support/profile.enrichment-display-name";
 import { protocolLogger } from "../support/protocol.logger";
 import { timed } from "../../performance";
 import { requestContext } from "../../request-context";
@@ -401,12 +402,14 @@ export class ProfileGraphFactory {
           try {
             const enrichment = await enrichUserProfile(request);
 
-            const hasMeaningfulEnrichment = !!enrichment && (
-              enrichment.identity.bio.trim().length > 0 ||
-              enrichment.narrative.context.trim().length > 0 ||
-              enrichment.attributes.skills.length > 0 ||
-              enrichment.attributes.interests.length > 0
-            );
+            const hasMeaningfulEnrichment = !!enrichment &&
+              enrichment.confidentMatch &&
+              (
+                enrichment.identity.bio.trim().length > 0 ||
+                enrichment.narrative.context.trim().length > 0 ||
+                enrichment.attributes.skills.length > 0 ||
+                enrichment.attributes.interests.length > 0
+              );
 
             if (hasMeaningfulEnrichment) {
               logger.verbose("Chat API enrichment succeeded", {
@@ -416,7 +419,22 @@ export class ProfileGraphFactory {
               });
 
               // Update user record with enriched data
-              const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
+              const updatePayload: {
+                name?: string;
+                intro?: string;
+                location?: string;
+                socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] };
+              } = {};
+              const enrichedName = enrichment!.identity.name?.trim();
+              if (
+                enrichedName &&
+                shouldEnrichGhostDisplayNameFromParallel(
+                  { isGhost: !!user.isGhost, name: user.name ?? '', email: user.email ?? '' },
+                  enrichedName,
+                )
+              ) {
+                updatePayload.name = enrichedName;
+              }
               if (enrichment!.identity.bio?.trim()) updatePayload.intro = enrichment!.identity.bio.trim();
               if (enrichment!.identity.location?.trim()) updatePayload.location = enrichment!.identity.location.trim();
 

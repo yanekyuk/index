@@ -1,5 +1,5 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
@@ -7,9 +7,11 @@ import { ensurePersonalIndex } from './database.adapter';
 
 /**
  * Database adapter for Better Auth integration.
- * Wraps the default Drizzle adapter with ghost-claim-via-upsert behavior:
- * when a real user signs up with an email belonging to a ghost user,
- * the ghost row is converted in-place instead of creating a new row.
+ * Provides ghost user lifecycle operations:
+ * - `createDrizzleAdapter`: wraps the Drizzle adapter with ON CONFLICT upsert
+ *   for ghost claiming during email/password signup (dev-only).
+ * - `claimGhostUser`: flips isGhost to false; called from the session hook
+ *   on every login so magic link and social OAuth de-ghost correctly.
  */
 export class AuthDatabaseAdapter {
   /**
@@ -17,8 +19,10 @@ export class AuthDatabaseAdapter {
    * Wraps the default adapter to intercept user creation: if a user signs up
    * with an email that belongs to a ghost, the ghost row is updated in-place
    * (isGhost=false, name/avatar updated) via ON CONFLICT DO UPDATE.
-   * The `.returning()` call gives Better Auth the ghost's original ID,
-   * so session creation works correctly.
+   *
+   * @remarks This upsert path is only exercised in development where
+   * email/password signup is enabled. In production, de-ghosting happens
+   * via {@link claimGhostUser} in the session hook instead.
    */
   createDrizzleAdapter() {
     const baseAdapterFactory = drizzleAdapter(db, {
@@ -88,5 +92,19 @@ export class AuthDatabaseAdapter {
    */
   async ensurePersonalIndex(userId: string): Promise<string> {
     return ensurePersonalIndex(userId);
+  }
+
+  /**
+   * Flips isGhost to false for the given user.
+   * No-op if the user is already non-ghost or doesn't exist.
+   * Called from the session.create.after hook so every auth flow
+   * (magic link, social OAuth) de-ghosts on first real login.
+   * @param userId - The user whose ghost flag should be cleared
+   */
+  async claimGhostUser(userId: string): Promise<void> {
+    await db
+      .update(schema.users)
+      .set({ isGhost: false, updatedAt: new Date() })
+      .where(and(eq(schema.users.id, userId), eq(schema.users.isGhost, true)));
   }
 }

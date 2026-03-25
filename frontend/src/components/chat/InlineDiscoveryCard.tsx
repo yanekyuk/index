@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { MessageCircle, User } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
+import InviteMessageModal from '@/components/InviteMessageModal';
 import type { DiscoveryOpportunity } from '@/contexts/AIChatContext';
 
 interface InlineDiscoveryCardProps {
@@ -9,16 +11,36 @@ interface InlineDiscoveryCardProps {
 
 export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardProps) {
   const navigate = useNavigate();
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState('');
+
+  const candidateName = discovery.candidateName || 'this person';
 
   const handleViewProfile = () => {
     navigate(`/u/${discovery.candidateId}`);
   };
 
   const handleStartChat = () => {
-    navigate(`/u/${discovery.candidateId}/chat`);
+    setInviteMessage(`Hey ${candidateName}, would love to connect!`);
+    setShowInviteModal(true);
+  };
+
+  const handleInviteConfirm = () => {
+    setShowInviteModal(false);
+    navigate(`/u/${discovery.candidateId}/chat`, { state: { prefill: inviteMessage } });
   };
 
   return (
+    <>
+    {showInviteModal && (
+      <InviteMessageModal
+        userName={candidateName}
+        message={inviteMessage}
+        onMessageChange={setInviteMessage}
+        onConfirm={handleInviteConfirm}
+        onCancel={() => setShowInviteModal(false)}
+      />
+    )}
     <div className="bg-white border border-gray-200 rounded-lg p-4 my-2">
       <div className="flex items-start gap-3">
         <button onClick={handleViewProfile} className="flex-shrink-0">
@@ -63,5 +85,6 @@ export default function InlineDiscoveryCard({ discovery }: InlineDiscoveryCardPr
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowRight, Bot, Check, CheckCircle2, Clock, X } from "lucide-react";
+import { ArrowRight, Check, CheckCircle2, Clock, X } from "lucide-react";
 import GhostBadge from "@/components/GhostBadge";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -210,7 +210,8 @@ export default function OpportunityCard({
           card.isGhost,
         );
         setActionTaken("accepted");
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message === "user_cancelled") return;
         setActionError(true);
       }
     }
@@ -416,8 +417,9 @@ export default function OpportunityCard({
         </ReactMarkdown>
       </div>
 
-      {/* Narrator Chip */}
-      {card.narratorChip && (
+      {/* Narrator Chip — only shown for human-introduced opportunities */}
+      {/* TODO: remove name !== "Index" filter after cached Index chips have expired */}
+      {card.narratorChip && card.narratorChip.name !== "Index" && (
         <div className="mt-3">
           <div
             className={cn(
@@ -442,15 +444,11 @@ export default function OpportunityCard({
               : {})}
           >
             <div className="relative shrink-0">
-              {card.narratorChip.name === "Index" ? (
-                <Bot className="w-7 h-7 text-[#3D3D3D]" />
-              ) : (
-                <UserAvatar
-                  name={card.narratorChip.name}
-                  avatar={card.narratorChip.avatar ?? null}
-                  size={28}
-                />
-              )}
+              <UserAvatar
+                name={card.narratorChip.name}
+                avatar={card.narratorChip.avatar ?? null}
+                size={28}
+              />
             </div>
             <span className="text-[13px] text-[#3D3D3D]">
               <span

@@ -1079,7 +1079,7 @@ describe("create_opportunities tool", () => {
 
     expect(card.viewerRole).toBe("introducer");
     expect(card.headline).toBe("Alice → Bob");
-    expect(card.primaryActionLabel).toBe("Introduce Them");
+    expect(card.primaryActionLabel).toBe("Good match");
   }, 60000);
 
   test("introduction mode: viewer as party — card headline is 'Connection with Counterpart' and action is 'Start Chat'", async () => {

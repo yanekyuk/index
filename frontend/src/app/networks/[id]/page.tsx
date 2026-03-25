@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
@@ -13,19 +13,53 @@ import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { Index } from '@/lib/types';
 
-export default function NetworkDetailPage() {
+export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
+
+export const URL_TO_TAB: Record<string, TabValue> = {
+  settings: 'settings',
+  contacts: 'access',
+  integrations: 'integrations',
+};
+
+export const TAB_TO_URL: Record<TabValue, string | undefined> = {
+  overview: undefined,
+  settings: 'settings',
+  access: 'contacts',
+  integrations: 'integrations',
+};
+
+export interface NetworkDetailProps {
+  networkIdOverride?: string;
+  basePath?: string;
+}
+
+export default function NetworkDetailPage({ networkIdOverride, basePath }: NetworkDetailProps = {}) {
   const params = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { indexes } = useIndexesState();
   const indexesService = useIndexes();
 
-  const networkId = params.id as string;
+  const networkId = networkIdOverride || (params.id as string);
+  // Splat route (*) captures the tab segment; avoids remounts between tab navigations
+  const tabParam = (params['*'] || undefined) as string | undefined;
+  const resolvedBasePath = useMemo(() => basePath || `/networks/${networkId}`, [basePath, networkId]);
+  const activeTab = useMemo<TabValue>(() => {
+    if (tabParam && URL_TO_TAB[tabParam]) return URL_TO_TAB[tabParam];
+    return 'overview';
+  }, [tabParam]);
+
+  const handleTabChange = useCallback((value: string) => {
+    const segment = TAB_TO_URL[value as TabValue];
+    // Replace when leaving the default overview (no tabParam in URL yet);
+    // push when switching between explicit tabs so back traverses them.
+    navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: !tabParam });
+  }, [navigate, resolvedBasePath, tabParam]);
+
   const [network, setNetwork] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'access' | 'integrations'>('overview');
   const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
 
@@ -91,6 +125,15 @@ export default function NetworkDetailPage() {
     };
     updateNetworkFromContext();
   }, [indexes, network, checkOwnership, user?.id, isOwner]);
+
+  // Redirect invalid tab slugs and non-owner tab access to the base path
+  useEffect(() => {
+    if (!tabParam || loading) return;
+    const invalidSlug = !URL_TO_TAB[tabParam];
+    if (invalidSlug || !isOwner) {
+      navigate(resolvedBasePath, { replace: true });
+    }
+  }, [tabParam, loading, isOwner, resolvedBasePath, navigate]);
 
   const handleDeleted = () => navigate('/networks');
   const handleLeft = () => navigate('/networks');
@@ -168,9 +211,9 @@ export default function NetworkDetailPage() {
               </div>
 
               {isOwner ? (
-                <Tabs.Root value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+                <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
                   <Tabs.List className="flex border-b border-gray-200 mb-8">
-                    {(['overview', 'settings', 'access', ...(network?.isPersonal ? ['integrations'] : [])] as const).map((tab) => (
+                    {(['overview', 'settings', 'access', 'integrations'] as const).map((tab) => (
                       <Tabs.Trigger
                         key={tab}
                         value={tab}

@@ -172,6 +172,8 @@ export class IntentService {
       logger.warn('[IntentService] Failed to enqueue HyDE job', { intentId: created.id, userId, error: err });
     }
 
+    IntentEvents.onCreated(created.id, userId);
+
     return created;
   }
 

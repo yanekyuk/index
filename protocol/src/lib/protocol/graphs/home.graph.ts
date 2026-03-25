@@ -26,6 +26,7 @@ import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } 
 import { HomeCategorizerAgent } from '../agents/home.categorizer';
 import { canUserSeeOpportunity, isActionableForViewer } from '../support/opportunity.utils';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
+import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../support/opportunity.constants';
 import { protocolLogger } from '../support/protocol.logger';
 import { timed } from '../../performance';
 import { requestContext } from '../../request-context';
@@ -71,47 +72,6 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
   }
   return t;
 }
-
-const toIntentArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-
-const toIntentKey = (intent: unknown): string | null => {
-  if (typeof intent === 'string' || typeof intent === 'number') {
-    return String(intent);
-  }
-  if (!intent || typeof intent !== 'object') {
-    return null;
-  }
-
-  const record = intent as Record<string, unknown>;
-  const candidate =
-    record.intentId ?? record.id ?? record.payload ?? record.summary ?? record.title ?? record.name;
-
-  if (typeof candidate === 'string' || typeof candidate === 'number') {
-    return String(candidate);
-  }
-  return null;
-};
-
-const computeMutualIntentCount = (ctx: Record<string, unknown>): number => {
-  const actorIntents = toIntentArray(ctx.intents ?? ctx.viewerIntents ?? ctx.actorIntents);
-  const partnerIntents = toIntentArray(ctx.otherIntents ?? ctx.partnerIntents ?? ctx.otherPartyIntents);
-
-  const actorIntentSet = new Set(
-    actorIntents.map((intent) => toIntentKey(intent)).filter((key): key is string => key !== null)
-  );
-  const partnerIntentSet = new Set(
-    partnerIntents.map((intent) => toIntentKey(intent)).filter((key): key is string => key !== null)
-  );
-
-  let overlap = 0;
-  for (const key of actorIntentSet) {
-    if (partnerIntentSet.has(key)) {
-      overlap += 1;
-    }
-  }
-
-  return overlap;
-};
 
 /** Normalize timestamp for sorting; returns numeric ms or 0 for invalid/missing. */
 const safeParseDate = (value: unknown): number => {
@@ -213,10 +173,6 @@ export class HomeGraphFactory {
           const visibleForFeed = visible.filter((opp) =>
             isActionableForViewer(opp.actors, opp.status, state.userId)
           );
-          const expired = raw.filter(
-            (opp) =>
-              opp.status === 'expired' && canUserSeeOpportunity(opp.actors, opp.status, state.userId)
-          );
           const sorted = [...visibleForFeed].sort((a, b) => {
             const confA = getConfidence(a);
             const confB = getConfidence(b);
@@ -234,10 +190,10 @@ export class HomeGraphFactory {
             return true;
           });
           const opportunities = deduped.slice(0, state.limit);
-          return { opportunities, expired };
+          return { opportunities };
         } catch (e) {
           logger.error('HomeGraph loadOpportunities failed', { error: e });
-          return { error: 'Failed to load opportunities', opportunities: [], expired: [] };
+          return { error: 'Failed to load opportunities', opportunities: [] };
         }
       });
     };
@@ -391,10 +347,12 @@ export class HomeGraphFactory {
               cta: isIntroducer
                 ? 'Share this introduction to get things started.'
                 : 'Take a look and decide whether to reach out.',
-              primaryActionLabel: isIntroducer ? 'Good match' : (isCounterpartGhost ? 'Invite to chat' : 'Start Chat'),
-              secondaryActionLabel: isIntroducer ? 'Pass' : 'Skip',
+              primaryActionLabel: getPrimaryActionLabel(viewerRole),
+              secondaryActionLabel: SECONDARY_ACTION_LABEL,
               mutualIntentsLabel: isIntroducer ? 'Connector match' : 'Shared interests',
-              narratorChip: { name: 'Index', text: 'Worth a look.' },
+              narratorChip: isIntroducer
+                ? { name: 'You', text: 'Worth a look.', userId: state.userId }
+                : { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               isGhost: isCounterpartGhost,
               ...(introducerParties && { parties: introducerParties }),
@@ -408,10 +366,9 @@ export class HomeGraphFactory {
                 state.userId,
                 otherActor?.userId,
               );
-              const mutualIntentCount = computeMutualIntentCount(ctx as unknown as Record<string, unknown>);
               const homeInput = {
                 ...ctx,
-                mutualIntentCount,
+                mutualIntentCount: undefined,
                 opportunityStatus: opportunity.status,
               };
               const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
@@ -434,6 +391,8 @@ export class HomeGraphFactory {
                   avatar: introUser?.avatar ?? null,
                   userId: introducer.userId,
                 };
+              } else if (introducer?.userId === state.userId) {
+                narratorChip = { name: 'You', text: presentation.narratorRemark, userId: state.userId };
               } else {
                 narratorChip = { name: 'Index', text: presentation.narratorRemark };
               }
@@ -445,8 +404,8 @@ export class HomeGraphFactory {
                 mainText: presentation.personalizedSummary,
                 cta: presentation.suggestedAction,
                 headline: presentation.headline,
-                primaryActionLabel: isCounterpartGhost && !isIntroducer ? 'Invite to chat' : presentation.primaryActionLabel,
-                secondaryActionLabel: presentation.secondaryActionLabel,
+                primaryActionLabel: getPrimaryActionLabel(viewerRole),
+                secondaryActionLabel: SECONDARY_ACTION_LABEL,
                 mutualIntentsLabel: presentation.mutualIntentsLabel,
                 narratorChip,
                 viewerRole,
@@ -563,14 +522,8 @@ export class HomeGraphFactory {
           headline: c.headline,
           mainText: c.mainText,
           name: c.name,
-          viewerRole:
-            c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
-              ? 'introducer'
-              : undefined,
-          opportunityStatus:
-            c.primaryActionLabel === 'Good match' && c.secondaryActionLabel === 'Pass'
-              ? 'pending'
-              : undefined,
+          viewerRole: c.viewerRole === 'introducer' ? 'introducer' : undefined,
+          opportunityStatus: c.viewerRole === 'introducer' ? 'pending' : undefined,
         }));
         const _traceEmitterCategorizer = requestContext.getStore()?.traceEmitter;
         const categorizerStart = Date.now();

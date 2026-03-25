@@ -4,7 +4,7 @@ import { requestContext } from "../../request-context";
 
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../support/opportunity.constants";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "../support/opportunity.card-text";
 import { runDiscoverFromQuery, continueDiscovery } from "../support/opportunity.discover";
 import type { EvaluatorEntity } from "../agents/opportunity.evaluator";
@@ -90,11 +90,8 @@ export function buildMinimalOpportunityCard(
       : undefined;
   const narratorName = viewerIsIntroducer
     ? "You"
-    : introducerName ?? (introducerActor ? "Someone" : "Index");
-  const primaryActionLabel =
-    viewerRole === "introducer"
-      ? "Introduce Them"
-      : (isCounterpartGhost ? "Invite to chat" : "Start Chat");
+    : introducerName?.trim() || (introducerActor ? "Someone" : "Index");
+  const primaryActionLabel = getPrimaryActionLabel(viewerRole);
   return {
     opportunityId: opp.id,
     userId: counterpartUserId,
@@ -106,7 +103,7 @@ export function buildMinimalOpportunityCard(
       ? `${counterpartName} → ${secondPartyName}`
       : `Connection with ${counterpartName}`,
     primaryActionLabel,
-    secondaryActionLabel: "Skip",
+    secondaryActionLabel: SECONDARY_ACTION_LABEL,
     mutualIntentsLabel: "Suggested connection",
     narratorChip: {
       name: narratorName,
@@ -419,9 +416,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const isCounterpartGhost = counterpartUser?.isGhost ?? false;
-        const primaryActionLabel = viewerIsParty
-          ? (isCounterpartGhost ? "Invite to chat" : "Start Chat")
-          : "Introduce Them";
+        const primaryActionLabel = getPrimaryActionLabel(viewerRole);
         const narratorChip = viewerIsParty
           ? {
               name: "Index",
@@ -457,7 +452,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           cta: "Start a conversation to connect.",
           headline,
           primaryActionLabel,
-          secondaryActionLabel: "Skip",
+          secondaryActionLabel: SECONDARY_ACTION_LABEL,
           mutualIntentsLabel: "Suggested connection",
           narratorChip,
           viewerRole,

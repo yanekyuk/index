@@ -1702,4 +1702,194 @@ describe('Opportunity Graph', () => {
       expect(invokeInput.profileContext).toContain('Active intents');
     });
   });
+
+  describe('Discovery node: direct-connection (targetUserId)', () => {
+    const discovererId = 'a0000000-0000-4000-8000-000000000001' as Id<'users'>;
+    const targetId = 'b0000000-0000-4000-8000-000000000002' as Id<'users'>;
+
+    test('bypasses vector search and returns target user as candidate', async () => {
+      const { compiledGraph, mockDb } = createMockGraphWithFnOverrides({
+        getActiveIntentsFn: async (userId: string) => {
+          if (userId === targetId) {
+            return [{
+              id: 'intent-target-1' as Id<'intents'>,
+              payload: 'Looking for an ML co-founder',
+              summary: 'ML co-founder',
+              createdAt: new Date(),
+            }];
+          }
+          return [{
+            id: 'intent-source-1' as Id<'intents'>,
+            payload: 'Building AI developer tools',
+            summary: 'AI tools',
+            createdAt: new Date(),
+          }];
+        },
+        evaluatorResult: [{
+          reasoning: 'Strong alignment between AI tools and ML co-founder search.',
+          score: 85,
+          actors: [
+            { userId: discovererId, role: 'patient' as const, intentId: null },
+            { userId: targetId, role: 'agent' as const, intentId: 'intent-target-1' },
+          ],
+        }],
+      });
+
+      // Spy on getIndexMemberships to verify the direct path queries the target's memberships
+      const membershipsSpy = spyOn(mockDb, 'getIndexMemberships');
+
+      const result = (await compiledGraph.invoke({
+        userId: discovererId,
+        targetUserId: targetId,
+        searchQuery: 'What can I do with this person?',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // getIndexMemberships should be called for both discoverer (prep) and target (discovery)
+      expect(membershipsSpy).toHaveBeenCalledTimes(2);
+      // Candidates should include the target user
+      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+      expect(result.candidates.some(c => c.candidateUserId === targetId)).toBe(true);
+    });
+
+    test('returns candidates with similarity 1.0 and explicit_mention lens', async () => {
+      const { compiledGraph } = createMockGraphWithFnOverrides({
+        getActiveIntentsFn: async (userId: string) => {
+          if (userId === targetId) {
+            return [{
+              id: 'intent-target-1' as Id<'intents'>,
+              payload: 'Looking for an ML co-founder',
+              summary: 'ML co-founder',
+              createdAt: new Date(),
+            }];
+          }
+          return [{ id: 'intent-1' as Id<'intents'>, payload: 'Test', summary: null, createdAt: new Date() }];
+        },
+        evaluatorResult: [{
+          reasoning: 'Match found.',
+          score: 80,
+          actors: [
+            { userId: discovererId, role: 'patient' as const, intentId: null },
+            { userId: targetId, role: 'agent' as const, intentId: 'intent-target-1' },
+          ],
+        }],
+      });
+
+      const result = (await compiledGraph.invoke({
+        userId: discovererId,
+        targetUserId: targetId,
+        searchQuery: 'Connect with this person',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      const targetCandidate = result.candidates.find(c => c.candidateUserId === targetId);
+      expect(targetCandidate).toBeDefined();
+      expect(targetCandidate!.similarity).toBe(1.0);
+      expect(targetCandidate!.lens).toBe('explicit_mention');
+    });
+
+    test('returns profile-level candidate when target has no intents', async () => {
+      const { compiledGraph } = createMockGraphWithFnOverrides({
+        getActiveIntentsFn: async (userId: string) => {
+          if (userId === targetId) return []; // No intents for target
+          return [{ id: 'intent-1' as Id<'intents'>, payload: 'Test', summary: null, createdAt: new Date() }];
+        },
+        evaluatorResult: [{
+          reasoning: 'Profile match found.',
+          score: 70,
+          actors: [
+            { userId: discovererId, role: 'peer' as const, intentId: null },
+            { userId: targetId, role: 'peer' as const, intentId: null },
+          ],
+        }],
+      });
+
+      const result = (await compiledGraph.invoke({
+        userId: discovererId,
+        targetUserId: targetId,
+        searchQuery: 'What can I do with this person?',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // Should still have a candidate (profile-level fallback)
+      expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+      const targetCandidate = result.candidates.find(c => c.candidateUserId === targetId);
+      expect(targetCandidate).toBeDefined();
+      expect(targetCandidate!.candidateIntentId).toBeUndefined();
+    });
+
+    test('no shared indexes returns empty candidates with per-userId memberships', async () => {
+      const mockDb: OpportunityGraphDatabase = {
+        getProfile: () => Promise.resolve(null),
+        createOpportunity: (data) => Promise.resolve({
+          id: 'opp-1', detection: data.detection, actors: data.actors,
+          interpretation: data.interpretation, context: data.context,
+          confidence: data.confidence, status: data.status ?? 'pending',
+          createdAt: new Date(), updatedAt: new Date(), expiresAt: null,
+        }),
+        opportunityExistsBetweenActors: () => Promise.resolve(false),
+        getOpportunityBetweenActors: () => Promise.resolve(null),
+        findOverlappingOpportunities: () => Promise.resolve([]),
+        getUserIndexIds: () => Promise.resolve(['idx-1'] as Id<'indexes'>[]),
+        getIndexMemberships: (userId: string) => {
+          // Discoverer is in idx-1, target is in idx-999 — no overlap
+          if (userId === discovererId) {
+            return Promise.resolve([{ indexId: 'idx-1', indexTitle: 'Alpha', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
+          }
+          return Promise.resolve([{ indexId: 'idx-999', indexTitle: 'Beta', indexPrompt: null, permissions: ['member'], memberPrompt: null, autoAssign: true, isPersonal: false, joinedAt: new Date() }]);
+        },
+        getActiveIntents: () => Promise.resolve([{
+          id: 'intent-1' as Id<'intents'>, payload: 'Test intent', summary: null, createdAt: new Date(),
+        }]),
+        getIndex: (id: string) => Promise.resolve({ id, title: `Index ${id}` }),
+        getIndexMemberCount: () => Promise.resolve(5),
+        getIndexIdsForIntent: () => Promise.resolve(['idx-1']),
+        getUser: (_userId: string) => Promise.resolve({ id: _userId, name: 'Test User', email: 'test@example.com' }),
+        isIndexMember: () => Promise.resolve(true),
+        getOpportunity: () => Promise.resolve(null),
+        getOpportunitiesForUser: () => Promise.resolve([]),
+        updateOpportunityStatus: () => Promise.resolve(null),
+        getIntent: () => Promise.resolve(null),
+        getIntentIndexScores: async () => [],
+        getIndexMemberContext: async () => null,
+      };
+
+      const mockEmbedder = {
+        generate: () => Promise.resolve(dummyEmbedding),
+        search: () => Promise.resolve([]),
+        searchWithHydeEmbeddings: () => Promise.resolve([]),
+        searchWithProfileEmbedding: () => Promise.resolve([]),
+      } as unknown as Embedder;
+
+      const mockHyde = { invoke: () => Promise.resolve({ hydeEmbeddings: { mirror: dummyEmbedding } }) };
+      const evaluator = createMockEvaluator([]);
+      const factory = new OpportunityGraphFactory(mockDb, mockEmbedder, mockHyde, evaluator, async () => undefined);
+      const compiledGraph = factory.createGraph();
+
+      const result = (await compiledGraph.invoke({
+        userId: discovererId,
+        targetUserId: targetId,
+        searchQuery: 'Connect with target',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      // No shared indexes → 0 candidates
+      expect(result.candidates.length).toBe(0);
+    });
+
+    test('self-target (targetUserId === discoveryUserId) returns empty candidates', async () => {
+      const { compiledGraph } = createMockGraphWithFnOverrides({
+        evaluatorResult: [],
+      });
+
+      const result = (await compiledGraph.invoke({
+        userId: discovererId,
+        targetUserId: discovererId, // Self-target
+        searchQuery: 'What can I do with myself?',
+        options: {},
+      } as OpportunityGraphInvokeInput)) as OpportunityGraphInvokeResult;
+
+      expect(result.candidates.length).toBe(0);
+    });
+  });
 });

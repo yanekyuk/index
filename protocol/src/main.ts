@@ -19,6 +19,7 @@ import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
+import { IntegrationService } from './services/integration.service';
 import path from 'path';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
@@ -40,6 +41,7 @@ import { IntentEvents } from './events/intent.event';
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();
+opportunityQueue.startCrons();
 notificationQueue.startWorker();
 profileQueue.startWorker();
 hydeQueue.startCrons();
@@ -49,6 +51,14 @@ IndexMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
     log.job.from('IndexMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
   });
+};
+
+IntentEvents.onCreated = (intentId: string, userId: string) => {
+  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
+  opportunityQueue.addJob(
+    { intentId, userId },
+    { priority: 10, jobId: `rediscovery:${userId}:${intentId}:${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
+  ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue maintenance on create', { intentId, userId, error: err }));
 };
 
 IntentEvents.onArchived = (intentId: string, userId: string) => {
@@ -121,7 +131,8 @@ controllerInstances.set(StorageController, new StorageController(storageAdapter)
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
-controllerInstances.set(IntegrationController, new IntegrationController(new ComposioIntegrationAdapter()));
+const integrationAdapter = new ComposioIntegrationAdapter();
+controllerInstances.set(IntegrationController, new IntegrationController(integrationAdapter, new IntegrationService(integrationAdapter)));
 controllerInstances.set(DebugController, new DebugController());
 
 logger.info('Routes registered', { prefix: GLOBAL_PREFIX });

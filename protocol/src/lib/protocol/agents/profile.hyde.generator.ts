@@ -38,14 +38,16 @@ const systemPrompt = `
     Do NOT describe the Source User. Describe the TARGET Match.
     Do NOT invent a name for the candidate. Refer to them as "The candidate", "They", or "This individual".
     Do NOT include locations.
+
+    PRIVACY: Never include email addresses, phone numbers, physical addresses, government IDs, or other contact identifiers in bio or narrative — even if they appear in the source profile.
 `;
 
 const responseFormat = z.object({
   identity: z.object({
-    bio: z.string().describe("A professional summary (2-3 sentences)"),
+    bio: z.string().describe("Professional summary only; no email, phone, physical address, government ID, or other contact identifiers"),
   }),
   narrative: z.object({
-    context: z.string().describe("A rich, detailed narrative about the user's current situation, background, and what they are currently working on. Use raw, natural language."),
+    context: z.string().describe("Rich narrative without email, phone, physical address, government ID, or other contact identifiers"),
   }),
   attributes: z.object({
     interests: z.array(z.string()).describe("Inferred or explicit interests"),
