@@ -1,6 +1,6 @@
 ---
 title: "Protocol Deep Dive"
-type: domain
+type: design
 tags: [protocol, langgraph, agents, graphs, tools, hyde, opportunity, intent, profile, negotiation]
 created: 2026-03-26
 updated: 2026-03-26

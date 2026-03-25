@@ -1,6 +1,6 @@
 ---
 title: "Architecture Overview"
-type: domain
+type: design
 tags: [architecture, layering, agents, data-flow, protocol, langgraph]
 created: 2026-03-26
 updated: 2026-03-26

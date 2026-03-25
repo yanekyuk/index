@@ -1,6 +1,6 @@
 ---
 title: "Getting Started"
-type: domain
+type: guide
 tags: [getting-started, setup, onboarding, development, environment]
 created: 2026-03-26
 updated: 2026-03-26
