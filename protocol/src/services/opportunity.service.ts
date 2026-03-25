@@ -145,7 +145,7 @@ export class OpportunityService {
       const totalItems = sections.reduce(
         (sum: number, s: { items: unknown[] }) => sum + (s.items?.length ?? 0), 0
       );
-      if (totalItems === 0) {
+      if (totalItems === 0 && !options?.indexId) {
         this.triggerRediscoveryIfNeeded(userId).catch((err) =>
           logger.warn('[OpportunityService] Rediscovery trigger failed', { userId, error: err })
         );

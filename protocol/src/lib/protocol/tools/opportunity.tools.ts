@@ -90,7 +90,7 @@ export function buildMinimalOpportunityCard(
       : undefined;
   const narratorName = viewerIsIntroducer
     ? "You"
-    : introducerName ?? (introducerActor ? "Someone" : "Index");
+    : introducerName?.trim() || (introducerActor ? "Someone" : "Index");
   const primaryActionLabel = getPrimaryActionLabel(viewerRole);
   return {
     opportunityId: opp.id,
