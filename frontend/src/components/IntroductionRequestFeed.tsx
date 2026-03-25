@@ -124,7 +124,7 @@ export default function IntroductionRequestFeed({
                   />
                   <span className="font-semibold text-gray-900 text-[13px]">{request.seeker.name}</span>
                 </span>
-                {' '}is looking for {request.intent.charAt(0).toLowerCase() + request.intent.slice(1)}
+                {' '}is looking for {/^[A-Z]{2}/.test(request.intent) ? request.intent : request.intent.charAt(0).toLowerCase() + request.intent.slice(1)}
               </p>
 
               <div className="shrink-0 pt-0.5">

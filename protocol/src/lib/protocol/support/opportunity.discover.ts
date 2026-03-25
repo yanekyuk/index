@@ -456,15 +456,19 @@ async function enrichOpportunities(
         }),
         ...(narratorChip && { narratorChip }),
         ...(item.viewerRole === "introducer" && (() => {
-          const nonIntroducerActors = item.opportunity.actors.filter(
-            (a) => a.role !== "introducer" && a.userId !== userId,
-          );
-          if (nonIntroducerActors.length >= 2) {
+          const partyUserIds = Array.from(
+            new Set(
+              item.opportunity.actors
+                .filter((a) => a.role !== "introducer" && a.userId !== userId)
+                .map((a) => a.userId),
+            ),
+          ).slice(0, 2);
+          if (partyUserIds.length >= 2) {
             return {
-              parties: nonIntroducerActors.slice(0, 2).map((a) => ({
-                userId: a.userId,
-                name: nameByUserId.get(a.userId) ?? a.userId,
-                avatar: avatarByUserId.get(a.userId) ?? null,
+              parties: partyUserIds.map((partyUserId) => ({
+                userId: partyUserId,
+                name: nameByUserId.get(partyUserId) ?? partyUserId,
+                avatar: avatarByUserId.get(partyUserId) ?? null,
               })),
             };
           }

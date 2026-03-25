@@ -331,11 +331,14 @@ export class HomeGraphFactory {
                 : '') || 'A promising connection.';
 
             const isCounterpartGhost = otherUser?.isGhost ?? false;
-            const introducerParties = isIntroducer && introducerCounterparts.length >= 2
-              ? introducerCounterparts.slice(0, 2).map((a) => ({
-                  userId: a.userId,
-                  name: userMap.get(a.userId)?.name ?? 'Unknown',
-                  avatar: userMap.get(a.userId)?.avatar ?? null,
+            const introducerPartyIds = isIntroducer
+              ? Array.from(getUniqueCounterpartUserIds(opportunity, state.userId)).slice(0, 2)
+              : [];
+            const introducerParties = introducerPartyIds.length >= 2
+              ? introducerPartyIds.map((partyUserId) => ({
+                  userId: partyUserId,
+                  name: userMap.get(partyUserId)?.name ?? 'Unknown',
+                  avatar: userMap.get(partyUserId)?.avatar ?? null,
                 }))
               : undefined;
             const fallbackCard = (): HomeCardItem => ({
