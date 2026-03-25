@@ -18,6 +18,7 @@ import { persistOpportunities } from '../lib/protocol/support/opportunity.persis
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../lib/protocol/agents/opportunity.presenter';
 import { stripUuids, stripIntroducerMentions } from '../lib/protocol/support/opportunity.sanitize';
 import { opportunityQueue } from '../queues/opportunity.queue';
+import { MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue } from '../lib/protocol/graphs/maintenance.graph';
 
 const logger = log.service.from("OpportunityService");
 const presenter = new OpportunityPresenter();
@@ -140,15 +141,10 @@ export class OpportunityService {
       const sections = result.sections ?? [];
       const meta = result.meta ?? { totalOpportunities: 0, totalSections: 0 };
 
-      // Self-healing: when no actionable opportunities exist, re-queue discovery for active intents
-      const totalItems = sections.reduce(
-        (sum: number, s: { items: unknown[] }) => sum + (s.items?.length ?? 0), 0
+      // Proactive maintenance: enqueue health-scored maintenance (fire-and-forget)
+      this.triggerMaintenance(userId).catch((err) =>
+        logger.warn('[OpportunityService] Maintenance trigger failed', { userId, error: err })
       );
-      if (totalItems === 0) {
-        this.triggerRediscoveryIfNeeded(userId).catch((err) =>
-          logger.warn('[OpportunityService] Rediscovery trigger failed', { userId, error: err })
-        );
-      }
 
       return { sections, meta };
     } catch (e) {
@@ -594,8 +590,8 @@ export class OpportunityService {
       this.db.getUser(counterpart.userId),
     ]);
 
-    if (!recipient?.isGhost || recipient.deletedAt != null) {
-      return { error: 'Counterpart is not a ghost user', status: 400 };
+    if (recipient?.deletedAt != null) {
+      return { error: 'Counterpart not available', status: 400 };
     }
 
     const introducer = opp.actors.find((a) => a.role === 'introducer');
@@ -610,7 +606,7 @@ export class OpportunityService {
     const { generateInviteMessage: generate } = await import('../lib/protocol/agents/invite.generator');
 
     const result = await generate({
-      recipientName: recipient.name ?? 'there',
+      recipientName: recipient?.name ?? 'there',
       senderName: viewer?.name ?? 'Someone',
       opportunityInterpretation: opp.interpretation.reasoning,
       senderIntents,
@@ -674,6 +670,44 @@ export class OpportunityService {
       } catch (err) {
         logger.warn('[OpportunityService] Rediscovery throttle write failed', { userId, error: err });
       }
+    }
+  }
+
+  /**
+   * Trigger proactive feed maintenance for a user. Evaluates feed health
+   * and enqueues rediscovery if the score is below threshold.
+   * Throttled to once per 6 hours per user via cache key.
+   */
+  private async triggerMaintenance(userId: string): Promise<void> {
+    const cacheKey = `maintenance:throttle:${userId}`;
+    try {
+      const existing = await this.cache.get(cacheKey);
+      if (existing) return;
+    } catch (err) {
+      logger.warn('[OpportunityService] Maintenance throttle read failed; continuing', { userId, error: err });
+    }
+
+    const factory = new MaintenanceGraphFactory(
+      this.db as unknown as MaintenanceGraphDatabase,
+      this.cache as unknown as MaintenanceGraphCache,
+      opportunityQueue as unknown as MaintenanceGraphQueue,
+    );
+    const graph = factory.createGraph();
+    const result = await graph.invoke({ userId });
+
+    // Only arm the 6-hour throttle when maintenance actually succeeded.
+    // A failed pass (error set) or a needed-but-enqueued-nothing pass should retry next time.
+    const failed = !!result.error;
+    const neededButEmpty =
+      result.healthResult?.shouldMaintain &&
+      (result.activeIntents?.length ?? 0) > 0 &&
+      result.rediscoveryJobsEnqueued === 0;
+    if (failed || neededButEmpty) return;
+
+    try {
+      await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
+    } catch (err) {
+      logger.warn('[OpportunityService] Maintenance throttle write failed', { userId, error: err });
     }
   }
 

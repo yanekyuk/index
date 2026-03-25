@@ -47,7 +47,7 @@ export class AuthController {
     if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       providers.push('google');
     }
-    return Response.json({ providers });
+    return Response.json({ providers, emailPassword: process.env.NODE_ENV !== 'production' });
   }
 
   /**

@@ -13,6 +13,8 @@ export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
   ensurePersonalIndex(userId: string): Promise<string>;
+  /** Flips isGhost to false for the given user. No-op if already non-ghost. */
+  claimGhostUser(userId: string): Promise<void>;
 }
 
 /**
@@ -30,8 +32,11 @@ export interface AuthDeps {
  * All infrastructure access is provided through `deps` so this module
  * follows the project layering rules (lib receives adapters via injection).
  *
- * @remarks Ghost user claiming is handled at the adapter level via ON CONFLICT
- * in the Drizzle adapter's create method — no hooks needed.
+ * @remarks Email/password auth is disabled in production — only magic link
+ * and social OAuth are available. Ghost user de-ghosting is handled by the
+ * session.create.after hook which calls `claimGhostUser` on every login.
+ * The adapter-level ON CONFLICT upsert in `createDrizzleAdapter` remains
+ * as a dev-only fallback for email/password signups.
  */
 export function createAuth(deps: AuthDeps) {
   const { authDb, getTrustedOrigins, sendMagicLinkEmail } = deps;
@@ -43,6 +48,11 @@ export function createAuth(deps: AuthDeps) {
       session: {
         create: {
           after: async (session) => {
+            try {
+              await authDb.claimGhostUser(session.userId);
+            } catch (err) {
+              logger.error('Failed to claim ghost user on sign-in', { userId: session.userId, error: err });
+            }
             try {
               await authDb.ensurePersonalIndex(session.userId);
             } catch (err) {
@@ -64,7 +74,7 @@ export function createAuth(deps: AuthDeps) {
       },
     },
     basePath: "/api/auth",
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: process.env.NODE_ENV !== 'production' },
     user: {
       fields: {
         image: "avatar",

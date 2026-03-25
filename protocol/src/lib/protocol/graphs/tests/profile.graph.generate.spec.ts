@@ -76,6 +76,7 @@ describe('ProfileGraph - Generate Mode', () => {
       narrative: { context: 'Jane is a seasoned software engineer with 10 years of experience.' },
       attributes: { skills: ['TypeScript', 'React', 'Node.js'], interests: ['AI', 'Open Source'] },
       socials: { linkedin: 'janedoe', twitter: 'janedoe', github: 'janedoe', websites: [] },
+      confidentMatch: true,
     };
 
     it('should use pre-populated profile, skipping LLM generation', async () => {
@@ -95,6 +96,47 @@ describe('ProfileGraph - Generate Mode', () => {
       expect(result.profile!.attributes.skills).toContain('TypeScript');
       expect(mockDatabase.saveProfile).toHaveBeenCalledWith(user.id, expect.anything());
       expect(mockDatabase.updateUser).toHaveBeenCalled();
+    }, 60_000);
+
+    it('should update ghost user display name from enrichment when placeholder', async () => {
+      const ghost = {
+        id: 'ghost-enriched',
+        name: 'jane',
+        email: 'jane@example.com',
+        isGhost: true,
+        socials: null,
+        location: null,
+        intro: null,
+      };
+      (mockDatabase.getUser as any).mockResolvedValue(ghost);
+      mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
+
+      const graph = buildGraph();
+      const result = await graph.invoke({
+        userId: ghost.id,
+        operationMode: 'generate',
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.profile).toBeDefined();
+      expect(mockDatabase.updateUser).toHaveBeenCalledWith(
+        ghost.id,
+        expect.objectContaining({ name: 'Jane Doe' }),
+      );
+    }, 60_000);
+
+    it('should not overwrite non-ghost user display name from enrichment', async () => {
+      (mockDatabase.getUser as any).mockResolvedValue(user);
+      mockEnrichUserProfile.mockResolvedValue(enrichmentResult);
+
+      const graph = buildGraph();
+      await graph.invoke({
+        userId: user.id,
+        operationMode: 'generate',
+      });
+
+      const updateCall = (mockDatabase.updateUser as any).mock.calls[0];
+      expect(updateCall[1]).not.toHaveProperty('name');
     }, 60_000);
 
     it('should generate HyDE document after enrichment', async () => {
@@ -161,6 +203,7 @@ describe('ProfileGraph - Generate Mode', () => {
         narrative: { context: '' },
         attributes: { skills: [], interests: [] },
         socials: {},
+        confidentMatch: true,
       });
 
       const graph = buildGraph();
@@ -173,6 +216,39 @@ describe('ProfileGraph - Generate Mode', () => {
       expect(result.profile).toBeDefined();
       expect(result.profile!.identity.name).toBeTruthy();
       expect(mockDatabase.saveProfile).toHaveBeenCalled();
+    }, 120_000);
+  });
+
+  describe('when enrichUserProfile returns confidentMatch: false', () => {
+    const user = {
+      id: 'user-not-confident',
+      name: 'Alex Unknown',
+      email: 'alex@unknown.io',
+      socials: null,
+      location: null,
+      intro: null,
+    };
+
+    it('should fall back to LLM generation despite rich payload', async () => {
+      (mockDatabase.getUser as any).mockResolvedValue(user);
+      mockEnrichUserProfile.mockResolvedValue({
+        identity: { name: 'Alex Unknown', bio: 'Possibly a developer.', location: 'Remote' },
+        narrative: { context: 'May work in tech.' },
+        attributes: { skills: ['JavaScript'], interests: ['Web'] },
+        socials: {},
+        confidentMatch: false,
+      });
+
+      const graph = buildGraph();
+      const result = await graph.invoke({
+        userId: user.id,
+        operationMode: 'generate',
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(result.profile).toBeDefined();
+      expect(mockDatabase.saveProfile).toHaveBeenCalled();
+      expect(mockDatabase.updateUser).not.toHaveBeenCalled();
     }, 120_000);
   });
 

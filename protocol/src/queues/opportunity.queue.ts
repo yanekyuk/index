@@ -1,7 +1,11 @@
 import { Job } from 'bullmq';
+import cron from 'node-cron';
+import { and, isNotNull, lte, notInArray } from 'drizzle-orm';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import type { Id } from '../types/common.types';
+import db from '../lib/drizzle/drizzle';
+import { opportunities } from '../schemas/database.schema';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { RedisCacheAdapter } from '../adapters/cache.adapter';
@@ -124,6 +128,44 @@ export class OpportunityQueue {
       await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<OpportunityJobData>(QUEUE_NAME, processor);
+  }
+
+  /**
+   * Expire stale opportunities: transitions opportunities whose expiresAt <= now
+   * from non-terminal statuses to 'expired'. Runs every 15 minutes.
+   */
+  private async expireStaleOpportunities(): Promise<number> {
+    const now = new Date();
+    const updated = await db
+      .update(opportunities)
+      .set({ status: 'expired', updatedAt: now })
+      .where(
+        and(
+          isNotNull(opportunities.expiresAt),
+          lte(opportunities.expiresAt, now),
+          notInArray(opportunities.status, ['accepted', 'rejected', 'expired'])
+        )
+      )
+      .returning({ id: opportunities.id });
+    return updated.length;
+  }
+
+  /**
+   * Schedule opportunity expiration cron (every 15 minutes). Call from protocol server only.
+   */
+  startCrons(): void {
+    cron.schedule('*/15 * * * *', () => {
+      this.expireStaleOpportunities()
+        .then((count) => {
+          if (count > 0) {
+            this.queueLogger.info(`[OpportunityExpiration] Expired ${count} opportunit${count === 1 ? 'y' : 'ies'}`);
+          }
+        })
+        .catch((err) =>
+          this.queueLogger.error('[OpportunityExpiration] Cron failed', { error: err })
+        );
+    });
+    this.queueLogger.info('[OpportunityQueue] Expiration cron scheduled (every 15 minutes)');
   }
 
   async close(): Promise<void> {

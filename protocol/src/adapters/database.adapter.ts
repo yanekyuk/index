@@ -3289,6 +3289,81 @@ export class ChatDatabaseAdapter {
   }
 
   /**
+   * Bulk-add users as members to a specific index.
+   * Skips users that are already members (onConflictDoNothing).
+   * @param indexId - The target index
+   * @param userIds - User IDs to add as members
+   */
+  async addMembersBulkToIndex(indexId: string, userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+
+    let memberPrompt: string | null = null;
+    const [indexRow] = await db.select({ prompt: schema.indexes.prompt }).from(schema.indexes).where(eq(schema.indexes.id, indexId)).limit(1);
+    if (indexRow) memberPrompt = indexRow.prompt;
+
+    const values = userIds.map(userId => ({
+      indexId,
+      userId,
+      permissions: ['member'],
+      prompt: memberPrompt,
+      autoAssign: false,
+    }));
+    await db.insert(schema.indexMembers).values(values).onConflictDoNothing();
+  }
+
+  // ─── Index Integrations ───────────────────────────────────────────────────────
+
+  /**
+   * Link a Composio connected account to an index.
+   * @param indexId - Target index
+   * @param toolkit - Toolkit slug (e.g. 'gmail', 'slack')
+   * @param connectedAccountId - Composio connected account ID
+   */
+  async insertIndexIntegration(indexId: string, toolkit: string, connectedAccountId: string): Promise<void> {
+    await db.insert(schema.indexIntegrations)
+      .values({ indexId, toolkit, connectedAccountId })
+      .onConflictDoNothing();
+  }
+
+  /**
+   * Unlink a toolkit from an index.
+   * @param indexId - Target index
+   * @param toolkit - Toolkit slug
+   */
+  async deleteIndexIntegration(indexId: string, toolkit: string): Promise<void> {
+    await db.delete(schema.indexIntegrations)
+      .where(and(
+        eq(schema.indexIntegrations.indexId, indexId),
+        eq(schema.indexIntegrations.toolkit, toolkit),
+      ));
+  }
+
+  /**
+   * Remove all index links for a specific Composio connected account.
+   * Called when a user fully disconnects their Composio connection.
+   * @param connectedAccountId - Composio connected account ID
+   */
+  async deleteIndexIntegrationsByConnectedAccount(connectedAccountId: string): Promise<void> {
+    await db.delete(schema.indexIntegrations)
+      .where(eq(schema.indexIntegrations.connectedAccountId, connectedAccountId));
+  }
+
+  /**
+   * List all linked integrations for an index.
+   * @param indexId - The index to query
+   * @returns Array of linked integration records
+   */
+  async getIndexIntegrations(indexId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
+    return db.select({
+      toolkit: schema.indexIntegrations.toolkit,
+      connectedAccountId: schema.indexIntegrations.connectedAccountId,
+      createdAt: schema.indexIntegrations.createdAt,
+    })
+      .from(schema.indexIntegrations)
+      .where(eq(schema.indexIntegrations.indexId, indexId));
+  }
+
+  /**
    * Hard-delete a contact membership from the owner's personal index.
    * @param ownerId - The owner of the personal index
    * @param contactUserId - The contact user to remove
