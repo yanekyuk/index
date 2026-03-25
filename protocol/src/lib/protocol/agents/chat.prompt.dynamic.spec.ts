@@ -310,7 +310,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(turn2.responseText).toBeDefined();
-      expect(turn2.responseText.length).toBeGreaterThan(0);
+      expect(turn2.responseText!.length).toBeGreaterThan(0);
 
       // Agent should have called create_intent in turn 2
       // Extract only turn 2's messages (after the last HumanMessage we added)
@@ -348,7 +348,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(turn2.responseText).toBeDefined();
-      expect(turn2.responseText.length).toBeGreaterThan(0);
+      expect(turn2.responseText!.length).toBeGreaterThan(0);
 
       // Agent should have called create_intent in turn 2
       const turn2NewMessages = turn2.messages.slice(turn1.messages.length + 1);
@@ -406,7 +406,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(turn2.responseText).toBeDefined();
-      expect(turn2.responseText.length).toBeGreaterThan(0);
+      expect(turn2.responseText!.length).toBeGreaterThan(0);
 
       // Agent should have called create_opportunities for direct connection.
       // Check full turn2 messages — turn1 didn't call create_opportunities,
@@ -465,7 +465,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(turn2.responseText).toBeDefined();
-      expect(turn2.responseText.length).toBeGreaterThan(0);
+      expect(turn2.responseText!.length).toBeGreaterThan(0);
 
       // Agent should call update_intent (turn 1 only had read_intents)
       expect(hasToolCall(turn2.messages, "update_intent")).toBe(true);
@@ -534,7 +534,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(turn2.responseText).toBeDefined();
-      expect(turn2.responseText.length).toBeGreaterThan(0);
+      expect(turn2.responseText!.length).toBeGreaterThan(0);
 
       // Agent should have called create_opportunities (discovery), not read_indexes
       const turn2NewMessages = turn2.messages.slice(turn1.messages.length + 1);
@@ -598,7 +598,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(result.responseText).toBeDefined();
-      expect(result.responseText.length).toBeGreaterThan(0);
+      expect(result.responseText!.length).toBeGreaterThan(0);
 
       // Agent must have called create_opportunities with partyUserIds (introduction flow)
       expect(hasToolCall(result.messages, "create_opportunities")).toBe(true);
@@ -638,7 +638,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       });
 
       expect(result.responseText).toBeDefined();
-      expect(result.responseText.length).toBeGreaterThan(0);
+      expect(result.responseText!.length).toBeGreaterThan(0);
       expect(hasToolCall(result.messages, "add_contact")).toBe(true);
     }, 180000);
   });

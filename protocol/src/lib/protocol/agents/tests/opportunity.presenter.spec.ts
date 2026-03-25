@@ -4,8 +4,8 @@ config({ path: ".env.development", override: true });
 import { describe, expect, it, mock } from "bun:test";
 import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter";
 
-/** Test-only type to override the private invokeWithTimeout method. */
-type PresenterWithInvokeOverride = OpportunityPresenter & {
+/** Test-only type to override the private invokeWithTimeout method via index access. */
+type PresenterWithInvokeOverride = {
   invokeWithTimeout: (...args: unknown[]) => unknown;
 };
 
