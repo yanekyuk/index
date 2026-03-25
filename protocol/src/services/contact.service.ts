@@ -1,6 +1,7 @@
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { profileQueue } from '../queues/profile.queue';
+import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
 
 const logger = log.service.from('ContactService');
 
@@ -252,16 +253,33 @@ export class ContactService {
       return { imported: 0, skipped: resolved.skipped, newContacts: 0, existingContacts: 0, details: [] };
     }
 
-    await this.db.upsertContactMembershipBulk(ownerId, resolved.userIds);
-    await this.db.clearReverseOptOutBulk(ownerId, resolved.userIds);
+    const preset = getPreset(process.env.CONTACT_DEDUP_STRATEGY);
+    const dedupResult = deduplicateContacts(contacts, resolved.details, preset);
+    const dedupedUserIds = dedupResult.kept.map(d => d.userId);
+    const nameSkipped = dedupResult.removed.length;
 
-    const newCount = resolved.details.filter(d => d.isNew).length;
+    if (dedupResult.removed.length > 0) {
+      logger.info('[ContactService] Dedup removed contacts', {
+        ownerId,
+        removed: dedupResult.removed.map(r => ({
+          email: r.email,
+          matchedWith: r.matchedWith,
+          nameScore: r.nameScore.toFixed(3),
+          emailScore: r.emailScore.toFixed(3),
+        })),
+      });
+    }
+
+    await this.db.upsertContactMembershipBulk(ownerId, dedupedUserIds);
+    await this.db.clearReverseOptOutBulk(ownerId, dedupedUserIds);
+
+    const newCount = dedupResult.kept.filter(d => d.isNew).length;
     const result: ImportResult = {
-      imported: resolved.userIds.length,
-      skipped: resolved.skipped,
+      imported: dedupedUserIds.length,
+      skipped: resolved.skipped + nameSkipped,
       newContacts: newCount,
-      existingContacts: resolved.userIds.length - newCount,
-      details: resolved.details,
+      existingContacts: dedupedUserIds.length - newCount,
+      details: dedupResult.kept,
     };
 
     logger.info('[ContactService] Import completed', {
