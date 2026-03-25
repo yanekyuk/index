@@ -64,8 +64,8 @@ export interface HomeCardPresenterInput extends PresenterInput {
   mutualIntentCount?: number;
 }
 
-/** Full home-card display contract returned by presentHomeCard. */
-export const HomeCardPresentationSchema = z.object({
+/** LLM-generated fields for home-card presentation (buttons are hardcoded by callers, not LLM-generated). */
+export const HomeCardLLMSchema = z.object({
   headline: z
     .string()
     .describe("Short, compelling headline for this opportunity"),
@@ -83,33 +83,26 @@ export const HomeCardPresentationSchema = z.object({
     .describe(
       "One short sentence for the narrator chip, max ~80 chars (e.g. who is suggesting and why)",
     ),
-  primaryActionLabel: z
-    .string()
-    .max(32)
-    .describe(
-      "Label for the primary button (accept = start a conversation). Conversation-oriented only, e.g. 'Start Chat', 'Say hello', 'Reply in chat'. Never 'View Project' or 'Review Opportunity'.",
-    ),
-  secondaryActionLabel: z
-    .string()
-    .max(32)
-    .describe(
-      "Label for the secondary button (reject/dismiss: e.g. 'Skip', 'Not now')",
-    ),
   mutualIntentsLabel: z
     .string()
     .max(48)
     .describe(
-      "Short line for the subtitle under the other party name (e.g. '1 mutual intent', '2 overlapping intents')",
+      "Short line for the subtitle under the other party name (e.g. '3 mutual intents', 'Shared interests', 'Aligned goals'). NEVER output '0 mutual intents' — use a qualitative phrase like 'Shared interests' when no numeric count is available.",
     ),
 });
 
-const homeCardResponseFormat = z.object({
-  presentation: HomeCardPresentationSchema,
-});
+/** LLM-generated result from presentHomeCard (callers append button labels from opportunity.constants). */
+export type HomeCardLLMResult = z.infer<typeof HomeCardLLMSchema>;
 
-export type HomeCardPresentationResult = z.infer<
-  typeof HomeCardPresentationSchema
->;
+/** Full home-card display contract including hardcoded button labels (assembled by callers). */
+export type HomeCardPresentationResult = HomeCardLLMResult & {
+  primaryActionLabel: string;
+  secondaryActionLabel: string;
+};
+
+const homeCardResponseFormat = z.object({
+  presentation: HomeCardLLMSchema,
+});
 
 /** Input for a single presenter call (all context pre-assembled). */
 export interface PresenterInput {
@@ -191,14 +184,11 @@ Given context about the viewer, the other person, and why they were matched, pro
 2. personalizedSummary: 2-3 sentences in "you" language (main body text).
 3. suggestedAction: one brief suggested next step.
 4. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
-5. primaryActionLabel: label for the primary button. Accept means accepting to have a conversation — so this must always be conversation-oriented. Use only labels like "Start Chat", "Have a conversation", "Say hello", "Reply in chat", "Open chat". Never use "View Project", "Review Opportunity", "View details", or similar.
-6. secondaryActionLabel: label for the secondary button (dismiss/skip). Examples: "Skip", "Not now", "Later".
-7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "1 mutual intent", "2 overlapping intents", "Shared interests" — keep it brief. Based on actors field of the opportunity.
+5. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
 
 Rules:
 - Address the viewer with "you"/"your". Be concise and compelling.
-- primaryActionLabel must always invite starting or having a conversation (e.g. Start Chat, Say hello). Never use viewing/reviewing wording.
-- secondaryActionLabel must be short (under ~20 chars). narratorRemark should feel like a single sentence from the narrator (Index or a person), not meta-commentary.
+- narratorRemark should feel like a single sentence from the narrator (Index or a person), not meta-commentary.
 - narratorRemark is displayed with the narrator name prepended (e.g. "Index: …" or "Alice: …"). Do NOT start narratorRemark with the narrator's name or repeat it; write only the remark (e.g. "Based on your overlapping intents" or "introduced you two, sensing a valuable connection").
 - Vary wording for the match itself. Do not repeat "opportunity" across headline, summary, and narratorRemark when alternatives fit.
 - Prefer first names in user-facing copy. Avoid repeated full names unless disambiguation is necessary.
@@ -227,15 +217,11 @@ Remember: The introducer's name goes ONLY in narratorRemark, NEVER in personaliz
 - Instead, narratorRemark should describe why the match is relevant (e.g. "Based on your overlapping intents", "Your skills align with what they need").
 
 - Exception for connector/introducer: if viewer role is "introducer" (any status), this is a curation/connector card. Use:
-  - primaryActionLabel: "Good match"
-  - secondaryActionLabel: "Pass"
   - suggestedAction: one short line about sharing the intro or confirming the match.
   - mutualIntentsLabel: a short connector label (e.g. "Connector match", "You can bridge this").
   - headline: describe the connection between the parties (e.g., "Connecting a PhD researcher with a translator"). Do NOT reference the introducer's own needs.
   - personalizedSummary: explain why the parties you're introducing should meet, referencing THEIR profiles and intents, not yours.
 - Exception for new-connection reveal: if viewer role is "agent", status is "accepted", and there is an introducer, this is the agent's first time seeing this opportunity. Use:
-  - primaryActionLabel: "Open chat"
-  - secondaryActionLabel: "Later"
   - suggestedAction: a short line about joining the conversation.
 `;
 
@@ -341,16 +327,17 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
   }
 
   /**
-   * Generate full home-card display contract (headline, body, narrator remark, action labels, mutual-intent label).
+   * Generate LLM-powered home-card content (headline, body, narrator remark, mutual-intent label).
+   * Callers append button labels from opportunity.constants.
    */
   @Timed()
   public async presentHomeCard(
     input: HomeCardPresenterInput,
-  ): Promise<HomeCardPresentationResult> {
+  ): Promise<HomeCardLLMResult> {
     const mutualHint =
-      input.mutualIntentCount != null
+      input.mutualIntentCount != null && input.mutualIntentCount > 0
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
-        : "Match is based on profile and intent alignment.";
+        : "Match is based on profile and intent alignment. Do not cite a numeric intent count.";
     const introContext = input.isIntroduction
       ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
       : "";
@@ -372,8 +359,10 @@ COMMUNITY: ${input.indexName}
 Viewer's role in this opportunity: ${input.viewerRole}
 Opportunity status: ${input.opportunityStatus ?? "pending"}
 
-Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryActionLabel, secondaryActionLabel, and mutualIntentsLabel.
+Produce headline, personalizedSummary, suggestedAction, narratorRemark, and mutualIntentsLabel.
 `;
+
+    const isIntroducer = input.viewerRole === "introducer";
 
     try {
       const messages = [
@@ -384,7 +373,9 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       const parsed = homeCardResponseFormat.parse(result);
       parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
       parsed.presentation.narratorRemark = stripUuids(parsed.presentation.narratorRemark);
-      // Apply introducer stripping as safety net when this is an introduction
+      if (/^0\s+(mutual|overlapping)\s+intent/i.test(parsed.presentation.mutualIntentsLabel)) {
+        parsed.presentation.mutualIntentsLabel = "Shared interests";
+      }
       if (input.isIntroduction && input.introducerName) {
         parsed.presentation.personalizedSummary = stripIntroducerMentions(
           parsed.presentation.personalizedSummary,
@@ -402,9 +393,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
           timeoutReason,
         },
       );
-      const isIntroducer = input.viewerRole === "introducer";
       let fallbackSummary = stripUuids(input.matchReasoning.slice(0, 300));
-      // Apply introducer stripping as safety net when this is an introduction
       if (input.isIntroduction && input.introducerName) {
         fallbackSummary = stripIntroducerMentions(fallbackSummary, input.introducerName);
       }
@@ -415,11 +404,9 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
           ? "Share this introduction to get things started."
           : "Take a look and decide whether to reach out.",
         narratorRemark: "Worth a look.",
-        primaryActionLabel: isIntroducer ? "Good match" : "Start Chat",
-        secondaryActionLabel: isIntroducer ? "Pass" : "Skip",
         mutualIntentsLabel: isIntroducer
           ? "Connector match"
-          : input.mutualIntentCount != null
+          : input.mutualIntentCount != null && input.mutualIntentCount > 0
             ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
             : "Shared interests",
       };
@@ -454,9 +441,9 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
   public async presentHomeCardBatch(
     inputs: HomeCardPresenterInput[],
     options?: { concurrency?: number },
-  ): Promise<HomeCardPresentationResult[]> {
+  ): Promise<HomeCardLLMResult[]> {
     const concurrency = options?.concurrency ?? 5;
-    const results: HomeCardPresentationResult[] = [];
+    const results: HomeCardLLMResult[] = [];
     for (let i = 0; i < inputs.length; i += concurrency) {
       const chunk = inputs.slice(i, i + concurrency);
       const chunkResults = await Promise.all(

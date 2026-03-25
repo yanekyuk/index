@@ -12,6 +12,10 @@ import {
 } from "../tools";
 import { resolveChatContext } from "../tools/tool.helpers";
 import { ITERATION_NUDGE, buildSystemContent } from "./chat.prompt";
+import {
+  extractRecentToolCalls,
+  type IterationContext,
+} from "./chat.prompt.modules";
 import { protocolLogger } from "../support/protocol.logger";
 import { createModel } from "./model.config";
 import { sanitizeForDebugMeta } from "../support/debug-meta.sanitizer";
@@ -168,6 +172,19 @@ export class ChatAgent {
   }
 
   /**
+   * Extracts the text content of the most recent HumanMessage.
+   */
+  private static getCurrentUserMessage(messages: BaseMessage[]): string | undefined {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]._getType() === "human") {
+        const content = messages[i].content;
+        return typeof content === "string" ? content : undefined;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Async factory: creates a ChatAgent with resolved user/index context.
    * Resolves user/index identity from DB during tool initialization.
    */
@@ -194,7 +211,12 @@ export class ChatAgent {
     messages: BaseMessage[],
     iterationCount: number,
   ): Promise<AgentIterationResult> {
-    const systemContent = buildSystemContent(this.resolvedContext);
+    const iterCtx: IterationContext = {
+      recentTools: extractRecentToolCalls(messages),
+      currentMessage: ChatAgent.getCurrentUserMessage(messages),
+      ctx: this.resolvedContext,
+    };
+    const systemContent = buildSystemContent(this.resolvedContext, iterCtx);
 
     const fullMessages: BaseMessage[] = [
       new SystemMessage(systemContent),
@@ -602,7 +624,12 @@ export class ChatAgent {
       }
       emit({ type: "iteration_start", iteration: iterationCount });
 
-      const systemContent = buildSystemContent(this.resolvedContext);
+      const iterCtx: IterationContext = {
+        recentTools: extractRecentToolCalls(messages),
+        currentMessage: ChatAgent.getCurrentUserMessage(messages),
+        ctx: this.resolvedContext,
+      };
+      const systemContent = buildSystemContent(this.resolvedContext, iterCtx);
       const fullMessages: BaseMessage[] = [
         new SystemMessage(systemContent),
         ...messages,

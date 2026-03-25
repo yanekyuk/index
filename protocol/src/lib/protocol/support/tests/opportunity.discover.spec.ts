@@ -225,7 +225,7 @@ describe("opportunity.discover", () => {
             : null,
         getUser: async (userId: string) =>
           userId === candidateId
-            ? { name: "Yuki Tanaka", avatar: "https://example.com/yuki.jpg" }
+            ? { name: "Yuki Tanaka", avatar: "https://example.com/yuki.jpg", onboarding: { completedAt: new Date() } }
             : null,
       } as unknown as ChatGraphCompositeDatabase;
 
@@ -298,9 +298,9 @@ describe("opportunity.discover", () => {
           return null;
         },
         getUser: async (userId: string) => {
-          if (userId === introducerId) return { name: "Carol Introducer", avatar: null };
-          if (userId === targetId) return { name: "Alice Target", avatar: null };
-          if (userId === candidateId) return { name: "Bob Candidate", avatar: null };
+          if (userId === introducerId) return { name: "Carol Introducer", avatar: null, onboarding: { completedAt: new Date() } };
+          if (userId === targetId) return { name: "Alice Target", avatar: null, onboarding: { completedAt: new Date() } };
+          if (userId === candidateId) return { name: "Bob Candidate", avatar: null, onboarding: { completedAt: new Date() } };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
@@ -321,7 +321,7 @@ describe("opportunity.discover", () => {
       // Viewer is the introducer
       expect(card.viewerRole).toBe("introducer");
       // Home card presentation should have "Introduce Them" action
-      expect(card.homeCardPresentation?.primaryActionLabel).toBe("Introduce Them");
+      expect(card.homeCardPresentation?.primaryActionLabel).toBe("Good match");
       // Headline should be "PartyName → OtherPartyName" format
       expect(card.homeCardPresentation?.headline).toContain("→");
       // Narrator chip should be "You" since viewer is the introducer
@@ -366,9 +366,9 @@ describe("opportunity.discover", () => {
           return null;
         },
         getUser: async (userId: string) => {
-          if (userId === viewerId) return { name: "Viewer User", avatar: null };
-          if (userId === introducerThirdPartyId) return { name: "Dan Introducer", avatar: "https://example.com/dan.jpg" };
-          if (userId === candidateId) return { name: "Eve Match", avatar: null };
+          if (userId === viewerId) return { name: "Viewer User", avatar: null, onboarding: { completedAt: new Date() } };
+          if (userId === introducerThirdPartyId) return { name: "Dan Introducer", avatar: "https://example.com/dan.jpg", onboarding: { completedAt: new Date() } };
+          if (userId === candidateId) return { name: "Eve Match", avatar: null, onboarding: { completedAt: new Date() } };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
@@ -423,9 +423,9 @@ describe("opportunity.discover", () => {
             : null,
         getUser: async (userId: string) =>
           userId === candidateId
-            ? { name: "Frank Mentor", avatar: null }
+            ? { name: "Frank Mentor", avatar: null, onboarding: { completedAt: new Date() } }
             : userId === "u1"
-              ? { name: "User One", avatar: null }
+              ? { name: "User One", avatar: null, onboarding: { completedAt: new Date() } }
               : null,
       } as unknown as ChatGraphCompositeDatabase;
 
@@ -440,7 +440,8 @@ describe("opportunity.discover", () => {
 
       expect(result.found).toBe(true);
       const card = result.opportunities![0];
-      expect(card.narratorChip).toBeUndefined();
+      expect(card.narratorChip?.name).toBe("Index");
+      expect(card.narratorChip?.userId).toBeUndefined();
       expect(card.homeCardPresentation?.primaryActionLabel).toBe("Start Chat");
       expect(card.homeCardPresentation?.headline).toContain("Connection with");
     });
@@ -485,11 +486,11 @@ describe("opportunity.discover", () => {
         },
         getUser: async (userId: string) => {
           if (userId === deletedUserId)
-            return { id: deletedUserId, name: "Deleted Person", avatar: null, deletedAt: new Date("2026-01-01") };
+            return { id: deletedUserId, name: "Deleted Person", avatar: null, deletedAt: new Date("2026-01-01"), onboarding: { completedAt: new Date() } };
           if (userId === activeUserId)
-            return { id: activeUserId, name: "Active Person", avatar: null, deletedAt: null };
+            return { id: activeUserId, name: "Active Person", avatar: null, deletedAt: null, onboarding: { completedAt: new Date() } };
           if (userId === "u1")
-            return { id: "u1", name: "Viewer", avatar: null, deletedAt: null };
+            return { id: "u1", name: "Viewer", avatar: null, deletedAt: null, onboarding: { completedAt: new Date() } };
           return null;
         },
       } as unknown as ChatGraphCompositeDatabase;
@@ -511,7 +512,7 @@ describe("opportunity.discover", () => {
       expect(deletedMatch).toBeUndefined();
     });
 
-    test("ghost counterpart gets 'Invite to chat' primaryActionLabel in minimalForChat path (IND-161)", async () => {
+    test("ghost counterpart gets 'Start Chat' primaryActionLabel in minimalForChat path (IND-161)", async () => {
       const ghostId = "ghost-user-1";
       const mockGraph = {
         invoke: async () => ({
@@ -552,7 +553,7 @@ describe("opportunity.discover", () => {
       expect(result.found).toBe(true);
       const card = result.opportunities![0];
       expect(card.isGhost).toBe(true);
-      expect(card.homeCardPresentation?.primaryActionLabel).toBe("Invite to chat");
+      expect(card.homeCardPresentation?.primaryActionLabel).toBe("Start Chat");
     });
 
     test("non-ghost counterpart keeps 'Start Chat' primaryActionLabel in minimalForChat path (IND-161)", async () => {
@@ -578,9 +579,9 @@ describe("opportunity.discover", () => {
         getProfile: async () => null,
         getUser: async (userId: string) =>
           userId === onboardedId
-            ? { id: onboardedId, name: "Onboarded User", avatar: null, isGhost: false }
+            ? { id: onboardedId, name: "Onboarded User", avatar: null, isGhost: false, onboarding: { completedAt: new Date() } }
             : userId === "u1"
-              ? { id: "u1", name: "Viewer", avatar: null, isGhost: false }
+              ? { id: "u1", name: "Viewer", avatar: null, isGhost: false, onboarding: { completedAt: new Date() } }
               : null,
       } as unknown as ChatGraphCompositeDatabase;
 

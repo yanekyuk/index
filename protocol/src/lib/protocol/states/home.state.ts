@@ -95,12 +95,6 @@ export const HomeGraphState = Annotation.Root({
     default: () => [],
   }),
 
-  /** Expired or excluded opportunities (optional for future "Show expired" UI). */
-  expired: Annotation<Opportunity[]>({
-    reducer: (curr, next) => next ?? curr,
-    default: () => [],
-  }),
-
   /** Presenter results retrieved from cache (opportunityId → HomeCardItem). */
   cachedCards: Annotation<Map<string, HomeCardItem>>({
     reducer: (curr, next) => next ?? curr,

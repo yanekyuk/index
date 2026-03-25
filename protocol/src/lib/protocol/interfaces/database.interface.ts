@@ -1651,6 +1651,26 @@ export type OpportunityGraphDatabase = Pick<
 >;
 
 /**
+ * Database interface for the negotiation graph (A2A conversation/task/artifact persistence).
+ *
+ * Access layer: ConversationDatabaseAdapter
+ */
+export interface NegotiationDatabase {
+  createConversation(participants: { participantId: string; participantType: 'user' | 'agent' }[]): Promise<{ id: string }>;
+  createMessage(data: {
+    conversationId: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    taskId?: string;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<{ id: string; senderId: string; role: string; parts: unknown[]; createdAt: Date }>;
+  createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
+  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<unknown>;
+  createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
+}
+
+/**
  * Database interface for opportunity controller (API).
  *
  * Access layer: Both UserDatabase + SystemDatabase (API handles auth)

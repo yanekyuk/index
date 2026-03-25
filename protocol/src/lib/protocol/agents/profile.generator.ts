@@ -18,16 +18,18 @@ const systemPrompt = `
     When given EXISTING PROFILE + USER REQUEST: Apply the request to the existing profile. Add, update, or remove skills and interests as the user asks. Preserve everything else. Output the full updated profile.
 
     When given raw data only: Infer name, bio, location, narrative.context, and extract skills and interests.
+
+    PRIVACY: identity.bio and narrative.context are public-facing. Never include email addresses, phone numbers, physical addresses, government IDs, or other contact identifiers — even if they appear in the raw data. Describe the person professionally; do not embed ways to contact them.
 `;
 
 const responseFormat = z.object({
   identity: z.object({
     name: z.string().describe("The user's full name"),
-    bio: z.string().describe("A professional summary (2-3 sentences)"),
+    bio: z.string().describe("Professional summary (2-3 sentences) only; no email, phone, physical address, government ID, or other contact identifiers"),
     location: z.string().describe("Inferred location (City, Country) or 'Remote'"),
   }),
   narrative: z.object({
-    context: z.string().describe("A rich, detailed narrative about the user's current situation, background, and what they are currently working on. Use raw, natural language."),
+    context: z.string().describe("Rich narrative without email, phone, physical address, government ID, or other contact identifiers"),
   }),
   attributes: z.object({
     interests: z.array(z.string()).describe("Inferred or explicit interests"),

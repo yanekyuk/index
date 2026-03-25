@@ -64,7 +64,8 @@ import type {
   ActiveIntent,
 } from '../interfaces/database.interface';
 import { persistOpportunities } from '../support/opportunity.persist';
-import { negotiateCandidates, createDefaultNegotiationGraph } from "./negotiation.graph";
+import { negotiateCandidates, type NegotiationCandidate } from "./negotiation.graph";
+import type { NegotiationGraphLike } from "../states/negotiation.state";
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 import { requestContext } from "../../request-context";
@@ -147,7 +148,7 @@ export class OpportunityGraphFactory {
     },
     private optionalEvaluator?: OpportunityEvaluatorLike,
     private queueNotification?: QueueOpportunityNotificationFn,
-    private negotiationGraph: { invoke: (input: any) => Promise<{ outcome: any }> } = createDefaultNegotiationGraph(),
+    private negotiationGraph?: NegotiationGraphLike,
   ) {}
 
   public createGraph() {
@@ -1545,133 +1546,132 @@ export class OpportunityGraphFactory {
      * Filters out candidates that fail to reach consensus; updates scores for those that pass.
      */
     const negotiateNode = async (state: typeof OpportunityGraphState.State) => {
+      if (!this.negotiationGraph) return {};
+
       const traceEmitter = requestContext.getStore()?.traceEmitter;
       const graphStart = Date.now();
-      traceEmitter?.({ type: "graph_start", name: "negotiation" });
+      traceEmitter?.({ type: "graph_start", name: "Negotiation graph" });
 
       try {
+        // Use the same discoveryUserId pattern as evaluationNode
+        const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
+
+        const sourceAccount = await this.database.getUser(discoveryUserId).catch(() => null);
+
         const sourceUser = {
-          id: state.userId as string,
-          intents: state.indexedIntents?.map(i => ({
+          id: discoveryUserId,
+          intents: state.indexedIntents?.slice(0, 5).map(i => ({
             id: i.intentId as string,
             title: i.summary ?? '',
             description: i.payload ?? '',
             confidence: 1,
           })) ?? [],
           profile: {
-            name: state.sourceProfile?.identity?.name,
-            bio: state.sourceProfile?.identity?.bio,
-            location: state.sourceProfile?.identity?.location,
+            name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
+            bio: state.sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
+            location: state.sourceProfile?.identity?.location ?? sourceAccount?.location ?? undefined,
             skills: state.sourceProfile?.attributes?.skills,
             interests: state.sourceProfile?.attributes?.interests,
           },
-          hydeDocuments: [] as string[],
         };
 
-        const negotiationCandidates = state.evaluatedOpportunities.map(opp => {
-          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
-          if (!candidateActor) return null;
+        // Build candidates with enriched context from database.
+        // Each actor carries its own indexId — use it for per-candidate index context.
+        const candidateEntries = state.evaluatedOpportunities
+          .map(opp => {
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
+            if (!candidateActor) return null;
+            return { opp, candidateActor };
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null);
 
-          return {
-            userId: candidateActor.userId as string,
-            score: opp.score,
-            reasoning: opp.reasoning,
-            valencyRole: candidateActor.role ?? 'peer',
-            candidateUser: {
-              id: candidateActor.userId as string,
-              intents: candidateActor.intentId
-                ? [{ id: candidateActor.intentId as string, title: '', description: '', confidence: 1 }]
-                : [],
-              profile: { name: '' },
-              hydeDocuments: [] as string[],
-            },
-          };
-        }).filter(Boolean);
+        const candidates: NegotiationCandidate[] = await Promise.all(
+          candidateEntries.map(async ({ opp, candidateActor }) => {
+            const userId = candidateActor.userId as string;
+            const [profile, user, activeIntents, intent] = await Promise.all([
+              this.database.getProfile(userId).catch(() => null),
+              this.database.getUser(userId).catch(() => null),
+              this.database.getActiveIntents(userId).catch(() => []),
+              candidateActor.intentId
+                ? this.database.getIntent(candidateActor.intentId as string).catch(() => null)
+                : null,
+            ]);
 
-        const isChatPath = !!state.options?.conversationId;
-        const maxTurns = isChatPath ? 4 : 6;
-        const indexContext = { indexId: state.indexId as string ?? '', prompt: '' };
+            // Prefer active intents (capped at 5, trigger intent first); fall back to single intent
+            const orderedIntents = [
+              ...activeIntents.filter(ai => ai.id === candidateActor.intentId),
+              ...activeIntents.filter(ai => ai.id !== candidateActor.intentId),
+            ].slice(0, 5);
+            const candidateIntents = orderedIntents.length > 0
+              ? orderedIntents.map(ai => ({ id: ai.id as string, title: ai.summary ?? '', description: ai.payload ?? '', confidence: 1 }))
+              : intent
+                ? [{ id: intent.id ?? (candidateActor.intentId as string), title: intent.summary ?? '', description: intent.payload ?? '', confidence: 1 }]
+                : [];
 
-        // Run negotiations in parallel with per-candidate trace events
-        const negotiationResults = await Promise.all(
-          (negotiationCandidates as any[]).map(async (candidate: any) => {
-            const candidateStart = Date.now();
-            const candidateName = candidate.candidateUser?.profile?.name || candidate.userId;
-            traceEmitter?.({ type: "agent_start", name: "negotiation" });
-
-            try {
-              const result = await this.negotiationGraph.invoke({
-                sourceUser,
-                candidateUser: candidate.candidateUser,
-                indexContext,
-                seedAssessment: {
-                  score: candidate.score,
-                  reasoning: candidate.reasoning,
-                  valencyRole: candidate.valencyRole,
+            return {
+              userId,
+              score: opp.score,
+              reasoning: opp.reasoning,
+              valencyRole: candidateActor.role ?? 'peer',
+              indexId: candidateActor.indexId as string,
+              candidateUser: {
+                id: userId,
+                intents: candidateIntents,
+                profile: {
+                  name: profile?.identity?.name ?? user?.name,
+                  bio: profile?.identity?.bio ?? user?.intro ?? undefined,
+                  location: profile?.identity?.location ?? user?.location ?? undefined,
+                  skills: profile?.attributes?.skills,
+                  interests: profile?.attributes?.interests,
                 },
-                maxTurns,
-              });
-
-              const durationMs = Date.now() - candidateStart;
-              const outcome = result.outcome;
-
-              // Build inline turn flow: "propose:85 → counter:70 → accept:78"
-              const turnFlow = (result.messages ?? [])
-                .map((m: any) => {
-                  const dataPart = (m.parts as Array<{ kind?: string; data?: any }>)?.find((p: any) => p.kind === "data");
-                  if (!dataPart?.data) return null;
-                  const turn = dataPart.data;
-                  const actionShort = turn.action === 'propose' ? 'propose' : turn.action === 'accept' ? 'accept' : turn.action === 'reject' ? 'reject' : 'counter';
-                  return `${actionShort}:${turn.assessment?.fitScore ?? '?'}`;
-                })
-                .filter(Boolean)
-                .join(' → ');
-
-              const consensus = outcome?.consensus === true;
-              const statusTag = consensus ? '✓ consensus' : '✗ rejected';
-              const summary = `${candidateName}: ${turnFlow} ${statusTag}`;
-
-              traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary });
-
-              if (consensus) {
-                return {
-                  userId: candidate.userId,
-                  negotiationScore: outcome.finalScore,
-                  agreedRoles: outcome.agreedRoles,
-                  reasoning: outcome.reasoning,
-                  turnCount: outcome.turnCount,
-                };
-              }
-              return null;
-            } catch (err) {
-              const durationMs = Date.now() - candidateStart;
-              traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary: `${candidateName}: error` });
-              return null;
-            }
+              },
+            };
           }),
         );
 
-        const consensusResults = negotiationResults.filter((r: any): r is NonNullable<typeof r> => r !== null);
-        const consensusUserIds = new Set(consensusResults.map((r: any) => r.userId));
-        const filtered = state.evaluatedOpportunities.filter(opp => {
-          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
-          return candidateActor && consensusUserIds.has(candidateActor.userId as string);
-        });
+        const isChatPath = !!state.options?.conversationId;
+        const maxTurns = isChatPath ? 4 : 6;
 
-        for (const opp of filtered) {
-          const candidateActor = opp.actors.find(a => a.userId !== state.userId);
-          if (!candidateActor) continue;
-          const negResult = consensusResults.find((r: any) => r.userId === (candidateActor.userId as string));
-          if (negResult) {
-            opp.score = negResult.negotiationScore;
-          }
-        }
+        // Fetch per-candidate index context (group by indexId to avoid duplicate lookups)
+        const uniqueIndexIds = [...new Set(candidates.map(c => c.indexId).filter((id): id is string => !!id))];
+        const indexContextMap = new Map<string, string>();
+        await Promise.all(
+          uniqueIndexIds.map(async (indexId) => {
+            const ctx = await this.database.getIndexMemberContext(indexId, discoveryUserId).catch(() => null);
+            const prompt = [ctx?.indexPrompt, ctx?.memberPrompt]
+              .filter((v): v is string => !!v?.trim())
+              .join('\n\n');
+            if (prompt) indexContextMap.set(indexId, prompt);
+          }),
+        );
 
-        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
-        return { evaluatedOpportunities: filtered };
+        // Run negotiations per candidate with their actual index context
+        const consensusResults = await negotiateCandidates(
+          this.negotiationGraph, sourceUser, candidates,
+          { indexId: '', prompt: '' }, // base context, overridden per-candidate below
+          { maxTurns, traceEmitter: traceEmitter ?? undefined,
+            indexContextOverrides: indexContextMap },
+        );
+
+        // Filter opportunities to only those with consensus, update scores
+        const consensusMap = new Map(consensusResults.map(r => [r.userId, r]));
+        const updatedOpportunities = state.evaluatedOpportunities
+          .filter(opp => {
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
+            return candidateActor && consensusMap.has(candidateActor.userId as string);
+          })
+          .map(opp => {
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
+            const negResult = candidateActor && consensusMap.get(candidateActor.userId as string);
+            return negResult ? { ...opp, score: negResult.negotiationScore } : opp;
+          });
+
+        traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
+        return { evaluatedOpportunities: updatedOpportunities };
       } catch (err) {
-        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
-        return {};
+        logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
+        traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
+        return { evaluatedOpportunities: [] };
       }
     };
 

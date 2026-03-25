@@ -31,13 +31,11 @@ describe("Negotiation E2E", () => {
         id: "e2e-source",
         intents: [{ id: "i1", title: "Looking for ML engineer", description: "Need ML expertise for recommendation system", confidence: 0.9 }],
         profile: { name: "Alice", bio: "Product manager building AI startup", skills: ["product management", "AI strategy"] },
-        hydeDocuments: [],
       },
       candidateUser: {
         id: "e2e-candidate",
         intents: [{ id: "i2", title: "Seeking PM co-founder", description: "ML engineer looking for product-minded co-founder", confidence: 0.85 }],
         profile: { name: "Bob", bio: "Senior ML engineer with 8 years experience", skills: ["machine learning", "PyTorch"] },
-        hydeDocuments: [],
       },
       indexContext: { indexId: "e2e-index", prompt: "AI startup co-founders" },
       seedAssessment: { score: 78, reasoning: "Complementary skills", valencyRole: "Peer" },

@@ -4,7 +4,7 @@ import { requestContext } from "../../request-context";
 
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "../support/opportunity.constants";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "../support/opportunity.constants";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "../support/opportunity.card-text";
 import { runDiscoverFromQuery, continueDiscovery } from "../support/opportunity.discover";
 import type { EvaluatorEntity } from "../agents/opportunity.evaluator";
@@ -62,7 +62,7 @@ export function buildMinimalOpportunityCard(
   primaryActionLabel: string;
   secondaryActionLabel: string;
   mutualIntentsLabel: string;
-  narratorChip?: { name: string; text: string; avatar?: string | null; userId?: string };
+  narratorChip: { name: string; text: string; avatar?: string | null; userId?: string };
   viewerRole: string;
   score: number | undefined;
   status: string;
@@ -88,26 +88,10 @@ export function buildMinimalOpportunityCard(
     typeof opp.interpretation?.confidence === "number"
       ? opp.interpretation.confidence
       : undefined;
-  const hasHumanIntroducer = viewerIsIntroducer || !!introducerActor;
-  let narratorChip: { name: string; text: string; avatar?: string | null; userId?: string } | undefined;
-  if (hasHumanIntroducer) {
-    const narratorName = viewerIsIntroducer
-      ? "You"
-      : introducerName ?? "Someone";
-    narratorChip = {
-      name: narratorName,
-      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
-      ...(viewerIsIntroducer
-        ? { userId: viewerId, avatar: null }
-        : introducerActor
-          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
-          : {}),
-    };
-  }
-  const primaryActionLabel =
-    viewerRole === "introducer"
-      ? "Introduce Them"
-      : (isCounterpartGhost ? "Invite to chat" : "Start Chat");
+  const narratorName = viewerIsIntroducer
+    ? "You"
+    : introducerName?.trim() || (introducerActor ? "Someone" : "Index");
+  const primaryActionLabel = getPrimaryActionLabel(viewerRole);
   return {
     opportunityId: opp.id,
     userId: counterpartUserId,
@@ -119,9 +103,17 @@ export function buildMinimalOpportunityCard(
       ? `${counterpartName} → ${secondPartyName}`
       : `Connection with ${counterpartName}`,
     primaryActionLabel,
-    secondaryActionLabel: "Skip",
+    secondaryActionLabel: SECONDARY_ACTION_LABEL,
     mutualIntentsLabel: "Suggested connection",
-    ...(narratorChip ? { narratorChip } : {}),
+    narratorChip: {
+      name: narratorName,
+      text: narratorRemarkFromReasoning(reasoning, counterpartName, viewerName),
+      ...(viewerIsIntroducer
+        ? { userId: viewerId, avatar: null }
+        : introducerActor
+          ? { userId: introducerActor.userId, avatar: introducerAvatar ?? null }
+          : {}),
+    },
     viewerRole,
     score,
     status: opp.status ?? "latent",
@@ -137,18 +129,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
       "Four modes:\n" +
-      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap. " +
-      "No pre-fetching needed — the tool handles all data retrieval internally.\n" +
+      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n" +
       "3. **Direct connection**: pass targetUserId (a single user ID) + searchQuery (reason for connecting). " +
-      "Creates an opportunity between the current user and the target user. " +
-      "No pre-fetching needed — do NOT call read_intents first; the tool fetches everything internally.\n" +
+      "Creates an opportunity between the current user and the target user.\n" +
       "4. **Introducer discovery**: pass introTargetUserId (user ID to find matches FOR). " +
       "Discovers matches for that person; current user becomes the introducer. " +
       "Use when user asks 'who should I introduce to @Person'.\n\n" +
-      "Only Introduction mode (2) requires pre-gathered data. All other modes handle data retrieval internally.\n\n" +
       "Results are saved as drafts; use update_opportunity(status='pending') to send.",
     querySchema: z.object({
       continueFrom: z
@@ -426,11 +415,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
         const isCounterpartGhost = counterpartUser?.isGhost ?? false;
-        const primaryActionLabel = viewerIsParty
-          ? (isCounterpartGhost ? "Invite to chat" : "Start Chat")
-          : "Introduce Them";
+        const primaryActionLabel = getPrimaryActionLabel(viewerRole);
         const narratorChip = viewerIsParty
-          ? undefined
+          ? {
+              name: "Index",
+              text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
+            }
           : {
               name: "You",
               text: narratorRemarkFromReasoning(reasoning, counterpartName, introducerUser?.name ?? undefined),
@@ -461,9 +451,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           cta: "Start a conversation to connect.",
           headline,
           primaryActionLabel,
-          secondaryActionLabel: "Skip",
+          secondaryActionLabel: SECONDARY_ACTION_LABEL,
           mutualIntentsLabel: "Suggested connection",
-          ...(narratorChip ? { narratorChip } : {}),
+          narratorChip,
           viewerRole,
           isGhost: isCounterpartGhost,
           score: confidence,

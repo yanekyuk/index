@@ -17,9 +17,10 @@ import {
   gatherPresenterContext,
   type OpportunityPresentationResult,
   type HomeCardPresentationResult,
+  type HomeCardLLMResult,
   type HomeCardPresenterInput,
 } from "../agents/opportunity.presenter";
-import { MINIMAL_MAIN_TEXT_MAX_CHARS } from "./opportunity.constants";
+import { MINIMAL_MAIN_TEXT_MAX_CHARS, getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from "./opportunity.constants";
 import { viewerCentricCardSummary, narratorRemarkFromReasoning } from "./opportunity.card-text";
 import { protocolLogger, withCallLogging } from "./protocol.logger";
 
@@ -160,7 +161,7 @@ interface EnrichOpportunitiesInput {
   debugSteps: DiscoverDebugStep[];
   /** IDs of pre-existing opportunities merged into the list; these preserve their real status. */
   existingOpportunityIds?: Set<string>;
-  /** When set (direct connection), skip onboarding filter for this user — they were explicitly @-mentioned. */
+  /** When set, bypass the onboarding filter for this specific user (direct connection mode). */
   targetUserId?: string;
 }
 
@@ -198,8 +199,8 @@ async function enrichOpportunities(
         : [null, null];
       // Skip soft-deleted users (deletedAt is set)
       if (candidateUser && 'deletedAt' in candidateUser && candidateUser.deletedAt) return null;
-      // Skip non-onboarded real users — unless this is a direct-connection target
-      // (the user explicitly @-mentioned them, so we must return them regardless of onboarding state)
+      // Skip non-onboarded real users (registered but haven't completed onboarding),
+      // unless this is an explicit direct-connection target (targetUserId bypass).
       const isDirectTarget = targetUserId && candidateUserId === targetUserId;
       if (candidateUser && !candidateUser.isGhost && !candidateUser.onboarding?.completedAt && !isDirectTarget) return null;
       const confidence =
@@ -327,8 +328,8 @@ async function enrichOpportunities(
           ),
         suggestedAction: "Start a conversation to connect.",
         narratorRemark: narratorRemarkFromReasoning(reasoning, name, viewerName),
-        primaryActionLabel: viewerIsIntroducer ? "Introduce Them" : (isCounterpartGhost ? "Invite to chat" : "Start Chat"),
-        secondaryActionLabel: "Skip",
+        primaryActionLabel: getPrimaryActionLabel(viewerIsIntroducer ? "introducer" : "party"),
+        secondaryActionLabel: SECONDARY_ACTION_LABEL,
         mutualIntentsLabel: "Suggested connection",
       };
     });
@@ -351,14 +352,20 @@ async function enrichOpportunities(
         const homeCardInputs: HomeCardPresenterInput[] = fullContexts.map(
           (ctx, idx) => ({
             ...ctx,
-            mutualIntentCount: undefined, // Could compute mutual intents if needed
+            mutualIntentCount: undefined,
             opportunityStatus: baseEnriched[idx].opportunity.status,
           }),
         );
-        homeCardPresentations = await presenter.presentHomeCardBatch(
+        const llmResults = await presenter.presentHomeCardBatch(
           homeCardInputs,
           { concurrency: 5 },
         );
+        // Append hardcoded button labels to LLM results
+        homeCardPresentations = llmResults.map((llm, idx) => ({
+          ...llm,
+          primaryActionLabel: getPrimaryActionLabel(baseEnriched[idx].viewerRole),
+          secondaryActionLabel: SECONDARY_ACTION_LABEL,
+        }));
       } else {
         // Use basic presentation format
         presentations = await presenter.presentBatch(
@@ -406,12 +413,21 @@ async function enrichOpportunities(
           const introducerActor = item.opportunity.actors.find(
             (a) => a.role === "introducer" && a.userId !== userId,
           );
-          if (introducerActor && ctx?.introducerName) {
+          if (introducerActor) {
+            const introducerName =
+              ctx?.introducerName ??
+              nameByUserId.get(introducerActor.userId) ??
+              "Someone";
             narratorChip = {
-              name: ctx.introducerName,
+              name: introducerName,
               text: homeCard.narratorRemark,
               userId: introducerActor.userId,
               avatar: avatarByUserId.get(introducerActor.userId) ?? null,
+            };
+          } else {
+            narratorChip = {
+              name: "Index",
+              text: homeCard.narratorRemark,
             };
           }
         }
@@ -434,13 +450,7 @@ async function enrichOpportunities(
         isGhost,
         ...(presentations?.[idx] && { presentation: presentations[idx] }),
         ...(homeCard && {
-          homeCardPresentation: {
-            ...homeCard,
-            // Override primaryActionLabel for ghost counterparts (LLM doesn't know ghost status)
-            primaryActionLabel: isGhost && item.viewerRole !== 'introducer'
-              ? 'Invite to chat'
-              : homeCard.primaryActionLabel,
-          },
+          homeCardPresentation: homeCard,
         }),
         ...(narratorChip && { narratorChip }),
       };

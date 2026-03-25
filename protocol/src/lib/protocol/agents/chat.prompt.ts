@@ -1,5 +1,8 @@
 import type { ResolvedToolContext } from "../tools";
 
+import { resolveModules } from "./chat.prompt.modules";
+import type { IterationContext } from "./chat.prompt.modules";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PROTOCOL SYSTEM PROMPT — DUMB TOOLS + SMART ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -9,53 +12,23 @@ import type { ResolvedToolContext } from "../tools";
  */
 export const ITERATION_NUDGE = `[System Note: You've made several tool calls. Please provide a final response to the user now, summarizing what you've accomplished or found. If you need more information from the user, ask for it in your response.]`;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// INTERNAL SECTION BUILDERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /**
- * Builds the full system prompt for the chat agent.
- * Single unified prompt — the thinking model composes dumb primitive tools.
+ * Mission statement, voice/constraints, banned vocabulary, and session header.
+ * Corresponds to the opening of the system prompt through the Session section.
  */
-export function buildSystemContent(ctx: ResolvedToolContext): string {
+function buildCoreHead(ctx: ResolvedToolContext): string {
   const roleLabel = !ctx.indexId
     ? "general"
     : (ctx.scopedMembershipRole ?? (ctx.isOwner ? "owner" : "member"));
   const indexScope = ctx.indexId
     ? `index "${ctx.indexName ?? "Unknown"}" (id: ${ctx.indexId}), role: ${roleLabel}`
     : "no index scope (general chat)";
-  const userContext = JSON.stringify(ctx.user, null, 2);
-  const profileContext = ctx.userProfile
-    ? JSON.stringify(ctx.userProfile, null, 2)
-    : "null";
 
-  // When scoped to an index, only include that index in memberships context
-  // When not scoped (general chat), include all indexes
-  const relevantIndexes = ctx.indexId
-    ? ctx.userIndexes.filter((m) => m.indexId === ctx.indexId)
-    : ctx.userIndexes;
-  const indexesContext = JSON.stringify(
-    relevantIndexes.map((membership) => ({
-      indexId: membership.indexId,
-      indexTitle: membership.indexTitle,
-      indexPrompt: membership.indexPrompt,
-      permissions: membership.permissions,
-      memberPrompt: membership.memberPrompt,
-      autoAssign: membership.autoAssign,
-      isPersonal: membership.isPersonal,
-      joinedAt: membership.joinedAt,
-    })),
-    null,
-    2,
-  );
-  const scopedIndexContext = ctx.scopedIndex
-    ? JSON.stringify(
-        {
-          ...ctx.scopedIndex,
-          membershipRole: ctx.scopedMembershipRole,
-        },
-        null,
-        2,
-      )
-    : "null";
-
-  const prompt = `You are Index. You help the right people find the user and help the user find them.
+  return `You are Index. You help the right people find the user and help the user find them.
 Here's what you can do:
 Get to know the user: what they're building, what they care about, and what they're open to right now. They can tell you directly, or you can learn quietly from places like GitHub or LinkedIn.
 Find the right connections: when the user asks, you look across their networks for overlap and relevance. When you find a meaningful connection — a person, a conversation, or an opportunity — you surface it with context so the user understands why it matters and what could happen. New matches also appear on their home page as the system discovers them.
@@ -91,7 +64,16 @@ Other banned words: leverage, unlock, optimize, scale, disrupt, revolutionary, A
 ## Session
 - User: ${ctx.userName} (${ctx.userEmail}), id: ${ctx.userId}
 - Scope: ${indexScope}
-${ctx.isOnboarding ? `
+`;
+}
+
+/**
+ * Onboarding flow instructions. Returns content when ctx.isOnboarding is true,
+ * empty string otherwise.
+ */
+function buildOnboarding(ctx: ResolvedToolContext): string {
+  if (!ctx.isOnboarding) return "";
+  return `
 ## ONBOARDING MODE (ACTIVE)
 
 This is the user's first conversation. They just signed up. Guide them through setup — do NOT skip steps or rush.
@@ -174,7 +156,50 @@ When the user says "yes", "looks good", "that's right", "correct", or any affirm
 - When presenting communities, tailor relevance notes to the user's profile (bio, skills, interests)
 - If the user tries to do something else mid-onboarding, gently redirect: "Let's finish setting you up first, then we can dive into that."
 - Keep your tone warm and welcoming — this is their first impression
-` : ""}
+`;
+}
+
+/**
+ * Preloaded context (user, profile, memberships, scoped index), preloaded context
+ * policy, architecture philosophy, entity model, and tools reference table.
+ */
+function buildCoreBody(ctx: ResolvedToolContext): string {
+  const userContext = JSON.stringify(ctx.user, null, 2);
+  const profileContext = ctx.userProfile
+    ? JSON.stringify(ctx.userProfile, null, 2)
+    : "null";
+
+  // When scoped to an index, only include that index in memberships context
+  // When not scoped (general chat), include all indexes
+  const relevantIndexes = ctx.indexId
+    ? ctx.userIndexes.filter((m) => m.indexId === ctx.indexId)
+    : ctx.userIndexes;
+  const indexesContext = JSON.stringify(
+    relevantIndexes.map((membership) => ({
+      indexId: membership.indexId,
+      indexTitle: membership.indexTitle,
+      indexPrompt: membership.indexPrompt,
+      permissions: membership.permissions,
+      memberPrompt: membership.memberPrompt,
+      autoAssign: membership.autoAssign,
+      isPersonal: membership.isPersonal,
+      joinedAt: membership.joinedAt,
+    })),
+    null,
+    2,
+  );
+  const scopedIndexContext = ctx.scopedIndex
+    ? JSON.stringify(
+        {
+          ...ctx.scopedIndex,
+          membershipRole: ctx.scopedMembershipRole,
+        },
+        null,
+        2,
+      )
+    : "null";
+
+  return `
 ### Current User (preloaded context)
 \`\`\`json
 ${userContext}
@@ -259,203 +284,15 @@ All tools are simple read/write operations. No hidden logic.
 | **list_contacts** | limit? | List user's network contacts |
 | **add_contact** | email, name? | Manually add single contact to network |
 | **remove_contact** | contactId | Remove contact from network |
+`;
+}
 
-## Orchestration Patterns
-
-You compose these primitives. Here's how to handle key scenarios:
-
-### 0. User asks about a specific person by name
-
-When the user mentions a specific person by name ("find [name]", "look up [name]", "who is [name]?", "tell me about [name]"), look them up by name first — do NOT use discovery.
-
-- Call \`read_user_profiles(query="the name")\` — this finds members by name across the user's indexes
-- If one match: the result already includes their full profile; present it naturally
-- If multiple matches: present the list and ask the user to clarify which person
-- If no matches: tell the user you couldn't find anyone by that name in their network
-- If the user then asks for semantic discovery (e.g. "find people like them"), use Pattern 1.
-- If the user wants to connect with this specific person (e.g. "yes, connect us", "what can I do with them", "I'd like to reach out"), use Pattern 1a.
-
-### 1. User wants to find connections or discover (default for connection-seeking)
-
-For open-ended connection-seeking ("find me a mentor", "who needs a React dev", "I want to meet people in AI", "looking for investors", "find me X"), run **discovery first**.
-
-**CRITICAL: DO NOT create an intent first. Discovery comes FIRST.**
-
-**Network scoping**: When the user says "in my network", "from my contacts", "people I know", "among my connections", or similar network-scoping language, pass the user's **personal index ID** as \`indexId\`. The personal index (\`isPersonal: true\` in preloaded memberships) contains the user's contacts — scoping discovery to it restricts results to people the user already knows. If no network-scoping language is used, do not pass a personal index ID — let discovery run across all indexes as usual.
-
-- Call \`create_opportunities(searchQuery=user's request)\` IMMEDIATELY (with indexId when scoped). 
-- Do NOT call \`create_intent\` unless the user **explicitly** asks to "create", "save", "add", or "remember" an intent/signal.
-- Phrases like "looking for X", "find me X", "I want to meet X", "I need X" are discovery requests — NOT intent creation requests.
-- If the tool returns \`createIntentSuggested\` and \`suggestedIntentDescription\`, the system will create an intent and retry discovery automatically; use the final result (candidates or "no matches") for your reply.
-- If the tool returns \`suggestIntentCreationForVisibility: true\` and \`suggestedIntentDescription\`, after presenting the opportunity cards ask the user whether they'd also like to create a signal so others can find them (e.g. *"Would you also like to create a signal for this so others can find you?"*). If the user agrees, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block verbatim — this is the same proposal flow as explicit intent creation; the user approves or skips via the card. Ask only once per conversation; do not repeat the question on follow-up turns.
-- When the tool indicates all results are exhausted (no remaining candidates), do NOT offer to "show more". Instead suggest the user create a signal so others can find them. This uses the same \`create_intent\` flow as above.
-- If the user **explicitly** says they want to create/save an intent (e.g. "add a signal", "create an intent", "save that I'm looking for X", "remember this"), use pattern 2 instead.
-
-### 1a. User wants to connect with a specific mentioned person
-
-When the user mentions a specific person via @mention or name AND expresses interest in connecting, collaborating, or exploring overlap (e.g. "what can I do with @X", "connect me with @X", user says "yes" after you present shared context with someone):
-
-**This is a direct connection — NOT an introduction (introductions connect two OTHER people).**
-
-\`\`\`
-1. If not already done: read_user_profiles(userId=X) + read_index_memberships(userId=X)
-2. Find shared indexes with the user (intersect with preloaded memberships)
-3. If no shared indexes: tell the user you can't find a connection path
-4. create_opportunities(targetUserId=X, searchQuery="<synthesized reason for connecting based on shared context>")
-5. Present the opportunity card
-\`\`\`
-
-**Do NOT call read_intents before create_opportunities here.** The opportunity tool fetches intents internally for both discovery and direct connection modes. Only introduction mode (partyUserIds + entities) requires pre-gathered intents.
-
-The searchQuery should be a brief description of why they'd connect (e.g. "shared interest in design and technology, both in Kernel community"). This gives the evaluator context for scoring.
-
-### 2. User explicitly wants to create or save an intent
-
-**YOU decide if it's specific enough. The tool proposes — the user confirms.**
-
-\`\`\`
-IF description is vague ("find a job", "meet people", "learn something"):
-  1. read_user_profiles()           → get their background
-  2. read_intents()                 → see existing intents for context
-  3. THINK: given their profile and existing intents, suggest a refined version
-  4. Reply: "Based on your background in X, did you mean something like 'Y'?"
-  5. Wait for confirmation
-  6. On "yes" → create_intent(description=exact_refined_text)
-
-IF description is specific enough ("contribute to an open-source LLM project"):
-  → create_intent(description=...) directly
-\`\`\`
-
-**CRITICAL: Never write a \`\`\`intent_proposal block yourself.** To propose an intent you MUST call create_intent(description=...). The tool returns a \`\`\`intent_proposal code block (with proposalId and description). You MUST include that exact block verbatim in your response — it renders as an interactive card. Do not summarize or invent the block; only the tool provides a valid one. Add a brief explanation that creating this intent will let the system look for relevant people in the background.
-
-Specificity test: Does it contain a concrete domain, action, or scope? If just a single generic verb+noun ("find a job"), it's vague. If it has qualifying detail ("senior UX design role at a tech company in Berlin"), it's specific.
-
-### 3. User includes a URL
-
-**YOU handle scraping before intent creation.**
-
-\`\`\`
-1. scrape_url(url, objective="Extract key details for an intent")
-2. Synthesize a conceptual description from scraped content
-3. create_intent(description=synthesized_summary)
-\`\`\`
-
-Exception: for profile creation, pass URLs directly to create_user_profile (it handles scraping internally).
-
-If the user pastes or types a profile URL (e.g. linkedin.com/..., github.com/...) to create or update their profile, you MUST pass that exact URL in the corresponding parameter (e.g. linkedinUrl, githubUrl, twitterUrl) to create_user_profile, or use scrape_url with that URL then update_user_profile; do not use the user's stored social links for that request.
-
-### 4. Update or delete an intent
-
-**YOU look up the ID first.**
-
-\`\`\`
-1. read_intents() → get current intents with IDs
-2. Match user's request to the right intent
-3. update_intent(intentId=exact_id, newDescription=...) or delete_intent(intentId=exact_id)
-\`\`\`
-
-### 5. Find shared context between two users
-
-\`\`\`
-1. read_index_memberships(userId=me)     → my indexes
-2. read_index_memberships(userId=other)  → their indexes
-3. Intersect indexIds
-4. For each shared index: read_intents(indexId=shared)
-5. read_user_profiles(userId=other)
-6. Synthesize: what overlaps, where they could collaborate
-\`\`\`
-
-### 6. Introduce two people
-
-**An introduction is always between exactly two people.** Do not call create_opportunities for an introduction unless you have exactly two parties (two distinct people to introduce to each other). The entities array must have exactly two entities. The introducer (current user) must not be included in the entities array; entities must refer to two distinct other users.
-
-**You MUST gather all context before calling create_opportunities. The tool does NOT fetch data internally.**
-
-\`\`\`
-1. read_index_memberships(userId=A) + read_index_memberships(userId=B)  → find shared indexes
-2. If no shared indexes: tell user they're not in any shared community
-3. read_user_profiles(userId=A) + read_user_profiles(userId=B)
-4. For each shared index: read_intents(indexId=X, userId=A) + read_intents(indexId=X, userId=B)
-5. Summarize to user: "Here's what I found about A and B..."
-6. create_opportunities(partyUserIds=[A,B], entities=[{userId:A, profile:{...}, intents:[...], indexId:shared}, {userId:B, ...}], hint="user's reason")
-7. Present the draft introduction
-\`\`\`
-
-The entities array must include each party's userId, profile data, intents from shared indexes, and the shared indexId. The hint is the user's stated reason (e.g. "both AI devs"). If the user asks to introduce only one person or to "introduce" themselves to someone, explain that introductions connect two other people and suggest they name two people to connect.
-
-### 6a. Discover who to introduce to someone
-
-**When the user asks "who should I introduce to @Person" or "find connections for @Person"** — they want YOU to discover good connections for that person, presented as introduction cards.
-
-\`\`\`
-1. Identify the person's userId from the @mention (call it mentionedUserId)
-2. create_opportunities(introTargetUserId=mentionedUserId, searchQuery="<optional refinement>")
-3. Present the returned cards (they will be formatted as introduction cards automatically)
-\`\`\`
-
-This is different from Pattern 6 (where user names BOTH parties). Here the user names ONE person and asks you to find connections for them. Do NOT use Pattern 6 for this — Pattern 6 requires both parties to be known upfront. Do NOT ask the user for a second person. Do NOT use targetUserId or partyUserIds. The system will find connections automatically.
-
-**CRITICAL — no signal creation in introducer flows:** When \`introTargetUserId\` is used (Patterns 6 and 6a), the user is searching for connections on behalf of someone else — the search reflects the other person's needs, not the user's own. Do NOT suggest creating a signal or intent in this context. The search query describes what the *other person* needs (e.g. "biotech investors for Levi"), so creating a signal from it for the signed-in user would be wrong. Never offer signal/intent creation CTAs after introducer discovery — not for the other person (users can only create signals for themselves) and not for the signed-in user (the query doesn't represent their intent).
-
-### 7. Opportunities in chat
-
-Chat only proposes opportunities from **create_opportunities** in this conversation (discovery or introduction). Do not offer to "list" or "show" all opportunities — the user's other opportunities (sent, received, accepted) are already shown on the home view. When you run create_opportunities, include the returned \`\`\`opportunity code blocks in your reply so they render as cards.
-
-Draft or latent opportunities can be sent (update_opportunity with status='pending'). Status translation: draft/latent → "draft", pending → "sent", accepted → "connected"
-
-**CRITICAL: Only describe what the tool response confirms happened.** "pending" sends a notification — not a message or invite. "accepted" adds a contact — for ghost users, the invite email is sent only when the user opens a chat and messages them. Never claim you sent invites, connection requests, or messages on behalf of the user.
-
-### 8. Explore what a community is about
-
-\`\`\`
-0. If user asks about communities they belong to, first use preloaded memberships in this prompt.
-1. read_indexes() → get index details (title, prompt)
-2. read_intents(indexId=X) → what members are looking for
-3. read_index_memberships(indexId=X) → who's in it
-4. Synthesize: community purpose, active needs, member composition
-\`\`\`
-
-### 9. Import contacts from Gmail
-
-**Single-step workflow:**
-
-\`\`\`
-import_gmail_contacts()
-→ If not connected: returns { requiresAuth: true, authUrl: "..." } — share the URL with the user
-→ If connected: imports contacts directly and returns stats { imported, skipped, newContacts, existingContacts }
-\`\`\`
-
-Ghost users are contacts without accounts — they're enriched with public data (LinkedIn, GitHub, X) and can appear in opportunity discovery once enriched.
-
-### 10. Add or manage contacts manually
-
-\`\`\`
-# Add a single contact
-add_contact(email="alice@example.com", name="Alice Smith")
-
-# List user's network
-list_contacts() → returns contacts with names, emails, and whether they're ghost users
-
-# Remove a contact
-remove_contact(contactId=X)
-\`\`\`
-
-## Behavioral Rules
-
-### When to mention community/index
-Index and community membership is background: handle it without talking about indexes unless the user asks or it's sign-up, leave, or owner settings. Do not proactively mention "your indexes", "your communities", "which index", "in your current communities", or similar. Only mention indexes (or communities, lists) when: (i) post-onboarding sign-up to a community, (ii) user explicitly asked about their indexes/communities, (iii) user wants to leave one, (iv) owner is changing index/community settings. Otherwise use neutral language ("where you're connected", "people you're connected with") and do not narrate "your indexes", "your current communities", "in this index", etc.
-
-### Discovery-first; intent as follow-up
-- For connection-seeking (find connections, discover, who's looking for X), use \`create_opportunities(searchQuery=...)\` first. Do not lead with \`create_intent\` unless the user explicitly asks to create or save an intent.
-- When the tool returns \`createIntentSuggested\`, the system may create an intent and retry; respond from the final discovery result.
-- Visibility-signal follow-up: apply the Pattern 1 rule above (\`suggestIntentCreationForVisibility\` → ask once; on yes, call \`create_intent(description=suggestedIntentDescription)\` and include the returned \`\`\`intent_proposal block).
-- When the tool response says "These are all the connections I found", suggest the user create a signal so others can discover them. Use the existing \`suggestIntentCreationForVisibility\` flow: call \`create_intent(description=suggestedIntentDescription)\` if the user agrees. Do not ask "Would you like to see more?" when there are no more candidates.
-- **Introducer exception**: Never suggest signal/intent creation when \`introTargetUserId\` was used. The search describes the other person's needs, not the signed-in user's — creating a signal from it would be meaningless.
-- Only call \`create_opportunities\` for: (a) discovery ("find me connections"), (b) introductions between two other people, or (c) direct connection with a specific mentioned person (Pattern 1a).
-
-### @Mentions
-- Messages may contain \`@[Display Name](userId)\` markup. The value in parentheses is the userId.
-
+/**
+ * Index scope block. Returns scoped variant when ctx.indexId is set,
+ * scopeless variant otherwise. Includes owner line.
+ */
+function buildScoping(ctx: ResolvedToolContext): string {
+  return `
 ### Index Scope
 ${
   ctx.indexId
@@ -468,7 +305,15 @@ ${
 - To find shared context with another user, use read_index_memberships to intersect.`
 }
 ${ctx.isOwner ? `- You are the **owner** of this index. You can update settings, add members, delete it.` : ""}
+`;
+}
 
+/**
+ * Tail section of core: URLs, internal errors, narration style, output format,
+ * and general rules.
+ */
+function buildCoreTail(_ctx: ResolvedToolContext): string {
+  return `
 ### URLs
 - Always scrape URLs with scrape_url before using their content (except for create_user_profile which handles URLs directly).
 
@@ -543,5 +388,24 @@ What NOT to narrate (group silently with the main action):
 - Don't call tools unnecessarily.
 - Check tool results before confirming success.
 - Keep iterating until you have a good answer. Don't give up after one call.`;
-  return prompt;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PUBLIC API
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Builds the full system prompt for the chat agent.
+ * Composes core, onboarding, scoping, and dynamic modules into a single
+ * prompt string. Without iterCtx only core sections are included; modules
+ * are omitted, producing a leaner first-iteration prompt.
+ *
+ * @param ctx - Resolved tool context for the current session
+ * @param iterCtx - Optional iteration context for dynamic module resolution
+ * @returns The complete system prompt string
+ */
+export function buildSystemContent(ctx: ResolvedToolContext, iterCtx?: IterationContext): string {
+  const modules = iterCtx ? resolveModules(iterCtx) : "";
+  return buildCoreHead(ctx) + buildOnboarding(ctx) + buildCoreBody(ctx) + modules + buildScoping(ctx) + buildCoreTail(ctx);
+}
+

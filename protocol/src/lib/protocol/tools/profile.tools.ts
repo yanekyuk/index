@@ -21,12 +21,14 @@ async function enrichFromUserRecord(user: { name?: string | null; email?: string
 }
 
 function isMeaningfulEnrichment(enrichment: Awaited<ReturnType<typeof enrichUserProfile>>): enrichment is NonNullable<typeof enrichment> {
-  return !!enrichment && (
-    enrichment.identity.bio.trim().length > 0 ||
-    enrichment.narrative.context.trim().length > 0 ||
-    enrichment.attributes.skills.length > 0 ||
-    enrichment.attributes.interests.length > 0
-  );
+  return !!enrichment &&
+    enrichment.confidentMatch &&
+    (
+      enrichment.identity.bio.trim().length > 0 ||
+      enrichment.narrative.context.trim().length > 0 ||
+      enrichment.attributes.skills.length > 0 ||
+      enrichment.attributes.interests.length > 0
+    );
 }
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
@@ -297,7 +299,17 @@ export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
 
             if (isMeaningfulEnrichment(enrichment)) {
               // Persist enrichment data to user record so confirm path has it
-              const updatePayload: { intro?: string; location?: string; socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] } } = {};
+              const updatePayload: {
+                name?: string;
+                intro?: string;
+                location?: string;
+                socials?: { x?: string; linkedin?: string; github?: string; websites?: string[] };
+              } = {};
+              // No ghost guard needed: onboarding users are active (non-ghost) and
+              // haven't confirmed a name yet — the enriched name is a preview they accept or edit.
+              if (enrichment.identity.name?.trim()) {
+                updatePayload.name = enrichment.identity.name.trim();
+              }
               if (enrichment.identity.bio?.trim()) updatePayload.intro = enrichment.identity.bio.trim();
               if (enrichment.identity.location?.trim()) updatePayload.location = enrichment.identity.location.trim();
               const socials: { x?: string; linkedin?: string; github?: string; websites?: string[] } = {};
