@@ -1556,6 +1556,8 @@ export class OpportunityGraphFactory {
         // Use the same discoveryUserId pattern as evaluationNode
         const discoveryUserId = (state.onBehalfOfUserId ?? state.userId) as string;
 
+        const sourceAccount = await this.database.getUser(discoveryUserId).catch(() => null);
+
         const sourceUser = {
           id: discoveryUserId,
           intents: state.indexedIntents?.slice(0, 5).map(i => ({
@@ -1565,9 +1567,9 @@ export class OpportunityGraphFactory {
             confidence: 1,
           })) ?? [],
           profile: {
-            name: state.sourceProfile?.identity?.name,
-            bio: state.sourceProfile?.identity?.bio,
-            location: state.sourceProfile?.identity?.location,
+            name: state.sourceProfile?.identity?.name ?? sourceAccount?.name,
+            bio: state.sourceProfile?.identity?.bio ?? sourceAccount?.intro ?? undefined,
+            location: state.sourceProfile?.identity?.location ?? sourceAccount?.location ?? undefined,
             skills: state.sourceProfile?.attributes?.skills,
             interests: state.sourceProfile?.attributes?.interests,
           },
