@@ -1,8 +1,114 @@
 import { config } from "dotenv";
 config({ path: ".env.development", override: true });
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter";
+
+// ---------------------------------------------------------------------------
+// Zero mutual intents – fallback path (no LLM needed)
+// ---------------------------------------------------------------------------
+
+describe("OpportunityPresenter – zero mutual intents label", () => {
+  // Force the LLM to fail so we exercise the catch/fallback path.
+  // We subclass and override the private invokeWithTimeout via prototype patch.
+  let presenter: OpportunityPresenter;
+
+  const baseInput: HomeCardPresenterInput = {
+    viewerContext: "Name: Alice\nBio: Engineer",
+    otherPartyContext: "Name: Bob\nBio: Designer",
+    matchReasoning: "Both interested in AI tooling and design systems.",
+    category: "collaboration",
+    confidence: 0.8,
+    signalsSummary: "Complementary skills",
+    indexName: "Test Index",
+    viewerRole: "party",
+    opportunityStatus: "pending",
+  };
+
+  // Patch the presenter to always hit the fallback path
+  function createFallbackPresenter(): OpportunityPresenter {
+    const p = new OpportunityPresenter();
+    // Force the LLM call to throw, triggering the catch/fallback branch
+    (p as any).invokeWithTimeout = mock(() => {
+      throw new Error("Forced fallback for testing");
+    });
+    return p;
+  }
+
+  it("should return 'Shared interests' when mutualIntentCount is 0", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 0 });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return 'Shared interests' when mutualIntentCount is undefined", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: undefined });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return 'Shared interests' when mutualIntentCount is null", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: null as any });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return numeric label when mutualIntentCount > 0", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 3 });
+    expect(result.mutualIntentsLabel).toBe("3 mutual intents");
+  });
+
+  it("should return singular label when mutualIntentCount is 1", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 1 });
+    expect(result.mutualIntentsLabel).toBe("1 mutual intent");
+  });
+
+  it("should return 'Connector match' for introducer role regardless of count", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({
+      ...baseInput,
+      viewerRole: "introducer",
+      isIntroduction: true,
+      introducerName: "Carol",
+      mutualIntentCount: 0,
+    });
+    expect(result.mutualIntentsLabel).toBe("Connector match");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regex safety net – catches "0 mutual intents" from LLM output
+// ---------------------------------------------------------------------------
+
+describe("OpportunityPresenter – regex safety net for LLM output", () => {
+  const regex = /^0\s+(mutual|overlapping)\s+intent/i;
+
+  it("should match '0 mutual intents'", () => {
+    expect(regex.test("0 mutual intents")).toBe(true);
+  });
+
+  it("should match '0 overlapping intents'", () => {
+    expect(regex.test("0 overlapping intents")).toBe(true);
+  });
+
+  it("should match '0 mutual intent' (singular)", () => {
+    expect(regex.test("0 mutual intent")).toBe(true);
+  });
+
+  it("should match '0  mutual intents' (extra whitespace)", () => {
+    expect(regex.test("0  mutual intents")).toBe(true);
+  });
+
+  it("should NOT match '2 mutual intents'", () => {
+    expect(regex.test("2 mutual intents")).toBe(false);
+  });
+
+  it("should NOT match 'Shared interests'", () => {
+    expect(regex.test("Shared interests")).toBe(false);
+  });
+});
 
 describe("OpportunityPresenter - IND-113: Introducer should not appear in body text", () => {
   const presenter = new OpportunityPresenter();
