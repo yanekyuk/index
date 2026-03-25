@@ -65,6 +65,7 @@ import type {
 } from '../interfaces/database.interface';
 import { persistOpportunities } from '../support/opportunity.persist';
 import { negotiateCandidates, createDefaultNegotiationGraph } from "./negotiation.graph";
+import type { NegotiationGraphLike } from "../states/negotiation.state";
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
 import { timed } from '../../performance';
 import { requestContext } from "../../request-context";
@@ -147,7 +148,7 @@ export class OpportunityGraphFactory {
     },
     private optionalEvaluator?: OpportunityEvaluatorLike,
     private queueNotification?: QueueOpportunityNotificationFn,
-    private negotiationGraph: { invoke: (input: any) => Promise<{ outcome: any }> } = createDefaultNegotiationGraph(),
+    private negotiationGraph: NegotiationGraphLike = createDefaultNegotiationGraph(),
   ) {}
 
   public createGraph() {
@@ -1586,15 +1587,18 @@ export class OpportunityGraphFactory {
               hydeDocuments: [] as string[],
             },
           };
-        }).filter(Boolean);
+        });
 
         const isChatPath = !!state.options?.conversationId;
         const maxTurns = isChatPath ? 4 : 6;
         const indexContext = { indexId: state.indexId as string ?? '', prompt: '' };
 
         // Run negotiations in parallel with per-candidate trace events
+        const validCandidates = negotiationCandidates.filter(
+          (c): c is NonNullable<typeof c> => c !== null,
+        );
         const negotiationResults = await Promise.all(
-          (negotiationCandidates as any[]).map(async (candidate: any) => {
+          validCandidates.map(async (candidate) => {
             const candidateStart = Date.now();
             const candidateName = candidate.candidateUser?.profile?.name || candidate.userId;
             traceEmitter?.({ type: "agent_start", name: "negotiation" });
@@ -1617,12 +1621,11 @@ export class OpportunityGraphFactory {
 
               // Build inline turn flow: "propose:85 → counter:70 → accept:78"
               const turnFlow = (result.messages ?? [])
-                .map((m: any) => {
-                  const dataPart = (m.parts as Array<{ kind?: string; data?: any }>)?.find((p: any) => p.kind === "data");
+                .map((m) => {
+                  const dataPart = (m.parts as Array<{ kind?: string; data?: Record<string, unknown> }>)?.find((p) => p.kind === "data");
                   if (!dataPart?.data) return null;
-                  const turn = dataPart.data;
-                  const actionShort = turn.action === 'propose' ? 'propose' : turn.action === 'accept' ? 'accept' : turn.action === 'reject' ? 'reject' : 'counter';
-                  return `${actionShort}:${turn.assessment?.fitScore ?? '?'}`;
+                  const turn = dataPart.data as { action?: string; assessment?: { fitScore?: number } };
+                  return `${turn.action ?? 'unknown'}:${turn.assessment?.fitScore ?? '?'}`;
                 })
                 .filter(Boolean)
                 .join(' → ');
@@ -1651,25 +1654,27 @@ export class OpportunityGraphFactory {
           }),
         );
 
-        const consensusResults = negotiationResults.filter((r: any): r is NonNullable<typeof r> => r !== null);
-        const consensusUserIds = new Set(consensusResults.map((r: any) => r.userId));
+        const consensusResults = negotiationResults.filter((r): r is NonNullable<typeof r> => r !== null);
+        const consensusUserIds = new Set(consensusResults.map((r) => r.userId));
         const filtered = state.evaluatedOpportunities.filter(opp => {
           const candidateActor = opp.actors.find(a => a.userId !== state.userId);
           return candidateActor && consensusUserIds.has(candidateActor.userId as string);
         });
 
-        for (const opp of filtered) {
+        const updatedOpportunities = filtered.map(opp => {
           const candidateActor = opp.actors.find(a => a.userId !== state.userId);
-          if (!candidateActor) continue;
-          const negResult = consensusResults.find((r: any) => r.userId === (candidateActor.userId as string));
+          if (!candidateActor) return opp;
+          const negResult = consensusResults.find((r) => r.userId === (candidateActor.userId as string));
           if (negResult) {
-            opp.score = negResult.negotiationScore;
+            return { ...opp, score: negResult.negotiationScore };
           }
-        }
+          return opp;
+        });
 
         traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
-        return { evaluatedOpportunities: filtered };
+        return { evaluatedOpportunities: updatedOpportunities };
       } catch (err) {
+        console.error("[OpportunityGraph:negotiateNode] Negotiation stage failed:", err);
         traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
         return {};
       }
