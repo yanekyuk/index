@@ -170,9 +170,12 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
         return (
           <div key={neg.id} className="bg-[#F8F8F8] rounded-md overflow-hidden">
             {/* Summary row — clickable to expand */}
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => setExpandedId(isExpanded ? null : neg.id)}
-              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedId(isExpanded ? null : neg.id); } }}
+              className="w-full p-4 flex items-center gap-4 text-left hover:bg-gray-100/50 transition-colors cursor-pointer"
             >
               <Link
                 to={`/u/${neg.counterparty.id}`}
@@ -229,7 +232,7 @@ export default function NegotiationHistory({ userId }: NegotiationHistoryProps) 
               <ChevronDown
                 className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
               />
-            </button>
+            </div>
 
             {/* Expanded dialogue */}
             {isExpanded && neg.turns.length > 0 && (

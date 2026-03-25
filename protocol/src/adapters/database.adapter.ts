@@ -5862,7 +5862,7 @@ export class ConversationDatabaseAdapter {
       : opts?.result === 'no_consensus'
         ? sql`(${schema.artifacts.parts}->0->>'kind' = 'data' AND (${schema.artifacts.parts}->0->'data'->>'consensus')::boolean = false)`
         : opts?.result === 'in_progress'
-          ? isNull(schema.artifacts.id)
+          ? and(isNull(schema.artifacts.id), inArray(schema.tasks.state, ['submitted', 'working', 'input_required']))
           : undefined;
 
     const rows = await db

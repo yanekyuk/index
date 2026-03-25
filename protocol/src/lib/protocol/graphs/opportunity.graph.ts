@@ -1597,16 +1597,22 @@ export class OpportunityGraphFactory {
                 : null,
             ]);
 
-            // Prefer active intents (capped at 5, trigger intent first); fall back to single intent
-            const orderedIntents = [
-              ...activeIntents.filter(ai => ai.id === candidateActor.intentId),
-              ...activeIntents.filter(ai => ai.id !== candidateActor.intentId),
+            // Prefer active intents (capped at 5, trigger intent first); fall back to single intent.
+            // If the trigger intent was archived but we fetched it by ID, prepend it so negotiation
+            // always includes the intent that produced the opportunity match.
+            const toNegIntent = (ai: { id?: string | null; summary?: string | null; payload?: string | null }) => ({
+              id: (ai.id ?? candidateActor.intentId) as string,
+              title: ai.summary ?? '',
+              description: ai.payload ?? '',
+              confidence: 1,
+            });
+            const triggerInActive = activeIntents.some(ai => ai.id === candidateActor.intentId);
+            const triggerFallback = !triggerInActive && intent ? [toNegIntent(intent)] : [];
+            const candidateIntents = [
+              ...triggerFallback,
+              ...activeIntents.filter(ai => ai.id === candidateActor.intentId).map(toNegIntent),
+              ...activeIntents.filter(ai => ai.id !== candidateActor.intentId).map(toNegIntent),
             ].slice(0, 5);
-            const candidateIntents = orderedIntents.length > 0
-              ? orderedIntents.map(ai => ({ id: ai.id as string, title: ai.summary ?? '', description: ai.payload ?? '', confidence: 1 }))
-              : intent
-                ? [{ id: intent.id ?? (candidateActor.intentId as string), title: intent.summary ?? '', description: intent.payload ?? '', confidence: 1 }]
-                : [];
 
             return {
               userId,

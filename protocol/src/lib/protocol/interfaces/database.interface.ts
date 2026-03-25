@@ -1656,7 +1656,18 @@ export type OpportunityGraphDatabase = Pick<
  * Access layer: ConversationDatabaseAdapter
  */
 export interface NegotiationDatabase {
+  /**
+   * Creates an A2A conversation between negotiation agents.
+   * @param participants - Agent participant descriptors
+   * @returns The created conversation with its id
+   */
   createConversation(participants: { participantId: string; participantType: 'user' | 'agent' }[]): Promise<{ id: string }>;
+
+  /**
+   * Persists a negotiation turn message within a conversation.
+   * @param data - Message payload including conversation, sender, role, and structured parts
+   * @returns The persisted message record
+   */
   createMessage(data: {
     conversationId: string;
     senderId: string;
@@ -1664,9 +1675,30 @@ export interface NegotiationDatabase {
     parts: unknown[];
     taskId?: string;
     metadata?: Record<string, unknown> | null;
-  }): Promise<{ id: string; senderId: string; role: string; parts: unknown[]; createdAt: Date }>;
+  }): Promise<{ id: string; senderId: string; role: 'user' | 'agent'; parts: unknown; createdAt: Date }>;
+
+  /**
+   * Creates a task to track the negotiation lifecycle within a conversation.
+   * @param conversationId - Parent conversation id
+   * @param metadata - Task metadata (type, sourceUserId, candidateUserId)
+   * @returns The created task with id, conversationId, and initial state
+   */
   createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
-  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<unknown>;
+
+  /**
+   * Transitions a task to a new state (e.g. working, completed, failed).
+   * @param taskId - Task to update
+   * @param state - Target state
+   * @param statusMessage - Optional status message or structured status
+   * @returns The updated task record
+   */
+  updateTaskState(taskId: string, state: string, statusMessage?: unknown): Promise<{ id: string; conversationId: string; state: string }>;
+
+  /**
+   * Persists a negotiation outcome artifact attached to a task.
+   * @param data - Artifact payload including task reference, name, structured parts, and metadata
+   * @returns The created artifact with its id
+   */
   createArtifact(data: { taskId: string; name?: string; parts: unknown[]; metadata?: Record<string, unknown> | null }): Promise<{ id: string }>;
 }
 

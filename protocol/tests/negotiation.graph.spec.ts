@@ -25,7 +25,7 @@ function createMockDeps(proposerAction = "propose" as const, responderAction = "
     createConversation: mock(() => Promise.resolve({ id: "conv-1" })),
     createMessage: mock(() => Promise.resolve({ id: "msg-1", senderId: "agent", role: "agent", parts: [], createdAt: new Date() })),
     createTask: mock(() => Promise.resolve({ id: "task-1", conversationId: "conv-1", state: "submitted" })),
-    updateTaskState: mock(() => Promise.resolve({})),
+    updateTaskState: mock(() => Promise.resolve({ id: "task-1", conversationId: "conv-1", state: "working" })),
     createArtifact: mock(() => Promise.resolve({ id: "art-1" })),
   };
   const proposer: ConstructorParameters<typeof NegotiationGraphFactory>[1] = {
