@@ -1,8 +1,143 @@
 import { config } from "dotenv";
 config({ path: ".env.development", override: true });
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { OpportunityPresenter, type HomeCardPresenterInput } from "../opportunity.presenter";
+
+/** Test-only type to override the private invokeWithTimeout method. */
+type PresenterWithInvokeOverride = OpportunityPresenter & {
+  invokeWithTimeout: (...args: unknown[]) => unknown;
+};
+
+// ---------------------------------------------------------------------------
+// Zero mutual intents – fallback path (no LLM needed)
+// ---------------------------------------------------------------------------
+
+describe("OpportunityPresenter – zero mutual intents label", () => {
+  let presenter: OpportunityPresenter;
+
+  const baseInput: HomeCardPresenterInput = {
+    viewerContext: "Name: Alice\nBio: Engineer",
+    otherPartyContext: "Name: Bob\nBio: Designer",
+    matchReasoning: "Both interested in AI tooling and design systems.",
+    category: "collaboration",
+    confidence: 0.8,
+    signalsSummary: "Complementary skills",
+    indexName: "Test Index",
+    viewerRole: "party",
+    opportunityStatus: "pending",
+  };
+
+  // Patch the presenter to always hit the fallback path
+  function createFallbackPresenter(): OpportunityPresenter {
+    const p = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
+    // Force the LLM call to throw, triggering the catch/fallback branch
+    p.invokeWithTimeout = mock(() => {
+      throw new Error("Forced fallback for testing");
+    });
+    return p as unknown as OpportunityPresenter;
+  }
+
+  it("should return 'Shared interests' when mutualIntentCount is 0", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 0 });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return 'Shared interests' when mutualIntentCount is undefined", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: undefined });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return 'Shared interests' when mutualIntentCount is null", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: null as unknown as number });
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should return numeric label when mutualIntentCount > 0", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 3 });
+    expect(result.mutualIntentsLabel).toBe("3 mutual intents");
+  });
+
+  it("should return singular label when mutualIntentCount is 1", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({ ...baseInput, mutualIntentCount: 1 });
+    expect(result.mutualIntentsLabel).toBe("1 mutual intent");
+  });
+
+  it("should return 'Connector match' for introducer role regardless of count", async () => {
+    presenter = createFallbackPresenter();
+    const result = await presenter.presentHomeCard({
+      ...baseInput,
+      viewerRole: "introducer",
+      isIntroduction: true,
+      introducerName: "Carol",
+      mutualIntentCount: 0,
+    });
+    expect(result.mutualIntentsLabel).toBe("Connector match");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regex safety net – exercises presentHomeCard() with mocked LLM success path
+// ---------------------------------------------------------------------------
+
+describe("OpportunityPresenter – sanitizer rewrites zero-count LLM output", () => {
+  const baseInput: HomeCardPresenterInput = {
+    viewerContext: "Name: Alice\nBio: Engineer",
+    otherPartyContext: "Name: Bob\nBio: Designer",
+    matchReasoning: "Both interested in AI tooling and design systems.",
+    category: "collaboration",
+    confidence: 0.8,
+    signalsSummary: "Complementary skills",
+    indexName: "Test Index",
+    viewerRole: "party",
+    opportunityStatus: "pending",
+  };
+
+  function createLlmMockPresenter(mutualIntentsLabel: string): OpportunityPresenter {
+    const p = new OpportunityPresenter() as unknown as PresenterWithInvokeOverride;
+    p.invokeWithTimeout = mock(() => ({
+      presentation: {
+        headline: "A great match",
+        personalizedSummary: "You both care about design systems.",
+        suggestedAction: "Reach out to Bob.",
+        narratorRemark: "Worth a look.",
+        primaryActionLabel: "Start Chat",
+        secondaryActionLabel: "Skip",
+        mutualIntentsLabel,
+      },
+    }));
+    return p as unknown as OpportunityPresenter;
+  }
+
+  it("should rewrite '0 mutual intents' to 'Shared interests'", async () => {
+    const presenter = createLlmMockPresenter("0 mutual intents");
+    const result = await presenter.presentHomeCard(baseInput);
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should rewrite '0 overlapping intents' to 'Shared interests'", async () => {
+    const presenter = createLlmMockPresenter("0 overlapping intents");
+    const result = await presenter.presentHomeCard(baseInput);
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+
+  it("should NOT rewrite '3 mutual intents'", async () => {
+    const presenter = createLlmMockPresenter("3 mutual intents");
+    const result = await presenter.presentHomeCard(baseInput);
+    expect(result.mutualIntentsLabel).toBe("3 mutual intents");
+  });
+
+  it("should NOT rewrite 'Shared interests'", async () => {
+    const presenter = createLlmMockPresenter("Shared interests");
+    const result = await presenter.presentHomeCard(baseInput);
+    expect(result.mutualIntentsLabel).toBe("Shared interests");
+  });
+});
 
 describe("OpportunityPresenter - IND-113: Introducer should not appear in body text", () => {
   const presenter = new OpportunityPresenter();

@@ -606,7 +606,7 @@ export class OpportunityService {
     const { generateInviteMessage: generate } = await import('../lib/protocol/agents/invite.generator');
 
     const result = await generate({
-      recipientName: recipient.name ?? 'there',
+      recipientName: recipient?.name ?? 'there',
       senderName: viewer?.name ?? 'Someone',
       opportunityInterpretation: opp.interpretation.reasoning,
       senderIntents,

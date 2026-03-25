@@ -99,7 +99,7 @@ export const HomeCardPresentationSchema = z.object({
     .string()
     .max(48)
     .describe(
-      "Short line for the subtitle under the other party name (e.g. '1 mutual intent', '2 overlapping intents')",
+      "Short line for the subtitle under the other party name (e.g. '3 mutual intents', 'Shared interests', 'Aligned goals'). NEVER output '0 mutual intents' — use a qualitative phrase like 'Shared interests' when no numeric count is available.",
     ),
 });
 
@@ -193,7 +193,7 @@ Given context about the viewer, the other person, and why they were matched, pro
 4. narratorRemark: one short sentence for the narrator chip (who is suggesting and why; max ~80 chars).
 5. primaryActionLabel: label for the primary button. Accept means accepting to have a conversation — so this must always be conversation-oriented. Use only labels like "Start Chat", "Have a conversation", "Say hello", "Reply in chat", "Open chat". Never use "View Project", "Review Opportunity", "View details", or similar.
 6. secondaryActionLabel: label for the secondary button (dismiss/skip). Examples: "Skip", "Not now", "Later".
-7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "1 mutual intent", "2 overlapping intents", "Shared interests" — keep it brief. Based on actors field of the opportunity.
+7. mutualIntentsLabel: short subtitle under the other party's name. Examples: "3 mutual intents", "Shared interests", "Aligned goals" — keep it brief. NEVER output "0 mutual intents" or any zero-count label; use a qualitative phrase instead.
 
 Rules:
 - Address the viewer with "you"/"your". Be concise and compelling.
@@ -348,9 +348,9 @@ Produce headline, personalizedSummary (2-3 sentences in "you" language), and sug
     input: HomeCardPresenterInput,
   ): Promise<HomeCardPresentationResult> {
     const mutualHint =
-      input.mutualIntentCount != null
+      input.mutualIntentCount != null && input.mutualIntentCount > 0
         ? `There are ${input.mutualIntentCount} overlapping intent(s) between viewer and other party.`
-        : "Match is based on profile and intent alignment.";
+        : "Match is based on profile and intent alignment. Do not cite a numeric intent count.";
     const introContext = input.isIntroduction
       ? `\nINTRODUCTION CONTEXT: This opportunity was created by an explicit introduction from ${input.introducerName ?? "someone in the community"}. It was NOT discovered automatically — a real person made this connection.\n`
       : "";
@@ -384,6 +384,9 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
       const parsed = homeCardResponseFormat.parse(result);
       parsed.presentation.personalizedSummary = stripUuids(parsed.presentation.personalizedSummary);
       parsed.presentation.narratorRemark = stripUuids(parsed.presentation.narratorRemark);
+      if (/^0\s+(mutual|overlapping)\s+intent/i.test(parsed.presentation.mutualIntentsLabel)) {
+        parsed.presentation.mutualIntentsLabel = "Shared interests";
+      }
       // Apply introducer stripping as safety net when this is an introduction
       if (input.isIntroduction && input.introducerName) {
         parsed.presentation.personalizedSummary = stripIntroducerMentions(
@@ -419,7 +422,7 @@ Produce headline, personalizedSummary, suggestedAction, narratorRemark, primaryA
         secondaryActionLabel: isIntroducer ? "Pass" : "Skip",
         mutualIntentsLabel: isIntroducer
           ? "Connector match"
-          : input.mutualIntentCount != null
+          : input.mutualIntentCount != null && input.mutualIntentCount > 0
             ? `${input.mutualIntentCount} mutual intent${input.mutualIntentCount !== 1 ? "s" : ""}`
             : "Shared interests",
       };

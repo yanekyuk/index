@@ -351,7 +351,7 @@ async function enrichOpportunities(
         const homeCardInputs: HomeCardPresenterInput[] = fullContexts.map(
           (ctx, idx) => ({
             ...ctx,
-            mutualIntentCount: undefined, // Could compute mutual intents if needed
+            mutualIntentCount: undefined,
             opportunityStatus: baseEnriched[idx].opportunity.status,
           }),
         );

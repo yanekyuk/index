@@ -333,6 +333,7 @@ const enrichmentResultSchema = z.object({
     github: z.string().optional(),
     websites: z.array(z.string()).optional(),
   }),
+  confidentMatch: z.boolean(),
 });
 
 /** Structured profile enrichment result from Parallel Chat API. */
@@ -350,7 +351,11 @@ const profileEnrichmentSchema = {
           type: "object",
           properties: {
             name: { type: "string", description: "The person's full name" },
-            bio: { type: "string", description: "A professional summary (2-3 sentences)" },
+            bio: {
+              type: "string",
+              description:
+                "Professional summary (2-3 sentences): role, domain, and trajectory only. Never include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers — even if they appear in sources.",
+            },
             location: { type: "string", description: "City, Country or 'Remote' if unknown" },
           },
           required: ["name", "bio", "location"],
@@ -358,7 +363,11 @@ const profileEnrichmentSchema = {
         narrative: {
           type: "object",
           properties: {
-            context: { type: "string", description: "A rich, detailed narrative about the person's current situation, background, and what they are currently working on. Use raw, natural language." },
+            context: {
+              type: "string",
+              description:
+                "Rich narrative: background and current focus in natural language. Do not include email addresses, phone numbers, mailing/physical addresses, government IDs, or other contact identifiers.",
+            },
           },
           required: ["context"],
         },
@@ -379,8 +388,12 @@ const profileEnrichmentSchema = {
             websites: { type: "array", items: { type: "string" }, description: "Only websites OWNED/CONTROLLED by this person (personal site, portfolio, blog they run). Exclude any third-party sites that merely mention them (news, company pages, aggregators, profiles on other platforms)." },
           },
         },
+        confidentMatch: {
+          type: "boolean",
+          description: "true when public sources clearly identify this person and the profile data is reliable; false when the person could not be found or data is too thin/ambiguous.",
+        },
       },
-      required: ["identity", "narrative", "attributes", "socials"],
+      required: ["identity", "narrative", "attributes", "socials", "confidentMatch"],
     },
   },
 };
@@ -474,7 +487,8 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
         messages: [
           {
             role: 'system',
-            content: 'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person. Extract their professional background, skills, interests, and social links. Be thorough but concise.\n\nIMPORTANT: Only use data the person explicitly published on their profile (headline, about, experience, education, skills). Do NOT infer roles, programs, affiliations, or biographical facts from LinkedIn reactions, likes, comments, reposts, or engagement signals. Activity signals indicate interest, not participation.',
+            content:
+              'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person. Extract their professional background, skills, interests, and social links. Be thorough but concise.\n\nIMPORTANT: Only use data the person explicitly published on their profile (headline, about, experience, education, skills). Do NOT infer roles, programs, affiliations, or biographical facts from LinkedIn reactions, likes, comments, reposts, or engagement signals. Activity signals indicate interest, not participation.\n\nPRIVACY: identity.bio and narrative.context are shown as a public profile summary. Never include email addresses, phone numbers, physical addresses, government IDs, or other direct contact or identifier details — even when they appear in search results or source text. Social links belong in the socials fields only (handles/URLs as structured data), not quoted as contact instructions inside bio or narrative.\n\nCONFIDENCE: Set confidentMatch to true only when you can clearly identify the person from public sources and the profile data is reliable. Set it to false when the person cannot be found, the match is ambiguous, or data is too thin to produce a meaningful profile.',
           },
           { role: 'user', content: userMessage },
         ],

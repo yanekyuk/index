@@ -72,47 +72,6 @@ export function stripLeadingNarratorName(remark: string, narratorName: string): 
   return t;
 }
 
-const toIntentArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-
-const toIntentKey = (intent: unknown): string | null => {
-  if (typeof intent === 'string' || typeof intent === 'number') {
-    return String(intent);
-  }
-  if (!intent || typeof intent !== 'object') {
-    return null;
-  }
-
-  const record = intent as Record<string, unknown>;
-  const candidate =
-    record.intentId ?? record.id ?? record.payload ?? record.summary ?? record.title ?? record.name;
-
-  if (typeof candidate === 'string' || typeof candidate === 'number') {
-    return String(candidate);
-  }
-  return null;
-};
-
-const computeMutualIntentCount = (ctx: Record<string, unknown>): number => {
-  const actorIntents = toIntentArray(ctx.intents ?? ctx.viewerIntents ?? ctx.actorIntents);
-  const partnerIntents = toIntentArray(ctx.otherIntents ?? ctx.partnerIntents ?? ctx.otherPartyIntents);
-
-  const actorIntentSet = new Set(
-    actorIntents.map((intent) => toIntentKey(intent)).filter((key): key is string => key !== null)
-  );
-  const partnerIntentSet = new Set(
-    partnerIntents.map((intent) => toIntentKey(intent)).filter((key): key is string => key !== null)
-  );
-
-  let overlap = 0;
-  for (const key of actorIntentSet) {
-    if (partnerIntentSet.has(key)) {
-      overlap += 1;
-    }
-  }
-
-  return overlap;
-};
-
 /** Normalize timestamp for sorting; returns numeric ms or 0 for invalid/missing. */
 const safeParseDate = (value: unknown): number => {
   if (value == null) return 0;
@@ -410,10 +369,9 @@ export class HomeGraphFactory {
                 state.userId,
                 otherActor?.userId,
               );
-              const mutualIntentCount = computeMutualIntentCount(ctx as unknown as Record<string, unknown>);
               const homeInput = {
                 ...ctx,
-                mutualIntentCount,
+                mutualIntentCount: undefined,
                 opportunityStatus: opportunity.status,
               };
               const _traceEmitterPresenter = requestContext.getStore()?.traceEmitter;
