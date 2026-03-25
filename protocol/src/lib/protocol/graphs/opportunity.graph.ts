@@ -1550,7 +1550,7 @@ export class OpportunityGraphFactory {
 
       const traceEmitter = requestContext.getStore()?.traceEmitter;
       const graphStart = Date.now();
-      traceEmitter?.({ type: "graph_start", name: "negotiation" });
+      traceEmitter?.({ type: "graph_start", name: "Negotiation graph" });
 
       try {
         // Use the same discoveryUserId pattern as evaluationNode
@@ -1666,11 +1666,11 @@ export class OpportunityGraphFactory {
             return negResult ? { ...opp, score: negResult.negotiationScore } : opp;
           });
 
-        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
+        traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
         return { evaluatedOpportunities: updatedOpportunities };
       } catch (err) {
         logger.error("[Graph:Negotiate] Negotiation stage failed", { error: err });
-        traceEmitter?.({ type: "graph_end", name: "negotiation", durationMs: Date.now() - graphStart });
+        traceEmitter?.({ type: "graph_end", name: "Negotiation graph", durationMs: Date.now() - graphStart });
         return { evaluatedOpportunities: [] };
       }
     };

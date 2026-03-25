@@ -1,27 +1,11 @@
 import { StateGraph } from "@langchain/langgraph";
 
 import { requestContext, type TraceEmitter } from "../../request-context";
+import type { NegotiationDatabase } from "../interfaces/database.interface";
 import { NegotiationGraphState, type NegotiationTurn, type NegotiationOutcome, type UserNegotiationContext, type SeedAssessment, type NegotiationGraphLike } from "../states/negotiation.state";
 import { protocolLogger } from "../support/protocol.logger";
 
 const logger = protocolLogger("NegotiationGraph");
-
-interface ConversationServiceLike {
-  createConversation(participants: { participantId: string; participantType: "user" | "agent" }[]): Promise<{ id: string }>;
-  sendMessage(
-    conversationId: string,
-    senderId: string,
-    role: "user" | "agent",
-    parts: unknown[],
-    opts?: { taskId?: string; metadata?: Record<string, unknown> },
-  ): Promise<{ id: string; senderId: string; role: string; parts: unknown[]; createdAt: Date }>;
-}
-
-interface TaskServiceLike {
-  createTask(conversationId: string, metadata?: Record<string, unknown>): Promise<{ id: string; conversationId: string; state: string }>;
-  updateState(taskId: string, state: string, statusMessage?: unknown): Promise<unknown>;
-  createArtifact(taskId: string, data: { name?: string; parts: unknown[]; metadata?: Record<string, unknown> }): Promise<{ id: string }>;
-}
 
 interface NegotiationAgentLike {
   invoke(input: {
@@ -39,23 +23,22 @@ interface NegotiationAgentLike {
  */
 export class NegotiationGraphFactory {
   constructor(
-    private conversationService: ConversationServiceLike,
-    private taskService: TaskServiceLike,
+    private database: NegotiationDatabase,
     private proposer: NegotiationAgentLike,
     private responder: NegotiationAgentLike,
   ) {}
 
   createGraph() {
-    const { conversationService, taskService, proposer, responder } = this;
+    const { database, proposer, responder } = this;
 
     const initNode = async (state: typeof NegotiationGraphState.State) => {
       try {
-        const conversation = await conversationService.createConversation([
+        const conversation = await database.createConversation([
           { participantId: `agent:${state.sourceUser.id}`, participantType: "agent" },
           { participantId: `agent:${state.candidateUser.id}`, participantType: "agent" },
         ]);
 
-        const task = await taskService.createTask(conversation.id, {
+        const task = await database.createTask(conversation.id, {
           type: "negotiation",
           sourceUserId: state.sourceUser.id,
           candidateUserId: state.candidateUser.id,
@@ -86,7 +69,7 @@ export class NegotiationGraphFactory {
         const senderId = `agent:${ownUser.id}`;
 
         const traceEmitter = requestContext.getStore()?.traceEmitter;
-        const agentName = isSource ? "negotiation-proposer" : "negotiation-responder";
+        const agentName = isSource ? "Negotiation proposer agent" : "Negotiation responder agent";
         const agentStart = Date.now();
         traceEmitter?.({ type: "agent_start", name: agentName });
 
@@ -107,15 +90,15 @@ export class NegotiationGraphFactory {
         }
 
         const parts = [{ kind: "data" as const, data: turn }];
-        const message = await conversationService.sendMessage(
-          state.conversationId,
+        const message = await database.createMessage({
+          conversationId: state.conversationId,
           senderId,
-          "agent",
+          role: "agent",
           parts,
-          { taskId: state.taskId },
-        );
+          taskId: state.taskId,
+        });
 
-        await taskService.updateState(state.taskId, "working");
+        await database.updateTaskState(state.taskId, "working");
 
         return {
           messages: [{
@@ -191,8 +174,9 @@ export class NegotiationGraphFactory {
       };
 
       try {
-        await taskService.updateState(state.taskId, "completed");
-        await taskService.createArtifact(state.taskId, {
+        await database.updateTaskState(state.taskId, "completed");
+        await database.createArtifact({
+          taskId: state.taskId,
           name: "negotiation-outcome",
           parts: [{ kind: "data", data: outcome }],
           metadata: { consensus, turnCount: state.turnCount },
@@ -260,7 +244,7 @@ export async function negotiateCandidates(
   const results = await Promise.all(
     candidates.map(async (candidate) => {
       const start = Date.now();
-      traceEmitter?.({ type: "agent_start", name: "negotiation" });
+      traceEmitter?.({ type: "agent_start", name: "Negotiating candidate" });
 
       try {
         // Use per-candidate index context; never fall back to a different index's prompt
@@ -296,7 +280,7 @@ export async function negotiateCandidates(
           .join(" → ");
 
         const statusTag = consensus ? "✓ consensus" : "✗ rejected";
-        traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary: `${candidate.userId}: ${turnFlow} ${statusTag}` });
+        traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: ${turnFlow} ${statusTag}` });
 
         if (consensus && outcome) {
           return {
@@ -310,7 +294,7 @@ export async function negotiateCandidates(
         return null;
       } catch (err) {
         const durationMs = Date.now() - start;
-        traceEmitter?.({ type: "agent_end", name: "negotiation", durationMs, summary: `${candidate.userId}: error` });
+        traceEmitter?.({ type: "agent_end", name: "Negotiating candidate", durationMs, summary: `${candidate.userId}: error` });
         logger.error("[negotiateCandidates] Negotiation failed", { candidateUserId: candidate.userId, error: err });
         return null;
       }

@@ -11,10 +11,14 @@ import { LensInferrer } from "../agents/lens.inferrer";
 import { IndexGraphFactory } from "../graphs/index.graph";
 import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
 import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
+import { NegotiationGraphFactory } from "../graphs/negotiation.graph";
+import { NegotiationProposer } from "../agents/negotiation.proposer";
+import { NegotiationResponder } from "../agents/negotiation.responder";
 import { RedisCacheAdapter } from "../../../adapters/cache.adapter";
 import { ComposioIntegrationAdapter } from "../../../adapters/integration.adapter";
 import {
   chatDatabaseAdapter,
+  conversationDatabaseAdapter,
   createUserDatabase,
   createSystemDatabase,
 } from "../../../adapters/database.adapter";
@@ -111,10 +115,18 @@ export async function createChatTools(
     lensInferrer,
     hydeGenerator
   ).createGraph();
+  const negotiationGraph = new NegotiationGraphFactory(
+    conversationDatabaseAdapter,
+    new NegotiationProposer(),
+    new NegotiationResponder(),
+  ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database,
     embedder,
-    compiledHydeGraph
+    compiledHydeGraph,
+    undefined, // evaluator (default)
+    undefined, // queueNotification
+    negotiationGraph,
   ).createGraph();
   const indexGraph = new IndexGraphFactory(database).createGraph();
   const indexMembershipGraph = new IndexMembershipGraphFactory(database).createGraph();
