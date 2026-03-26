@@ -33,7 +33,8 @@ export type ChatStreamEventType =
   | "graph_start"
   | "graph_end"
   | "agent_start"
-  | "agent_end";
+  | "agent_end"
+  | "hallucination_detected";
 
 /**
  * Base interface for all chat stream events.

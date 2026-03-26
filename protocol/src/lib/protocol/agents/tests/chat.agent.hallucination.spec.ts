@@ -128,6 +128,8 @@ describe("ChatAgent hallucination auto-retry", () => {
   it("auto-invokes create_intent when hallucinated intent_proposal block is detected", async () => {
     const agent = await ChatAgent.create({
       database: {} as any,
+      embedder: {} as any,
+      scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
     });
@@ -203,6 +205,8 @@ I've created an intent for you!`;
   it("auto-invokes create_opportunities when hallucinated opportunity block is detected", async () => {
     const agent = await ChatAgent.create({
       database: {} as any,
+      embedder: {} as any,
+      scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
     });
@@ -251,6 +255,8 @@ I've created an intent for you!`;
   it("falls back to correction message if auto-invoked tool throws", async () => {
     const agent = await ChatAgent.create({
       database: {} as any,
+      embedder: {} as any,
+      scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
     });
@@ -302,6 +308,8 @@ I've created an intent for you!`;
   it("does not trigger hallucination detection when model makes a real tool call", async () => {
     const agent = await ChatAgent.create({
       database: {} as any,
+      embedder: {} as any,
+      scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
     });
