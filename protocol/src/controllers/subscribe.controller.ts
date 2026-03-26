@@ -8,7 +8,7 @@ const logger = log.controller.from('subscribe');
  */
 @Controller('/subscribe')
 export class SubscribeController {
-  @Post('/')
+  @Post('')
   async subscribe(req: Request) {
     let body: {
       email: string;
