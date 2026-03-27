@@ -3476,6 +3476,69 @@ export class ChatDatabaseAdapter {
     }));
   }
 
+  /**
+   * Get the user's personal index ID.
+   * @param userId - The user whose personal index to find
+   * @returns The personal index ID, or null if none exists
+   */
+  async getPersonalIndexId(userId: string): Promise<string | null> {
+    return getPersonalIndexId(userId);
+  }
+
+  /**
+   * Get contacts from a personal index with their latest intent timestamp and intent count.
+   * Contacts are sorted by most recent intent (freshest first) for introducer discovery.
+   *
+   * @param personalIndexId - The personal index to query
+   * @param ownerId - The index owner (excluded from results)
+   * @param limit - Maximum contacts to return
+   * @returns Contacts with intent freshness data
+   */
+  async getContactsWithIntentFreshness(
+    personalIndexId: string,
+    ownerId: string,
+    limit: number,
+  ): Promise<Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>> {
+    try {
+      const rows = await db
+        .select({
+          userId: schema.indexMembers.userId,
+          latestIntentAt: sql<string | null>`MAX(${schema.intents.updatedAt})`.as('latest_intent_at'),
+          intentCount: sql<number>`COUNT(${schema.intents.id})::int`.as('intent_count'),
+        })
+        .from(schema.indexMembers)
+        .leftJoin(
+          schema.intents,
+          and(
+            eq(schema.intents.userId, schema.indexMembers.userId),
+            isNull(schema.intents.archivedAt),
+          ),
+        )
+        .where(
+          and(
+            eq(schema.indexMembers.indexId, personalIndexId),
+            sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+            isNull(schema.indexMembers.deletedAt),
+            sql`${schema.indexMembers.userId} != ${ownerId}`,
+          ),
+        )
+        .groupBy(schema.indexMembers.userId)
+        .orderBy(sql`MAX(${schema.intents.updatedAt}) DESC NULLS LAST`)
+        .limit(limit);
+
+      return rows.map((row) => ({
+        userId: row.userId,
+        latestIntentAt: row.latestIntentAt ? new Date(row.latestIntentAt).toISOString() : null,
+        intentCount: Number(row.intentCount) || 0,
+      }));
+    } catch (error) {
+      logger.error('ChatDatabaseAdapter.getContactsWithIntentFreshness error', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

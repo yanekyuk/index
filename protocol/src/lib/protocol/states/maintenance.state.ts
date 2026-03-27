@@ -48,6 +48,18 @@ export const MaintenanceGraphState = Annotation.Root({
     default: () => 0,
   }),
 
+  /** Current connector-flow opportunity count (from scoreFeedHealth). */
+  connectorFlowCount: Annotation<number>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 0,
+  }),
+
+  /** Number of introducer discovery jobs enqueued. */
+  introducerDiscoveryJobsEnqueued: Annotation<number>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => 0,
+  }),
+
   error: Annotation<string | undefined>({
     reducer: (curr, next) => next ?? curr,
     default: () => undefined,
