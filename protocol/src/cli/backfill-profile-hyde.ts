@@ -15,7 +15,7 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import { and, eq, isNull } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { hydeDocuments, indexMembers, userProfiles } from '../schemas/database.schema';
+import { hydeDocuments, networkMembers, userProfiles } from '../schemas/database.schema';
 import { profileQueue } from '../queues/profile.queue';
 
 const DEFAULT_LIMIT = 500;
@@ -36,8 +36,8 @@ function parseLimit(): number {
 async function getIndexMembersMissingProfileHyde(limit: number): Promise<{ userId: string }[]> {
   const rows = await db
     .selectDistinct({ userId: userProfiles.userId })
-    .from(indexMembers)
-    .innerJoin(userProfiles, eq(indexMembers.userId, userProfiles.userId))
+    .from(networkMembers)
+    .innerJoin(userProfiles, eq(networkMembers.userId, userProfiles.userId))
     .leftJoin(
       hydeDocuments,
       and(eq(hydeDocuments.sourceId, userProfiles.userId), eq(hydeDocuments.sourceType, 'profile')),

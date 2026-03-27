@@ -20,7 +20,7 @@ export interface AddJobResult {
 
 export interface IndexIntentJobData {
   intentId: string;
-  indexId: string;
+  networkId: string;
   userId: string;
 }
 
@@ -30,7 +30,7 @@ export interface GenerateIntentsJobData {
   sourceType: 'file' | 'link' | 'integration' | 'discovery_form';
   content?: string;
   objects?: unknown[];
-  indexId?: string;
+  networkId?: string;
   intentCount?: number;
   instruction?: string;
   createdAt?: number | Date;

@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
-import type { IntentIndexerOutput } from "../agents/intent.indexer";
-import type { DebugMetaAgent } from '../types/chat-streaming.types';
+import type { IntentIndexerOutput } from "../agents/intent.networker";
+import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**
  * Intent payload and metadata loaded for index evaluation.
@@ -19,7 +19,7 @@ export interface IntentForIndexing {
  * (Migrated from the old index.graph.state.ts)
  */
 export interface IndexMemberContext {
-  indexId: string;
+  networkId: string;
   indexPrompt: string | null;
   memberPrompt: string | null;
 }
@@ -29,7 +29,7 @@ export interface IndexMemberContext {
  * (Migrated from the old index.graph.state.ts)
  */
 export interface AssignmentResult {
-  indexId: string;
+  networkId: string;
   assigned: boolean;
   success: boolean;
   error?: string;
@@ -47,14 +47,14 @@ export interface AssignmentResult {
  *   delete: unassignNode → END
  * }
  */
-export const IntentIndexGraphState = Annotation.Root({
+export const IntentNetworkGraphState = Annotation.Root({
   // --- Core Inputs (from ChatGraph via ToolContext) ---
 
   /** User performing the action. Always required. */
   userId: Annotation<string>,
 
   /** Target index for assign/read-by-index. From ChatGraph or tool arg. */
-  indexId: Annotation<string | undefined>({
+  networkId: Annotation<string | undefined>({
     reducer: (_, next) => next,
     default: () => undefined,
   }),
@@ -132,7 +132,7 @@ export const IntentIndexGraphState = Annotation.Root({
   readResult: Annotation<{
     links: Array<{
       intentId: string;
-      indexId: string;
+      networkId: string;
       intentTitle?: string;
       indexTitle?: string;
       userId?: string;

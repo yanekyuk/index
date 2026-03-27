@@ -18,18 +18,18 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
-  indexes,
-  indexMembers,
+  networks,
+  networkMembers,
   intents,
-  intentIndexes,
-  personalIndexes,
+  intentNetworks,
+  personalNetworks,
 } from '../../schemas/database.schema';
 import {
   ensurePersonalIndex,
   getPersonalIndexId,
   ChatDatabaseAdapter,
 } from '../database.adapter';
-import { IndexService } from '../../services/index.service';
+import { NetworkService } from '../../services/network.service';
 
 const TEST_PREFIX = 'personal_idx_' + Date.now() + '_';
 
@@ -67,13 +67,13 @@ beforeAll(async () => {
 
   // Create a regular index for comparison
   const regularIndexId = crypto.randomUUID();
-  await db.insert(indexes).values({
+  await db.insert(networks).values({
     id: regularIndexId,
     title: TEST_PREFIX + 'Regular Index',
     prompt: 'A regular community index',
   });
-  await db.insert(indexMembers).values({
-    indexId: regularIndexId,
+  await db.insert(networkMembers).values({
+    networkId: regularIndexId,
     userId: ownerUserId,
     permissions: ['owner'],
     autoAssign: false,
@@ -111,20 +111,20 @@ afterAll(async () => {
   const allIndexIds = [fixture.personalIndexId, fixture.regularIndexId];
 
   // Cleanup in reverse FK order
-  await db.delete(intentIndexes).where(
-    inArray(intentIndexes.indexId, allIndexIds),
+  await db.delete(intentNetworks).where(
+    inArray(intentNetworks.networkId, allIndexIds),
   );
-  await db.delete(indexMembers).where(
-    inArray(indexMembers.indexId, allIndexIds),
+  await db.delete(networkMembers).where(
+    inArray(networkMembers.networkId, allIndexIds),
   );
   await db.delete(intents).where(
     inArray(intents.userId, allUserIds),
   );
-  await db.delete(personalIndexes).where(
-    inArray(personalIndexes.userId, allUserIds),
+  await db.delete(personalNetworks).where(
+    inArray(personalNetworks.userId, allUserIds),
   );
-  await db.delete(indexes).where(
-    inArray(indexes.id, allIndexIds),
+  await db.delete(networks).where(
+    inArray(networks.id, allIndexIds),
   );
   await db.delete(userProfiles).where(
     inArray(userProfiles.userId, allUserIds),
@@ -140,8 +140,8 @@ describe('ensurePersonalIndex', () => {
   it('creates a personal index with correct title and personal_indexes entry', async () => {
     const [row] = await db
       .select()
-      .from(indexes)
-      .where(eq(indexes.id, fixture.personalIndexId));
+      .from(networks)
+      .where(eq(networks.id, fixture.personalIndexId));
 
     expect(row).toBeDefined();
     expect(row.title).toBe('My Network');
@@ -150,21 +150,21 @@ describe('ensurePersonalIndex', () => {
     // Verify personal_indexes mapping
     const [mapping] = await db
       .select()
-      .from(personalIndexes)
-      .where(eq(personalIndexes.userId, fixture.ownerUserId));
+      .from(personalNetworks)
+      .where(eq(personalNetworks.userId, fixture.ownerUserId));
 
     expect(mapping).toBeDefined();
-    expect(mapping.indexId).toBe(fixture.personalIndexId);
+    expect(mapping.networkId).toBe(fixture.personalIndexId);
   });
 
   it('creates an owner membership with ["owner"] permissions', async () => {
     const [membership] = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, fixture.personalIndexId),
-          eq(indexMembers.userId, fixture.ownerUserId),
+          eq(networkMembers.networkId, fixture.personalIndexId),
+          eq(networkMembers.userId, fixture.ownerUserId),
         ),
       );
 
@@ -175,11 +175,11 @@ describe('ensurePersonalIndex', () => {
   it('creates owner membership with autoAssign enabled', async () => {
     const [membership] = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, fixture.personalIndexId),
-          eq(indexMembers.userId, fixture.ownerUserId),
+          eq(networkMembers.networkId, fixture.personalIndexId),
+          eq(networkMembers.userId, fixture.ownerUserId),
         ),
       );
 
@@ -193,9 +193,9 @@ describe('ensurePersonalIndex', () => {
 
     // Verify only one personal index exists for this user
     const rows = await db
-      .select({ indexId: personalIndexes.indexId })
-      .from(personalIndexes)
-      .where(eq(personalIndexes.userId, fixture.ownerUserId));
+      .select({ networkId: personalNetworks.networkId })
+      .from(personalNetworks)
+      .where(eq(personalNetworks.userId, fixture.ownerUserId));
     expect(rows).toHaveLength(1);
   });
 });
@@ -226,8 +226,8 @@ describe('getPersonalIndexesForContact', () => {
 
   it('returns personal indexes where user is a contact member', async () => {
     // Manually add the contact user as a contact member
-    await db.insert(indexMembers).values({
-      indexId: fixture.personalIndexId,
+    await db.insert(networkMembers).values({
+      networkId: fixture.personalIndexId,
       userId: fixture.contactUserId,
       permissions: ['contact'],
       autoAssign: false,
@@ -235,7 +235,7 @@ describe('getPersonalIndexesForContact', () => {
 
     const result = await chatDb.getPersonalIndexesForContact(fixture.contactUserId);
     expect(result.length).toBeGreaterThanOrEqual(1);
-    expect(result.some(r => r.indexId === fixture.personalIndexId)).toBe(true);
+    expect(result.some(r => r.networkId === fixture.personalIndexId)).toBe(true);
   });
 });
 
@@ -246,10 +246,10 @@ describe('upsertContactMembership → personal index sync', () => {
 
   it('creates index_members entry with contact permissions for new contacts', async () => {
     // Remove the manually-added contact member from previous test
-    await db.delete(indexMembers).where(
+    await db.delete(networkMembers).where(
       and(
-        eq(indexMembers.indexId, fixture.personalIndexId),
-        eq(indexMembers.userId, fixture.contactUserId),
+        eq(networkMembers.networkId, fixture.personalIndexId),
+        eq(networkMembers.userId, fixture.contactUserId),
       ),
     );
 
@@ -258,11 +258,11 @@ describe('upsertContactMembership → personal index sync', () => {
     // Verify contact was added as member with ['contact'] permissions
     const [membership] = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, fixture.personalIndexId),
-          eq(indexMembers.userId, fixture.contactUserId),
+          eq(networkMembers.networkId, fixture.personalIndexId),
+          eq(networkMembers.userId, fixture.contactUserId),
         ),
       );
     expect(membership).toBeDefined();
@@ -281,11 +281,11 @@ describe('hardDeleteContactMembership → personal index cleanup', () => {
     // Contact's membership should be removed
     const memberships = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, fixture.personalIndexId),
-          eq(indexMembers.userId, fixture.contactUserId),
+          eq(networkMembers.networkId, fixture.personalIndexId),
+          eq(networkMembers.userId, fixture.contactUserId),
         ),
       );
     expect(memberships).toHaveLength(0);
@@ -300,7 +300,7 @@ describe('getIndexMemberships', () => {
   it('returns the user\'s own personal index', async () => {
     const memberships = await chatDb.getIndexMemberships(fixture.ownerUserId);
 
-    const personalMembership = memberships.find(m => m.indexId === fixture.personalIndexId);
+    const personalMembership = memberships.find(m => m.networkId === fixture.personalIndexId);
     expect(personalMembership).toBeDefined();
     expect(personalMembership!.permissions).toEqual(['owner']);
   });
@@ -308,14 +308,14 @@ describe('getIndexMemberships', () => {
   it('returns regular indexes the user is a member of', async () => {
     const memberships = await chatDb.getIndexMemberships(fixture.ownerUserId);
 
-    const regularMembership = memberships.find(m => m.indexId === fixture.regularIndexId);
+    const regularMembership = memberships.find(m => m.networkId === fixture.regularIndexId);
     expect(regularMembership).toBeDefined();
   });
 
   it('does NOT return other users\' personal indexes the user is a contact in', async () => {
     // Re-add contact as member of owner's personal index
-    await db.insert(indexMembers).values({
-      indexId: fixture.personalIndexId,
+    await db.insert(networkMembers).values({
+      networkId: fixture.personalIndexId,
       userId: fixture.contactUserId,
       permissions: ['contact'],
       autoAssign: false,
@@ -323,7 +323,7 @@ describe('getIndexMemberships', () => {
 
     // Contact's memberships should NOT include the owner's personal index
     const memberships = await chatDb.getIndexMemberships(fixture.contactUserId);
-    const ownerPersonalIndex = memberships.find(m => m.indexId === fixture.personalIndexId);
+    const ownerPersonalIndex = memberships.find(m => m.networkId === fixture.personalIndexId);
     expect(ownerPersonalIndex).toBeUndefined();
   });
 });
@@ -349,10 +349,10 @@ describe('isPersonalIndex', () => {
   });
 });
 
-// ─── IndexService assertNotPersonal guard ───────────────────────────────────────
+// ─── NetworkService assertNotPersonal guard ───────────────────────────────────────
 
-describe('IndexService personal index guards', () => {
-  const service = new IndexService();
+describe('NetworkService personal index guards', () => {
+  const service = new NetworkService();
 
   it('rejects updateIndex on a personal index', async () => {
     await expect(

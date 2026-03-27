@@ -17,7 +17,7 @@ import type {
 } from '../schemas/conversation.schema';
 import type { Id } from '../types/common.types';
 import { log } from '../lib/log';
-import { IndexMembershipEvents } from '../events/index_membership.event';
+import { NetworkMembershipEvents } from '../events/network_membership.event';
 
 const logger = log.lib.from('database.adapter');
 
@@ -33,29 +33,29 @@ export const SYSTEM_AGENT_ID = 'system-agent';
 export async function ensurePersonalIndex(userId: string): Promise<string> {
   // Fast path: check mapping table
   const existing = await db
-    .select({ indexId: schema.personalIndexes.indexId })
-    .from(schema.personalIndexes)
-    .where(eq(schema.personalIndexes.userId, userId))
+    .select({ networkId: schema.personalNetworks.networkId })
+    .from(schema.personalNetworks)
+    .where(eq(schema.personalNetworks.userId, userId))
     .limit(1);
 
-  if (existing.length > 0) return existing[0].indexId;
+  if (existing.length > 0) return existing[0].networkId;
 
-  const indexId = crypto.randomUUID();
+  const networkId = crypto.randomUUID();
 
-  await db.insert(schema.indexes).values({
-    id: indexId,
+  await db.insert(schema.networks).values({
+    id: networkId,
     title: 'My Network',
     prompt: 'Personal index containing the owner\'s imported contacts for network-scoped discovery.',
     isPersonal: true,
   }).onConflictDoNothing();
 
-  await db.insert(schema.personalIndexes).values({
+  await db.insert(schema.personalNetworks).values({
     userId,
-    indexId,
+    networkId,
   }).onConflictDoNothing();
 
-  await db.insert(schema.indexMembers).values({
-    indexId,
+  await db.insert(schema.networkMembers).values({
+    networkId,
     userId,
     permissions: ['owner'],
     autoAssign: true,
@@ -63,12 +63,12 @@ export async function ensurePersonalIndex(userId: string): Promise<string> {
 
   // Re-query to return the actual persisted ID (handles race with concurrent calls)
   const persisted = await db
-    .select({ indexId: schema.personalIndexes.indexId })
-    .from(schema.personalIndexes)
-    .where(eq(schema.personalIndexes.userId, userId))
+    .select({ networkId: schema.personalNetworks.networkId })
+    .from(schema.personalNetworks)
+    .where(eq(schema.personalNetworks.userId, userId))
     .limit(1);
 
-  return persisted[0]?.indexId ?? indexId;
+  return persisted[0]?.networkId ?? networkId;
 }
 
 /**
@@ -78,12 +78,12 @@ export async function ensurePersonalIndex(userId: string): Promise<string> {
  */
 export async function getPersonalIndexId(userId: string): Promise<string | null> {
   const result = await db
-    .select({ indexId: schema.personalIndexes.indexId })
-    .from(schema.personalIndexes)
-    .where(eq(schema.personalIndexes.userId, userId))
+    .select({ networkId: schema.personalNetworks.networkId })
+    .from(schema.personalNetworks)
+    .where(eq(schema.personalNetworks.userId, userId))
     .limit(1);
 
-  return result[0]?.indexId ?? null;
+  return result[0]?.networkId ?? null;
 }
 
 // Local types used by adapters (shapes only; protocol layer defines the contracts)
@@ -169,7 +169,7 @@ interface ProfileRow {
 }
 
 interface IndexMembershipRow {
-  indexId: string;
+  networkId: string;
   indexTitle: string;
   indexPrompt: string | null;
   permissions: string[];
@@ -179,7 +179,7 @@ interface IndexMembershipRow {
   joinedAt: Date;
 }
 
-const { intents, indexes, indexMembers, intentIndexes, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions } = schema;
+const { intents, networks, networkMembers, intentNetworks, users, hydeDocuments, opportunities, userNotificationSettings, userProfiles, files, links, sessions } = schema;
 
 // HyDE row to document shape (embedding may come as number[] or pg vector)
 type HydeSourceTypeLocal = 'intent' | 'profile' | 'query';
@@ -328,8 +328,8 @@ export class IntentDatabaseAdapter {
   }
 
   async deleteIntentIndexAssociations(intentId: string): Promise<void> {
-    await db.delete(schema.intentIndexes)
-      .where(eq(schema.intentIndexes.intentId, intentId));
+    await db.delete(schema.intentNetworks)
+      .where(eq(schema.intentNetworks.intentId, intentId));
   }
 
   /**
@@ -350,44 +350,44 @@ export class IntentDatabaseAdapter {
 
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let indexId: string | null = null;
+    let networkId: string | null = null;
 
     if (uuidRegex.test(indexNameOrId.trim())) {
       const membership = await db
-        .select({ indexId: schema.indexMembers.indexId })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            eq(schema.indexMembers.indexId, indexNameOrId.trim()),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.userId, userId),
+            eq(schema.networkMembers.networkId, indexNameOrId.trim()),
+            isNull(schema.networks.deletedAt)
           )
         )
         .limit(1);
-      indexId = membership[0]?.indexId ?? null;
+      networkId = membership[0]?.networkId ?? null;
     } else {
       const memberships = await db
         .select({
-          indexId: schema.indexMembers.indexId,
-          indexTitle: schema.indexes.title,
+          networkId: schema.networkMembers.networkId,
+          indexTitle: schema.networks.title,
         })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.userId, userId),
+            isNull(schema.networks.deletedAt)
           )
         );
       const needle = indexNameOrId.trim().toLowerCase();
       const match = memberships.find(
         (m) => (m.indexTitle ?? '').toLowerCase() === needle || (m.indexTitle ?? '').toLowerCase().includes(needle)
       );
-      indexId = match?.indexId ?? null;
+      networkId = match?.networkId ?? null;
     }
 
-    if (!indexId) {
+    if (!networkId) {
       return [];
     }
 
@@ -400,10 +400,10 @@ export class IntentDatabaseAdapter {
           createdAt: schema.intents.createdAt,
         })
         .from(schema.intents)
-        .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+        .innerJoin(schema.intentNetworks, eq(schema.intents.id, schema.intentNetworks.intentId))
         .where(
           and(
-            eq(schema.intentIndexes.indexId, indexId),
+            eq(schema.intentNetworks.networkId, networkId),
             eq(schema.intents.userId, userId),
             isNull(schema.intents.archivedAt)
           )
@@ -531,15 +531,15 @@ export class IntentDatabaseAdapter {
   /**
    * Associates an intent with an index (inserts intent_indexes row).
    * @param intentId - The intent identifier.
-   * @param indexId - The index identifier.
+   * @param networkId - The index identifier.
    * @returns Promise that resolves when the row is inserted.
-   * @throws May throw on database insertion errors (db.insert/schema.intentIndexes).
+   * @throws May throw on database insertion errors (db.insert/schema.intentNetworks).
    */
-  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
-    await db.insert(schema.intentIndexes)
-      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+  async assignIntentToIndex(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(schema.intentNetworks)
+      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
       .onConflictDoUpdate({
-        target: [schema.intentIndexes.intentId, schema.intentIndexes.indexId],
+        target: [schema.intentNetworks.intentId, schema.intentNetworks.networkId],
         set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
       });
   }
@@ -549,16 +549,16 @@ export class IntentDatabaseAdapter {
    * @param userId - The user whose contact memberships to look up
    * @returns Array of personal index IDs
    */
-  async getPersonalIndexesForContact(userId: string): Promise<{ indexId: string }[]> {
+  async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
     return db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .innerJoin(schema.indexes, eq(schema.indexes.id, schema.indexMembers.indexId))
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
       .where(
         and(
-          eq(schema.indexMembers.userId, userId),
-          eq(schema.indexes.isPersonal, true),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+          eq(schema.networkMembers.userId, userId),
+          eq(schema.networks.isPersonal, true),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         )
       );
   }
@@ -611,17 +611,17 @@ export class IntentDatabaseAdapter {
     };
   }
 
-  async isIndexMember(indexId: string, userId: string): Promise<boolean> {
+  async isIndexMember(networkId: string, userId: string): Promise<boolean> {
     const result = await db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
       .where(
         and(
-          eq(schema.indexMembers.indexId, indexId),
-          eq(schema.indexMembers.userId, userId),
-          isNull(schema.indexes.deletedAt),
-          sql`${schema.indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
+          eq(schema.networkMembers.networkId, networkId),
+          eq(schema.networkMembers.userId, userId),
+          isNull(schema.networks.deletedAt),
+          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
@@ -629,11 +629,11 @@ export class IntentDatabaseAdapter {
   }
 
   async getIndexIntentsForMember(
-    indexId: string,
+    networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
   ) {
-    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    const isMember = await this.isIndexMember(networkId, requestingUserId);
     if (!isMember) throw new Error('Access denied: Not a member of this index');
 
     const limit = options?.limit ?? 50;
@@ -649,12 +649,11 @@ export class IntentDatabaseAdapter {
         createdAt: schema.intents.createdAt,
       })
       .from(schema.intents)
-      .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+      .innerJoin(schema.intentNetworks, eq(schema.intents.id, schema.intentNetworks.intentId))
       .leftJoin(schema.users, eq(schema.intents.userId, schema.users.id))
       .where(
         and(
-          eq(schema.intentIndexes.indexId, indexId),
-          eq(schema.intents.userId, requestingUserId),
+          eq(schema.intentNetworks.networkId, networkId),
           isNull(schema.intents.archivedAt)
         )
       )
@@ -682,7 +681,7 @@ export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
-  indexId: string | null;
+  networkId: string | null;
   shareToken: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -702,7 +701,7 @@ export interface ChatMessage {
 /** Shape stored inside conversation_metadata.metadata for agent-chat sessions. */
 export interface ChatConversationMeta {
   title?: string | null;
-  indexId?: string | null;
+  networkId?: string | null;
   shareToken?: string | null;
   ghostInviteSent?: boolean;
   [key: string]: unknown;
@@ -722,7 +721,7 @@ export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
-  indexId?: string;
+  networkId?: string;
 }
 
 export interface CreateMessageInput {
@@ -769,7 +768,7 @@ export class ChatDatabaseAdapter {
   /** @deprecated Use conversationDatabaseAdapter.getUserChatSessions */
   async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> { return _convDb().getUserChatSessions(userId, limit); }
   /** @deprecated Use conversationDatabaseAdapter.updateChatSessionIndex */
-  async updateSessionIndex(sessionId: string, indexId: string | null): Promise<void> { return _convDb().updateChatSessionIndex(sessionId, indexId); }
+  async updateSessionIndex(sessionId: string, networkId: string | null): Promise<void> { return _convDb().updateChatSessionIndex(sessionId, networkId); }
   /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTitle */
   async updateSessionTitle(sessionId: string, title: string): Promise<void> { return _convDb().updateChatSessionTitle(sessionId, title); }
   /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTimestamp */
@@ -840,44 +839,44 @@ export class ChatDatabaseAdapter {
 
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let indexId: string | null = null;
+    let networkId: string | null = null;
 
     if (uuidRegex.test(indexNameOrId.trim())) {
       const membership = await db
-        .select({ indexId: schema.indexMembers.indexId })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            eq(schema.indexMembers.indexId, indexNameOrId.trim()),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.userId, userId),
+            eq(schema.networkMembers.networkId, indexNameOrId.trim()),
+            isNull(schema.networks.deletedAt)
           )
         )
         .limit(1);
-      indexId = membership[0]?.indexId ?? null;
+      networkId = membership[0]?.networkId ?? null;
     } else {
       const memberships = await db
         .select({
-          indexId: schema.indexMembers.indexId,
-          indexTitle: schema.indexes.title,
+          networkId: schema.networkMembers.networkId,
+          indexTitle: schema.networks.title,
         })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.userId, userId),
+            isNull(schema.networks.deletedAt)
           )
         );
       const needle = indexNameOrId.trim().toLowerCase();
       const match = memberships.find(
         (m) => (m.indexTitle ?? '').toLowerCase() === needle || (m.indexTitle ?? '').toLowerCase().includes(needle)
       );
-      indexId = match?.indexId ?? null;
+      networkId = match?.networkId ?? null;
     }
 
-    if (!indexId) {
+    if (!networkId) {
       return [];
     }
 
@@ -890,10 +889,10 @@ export class ChatDatabaseAdapter {
           createdAt: schema.intents.createdAt,
         })
         .from(schema.intents)
-        .innerJoin(schema.intentIndexes, eq(schema.intents.id, schema.intentIndexes.intentId))
+        .innerJoin(schema.intentNetworks, eq(schema.intents.id, schema.intentNetworks.intentId))
         .where(
           and(
-            eq(schema.intentIndexes.indexId, indexId),
+            eq(schema.intentNetworks.networkId, networkId),
             eq(schema.intents.userId, userId),
             isNull(schema.intents.archivedAt)
           )
@@ -1040,27 +1039,27 @@ export class ChatDatabaseAdapter {
     try {
       const result = await db
         .select({
-          indexId: schema.indexMembers.indexId,
-          indexTitle: schema.indexes.title,
-          indexPrompt: schema.indexes.prompt,
-          permissions: schema.indexMembers.permissions,
-          memberPrompt: schema.indexMembers.prompt,
-          autoAssign: schema.indexMembers.autoAssign,
-          isPersonal: schema.indexes.isPersonal,
-          joinedAt: schema.indexMembers.createdAt,
+          networkId: schema.networkMembers.networkId,
+          indexTitle: schema.networks.title,
+          indexPrompt: schema.networks.prompt,
+          permissions: schema.networkMembers.permissions,
+          memberPrompt: schema.networkMembers.prompt,
+          autoAssign: schema.networkMembers.autoAssign,
+          isPersonal: schema.networks.isPersonal,
+          joinedAt: schema.networkMembers.createdAt,
         })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
-        .leftJoin(schema.personalIndexes, eq(schema.indexes.id, schema.personalIndexes.indexId))
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
+        .leftJoin(schema.personalNetworks, eq(schema.networks.id, schema.personalNetworks.networkId))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            isNull(schema.indexes.deletedAt),
+            eq(schema.networkMembers.userId, userId),
+            isNull(schema.networks.deletedAt),
             or(
-              eq(schema.indexes.isPersonal, false),
+              eq(schema.networks.isPersonal, false),
               and(
-                eq(schema.indexes.isPersonal, true),
-                eq(schema.personalIndexes.userId, userId),
+                eq(schema.networks.isPersonal, true),
+                eq(schema.personalNetworks.userId, userId),
               )
             ),
           )
@@ -1072,26 +1071,26 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getIndexMembership(indexId: string, userId: string): Promise<IndexMembershipRow | null> {
+  async getIndexMembership(networkId: string, userId: string): Promise<IndexMembershipRow | null> {
     try {
       const result = await db
         .select({
-          indexId: schema.indexMembers.indexId,
-          indexTitle: schema.indexes.title,
-          indexPrompt: schema.indexes.prompt,
-          permissions: schema.indexMembers.permissions,
-          memberPrompt: schema.indexMembers.prompt,
-          autoAssign: schema.indexMembers.autoAssign,
-          isPersonal: schema.indexes.isPersonal,
-          joinedAt: schema.indexMembers.createdAt,
+          networkId: schema.networkMembers.networkId,
+          indexTitle: schema.networks.title,
+          indexPrompt: schema.networks.prompt,
+          permissions: schema.networkMembers.permissions,
+          memberPrompt: schema.networkMembers.prompt,
+          autoAssign: schema.networkMembers.autoAssign,
+          isPersonal: schema.networks.isPersonal,
+          joinedAt: schema.networkMembers.createdAt,
         })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.indexId, indexId),
-            eq(schema.indexMembers.userId, userId),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.networkId, networkId),
+            eq(schema.networkMembers.userId, userId),
+            isNull(schema.networks.deletedAt)
           )
         )
         .limit(1);
@@ -1102,11 +1101,11 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getIndex(indexId: string): Promise<{ id: string; title: string } | null> {
+  async getIndex(networkId: string): Promise<{ id: string; title: string } | null> {
     const rows = await db
-      .select({ id: schema.indexes.id, title: schema.indexes.title })
-      .from(schema.indexes)
-      .where(and(eq(schema.indexes.id, indexId), isNull(schema.indexes.deletedAt)))
+      .select({ id: schema.networks.id, title: schema.networks.title })
+      .from(schema.networks)
+      .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
       .limit(1);
     const row = rows[0];
     return row ? { id: row.id, title: row.title } : null;
@@ -1114,23 +1113,23 @@ export class ChatDatabaseAdapter {
 
   /**
    * Check whether an index is a personal index.
-   * @param indexId - The index to check
+   * @param networkId - The index to check
    * @returns true if the index has isPersonal = true
    */
-  async isPersonalIndex(indexId: string): Promise<boolean> {
+  async isPersonalIndex(networkId: string): Promise<boolean> {
     const rows = await db
-      .select({ isPersonal: schema.indexes.isPersonal })
-      .from(schema.indexes)
-      .where(and(eq(schema.indexes.id, indexId), isNull(schema.indexes.deletedAt)))
+      .select({ isPersonal: schema.networks.isPersonal })
+      .from(schema.networks)
+      .where(and(eq(schema.networks.id, networkId), isNull(schema.networks.deletedAt)))
       .limit(1);
     return rows[0]?.isPersonal === true;
   }
 
-  async getIndexWithPermissions(indexId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
+  async getIndexWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
     const rows = await db
-      .select({ id: indexes.id, title: indexes.title, permissions: indexes.permissions })
-      .from(indexes)
-      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .select({ id: networks.id, title: networks.title, permissions: networks.permissions })
+      .from(networks)
+      .where(and(eq(networks.id, networkId), isNull(networks.deletedAt)))
       .limit(1);
     const row = rows[0];
     if (!row) return null;
@@ -1144,18 +1143,18 @@ export class ChatDatabaseAdapter {
 
   async getIndexesForUser(userId: string) {
     const memberIndexIds = await db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
       .where(
         and(
-          eq(schema.indexMembers.userId, userId),
-          isNull(schema.indexes.deletedAt),
-          sql`${schema.indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
+          eq(schema.networkMembers.userId, userId),
+          isNull(schema.networks.deletedAt),
+          sql`${schema.networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       );
 
-    const ids = [...new Set(memberIndexIds.map((r) => r.indexId))];
+    const ids = [...new Set(memberIndexIds.map((r) => r.networkId))];
     if (ids.length === 0) {
       return {
         indexes: [],
@@ -1165,51 +1164,51 @@ export class ChatDatabaseAdapter {
 
     const ownerMembers = db
       .select({
-        indexId: schema.indexMembers.indexId,
-        userId: schema.indexMembers.userId,
+        networkId: schema.networkMembers.networkId,
+        userId: schema.networkMembers.userId,
       })
-      .from(schema.indexMembers)
-      .where(sql`'owner' = ANY(${schema.indexMembers.permissions})`)
+      .from(schema.networkMembers)
+      .where(sql`'owner' = ANY(${schema.networkMembers.permissions})`)
       .as('owner_members');
 
     const rows = await db
       .select({
-        id: schema.indexes.id,
-        title: schema.indexes.title,
-        key: schema.indexes.key,
-        prompt: schema.indexes.prompt,
-        imageUrl: schema.indexes.imageUrl,
-        permissions: schema.indexes.permissions,
-        isPersonal: schema.indexes.isPersonal,
+        id: schema.networks.id,
+        title: schema.networks.title,
+        key: schema.networks.key,
+        prompt: schema.networks.prompt,
+        imageUrl: schema.networks.imageUrl,
+        permissions: schema.networks.permissions,
+        isPersonal: schema.networks.isPersonal,
         ownerId: ownerMembers.userId,
-        createdAt: schema.indexes.createdAt,
-        updatedAt: schema.indexes.updatedAt,
+        createdAt: schema.networks.createdAt,
+        updatedAt: schema.networks.updatedAt,
         ownerName: schema.users.name,
         ownerAvatar: schema.users.avatar,
       })
-      .from(schema.indexes)
-      .leftJoin(ownerMembers, eq(schema.indexes.id, ownerMembers.indexId))
+      .from(schema.networks)
+      .leftJoin(ownerMembers, eq(schema.networks.id, ownerMembers.networkId))
       .leftJoin(schema.users, eq(ownerMembers.userId, schema.users.id))
       .where(
         and(
-          isNull(schema.indexes.deletedAt),
-          inArray(schema.indexes.id, ids),
+          isNull(schema.networks.deletedAt),
+          inArray(schema.networks.id, ids),
           // Only include personal indexes owned by the requesting user;
           // contacts in someone else's personal index must not see it.
           or(
-            eq(schema.indexes.isPersonal, false),
+            eq(schema.networks.isPersonal, false),
             eq(ownerMembers.userId, userId)
           )
         )
       )
-      .orderBy(desc(schema.indexes.isPersonal), desc(schema.indexes.createdAt));
+      .orderBy(desc(schema.networks.isPersonal), desc(schema.networks.createdAt));
 
     const indexesWithCounts = await Promise.all(
       rows.map(async (row) => {
         const [memberCount] = await db
           .select({ count: count() })
-          .from(schema.indexMembers)
-          .where(eq(schema.indexMembers.indexId, row.id));
+          .from(schema.networkMembers)
+          .where(eq(schema.networkMembers.networkId, row.id));
         return {
           id: row.id,
           title: row.title,
@@ -1250,32 +1249,32 @@ export class ChatDatabaseAdapter {
    */
   async getSharedIndexes(currentUserId: string, targetUserId: string): Promise<{ id: string; title: string; _count: { members: number } }[]> {
     const currentUserIndexIds = db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .where(eq(schema.indexMembers.userId, currentUserId));
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .where(eq(schema.networkMembers.userId, currentUserId));
 
     const targetUserIndexIds = db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .where(eq(schema.indexMembers.userId, targetUserId));
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .where(eq(schema.networkMembers.userId, targetUserId));
 
     const rows = await db
       .select({
-        id: schema.indexes.id,
-        title: schema.indexes.title,
-        memberCount: count(schema.indexMembers.indexId),
+        id: schema.networks.id,
+        title: schema.networks.title,
+        memberCount: count(schema.networkMembers.networkId),
       })
-      .from(schema.indexes)
-      .innerJoin(schema.indexMembers, eq(schema.indexes.id, schema.indexMembers.indexId))
+      .from(schema.networks)
+      .innerJoin(schema.networkMembers, eq(schema.networks.id, schema.networkMembers.networkId))
       .where(
         and(
-          isNull(schema.indexes.deletedAt),
-          eq(schema.indexes.isPersonal, false),
-          inArray(schema.indexes.id, currentUserIndexIds),
-          inArray(schema.indexes.id, targetUserIndexIds),
+          isNull(schema.networks.deletedAt),
+          eq(schema.networks.isPersonal, false),
+          inArray(schema.networks.id, currentUserIndexIds),
+          inArray(schema.networks.id, targetUserIndexIds),
         )
       )
-      .groupBy(schema.indexes.id, schema.indexes.title);
+      .groupBy(schema.networks.id, schema.networks.title);
 
     return rows.map((row) => ({
       id: row.id,
@@ -1289,33 +1288,33 @@ export class ChatDatabaseAdapter {
    */
   async getPublicIndexesNotJoined(userId: string) {
     const userIndexIds = await db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .where(eq(schema.indexMembers.userId, userId));
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .where(eq(schema.networkMembers.userId, userId));
     
-    const excludeIds = userIndexIds.map(r => r.indexId);
+    const excludeIds = userIndexIds.map(r => r.networkId);
     
     const whereConditions = [
-      isNull(schema.indexes.deletedAt),
-      eq(schema.indexes.isPersonal, false),
+      isNull(schema.networks.deletedAt),
+      eq(schema.networks.isPersonal, false),
     ];
 
     if (excludeIds.length > 0) {
-      whereConditions.push(notInArray(schema.indexes.id, excludeIds));
+      whereConditions.push(notInArray(schema.networks.id, excludeIds));
     }
 
     const publicIndexes = await db
       .select({
-        id: schema.indexes.id,
-        title: schema.indexes.title,
-        prompt: schema.indexes.prompt,
-        imageUrl: schema.indexes.imageUrl,
-        createdAt: schema.indexes.createdAt,
-        permissions: schema.indexes.permissions,
+        id: schema.networks.id,
+        title: schema.networks.title,
+        prompt: schema.networks.prompt,
+        imageUrl: schema.networks.imageUrl,
+        createdAt: schema.networks.createdAt,
+        permissions: schema.networks.permissions,
       })
-      .from(schema.indexes)
+      .from(schema.networks)
       .where(and(...whereConditions))
-      .orderBy(desc(schema.indexes.createdAt));
+      .orderBy(desc(schema.networks.createdAt));
 
     const result = [];
     for (const row of publicIndexes) {
@@ -1324,24 +1323,24 @@ export class ChatDatabaseAdapter {
 
       const [ownerMember] = await db
         .select({
-          userId: schema.indexMembers.userId,
+          userId: schema.networkMembers.userId,
           userName: schema.users.name,
           userAvatar: schema.users.avatar,
         })
-        .from(schema.indexMembers)
-        .innerJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+        .from(schema.networkMembers)
+        .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
         .where(
           and(
-            eq(schema.indexMembers.indexId, row.id),
-            sql`'owner' = ANY(${schema.indexMembers.permissions})`
+            eq(schema.networkMembers.networkId, row.id),
+            sql`'owner' = ANY(${schema.networkMembers.permissions})`
           )
         )
         .limit(1);
 
       const [countResult] = await db
         .select({ count: count() })
-        .from(schema.indexMembers)
-        .where(eq(schema.indexMembers.indexId, row.id));
+        .from(schema.networkMembers)
+        .where(eq(schema.networkMembers.networkId, row.id));
 
       result.push({
         id: row.id,
@@ -1373,17 +1372,17 @@ export class ChatDatabaseAdapter {
   async getUserIndexIds(userId: string): Promise<string[]> {
     try {
       const result = await db
-        .select({ indexId: schema.indexMembers.indexId })
-        .from(schema.indexMembers)
-        .innerJoin(schema.indexes, eq(schema.indexMembers.indexId, schema.indexes.id))
+        .select({ networkId: schema.networkMembers.networkId })
+        .from(schema.networkMembers)
+        .innerJoin(schema.networks, eq(schema.networkMembers.networkId, schema.networks.id))
         .where(
           and(
-            eq(schema.indexMembers.userId, userId),
-            eq(schema.indexMembers.autoAssign, true),
-            isNull(schema.indexes.deletedAt)
+            eq(schema.networkMembers.userId, userId),
+            eq(schema.networkMembers.autoAssign, true),
+            isNull(schema.networks.deletedAt)
           )
         );
-      return result.map((r) => r.indexId);
+      return result.map((r) => r.networkId);
     } catch (error: unknown) {
       logger.error('ChatDatabaseAdapter.getUserIndexIds error', { error: error instanceof Error ? error.message : String(error) });
       return [];
@@ -1449,81 +1448,81 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getIndexMemberContext(indexId: string, userId: string) {
+  async getIndexMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
-        indexId: indexes.id,
-        indexPrompt: indexes.prompt,
-        memberPrompt: indexMembers.prompt,
+        networkId: networks.id,
+        indexPrompt: networks.prompt,
+        memberPrompt: networkMembers.prompt,
       })
-      .from(indexes)
-      .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
+      .from(networks)
+      .innerJoin(networkMembers, eq(networks.id, networkMembers.networkId))
       .where(
         and(
-          eq(indexes.id, indexId),
-          eq(indexMembers.userId, userId),
-          eq(indexMembers.autoAssign, true),
-          isNull(indexes.deletedAt)
+          eq(networks.id, networkId),
+          eq(networkMembers.userId, userId),
+          eq(networkMembers.autoAssign, true),
+          isNull(networks.deletedAt)
         )
       )
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async isIntentAssignedToIndex(intentId: string, indexId: string): Promise<boolean> {
+  async isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean> {
     const rows = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
+      .select({ networkId: intentNetworks.networkId })
+      .from(intentNetworks)
       .where(
         and(
-          eq(intentIndexes.intentId, intentId),
-          eq(intentIndexes.indexId, indexId)
+          eq(intentNetworks.intentId, intentId),
+          eq(intentNetworks.networkId, networkId)
         )
       )
       .limit(1);
     return rows.length > 0;
   }
 
-  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
-    await db.insert(intentIndexes)
-      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+  async assignIntentToIndex(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(intentNetworks)
+      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
       .onConflictDoUpdate({
-        target: [intentIndexes.intentId, intentIndexes.indexId],
+        target: [intentNetworks.intentId, intentNetworks.networkId],
         set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
       });
   }
 
-  async getIntentIndexScores(intentId: string): Promise<Array<{ indexId: string; relevancyScore: number | null }>> {
+  async getIntentIndexScores(intentId: string): Promise<Array<{ networkId: string; relevancyScore: number | null }>> {
     const rows = await db
       .select({
-        indexId: intentIndexes.indexId,
-        relevancyScore: intentIndexes.relevancyScore,
+        networkId: intentNetworks.networkId,
+        relevancyScore: intentNetworks.relevancyScore,
       })
-      .from(intentIndexes)
-      .where(eq(intentIndexes.intentId, intentId));
+      .from(intentNetworks)
+      .where(eq(intentNetworks.intentId, intentId));
     return rows.map(r => ({
-      indexId: r.indexId,
+      networkId: r.networkId,
       relevancyScore: r.relevancyScore != null ? Number(r.relevancyScore) : null,
     }));
   }
 
-  async unassignIntentFromIndex(intentId: string, indexId: string): Promise<void> {
+  async unassignIntentFromIndex(intentId: string, networkId: string): Promise<void> {
     await db
-      .delete(intentIndexes)
+      .delete(intentNetworks)
       .where(
         and(
-          eq(intentIndexes.intentId, intentId),
-          eq(intentIndexes.indexId, indexId)
+          eq(intentNetworks.intentId, intentId),
+          eq(intentNetworks.networkId, networkId)
         )
       );
   }
 
   async getIndexIdsForIntent(intentId: string): Promise<string[]> {
     const rows = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
-      .where(eq(intentIndexes.intentId, intentId));
-    return rows.map((r) => r.indexId);
+      .select({ networkId: intentNetworks.networkId })
+      .from(intentNetworks)
+      .where(eq(intentNetworks.intentId, intentId));
+    return rows.map((r) => r.networkId);
   }
 
   // HyDE document operations (delegate to HydeDatabaseAdapter)
@@ -1564,39 +1563,39 @@ export class ChatDatabaseAdapter {
   async getOwnedIndexes(userId: string) {
     const ownerRows = await db
       .select({
-        indexId: indexMembers.indexId,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
-        isPersonal: indexes.isPersonal,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        ownerId: indexMembers.userId,
+        networkId: networkMembers.networkId,
+        title: networks.title,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
+        isPersonal: networks.isPersonal,
+        createdAt: networks.createdAt,
+        updatedAt: networks.updatedAt,
+        ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
-      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+      .innerJoin(users, eq(networkMembers.userId, users.id))
       .where(
         and(
-          eq(indexMembers.userId, userId),
-          sql`'owner' = ANY(${indexMembers.permissions})`,
-          isNull(indexes.deletedAt)
+          eq(networkMembers.userId, userId),
+          sql`'owner' = ANY(${networkMembers.permissions})`,
+          isNull(networks.deletedAt)
         )
       );
 
     const result = await Promise.all(
       ownerRows.map(async (row) => {
         const [memberCountResult, intentCountResult] = await Promise.all([
-          db.select({ count: count() }).from(indexMembers).where(eq(indexMembers.indexId, row.indexId)),
-          db.select({ count: count() }).from(intentIndexes).where(eq(intentIndexes.indexId, row.indexId)),
+          db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, row.networkId)),
+          db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, row.networkId)),
         ]);
         const perms = row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean } | null;
         const memberCount = Number(memberCountResult[0]?.count ?? 0);
         return {
-          id: row.indexId,
+          id: row.networkId,
           title: row.title,
           prompt: row.prompt,
           imageUrl: row.imageUrl,
@@ -1618,25 +1617,25 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
-  async getIndexMembersForMember(indexId: string, requestingUserId: string) {
-    const isMember = await this.isIndexMember(indexId, requestingUserId);
+  async getIndexMembersForMember(networkId: string, requestingUserId: string) {
+    const isMember = await this.isIndexMember(networkId, requestingUserId);
     if (!isMember) {
       throw new Error('Access denied: Not a member of this index');
     }
 
     const members = await db
       .select({
-        userId: indexMembers.userId,
+        userId: networkMembers.userId,
         name: users.name,
         avatar: users.avatar,
-        permissions: indexMembers.permissions,
-        memberPrompt: indexMembers.prompt,
-        autoAssign: indexMembers.autoAssign,
-        joinedAt: indexMembers.createdAt,
+        permissions: networkMembers.permissions,
+        memberPrompt: networkMembers.prompt,
+        autoAssign: networkMembers.autoAssign,
+        joinedAt: networkMembers.createdAt,
       })
-      .from(indexMembers)
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(eq(indexMembers.indexId, indexId));
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(eq(networkMembers.networkId, networkId));
 
     const [requestingUserEmailRow] = await db
       .select({ email: users.email })
@@ -1648,9 +1647,9 @@ export class ChatDatabaseAdapter {
       members.map(async (m) => {
         const [intentCountRow] = await db
           .select({ count: count() })
-          .from(intentIndexes)
-          .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-          .where(and(eq(intentIndexes.indexId, indexId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
+          .from(intentNetworks)
+          .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
+          .where(and(eq(intentNetworks.networkId, networkId), eq(intents.userId, m.userId), isNull(intents.archivedAt)));
         const email = m.userId === requestingUserId ? (requestingUserEmailRow?.email ?? undefined) : undefined;
         return {
           userId: m.userId,
@@ -1668,51 +1667,51 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
-  async isIndexOwner(indexId: string, userId: string): Promise<boolean> {
+  async isIndexOwner(networkId: string, userId: string): Promise<boolean> {
     const rows = await db
-      .select({ userId: indexMembers.userId })
-      .from(indexMembers)
+      .select({ userId: networkMembers.userId })
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, indexId),
-          eq(indexMembers.userId, userId),
-          sql`'owner' = ANY(${indexMembers.permissions})`
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, userId),
+          sql`'owner' = ANY(${networkMembers.permissions})`
         )
       )
       .limit(1);
     return rows.length > 0;
   }
 
-  async getIndexMembersForOwner(indexId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+  async getIndexMembersForOwner(networkId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
     }
 
     const members = await db
       .select({
-        userId: indexMembers.userId,
+        userId: networkMembers.userId,
         name: users.name,
         avatar: users.avatar,
         intro: users.intro,
         email: users.email,
         isGhost: users.isGhost,
-        permissions: indexMembers.permissions,
-        memberPrompt: indexMembers.prompt,
-        autoAssign: indexMembers.autoAssign,
-        joinedAt: indexMembers.createdAt,
+        permissions: networkMembers.permissions,
+        memberPrompt: networkMembers.prompt,
+        autoAssign: networkMembers.autoAssign,
+        joinedAt: networkMembers.createdAt,
       })
-      .from(indexMembers)
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(eq(indexMembers.indexId, indexId));
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(eq(networkMembers.networkId, networkId));
 
     const memberUserIds = members.map((m) => m.userId);
     const intentCountRows = memberUserIds.length > 0
       ? await db
           .select({ userId: intents.userId, count: count() })
-          .from(intentIndexes)
-          .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-          .where(and(eq(intentIndexes.indexId, indexId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
+          .from(intentNetworks)
+          .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
+          .where(and(eq(intentNetworks.networkId, networkId), inArray(intents.userId, memberUserIds), isNull(intents.archivedAt)))
           .groupBy(intents.userId)
       : [];
     const intentCountMap = new Map(intentCountRows.map((r) => [r.userId, Number(r.count)]));
@@ -1735,29 +1734,29 @@ export class ChatDatabaseAdapter {
   async getMembersFromUserIndexes(userId: Id<'users'>): Promise<{ userId: Id<'users'>; name: string; avatar: string | null }[]> {
     // Indexes the user is a member of (non-deleted)
     const myIndexRows = await db
-      .select({ indexId: indexMembers.indexId })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .select({ networkId: networkMembers.networkId })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
-        and(eq(indexMembers.userId, userId), isNull(indexes.deletedAt))
+        and(eq(networkMembers.userId, userId), isNull(networks.deletedAt))
       );
-    const myIndexIds = myIndexRows.map((r) => r.indexId);
+    const myIndexIds = myIndexRows.map((r) => r.networkId);
     if (myIndexIds.length === 0) return [];
 
     // All members from those indexes, joined with users; dedupe by userId
     const rows = await db
       .select({
-        userId: indexMembers.userId,
+        userId: networkMembers.userId,
         name: users.name,
         avatar: users.avatar,
       })
-      .from(indexMembers)
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
         and(
-          inArray(indexMembers.indexId, myIndexIds),
-          isNull(indexes.deletedAt),
+          inArray(networkMembers.networkId, myIndexIds),
+          isNull(networks.deletedAt),
           isNull(users.deletedAt),
         )
       );
@@ -1770,11 +1769,11 @@ export class ChatDatabaseAdapter {
   }
 
   async getIndexIntentsForOwner(
-    indexId: string,
+    networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
   ) {
-    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
     }
@@ -1791,10 +1790,10 @@ export class ChatDatabaseAdapter {
         userName: users.name,
         createdAt: intents.createdAt,
       })
-      .from(intentIndexes)
-      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+      .from(intentNetworks)
+      .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentIndexes.indexId, indexId), isNull(intents.archivedAt)))
+      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -1809,34 +1808,34 @@ export class ChatDatabaseAdapter {
     }));
   }
 
-  async isIndexMember(indexId: string, userId: string): Promise<boolean> {
+  async isIndexMember(networkId: string, userId: string): Promise<boolean> {
     const rows = await db
-      .select({ userId: indexMembers.userId })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .select({ userId: networkMembers.userId })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
         and(
-          eq(indexMembers.indexId, indexId),
-          eq(indexMembers.userId, userId),
-          isNull(indexes.deletedAt),
-          sql`${indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, userId),
+          isNull(networks.deletedAt),
+          sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
     return rows.length > 0;
   }
 
-  async getMemberSettings(indexId: string, userId: string): Promise<{ permissions: string[]; isOwner: boolean } | null> {
+  async getMemberSettings(networkId: string, userId: string): Promise<{ permissions: string[]; isOwner: boolean } | null> {
     const rows = await db
-      .select({ permissions: indexMembers.permissions })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .select({ permissions: networkMembers.permissions })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
       .where(
         and(
-          eq(indexMembers.indexId, indexId),
-          eq(indexMembers.userId, userId),
-          isNull(indexes.deletedAt),
-          sql`${indexMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
+          eq(networkMembers.networkId, networkId),
+          eq(networkMembers.userId, userId),
+          isNull(networks.deletedAt),
+          sql`${networkMembers.permissions} && ARRAY['owner', 'member', 'admin']::text[]`
         )
       )
       .limit(1);
@@ -1850,11 +1849,11 @@ export class ChatDatabaseAdapter {
   }
 
   async getIndexIntentsForMember(
-    indexId: string,
+    networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
   ) {
-    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    const isMember = await this.isIndexMember(networkId, requestingUserId);
     if (!isMember) {
       throw new Error('Access denied: Not a member of this index');
     }
@@ -1871,14 +1870,10 @@ export class ChatDatabaseAdapter {
         userName: users.name,
         createdAt: intents.createdAt,
       })
-      .from(intentIndexes)
-      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+      .from(intentNetworks)
+      .innerJoin(intents, eq(intentNetworks.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(
-        eq(intentIndexes.indexId, indexId),
-        eq(intents.userId, requestingUserId),
-        isNull(intents.archivedAt),
-      ))
+      .where(and(eq(intentNetworks.networkId, networkId), isNull(intents.archivedAt)))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);
@@ -1894,16 +1889,16 @@ export class ChatDatabaseAdapter {
   }
 
   async updateIndexSettings(
-    indexId: string,
+    networkId: string,
     requestingUserId: string,
     data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }
   ) {
-    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
     }
 
-    const [existing] = await db.select().from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    const [existing] = await db.select().from(networks).where(eq(networks.id, networkId)).limit(1);
     if (!existing) {
       throw new Error('Index not found');
     }
@@ -1921,40 +1916,40 @@ export class ChatDatabaseAdapter {
       };
     }
 
-    await db.update(indexes).set(updateData).where(eq(indexes.id, indexId));
+    await db.update(networks).set(updateData).where(eq(networks.id, networkId));
 
     const [updatedRow] = await db
       .select({
-        id: indexes.id,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
-        isPersonal: indexes.isPersonal,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        ownerId: indexMembers.userId,
+        id: networks.id,
+        title: networks.title,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
+        isPersonal: networks.isPersonal,
+        createdAt: networks.createdAt,
+        updatedAt: networks.updatedAt,
+        ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(indexes)
+      .from(networks)
       .innerJoin(
-        indexMembers,
+        networkMembers,
         and(
-          eq(indexes.id, indexMembers.indexId),
-          sql`'owner' = ANY(${indexMembers.permissions})`
+          eq(networks.id, networkMembers.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`
         )
       )
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(eq(indexes.id, indexId))
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(eq(networks.id, networkId))
       .limit(1);
 
     if (!updatedRow) {
       throw new Error('Index not found after update');
     }
     const [memberCountResult, intentCountResult] = await Promise.all([
-      db.select({ count: count() }).from(indexMembers).where(eq(indexMembers.indexId, indexId)),
-      db.select({ count: count() }).from(intentIndexes).where(eq(intentIndexes.indexId, indexId)),
+      db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId)),
+      db.select({ count: count() }).from(intentNetworks).where(eq(intentNetworks.networkId, networkId)),
     ]);
     const perms = (updatedRow.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
     const memberCount = Number(memberCountResult[0]?.count ?? 0);
@@ -1978,10 +1973,10 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async softDeleteIndex(indexId: string): Promise<void> {
-    await db.delete(intentIndexes).where(eq(intentIndexes.indexId, indexId));
-    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
-    await db.update(indexes).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(indexes.id, indexId));
+  async softDeleteIndex(networkId: string): Promise<void> {
+    await db.delete(intentNetworks).where(eq(intentNetworks.networkId, networkId));
+    await db.delete(networkMembers).where(eq(networkMembers.networkId, networkId));
+    await db.update(networks).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(networks.id, networkId));
   }
 
   async getProfileByUserId(userId: string): Promise<(ProfileRow & { id: string }) | null> {
@@ -2057,7 +2052,7 @@ export class ChatDatabaseAdapter {
       allowGuestVibeCheck: false,
     };
     const [row] = await db
-      .insert(indexes)
+      .insert(networks)
       .values({
         title: data.title,
         prompt: data.prompt ?? null,
@@ -2065,11 +2060,11 @@ export class ChatDatabaseAdapter {
         permissions,
       })
       .returning({
-        id: indexes.id,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
+        id: networks.id,
+        title: networks.title,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
       });
     if (!row) throw new Error('Failed to create index');
     const perms = (row.permissions as { joinPolicy: string; invitationLink: { code: string } | null; allowGuestVibeCheck: boolean }) ?? {};
@@ -2086,45 +2081,45 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async getIndexMemberCount(indexId: string): Promise<number> {
-    const [r] = await db.select({ count: count() }).from(indexMembers).where(eq(indexMembers.indexId, indexId));
+  async getIndexMemberCount(networkId: string): Promise<number> {
+    const [r] = await db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId));
     return Number(r?.count ?? 0);
   }
 
   async addMemberToIndex(
-    indexId: string,
+    networkId: string,
     userId: string,
     role: 'owner' | 'admin' | 'member'
   ): Promise<{ success: boolean; alreadyMember?: boolean }> {
     let memberPrompt: string | null = null;
-    const [indexRow] = await db.select({ prompt: indexes.prompt }).from(indexes).where(eq(indexes.id, indexId)).limit(1);
+    const [indexRow] = await db.select({ prompt: networks.prompt }).from(networks).where(eq(networks.id, networkId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
 
     const finalPermissions = role === 'owner' ? ['owner'] : role === 'admin' ? ['admin', 'member'] : ['member'];
-    const result = await db.insert(indexMembers).values({
-      indexId,
+    const result = await db.insert(networkMembers).values({
+      networkId,
       userId,
       permissions: finalPermissions,
       prompt: memberPrompt,
       autoAssign: true,
-    }).onConflictDoNothing({ target: [indexMembers.indexId, indexMembers.userId] }).returning();
+    }).onConflictDoNothing({ target: [networkMembers.networkId, networkMembers.userId] }).returning();
 
     if (result.length > 0) {
       try {
-        IndexMembershipEvents.onMemberAdded(userId, indexId);
+        NetworkMembershipEvents.onMemberAdded(userId, networkId);
       } catch (err) {
-        logger.warn('addMemberToIndex event hook failed (non-fatal)', { indexId, userId, error: err instanceof Error ? err.message : String(err) });
+        logger.warn('addMemberToIndex event hook failed (non-fatal)', { networkId, userId, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return { success: true, alreadyMember: result.length === 0 };
   }
 
   async removeMemberFromIndex(
-    indexId: string,
+    networkId: string,
     userId: string
   ): Promise<{ success: boolean; wasOwner?: boolean; notMember?: boolean }> {
     // Check if user is the owner - owners cannot be removed
-    const isOwner = await this.isIndexOwner(indexId, userId);
+    const isOwner = await this.isIndexOwner(networkId, userId);
     if (isOwner) {
       return { success: false, wasOwner: true };
     }
@@ -2132,8 +2127,8 @@ export class ChatDatabaseAdapter {
     // Check if user is actually a member
     const existing = await db
       .select()
-      .from(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+      .from(networkMembers)
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)))
       .limit(1);
 
     if (existing.length === 0) {
@@ -2142,8 +2137,8 @@ export class ChatDatabaseAdapter {
 
     // Delete the membership
     await db
-      .delete(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)));
+      .delete(networkMembers)
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)));
 
     return { success: true };
   }
@@ -2185,30 +2180,30 @@ export class ChatDatabaseAdapter {
    * Get a single index with owner info and member count.
    * Checks that the requesting user is a member; throws "Access denied" if not.
    */
-  async getPublicIndexDetail(indexId: string) {
+  async getPublicIndexDetail(networkId: string) {
     const rows = await db
       .select({
-        id: indexes.id,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        ownerId: indexMembers.userId,
+        id: networks.id,
+        title: networks.title,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
+        createdAt: networks.createdAt,
+        updatedAt: networks.updatedAt,
+        ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(indexes)
+      .from(networks)
       .innerJoin(
-        indexMembers,
+        networkMembers,
         and(
-          eq(indexes.id, indexMembers.indexId),
-          sql`'owner' = ANY(${indexMembers.permissions})`
+          eq(networks.id, networkMembers.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`
         )
       )
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(and(eq(networks.id, networkId), isNull(networks.deletedAt)))
       .limit(1);
 
     const row = rows[0];
@@ -2217,7 +2212,7 @@ export class ChatDatabaseAdapter {
     const perms = row.permissions as { joinPolicy?: string } | null;
     if (perms?.joinPolicy !== 'anyone') return null;
 
-    const memberCount = await this.getIndexMemberCount(indexId);
+    const memberCount = await this.getIndexMemberCount(networkId);
 
     return {
       id: row.id,
@@ -2240,31 +2235,31 @@ export class ChatDatabaseAdapter {
   async getIndexByShareCode(code: string) {
     const rows = await db
       .select({
-        id: indexes.id,
-        title: indexes.title,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        ownerId: indexMembers.userId,
+        id: networks.id,
+        title: networks.title,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
+        createdAt: networks.createdAt,
+        updatedAt: networks.updatedAt,
+        ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(indexes)
+      .from(networks)
       .innerJoin(
-        indexMembers,
+        networkMembers,
         and(
-          eq(indexes.id, indexMembers.indexId),
-          sql`'owner' = ANY(${indexMembers.permissions})`
+          eq(networks.id, networkMembers.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`
         )
       )
-      .innerJoin(users, eq(indexMembers.userId, users.id))
+      .innerJoin(users, eq(networkMembers.userId, users.id))
       .where(
         and(
-          sql`${indexes.permissions}->'invitationLink'->>'code' = ${code}`,
-          isNull(indexes.deletedAt),
-          eq(indexes.isPersonal, false)
+          sql`${networks.permissions}->'invitationLink'->>'code' = ${code}`,
+          isNull(networks.deletedAt),
+          eq(networks.isPersonal, false)
         )
       )
       .limit(1);
@@ -2306,16 +2301,16 @@ export class ChatDatabaseAdapter {
 
     const [memberRow] = await db
       .select({
-        userId: indexMembers.userId,
+        userId: networkMembers.userId,
         name: users.name,
         email: users.email,
         avatar: users.avatar,
-        permissions: indexMembers.permissions,
-        createdAt: indexMembers.createdAt,
+        permissions: networkMembers.permissions,
+        createdAt: networkMembers.createdAt,
       })
-      .from(indexMembers)
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(and(eq(indexMembers.indexId, index.id), eq(indexMembers.userId, userId)))
+      .from(networkMembers)
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(and(eq(networkMembers.networkId, index.id), eq(networkMembers.userId, userId)))
       .limit(1);
 
     return {
@@ -2334,42 +2329,42 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async getIndexDetail(indexId: string, requestingUserId: string) {
+  async getIndexDetail(networkId: string, requestingUserId: string) {
     const rows = await db
       .select({
-        id: indexes.id,
-        title: indexes.title,
-        key: indexes.key,
-        prompt: indexes.prompt,
-        imageUrl: indexes.imageUrl,
-        permissions: indexes.permissions,
-        createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        ownerId: indexMembers.userId,
+        id: networks.id,
+        title: networks.title,
+        key: networks.key,
+        prompt: networks.prompt,
+        imageUrl: networks.imageUrl,
+        permissions: networks.permissions,
+        createdAt: networks.createdAt,
+        updatedAt: networks.updatedAt,
+        ownerId: networkMembers.userId,
         userName: users.name,
         userAvatar: users.avatar,
       })
-      .from(indexes)
+      .from(networks)
       .innerJoin(
-        indexMembers,
+        networkMembers,
         and(
-          eq(indexes.id, indexMembers.indexId),
-          sql`'owner' = ANY(${indexMembers.permissions})`
+          eq(networks.id, networkMembers.networkId),
+          sql`'owner' = ANY(${networkMembers.permissions})`
         )
       )
-      .innerJoin(users, eq(indexMembers.userId, users.id))
-      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .innerJoin(users, eq(networkMembers.userId, users.id))
+      .where(and(eq(networks.id, networkId), isNull(networks.deletedAt)))
       .limit(1);
 
     const row = rows[0];
     if (!row) return null;
 
-    const isMember = await this.isIndexMember(indexId, requestingUserId);
+    const isMember = await this.isIndexMember(networkId, requestingUserId);
     if (!isMember) {
       throw new Error('Access denied: Not a member of this index');
     }
 
-    const memberCount = await this.getIndexMemberCount(indexId);
+    const memberCount = await this.getIndexMemberCount(networkId);
 
     return {
       id: row.id,
@@ -2397,13 +2392,13 @@ export class ChatDatabaseAdapter {
     if (!personalIndexId) return [];
 
     const contactUserIds = db
-      .select({ userId: schema.indexMembers.userId })
-      .from(schema.indexMembers)
+      .select({ userId: schema.networkMembers.userId })
+      .from(schema.networkMembers)
       .where(
         and(
-          eq(schema.indexMembers.indexId, personalIndexId),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-          isNull(schema.indexMembers.deletedAt)
+          eq(schema.networkMembers.networkId, personalIndexId),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+          isNull(schema.networkMembers.deletedAt)
         )
       );
 
@@ -2416,9 +2411,9 @@ export class ChatDatabaseAdapter {
 
     if (excludeIndexId) {
       const existingMembers = db
-        .select({ userId: indexMembers.userId })
-        .from(indexMembers)
-        .where(eq(indexMembers.indexId, excludeIndexId));
+        .select({ userId: networkMembers.userId })
+        .from(networkMembers)
+        .where(eq(networkMembers.networkId, excludeIndexId));
       conditions.push(notInArray(users.id, existingMembers));
     }
 
@@ -2434,22 +2429,22 @@ export class ChatDatabaseAdapter {
    * Throws "Access denied" if not authorized.
    */
   async addMemberForOwnerOrAdmin(
-    indexId: string,
+    networkId: string,
     userId: string,
     requestingUserId: string,
     role: 'admin' | 'member' = 'member'
   ) {
     const [membership] = await db
-      .select({ permissions: indexMembers.permissions })
-      .from(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, requestingUserId)))
+      .select({ permissions: networkMembers.permissions })
+      .from(networkMembers)
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, requestingUserId)))
       .limit(1);
 
     if (!membership || (!membership.permissions?.includes('owner') && !membership.permissions?.includes('admin'))) {
       throw new Error('Access denied: Only owners or admins can add members');
     }
 
-    const result = await this.addMemberToIndex(indexId, userId, role);
+    const result = await this.addMemberToIndex(networkId, userId, role);
     const user = await this.getUser(userId);
 
     return {
@@ -2465,8 +2460,8 @@ export class ChatDatabaseAdapter {
    * Checks isIndexOwner internally; throws "Access denied" if not owner.
    * Prevents self-removal. Throws "Member not found" if member doesn't exist.
    */
-  async removeMemberForOwner(indexId: string, memberUserId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+  async removeMemberForOwner(networkId: string, memberUserId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
     }
@@ -2476,9 +2471,9 @@ export class ChatDatabaseAdapter {
     }
 
     const deleted = await db
-      .delete(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, memberUserId)))
-      .returning({ userId: indexMembers.userId });
+      .delete(networkMembers)
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, memberUserId)))
+      .returning({ userId: networkMembers.userId });
 
     if (deleted.length === 0) {
       throw new Error('Member not found');
@@ -2488,11 +2483,11 @@ export class ChatDatabaseAdapter {
   /**
    * Join a public index (anyone can join if joinPolicy is 'anyone').
    */
-  async joinPublicIndex(indexId: string, userId: string) {
+  async joinPublicIndex(networkId: string, userId: string) {
     const [index] = await db
-      .select({ permissions: indexes.permissions, deletedAt: indexes.deletedAt })
-      .from(indexes)
-      .where(eq(indexes.id, indexId))
+      .select({ permissions: networks.permissions, deletedAt: networks.deletedAt })
+      .from(networks)
+      .where(eq(networks.id, networkId))
       .limit(1);
 
     if (!index || index.deletedAt) {
@@ -2504,23 +2499,23 @@ export class ChatDatabaseAdapter {
       throw new Error('This index is not public');
     }
 
-    return await this.addMemberToIndex(indexId, userId, 'member');
+    return await this.addMemberToIndex(networkId, userId, 'member');
   }
 
   /**
    * Leave an index. Members (non-owners) can leave an index.
    * Owners cannot leave their own index.
    */
-  async leaveIndex(indexId: string, userId: string) {
-    const isOwner = await this.isIndexOwner(indexId, userId);
+  async leaveIndex(networkId: string, userId: string) {
+    const isOwner = await this.isIndexOwner(networkId, userId);
     if (isOwner) {
       throw new Error('Cannot leave an index you own. Delete the index instead.');
     }
 
     const deleted = await db
-      .delete(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
-      .returning({ userId: indexMembers.userId });
+      .delete(networkMembers)
+      .where(and(eq(networkMembers.networkId, networkId), eq(networkMembers.userId, userId)))
+      .returning({ userId: networkMembers.userId });
 
     if (deleted.length === 0) {
       throw new Error('You are not a member of this index');
@@ -2531,13 +2526,13 @@ export class ChatDatabaseAdapter {
    * Soft-delete an index. Owner-only.
    * Checks isIndexOwner internally; throws "Access denied" if not owner.
    */
-  async deleteIndexForOwner(indexId: string, requestingUserId: string) {
-    const isOwner = await this.isIndexOwner(indexId, requestingUserId);
+  async deleteIndexForOwner(networkId: string, requestingUserId: string) {
+    const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
     }
 
-    await this.softDeleteIndex(indexId);
+    await this.softDeleteIndex(networkId);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
@@ -2565,15 +2560,15 @@ export class ChatDatabaseAdapter {
   }
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.getOpportunitiesForUser(userId, options);
   }
   async getOpportunitiesForIndex(
-    indexId: string,
+    networkId: string,
     options?: { status?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    return this.opportunityAdapter.getOpportunitiesForIndex(indexId, options);
+    return this.opportunityAdapter.getOpportunitiesForIndex(networkId, options);
   }
   async updateOpportunityStatus(
     id: string,
@@ -2581,14 +2576,14 @@ export class ChatDatabaseAdapter {
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
-  async opportunityExistsBetweenActors(actorIds: string[], indexId: string): Promise<boolean> {
-    return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, indexId);
+  async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
+    return this.opportunityAdapter.opportunityExistsBetweenActors(actorIds, networkId);
   }
   async getOpportunityBetweenActors(
     actorIds: string[],
-    indexId: string
+    networkId: string
   ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired' } | null> {
-    return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, indexId);
+    return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, networkId);
   }
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
@@ -2599,8 +2594,8 @@ export class ChatDatabaseAdapter {
   async expireOpportunitiesByIntent(intentId: string): Promise<number> {
     return this.opportunityAdapter.expireOpportunitiesByIntent(intentId);
   }
-  async expireOpportunitiesForRemovedMember(indexId: string, userId: string): Promise<number> {
-    return this.opportunityAdapter.expireOpportunitiesForRemovedMember(indexId, userId);
+  async expireOpportunitiesForRemovedMember(networkId: string, userId: string): Promise<number> {
+    return this.opportunityAdapter.expireOpportunitiesForRemovedMember(networkId, userId);
   }
   async expireStaleOpportunities(): Promise<number> {
     return this.opportunityAdapter.expireStaleOpportunities();
@@ -2712,14 +2707,14 @@ export class ChatDatabaseAdapter {
     if (!user || !user.isGhost) return false;
 
     // Soft-delete all index_members rows where this ghost is a contact
-    const result = await db.update(schema.indexMembers)
+    const result = await db.update(schema.networkMembers)
       .set({ deletedAt: new Date() })
       .where(and(
-        eq(schema.indexMembers.userId, settings.userId),
-        sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-        isNull(schema.indexMembers.deletedAt),
+        eq(schema.networkMembers.userId, settings.userId),
+        sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+        isNull(schema.networkMembers.deletedAt),
       ))
-      .returning({ indexId: schema.indexMembers.indexId });
+      .returning({ networkId: schema.networkMembers.networkId });
 
     return result.length > 0;
   }
@@ -2776,16 +2771,16 @@ export class ChatDatabaseAdapter {
    * @param userId - The user whose contact memberships to look up
    * @returns Array of personal index IDs
    */
-  async getPersonalIndexesForContact(userId: string): Promise<{ indexId: string }[]> {
+  async getPersonalIndexesForContact(userId: string): Promise<{ networkId: string }[]> {
     return db
-      .select({ indexId: schema.indexMembers.indexId })
-      .from(schema.indexMembers)
-      .innerJoin(schema.indexes, eq(schema.indexes.id, schema.indexMembers.indexId))
+      .select({ networkId: schema.networkMembers.networkId })
+      .from(schema.networkMembers)
+      .innerJoin(schema.networks, eq(schema.networks.id, schema.networkMembers.networkId))
       .where(
         and(
-          eq(schema.indexMembers.userId, userId),
-          eq(schema.indexes.isPersonal, true),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+          eq(schema.networkMembers.userId, userId),
+          eq(schema.networks.isPersonal, true),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         )
       );
   }
@@ -2925,27 +2920,27 @@ export class ChatDatabaseAdapter {
 
     if (options.restore) {
       await db
-        .insert(schema.indexMembers)
+        .insert(schema.networkMembers)
         .values({
-          indexId: personalIndexId,
+          networkId: personalIndexId,
           userId: contactUserId,
           permissions: ['contact'],
           autoAssign: false,
         })
         .onConflictDoUpdate({
-          target: [schema.indexMembers.indexId, schema.indexMembers.userId],
+          target: [schema.networkMembers.networkId, schema.networkMembers.userId],
           set: { deletedAt: null, updatedAt: new Date() },
         });
     } else {
       // Check for soft-deleted row first — skip if found (opt-out respected)
       const [existing] = await db
-        .select({ deletedAt: schema.indexMembers.deletedAt })
-        .from(schema.indexMembers)
+        .select({ deletedAt: schema.networkMembers.deletedAt })
+        .from(schema.networkMembers)
         .where(
           and(
-            eq(schema.indexMembers.indexId, personalIndexId),
-            eq(schema.indexMembers.userId, contactUserId),
-            sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+            eq(schema.networkMembers.networkId, personalIndexId),
+            eq(schema.networkMembers.userId, contactUserId),
+            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
           )
         )
         .limit(1);
@@ -2953,9 +2948,9 @@ export class ChatDatabaseAdapter {
       if (existing?.deletedAt) return; // soft-deleted — do not restore
 
       await db
-        .insert(schema.indexMembers)
+        .insert(schema.networkMembers)
         .values({
-          indexId: personalIndexId,
+          networkId: personalIndexId,
           userId: contactUserId,
           permissions: ['contact'],
           autoAssign: false,
@@ -2977,14 +2972,14 @@ export class ChatDatabaseAdapter {
 
     const softDeleted = new Set(
       (await db
-        .select({ userId: schema.indexMembers.userId })
-        .from(schema.indexMembers)
+        .select({ userId: schema.networkMembers.userId })
+        .from(schema.networkMembers)
         .where(
           and(
-            eq(schema.indexMembers.indexId, personalIndexId),
-            inArray(schema.indexMembers.userId, contactUserIds),
-            sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-            isNotNull(schema.indexMembers.deletedAt),
+            eq(schema.networkMembers.networkId, personalIndexId),
+            inArray(schema.networkMembers.userId, contactUserIds),
+            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+            isNotNull(schema.networkMembers.deletedAt),
           )
         )
       ).map(r => r.userId)
@@ -2994,61 +2989,61 @@ export class ChatDatabaseAdapter {
     if (idsToInsert.length === 0) return;
 
     const values = idsToInsert.map(userId => ({
-      indexId: personalIndexId,
+      networkId: personalIndexId,
       userId,
       permissions: ['contact'],
       autoAssign: false,
     }));
-    await db.insert(schema.indexMembers).values(values).onConflictDoNothing();
+    await db.insert(schema.networkMembers).values(values).onConflictDoNothing();
   }
 
   /**
    * Bulk-add users as members to a specific index.
    * Skips users that are already members (onConflictDoNothing).
-   * @param indexId - The target index
+   * @param networkId - The target index
    * @param userIds - User IDs to add as members
    */
-  async addMembersBulkToIndex(indexId: string, userIds: string[]): Promise<void> {
+  async addMembersBulkToIndex(networkId: string, userIds: string[]): Promise<void> {
     if (userIds.length === 0) return;
 
     let memberPrompt: string | null = null;
-    const [indexRow] = await db.select({ prompt: schema.indexes.prompt }).from(schema.indexes).where(eq(schema.indexes.id, indexId)).limit(1);
+    const [indexRow] = await db.select({ prompt: schema.networks.prompt }).from(schema.networks).where(eq(schema.networks.id, networkId)).limit(1);
     if (indexRow) memberPrompt = indexRow.prompt;
 
     const values = userIds.map(userId => ({
-      indexId,
+      networkId,
       userId,
       permissions: ['member'],
       prompt: memberPrompt,
       autoAssign: false,
     }));
-    await db.insert(schema.indexMembers).values(values).onConflictDoNothing();
+    await db.insert(schema.networkMembers).values(values).onConflictDoNothing();
   }
 
   // ─── Index Integrations ───────────────────────────────────────────────────────
 
   /**
    * Link a Composio connected account to an index.
-   * @param indexId - Target index
+   * @param networkId - Target index
    * @param toolkit - Toolkit slug (e.g. 'gmail', 'slack')
    * @param connectedAccountId - Composio connected account ID
    */
-  async insertIndexIntegration(indexId: string, toolkit: string, connectedAccountId: string): Promise<void> {
-    await db.insert(schema.indexIntegrations)
-      .values({ indexId, toolkit, connectedAccountId })
+  async insertIndexIntegration(networkId: string, toolkit: string, connectedAccountId: string): Promise<void> {
+    await db.insert(schema.networkIntegrations)
+      .values({ networkId, toolkit, connectedAccountId })
       .onConflictDoNothing();
   }
 
   /**
    * Unlink a toolkit from an index.
-   * @param indexId - Target index
+   * @param networkId - Target index
    * @param toolkit - Toolkit slug
    */
-  async deleteIndexIntegration(indexId: string, toolkit: string): Promise<void> {
-    await db.delete(schema.indexIntegrations)
+  async deleteIndexIntegration(networkId: string, toolkit: string): Promise<void> {
+    await db.delete(schema.networkIntegrations)
       .where(and(
-        eq(schema.indexIntegrations.indexId, indexId),
-        eq(schema.indexIntegrations.toolkit, toolkit),
+        eq(schema.networkIntegrations.networkId, networkId),
+        eq(schema.networkIntegrations.toolkit, toolkit),
       ));
   }
 
@@ -3058,23 +3053,23 @@ export class ChatDatabaseAdapter {
    * @param connectedAccountId - Composio connected account ID
    */
   async deleteIndexIntegrationsByConnectedAccount(connectedAccountId: string): Promise<void> {
-    await db.delete(schema.indexIntegrations)
-      .where(eq(schema.indexIntegrations.connectedAccountId, connectedAccountId));
+    await db.delete(schema.networkIntegrations)
+      .where(eq(schema.networkIntegrations.connectedAccountId, connectedAccountId));
   }
 
   /**
    * List all linked integrations for an index.
-   * @param indexId - The index to query
+   * @param networkId - The index to query
    * @returns Array of linked integration records
    */
-  async getIndexIntegrations(indexId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
+  async getIndexIntegrations(networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
     return db.select({
-      toolkit: schema.indexIntegrations.toolkit,
-      connectedAccountId: schema.indexIntegrations.connectedAccountId,
-      createdAt: schema.indexIntegrations.createdAt,
+      toolkit: schema.networkIntegrations.toolkit,
+      connectedAccountId: schema.networkIntegrations.connectedAccountId,
+      createdAt: schema.networkIntegrations.createdAt,
     })
-      .from(schema.indexIntegrations)
-      .where(eq(schema.indexIntegrations.indexId, indexId));
+      .from(schema.networkIntegrations)
+      .where(eq(schema.networkIntegrations.networkId, networkId));
   }
 
   /**
@@ -3086,12 +3081,12 @@ export class ChatDatabaseAdapter {
     const personalIndexId = await getPersonalIndexId(ownerId);
     if (!personalIndexId) return;
 
-    await db.delete(schema.indexMembers)
+    await db.delete(schema.networkMembers)
       .where(
         and(
-          eq(schema.indexMembers.indexId, personalIndexId),
-          eq(schema.indexMembers.userId, contactUserId),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+          eq(schema.networkMembers.networkId, personalIndexId),
+          eq(schema.networkMembers.userId, contactUserId),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
         )
       );
   }
@@ -3106,13 +3101,13 @@ export class ChatDatabaseAdapter {
     const otherPersonalIndexId = await getPersonalIndexId(otherUserId);
     if (!otherPersonalIndexId) return;
 
-    await db.delete(schema.indexMembers)
+    await db.delete(schema.networkMembers)
       .where(
         and(
-          eq(schema.indexMembers.indexId, otherPersonalIndexId),
-          eq(schema.indexMembers.userId, ownerId),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-          isNotNull(schema.indexMembers.deletedAt),
+          eq(schema.networkMembers.networkId, otherPersonalIndexId),
+          eq(schema.networkMembers.userId, ownerId),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+          isNotNull(schema.networkMembers.deletedAt),
         )
       );
   }
@@ -3128,21 +3123,21 @@ export class ChatDatabaseAdapter {
 
     // Batch lookup personal indexes for all other users
     const personalIndexRows = await db
-      .select({ userId: schema.personalIndexes.userId, indexId: schema.personalIndexes.indexId })
-      .from(schema.personalIndexes)
-      .where(inArray(schema.personalIndexes.userId, otherUserIds));
+      .select({ userId: schema.personalNetworks.userId, networkId: schema.personalNetworks.networkId })
+      .from(schema.personalNetworks)
+      .where(inArray(schema.personalNetworks.userId, otherUserIds));
 
-    const personalIndexIds = personalIndexRows.map(r => r.indexId);
+    const personalIndexIds = personalIndexRows.map(r => r.networkId);
     if (personalIndexIds.length === 0) return;
 
     // Single DELETE across all matching personal indexes
-    await db.delete(schema.indexMembers)
+    await db.delete(schema.networkMembers)
       .where(
         and(
-          inArray(schema.indexMembers.indexId, personalIndexIds),
-          eq(schema.indexMembers.userId, ownerId),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-          isNotNull(schema.indexMembers.deletedAt),
+          inArray(schema.networkMembers.networkId, personalIndexIds),
+          eq(schema.networkMembers.userId, ownerId),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+          isNotNull(schema.networkMembers.deletedAt),
         )
       );
   }
@@ -3161,19 +3156,19 @@ export class ChatDatabaseAdapter {
 
     const rows = await db
       .select({
-        userId: schema.indexMembers.userId,
+        userId: schema.networkMembers.userId,
         userName: schema.users.name,
         userEmail: schema.users.email,
         userAvatar: schema.users.avatar,
         userIsGhost: schema.users.isGhost,
       })
-      .from(schema.indexMembers)
-      .innerJoin(schema.users, eq(schema.indexMembers.userId, schema.users.id))
+      .from(schema.networkMembers)
+      .innerJoin(schema.users, eq(schema.networkMembers.userId, schema.users.id))
       .where(
         and(
-          eq(schema.indexMembers.indexId, personalIndexId),
-          sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-          isNull(schema.indexMembers.deletedAt),
+          eq(schema.networkMembers.networkId, personalIndexId),
+          sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+          isNull(schema.networkMembers.deletedAt),
           isNull(schema.users.deletedAt),
         )
       );
@@ -3594,7 +3589,7 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunitiesForUser(
     userId: string,
-    options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
+    options?: { status?: string; networkId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
   ): Promise<OpportunityRow[]> {
     // Role-based visibility: who can see depends on actor role and status (and whether introducer exists)
     const visibilityGuard = sql`(
@@ -3626,12 +3621,12 @@ export class OpportunityDatabaseAdapter {
       );
     }
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
-    if (options?.indexId) {
+    if (options?.networkId) {
       conditions.push(sql`(
-        ${opportunities.context}->>'indexId' = ${options.indexId}
+        ${opportunities.context}->>'networkId' = ${options.networkId}
         OR EXISTS (
           SELECT 1 FROM jsonb_array_elements(${opportunities.actors}) AS actor
-          WHERE actor->>'indexId' = ${options.indexId}
+          WHERE actor->>'networkId' = ${options.networkId}
         )
       )`);
     }
@@ -3647,10 +3642,10 @@ export class OpportunityDatabaseAdapter {
   }
 
   async getOpportunitiesForIndex(
-    indexId: string,
+    networkId: string,
     options?: { status?: string; limit?: number; offset?: number }
   ): Promise<OpportunityRow[]> {
-    const conditions = [sql`${opportunities.context}->>'indexId' = ${indexId}`];
+    const conditions = [sql`${opportunities.context}->>'networkId' = ${networkId}`];
     if (options?.status) conditions.push(eq(opportunities.status, options.status as typeof opportunities.$inferSelect.status));
     let q = db
       .select()
@@ -3760,11 +3755,11 @@ export class OpportunityDatabaseAdapter {
     });
   }
 
-  async opportunityExistsBetweenActors(actorIds: string[], indexId: string): Promise<boolean> {
+  async opportunityExistsBetweenActors(actorIds: string[], networkId: string): Promise<boolean> {
     if (actorIds.length === 0) return false;
     const expired = 'expired';
     const conditions = [
-      sql`${opportunities.context}->>'indexId' = ${indexId}`,
+      sql`${opportunities.context}->>'networkId' = ${networkId}`,
       ne(opportunities.status, expired),
     ];
     // Require that all given actorIds appear in actors (opportunity may have extra actors, e.g. introducer)
@@ -3783,12 +3778,12 @@ export class OpportunityDatabaseAdapter {
 
   async getOpportunityBetweenActors(
     actorIds: string[],
-    indexId: string
+    networkId: string
   ): Promise<{ id: Id<'opportunities'>; status: (typeof opportunities.$inferSelect)['status'] } | null> {
     if (actorIds.length === 0) return null;
     const expired = 'expired';
     const conditions = [
-      sql`${opportunities.context}->>'indexId' = ${indexId}`,
+      sql`${opportunities.context}->>'networkId' = ${networkId}`,
       ne(opportunities.status, expired),
     ];
     for (const actorId of actorIds) {
@@ -3853,13 +3848,13 @@ export class OpportunityDatabaseAdapter {
     return updated.length;
   }
 
-  async expireOpportunitiesForRemovedMember(indexId: string, userId: string): Promise<number> {
+  async expireOpportunitiesForRemovedMember(networkId: string, userId: string): Promise<number> {
     const updated = await db
       .update(opportunities)
       .set({ status: 'expired', updatedAt: new Date() })
       .where(
         and(
-          sql`${opportunities.context}->>'indexId' = ${indexId}`,
+          sql`${opportunities.context}->>'networkId' = ${networkId}`,
           sql`${opportunities.actors} @> ${JSON.stringify([{ userId }])}::jsonb`
         )
       )
@@ -3892,7 +3887,7 @@ export class OpportunityDatabaseAdapter {
 /**
  * Database adapter for Index Graph (intent/index context and assignment).
  */
-export class IndexGraphDatabaseAdapter {
+export class NetworkGraphDatabaseAdapter {
   async getIntentForIndexing(intentId: string) {
     const rows = await db
       .select({
@@ -3908,83 +3903,83 @@ export class IndexGraphDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getIndexMemberContext(indexId: string, userId: string) {
+  async getIndexMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
-        indexId: indexes.id,
-        indexPrompt: indexes.prompt,
-        memberPrompt: indexMembers.prompt,
+        networkId: networks.id,
+        indexPrompt: networks.prompt,
+        memberPrompt: networkMembers.prompt,
       })
-      .from(indexes)
-      .innerJoin(indexMembers, eq(indexes.id, indexMembers.indexId))
+      .from(networks)
+      .innerJoin(networkMembers, eq(networks.id, networkMembers.networkId))
       .where(
         and(
-          eq(indexes.id, indexId),
-          eq(indexMembers.userId, userId),
-          eq(indexMembers.autoAssign, true),
-          isNull(indexes.deletedAt)
+          eq(networks.id, networkId),
+          eq(networkMembers.userId, userId),
+          eq(networkMembers.autoAssign, true),
+          isNull(networks.deletedAt)
         )
       )
       .limit(1);
     return rows[0] ?? null;
   }
 
-  async isIntentAssignedToIndex(intentId: string, indexId: string): Promise<boolean> {
+  async isIntentAssignedToIndex(intentId: string, networkId: string): Promise<boolean> {
     const rows = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
+      .select({ networkId: intentNetworks.networkId })
+      .from(intentNetworks)
       .where(
         and(
-          eq(intentIndexes.intentId, intentId),
-          eq(intentIndexes.indexId, indexId)
+          eq(intentNetworks.intentId, intentId),
+          eq(intentNetworks.networkId, networkId)
         )
       )
       .limit(1);
     return rows.length > 0;
   }
 
-  async assignIntentToIndex(intentId: string, indexId: string, relevancyScore?: number): Promise<void> {
-    await db.insert(intentIndexes)
-      .values({ intentId, indexId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
+  async assignIntentToIndex(intentId: string, networkId: string, relevancyScore?: number): Promise<void> {
+    await db.insert(intentNetworks)
+      .values({ intentId, networkId, relevancyScore: relevancyScore != null ? String(relevancyScore) : null })
       .onConflictDoUpdate({
-        target: [intentIndexes.intentId, intentIndexes.indexId],
+        target: [intentNetworks.intentId, intentNetworks.networkId],
         set: { relevancyScore: relevancyScore != null ? String(relevancyScore) : null },
       });
   }
 
-  async unassignIntentFromIndex(intentId: string, indexId: string): Promise<void> {
+  async unassignIntentFromIndex(intentId: string, networkId: string): Promise<void> {
     await db
-      .delete(intentIndexes)
+      .delete(intentNetworks)
       .where(
         and(
-          eq(intentIndexes.intentId, intentId),
-          eq(intentIndexes.indexId, indexId)
+          eq(intentNetworks.intentId, intentId),
+          eq(intentNetworks.networkId, networkId)
         )
       );
   }
 
   async getIndexIdsForIntent(intentId: string): Promise<string[]> {
     const rows = await db
-      .select({ indexId: intentIndexes.indexId })
-      .from(intentIndexes)
-      .where(eq(intentIndexes.intentId, intentId));
-    return rows.map((r) => r.indexId);
+      .select({ networkId: intentNetworks.networkId })
+      .from(intentNetworks)
+      .where(eq(intentNetworks.intentId, intentId));
+    return rows.map((r) => r.networkId);
   }
 
   /**
    * Delete only index_members for an index (releases user FK for teardown).
    */
-  async deleteMembersForIndex(indexId: string): Promise<void> {
-    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
+  async deleteMembersForIndex(networkId: string): Promise<void> {
+    await db.delete(networkMembers).where(eq(networkMembers.networkId, networkId));
   }
 
   /**
    * Delete an index and its members/intent-index links (for test teardown).
    */
-  async deleteIndexAndMembers(indexId: string): Promise<void> {
-    await db.delete(intentIndexes).where(eq(intentIndexes.indexId, indexId));
-    await db.delete(indexMembers).where(eq(indexMembers.indexId, indexId));
-    await db.delete(indexes).where(eq(indexes.id, indexId));
+  async deleteIndexAndMembers(networkId: string): Promise<void> {
+    await db.delete(intentNetworks).where(eq(intentNetworks.networkId, networkId));
+    await db.delete(networkMembers).where(eq(networkMembers.networkId, networkId));
+    await db.delete(networks).where(eq(networks.id, networkId));
   }
 }
 
@@ -4858,21 +4853,21 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      for (const indexId of indexIds) {
-        await db.assignIntentToIndex(intentId, indexId);
+      for (const networkId of indexIds) {
+        await db.assignIntentToIndex(intentId, networkId);
       }
     },
-    assignIntentToIndex: async (intentId: string, indexId: string, relevancyScore?: number) => {
+    assignIntentToIndex: async (intentId: string, networkId: string, relevancyScore?: number) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.assignIntentToIndex(intentId, indexId, relevancyScore);
+      return db.assignIntentToIndex(intentId, networkId, relevancyScore);
     },
-    unassignIntentFromIndex: async (intentId: string, indexId: string) => {
+    unassignIntentFromIndex: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.unassignIntentFromIndex(intentId, indexId);
+      return db.unassignIntentFromIndex(intentId, networkId);
     },
     getIndexIdsForIntent: async (intentId: string) => {
       const intent = await db.getIntent(intentId);
@@ -4880,11 +4875,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.getIndexIdsForIntent(intentId);
     },
-    isIntentAssignedToIndex: async (intentId: string, indexId: string) => {
+    isIntentAssignedToIndex: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.isIntentAssignedToIndex(intentId, indexId);
+      return db.isIntentAssignedToIndex(intentId, networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -4893,27 +4888,27 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     getIndexMemberships: () => db.getIndexMemberships(authUserId),
     getUserIndexIds: () => db.getUserIndexIds(authUserId),
     getOwnedIndexes: () => db.getOwnedIndexes(authUserId),
-    getIndexMembership: (indexId: string) => db.getIndexMembership(indexId, authUserId),
-    getIndexMemberContext: (indexId: string) => db.getIndexMemberContext(indexId, authUserId),
+    getIndexMembership: (networkId: string) => db.getIndexMembership(networkId, authUserId),
+    getIndexMemberContext: (networkId: string) => db.getIndexMemberContext(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index CRUD Operations
     // ─────────────────────────────────────────────────────────────────────────────
     createIndex: (data: Parameters<ChatDatabaseAdapter['createIndex']>[0]) => db.createIndex(data),
-    updateIndexSettings: (indexId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(indexId, authUserId, data),
-    softDeleteIndex: async (indexId: string) => {
-      const isOwner = await db.isIndexOwner(indexId, authUserId);
+    updateIndexSettings: (networkId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(networkId, authUserId, data),
+    softDeleteIndex: async (networkId: string) => {
+      const isOwner = await db.isIndexOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not index owner');
-      const isPersonal = await db.isPersonalIndex(indexId);
+      const isPersonal = await db.isPersonalIndex(networkId);
       if (isPersonal) throw new Error('Cannot delete personal index');
-      return db.softDeleteIndex(indexId);
+      return db.softDeleteIndex(networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Public Index Discovery
     // ─────────────────────────────────────────────────────────────────────────────
     getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
-    joinPublicIndex: (indexId: string) => db.joinPublicIndex(indexId, authUserId),
+    joinPublicIndex: (networkId: string) => db.joinPublicIndex(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations
@@ -4965,12 +4960,12 @@ export function createSystemDatabase(
   embedder?: VectorStore
 ) {
   /**
-   * Verify that an indexId is within the allowed scope.
+   * Verify that an networkId is within the allowed scope.
    * Throws if the index is not in scope.
    */
-  const verifyScope = (indexId: string): void => {
-    if (!indexScope.includes(indexId)) {
-      throw new Error(`Access denied: index ${indexId} not in scope`);
+  const verifyScope = (networkId: string): void => {
+    if (!indexScope.includes(networkId)) {
+      throw new Error(`Access denied: index ${networkId} not in scope`);
     }
   };
 
@@ -4981,7 +4976,7 @@ export function createSystemDatabase(
   const verifySharedIndex = async (userId: string): Promise<boolean> => {
     if (userId === authUserId) return true;
     const theirMemberships = await db.getIndexMemberships(userId);
-    if (theirMemberships.some((m) => indexScope.includes(m.indexId))) return true;
+    if (theirMemberships.some((m) => indexScope.includes(m.networkId))) return true;
 
     // Check if either user's personal index contains the other as a contact
     const myPersonalId = await getPersonalIndexId(authUserId);
@@ -5021,13 +5016,13 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIntentsInIndex: async (indexId: string, options?: { limit?: number; offset?: number }) => {
-      verifyScope(indexId);
-      return db.getIndexIntentsForMember(indexId, authUserId, options);
+    getIntentsInIndex: async (networkId: string, options?: { limit?: number; offset?: number }) => {
+      verifyScope(networkId);
+      return db.getIndexIntentsForMember(networkId, authUserId, options);
     },
-    getUserIntentsInIndex: async (userId: string, indexId: string) => {
-      verifyScope(indexId);
-      return db.getIntentsInIndexForMember(userId, indexId);
+    getUserIntentsInIndex: async (userId: string, networkId: string) => {
+      verifyScope(networkId);
+      return db.getIntentsInIndexForMember(userId, networkId);
     },
     /**
      * Retrieves an intent by ID without scope check.
@@ -5071,16 +5066,16 @@ export function createSystemDatabase(
      * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
      * membership for any user (e.g. join flows, invitation acceptance).
      */
-    isIndexMember: (indexId: string, userId: string) => db.isIndexMember(indexId, userId),
+    isIndexMember: (networkId: string, userId: string) => db.isIndexMember(networkId, userId),
     /**
      * Checks index ownership without scope check.
      * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
      * ownership for any user (e.g. permission checks during graph execution).
      */
-    isIndexOwner: (indexId: string, userId: string) => db.isIndexOwner(indexId, userId),
-    getIndexMembers: async (indexId: string) => {
-      verifyScope(indexId);
-      return db.getIndexMembersForMember(indexId, authUserId);
+    isIndexOwner: (networkId: string, userId: string) => db.isIndexOwner(networkId, userId),
+    getIndexMembers: async (networkId: string) => {
+      verifyScope(networkId);
+      return db.getIndexMembersForMember(networkId, authUserId);
     },
     getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
     /**
@@ -5088,36 +5083,36 @@ export function createSystemDatabase(
      * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
      * contact addition that operate outside the caller's current index scope.
      */
-    addMemberToIndex: (indexId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToIndex(indexId, userId, role),
+    addMemberToIndex: (networkId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToIndex(networkId, userId, role),
     /**
      * Removes a member from an index without scope check.
      * @remarks Intentionally unscoped -- used by leave/kick flows and member removal
      * handlers that operate across user boundaries.
      */
-    removeMemberFromIndex: (indexId: string, userId: string) => db.removeMemberFromIndex(indexId, userId),
+    removeMemberFromIndex: (networkId: string, userId: string) => db.removeMemberFromIndex(networkId, userId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Operations (within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIndex: async (indexId: string) => {
-      verifyScope(indexId);
-      return db.getIndex(indexId);
+    getIndex: async (networkId: string) => {
+      verifyScope(networkId);
+      return db.getIndex(networkId);
     },
-    getIndexWithPermissions: async (indexId: string) => {
-      verifyScope(indexId);
-      return db.getIndexWithPermissions(indexId);
+    getIndexWithPermissions: async (networkId: string) => {
+      verifyScope(networkId);
+      return db.getIndexWithPermissions(networkId);
     },
-    getIndexMemberCount: async (indexId: string) => {
-      verifyScope(indexId);
-      return db.getIndexMemberCount(indexId);
+    getIndexMemberCount: async (networkId: string) => {
+      verifyScope(networkId);
+      return db.getIndexMemberCount(networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
     createOpportunity: (data: Parameters<ChatDatabaseAdapter['createOpportunity']>[0]) => {
-      const indexId = data.context?.indexId;
-      if (indexId) verifyScope(indexId);
+      const networkId = data.context?.networkId;
+      if (networkId) verifyScope(networkId);
       return db.createOpportunity(data);
     },
     /**
@@ -5132,25 +5127,25 @@ export function createSystemDatabase(
      * tools that need cross-actor access during the discovery pipeline.
      */
     getOpportunity: (id: string) => db.getOpportunity(id),
-    getOpportunitiesForIndex: async (indexId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForIndex']>[1]) => {
-      verifyScope(indexId);
-      return db.getOpportunitiesForIndex(indexId, options);
+    getOpportunitiesForIndex: async (networkId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForIndex']>[1]) => {
+      verifyScope(networkId);
+      return db.getOpportunitiesForIndex(networkId, options);
     },
     updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
-      const opportunityIndexId = opportunity.context?.indexId;
+      const opportunityIndexId = opportunity.context?.networkId;
       if (!opportunityIndexId) throw new Error('Opportunity not found');
       verifyScope(opportunityIndexId);
       return db.updateOpportunityStatus(id, status);
     },
-    opportunityExistsBetweenActors: (actorIds: string[], indexId: string) => {
-      verifyScope(indexId);
-      return db.opportunityExistsBetweenActors(actorIds, indexId);
+    opportunityExistsBetweenActors: (actorIds: string[], networkId: string) => {
+      verifyScope(networkId);
+      return db.opportunityExistsBetweenActors(actorIds, networkId);
     },
-    getOpportunityBetweenActors: (actorIds: string[], indexId: string) => {
-      verifyScope(indexId);
-      return db.getOpportunityBetweenActors(actorIds, indexId);
+    getOpportunityBetweenActors: (actorIds: string[], networkId: string) => {
+      verifyScope(networkId);
+      return db.getOpportunityBetweenActors(actorIds, networkId);
     },
     findOverlappingOpportunities: (actorUserIds: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[0], options?: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[1]) => db.findOverlappingOpportunities(actorUserIds, options),
     /**
@@ -5164,7 +5159,7 @@ export function createSystemDatabase(
      * @remarks Intentionally unscoped -- called by index membership removal event handlers
      * that clean up opportunities when a member leaves or is kicked from an index.
      */
-    expireOpportunitiesForRemovedMember: (indexId: string, userId: string) => db.expireOpportunitiesForRemovedMember(indexId, userId),
+    expireOpportunitiesForRemovedMember: (networkId: string, userId: string) => db.expireOpportunitiesForRemovedMember(networkId, userId),
     /**
      * Expires stale opportunities without scope check.
      * @remarks Intentionally unscoped -- called by scheduled cleanup jobs (cron)

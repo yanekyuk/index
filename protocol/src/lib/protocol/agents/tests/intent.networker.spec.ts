@@ -3,10 +3,10 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, expect, it } from "bun:test";
-import { IntentIndexer } from "../intent.indexer";
+import { IntentNetworker } from "../intent.networker";
 
-describe("IntentIndexer", () => {
-  const indexer = new IntentIndexer();
+describe("IntentNetworker", () => {
+  const indexer = new IntentNetworker();
 
   it("should return structured output with indexScore, memberScore, and reasoning", async () => {
     const intent = "I want to find a technical co-founder for my AI startup.";

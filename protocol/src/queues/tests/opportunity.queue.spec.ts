@@ -104,14 +104,14 @@ describe('OpportunityQueue', () => {
           userId: 'u1',
           searchQuery: 'Build a SaaS',
           operationMode: 'create',
-          indexId: 'idx1',
+          networkId: 'idx1',
           triggerIntentId: 'i1',
           options: { initialStatus: 'latent' },
         })
       );
     });
 
-    it('discover_opportunities: uses indexIds[0] as indexId', async () => {
+    it('discover_opportunities: uses indexIds[0] as networkId', async () => {
       const invokeOpportunityGraph = mock(async () => {});
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
@@ -123,7 +123,7 @@ describe('OpportunityQueue', () => {
         indexIds: ['idx-a', 'idx-b'],
       });
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
-        expect.objectContaining({ indexId: 'idx-a' })
+        expect.objectContaining({ networkId: 'idx-a' })
       );
     });
 

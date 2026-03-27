@@ -14,10 +14,10 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
-  indexes,
-  indexMembers,
+  networks,
+  networkMembers,
   intents,
-  intentIndexes,
+  intentNetworks,
 } from '../../schemas/database.schema';
 import { EmbedderAdapter } from '../embedder.adapter';
 
@@ -35,7 +35,7 @@ let fixture: {
   userBId: string;
   /** Soft-deleted user (deletedAt set). */
   deletedUserId: string;
-  indexId: string;
+  networkId: string;
   intentId: string;
   profileEmbeddingIntentId: string;
   /** Intent owned by the soft-deleted user. */
@@ -46,7 +46,7 @@ beforeAll(async () => {
   const userAId = uuidv4();
   const userBId = uuidv4();
   const deletedUserId = uuidv4();
-  const indexId = uuidv4();
+  const networkId = uuidv4();
   const intentId = uuidv4();
   const profileEmbeddingIntentId = uuidv4();
   const deletedUserIntentId = uuidv4();
@@ -77,15 +77,15 @@ beforeAll(async () => {
       embedding: makeTestVector(42),
     },
   ]);
-  await db.insert(indexes).values({
-    id: indexId,
+  await db.insert(networks).values({
+    id: networkId,
     title: TEST_PREFIX + 'Index',
     prompt: 'Test index',
   });
-  await db.insert(indexMembers).values([
-    { indexId, userId: userAId, permissions: ['owner'], autoAssign: false },
-    { indexId, userId: userBId, permissions: [], autoAssign: true },
-    { indexId, userId: deletedUserId, permissions: [], autoAssign: true },
+  await db.insert(networkMembers).values([
+    { networkId, userId: userAId, permissions: ['owner'], autoAssign: false },
+    { networkId, userId: userBId, permissions: [], autoAssign: true },
+    { networkId, userId: deletedUserId, permissions: [], autoAssign: true },
   ]);
   // Intent owned by soft-deleted user (has same embedding as test queries)
   await db.insert(intents).values({
@@ -95,17 +95,17 @@ beforeAll(async () => {
     summary: 'Summary deleted',
     embedding: makeTestVector(42),
   });
-  await db.insert(intentIndexes).values({ intentId: deletedUserIntentId, indexId });
+  await db.insert(intentNetworks).values({ intentId: deletedUserIntentId, networkId });
 
-  fixture = { userAId, userBId, deletedUserId, indexId, intentId, profileEmbeddingIntentId, deletedUserIntentId };
+  fixture = { userAId, userBId, deletedUserId, networkId, intentId, profileEmbeddingIntentId, deletedUserIntentId };
 });
 
 afterAll(async () => {
-  await db.delete(intentIndexes).where(eq(intentIndexes.indexId, fixture.indexId));
+  await db.delete(intentNetworks).where(eq(intentNetworks.networkId, fixture.networkId));
   await db.delete(intents).where(inArray(intents.userId, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
-  await db.delete(indexMembers).where(eq(indexMembers.indexId, fixture.indexId));
+  await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
   await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
-  await db.delete(indexes).where(eq(indexes.id, fixture.indexId));
+  await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId, fixture.deletedUserId]));
 });
 
@@ -160,12 +160,12 @@ describe('EmbedderAdapter', () => {
         summary: 'Summary',
         embedding: queryVector,
       });
-      await db.insert(intentIndexes).values({ intentId: fixture.intentId, indexId: fixture.indexId });
+      await db.insert(intentNetworks).values({ intentId: fixture.intentId, networkId: fixture.networkId });
 
       const results = await adapter.search<{ id: string; userId: string }>(
         queryVector,
         'intents',
-        { limit: 10, minScore: 0.99, filter: { indexScope: [fixture.indexId] } }
+        { limit: 10, minScore: 0.99, filter: { indexScope: [fixture.networkId] } }
       );
 
       expect(results.length).toBeGreaterThanOrEqual(1);
@@ -179,7 +179,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.search<{ id: string; userId: string }>(
         queryVector,
         'intents',
-        { limit: 5, minScore: 0, filter: { indexScope: [fixture.indexId] } }
+        { limit: 5, minScore: 0, filter: { indexScope: [fixture.networkId] } }
       );
 
       for (const r of results) {
@@ -199,7 +199,7 @@ describe('EmbedderAdapter', () => {
       ];
 
       const results = await adapter.searchWithHydeEmbeddings(lensEmbeddings, {
-        indexScope: [fixture.indexId],
+        indexScope: [fixture.networkId],
         limitPerStrategy: 5,
         limit: 10,
         minScore: 0,
@@ -212,7 +212,7 @@ describe('EmbedderAdapter', () => {
         expect(c.userId).toBeDefined();
         expect(c.score).toBeGreaterThanOrEqual(0);
         expect(c.matchedVia).toBeDefined();
-        expect(c.indexId).toBe(fixture.indexId);
+        expect(c.networkId).toBe(fixture.networkId);
       }
     });
 
@@ -221,7 +221,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'early-stage startup hiring', corpus: 'intents' as const, embedding: vec }],
         {
-          indexScope: [fixture.indexId],
+          indexScope: [fixture.networkId],
           excludeUserId: fixture.userAId,
           limit: 5,
           minScore: 0,
@@ -230,7 +230,7 @@ describe('EmbedderAdapter', () => {
 
       for (const c of results) {
         expect(c.userId).not.toBe(fixture.userAId);
-        expect(c.indexId).toBe(fixture.indexId);
+        expect(c.networkId).toBe(fixture.networkId);
       }
     });
   });
@@ -244,16 +244,16 @@ describe('EmbedderAdapter', () => {
         summary: 'Summary',
         embedding: makeTestVector(42),
       });
-      await db.insert(intentIndexes).values({
+      await db.insert(intentNetworks).values({
         intentId: fixture.profileEmbeddingIntentId,
-        indexId: fixture.indexId,
+        networkId: fixture.networkId,
       });
     });
 
     it('should return candidates (profiles and/or intents) in index scope with correct shape', async () => {
       const profileEmbedding = makeTestVector(42);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.indexId],
+        indexScope: [fixture.networkId],
         limit: 10,
         limitPerStrategy: 5,
         minScore: 0,
@@ -266,7 +266,7 @@ describe('EmbedderAdapter', () => {
         expect(c.userId).toBeDefined();
         expect(c.score).toBeGreaterThanOrEqual(0);
         expect(c.matchedVia).toBeDefined();
-        expect(c.indexId).toBe(fixture.indexId);
+        expect(c.networkId).toBe(fixture.networkId);
       }
       const intentMatch = results.find(
         (r) => r.type === 'intent' && r.id === fixture.profileEmbeddingIntentId
@@ -278,7 +278,7 @@ describe('EmbedderAdapter', () => {
     it('should respect indexScope and excludeUserId', async () => {
       const profileEmbedding = makeTestVector(100);
       const results = await adapter.searchWithProfileEmbedding(profileEmbedding, {
-        indexScope: [fixture.indexId],
+        indexScope: [fixture.networkId],
         excludeUserId: fixture.userAId,
         limit: 5,
         minScore: 0,
@@ -286,7 +286,7 @@ describe('EmbedderAdapter', () => {
 
       for (const c of results) {
         expect(c.userId).not.toBe(fixture.userAId);
-        expect(c.indexId).toBe(fixture.indexId);
+        expect(c.networkId).toBe(fixture.networkId);
       }
     });
   });
@@ -296,7 +296,7 @@ describe('EmbedderAdapter', () => {
       const vec = makeTestVector(42); // same as deleted user's profile embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'profiles' as const, embedding: vec }],
-        { indexScope: [fixture.indexId], limit: 20, minScore: 0, profileMinScore: 0 },
+        { indexScope: [fixture.networkId], limit: 20, minScore: 0, profileMinScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
@@ -307,7 +307,7 @@ describe('EmbedderAdapter', () => {
       const vec = makeTestVector(42); // same as deleted user's intent embedding
       const results = await adapter.searchWithHydeEmbeddings(
         [{ lens: 'test lens', corpus: 'intents' as const, embedding: vec }],
-        { indexScope: [fixture.indexId], limit: 20, minScore: 0 },
+        { indexScope: [fixture.networkId], limit: 20, minScore: 0 },
       );
 
       const deletedMatch = results.find((c) => c.userId === fixture.deletedUserId);
@@ -317,7 +317,7 @@ describe('EmbedderAdapter', () => {
     it('should not return soft-deleted users from searchWithProfileEmbedding', async () => {
       const vec = makeTestVector(42);
       const results = await adapter.searchWithProfileEmbedding(vec, {
-        indexScope: [fixture.indexId],
+        indexScope: [fixture.networkId],
         limit: 20,
         minScore: 0,
         profileMinScore: 0,
@@ -332,7 +332,7 @@ describe('EmbedderAdapter', () => {
       const results = await adapter.search<{ id: string; userId: string }>(
         vec,
         'intents',
-        { limit: 20, minScore: 0, filter: { indexScope: [fixture.indexId] } },
+        { limit: 20, minScore: 0, filter: { indexScope: [fixture.networkId] } },
       );
 
       const deletedMatch = results.find((r) => (r.item as { userId: string }).userId === fixture.deletedUserId);

@@ -14,7 +14,7 @@ export interface ModelSettings {
  */
 export const MODEL_CONFIG = {
   intentInferrer:       { model: "google/gemini-2.5-flash" },
-  intentIndexer:        { model: "google/gemini-2.5-flash" },
+  intentNetworker:        { model: "google/gemini-2.5-flash" },
   intentVerifier:       { model: "google/gemini-2.5-flash" },
   intentReconciler:     { model: "google/gemini-2.5-flash" },
   intentClarifier:      { model: "google/gemini-2.5-flash" },

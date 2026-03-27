@@ -152,7 +152,7 @@ export class ChatGraphFactory {
       message: string;
       sessionId: string;
       maxContextMessages?: number;
-      indexId?: string;
+      networkId?: string;
       prefillMessages?: Array<{ role: "assistant" | "user"; content: string }>;
     },
     checkpointer?: MemorySaver | PostgresSaver,
@@ -208,14 +208,14 @@ export class ChatGraphFactory {
         });
 
         const runLoop = async () => {
-          const indexId = state.indexId;
+          const networkId = state.networkId;
           const agent = await ChatAgent.create({
             ...protocolDeps,
             userId: state.userId,
             database,
             embedder,
             scraper,
-            indexId,
+            networkId,
             sessionId: state.sessionId,
           } as import("../tools/tool.helpers").ToolContext);
           // Direct streaming writer - emit events immediately instead of buffering

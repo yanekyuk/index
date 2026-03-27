@@ -29,19 +29,19 @@ export class IntegrationController {
 
   /**
    * List connected accounts for the authenticated user.
-   * If ?indexId is provided, returns only connections linked to that index.
+   * If ?networkId is provided, returns only connections linked to that index.
    * GET /api/integrations
    */
   @Get('')
   @UseGuards(AuthGuard)
   async list(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url);
-    const indexId = url.searchParams.get('indexId');
+    const networkId = url.searchParams.get('networkId');
 
     const connections = await this.adapter.listConnections(user.id);
 
-    if (indexId) {
-      const linked = await this.integrationService.getLinkedIntegrations(user.id, indexId);
+    if (networkId) {
+      const linked = await this.integrationService.getLinkedIntegrations(user.id, networkId);
       const linkedToolkits = new Set(linked.map(l => l.toolkit));
       return {
         connections: connections.filter(c => linkedToolkits.has(c.toolkit)),
@@ -71,7 +71,7 @@ export class IntegrationController {
    * Link a toolkit to an index. If the user already has a Composio connection
    * for this toolkit, records the mapping. Otherwise returns 400.
    * POST /api/integrations/:toolkit/link
-   * Body: { indexId: string }
+   * Body: { networkId: string }
    */
   @Post('/:toolkit/link')
   @UseGuards(AuthGuard)
@@ -80,12 +80,12 @@ export class IntegrationController {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
     }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const indexId = typeof body.indexId === 'string' ? body.indexId : undefined;
-    if (!indexId) {
-      return new Response(JSON.stringify({ error: 'indexId is required' }), { status: 400 });
+    const networkId = typeof body.networkId === 'string' ? body.networkId : undefined;
+    if (!networkId) {
+      return new Response(JSON.stringify({ error: 'networkId is required' }), { status: 400 });
     }
     try {
-      await this.integrationService.linkToIndex(user.id, params.toolkit, indexId);
+      await this.integrationService.linkToIndex(user.id, params.toolkit, networkId);
       return { success: true };
     } catch (err) {
       return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Link failed' }), { status: 400 });
@@ -94,7 +94,7 @@ export class IntegrationController {
 
   /**
    * Unlink a toolkit from an index. Does NOT revoke the Composio OAuth connection.
-   * DELETE /api/integrations/:toolkit/link?indexId=X
+   * DELETE /api/integrations/:toolkit/link?networkId=X
    */
   @Delete('/:toolkit/link')
   @UseGuards(AuthGuard)
@@ -103,12 +103,12 @@ export class IntegrationController {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
     }
     const url = new URL(req.url);
-    const indexId = url.searchParams.get('indexId');
-    if (!indexId) {
-      return new Response(JSON.stringify({ error: 'indexId query param is required' }), { status: 400 });
+    const networkId = url.searchParams.get('networkId');
+    if (!networkId) {
+      return new Response(JSON.stringify({ error: 'networkId query param is required' }), { status: 400 });
     }
     try {
-      await this.integrationService.unlinkFromIndex(user.id, params.toolkit, indexId);
+      await this.integrationService.unlinkFromIndex(user.id, params.toolkit, networkId);
       return { success: true };
     } catch (err) {
       return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Unlink failed' }), { status: 400 });
@@ -128,9 +128,9 @@ export class IntegrationController {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
     }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const indexId = typeof body.indexId === 'string' ? body.indexId : undefined;
+    const networkId = typeof body.networkId === 'string' ? body.networkId : undefined;
     try {
-      const result = await this.integrationService.importContacts(user.id, params.toolkit, indexId);
+      const result = await this.integrationService.importContacts(user.id, params.toolkit, networkId);
       return result;
     } catch (err) {
       return new Response(JSON.stringify({ error: err instanceof Error ? err.message : 'Import failed' }), { status: 400 });

@@ -2,7 +2,7 @@ import { ISODateString, UUID } from './common.types';
 import { UserSummary } from './users.types';
 
 export interface IntentIndex {
-  indexId: UUID;
+  networkId: UUID;
   indexTitle?: string;
 }
 

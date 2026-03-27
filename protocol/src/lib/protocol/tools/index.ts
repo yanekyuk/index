@@ -7,9 +7,9 @@ import { OpportunityGraphFactory } from "../graphs/opportunity.graph";
 import { HydeGraphFactory } from "../graphs/hyde.graph";
 import { HydeGenerator } from "../agents/hyde.generator";
 import { LensInferrer } from "../agents/lens.inferrer";
-import { IndexGraphFactory } from "../graphs/index.graph";
-import { IndexMembershipGraphFactory } from "../graphs/index_membership.graph";
-import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
+import { NetworkGraphFactory } from "../graphs/network.graph";
+import { NetworkMembershipGraphFactory } from "../graphs/network_membership.graph";
+import { IntentNetworkGraphFactory } from "../graphs/intent_network.graph";
 import { NegotiationGraphFactory } from "../graphs/negotiation.graph";
 import { NegotiationProposer } from "../agents/negotiation.proposer";
 import { NegotiationResponder } from "../agents/negotiation.responder";
@@ -24,7 +24,7 @@ import {
 import { error } from "./tool.helpers";
 import { createProfileTools } from "./profile.tools";
 import { createIntentTools } from "./intent.tools";
-import { createIndexTools } from "./index.tools";
+import { createNetworkTools } from "./network.tools";
 import { createOpportunityTools } from "./opportunity.tools";
 import { createUtilityTools } from "./utility.tools";
 import { createIntegrationTools } from "./integration.tools";
@@ -60,7 +60,7 @@ export async function createChatTools(
     (await resolveChatContext({
       database,
       userId: deps.userId,
-      indexId: deps.indexId,
+      networkId: deps.networkId,
       sessionId: deps.sessionId,
     }));
 
@@ -78,7 +78,7 @@ export async function createChatTools(
     return tool(
       async (query: z.infer<T>) => {
         logger.verbose(`Tool: ${opts.name}`, {
-          context: { userId: resolvedContext.userId, indexId: resolvedContext.indexId },
+          context: { userId: resolvedContext.userId, networkId: resolvedContext.networkId },
           query,
         });
         try {
@@ -121,19 +121,19 @@ export async function createChatTools(
     undefined, // queueNotification
     negotiationGraph,
   ).createGraph();
-  const indexGraph = new IndexGraphFactory(database).createGraph();
-  const indexMembershipGraph = new IndexMembershipGraphFactory(database).createGraph();
-  const intentIndexGraph = new IntentIndexGraphFactory(database).createGraph();
+  const networkGraph = new NetworkGraphFactory(database).createGraph();
+  const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
+  const intentNetworkGraph = new IntentNetworkGraphFactory(database).createGraph();
 
   // ─── Create context-bound databases ────────────────────────────────────────
-  // Get the user's index scope (all indexes they have access to)
-  const indexScope = resolvedContext.userIndexes.map((m) => m.indexId);
+  // Get the user's network scope (all networks they have access to)
+  const networkScope = resolvedContext.userIndexes.map((m) => m.networkId);
 
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
   const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
-  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, indexScope, embedder);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, networkScope, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
   const cache = deps.cache;
@@ -152,9 +152,9 @@ export async function createChatTools(
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
-      index: indexGraph,
-      indexMembership: indexMembershipGraph,
-      intentIndex: intentIndexGraph,
+      index: networkGraph,
+      indexMembership: networkMembershipGraph,
+      intentIndex: intentNetworkGraph,
       opportunity: opportunityGraph,
     },
   };
@@ -162,7 +162,7 @@ export async function createChatTools(
   // ─── Create domain tools ──────────────────────────────────────────────────
   const profileTools = createProfileTools(defineTool, toolDeps);
   const intentTools = createIntentTools(defineTool, toolDeps);
-  const indexTools = createIndexTools(defineTool, toolDeps);
+  const networkTools = createNetworkTools(defineTool, toolDeps);
   const opportunityTools = createOpportunityTools(defineTool, toolDeps);
   const utilityTools = createUtilityTools(defineTool, toolDeps);
   const contactTools = createContactTools(defineTool, toolDeps);
@@ -177,7 +177,7 @@ export async function createChatTools(
   return [
     ...profileTools,
     ...intentTools,
-    ...indexTools,
+    ...networkTools,
     ...opportunityToolsForChat,
     ...utilityTools,
     ...integrationTools,

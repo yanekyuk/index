@@ -16,7 +16,7 @@ const discoverBodySchema = z.object({
 
 const listStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'expired']);
 
-/** Route params when path has :id or :indexId */
+/** Route params when path has :id or :networkId */
 type RouteParams = Record<string, string>;
 
 /**
@@ -33,7 +33,7 @@ export class OpportunityController {
   async listOpportunities(req: Request, user: AuthenticatedUser, _params?: RouteParams) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const rawStatus = url.searchParams.get('status');
-    const indexId = url.searchParams.get('indexId') ?? undefined;
+    const networkId = url.searchParams.get('networkId') ?? undefined;
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset');
 
@@ -49,7 +49,7 @@ export class OpportunityController {
 
     const options = {
       status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
-      indexId,
+      networkId,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     };
@@ -92,12 +92,12 @@ export class OpportunityController {
   @UseGuards(AuthGuard)
   async getHome(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
-    const indexId = url.searchParams.get('indexId') ?? undefined;
+    const networkId = url.searchParams.get('networkId') ?? undefined;
     const limitParam = url.searchParams.get('limit');
     const noCacheParam = url.searchParams.get('noCache');
     const noCache = noCacheParam === '1' || noCacheParam === 'true';
     const result = await opportunityService.getHomeView(user.id, {
-      indexId,
+      networkId,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
       noCache,
     });
@@ -261,20 +261,20 @@ export class OpportunityController {
 }
 
 /**
- * Index-scoped opportunity routes: GET/POST /indexes/:indexId/opportunities.
+ * Index-scoped opportunity routes: GET/POST /indexes/:networkId/opportunities.
  * Permission: list requires member; create requires owner or member (with rules).
  */
 @Controller('/indexes')
 export class IndexOpportunityController {
 
   /**
-   * GET /indexes/:indexId/opportunities — list opportunities for an index (owner or member).
+   * GET /indexes/:networkId/opportunities — list opportunities for an index (owner or member).
    */
-  @Get('/:indexId/opportunities')
+  @Get('/:networkId/opportunities')
   @UseGuards(AuthGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const indexId = params?.indexId;
-    if (!indexId) {
+    const networkId = params?.networkId;
+    if (!networkId) {
       return new Response(JSON.stringify({ error: 'Missing index id' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -296,7 +296,7 @@ export class IndexOpportunityController {
       }
     }
 
-    const result = await opportunityService.getOpportunitiesForIndex(indexId, user.id, {
+    const result = await opportunityService.getOpportunitiesForIndex(networkId, user.id, {
       status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
@@ -313,13 +313,13 @@ export class IndexOpportunityController {
   }
 
   /**
-   * POST /indexes/:indexId/opportunities — create a manual opportunity (curator).
+   * POST /indexes/:networkId/opportunities — create a manual opportunity (curator).
    */
-  @Post('/:indexId/opportunities')
+  @Post('/:networkId/opportunities')
   @UseGuards(AuthGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const indexId = params?.indexId;
-    if (!indexId) {
+    const networkId = params?.networkId;
+    if (!networkId) {
       return new Response(JSON.stringify({ error: 'Missing index id' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -344,7 +344,7 @@ export class IndexOpportunityController {
       );
     }
 
-    const result = await opportunityService.createManualOpportunity(indexId, user.id, {
+    const result = await opportunityService.createManualOpportunity(networkId, user.id, {
       parties,
       reasoning,
       category,

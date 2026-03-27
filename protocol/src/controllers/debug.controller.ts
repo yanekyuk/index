@@ -9,9 +9,9 @@ import { Controller, Get, Post, UseGuards } from '../lib/router/router.decorator
 import {
   intents,
   hydeDocuments,
-  intentIndexes,
-  indexes,
-  indexMembers,
+  intentNetworks,
+  networks,
+  networkMembers,
   opportunities,
 } from '../schemas/database.schema';
 import {
@@ -99,13 +99,13 @@ export class DebugController {
     // ── 3. Fetch index assignments with title and prompt ──────────────
     const indexRows = await db
       .select({
-        indexId: intentIndexes.indexId,
-        indexTitle: indexes.title,
-        indexPrompt: indexes.prompt,
+        networkId: intentNetworks.networkId,
+        indexTitle: networks.title,
+        indexPrompt: networks.prompt,
       })
-      .from(intentIndexes)
-      .innerJoin(indexes, eq(intentIndexes.indexId, indexes.id))
-      .where(eq(intentIndexes.intentId, intentId));
+      .from(intentNetworks)
+      .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
+      .where(eq(intentNetworks.intentId, intentId));
 
     // ── 4. Fetch opportunities referencing this intent ─────────────────
     const opportunityRows = await db
@@ -145,7 +145,7 @@ export class DebugController {
     };
 
     const indexAssignments = indexRows.map((r) => ({
-      indexId: r.indexId,
+      networkId: r.networkId,
       indexTitle: r.indexTitle,
       indexPrompt: r.indexPrompt,
     }));
@@ -168,7 +168,7 @@ export class DebugController {
           confidence: Number(o.confidence),
           status: o.status,
           createdAt: o.createdAt.toISOString(),
-          indexId: o.context?.indexId ?? counterpart?.indexId ?? null,
+          networkId: o.context?.networkId ?? counterpart?.networkId ?? null,
         };
       }),
     };
@@ -263,10 +263,10 @@ export class DebugController {
     // Count active intents assigned to at least one index
     const indexedIntentRows = activeIntents.length > 0
       ? await db
-          .selectDistinct({ intentId: intentIndexes.intentId })
-          .from(intentIndexes)
+          .selectDistinct({ intentId: intentNetworks.intentId })
+          .from(intentNetworks)
           .where(
-            sql`${intentIndexes.intentId} IN (${sql.join(
+            sql`${intentNetworks.intentId} IN (${sql.join(
               activeIntents.map((i) => sql`${i.id}`),
               sql`, `,
             )})`,
@@ -278,48 +278,48 @@ export class DebugController {
     // Orphaned = active but not in any index
     const orphaned = activeIntents.filter((i) => !indexedIntentIds.has(i.id)).length;
 
-    // ── 2. Fetch user's indexes (via indexMembers) ───────────────────────
+    // ── 2. Fetch user's indexes (via networkMembers) ───────────────────────
     const memberIndexRows = await db
       .select({
-        indexId: indexMembers.indexId,
-        title: indexes.title,
+        networkId: networkMembers.networkId,
+        title: networks.title,
       })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
-      .where(eq(indexMembers.userId, user.id));
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+      .where(eq(networkMembers.userId, user.id));
 
     // Count user's intents assigned to each index
     const indexIntentCounts: Record<string, number> = {};
     if (memberIndexRows.length > 0 && totalIntents > 0) {
       const countRows = await db
         .select({
-          indexId: intentIndexes.indexId,
+          networkId: intentNetworks.networkId,
           count: count().as('count'),
         })
-        .from(intentIndexes)
+        .from(intentNetworks)
         .where(
           and(
-            sql`${intentIndexes.intentId} IN (${sql.join(
+            sql`${intentNetworks.intentId} IN (${sql.join(
               userIntents.map((i) => sql`${i.id}`),
               sql`, `,
             )})`,
-            sql`${intentIndexes.indexId} IN (${sql.join(
-              memberIndexRows.map((r) => sql`${r.indexId}`),
+            sql`${intentNetworks.networkId} IN (${sql.join(
+              memberIndexRows.map((r) => sql`${r.networkId}`),
               sql`, `,
             )})`,
           ),
         )
-        .groupBy(intentIndexes.indexId);
+        .groupBy(intentNetworks.networkId);
 
       for (const row of countRows) {
-        indexIntentCounts[row.indexId] = row.count;
+        indexIntentCounts[row.networkId] = row.count;
       }
     }
 
     const indexesResponse = memberIndexRows.map((r) => ({
-      indexId: r.indexId,
+      networkId: r.networkId,
       title: r.title,
-      userIntentsAssigned: indexIntentCounts[r.indexId] ?? 0,
+      userIntentsAssigned: indexIntentCounts[r.networkId] ?? 0,
     }));
 
     // ── 3. Fetch all opportunities for the user ──────────────────────────
@@ -563,11 +563,11 @@ export class DebugController {
       .where(eq(conversationMetadata.conversationId, sessionId))
       .limit(1);
 
-    const meta = (convMeta?.metadata ?? {}) as { title?: string; indexId?: string; _sessionMeta?: unknown };
+    const meta = (convMeta?.metadata ?? {}) as { title?: string; networkId?: string; _sessionMeta?: unknown };
     const session = {
       id: conv.id,
       title: meta.title ?? null,
-      indexId: meta.indexId ?? null,
+      networkId: meta.networkId ?? null,
       userId: user.id,
     };
 
@@ -685,7 +685,7 @@ export class DebugController {
       sessionId: session.id,
       exportedAt: new Date().toISOString(),
       title: session.title ?? null,
-      indexId: session.indexId ?? null,
+      networkId: session.networkId ?? null,
       messages: chatMessages,
       turns,
       sessionMetadata: sessionMeta?.metadata ?? null,

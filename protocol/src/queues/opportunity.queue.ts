@@ -37,7 +37,7 @@ export interface OpportunityGraphInvokeOptions {
   userId: string;
   searchQuery: string;
   operationMode: 'create';
-  indexId?: string;
+  networkId?: string;
   /** Intent that triggered this job; used for search text and triggeredBy when in scope. */
   triggerIntentId?: string;
   /** Discover on behalf of this user (introducer flow). */
@@ -214,7 +214,7 @@ export class OpportunityQueue {
       userId: userId as Id<'users'>,
       searchQuery,
       operationMode: 'create',
-      indexId: indexIds?.[0] as Id<'indexes'> | undefined,
+      networkId: indexIds?.[0] as Id<'networks'> | undefined,
       triggerIntentId,
       onBehalfOfUserId,
       options: { initialStatus: 'latent' },

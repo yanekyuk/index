@@ -10,7 +10,7 @@ const logger = log.controller.from('intent');
 const ConfirmSchema = z.object({
   proposalId: z.string().min(1, 'proposalId is required'),
   description: z.string().min(1, 'description is required'),
-  indexId: z.string().optional(),
+  networkId: z.string().optional(),
 });
 const RejectSchema = z.object({
   proposalId: z.string().min(1, 'proposalId is required'),
@@ -55,7 +55,7 @@ export class IntentController {
   /**
    * Confirm a proposed intent from chat. Directly persists the pre-verified
    * intent (embedding + DB insert) without re-running the full intent graph.
-   * @param req - Request with body `{ proposalId: string; description: string; indexId?: string }`
+   * @param req - Request with body `{ proposalId: string; description: string; networkId?: string }`
    * @param user - Authenticated user from AuthGuard
    * @returns The created intent
    */
@@ -70,12 +70,12 @@ export class IntentController {
         { status: 400 },
       );
     }
-    const { proposalId, description, indexId } = parsed.data;
+    const { proposalId, description, networkId } = parsed.data;
 
     logger.verbose('Intent confirm requested', { userId: user.id, proposalId });
 
     try {
-      const created = await intentService.createFromProposal(user.id, description, proposalId, indexId);
+      const created = await intentService.createFromProposal(user.id, description, proposalId, networkId);
 
       return Response.json({
         success: true,
