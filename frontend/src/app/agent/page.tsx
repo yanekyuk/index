@@ -315,26 +315,34 @@ export default function AgentPage() {
           <div className="px-6 lg:px-8">
             <ContentContainer>
               <div className="bg-[linear-gradient(to_bottom,transparent_50%,#ffffff_50%)]">
-                <form
-                  onSubmit={(e) => { e.preventDefault(); handleFeedbackSubmit(); }}
-                  className="flex items-center gap-3 bg-[#FCFCFC] border border-[#E9E9E9] rounded-4xl px-4 py-3"
-                >
-                  <input
-                    type="text"
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                    disabled
-                    placeholder="Agent preferences coming soon..."
-                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-900 placeholder-gray-400 disabled:cursor-not-allowed"
-                  />
-                  <button
-                    type="submit"
-                    disabled
-                    className="shrink-0 h-8 w-8 rounded-full bg-[#041729] text-white flex items-center justify-center hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </button>
-                </form>
+                <div className="bg-[#FCFCFC] border border-[#E9E9E9] rounded-2xl px-4 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-sm font-medium text-gray-900">
+                      Feedback for your agent
+                    </h3>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Soon</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Tell your agent what to prioritize, avoid, or adjust in future negotiations.
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={feedback}
+                      onChange={(e) => setFeedback(e.target.value)}
+                      disabled
+                      placeholder="e.g. Focus more on AI/ML collaborations, avoid marketing roles..."
+                      className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-md placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <button
+                      type="submit"
+                      disabled
+                      className="px-3 py-2 bg-gray-900 text-white rounded-md text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="bg-white py-2" />
             </ContentContainer>
