@@ -24,7 +24,7 @@ import {
 } from '../states/home.state';
 import { OpportunityPresenter, gatherPresenterContext, type PresenterDatabase } from '../agents/opportunity.presenter';
 import { HomeCategorizerAgent } from '../agents/home.categorizer';
-import { canUserSeeOpportunity, isActionableForViewer } from '../support/opportunity.utils';
+import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../support/opportunity.utils';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../support/opportunity.constants';
 import { protocolLogger } from '../support/protocol.logger';
@@ -189,7 +189,7 @@ export class HomeGraphFactory {
             for (const id of counterpartIds) seenUserIds.add(id);
             return true;
           });
-          const opportunities = deduped.slice(0, state.limit);
+          const opportunities = selectByComposition(deduped, state.userId);
           return { opportunities };
         } catch (e) {
           logger.error('HomeGraph loadOpportunities failed', { error: e });

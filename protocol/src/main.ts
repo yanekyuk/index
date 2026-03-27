@@ -38,6 +38,7 @@ import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
 import { IndexMembershipEvents } from './events/index_membership.event';
 import { IntentEvents } from './events/intent.event';
+import { opportunityService } from './services/opportunity.service';
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();
@@ -54,15 +55,22 @@ IndexMembershipEvents.onMemberAdded = (userId: string) => {
 };
 
 IntentEvents.onCreated = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent created, triggering maintenance', { intentId, userId });
+  log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
   opportunityQueue.addJob(
     { intentId, userId },
     { priority: 10, jobId: `rediscovery:${userId}:${intentId}:${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
-  ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue maintenance on create', { intentId, userId, error: err }));
+  ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
+  opportunityService.triggerMaintenance(userId, 'intent-created');
+};
+
+IntentEvents.onUpdated = (intentId: string, userId: string) => {
+  log.job.from('IntentEvents').verbose('Intent updated, triggering maintenance', { intentId, userId });
+  opportunityService.triggerMaintenance(userId, 'intent-updated');
 };
 
 IntentEvents.onArchived = (intentId: string, userId: string) => {
-  log.job.from('IntentEvents').verbose('Intent archived', { intentId, userId });
+  log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
+  opportunityService.triggerMaintenance(userId, 'intent-archived');
 };
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;

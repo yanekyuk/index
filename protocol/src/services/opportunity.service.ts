@@ -7,6 +7,7 @@ import type { HydeCache, OpportunityCache } from '../lib/protocol/interfaces/cac
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HomeGraphFactory } from '../lib/protocol/graphs/home.graph';
+import { MaintenanceGraphFactory, type MaintenanceGraphDatabase, type MaintenanceGraphCache, type MaintenanceGraphQueue } from '../lib/protocol/graphs/maintenance.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
@@ -74,6 +75,7 @@ export class OpportunityService {
   private cache: OpportunityCache;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
+  private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
   /** Event emitter for opportunity lifecycle; subscribe via onOpportunityEvent. */
   private readonly events = new OpportunityServiceEvents();
 
@@ -105,6 +107,11 @@ export class OpportunityService {
       this.graph = factory.createGraph();
     }
     this.homeGraph = new HomeGraphFactory(this.db as unknown as HomeGraphDatabase, this.cache).createGraph();
+    this.maintenanceGraph = new MaintenanceGraphFactory(
+      this.db as unknown as MaintenanceGraphDatabase,
+      this.cache as unknown as MaintenanceGraphCache,
+      opportunityQueue as unknown as MaintenanceGraphQueue,
+    ).createGraph();
   }
 
   /**
@@ -124,7 +131,7 @@ export class OpportunityService {
   async getHomeView(
     userId: string,
     options?: { indexId?: string; limit?: number }
-  ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number } } | { error: string }> {
+  ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
       return { error: 'Home view not available' };
@@ -139,15 +146,17 @@ export class OpportunityService {
         return { error: result.error };
       }
       const sections = result.sections ?? [];
-      const meta = result.meta ?? { totalOpportunities: 0, totalSections: 0 };
+      const meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } = {
+        ...(result.meta ?? { totalOpportunities: 0, totalSections: 0 }),
+        maintenanceTriggered: false,
+      };
 
-      // Self-healing: when no actionable opportunities exist, re-queue discovery for active intents
-      const totalItems = sections.reduce(
-        (sum: number, s: { items: unknown[] }) => sum + (s.items?.length ?? 0), 0
-      );
-      if (totalItems === 0 && !options?.indexId) {
-        this.triggerRediscoveryIfNeeded(userId).catch((err) =>
-          logger.warn('[OpportunityService] Rediscovery trigger failed', { userId, error: err })
+      // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger
+      if (this.maintenanceGraph && !options?.indexId) {
+        meta.maintenanceTriggered = true;
+        logger.info('[OpportunityService] Triggering maintenance via health scoring', { userId, source: 'home-view' });
+        this.maintenanceGraph.invoke({ userId }).catch((err) =>
+          logger.warn('[OpportunityService] Maintenance graph failed', { userId, error: err })
         );
       }
 
@@ -626,59 +635,21 @@ export class OpportunityService {
   }
 
   /**
-   * Re-queue opportunity discovery for a user's active intents when no actionable
-   * opportunities exist. Throttled to once per 6 hours per user via cache key.
+   * Trigger maintenance for a specific user via the maintenance graph.
+   * Fire-and-forget: logs errors but does not throw.
+   *
+   * @param userId - The user whose feed to evaluate
+   * @param source - What triggered this maintenance check
    */
-  private async triggerRediscoveryIfNeeded(userId: string): Promise<void> {
-    const cacheKey = `rediscovery:throttle:${userId}`;
-
-    // Best-effort throttle: cache errors should not block self-healing
-    try {
-      const existing = await this.cache.get(cacheKey);
-      if (existing) return;
-    } catch (err) {
-      logger.warn('[OpportunityService] Rediscovery throttle read failed; continuing without cooldown', { userId, error: err });
+  triggerMaintenance(userId: string, source: string): void {
+    if (!this.maintenanceGraph) {
+      logger.warn('[OpportunityService] Maintenance graph not available', { userId, source });
+      return;
     }
-
-    const activeIntents = await this.db.getActiveIntents(userId);
-    if (!activeIntents?.length) return;
-
-    logger.info('[OpportunityService] Triggering rediscovery for stale user', {
-      userId,
-      intentCount: activeIntents.length,
-    });
-
-    // Bucket jobId by 6-hour window so completed/failed job retention (24h) doesn't block the next cycle
-    const bucket = Math.floor(Date.now() / (6 * 60 * 60 * 1000));
-    const results = await Promise.allSettled(
-      activeIntents.map((intent) =>
-        opportunityQueue.addJob(
-          { intentId: intent.id, userId },
-          { priority: 10, jobId: `rediscovery:${userId}:${intent.id}:${bucket}` },
-        )
-      )
+    logger.info('[OpportunityService] Triggering maintenance', { userId, source });
+    this.maintenanceGraph.invoke({ userId }).catch((err) =>
+      logger.warn('[OpportunityService] Maintenance graph failed', { userId, source, error: err })
     );
-
-    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
-    const failedCount = results.length - succeeded;
-
-    if (failedCount > 0) {
-      logger.warn('[OpportunityService] Some rediscovery jobs failed to enqueue', {
-        userId,
-        failedCount,
-        totalCount: activeIntents.length,
-      });
-    }
-
-    // Only arm cooldown if all jobs were enqueued; partial failures should allow
-    // retries on the next home view load (bucketed jobId deduplicates the successful ones)
-    if (succeeded > 0 && failedCount === 0) {
-      try {
-        await this.cache.set(cacheKey, { triggeredAt: new Date().toISOString() }, { ttl: 6 * 60 * 60 });
-      } catch (err) {
-        logger.warn('[OpportunityService] Rediscovery throttle write failed', { userId, error: err });
-      }
-    }
   }
 
   /**
