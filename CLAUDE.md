@@ -91,7 +91,14 @@ bun run worktree:build [name]               # Build at root, or in worktree <nam
 ```
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
-└── frontend/          # Vite + React Router v7 SPA with React 19
+├── frontend/          # Vite + React Router v7 SPA with React 19
+├── docs/              # Project documentation
+│   ├── design/        # Architecture overview, protocol deep dive
+│   ├── domain/        # Domain concepts (intents, opportunities, negotiation, etc.)
+│   ├── guides/        # Getting started, onboarding
+│   ├── specs/         # API reference
+│   └── .archive/      # Historical plans and design docs
+└── scripts/           # Worktree helpers, hooks, dev launcher
 ```
 
 ### Protocol Architecture
@@ -157,7 +164,7 @@ All agents live under `src/lib/protocol/agents/`. There is no separate `src/agen
    - `suggestion.generator.ts` - Generates suggestions
    - `home.categorizer.ts` - Categorizes home feed content
 
-**Protocol Graphs** (`src/lib/protocol/graphs/`): chat, home, hyde, index, index_membership, intent, intent_index, maintenance, opportunity, profile. See docs under `lib/protocol/docs/` for design details.
+**Protocol Graphs** (`src/lib/protocol/graphs/`): chat, home, hyde, index, index_membership, intent, intent_index, maintenance, negotiation, opportunity, profile. See `docs/design/` for architecture and protocol deep dives, and `docs/domain/` for domain concept documentation.
 
 **Agent Execution Pattern**:
 ```typescript
