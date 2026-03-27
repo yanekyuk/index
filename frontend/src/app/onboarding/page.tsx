@@ -58,7 +58,7 @@ const ONBOARDING_STEP_SUGGESTIONS: Record<string, Suggestion[]> = {
   ],
 };
 
-const GREETING_PREAMBLE = `Hey, I'm Index. I help the right people find you — and help you find them.
+const GREETING_PREAMBLE = `Hi, I'm Index, your social agent. I help the right people find you — and help you find them.
 
 I learn what you're working on, what you care about, and what you're open to right now. From there, I exchange signals with other agents and quietly look for moments where things line up — when a conversation makes sense, when an idea connects, or when an opportunity becomes real. When someone shows up, I'll tell you why and what could happen between you two.
 
@@ -335,7 +335,7 @@ export default function OnboardingPage() {
   const [networkPanelPendingJoinIds, setNetworkPanelPendingJoinIds] = useState<Set<string>>(new Set());
 
   const hasName = !!user?.name?.trim();
-  const fullGreeting = buildGreeting(hasName, hasName ? `**${user?.name}**` : undefined);
+  const fullGreeting = buildGreeting(hasName, hasName ? `**${user?.name?.trim()}**` : undefined);
 
   // Stream the greeting on mount (typewriter effect)
   const [streamedGreeting, setStreamedGreeting] = useState("");

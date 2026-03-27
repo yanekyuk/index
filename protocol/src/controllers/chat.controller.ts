@@ -170,9 +170,12 @@ export class ChatController {
       ReturnType<typeof chatSessionService.getSession>
     > | null = null;
     if (!currentSessionId) {
+      const initialTitle = body.prefillMessages?.length
+        ? "Set Up Your Social Agent"
+        : undefined;
       currentSessionId = await chatSessionService.createSession(
         user.id,
-        undefined,
+        initialTitle,
         requestIndexId,
       );
     } else {
