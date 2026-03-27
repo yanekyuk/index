@@ -123,7 +123,7 @@ export interface ExistingConnection {
   opportunityId?: string;
 }
 
-/** Statuses for which an existing connection may be shown as a card; others (viewed, accepted, rejected, expired) are only mentioned in text. */
+/** Statuses for which an existing connection may be shown as a card; others (accepted, rejected, expired) are only mentioned in text. */
 const EXISTING_CONNECTION_CARD_STATUSES = ['draft', 'latent', 'pending'] as const;
 
 export interface DiscoverResult {
@@ -131,7 +131,7 @@ export interface DiscoverResult {
   count: number;
   message?: string;
   opportunities?: FormattedDiscoveryCandidate[];
-  /** Existing connections eligible for card display (draft or latent only). Others are mention-only. */
+  /** Existing connections eligible for card display (draft, latent, or pending). Others are mention-only. */
   existingConnections?: ExistingConnection[];
   /** All existing connections for mention text (e.g. "You already have a connection with: X (pending), Y (draft)."). */
   existingConnectionsForMention?: ExistingConnection[];
