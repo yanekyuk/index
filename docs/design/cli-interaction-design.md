@@ -133,11 +133,11 @@ Index Network supports three distinct interaction patterns between participants.
 
 The system currently has two parallel conversation systems that operate over the **same database tables**:
 
-1. **ChatSessionService** (`/api/chat/*`) -- manages H2A interactions. Creates conversations and messages through `ChatDatabaseAdapter`, which is a facade over the shared conversation tables. Adds metadata (title, indexId, shareToken) via `conversation_metadata`.
+1. **ChatSessionService** (`/api/chat/*`) -- manages H2A interactions. Creates conversations and messages through `ChatDatabaseAdapter`, which queries the shared conversation tables (`conversations`, `conversation_participants`, `messages`, `conversation_metadata`) directly. Adds H2A-specific metadata (title, indexId, shareToken) via the `conversation_metadata` sidecar table.
 
 2. **ConversationService** (`/api/conversations/*`) -- manages H2H DMs and A2A negotiations. Accesses the same `conversations`, `messages`, `tasks`, and `artifacts` tables through `ConversationDatabaseAdapter`.
 
-Both adapters read and write the same rows. A chat session IS a conversation row. A chat message IS a message row (with the `parts` column containing a single TextPart). The `ChatDatabaseAdapter` simply wraps `ConversationDatabaseAdapter` calls with session-specific logic (title generation, message ordering, metadata).
+Both adapters read and write the same underlying tables. A chat session IS a conversation row. A chat message IS a message row. `ChatDatabaseAdapter` and `ConversationDatabaseAdapter` are independent implementations over the same schema -- they do not share code, which means session-specific logic (title generation, message ordering, metadata persistence) is duplicated rather than layered.
 
 This duality creates several problems:
 
