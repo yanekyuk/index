@@ -1,20 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router";
-import { Loader2, ChevronDown, Bot, Handshake } from "lucide-react";
+import { Loader2, ChevronDown, Bot, Radio } from "lucide-react";
 import UserAvatar from "@/components/UserAvatar";
 import { useUsers } from "@/contexts/APIContext";
 import type { NegotiationSummary, NegotiationTurnSummary } from "@/services/users";
 
-const PAGE_SIZE = 20;
-
-type ResultFilter = '' | 'has_opportunity' | 'no_opportunity' | 'in_progress';
-
-const FILTERS: { value: ResultFilter; label: string }[] = [
-  { value: '', label: 'All' },
-  { value: 'has_opportunity', label: 'Has opportunities' },
-  { value: 'no_opportunity', label: 'No opportunities' },
-  { value: 'in_progress', label: 'In progress' },
-];
+const PAGE_SIZE = 5;
 
 const ROLE_LABELS: Record<string, string> = {
   agent: "Helper",
@@ -71,6 +62,34 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
   );
 }
 
+interface EmptyStateProps {
+  onTrigger: () => void;
+  isTriggering?: boolean;
+}
+
+/* ── VARIANT 0 (original) ── dashed border, monospace, dark button ── */
+function EmptyStateVariant0({ onTrigger, isTriggering }: EmptyStateProps) {
+  return (
+    <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
+      <div className="space-y-3">
+        <p>No negotiations yet</p>
+        <button
+          onClick={onTrigger}
+          disabled={isTriggering}
+          className="inline-flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
+        >
+          {isTriggering ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Negotiating...</>
+          ) : (
+            <><Radio className="w-4 h-4" /> Peer Agents</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 interface NegotiationHistoryProps {
   userId: string;
   onTriggerNegotiation?: () => Promise<NegotiationSummary | void>;
@@ -84,16 +103,14 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [resultFilter, setResultFilter] = useState<ResultFilter>('');
 
   const fetchNegotiations = useCallback(async (offset: number) => {
     const results = await usersService.getUserNegotiations(userId, {
       limit: PAGE_SIZE,
       offset,
-      result: resultFilter || undefined,
     });
     return results;
-  }, [userId, usersService, resultFilter]);
+  }, [userId, usersService]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,73 +143,28 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
     }
   };
 
-  const showFilters = !isLoading || resultFilter;
-
   return (
     <div className="space-y-2">
-      {showFilters && (
-        <div className="flex gap-1.5 mb-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setResultFilter(f.value)}
-              className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-                resultFilter === f.value
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {isLoading && (
         <div className="flex justify-center py-8">
           <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
         </div>
       )}
 
-      {!isLoading && negotiations.length === 0 && !resultFilter && (
-        <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
-          {onTriggerNegotiation ? (
-            <div className="space-y-3">
-              <p>No negotiations yet</p>
-              <button
-                onClick={async () => {
-                  const result = await onTriggerNegotiation();
-                  if (result) {
-                    setNegotiations((prev) => [result, ...prev]);
-                  }
-                }}
-                disabled={isTriggering}
-                className="inline-flex items-center gap-2 bg-[#041729] text-white px-4 py-2 rounded-sm text-sm font-medium hover:bg-[#0a2d4a] transition-colors disabled:opacity-50"
-              >
-                {isTriggering ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Negotiating...
-                  </>
-                ) : (
-                  <>
-                    <Handshake className="w-4 h-4" />
-                    Peer Agents
-                  </>
-                )}
-              </button>
-              <p className="text-xs text-gray-400">Start a discovery negotiation</p>
-            </div>
-          ) : (
+      {!isLoading && negotiations.length === 0 && (
+        onTriggerNegotiation ? (
+          <EmptyStateVariant0
+            onTrigger={async () => {
+              const result = await onTriggerNegotiation();
+              if (result) setNegotiations((prev) => [result, ...prev]);
+            }}
+            isTriggering={isTriggering}
+          />
+        ) : (
+          <div className="text-sm text-gray-500 font-ibm-plex-mono py-12 text-center border border-dashed border-gray-200 rounded-lg">
             <p>No negotiations yet</p>
-          )}
-        </div>
-      )}
-
-      {!isLoading && negotiations.length === 0 && resultFilter && (
-        <div className="text-sm text-gray-500 py-8 text-center">
-          <p>No negotiations match this filter</p>
-        </div>
+          </div>
+        )
       )}
 
       {negotiations.map((neg) => {
