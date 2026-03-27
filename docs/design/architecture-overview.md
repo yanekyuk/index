@@ -589,4 +589,5 @@ New opportunities (status: latent)
 - **Protocol layer README**: `protocol/src/lib/protocol/README.md` -- detailed graph, agent, and tool documentation with sequence diagrams
 - **Architecture vision**: `protocol/ARCHITECTURE.md` -- federation, identity model, and multi-node protocol design
 - **Design papers**: `protocol/src/lib/protocol/docs/` -- deep dives on HyDE strategies, opportunity lifecycle, semantic governance, and more
+- **CLI and interaction design**: `docs/design/cli-interaction-design.md` -- canonical A2A/H2A/H2H terminology, interaction pattern catalog, conversation unification proposal, and CLI command surface
 - **Template files**: `protocol/src/controllers/controller.template.md`, `protocol/src/services/service.template.md`, `protocol/src/queues/queue.template.md`, `protocol/src/lib/protocol/agents/agent.template.md` -- coding guidelines per layer
