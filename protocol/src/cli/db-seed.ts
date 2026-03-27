@@ -7,7 +7,7 @@ const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { indexMembers, indexes, userProfiles, users } from '../schemas/database.schema';
+import { networkMembers, networks, userProfiles, users } from '../schemas/database.schema';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { profileService } from '../services/profile.service';
@@ -31,7 +31,7 @@ interface SeedAccount {
 // ── Index definitions ───────────────────────────────────────────────────────
 
 interface IndexDef {
-  id: Id<'indexes'>;
+  id: Id<'networks'>;
   title: string;
   key: string;
   prompt: string | null;
@@ -208,8 +208,8 @@ async function ensureUsersAndMemberships(
     const role = ownerIndex !== undefined && i === ownerIndex ? 'owner' : 'member';
     for (const idx of SEED_INDEXES) {
       try {
-        await db.insert(indexMembers).values({
-          indexId: idx.id,
+        await db.insert(networkMembers).values({
+          networkId: idx.id,
           userId: user.id,
           permissions: role === 'owner' ? ['owner'] : ['member'],
           prompt: null,
@@ -264,7 +264,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     for (let i = 0; i < SEED_INDEXES.length; i++) {
       const idx = SEED_INDEXES[i];
       try {
-        await db.insert(indexes).values({
+        await db.insert(networks).values({
           id: idx.id,
           title: idx.title,
           key: idx.key,

@@ -104,13 +104,13 @@ describe('QueueAdapter', () => {
 
       const r1 = await adapter.addJob('index_intent', {
         intentId: 'i1',
-        indexId: 'idx1',
+        networkId: 'idx1',
         userId: 'u1',
       });
       expect(r1).toEqual({ id: 'intent-job' });
       expect(addMock).toHaveBeenCalledWith(
         'index_intent',
-        { intentId: 'i1', indexId: 'idx1', userId: 'u1' },
+        { intentId: 'i1', networkId: 'idx1', userId: 'u1' },
         expect.any(Object)
       );
 

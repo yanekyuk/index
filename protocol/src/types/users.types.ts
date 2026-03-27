@@ -16,7 +16,7 @@ export interface OnboardingState {
   completedAt?: ISODateString | null;
   flow?: 1 | 2 | 3;
   currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
-  indexId?: UUID | null;
+  networkId?: UUID | null;
   invitationCode?: string;
 }
 

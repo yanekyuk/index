@@ -4,7 +4,7 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ChatController } from "../chat.controller";
-import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, IndexGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
@@ -23,7 +23,7 @@ describe("ChatController Integration", () => {
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new ProfileDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
-  const indexAdapter = new IndexGraphDatabaseAdapter();
+  const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
@@ -71,8 +71,8 @@ describe("ChatController Integration", () => {
   });
 
   afterAll(async () => {
-    for (const indexId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
-      if (indexId) await indexAdapter.deleteIndexAndMembers(indexId);
+    for (const networkId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
+      if (networkId) await indexAdapter.deleteIndexAndMembers(networkId);
     }
     if (testUserId) {
       await intentAdapter.deleteByUserId(testUserId);
@@ -423,7 +423,7 @@ describe("ChatController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "hello",
-          indexId: unauthorizedStreamIndexId,
+          networkId: unauthorizedStreamIndexId,
           useCheckpointer: false,
         }),
       });

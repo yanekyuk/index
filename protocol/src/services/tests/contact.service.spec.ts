@@ -13,9 +13,9 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
-  indexes,
-  indexMembers,
-  personalIndexes,
+  networks,
+  networkMembers,
+  personalNetworks,
 } from '../../schemas/database.schema';
 import { ContactService } from '../contact.service';
 
@@ -44,20 +44,20 @@ async function createTestUser(id: string, email: string, name: string): Promise<
   createdUserIds.push(id);
 
   // Create personal index
-  const indexId = crypto.randomUUID();
-  await db.insert(indexes).values({
-    id: indexId,
+  const networkId = crypto.randomUUID();
+  await db.insert(networks).values({
+    id: networkId,
     title: `${name}'s Personal Index`,
     isPersonal: true,
   });
-  await db.insert(personalIndexes).values({ userId: id, indexId });
-  await db.insert(indexMembers).values({
-    indexId,
+  await db.insert(personalNetworks).values({ userId: id, networkId });
+  await db.insert(networkMembers).values({
+    networkId,
     userId: id,
     permissions: ['owner'],
     autoAssign: false,
   });
-  return indexId;
+  return networkId;
 }
 
 beforeAll(async () => {
@@ -80,11 +80,11 @@ afterAll(async () => {
   // Clean up in dependency order
   const allUserIds = [...createdUserIds];
   if (allUserIds.length > 0) {
-    await db.delete(indexMembers).where(inArray(indexMembers.userId, allUserIds));
+    await db.delete(networkMembers).where(inArray(networkMembers.userId, allUserIds));
   }
   // Clean personal_indexes for owner
-  await db.delete(personalIndexes).where(eq(personalIndexes.userId, ownerId));
-  await db.delete(indexes).where(eq(indexes.id, personalIndexId));
+  await db.delete(personalNetworks).where(eq(personalNetworks.userId, ownerId));
+  await db.delete(networks).where(eq(networks.id, personalIndexId));
   if (allUserIds.length > 0) {
     await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
     await db.delete(users).where(inArray(users.id, allUserIds));
@@ -105,12 +105,12 @@ describe('addContact', () => {
     // Verify membership row exists
     const [membership] = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, existingUserId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, existingUserId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(membership).toBeDefined();
@@ -135,12 +135,12 @@ describe('addContact', () => {
     // Verify membership
     const [membership] = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, result.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, result.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(membership).toBeDefined();
@@ -154,13 +154,13 @@ describe('addContact', () => {
 
     // Soft-delete the membership
     await db
-      .update(indexMembers)
+      .update(networkMembers)
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, first.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, first.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
 
@@ -171,13 +171,13 @@ describe('addContact', () => {
     expect(second.userId).toBe(first.userId);
 
     const [membership] = await db
-      .select({ deletedAt: indexMembers.deletedAt })
-      .from(indexMembers)
+      .select({ deletedAt: networkMembers.deletedAt })
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, first.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, first.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(membership.deletedAt).not.toBeNull();
@@ -191,13 +191,13 @@ describe('addContact', () => {
 
     // Soft-delete the membership
     await db
-      .update(indexMembers)
+      .update(networkMembers)
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, first.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, first.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
 
@@ -207,13 +207,13 @@ describe('addContact', () => {
 
     // Membership should be active again
     const [membership] = await db
-      .select({ deletedAt: indexMembers.deletedAt })
-      .from(indexMembers)
+      .select({ deletedAt: networkMembers.deletedAt })
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, first.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, first.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(membership.deletedAt).toBeNull();
@@ -227,8 +227,8 @@ describe('addContact', () => {
     const otherIndexId = await createTestUser(otherId, otherEmail, TEST_PREFIX + 'Other');
 
     // Simulate: other user has owner as a soft-deleted contact in their personal index
-    await db.insert(indexMembers).values({
-      indexId: otherIndexId,
+    await db.insert(networkMembers).values({
+      networkId: otherIndexId,
       userId: ownerId,
       permissions: ['contact'],
       autoAssign: false,
@@ -241,20 +241,20 @@ describe('addContact', () => {
     // The soft-deleted row in other's personal index for owner should be gone
     const rows = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, otherIndexId),
-          eq(indexMembers.userId, ownerId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, otherIndexId),
+          eq(networkMembers.userId, ownerId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(rows.length).toBe(0);
 
     // Cleanup: remove the other personal index
-    await db.delete(indexMembers).where(eq(indexMembers.indexId, otherIndexId));
-    await db.delete(personalIndexes).where(eq(personalIndexes.userId, otherId));
-    await db.delete(indexes).where(eq(indexes.id, otherIndexId));
+    await db.delete(networkMembers).where(eq(networkMembers.networkId, otherIndexId));
+    await db.delete(personalNetworks).where(eq(personalNetworks.userId, otherId));
+    await db.delete(networks).where(eq(networks.id, otherIndexId));
   }, 60_000);
 });
 
@@ -270,12 +270,12 @@ describe('removeContact', () => {
     // Verify exists
     const beforeRows = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, addResult.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, addResult.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(beforeRows.length).toBe(1);
@@ -286,12 +286,12 @@ describe('removeContact', () => {
     // Verify gone (hard delete, not soft delete)
     const afterRows = await db
       .select()
-      .from(indexMembers)
+      .from(networkMembers)
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, addResult.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, addResult.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
     expect(afterRows.length).toBe(0);
@@ -319,13 +319,13 @@ describe('listContacts', () => {
 
     // Soft-delete
     await db
-      .update(indexMembers)
+      .update(networkMembers)
       .set({ deletedAt: new Date() })
       .where(
         and(
-          eq(indexMembers.indexId, personalIndexId),
-          eq(indexMembers.userId, added.userId),
-          sql`'contact' = ANY(${indexMembers.permissions})`,
+          eq(networkMembers.networkId, personalIndexId),
+          eq(networkMembers.userId, added.userId),
+          sql`'contact' = ANY(${networkMembers.permissions})`,
         )
       );
 

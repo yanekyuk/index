@@ -139,10 +139,10 @@ export class IntentService {
    * @param userId - The user ID
    * @param description - The pre-verified intent description
    * @param proposalId - The proposal ID (stored as sourceId for status tracking)
-   * @param indexId - Optional index to associate the intent with
+   * @param networkId - Optional index to associate the intent with
    * @returns The created or existing intent record (at least { id }).
    */
-  async createFromProposal(userId: string, description: string, proposalId: string, indexId?: string) {
+  async createFromProposal(userId: string, description: string, proposalId: string, networkId?: string) {
     logger.verbose('[IntentService] Creating intent from proposal', { userId, proposalId });
 
     const existing = await this.adapter.getIntentBySourceId(proposalId, userId);
@@ -171,13 +171,13 @@ export class IntentService {
       sourceId: proposalId,
     });
 
-    if (indexId) {
+    if (networkId) {
       try {
-        await this.adapter.assignIntentToIndex(created.id, indexId);
+        await this.adapter.assignIntentToIndex(created.id, networkId);
       } catch (err) {
         logger.warn('[IntentService] Failed to associate intent with index', {
           intentId: created.id,
-          indexId,
+          networkId,
           error: err,
         });
       }

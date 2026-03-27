@@ -31,8 +31,8 @@ const CONNECTIONS: Record<string, IntegrationConnection[]> = {
 };
 
 const disconnected: string[] = [];
-const linkedIntegrations: Array<{ indexId: string; toolkit: string; connectedAccountId: string }> = [];
-const bulkAdded: Array<{ indexId: string; userIds: string[] }> = [];
+const linkedIntegrations: Array<{ networkId: string; toolkit: string; connectedAccountId: string }> = [];
+const bulkAdded: Array<{ networkId: string; userIds: string[] }> = [];
 
 const mockAdapter: IntegrationAdapter = {
   async createSession() {
@@ -55,21 +55,21 @@ const mockAdapter: IntegrationAdapter = {
 
 const mockDb = {
   deleteIndexIntegrationsByConnectedAccount: async () => {},
-  getIndexIntegrations: async (indexId: string) =>
-    linkedIntegrations.filter(l => l.indexId === indexId),
-  insertIndexIntegration: async (indexId: string, toolkit: string, connectedAccountId: string) => {
-    linkedIntegrations.push({ indexId, toolkit, connectedAccountId });
+  getIndexIntegrations: async (networkId: string) =>
+    linkedIntegrations.filter(l => l.networkId === networkId),
+  insertIndexIntegration: async (networkId: string, toolkit: string, connectedAccountId: string) => {
+    linkedIntegrations.push({ networkId, toolkit, connectedAccountId });
   },
-  deleteIndexIntegration: async (indexId: string, toolkit: string) => {
-    const idx = linkedIntegrations.findIndex(l => l.indexId === indexId && l.toolkit === toolkit);
+  deleteIndexIntegration: async (networkId: string, toolkit: string) => {
+    const idx = linkedIntegrations.findIndex(l => l.networkId === networkId && l.toolkit === toolkit);
     if (idx !== -1) linkedIntegrations.splice(idx, 1);
   },
-  isIndexOwner: async (indexId: string, userId: string) => {
-    return indexId === INDEX_OWNED && userId === "user-a";
+  isIndexOwner: async (networkId: string, userId: string) => {
+    return networkId === INDEX_OWNED && userId === "user-a";
   },
   isPersonalIndex: async () => false,
-  addMembersBulkToIndex: async (indexId: string, userIds: string[]) => {
-    bulkAdded.push({ indexId, userIds });
+  addMembersBulkToIndex: async (networkId: string, userIds: string[]) => {
+    bulkAdded.push({ networkId, userIds });
   },
 } as unknown as ChatDatabaseAdapter;
 
@@ -142,7 +142,7 @@ describe("IntegrationController", () => {
     test("should link toolkit to an owned index", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.link(req, USER_A, { toolkit: "gmail" });
@@ -150,14 +150,14 @@ describe("IntegrationController", () => {
       const data = result as { success: boolean };
       expect(data.success).toBe(true);
       expect(linkedIntegrations).toHaveLength(1);
-      expect(linkedIntegrations[0].indexId).toBe(INDEX_OWNED);
+      expect(linkedIntegrations[0].networkId).toBe(INDEX_OWNED);
       expect(linkedIntegrations[0].toolkit).toBe("gmail");
     });
 
     test("should return 400 when user is not index owner", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_NOT_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_NOT_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.link(req, USER_A, { toolkit: "gmail" });
@@ -169,7 +169,7 @@ describe("IntegrationController", () => {
       expect(body.error).toContain("Access denied");
     });
 
-    test("should return 400 when indexId is missing", async () => {
+    test("should return 400 when networkId is missing", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "POST",
         body: JSON.stringify({}),
@@ -181,13 +181,13 @@ describe("IntegrationController", () => {
       const res = result as Response;
       expect(res.status).toBe(400);
       const body = await res.json() as { error: string };
-      expect(body.error).toBe("indexId is required");
+      expect(body.error).toBe("networkId is required");
     });
 
     test("should return 400 for unsupported toolkit", async () => {
       const req = new Request("http://test/api/integrations/evilkit/link", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.link(req, USER_A, { toolkit: "evilkit" });
@@ -200,9 +200,9 @@ describe("IntegrationController", () => {
 
   describe("DELETE /:toolkit/link (unlink)", () => {
     test("should unlink toolkit from an owned index", async () => {
-      linkedIntegrations.push({ indexId: INDEX_OWNED, toolkit: "gmail", connectedAccountId: "conn-1" });
+      linkedIntegrations.push({ networkId: INDEX_OWNED, toolkit: "gmail", connectedAccountId: "conn-1" });
 
-      const req = new Request(`http://test/api/integrations/gmail/link?indexId=${INDEX_OWNED}`, {
+      const req = new Request(`http://test/api/integrations/gmail/link?networkId=${INDEX_OWNED}`, {
         method: "DELETE",
       });
       const result = await controller.unlink(req, USER_A, { toolkit: "gmail" });
@@ -213,7 +213,7 @@ describe("IntegrationController", () => {
     });
 
     test("should return 400 when user is not index owner", async () => {
-      const req = new Request(`http://test/api/integrations/gmail/link?indexId=${INDEX_NOT_OWNED}`, {
+      const req = new Request(`http://test/api/integrations/gmail/link?networkId=${INDEX_NOT_OWNED}`, {
         method: "DELETE",
       });
       const result = await controller.unlink(req, USER_A, { toolkit: "gmail" });
@@ -225,7 +225,7 @@ describe("IntegrationController", () => {
       expect(body.error).toContain("Access denied");
     });
 
-    test("should return 400 when indexId query param is missing", async () => {
+    test("should return 400 when networkId query param is missing", async () => {
       const req = new Request("http://test/api/integrations/gmail/link", {
         method: "DELETE",
       });
@@ -235,7 +235,7 @@ describe("IntegrationController", () => {
       const res = result as Response;
       expect(res.status).toBe(400);
       const body = await res.json() as { error: string };
-      expect(body.error).toBe("indexId query param is required");
+      expect(body.error).toBe("networkId query param is required");
     });
   });
 
@@ -243,7 +243,7 @@ describe("IntegrationController", () => {
     test("should return 400 for unsupported toolkit", async () => {
       const req = new Request("http://test/api/integrations/evilkit/import", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.importContacts(req, USER_A, { toolkit: "evilkit" });
@@ -256,7 +256,7 @@ describe("IntegrationController", () => {
     test("should import contacts for an owned non-personal index", async () => {
       const req = new Request("http://test/api/integrations/gmail/import", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.importContacts(req, USER_A, { toolkit: "gmail" });
@@ -269,7 +269,7 @@ describe("IntegrationController", () => {
     test("should return 400 for an index the user does not own", async () => {
       const req = new Request("http://test/api/integrations/gmail/import", {
         method: "POST",
-        body: JSON.stringify({ indexId: INDEX_NOT_OWNED }),
+        body: JSON.stringify({ networkId: INDEX_NOT_OWNED }),
         headers: { "Content-Type": "application/json" },
       });
       const result = await controller.importContacts(req, USER_A, { toolkit: "gmail" });

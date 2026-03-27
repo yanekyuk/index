@@ -20,8 +20,8 @@ const twoActorOpportunity: Opportunity = {
   id: OPP_ID,
   detection: { source: "opportunity_graph", timestamp: new Date().toISOString() },
   actors: [
-    { indexId: "idx-1", userId: USER_A, role: "patient" },
-    { indexId: "idx-1", userId: USER_B, role: "agent" },
+    { networkId: "idx-1", userId: USER_A, role: "patient" },
+    { networkId: "idx-1", userId: USER_B, role: "agent" },
   ],
   interpretation: {
     category: "collaboration",
@@ -29,7 +29,7 @@ const twoActorOpportunity: Opportunity = {
     confidence: 0.85,
     signals: [],
   },
-  context: { indexId: "idx-1" },
+  context: { networkId: "idx-1" },
   confidence: "0.85",
   status: "pending",
   createdAt: new Date(),
@@ -41,9 +41,9 @@ const threeActorOpportunity: Opportunity = {
   ...twoActorOpportunity,
   id: "opp-002",
   actors: [
-    { indexId: "idx-1", userId: USER_A, role: "party" },
-    { indexId: "idx-1", userId: USER_B, role: "party" },
-    { indexId: "idx-1", userId: INTRODUCER, role: "introducer" },
+    { networkId: "idx-1", userId: USER_A, role: "party" },
+    { networkId: "idx-1", userId: USER_B, role: "party" },
+    { networkId: "idx-1", userId: INTRODUCER, role: "introducer" },
   ],
 };
 

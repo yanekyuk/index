@@ -62,14 +62,14 @@ export class ChatSessionService {
    *
    * @param userId - The user's UUID
    * @param title - Optional title for the session
-   * @param indexId - Optional index (community) ID to scope the conversation
+   * @param networkId - Optional index (community) ID to scope the conversation
    * @returns The created session ID
    */
-  async createSession(userId: string, title?: string, indexId?: string): Promise<string> {
-    logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), indexId: indexId ?? undefined });
+  async createSession(userId: string, title?: string, networkId?: string): Promise<string> {
+    logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), networkId: networkId ?? undefined });
 
     const id = crypto.randomUUID();
-    await this.db.createChatSession({ id, userId, title, indexId });
+    await this.db.createChatSession({ id, userId, title, networkId });
 
     return id;
   }
@@ -79,18 +79,18 @@ export class ChatSessionService {
    *
    * @param sessionId - The session ID
    * @param userId - The user ID to validate ownership
-   * @param indexId - The index ID to set, or undefined to clear
+   * @param networkId - The index ID to set, or undefined to clear
    * @returns True if updated, false if not found or unauthorized
    */
-  async updateSessionIndex(sessionId: string, userId: string, indexId: string | undefined): Promise<boolean> {
+  async updateSessionIndex(sessionId: string, userId: string, networkId: string | undefined): Promise<boolean> {
     const session = await this.getSession(sessionId, userId);
     if (!session) {
       return false;
     }
 
-    await this.db.updateChatSessionIndex(sessionId, indexId?.trim() || null);
+    await this.db.updateChatSessionIndex(sessionId, networkId?.trim() || null);
 
-    logger.verbose('Session index updated', { sessionId, indexId: indexId ?? null });
+    logger.verbose('Session index updated', { sessionId, networkId: networkId ?? null });
     return true;
   }
 
@@ -100,9 +100,9 @@ export class ChatSessionService {
    */
   async validateIndexScope(
     userId: string,
-    indexId: string
+    networkId: string
   ): Promise<{ ok: true } | { ok: false; status: 403 | 404; error: string }> {
-    const normalizedIndexId = indexId.trim();
+    const normalizedIndexId = networkId.trim();
     const index = await this.graphDb.getIndex(normalizedIndexId);
     if (!index) {
       return { ok: false, status: 404, error: 'Index not found' };

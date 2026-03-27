@@ -21,9 +21,9 @@ describe('AuthDatabaseAdapter', () => {
 
   afterAll(async () => {
     // Clean up index members and indexes first (FK constraints)
-    for (const indexId of cleanupIndexIds) {
-      await db.delete(schema.indexMembers).where(eq(schema.indexMembers.indexId, indexId)).catch(() => {});
-      await db.delete(schema.indexes).where(eq(schema.indexes.id, indexId)).catch(() => {});
+    for (const networkId of cleanupIndexIds) {
+      await db.delete(schema.networkMembers).where(eq(schema.networkMembers.networkId, networkId)).catch(() => {});
+      await db.delete(schema.networks).where(eq(schema.networks.id, networkId)).catch(() => {});
     }
     for (const id of testIds) {
       await db.delete(schema.users).where(eq(schema.users.id, id)).catch(() => {});
@@ -225,17 +225,17 @@ describe('AuthDatabaseAdapter', () => {
       });
 
       // Create some related data for the ghost (index membership)
-      const indexId = crypto.randomUUID();
-      cleanupIndexIds.push(indexId);
-      await db.insert(schema.indexes).values({
-        id: indexId,
+      const networkId = crypto.randomUUID();
+      cleanupIndexIds.push(networkId);
+      await db.insert(schema.networks).values({
+        id: networkId,
         title: 'Test Index',
         isPersonal: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      await db.insert(schema.indexMembers).values({
-        indexId,
+      await db.insert(schema.networkMembers).values({
+        networkId,
         userId: ghostId,
         permissions: ['contact'],
       });
@@ -260,8 +260,8 @@ describe('AuthDatabaseAdapter', () => {
 
       // Verify index membership still references ghost's original ID
       const [member] = await db.select()
-        .from(schema.indexMembers)
-        .where(eq(schema.indexMembers.userId, ghostId));
+        .from(schema.networkMembers)
+        .where(eq(schema.networkMembers.userId, ghostId));
       expect(member).toBeDefined();
     });
   });

@@ -3,7 +3,7 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll, mock } from "bun:test";
-import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, IndexGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { OpportunityDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // Mock notification queue so loading OpportunityController does not connect to Redis
@@ -191,15 +191,15 @@ describe("OpportunityController Integration", () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { indexId: testIndexId, userId: testUserId, role: "agent" },
-        { indexId: testIndexId, userId: candidateUserId, role: "patient" },
+        { networkId: testIndexId, userId: testUserId, role: "agent" },
+        { networkId: testIndexId, userId: candidateUserId, role: "patient" },
       ],
       interpretation: {
         category: "collaboration",
         reasoning: "Controller test opportunity",
         confidence: 0.9,
       },
-      context: { indexId: testIndexId },
+      context: { networkId: testIndexId },
       confidence: "0.9",
     });
     testOpportunityId = opp.id;
@@ -207,7 +207,7 @@ describe("OpportunityController Integration", () => {
 
   afterAll(async () => {
     if (testIndexId) {
-      const indexAdapter = new IndexGraphDatabaseAdapter();
+      const indexAdapter = new NetworkGraphDatabaseAdapter();
       await indexAdapter.deleteMembersForIndex(testIndexId);
     }
     if (testUserId) {
@@ -333,7 +333,7 @@ describe("OpportunityController Integration", () => {
     expect(data.opportunity!.status).toBe("pending");
   });
 
-  test("listForIndex should return 400 when indexId is missing", async () => {
+  test("listForIndex should return 400 when networkId is missing", async () => {
     const req = new Request("http://localhost/indexes/opportunities");
     const res = await indexOpportunityController.listForIndex(req, mockUser(), {});
     const data = (await res.json()) as { error?: string };
@@ -344,7 +344,7 @@ describe("OpportunityController Integration", () => {
 
   test("listForIndex should return 200 with opportunities for index", async () => {
     const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities");
-    const res = await indexOpportunityController.listForIndex(req, mockUser(), { indexId: testIndexId });
+    const res = await indexOpportunityController.listForIndex(req, mockUser(), { networkId: testIndexId });
     const data = (await res.json()) as { opportunities?: unknown[] };
 
     expect(res.status).toBe(200);
@@ -352,7 +352,7 @@ describe("OpportunityController Integration", () => {
     expect(data.opportunities!.length).toBeGreaterThanOrEqual(1);
   });
 
-  test("createManual should return 400 when indexId is missing", async () => {
+  test("createManual should return 400 when networkId is missing", async () => {
     const req = new Request("http://localhost/indexes/opportunities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -374,7 +374,7 @@ describe("OpportunityController Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
-    const res = await indexOpportunityController.createManual(req, mockUser(), { indexId: testIndexId });
+    const res = await indexOpportunityController.createManual(req, mockUser(), { networkId: testIndexId });
     const data = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(400);
@@ -390,7 +390,7 @@ describe("OpportunityController Integration", () => {
         reasoning: "Manual match for controller test",
       }),
     });
-    const res = await indexOpportunityController.createManual(req, mockUser(), { indexId: testIndexId });
+    const res = await indexOpportunityController.createManual(req, mockUser(), { networkId: testIndexId });
     const data = (await res.json()) as { id?: string; interpretation?: { summary: string }; error?: string };
 
     expect([201, 409]).toContain(res.status);

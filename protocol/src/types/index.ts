@@ -1,6 +1,6 @@
 // Export all types from sub-modules
 export * from './users.types';
-export * from './indexes.types';
+export * from './networks.types';
 export * from './intents.types';
 export * from './connections.types';
 export * from './files.types';

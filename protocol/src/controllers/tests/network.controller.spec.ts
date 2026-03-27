@@ -3,15 +3,15 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { IndexController } from "../index.controller";
-import { UserDatabaseAdapter, ChatDatabaseAdapter, IndexGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { NetworkController } from "../network.controller";
+import { UserDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
-describe("IndexController Integration", () => {
-  const controller = new IndexController();
+describe("NetworkController Integration", () => {
+  const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
   const chatAdapter = new ChatDatabaseAdapter();
-  const indexAdapter = new IndexGraphDatabaseAdapter();
+  const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   let createdIndexId: string;
   const testEmail = `test-index-controller-${Date.now()}@example.com`;

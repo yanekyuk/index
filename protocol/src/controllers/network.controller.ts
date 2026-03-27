@@ -1,7 +1,7 @@
 import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Delete, Get, Patch, Post, Put, UseGuards } from '../lib/router/router.decorators';
-import { indexService } from '../services/index.service';
+import { networkService } from '../services/network.service';
 
 const logger = log.controller.from('index');
 
@@ -10,14 +10,14 @@ function errorMessage(err: unknown): string {
 }
 
 @Controller('/indexes')
-export class IndexController {
+export class NetworkController {
   /**
    * List indexes the authenticated user is a member of, including their personal index.
    */
   @Get('')
   @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
-    const result = await indexService.getIndexesForUser(user.id);
+    const result = await networkService.getIndexesForUser(user.id);
     logger.verbose('Indexes listed for user', { userId: user.id, count: result.indexes.length });
     return Response.json(result);
   }
@@ -43,14 +43,14 @@ export class IndexController {
       });
     }
 
-    const result = await indexService.createIndex(user.id, {
+    const result = await networkService.createIndex(user.id, {
       title: body.title,
       prompt: body.prompt,
       imageUrl: body.imageUrl,
       joinPolicy: body.joinPolicy,
       allowGuestVibeCheck: body.allowGuestVibeCheck,
     });
-    logger.verbose('Index created', { indexId: result.id, userId: user.id });
+    logger.verbose('Index created', { networkId: result.id, userId: user.id });
     return Response.json({ index: result });
   }
 
@@ -62,8 +62,8 @@ export class IndexController {
   async searchPersonalIndexMembers(req: Request, user: AuthenticatedUser) {
     const url = new URL(req.url);
     const q = url.searchParams.get('q') || '';
-    const indexId = url.searchParams.get('indexId') || undefined;
-    const users = await indexService.searchPersonalIndexMembers(user.id, q, indexId);
+    const networkId = url.searchParams.get('networkId') || undefined;
+    const users = await networkService.searchPersonalIndexMembers(user.id, q, networkId);
     return Response.json({ users });
   }
 
@@ -74,7 +74,7 @@ export class IndexController {
   @Get('/my-members')
   @UseGuards(AuthGuard)
   async getMyMembers(_req: Request, user: AuthenticatedUser) {
-    const members = await indexService.getMembersFromMyIndexes(user.id);
+    const members = await networkService.getMembersFromMyIndexes(user.id);
     logger.verbose('My-index members listed', { userId: user.id, count: members.length });
     return Response.json({ members });
   }
@@ -86,8 +86,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async getMembers(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const members = await indexService.getMembersForOwner(params.id, user.id);
-      logger.verbose('Members listed for index', { indexId: params.id, count: members.length });
+      const members = await networkService.getMembersForOwner(params.id, user.id);
+      logger.verbose('Members listed for index', { networkId: params.id, count: members.length });
       return Response.json({
         members,
         metadataKeys: [],
@@ -120,7 +120,7 @@ export class IndexController {
     }
     try {
       const role = body.permissions?.includes('admin') ? 'admin' as const : 'member' as const;
-      const result = await indexService.addMember(params.id, body.userId, user.id, role);
+      const result = await networkService.addMember(params.id, body.userId, user.id, role);
       return Response.json({ member: result.member, message: result.alreadyMember ? 'Already a member' : 'Member added' });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -141,8 +141,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async removeMember(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await indexService.removeMember(params.id, params.memberId, user.id);
-      logger.verbose('Member removed from index', { indexId: params.id, memberId: params.memberId });
+      await networkService.removeMember(params.id, params.memberId, user.id);
+      logger.verbose('Member removed from index', { networkId: params.id, memberId: params.memberId });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -182,8 +182,8 @@ export class IndexController {
         joinPolicy?: 'anyone' | 'invite_only';
         allowGuestVibeCheck?: boolean;
       };
-      const result = await indexService.updateIndex(params.id, user.id, body);
-      logger.verbose('Index updated', { indexId: params.id });
+      const result = await networkService.updateIndex(params.id, user.id, body);
+      logger.verbose('Index updated', { networkId: params.id });
       return Response.json({ index: result });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -205,8 +205,8 @@ export class IndexController {
   async updatePermissions(req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
       const body = await req.json().catch(() => ({})) as { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean };
-      const result = await indexService.updatePermissions(params.id, user.id, body);
-      logger.verbose('Permissions updated for index', { indexId: params.id });
+      const result = await networkService.updatePermissions(params.id, user.id, body);
+      logger.verbose('Permissions updated for index', { networkId: params.id });
       return Response.json({ index: result });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -227,7 +227,7 @@ export class IndexController {
   @Get('/discovery/public')
   @UseGuards(AuthGuard)
   async getPublicIndexes(_req: Request, user: AuthenticatedUser) {
-    const result = await indexService.getPublicIndexes(user.id);
+    const result = await networkService.getPublicIndexes(user.id);
     logger.verbose('Public indexes listed for user', { userId: user.id, count: result.indexes.length });
     return Response.json(result);
   }
@@ -239,7 +239,7 @@ export class IndexController {
   @Get('/shared/:userId')
   @UseGuards(AuthGuard)
   async getSharedIndexes(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
-    const indexes = await indexService.getSharedIndexes(user.id, params.userId);
+    const indexes = await networkService.getSharedIndexes(user.id, params.userId);
     logger.verbose('Shared indexes fetched', { currentUserId: user.id, targetUserId: params.userId, count: indexes.length });
     return Response.json({ indexes });
   }
@@ -251,8 +251,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async delete(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await indexService.deleteIndex(params.id, user.id);
-      logger.verbose('Index deleted', { indexId: params.id, userId: user.id });
+      await networkService.deleteIndex(params.id, user.id);
+      logger.verbose('Index deleted', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -274,16 +274,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async joinPublicIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      // Resolve key or UUID to actual index UUID
-      const resolvedId = await indexService.resolveIndexId(params.id);
-      if (!resolvedId) {
-        return new Response(JSON.stringify({ error: 'Index not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      const index = await indexService.joinPublicIndex(resolvedId, user.id);
-      logger.verbose('User joined public index', { indexId: resolvedId, userId: user.id });
+      const index = await networkService.joinPublicIndex(params.id, user.id);
+      logger.verbose('User joined public index', { networkId: params.id, userId: user.id });
       return Response.json({ index });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -311,8 +303,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async getMemberSettings(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const settings = await indexService.getMemberSettings(params.id, user.id);
-      logger.verbose('Member settings retrieved', { indexId: params.id, userId: user.id });
+      const settings = await networkService.getMemberSettings(params.id, user.id);
+      logger.verbose('Member settings retrieved', { networkId: params.id, userId: user.id });
       return Response.json(settings);
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -334,8 +326,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async getMyIntents(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const intents = await indexService.getMyIntentsInIndex(params.id, user.id);
-      logger.verbose('My intents retrieved for index', { indexId: params.id, userId: user.id, count: intents.length });
+      const intents = await networkService.getMyIntentsInIndex(params.id, user.id);
+      logger.verbose('My intents retrieved for index', { networkId: params.id, userId: user.id, count: intents.length });
       return Response.json({ intents });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -357,15 +349,8 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async leaveIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const resolvedId = await indexService.resolveIndexId(params.id);
-      if (!resolvedId) {
-        return new Response(JSON.stringify({ error: 'Index not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      await indexService.leaveIndex(resolvedId, user.id);
-      logger.verbose('User left index', { indexId: resolvedId, userId: user.id });
+      await networkService.leaveIndex(params.id, user.id);
+      logger.verbose('User left index', { networkId: params.id, userId: user.id });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -392,7 +377,7 @@ export class IndexController {
    */
   @Get('/share/:code')
   async getIndexByShareCode(_req: Request, _user: unknown, params: Record<string, string>) {
-    const index = await indexService.getIndexByShareCode(params.code);
+    const index = await networkService.getIndexByShareCode(params.code);
     if (!index) {
       return new Response(JSON.stringify({ error: 'Invalid or expired invitation link' }), {
         status: 404,
@@ -410,7 +395,7 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async acceptInvitation(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const result = await indexService.acceptInvitation(params.code, user.id);
+      const result = await networkService.acceptInvitation(params.code, user.id);
       return Response.json(result);
     } catch (err: unknown) {
       const msg = errorMessage(err);
@@ -429,7 +414,7 @@ export class IndexController {
    */
   @Get('/public/:id')
   async getPublicIndex(_req: Request, _user: unknown, params: Record<string, string>) {
-    const index = await indexService.getPublicIndexById(params.id);
+    const index = await networkService.getPublicIndexById(params.id);
     if (!index) {
       return new Response(JSON.stringify({ error: 'Index not found' }), {
         status: 404,
@@ -461,12 +446,12 @@ export class IndexController {
     }
 
     // Resolve idOrKey to actual UUID first
-    const resolvedId = await indexService.resolveIndexId(params.id);
+    const resolvedId = await networkService.resolveIndexId(params.id);
     if (!resolvedId) {
       return Response.json({ error: 'Index not found' }, { status: 404 });
     }
 
-    const result = await indexService.updateKey(resolvedId, user.id, body.key);
+    const result = await networkService.updateKey(resolvedId, user.id, body.key);
     if ('error' in result) {
       return Response.json({ error: result.error }, { status: result.status });
     }
@@ -482,16 +467,7 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async get(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      // Resolve key to UUID if needed
-      const resolvedId = await indexService.resolveIndexId(params.id);
-      if (!resolvedId) {
-        return new Response(JSON.stringify({ error: 'Index not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      const index = await indexService.getIndexById(resolvedId, user.id);
+      const index = await networkService.getIndexById(params.id, user.id);
       if (!index) {
         return new Response(JSON.stringify({ error: 'Index not found' }), {
           status: 404,

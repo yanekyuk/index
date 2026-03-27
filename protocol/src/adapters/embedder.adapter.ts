@@ -51,7 +51,7 @@ export interface HydeCandidate {
   userId: string;
   score: number;
   matchedVia: string;
-  indexId: string;
+  networkId: string;
   matchedLenses?: string[];
 }
 
@@ -224,10 +224,10 @@ export class EmbedderAdapter {
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, indexMembers } = schema;
+    const { userProfiles, networkMembers } = schema;
 
     const conditions = [
-      inArray(indexMembers.indexId, filter.indexScope),
+      inArray(networkMembers.networkId, filter.indexScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -239,13 +239,13 @@ export class EmbedderAdapter {
       .selectDistinctOn([userProfiles.userId], {
         userId: userProfiles.userId,
         similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-        indexId: indexMembers.indexId,
+        networkId: networkMembers.networkId,
       })
       .from(userProfiles)
-      .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+      .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
       .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
       .where(and(...conditions))
-      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, indexMembers.indexId)
+      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, networkMembers.networkId)
       .as('deduped');
 
     const results = await db
@@ -260,7 +260,7 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: lens,
-      indexId: r.indexId,
+      networkId: r.networkId,
     }));
   }
 
@@ -273,10 +273,10 @@ export class EmbedderAdapter {
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
-    const { intents, intentIndexes } = schema;
+    const { intents, intentNetworks } = schema;
 
     const conditions = [
-      inArray(intentIndexes.indexId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.indexScope),
       ...(filter.excludeUserId ? [ne(intents.userId, filter.excludeUserId)] : []),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
@@ -290,10 +290,10 @@ export class EmbedderAdapter {
         id: intents.id,
         userId: intents.userId,
         similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-        indexId: intentIndexes.indexId,
+        networkId: intentNetworks.networkId,
       })
       .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
       .innerJoin(schema.users, eq(intents.userId, schema.users.id))
       .where(and(...conditions))
       .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
@@ -305,7 +305,7 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: lens,
-      indexId: r.indexId,
+      networkId: r.networkId,
     }));
   }
 
@@ -317,9 +317,9 @@ export class EmbedderAdapter {
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
-    const { userProfiles, indexMembers } = schema;
+    const { userProfiles, networkMembers } = schema;
     const conditions = [
-      inArray(indexMembers.indexId, filter.indexScope),
+      inArray(networkMembers.networkId, filter.indexScope),
       isNotNull(userProfiles.embedding),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -331,13 +331,13 @@ export class EmbedderAdapter {
       .selectDistinctOn([userProfiles.userId], {
         userId: userProfiles.userId,
         similarity: sql<number>`1 - (${userProfiles.embedding} <=> ${vectorStr}::vector)`.as('similarity'),
-        indexId: indexMembers.indexId,
+        networkId: networkMembers.networkId,
       })
       .from(userProfiles)
-      .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+      .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
       .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
       .where(and(...conditions))
-      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, indexMembers.indexId)
+      .orderBy(userProfiles.userId, sql`${userProfiles.embedding} <=> ${vectorStr}::vector`, networkMembers.networkId)
       .as('deduped');
 
     const results = await db
@@ -352,7 +352,7 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: 'profile-similarity',
-      indexId: r.indexId,
+      networkId: r.networkId,
     }));
   }
 
@@ -364,9 +364,9 @@ export class EmbedderAdapter {
   ): Promise<HydeCandidate[]> {
     if (filter.indexScope?.length === 0) return [];
     const vectorStr = `[${embedding.join(',')}]`;
-    const { intents, intentIndexes } = schema;
+    const { intents, intentNetworks } = schema;
     const conditions = [
-      inArray(intentIndexes.indexId, filter.indexScope),
+      inArray(intentNetworks.networkId, filter.indexScope),
       isNull(intents.archivedAt),
       isNull(schema.users.deletedAt),
       sql`(${schema.users.isGhost} = true OR ${schema.users.onboarding}->>'completedAt' IS NOT NULL)`,
@@ -379,10 +379,10 @@ export class EmbedderAdapter {
         id: intents.id,
         userId: intents.userId,
         similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
-        indexId: intentIndexes.indexId,
+        networkId: intentNetworks.networkId,
       })
       .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
       .innerJoin(schema.users, eq(intents.userId, schema.users.id))
       .where(and(...conditions))
       .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
@@ -393,7 +393,7 @@ export class EmbedderAdapter {
       userId: r.userId,
       score: r.similarity,
       matchedVia: 'profile-similarity',
-      indexId: r.indexId,
+      networkId: r.networkId,
     }));
   }
 
@@ -433,7 +433,7 @@ export class EmbedderAdapter {
     minScore: number
   ): Promise<VectorSearchResult<unknown>[]> {
     const vectorStr = `[${embedding.join(',')}]`;
-    const { hydeDocuments, indexMembers, userProfiles } = schema;
+    const { hydeDocuments, networkMembers, userProfiles } = schema;
 
     const baseConditions = [
       eq(hydeDocuments.sourceType, 'profile'),
@@ -454,10 +454,10 @@ export class EmbedderAdapter {
               similarity: sql<number>`1 - (${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector)`,
             })
             .from(hydeDocuments)
-            .innerJoin(indexMembers, eq(hydeDocuments.sourceId, indexMembers.userId))
+            .innerJoin(networkMembers, eq(hydeDocuments.sourceId, networkMembers.userId))
             .innerJoin(userProfiles, eq(userProfiles.userId, hydeDocuments.sourceId))
             .innerJoin(schema.users, eq(userProfiles.userId, schema.users.id))
-            .where(and(...baseConditions, inArray(indexMembers.indexId, filter.indexScope as string[])))
+            .where(and(...baseConditions, inArray(networkMembers.networkId, filter.indexScope as string[])))
             .orderBy(sql`${hydeDocuments.hydeEmbedding} <=> ${vectorStr}::vector`)
             .limit(limit)
         : await db
@@ -493,7 +493,7 @@ export class EmbedderAdapter {
     minScore: number
   ): Promise<VectorSearchResult<unknown>[]> {
     const vectorStr = `[${embedding.join(',')}]`;
-    const { intents, intentIndexes } = schema;
+    const { intents, intentNetworks } = schema;
 
     const baseConditions = [
       isNull(intents.archivedAt),
@@ -511,9 +511,9 @@ export class EmbedderAdapter {
           similarity: sql<number>`1 - (${intents.embedding} <=> ${vectorStr}::vector)`,
         })
         .from(intents)
-        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .innerJoin(schema.users, eq(intents.userId, schema.users.id))
-        .where(and(...baseConditions, inArray(intentIndexes.indexId, filter.indexScope as string[])))
+        .where(and(...baseConditions, inArray(intentNetworks.networkId, filter.indexScope as string[])))
         .orderBy(sql`${intents.embedding} <=> ${vectorStr}::vector`)
         .limit(limit);
 

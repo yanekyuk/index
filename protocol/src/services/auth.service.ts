@@ -17,13 +17,13 @@ export class AuthService {
     }
 
     calculateOnboardingState(currentOnboarding: OnboardingState, update: OnboardingState): OnboardingState {
-        const { completedAt, flow, currentStep, indexId, invitationCode } = update;
+        const { completedAt, flow, currentStep, networkId, invitationCode } = update;
         return {
             ...currentOnboarding,
             ...(completedAt !== undefined && { completedAt }),
             ...(flow !== undefined && { flow }),
             ...(currentStep !== undefined && { currentStep }),
-            ...(indexId !== undefined && { indexId }),
+            ...(networkId !== undefined && { networkId }),
             ...(invitationCode !== undefined && { invitationCode }),
         };
     }
