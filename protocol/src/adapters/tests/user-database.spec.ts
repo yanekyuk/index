@@ -454,8 +454,9 @@ describe('createUserDatabase', () => {
 
   describe('public index discovery binds authUserId', () => {
     it('getPublicIndexesNotJoined delegates with authUserId', async () => {
-      await userDb.getPublicIndexesNotJoined();
+      const result = await userDb.getPublicIndexesNotJoined();
       expect(mockDb.getPublicIndexesNotJoined).toHaveBeenCalledWith(AUTH_USER);
+      expect(result).toEqual({ networks: [] });
     });
 
     it('joinPublicIndex delegates with indexId and authUserId', async () => {
