@@ -2,7 +2,12 @@ import { config } from 'dotenv';
 config({ path: '.env.development' });
 
 import { describe, it, expect, mock } from 'bun:test';
-import { MaintenanceGraphFactory } from '../src/lib/protocol/graphs/maintenance.graph';
+import {
+  MaintenanceGraphFactory,
+  type MaintenanceGraphDatabase,
+  type MaintenanceGraphCache,
+  type MaintenanceGraphQueue,
+} from '../src/lib/protocol/graphs/maintenance.graph';
 
 describe('MaintenanceGraph — Introducer Discovery', () => {
   const userId = 'test-user';
@@ -28,7 +33,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
         getActiveIntents: mock(() => Promise.resolve(activeIntents)),
         getPersonalIndexId: mock(() => Promise.resolve(personalIndexId)),
         getContactsWithIntentFreshness: mock(() => Promise.resolve(contacts)),
-      },
+      } as MaintenanceGraphDatabase,
       cache: {
         get: mock((key: string) => {
           if (key.startsWith('rediscovery:lastRun:'))
@@ -40,10 +45,10 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
           return Promise.resolve(null);
         }),
         set: mock(() => Promise.resolve()),
-      },
+      } as MaintenanceGraphCache,
       queue: {
         addJob: mock(() => Promise.resolve({ id: 'job-1' })),
-      },
+      } as MaintenanceGraphQueue,
     };
   }
 
@@ -66,9 +71,9 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     });
 
     const factory = new MaintenanceGraphFactory(
-      deps.database as any,
-      deps.cache as any,
-      deps.queue as any,
+      deps.database,
+      deps.cache,
+      deps.queue,
     );
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
@@ -78,7 +83,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     // The introducer discovery enqueues jobs for contacts
     const addJobCalls = (deps.queue.addJob as ReturnType<typeof mock>).mock.calls;
     const introducerJobs = addJobCalls.filter(
-      (call: unknown[]) => typeof call[0] === 'object' && (call[0] as any).intentId?.startsWith('contact:'),
+      (call: unknown[]) => typeof call[0] === 'object' && call[0]?.contactUserId != null,
     );
     expect(introducerJobs.length).toBeGreaterThan(0);
   }, 30_000);
@@ -114,9 +119,9 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     });
 
     const factory = new MaintenanceGraphFactory(
-      deps.database as any,
-      deps.cache as any,
-      deps.queue as any,
+      deps.database,
+      deps.cache,
+      deps.queue,
     );
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
@@ -124,7 +129,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     // No introducer discovery jobs should be enqueued
     const addJobCalls = (deps.queue.addJob as ReturnType<typeof mock>).mock.calls;
     const introducerJobs = addJobCalls.filter(
-      (call: unknown[]) => typeof call[0] === 'object' && (call[0] as any).intentId?.startsWith('contact:'),
+      (call: unknown[]) => typeof call[0] === 'object' && call[0]?.contactUserId != null,
     );
     expect(introducerJobs.length).toBe(0);
   }, 30_000);
@@ -144,9 +149,9 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     });
 
     const factory = new MaintenanceGraphFactory(
-      deps.database as any,
-      deps.cache as any,
-      deps.queue as any,
+      deps.database,
+      deps.cache,
+      deps.queue,
     );
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
@@ -154,7 +159,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     // No introducer discovery jobs (no personal index)
     const addJobCalls = (deps.queue.addJob as ReturnType<typeof mock>).mock.calls;
     const introducerJobs = addJobCalls.filter(
-      (call: unknown[]) => typeof call[0] === 'object' && (call[0] as any).intentId?.startsWith('contact:'),
+      (call: unknown[]) => typeof call[0] === 'object' && call[0]?.contactUserId != null,
     );
     expect(introducerJobs.length).toBe(0);
   }, 30_000);
@@ -170,9 +175,9 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     });
 
     const factory = new MaintenanceGraphFactory(
-      deps.database as any,
-      deps.cache as any,
-      deps.queue as any,
+      deps.database,
+      deps.cache,
+      deps.queue,
     );
     const graph = factory.createGraph();
     const result = await graph.invoke({ userId });
@@ -181,7 +186,7 @@ describe('MaintenanceGraph — Introducer Discovery', () => {
     const addJobCalls = (deps.queue.addJob as ReturnType<typeof mock>).mock.calls;
     const regularJobs = addJobCalls.filter(
       (call: unknown[]) =>
-        typeof call[0] === 'object' && !(call[0] as any).intentId?.startsWith('contact:'),
+        typeof call[0] === 'object' && call[0]?.contactUserId == null,
     );
     expect(regularJobs.length).toBeGreaterThan(0);
   }, 30_000);

@@ -44,7 +44,7 @@ export interface IntroducerDiscoveryDatabase {
 /** Queue interface for enqueuing introducer discovery jobs. */
 export interface IntroducerDiscoveryQueue {
   addJob(
-    data: { intentId: string; userId: string; indexIds?: string[] },
+    data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string },
     options?: { priority?: number; jobId?: string },
   ): Promise<unknown>;
 }
@@ -114,7 +114,6 @@ export function shouldRunIntroducerDiscovery(
  * @param database - Database adapter for contact queries
  * @param queue - Queue for enqueuing discovery jobs
  * @param userId - The introducer user
- * @param personalIndexId - The user's personal index ID
  * @returns Summary of the discovery cycle
  */
 export async function runIntroducerDiscovery(
@@ -122,15 +121,14 @@ export async function runIntroducerDiscovery(
   queue: IntroducerDiscoveryQueue,
   userId: string,
 ): Promise<IntroducerDiscoveryResult> {
-  const contacts = await selectContactsForDiscovery(database, userId);
-
-  if (contacts.length === 0) {
-    return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_contacts' };
-  }
-
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
     return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_personal_index' };
+  }
+
+  const contacts = await selectContactsForDiscovery(database, userId);
+  if (contacts.length === 0) {
+    return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_contacts' };
   }
 
   const bucket = Math.floor(Date.now() / (12 * 60 * 60 * 1000)); // 12h dedup bucket
@@ -145,21 +143,25 @@ export async function runIntroducerDiscovery(
       try {
         await queue.addJob(
           {
-            intentId: `contact:${contact.userId}`, // Special prefix signals introducer discovery
+            intentId: `introducer:${contact.userId}`,
             userId,
             indexIds: [personalIndexId],
+            contactUserId: contact.userId,
           },
           { priority: 15, jobId }, // Lower priority than regular rediscovery (10)
         );
         return true;
       } catch (err) {
-        // Duplicate jobId (already enqueued this bucket) is expected
-        logger.verbose('[IntroducerDiscovery] Job skipped (likely duplicate)', {
-          userId,
-          contactUserId: contact.userId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return false;
+        const message = err instanceof Error ? err.message : String(err);
+        if (/duplicate|already exists|job.*id/i.test(message)) {
+          logger.verbose('[IntroducerDiscovery] Job skipped (duplicate)', {
+            userId,
+            contactUserId: contact.userId,
+            error: message,
+          });
+          return false;
+        }
+        throw err;
       }
     }),
   );

@@ -3507,6 +3507,10 @@ export class ChatDatabaseAdapter {
           intentCount: sql<number>`COUNT(${schema.intents.id})::int`.as('intent_count'),
         })
         .from(schema.indexMembers)
+        .innerJoin(
+          schema.users,
+          eq(schema.indexMembers.userId, schema.users.id),
+        )
         .leftJoin(
           schema.intents,
           and(
@@ -3519,6 +3523,7 @@ export class ChatDatabaseAdapter {
             eq(schema.indexMembers.indexId, personalIndexId),
             sql`'contact' = ANY(${schema.indexMembers.permissions})`,
             isNull(schema.indexMembers.deletedAt),
+            isNull(schema.users.deletedAt),
             sql`${schema.indexMembers.userId} != ${ownerId}`,
           ),
         )

@@ -45,7 +45,7 @@ export interface MaintenanceGraphCache {
 
 /** Queue methods needed by the maintenance graph. */
 export interface MaintenanceGraphQueue {
-  addJob(data: { intentId: string; userId: string; indexIds?: string[] }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
+  addJob(data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
 }
 
 /**
@@ -183,7 +183,6 @@ export class MaintenanceGraphFactory {
     };
 
     const introducerDiscoveryNode = async (state: typeof MaintenanceGraphState.State) => {
-      if (state.error) return {};
       try {
         const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
         if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
