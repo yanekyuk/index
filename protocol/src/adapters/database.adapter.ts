@@ -1157,7 +1157,7 @@ export class ChatDatabaseAdapter {
     const ids = [...new Set(memberIndexIds.map((r) => r.networkId))];
     if (ids.length === 0) {
       return {
-        indexes: [],
+        networks: [],
         pagination: { current: 1, total: 0, count: 0, totalCount: 0 },
       };
     }
@@ -1233,7 +1233,7 @@ export class ChatDatabaseAdapter {
 
     const totalCount = indexesWithCounts.length;
     return {
-      indexes: indexesWithCounts,
+      networks: indexesWithCounts,
       pagination: {
         current: 1,
         total: totalCount > 0 ? 1 : 0,
@@ -1359,7 +1359,7 @@ export class ChatDatabaseAdapter {
     }
 
     return {
-      indexes: result,
+      networks: result,
       pagination: {
         current: 1,
         total: result.length > 0 ? 1 : 0,

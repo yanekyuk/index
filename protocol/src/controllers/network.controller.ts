@@ -18,7 +18,7 @@ export class NetworkController {
   @UseGuards(AuthGuard)
   async list(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getNetworksForUser(user.id);
-    logger.verbose('Networks listed for user', { userId: user.id, count: result.indexes.length });
+    logger.verbose('Networks listed for user', { userId: user.id, count: result.networks.length });
     return Response.json(result);
   }
 
@@ -228,7 +228,7 @@ export class NetworkController {
   @UseGuards(AuthGuard)
   async getPublicNetworks(_req: Request, user: AuthenticatedUser) {
     const result = await networkService.getPublicNetworks(user.id);
-    logger.verbose('Public networks listed for user', { userId: user.id, count: result.indexes.length });
+    logger.verbose('Public networks listed for user', { userId: user.id, count: result.networks.length });
     return Response.json(result);
   }
 

@@ -209,6 +209,9 @@ export class OpportunityQueue {
       this.logger.info('[OpportunityDiscovery] Starting discovery', { intentId, userId, networkIds });
     }
 
+    if (networkIds && networkIds.length > 1) {
+      this.logger.warn('[OpportunityDiscovery] Multiple networkIds provided but only the first will be used', { intentId, userId, networkIds });
+    }
     this.logger.debug('[OpportunityDiscovery] Search query preview', { intentId, searchQuery: searchQuery?.slice(0, 80) });
     const invokeOpts: OpportunityGraphInvokeOptions = {
       userId: userId as Id<'users'>,

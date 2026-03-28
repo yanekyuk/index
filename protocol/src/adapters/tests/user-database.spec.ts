@@ -147,7 +147,7 @@ function createMockDb(): ChatDatabaseAdapter {
     isPersonalIndex: mock(() => Promise.resolve(false)),
 
     // Public index discovery
-    getPublicIndexesNotJoined: mock(() => Promise.resolve({ indexes: [] })),
+    getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
     joinPublicIndex: mock(() => Promise.resolve({ success: true })),
 
     // Opportunities

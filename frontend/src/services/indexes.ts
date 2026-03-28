@@ -53,22 +53,22 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
     const response = await api.get<APIResponse<Index>>(`/indexes?page=${page}&limit=${limit}`);
     return {
-      data: response.indexes || [],
+      data: response.networks || [],
       pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
     };
   },
 
   // Get non-personal indexes shared between the current user and a target user
   getSharedIndexes: async (userId: string): Promise<Array<{ id: string; title: string; _count: { members: number } }>> => {
-    const response = await api.get<{ indexes: Array<{ id: string; title: string; _count: { members: number } }> }>(`/indexes/shared/${userId}`);
-    return response.indexes || [];
+    const response = await api.get<{ networks: Array<{ id: string; title: string; _count: { members: number } }> }>(`/indexes/shared/${userId}`);
+    return response.networks || [];
   },
 
   // Discover public indexes (indexes that anyone can join)
   discoverPublicIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index & { isMember?: boolean }>> => {
     const response = await api.get<APIResponse<Index & { isMember?: boolean }>>(`/indexes/discovery/public?page=${page}&limit=${limit}`);
     return {
-      data: response.indexes || [],
+      data: response.networks || [],
       pagination: response.pagination || { current: 1, total: 0, count: 0, totalCount: 0 }
     };
   },

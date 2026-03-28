@@ -44,10 +44,10 @@ describe("NetworkController Integration", () => {
     test("should return 200 with indexes array", async () => {
       const req = new Request("http://localhost/indexes");
       const res = await controller.list(req, mockUser());
-      const data = (await res.json()) as { indexes?: unknown[] };
+      const data = (await res.json()) as { networks?: unknown[] };
 
       expect(res.status).toBe(200);
-      expect(Array.isArray(data.indexes)).toBe(true);
+      expect(Array.isArray(data.networks)).toBe(true);
     });
   });
 
@@ -119,10 +119,10 @@ describe("NetworkController Integration", () => {
     test("should return 200 with indexes array", async () => {
       const req = new Request("http://localhost/indexes/discovery/public");
       const res = await controller.getPublicNetworks(req, mockUser());
-      const data = (await res.json()) as { indexes?: unknown[] };
+      const data = (await res.json()) as { networks?: unknown[] };
 
       expect(res.status).toBe(200);
-      expect(Array.isArray(data.indexes)).toBe(true);
+      expect(Array.isArray(data.networks)).toBe(true);
     });
   });
 

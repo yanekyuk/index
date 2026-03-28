@@ -5,7 +5,7 @@ import { apiClient } from '@/lib/api';
 
 /** Response shape from GET /indexes (member + personal indexes; "Everywhere" is static in UI). */
 export interface IndexListV2Response {
-  indexes: Index[];
+  networks: Index[];
   pagination: { current: number; total: number; count: number; totalCount: number };
 }
 
@@ -14,7 +14,7 @@ export function createIndexesServiceV2() {
     getIndexes: async (): Promise<PaginatedResponse<Index>> => {
       const data = await apiClient.get<IndexListV2Response>('/indexes');
       return {
-        data: data.indexes ?? [],
+        data: data.networks ?? [],
         pagination: data.pagination ?? { current: 1, total: 0, count: 0, totalCount: 0 },
       };
     },
@@ -22,7 +22,7 @@ export function createIndexesServiceV2() {
     getPublicIndexes: async (): Promise<PaginatedResponse<Index>> => {
       const data = await apiClient.get<IndexListV2Response>('/indexes/discovery/public');
       return {
-        data: data.indexes ?? [],
+        data: data.networks ?? [],
         pagination: data.pagination ?? { current: 1, total: 0, count: 0, totalCount: 0 },
       };
     },
