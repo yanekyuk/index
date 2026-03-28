@@ -255,28 +255,36 @@ describe('createSystemDatabase', () => {
   // Unscoped pass-through operations
   // ─────────────────────────────────────────────────────────────────────────────
 
-  describe('unscoped pass-through operations', () => {
-    it('getIntent delegates directly', async () => {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Intentionally unscoped operations — system-level methods
+  //
+  // These methods are called by background queues, agent graphs, and event
+  // handlers that operate across user boundaries by design. They bypass
+  // verifyScope/verifySharedIndex intentionally and are documented with TSDoc.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('intentionally unscoped system operations', () => {
+    it('getIntent delegates directly (used by graphs for cross-user intent lookup)', async () => {
       await sysDb.getIntent('intent-1');
       expect(mockDb.getIntent).toHaveBeenCalledWith('intent-1');
     });
 
-    it('isIndexMember delegates directly', async () => {
+    it('isIndexMember delegates directly (used by graphs for membership checks)', async () => {
       await sysDb.isIndexMember(SCOPED_INDEX, OTHER_USER);
       expect(mockDb.isIndexMember).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
 
-    it('isIndexOwner delegates directly', async () => {
+    it('isIndexOwner delegates directly (used by graphs for ownership checks)', async () => {
       await sysDb.isIndexOwner(SCOPED_INDEX, AUTH_USER);
       expect(mockDb.isIndexOwner).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
     });
 
-    it('addMemberToIndex delegates directly', async () => {
+    it('addMemberToIndex delegates directly (used by join flows and invitation acceptance)', async () => {
       await sysDb.addMemberToIndex(SCOPED_INDEX, OTHER_USER, 'member');
       expect(mockDb.addMemberToIndex).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER, 'member');
     });
 
-    it('removeMemberFromIndex delegates directly', async () => {
+    it('removeMemberFromIndex delegates directly (used by leave/kick flows)', async () => {
       await sysDb.removeMemberFromIndex(SCOPED_INDEX, OTHER_USER);
       expect(mockDb.removeMemberFromIndex).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
@@ -286,7 +294,7 @@ describe('createSystemDatabase', () => {
       expect(mockDb.getMembersFromUserIndexes).toHaveBeenCalledWith(AUTH_USER);
     });
 
-    it('getOpportunity delegates directly', async () => {
+    it('getOpportunity delegates directly (used by negotiation graph for cross-actor lookup)', async () => {
       await sysDb.getOpportunity('opp-1');
       expect(mockDb.getOpportunity).toHaveBeenCalledWith('opp-1');
     });
@@ -297,25 +305,25 @@ describe('createSystemDatabase', () => {
       expect(mockDb.findOverlappingOpportunities).toHaveBeenCalledWith(actorIds, undefined);
     });
 
-    it('expireOpportunitiesByIntent delegates directly', async () => {
+    it('createOpportunityAndExpireIds delegates directly (used by discovery pipeline)', async () => {
+      const data = { context: {} } as never;
+      await sysDb.createOpportunityAndExpireIds(data, ['exp-1']);
+      expect(mockDb.createOpportunityAndExpireIds).toHaveBeenCalledWith(data, ['exp-1']);
+    });
+
+    it('expireOpportunitiesByIntent delegates directly (used by intent archival)', async () => {
       await sysDb.expireOpportunitiesByIntent('intent-1');
       expect(mockDb.expireOpportunitiesByIntent).toHaveBeenCalledWith('intent-1');
     });
 
-    it('expireOpportunitiesForRemovedMember delegates directly', async () => {
+    it('expireOpportunitiesForRemovedMember delegates directly (used by member removal)', async () => {
       await sysDb.expireOpportunitiesForRemovedMember(SCOPED_INDEX, OTHER_USER);
       expect(mockDb.expireOpportunitiesForRemovedMember).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
 
-    it('expireStaleOpportunities delegates directly', async () => {
+    it('expireStaleOpportunities delegates directly (used by scheduled cleanup)', async () => {
       await sysDb.expireStaleOpportunities();
       expect(mockDb.expireStaleOpportunities).toHaveBeenCalled();
-    });
-
-    it('createOpportunityAndExpireIds delegates directly', async () => {
-      const data = { context: {} } as never;
-      await sysDb.createOpportunityAndExpireIds(data, ['exp-1']);
-      expect(mockDb.createOpportunityAndExpireIds).toHaveBeenCalledWith(data, ['exp-1']);
     });
   });
 

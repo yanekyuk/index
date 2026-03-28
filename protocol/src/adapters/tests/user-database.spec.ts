@@ -47,6 +47,53 @@ const otherIntent = {
   sourceId: undefined as string | undefined,
 };
 
+const ownedIntentForIndexing = {
+  id: 'intent-1',
+  payload: 'test intent',
+  userId: AUTH_USER,
+  sourceType: null as string | null,
+  sourceId: null as string | null,
+};
+
+const otherIntentForIndexing = {
+  id: 'intent-2',
+  payload: 'other intent',
+  userId: OTHER_USER,
+  sourceType: null as string | null,
+  sourceId: null as string | null,
+};
+
+const ownedOpportunity = {
+  id: 'opp-1',
+  actors: [
+    { userId: AUTH_USER, indexId: 'idx-a', role: 'patient' },
+    { userId: OTHER_USER, indexId: 'idx-a', role: 'peer' },
+  ],
+  context: { indexId: 'idx-a' },
+  status: 'pending' as const,
+};
+
+const otherOpportunity = {
+  id: 'opp-2',
+  actors: [
+    { userId: 'user-random-789', indexId: 'idx-b', role: 'patient' },
+    { userId: OTHER_USER, indexId: 'idx-b', role: 'peer' },
+  ],
+  context: { indexId: 'idx-b' },
+  status: 'pending' as const,
+};
+
+/** Opportunity where AUTH_USER is agent and an introducer exists — latent status should be hidden */
+const latentWithIntroducer = {
+  id: 'opp-3',
+  actors: [
+    { userId: AUTH_USER, indexId: 'idx-c', role: 'agent' },
+    { userId: OTHER_USER, indexId: 'idx-c', role: 'introducer' },
+  ],
+  context: { indexId: 'idx-c' },
+  status: 'latent' as const,
+};
+
 function createMockDb(): ChatDatabaseAdapter {
   return {
     // Profile
@@ -80,6 +127,8 @@ function createMockDb(): ChatDatabaseAdapter {
     createIndex: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
     updateIndexSettings: mock(() => Promise.resolve({})),
     softDeleteIndex: mock(() => Promise.resolve()),
+    isIndexOwner: mock(() => Promise.resolve(false)),
+    isPersonalIndex: mock(() => Promise.resolve(false)),
 
     // Public index discovery
     getPublicIndexesNotJoined: mock(() => Promise.resolve({ indexes: [] })),
@@ -247,25 +296,64 @@ describe('createUserDatabase', () => {
     });
   });
 
-  describe('intent read operations (no ownership guard)', () => {
+  describe('intent read operations bind authUserId', () => {
     it('getActiveIntents delegates with authUserId', async () => {
       await userDb.getActiveIntents();
       expect(mockDb.getActiveIntents).toHaveBeenCalledWith(AUTH_USER);
     });
+  });
 
-    it('getIntentForIndexing delegates directly', async () => {
-      await userDb.getIntentForIndexing('intent-1');
-      expect(mockDb.getIntentForIndexing).toHaveBeenCalledWith('intent-1');
+  describe('intent read operations — ownership guards', () => {
+    it('getIntentForIndexing returns owned intent', async () => {
+      (mockDb.getIntentForIndexing as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntentForIndexing);
+      const result = await userDb.getIntentForIndexing('intent-1');
+      expect(result).toEqual(ownedIntentForIndexing);
     });
 
-    it('getIndexIdsForIntent delegates directly', async () => {
-      await userDb.getIndexIdsForIntent('intent-1');
+    it('getIntentForIndexing returns null for missing intent', async () => {
+      (mockDb.getIntentForIndexing as ReturnType<typeof mock>).mockResolvedValueOnce(null);
+      const result = await userDb.getIntentForIndexing('missing');
+      expect(result).toBeNull();
+    });
+
+    it('getIntentForIndexing throws for intent owned by another user', async () => {
+      (mockDb.getIntentForIndexing as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntentForIndexing);
+      await expect(userDb.getIntentForIndexing('intent-2')).rejects.toThrow('Access denied');
+    });
+
+    it('getIndexIdsForIntent succeeds for owned intent', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
+      (mockDb.getIndexIdsForIntent as ReturnType<typeof mock>).mockResolvedValueOnce(['idx-a', 'idx-b']);
+      const result = await userDb.getIndexIdsForIntent('intent-1');
+      expect(result).toEqual(['idx-a', 'idx-b']);
       expect(mockDb.getIndexIdsForIntent).toHaveBeenCalledWith('intent-1');
     });
 
-    it('isIntentAssignedToIndex delegates directly', async () => {
-      await userDb.isIntentAssignedToIndex('intent-1', 'idx-a');
-      expect(mockDb.isIntentAssignedToIndex).toHaveBeenCalledWith('intent-1', 'idx-a');
+    it('getIndexIdsForIntent throws for intent owned by another user', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
+      await expect(userDb.getIndexIdsForIntent('intent-2')).rejects.toThrow('Access denied');
+    });
+
+    it('getIndexIdsForIntent throws for missing intent', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(null);
+      await expect(userDb.getIndexIdsForIntent('missing')).rejects.toThrow('Intent not found');
+    });
+
+    it('isIntentAssignedToIndex succeeds for owned intent', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
+      (mockDb.isIntentAssignedToIndex as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      const result = await userDb.isIntentAssignedToIndex('intent-1', 'idx-a');
+      expect(result).toBe(true);
+    });
+
+    it('isIntentAssignedToIndex throws for intent owned by another user', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
+      await expect(userDb.isIntentAssignedToIndex('intent-2', 'idx-a')).rejects.toThrow('Access denied');
+    });
+
+    it('isIntentAssignedToIndex throws for missing intent', async () => {
+      (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(null);
+      await expect(userDb.isIntentAssignedToIndex('missing', 'idx-a')).rejects.toThrow('Intent not found');
     });
   });
 
@@ -324,9 +412,23 @@ describe('createUserDatabase', () => {
       expect(mockDb.updateIndexSettings).toHaveBeenCalledWith('idx-a', AUTH_USER, data);
     });
 
-    it('softDeleteIndex delegates directly (no ownership check)', async () => {
+    it('softDeleteIndex succeeds when user is owner and index is not personal', async () => {
+      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      (mockDb.isPersonalIndex as ReturnType<typeof mock>).mockResolvedValueOnce(false);
       await userDb.softDeleteIndex('idx-a');
+      expect(mockDb.isIndexOwner).toHaveBeenCalledWith('idx-a', AUTH_USER);
       expect(mockDb.softDeleteIndex).toHaveBeenCalledWith('idx-a');
+    });
+
+    it('softDeleteIndex throws when user is not owner', async () => {
+      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(false);
+      await expect(userDb.softDeleteIndex('idx-a')).rejects.toThrow('Access denied');
+    });
+
+    it('softDeleteIndex throws when index is personal even if user is owner', async () => {
+      (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      (mockDb.isPersonalIndex as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      await expect(userDb.softDeleteIndex('idx-personal')).rejects.toThrow('Cannot delete personal index');
     });
   });
 
@@ -357,14 +459,47 @@ describe('createUserDatabase', () => {
       expect(mockDb.getOpportunitiesForUser).toHaveBeenCalledWith(AUTH_USER, opts);
     });
 
-    it('getOpportunity delegates directly (no ownership check)', async () => {
-      await userDb.getOpportunity('opp-1');
-      expect(mockDb.getOpportunity).toHaveBeenCalledWith('opp-1');
+    it('getOpportunity returns opportunity when user is an actor', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(ownedOpportunity);
+      const result = await userDb.getOpportunity('opp-1');
+      expect(result).toEqual(ownedOpportunity);
     });
 
-    it('updateOpportunityStatus delegates directly (no ownership check)', async () => {
+    it('getOpportunity returns null for missing opportunity', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(null);
+      const result = await userDb.getOpportunity('missing');
+      expect(result).toBeNull();
+    });
+
+    it('getOpportunity throws when user is not an actor', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(otherOpportunity);
+      await expect(userDb.getOpportunity('opp-2')).rejects.toThrow('Access denied');
+    });
+
+    it('getOpportunity throws for latent opportunity hidden by visibility rules', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(latentWithIntroducer);
+      await expect(userDb.getOpportunity('opp-3')).rejects.toThrow('Access denied');
+    });
+
+    it('updateOpportunityStatus succeeds when user is an actor', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(ownedOpportunity);
       await userDb.updateOpportunityStatus('opp-1', 'accepted' as never);
       expect(mockDb.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'accepted');
+    });
+
+    it('updateOpportunityStatus throws for missing opportunity', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(null);
+      await expect(userDb.updateOpportunityStatus('missing', 'accepted' as never)).rejects.toThrow('not found');
+    });
+
+    it('updateOpportunityStatus throws when user is not an actor', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(otherOpportunity);
+      await expect(userDb.updateOpportunityStatus('opp-2', 'accepted' as never)).rejects.toThrow('Access denied');
+    });
+
+    it('updateOpportunityStatus throws for latent opportunity hidden by visibility rules', async () => {
+      (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce(latentWithIntroducer);
+      await expect(userDb.updateOpportunityStatus('opp-3', 'accepted' as never)).rejects.toThrow('Access denied');
     });
 
     it('getAcceptedOpportunitiesBetweenActors delegates with authUserId', async () => {

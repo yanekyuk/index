@@ -4952,6 +4952,35 @@ interface SimilarIntent {
  * @param authUserId - The authenticated user's ID
  * @returns A UserDatabase bound to authUserId
  */
+/**
+ * Role-based opportunity visibility check.
+ * Mirrors the Latent Opportunity Lifecycle visibility matrix:
+ * - Introducer/peer: always visible.
+ * - Patient/party: visible unless status is latent AND an introducer exists.
+ * - Agent: visible only for terminal statuses, or non-latent when no introducer.
+ */
+function canActorSeeOpportunity(
+  actors: Array<{ userId: string; role: string }>,
+  status: string,
+  userId: string,
+): boolean {
+  const hasIntroducer = actors.some((a) => a.role === 'introducer');
+  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
+  if (userRoles.length === 0) return false;
+
+  return userRoles.some((role) => {
+    if (role === 'introducer' || role === 'peer') return true;
+    if (role === 'patient' || role === 'party')
+      return status !== 'latent' || !hasIntroducer;
+    if (role === 'agent')
+      return (
+        ['accepted', 'rejected', 'expired'].includes(status) ||
+        (status !== 'latent' && !hasIntroducer)
+      );
+    return false;
+  });
+}
+
 export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) {
   return {
     authUserId,
@@ -4998,7 +5027,14 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       log.warn('UserDatabase.findSimilarIntents called but not fully implemented');
       return [] as SimilarIntent[];
     },
-    getIntentForIndexing: (intentId: string) => db.getIntentForIndexing(intentId),
+    getIntentForIndexing: async (intentId: string) => {
+      const intent = await db.getIntentForIndexing(intentId);
+      if (!intent) return null;
+      if (intent.userId !== authUserId) {
+        throw new Error('Access denied: intent not owned by user');
+      }
+      return intent;
+    },
     associateIntentWithIndexes: async (intentId: string, indexIds: string[]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
@@ -5019,8 +5055,18 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.unassignIntentFromIndex(intentId, indexId);
     },
-    getIndexIdsForIntent: (intentId: string) => db.getIndexIdsForIntent(intentId),
-    isIntentAssignedToIndex: (intentId: string, indexId: string) => db.isIntentAssignedToIndex(intentId, indexId),
+    getIndexIdsForIntent: async (intentId: string) => {
+      const intent = await db.getIntent(intentId);
+      if (!intent) throw new Error('Intent not found');
+      if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
+      return db.getIndexIdsForIntent(intentId);
+    },
+    isIntentAssignedToIndex: async (intentId: string, indexId: string) => {
+      const intent = await db.getIntent(intentId);
+      if (!intent) throw new Error('Intent not found');
+      if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
+      return db.isIntentAssignedToIndex(intentId, indexId);
+    },
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Membership Operations
@@ -5036,7 +5082,13 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // ─────────────────────────────────────────────────────────────────────────────
     createIndex: (data: Parameters<ChatDatabaseAdapter['createIndex']>[0]) => db.createIndex(data),
     updateIndexSettings: (indexId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(indexId, authUserId, data),
-    softDeleteIndex: (indexId: string) => db.softDeleteIndex(indexId),
+    softDeleteIndex: async (indexId: string) => {
+      const isOwner = await db.isIndexOwner(indexId, authUserId);
+      if (!isOwner) throw new Error('Access denied: not index owner');
+      const isPersonal = await db.isPersonalIndex(indexId);
+      if (isPersonal) throw new Error('Cannot delete personal index');
+      return db.softDeleteIndex(indexId);
+    },
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Public Index Discovery
@@ -5048,8 +5100,20 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // Opportunity Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getOpportunitiesForUser: (options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForUser']>[1]) => db.getOpportunitiesForUser(authUserId, options),
-    getOpportunity: (id: string) => db.getOpportunity(id),
-    updateOpportunityStatus: (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => db.updateOpportunityStatus(id, status),
+    getOpportunity: async (id: string) => {
+      const opportunity = await db.getOpportunity(id);
+      if (!opportunity) return null;
+      if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
+        throw new Error('Access denied: opportunity not visible to user');
+      return opportunity;
+    },
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
+      const opportunity = await db.getOpportunity(id);
+      if (!opportunity) throw new Error('Opportunity not found');
+      if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
+        throw new Error('Access denied: opportunity not visible to user');
+      return db.updateOpportunityStatus(id, status);
+    },
     getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
       db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
     acceptSiblingOpportunities: (counterpartUserId: string, excludeOpportunityId: string) =>
@@ -5146,6 +5210,11 @@ export function createSystemDatabase(
       verifyScope(indexId);
       return db.getIntentsInIndexForMember(userId, indexId);
     },
+    /**
+     * Retrieves an intent by ID without scope check.
+     * @remarks Intentionally unscoped -- used by agent graphs (e.g. opportunity evaluator,
+     * negotiation) that need cross-user intent access within the discovery pipeline.
+     */
     getIntent: (intentId: string) => db.getIntent(intentId),
     findSimilarIntentsInScope: async (embedding: number[], options?: { limit?: number; threshold?: number }) => {
       if (!embedder || indexScope.length === 0) {
@@ -5178,14 +5247,34 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Membership Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
+    /**
+     * Checks index membership without scope check.
+     * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
+     * membership for any user (e.g. join flows, invitation acceptance).
+     */
     isIndexMember: (indexId: string, userId: string) => db.isIndexMember(indexId, userId),
+    /**
+     * Checks index ownership without scope check.
+     * @remarks Intentionally unscoped -- used by agent graphs and tools that need to verify
+     * ownership for any user (e.g. permission checks during graph execution).
+     */
     isIndexOwner: (indexId: string, userId: string) => db.isIndexOwner(indexId, userId),
     getIndexMembers: async (indexId: string) => {
       verifyScope(indexId);
       return db.getIndexMembersForMember(indexId, authUserId);
     },
     getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
+    /**
+     * Adds a member to an index without scope check.
+     * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
+     * contact addition that operate outside the caller's current index scope.
+     */
     addMemberToIndex: (indexId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToIndex(indexId, userId, role),
+    /**
+     * Removes a member from an index without scope check.
+     * @remarks Intentionally unscoped -- used by leave/kick flows and member removal
+     * handlers that operate across user boundaries.
+     */
     removeMemberFromIndex: (indexId: string, userId: string) => db.removeMemberFromIndex(indexId, userId),
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -5212,7 +5301,17 @@ export function createSystemDatabase(
       if (indexId) verifyScope(indexId);
       return db.createOpportunity(data);
     },
+    /**
+     * Creates an opportunity and expires previous ones atomically without scope check.
+     * @remarks Intentionally unscoped -- called by the discovery pipeline (negotiation
+     * finalization) which creates opportunities across user boundaries.
+     */
     createOpportunityAndExpireIds: (data: Parameters<ChatDatabaseAdapter['createOpportunityAndExpireIds']>[0], expireIds: string[]) => db.createOpportunityAndExpireIds(data, expireIds),
+    /**
+     * Retrieves an opportunity by ID without scope check.
+     * @remarks Intentionally unscoped -- used by the negotiation graph and opportunity
+     * tools that need cross-actor access during the discovery pipeline.
+     */
     getOpportunity: (id: string) => db.getOpportunity(id),
     getOpportunitiesForIndex: async (indexId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForIndex']>[1]) => {
       verifyScope(indexId);
@@ -5235,8 +5334,23 @@ export function createSystemDatabase(
       return db.getOpportunityBetweenActors(actorIds, indexId);
     },
     findOverlappingOpportunities: (actorUserIds: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[0], options?: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[1]) => db.findOverlappingOpportunities(actorUserIds, options),
+    /**
+     * Expires all opportunities linked to an intent without scope check.
+     * @remarks Intentionally unscoped -- called by intent archival event handlers
+     * that clean up opportunities when an intent is expired or archived.
+     */
     expireOpportunitiesByIntent: (intentId: string) => db.expireOpportunitiesByIntent(intentId),
+    /**
+     * Expires opportunities for a removed member without scope check.
+     * @remarks Intentionally unscoped -- called by index membership removal event handlers
+     * that clean up opportunities when a member leaves or is kicked from an index.
+     */
     expireOpportunitiesForRemovedMember: (indexId: string, userId: string) => db.expireOpportunitiesForRemovedMember(indexId, userId),
+    /**
+     * Expires stale opportunities without scope check.
+     * @remarks Intentionally unscoped -- called by scheduled cleanup jobs (cron)
+     * that operate system-wide, not scoped to any particular user.
+     */
     expireStaleOpportunities: () => db.expireStaleOpportunities(),
 
     // ─────────────────────────────────────────────────────────────────────────────
