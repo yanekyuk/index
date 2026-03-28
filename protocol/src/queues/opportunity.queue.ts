@@ -25,10 +25,12 @@ export interface OpportunityJobData {
   intentId: string;
   userId: string;
   indexIds?: string[];
+  /** When set, run discovery on behalf of this contact user (introducer discovery). */
+  contactUserId?: string;
 }
 
 /** Minimal database interface for opportunity queue (used when deps provided in tests). */
-export type OpportunityQueueDatabase = Pick<ChatDatabaseAdapter, 'getIntentForIndexing'>;
+export type OpportunityQueueDatabase = Pick<ChatDatabaseAdapter, 'getIntentForIndexing' | 'getActiveIntents'>;
 
 /** Options passed to the opportunity graph when processing a discovery job. */
 export interface OpportunityGraphInvokeOptions {
@@ -38,6 +40,8 @@ export interface OpportunityGraphInvokeOptions {
   indexId?: string;
   /** Intent that triggered this job; used for search text and triggeredBy when in scope. */
   triggerIntentId?: string;
+  /** Discover on behalf of this user (introducer flow). */
+  onBehalfOfUserId?: string;
   options: { initialStatus: 'latent' };
 }
 
@@ -177,21 +181,42 @@ export class OpportunityQueue {
   }
 
   private async handleDiscoverOpportunities(data: OpportunityJobData): Promise<void> {
-    const { intentId, userId, indexIds } = data;
+    const { intentId, userId, indexIds, contactUserId } = data;
     const db = this.deps?.database ?? this.database;
-    const intent = await db.getIntentForIndexing(intentId);
-    if (!intent) {
-      this.logger.warn('[OpportunityDiscovery] Intent not found, skipping', { intentId });
-      return;
+
+    let searchQuery: string;
+    let triggerIntentId: string | undefined;
+    let onBehalfOfUserId: string | undefined;
+
+    if (contactUserId) {
+      // Introducer discovery: look up the contact's active intents for search query
+      const contactIntents = await db.getActiveIntents(contactUserId);
+      if (contactIntents.length === 0) {
+        this.logger.warn('[OpportunityDiscovery] Contact has no active intents, skipping', { contactUserId, userId });
+        return;
+      }
+      searchQuery = contactIntents[0].payload;
+      onBehalfOfUserId = contactUserId;
+      this.logger.info('[OpportunityDiscovery] Starting introducer discovery', { userId, contactUserId, indexIds });
+    } else {
+      const intent = await db.getIntentForIndexing(intentId);
+      if (!intent) {
+        this.logger.warn('[OpportunityDiscovery] Intent not found, skipping', { intentId });
+        return;
+      }
+      searchQuery = intent.payload;
+      triggerIntentId = intentId;
+      this.logger.info('[OpportunityDiscovery] Starting discovery', { intentId, userId, indexIds });
     }
-    this.logger.info('[OpportunityDiscovery] Starting discovery', { intentId, userId, indexIds });
-    this.logger.debug('[OpportunityDiscovery] Search query preview', { intentId, searchQuery: intent.payload?.slice(0, 80) });
+
+    this.logger.debug('[OpportunityDiscovery] Search query preview', { intentId, searchQuery: searchQuery?.slice(0, 80) });
     const invokeOpts: OpportunityGraphInvokeOptions = {
       userId: userId as Id<'users'>,
-      searchQuery: intent.payload,
+      searchQuery,
       operationMode: 'create',
       indexId: indexIds?.[0] as Id<'indexes'> | undefined,
-      triggerIntentId: intentId,
+      triggerIntentId,
+      onBehalfOfUserId,
       options: { initialStatus: 'latent' },
     };
     if (this.deps?.invokeOpportunityGraph) {

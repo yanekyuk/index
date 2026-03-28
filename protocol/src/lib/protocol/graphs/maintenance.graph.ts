@@ -1,24 +1,40 @@
 /**
  * Maintenance Graph: evaluate feed health and trigger rediscovery when unhealthy.
+ * Also runs introducer discovery when connector-flow slots are underfilled.
  *
  * Write path — separate from the read-only HomeGraph.
- * Flow: loadCurrentFeed → scoreFeedHealth → [shouldRediscover] → rediscover → logMaintenance → END
+ * Flow: loadCurrentFeed → scoreFeedHealth → [shouldRediscover] → rediscover → introducerDiscovery → logMaintenance → END
+ *                                          └─ [skip rediscovery] ─────────────→ introducerDiscovery → logMaintenance → END
  */
 import { StateGraph, START, END } from '@langchain/langgraph';
 
 import { MaintenanceGraphState } from '../states/maintenance.state';
 import { computeFeedHealth } from '../support/feed.health';
-import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer } from '../support/opportunity.utils';
+import { canUserSeeOpportunity, classifyOpportunity, isActionableForViewer, FEED_SOFT_TARGETS } from '../support/opportunity.utils';
+import {
+  shouldRunIntroducerDiscovery,
+  runIntroducerDiscovery,
+  type IntroducerDiscoveryDatabase,
+  type IntroducerDiscoveryQueue,
+} from '../support/introducer.discovery';
 import { protocolLogger } from '../support/protocol.logger';
 
 const logger = protocolLogger('MaintenanceGraph');
 
 const FRESHNESS_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
 
-/** Database methods needed by the maintenance graph. */
+/** Database methods needed by the maintenance graph (includes introducer discovery). */
 export interface MaintenanceGraphDatabase {
   getOpportunitiesForUser(userId: string, options?: { limit?: number }): Promise<Array<{ id: string; actors: Array<{ userId: string; role: string }>; status: string; [key: string]: unknown }>>;
   getActiveIntents(userId: string): Promise<Array<{ id: string; payload: string }>>;
+  /** Get the user's personal index ID (for introducer discovery). */
+  getPersonalIndexId(userId: string): Promise<string | null>;
+  /** Get contacts with intent freshness data from a personal index (for introducer discovery). */
+  getContactsWithIntentFreshness(
+    personalIndexId: string,
+    ownerId: string,
+    limit: number,
+  ): Promise<Array<{ userId: string; latestIntentAt: string | null; intentCount: number }>>;
 }
 
 /** Cache methods needed by the maintenance graph. */
@@ -29,7 +45,7 @@ export interface MaintenanceGraphCache {
 
 /** Queue methods needed by the maintenance graph. */
 export interface MaintenanceGraphQueue {
-  addJob(data: { intentId: string; userId: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
+  addJob(data: { intentId: string; userId: string; indexIds?: string[]; contactUserId?: string }, options?: { priority?: number; jobId?: string }): Promise<unknown>;
 }
 
 /**
@@ -112,9 +128,10 @@ export class MaintenanceGraphFactory {
           score: healthResult.score,
           breakdown: healthResult.breakdown,
           shouldMaintain: healthResult.shouldMaintain,
+          connectorFlowCount,
         });
 
-        return { healthResult };
+        return { healthResult, connectorFlowCount };
       } catch (e) {
         logger.error('MaintenanceGraph scoreFeedHealth failed', { error: e });
         return { error: 'Failed to score feed health' };
@@ -122,11 +139,11 @@ export class MaintenanceGraphFactory {
     };
 
     const shouldRediscover = (state: typeof MaintenanceGraphState.State): string => {
-      if (state.error) return 'end';
+      if (state.error) return 'introducerDiscovery';
       if (state.healthResult?.shouldMaintain && state.activeIntents.length > 0) {
         return 'rediscover';
       }
-      return 'end';
+      return 'introducerDiscovery';
     };
 
     const rediscoverNode = async (state: typeof MaintenanceGraphState.State) => {
@@ -165,13 +182,49 @@ export class MaintenanceGraphFactory {
       }
     };
 
+    const introducerDiscoveryNode = async (state: typeof MaintenanceGraphState.State) => {
+      try {
+        const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
+        if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
+          logger.verbose('[MaintenanceGraph] Introducer discovery skipped — connector-flow target met', {
+            userId: state.userId,
+            connectorFlowCount: state.connectorFlowCount,
+            connectorFlowTarget,
+          });
+          return {};
+        }
+
+        // Cast database/queue to introducer discovery interfaces (they are compatible)
+        const result = await runIntroducerDiscovery(
+          this.database as IntroducerDiscoveryDatabase,
+          this.queue as IntroducerDiscoveryQueue,
+          state.userId,
+        );
+
+        logger.info('[MaintenanceGraph] Introducer discovery complete', {
+          userId: state.userId,
+          contactsEvaluated: result.contactsEvaluated,
+          jobsEnqueued: result.jobsEnqueued,
+          skippedReason: result.skippedReason,
+        });
+
+        return { introducerDiscoveryJobsEnqueued: result.jobsEnqueued };
+      } catch (e) {
+        logger.error('MaintenanceGraph introducerDiscovery failed', { error: e });
+        // Non-fatal: do not set error, just log and continue
+        return {};
+      }
+    };
+
     const logMaintenanceNode = async (state: typeof MaintenanceGraphState.State) => {
       logger.info('[MaintenanceGraph] Maintenance complete', {
         userId: state.userId,
         score: state.healthResult?.score,
         shouldMaintain: state.healthResult?.shouldMaintain,
         rediscoveryJobsEnqueued: state.rediscoveryJobsEnqueued,
+        introducerDiscoveryJobsEnqueued: state.introducerDiscoveryJobsEnqueued,
         activeIntentCount: state.activeIntents.length,
+        connectorFlowCount: state.connectorFlowCount,
       });
       return {};
     };
@@ -180,6 +233,7 @@ export class MaintenanceGraphFactory {
       .addNode('loadCurrentFeed', loadCurrentFeedNode)
       .addNode('scoreFeedHealth', scoreFeedHealthNode)
       .addNode('rediscover', rediscoverNode)
+      .addNode('introducerDiscovery', introducerDiscoveryNode)
       .addNode('logMaintenance', logMaintenanceNode)
       .addEdge(START, 'loadCurrentFeed')
       .addConditionalEdges('loadCurrentFeed', (state) => (state.error ? 'end' : 'scoreFeedHealth'), {
@@ -188,9 +242,10 @@ export class MaintenanceGraphFactory {
       })
       .addConditionalEdges('scoreFeedHealth', shouldRediscover, {
         rediscover: 'rediscover',
-        end: END,
+        introducerDiscovery: 'introducerDiscovery',
       })
-      .addEdge('rediscover', 'logMaintenance')
+      .addEdge('rediscover', 'introducerDiscovery')
+      .addEdge('introducerDiscovery', 'logMaintenance')
       .addEdge('logMaintenance', END);
 
     return graph.compile();
