@@ -25,6 +25,9 @@ const ownedIntent = {
   createdAt: new Date(),
   updatedAt: new Date(),
   archivedAt: null,
+  embedding: undefined as number[] | undefined,
+  sourceType: undefined as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | undefined,
+  sourceId: undefined as string | undefined,
 };
 
 const otherIntent = {
@@ -36,6 +39,9 @@ const otherIntent = {
   createdAt: new Date(),
   updatedAt: new Date(),
   archivedAt: null,
+  embedding: undefined as number[] | undefined,
+  sourceType: undefined as 'file' | 'integration' | 'link' | 'discovery_form' | 'enrichment' | undefined,
+  sourceId: undefined as string | undefined,
 };
 
 function createMockDb(): ChatDatabaseAdapter {

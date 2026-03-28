@@ -9,6 +9,9 @@
  * the protocol interface it must satisfy.
  */
 
+import { config } from 'dotenv';
+config({ path: '.env.test' });
+
 import { describe, it, expect } from 'bun:test';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,39 +72,29 @@ import type {
 import {
   createUserDatabase,
   createSystemDatabase,
-  ChatDatabaseAdapter,
 } from '../database.adapter';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Compile-time assignability helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Assert that A is assignable to B at compile time.
- * If the adapter type is not structurally compatible with the protocol type,
- * TypeScript will emit a compile error here.
- */
-function assertAssignable<_Target>() {
-  return <T extends _Target>() => {};
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CACHE ADAPTER ALIGNMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Cache adapter ↔ protocol interface alignment', () => {
-  it('CacheOptions is assignable to protocol CacheOptions', () => {
-    // Compile-time check: adapter type → protocol type
+  it('CacheOptions: adapter → protocol', () => {
     const check: (_: AdapterCacheOptions) => ProtocolCacheOptions = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('Cache is assignable to protocol Cache', () => {
+  it('CacheOptions: protocol → adapter', () => {
+    const check: (_: ProtocolCacheOptions) => AdapterCacheOptions = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('Cache: adapter → protocol', () => {
     const check: (_: AdapterCache) => ProtocolCache = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('protocol Cache is assignable to adapter Cache (bidirectional)', () => {
+  it('Cache: protocol → adapter', () => {
     const check: (_: ProtocolCache) => AdapterCache = (v) => v;
     expect(check).toBeDefined();
   });
@@ -112,33 +105,63 @@ describe('Cache adapter ↔ protocol interface alignment', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Embedder adapter ↔ protocol interface alignment', () => {
-  it('LensEmbedding is assignable to protocol LensEmbedding', () => {
+  it('LensEmbedding: adapter → protocol', () => {
     const check: (_: AdapterLensEmbedding) => ProtocolLensEmbedding = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('protocol LensEmbedding is assignable to adapter LensEmbedding', () => {
+  it('LensEmbedding: protocol → adapter', () => {
     const check: (_: ProtocolLensEmbedding) => AdapterLensEmbedding = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('HydeSearchOptions is assignable to protocol HydeSearchOptions', () => {
+  it('HydeSearchOptions: adapter → protocol', () => {
     const check: (_: AdapterHydeSearchOptions) => ProtocolHydeSearchOptions = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('ProfileEmbeddingSearchOptions is assignable to protocol ProfileEmbeddingSearchOptions', () => {
+  it('HydeSearchOptions: protocol → adapter', () => {
+    const check: (_: ProtocolHydeSearchOptions) => AdapterHydeSearchOptions = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('ProfileEmbeddingSearchOptions: adapter → protocol', () => {
     const check: (_: AdapterProfileEmbeddingSearchOptions) => ProtocolProfileEmbeddingSearchOptions = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('HydeCandidate is assignable to protocol HydeCandidate', () => {
+  it('ProfileEmbeddingSearchOptions: protocol → adapter', () => {
+    const check: (_: ProtocolProfileEmbeddingSearchOptions) => AdapterProfileEmbeddingSearchOptions = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('HydeCandidate: adapter → protocol', () => {
     const check: (_: AdapterHydeCandidate) => ProtocolHydeCandidate = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('VectorSearchResult is assignable to protocol VectorSearchResult', () => {
+  it('HydeCandidate: protocol → adapter', () => {
+    const check: (_: ProtocolHydeCandidate) => AdapterHydeCandidate = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('VectorSearchResult: adapter → protocol', () => {
     const check: (_: AdapterVectorSearchResult<unknown>) => ProtocolVectorSearchResult<unknown> = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('VectorSearchResult: protocol → adapter', () => {
+    const check: (_: ProtocolVectorSearchResult<unknown>) => AdapterVectorSearchResult<unknown> = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('VectorStoreOption: adapter → protocol', () => {
+    const check: (_: AdapterVectorStoreOption<unknown>) => ProtocolVectorStoreOption<unknown> = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('VectorStoreOption: protocol → adapter', () => {
+    const check: (_: ProtocolVectorStoreOption<unknown>) => AdapterVectorStoreOption<unknown> = (v) => v;
     expect(check).toBeDefined();
   });
 });
@@ -148,28 +171,53 @@ describe('Embedder adapter ↔ protocol interface alignment', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('Integration adapter ↔ protocol interface alignment', () => {
-  it('IntegrationSession is assignable to protocol IntegrationSession', () => {
+  it('IntegrationSession: adapter → protocol', () => {
     const check: (_: AdapterIntegrationSession) => ProtocolIntegrationSession = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('IntegrationSessionOptions is assignable to protocol IntegrationSessionOptions', () => {
+  it('IntegrationSession: protocol → adapter', () => {
+    const check: (_: ProtocolIntegrationSession) => AdapterIntegrationSession = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('IntegrationSessionOptions: adapter → protocol', () => {
     const check: (_: AdapterIntegrationSessionOptions) => ProtocolIntegrationSessionOptions = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('ToolActionResponse is assignable to protocol ToolActionResponse', () => {
+  it('IntegrationSessionOptions: protocol → adapter', () => {
+    const check: (_: ProtocolIntegrationSessionOptions) => AdapterIntegrationSessionOptions = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('ToolActionResponse: adapter → protocol', () => {
     const check: (_: AdapterToolActionResponse) => ProtocolToolActionResponse = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('IntegrationConnection is assignable to protocol IntegrationConnection', () => {
+  it('ToolActionResponse: protocol → adapter', () => {
+    const check: (_: ProtocolToolActionResponse) => AdapterToolActionResponse = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('IntegrationConnection: adapter → protocol', () => {
     const check: (_: AdapterIntegrationConnection) => ProtocolIntegrationConnection = (v) => v;
     expect(check).toBeDefined();
   });
 
-  it('IntegrationAdapter is assignable to protocol IntegrationAdapter', () => {
+  it('IntegrationConnection: protocol → adapter', () => {
+    const check: (_: ProtocolIntegrationConnection) => AdapterIntegrationConnection = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('IntegrationAdapter: adapter → protocol', () => {
     const check: (_: AdapterIntegrationAdapter) => ProtocolIntegrationAdapter = (v) => v;
+    expect(check).toBeDefined();
+  });
+
+  it('IntegrationAdapter: protocol → adapter', () => {
+    const check: (_: ProtocolIntegrationAdapter) => AdapterIntegrationAdapter = (v) => v;
     expect(check).toBeDefined();
   });
 });
@@ -180,7 +228,6 @@ describe('Integration adapter ↔ protocol interface alignment', () => {
 
 describe('Database adapter ↔ protocol interface alignment', () => {
   it('createUserDatabase return type is assignable to protocol UserDatabase', () => {
-    // We only need the type — no runtime call.
     type UserDbReturn = ReturnType<typeof createUserDatabase>;
     const check: (_: UserDbReturn) => ProtocolUserDatabase = (v) => v;
     expect(check).toBeDefined();
