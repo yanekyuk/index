@@ -5,11 +5,11 @@
 export interface OpportunityActor {
   userId: string;
   role: string;
-  indexId?: string | null;
+  networkId?: string | null;
 }
 
 export interface OpportunityContext {
-  indexId?: string | null;
+  networkId?: string | null;
   [key: string]: unknown;
 }
 
@@ -32,7 +32,7 @@ export interface OpportunityListItem {
 
 export interface GetOpportunitiesOptions {
   status?: 'pending' | 'accepted' | 'rejected' | 'expired';
-  indexId?: string;
+  networkId?: string;
   limit?: number;
   offset?: number;
 }
@@ -79,7 +79,7 @@ export interface HomeViewResponse {
 }
 
 export interface GetHomeViewOptions {
-  indexId?: string;
+  networkId?: string;
   limit?: number;
   noCache?: boolean;
 }
@@ -103,7 +103,7 @@ export interface OpportunityDetailResponse {
   status: OpportunityStatus;
   category?: string;
   confidence?: number;
-  index?: { id: string; title: string };
+  network?: { id: string; title: string };
   introducedBy?: { id: string; name: string; avatar?: string | null };
 }
 
@@ -119,7 +119,7 @@ export const createOpportunitiesService = (
   ): Promise<OpportunityListItem[]> => {
     const params = new URLSearchParams();
     if (options?.status) params.set('status', options.status);
-    if (options?.indexId) params.set('indexId', options.indexId);
+    if (options?.networkId) params.set('networkId', options.networkId);
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.offset != null) params.set('offset', String(options.offset));
     const qs = params.toString();
@@ -132,7 +132,7 @@ export const createOpportunitiesService = (
     options?: GetHomeViewOptions
   ): Promise<HomeViewResponse> => {
     const params = new URLSearchParams();
-    if (options?.indexId) params.set('indexId', options.indexId);
+    if (options?.networkId) params.set('networkId', options.networkId);
     if (options?.limit != null) params.set('limit', String(options.limit));
     if (options?.noCache) params.set('noCache', '1');
     const qs = params.toString();

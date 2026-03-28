@@ -236,7 +236,7 @@ function AssistantMessageContent({
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
   currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
+  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
@@ -355,8 +355,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     sessionId,
     sessionTitle,
     suggestions: contextSuggestions,
-    setScopeIndexId,
-    sessionIndexId,
+    setScopeNetworkId,
+    sessionNetworkId,
     updateSessionTitle,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
@@ -549,25 +549,25 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const { suggestions } = useSuggestions({
     contextSuggestions: contextSuggestions ?? null,
     hasMessages: messages.length > 0,
-    indexId: selectedIndexId,
+    networkId: selectedIndexId,
     enabled: messages.length > 0,
   });
 
   const handleIndexSelect = useCallback(
-    (indexId: string | null) => {
-      if (indexId === null) {
+    (networkId: string | null) => {
+      if (networkId === null) {
         setSelectedIndexIds([]);
       } else {
-        setSelectedIndexIds([indexId]);
+        setSelectedIndexIds([networkId]);
       }
     },
     [setSelectedIndexIds],
   );
 
-  // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
+  // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
-    setScopeIndexId(selectedIndexId);
-  }, [selectedIndexId, setScopeIndexId]);
+    setScopeNetworkId(selectedIndexId);
+  }, [selectedIndexId, setScopeNetworkId]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -580,7 +580,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
     opportunitiesService
-      .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 5, noCache })
+      .getHomeView({ networkId: selectedIndexId ?? undefined, limit: 5, noCache })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
@@ -787,9 +787,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   );
 
   const handleIntentProposalApprove = useCallback(
-    async (proposalId: string, description: string, indexId?: string) => {
+    async (proposalId: string, description: string, networkId?: string) => {
       try {
-        const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, indexId });
+        const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
         setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
         setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
         addNotification({
@@ -1496,7 +1496,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }
 
   // CONVERSATION MODE - Has messages
-  const boundIndexId = sessionIndexId ?? selectedIndexId;
+  const boundIndexId = sessionNetworkId ?? selectedIndexId;
   const boundIndex = indexes.find((i) => i.id === boundIndexId) ?? null;
 
   return (

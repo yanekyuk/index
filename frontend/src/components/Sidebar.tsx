@@ -19,7 +19,7 @@ import CreateIndexModal from '@/components/modals/CreateIndexModal';
 interface ChatSession {
   id: string;
   title: string | null;
-  indexId: string | null;
+  networkId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -231,7 +231,7 @@ export default function Sidebar() {
               ) : (
                 chatSessions.slice(0, 10).map((session) => {
                   const isSelected = currentSessionId === session.id;
-                  const sessionIndex = session.indexId ? indexes.find(i => i.id === session.indexId) : null;
+                  const sessionIndex = session.networkId ? indexes.find(i => i.id === session.networkId) : null;
                   return (
                     <button
                       key={session.id}

@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Index, User, APIResponse } from "@/lib/types";
+import { Network, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import { useIndexes } from '@/contexts/APIContext';
-import { indexesService as publicIndexesService } from '@/services/indexes';
+import { indexesService as publicIndexesService } from '@/services/networks';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -16,7 +16,7 @@ type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-
 
 type PageState = {
   step: PageStep;
-  index: Index | null;
+  index: Network | null;
   user: User | null;
   error: string | null;
 };
@@ -46,7 +46,7 @@ export default function InvitationPage() {
         const index = await publicIndexesService.getIndexByShareCode(code!);
         setState(prev => ({ ...prev, index }));
 
-        // Reject public indexes - they should use /index/[indexId] instead
+        // Reject public networks - they should use /index/[networkId] instead
         if (index.permissions?.joinPolicy === 'anyone') {
           setState(prev => ({ 
             ...prev, 
@@ -124,7 +124,7 @@ export default function InvitationPage() {
         success('You are already a member of this index');
         setState(prev => ({ ...prev, step: 'already-member' }));
       } else {
-        success(`Successfully joined ${result?.index?.title || state.index.title}!`);
+        success(`Successfully joined ${result?.network?.title || state.index.title}!`);
         // Refresh indexes context
         await refreshIndexes();
         // Redirect to the index page

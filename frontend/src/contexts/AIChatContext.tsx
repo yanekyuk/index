@@ -77,12 +77,12 @@ interface AIChatContextType {
   sessionId: string | null;
   sessionTitle: string | null;
   setSessionId: (id: string | null) => void;
-  /** The index bound to the current session (persisted). Null if no index scope. */
-  sessionIndexId: string | null;
-  /** When the user has selected a single index (e.g. in chat dropdown), chat and create_intent are scoped to that index. */
-  scopeIndexId: string | null;
-  /** Set the current index scope (e.g. from the index filter dropdown in ChatContent). Call with null for "Everywhere". */
-  setScopeIndexId: (indexId: string | null) => void;
+  /** The network bound to the current session (persisted). Null if no network scope. */
+  sessionNetworkId: string | null;
+  /** When the user has selected a single network (e.g. in chat dropdown), chat and create_intent are scoped to that network. */
+  scopeNetworkId: string | null;
+  /** Set the current network scope (e.g. from the network filter dropdown in ChatContent). Call with null for "Everywhere". */
+  setScopeNetworkId: (networkId: string | null) => void;
   /** Context-aware suggestions from the last done event; empty when no messages or after clear/load. */
   suggestions: Suggestion[];
   isLoading: boolean;
@@ -102,8 +102,8 @@ interface AIChatContextType {
 
 const AIChatContext = createContext<AIChatContextType | null>(null);
 
-/** Extract index ID from pathname when on /index/[indexId] (fallback when no dropdown selection). */
-function getScopeIndexIdFromPathname(pathname: string | null): string | null {
+/** Extract network ID from pathname when on /index/[networkId] (fallback when no dropdown selection). */
+function getScopeNetworkIdFromPathname(pathname: string | null): string | null {
   if (!pathname) return null;
   const match = pathname.match(/^\/index\/([^/]+)/);
   return match ? match[1] : null;
@@ -186,14 +186,14 @@ function mergeDebugMetaIntoTraceEvents(
 
 export function AIChatProvider({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
-  const [scopeIndexIdOverride, setScopeIndexIdOverride] = useState<
+  const [scopeNetworkIdOverride, setScopeNetworkIdOverride] = useState<
     string | null
   >(null);
-  const scopeFromPath = getScopeIndexIdFromPathname(pathname);
-  // For new chats, use the UI selection; for existing sessions, the session's bound index takes precedence
-  const [sessionIndexId, setSessionIndexId] = useState<string | null>(null);
-  // Effective scope: session's bound index takes precedence, then UI override, then path
-  const scopeIndexId = sessionIndexId ?? scopeIndexIdOverride ?? scopeFromPath;
+  const scopeFromPath = getScopeNetworkIdFromPathname(pathname);
+  // For new chats, use the UI selection; for existing sessions, the session's bound network takes precedence
+  const [sessionNetworkId, setSessionNetworkId] = useState<string | null>(null);
+  // Effective scope: session's bound network takes precedence, then UI override, then path
+  const scopeNetworkId = sessionNetworkId ?? scopeNetworkIdOverride ?? scopeFromPath;
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -256,7 +256,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             message.trim() || (fileIds?.length ? "Attached file(s)." : ""),
           sessionId,
           ...(fileIds?.length ? { fileIds } : {}),
-          ...(scopeIndexId ? { indexId: scopeIndexId } : {}),
+          ...(scopeNetworkId ? { networkId: scopeNetworkId } : {}),
           ...(options?.prefillMessages?.length ? { prefillMessages: options.prefillMessages } : {}),
         };
 
@@ -272,10 +272,10 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
             refetchSessions();
           } else {
             setSessionId(newSessionId);
-            // The index selected at session creation becomes the session's bound index
-            // (scopeIndexId at this point is the UI selection since sessionIndexId is null for new chats)
-            if (scopeIndexId) {
-              setSessionIndexId(scopeIndexId);
+            // The network selected at session creation becomes the session's bound network
+            // (scopeNetworkId at this point is the UI selection since sessionNetworkId is null for new chats)
+            if (scopeNetworkId) {
+              setSessionNetworkId(scopeNetworkId);
             }
             refetchSessions();
           }
@@ -591,7 +591,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [sessionId, scopeIndexId, refetchSessions],
+    [sessionId, scopeNetworkId, refetchSessions],
   );
 
   const stopStream = useCallback(() => {
@@ -610,7 +610,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
     setSuggestions([]);
     setSessionId(null);
     setSessionTitle(null);
-    setSessionIndexId(null); // Clear session-bound index so new chat can use UI selection
+    setSessionNetworkId(null); // Clear session-bound network so new chat can use UI selection
     if (abortStream && abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -622,7 +622,7 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         session: {
           id: string;
           title?: string | null;
-          indexId?: string | null;
+          networkId?: string | null;
         };
         messages: Array<{
           id: string;
@@ -646,8 +646,8 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
       setSessionId(data.session.id);
       setSessionTitle(data.session.title?.trim() ?? null);
       setSuggestions([]); // Session load does not return suggestions; next response will
-      // Load the session's bound index - this is the persisted scope for this conversation
-      setSessionIndexId(data.session.indexId ?? null);
+      // Load the session's bound network - this is the persisted scope for this conversation
+      setSessionNetworkId(data.session.networkId ?? null);
       setMessages(
         data.messages.map((m) => ({
           id: m.id,
@@ -692,9 +692,9 @@ export function AIChatProvider({ children }: { children: React.ReactNode }) {
         sessionId,
         sessionTitle,
         setSessionId,
-        sessionIndexId,
-        scopeIndexId,
-        setScopeIndexId: setScopeIndexIdOverride,
+        sessionNetworkId,
+        scopeNetworkId,
+        setScopeNetworkId: setScopeNetworkIdOverride,
         suggestions,
         isLoading,
         stopStream,

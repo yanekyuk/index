@@ -16,8 +16,8 @@ export interface ImportContactsResult {
 }
 
 export const createIntegrationsService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
-  getConnections: async (indexId?: string): Promise<{ connections: ComposioConnection[] }> => {
-    const qs = indexId ? `?indexId=${encodeURIComponent(indexId)}` : '';
+  getConnections: async (networkId?: string): Promise<{ connections: ComposioConnection[] }> => {
+    const qs = networkId ? `?networkId=${encodeURIComponent(networkId)}` : '';
     return api.get<{ connections: ComposioConnection[] }>(`/integrations${qs}`);
   },
 
@@ -25,20 +25,20 @@ export const createIntegrationsService = (api: ReturnType<typeof useAuthenticate
     return api.post<{ redirectUrl: string }>(`/integrations/connect/${toolkit}`);
   },
 
-  linkIntegration: async (toolkit: string, indexId: string): Promise<{ success: boolean }> => {
-    return api.post<{ success: boolean }>(`/integrations/${toolkit}/link`, { indexId });
+  linkIntegration: async (toolkit: string, networkId: string): Promise<{ success: boolean }> => {
+    return api.post<{ success: boolean }>(`/integrations/${toolkit}/link`, { networkId });
   },
 
-  unlinkIntegration: async (toolkit: string, indexId: string): Promise<{ success: boolean }> => {
-    return api.delete<{ success: boolean }>(`/integrations/${toolkit}/link?indexId=${encodeURIComponent(indexId)}`);
+  unlinkIntegration: async (toolkit: string, networkId: string): Promise<{ success: boolean }> => {
+    return api.delete<{ success: boolean }>(`/integrations/${toolkit}/link?networkId=${encodeURIComponent(networkId)}`);
   },
 
   disconnect: async (id: string): Promise<{ success: boolean }> => {
     return api.delete<{ success: boolean }>(`/integrations/${id}`);
   },
 
-  importContacts: async (toolkit: string, indexId?: string): Promise<ImportContactsResult> => {
-    return api.post<ImportContactsResult>(`/integrations/${toolkit}/import`, { indexId });
+  importContacts: async (toolkit: string, networkId?: string): Promise<ImportContactsResult> => {
+    return api.post<ImportContactsResult>(`/integrations/${toolkit}/import`, { networkId });
   },
 });
 

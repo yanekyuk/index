@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import { useIndexService } from '@/services/indexes';
+import { useIndexService } from '@/services/networks';
 
 export interface MentionableUser {
   id: string;

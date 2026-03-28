@@ -6,7 +6,7 @@ import { useIndexesState } from "@/contexts/IndexesContext";
 
 import IndexAvatar from "@/components/IndexAvatar";
 import { Button } from "@/components/ui/button";
-import type { Index } from "@/lib/types";
+import type { Network } from "@/lib/types";
 
 interface NetworksPanelProps {
   onJoin: (networkId: string, networkTitle: string) => void;
@@ -22,7 +22,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
   const indexesService = useIndexes();
   const { indexes: joinedIndexes } = useIndexesState();
 
-  const [publicNetworks, setPublicNetworks] = useState<(Index & { isMember?: boolean })[]>([]);
+  const [publicNetworks, setPublicNetworks] = useState<(Network & { isMember?: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
 
