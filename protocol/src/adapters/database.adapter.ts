@@ -4952,6 +4952,35 @@ interface SimilarIntent {
  * @param authUserId - The authenticated user's ID
  * @returns A UserDatabase bound to authUserId
  */
+/**
+ * Role-based opportunity visibility check.
+ * Mirrors the Latent Opportunity Lifecycle visibility matrix:
+ * - Introducer/peer: always visible.
+ * - Patient/party: visible unless status is latent AND an introducer exists.
+ * - Agent: visible only for terminal statuses, or non-latent when no introducer.
+ */
+function canActorSeeOpportunity(
+  actors: Array<{ userId: string; role: string }>,
+  status: string,
+  userId: string,
+): boolean {
+  const hasIntroducer = actors.some((a) => a.role === 'introducer');
+  const userRoles = actors.filter((a) => a.userId === userId).map((a) => a.role);
+  if (userRoles.length === 0) return false;
+
+  return userRoles.some((role) => {
+    if (role === 'introducer' || role === 'peer') return true;
+    if (role === 'patient' || role === 'party')
+      return status !== 'latent' || !hasIntroducer;
+    if (role === 'agent')
+      return (
+        ['accepted', 'rejected', 'expired'].includes(status) ||
+        (status !== 'latent' && !hasIntroducer)
+      );
+    return false;
+  });
+}
+
 export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) {
   return {
     authUserId,
@@ -5056,6 +5085,8 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     softDeleteIndex: async (indexId: string) => {
       const isOwner = await db.isIndexOwner(indexId, authUserId);
       if (!isOwner) throw new Error('Access denied: not index owner');
+      const isPersonal = await db.isPersonalIndex(indexId);
+      if (isPersonal) throw new Error('Cannot delete personal index');
       return db.softDeleteIndex(indexId);
     },
 
@@ -5072,15 +5103,15 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     getOpportunity: async (id: string) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) return null;
-      const isActor = opportunity.actors.some((a: { userId: string }) => a.userId === authUserId);
-      if (!isActor) throw new Error('Access denied: opportunity not owned by user');
+      if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
+        throw new Error('Access denied: opportunity not visible to user');
       return opportunity;
     },
     updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
-      const isActor = opportunity.actors.some((a: { userId: string }) => a.userId === authUserId);
-      if (!isActor) throw new Error('Access denied: opportunity not owned by user');
+      if (!canActorSeeOpportunity(opportunity.actors, opportunity.status, authUserId))
+        throw new Error('Access denied: opportunity not visible to user');
       return db.updateOpportunityStatus(id, status);
     },
     getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
