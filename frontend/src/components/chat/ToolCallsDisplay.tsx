@@ -153,7 +153,7 @@ const GRAPH_DISPLAY_NAMES: Record<string, string> = {
   "opportunity": "Opportunity graph",
   "intent": "Intent graph",
   "intent_index": "Intent indexing",
-  "intent_network": "Intent networking",
+  "intent_network": "Intent indexing",
   "profile": "Profile graph",
   "hyde": "HyDE graph",
   "home": "Home graph",
