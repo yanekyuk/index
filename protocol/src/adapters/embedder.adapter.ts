@@ -12,13 +12,29 @@ import {
 } from '../lib/embedder/embedder.config';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import type { LensEmbedding, ProfileEmbeddingSearchOptions } from '../lib/protocol/interfaces/embedder.interface';
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Local types (align with lib/protocol/interfaces/embedder.interface.ts)
+// Local types (structurally aligned with lib/protocol/interfaces/embedder.interface)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type { LensEmbedding } from '../lib/protocol/interfaces/embedder.interface';
+/** A single lens embedding ready for search. */
+export interface LensEmbedding {
+  /** Free-text lens label (e.g. "crypto infrastructure VC"). */
+  lens: string;
+  /** Which corpus to search. */
+  corpus: 'profiles' | 'intents';
+  /** 2000-dim embedding vector. */
+  embedding: number[];
+}
+
+/** Options for searchWithProfileEmbedding (no lenses; direct profile similarity). */
+export interface ProfileEmbeddingSearchOptions {
+  indexScope: string[];
+  excludeUserId?: string;
+  limitPerStrategy?: number;
+  limit?: number;
+  minScore?: number;
+  profileMinScore?: number;
+}
 
 export interface HydeSearchOptions {
   indexScope: string[];

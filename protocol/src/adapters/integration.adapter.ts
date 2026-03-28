@@ -1,12 +1,48 @@
+import type { StructuredToolInterface } from '@langchain/core/tools';
+
 import { getComposioClient, getAuthConfigMap } from '../lib/composio/composio.client';
-import type {
-  IntegrationAdapter,
-  IntegrationConnection,
-  IntegrationSession,
-  IntegrationSessionOptions,
-  ToolActionResponse,
-} from '../lib/protocol/interfaces/integration.interface';
 import { log } from '../lib/log';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Local types (structurally aligned with lib/protocol/interfaces/integration.interface)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Session for interacting with an external integration platform. */
+export interface IntegrationSession {
+  tools(): Promise<StructuredToolInterface[]>;
+  authorize(toolkit: string): Promise<{ redirectUrl: string; waitForConnection(timeout?: number): Promise<unknown> }>;
+  toolkits(): Promise<{ items: Array<{ slug: string; name: string; connection?: { connectedAccount?: { id: string } } }> }>;
+}
+
+/** Options for creating an integration session. */
+export interface IntegrationSessionOptions {
+  manageConnections?: boolean | { callbackUrl?: string };
+  authConfigs?: Record<string, string>;
+}
+
+/** Response from executing a tool action on the integration platform. */
+export interface ToolActionResponse {
+  successful: boolean;
+  error?: string;
+  data?: Record<string, unknown>;
+}
+
+/** A connected integration account for a user. */
+export interface IntegrationConnection {
+  id: string;
+  toolkit: string;
+  status: string;
+  createdAt: string;
+}
+
+/** Adapter for external integration platforms (OAuth sessions, tool execution). */
+export interface IntegrationAdapter {
+  createSession(userId: string, options?: IntegrationSessionOptions): Promise<IntegrationSession>;
+  executeToolAction(slug: string, userId: string, args: Record<string, unknown>): Promise<ToolActionResponse>;
+  listConnections(userId: string): Promise<IntegrationConnection[]>;
+  getAuthUrl(userId: string, toolkit: string, callbackUrl?: string): Promise<{ redirectUrl: string }>;
+  disconnect(connectedAccountId: string): Promise<{ success: boolean }>;
+}
 
 const logger = log.lib.from('integration.adapter');
 

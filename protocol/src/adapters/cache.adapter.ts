@@ -6,7 +6,26 @@
 import Redis from 'ioredis';
 
 import { log } from '../lib/log';
-import type { Cache, CacheOptions } from '../lib/protocol/interfaces/cache.interface';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Local types (structurally aligned with lib/protocol/interfaces/cache.interface)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Options for cache set operations. */
+export interface CacheOptions {
+  /** TTL in seconds */
+  ttl?: number;
+}
+
+/** Cache interface implemented by this adapter. */
+export interface Cache {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, options?: CacheOptions): Promise<void>;
+  delete(key: string): Promise<boolean>;
+  exists(key: string): Promise<boolean>;
+  mget<T>(keys: string[]): Promise<(T | null)[]>;
+  deleteByPattern(pattern: string): Promise<number>;
+}
 
 const logger = log.lib.from("cache.adapter");
 

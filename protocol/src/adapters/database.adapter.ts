@@ -4849,12 +4849,32 @@ export const intentDatabaseAdapter = new IntentDatabaseAdapter();
 // Context-Bound Database Factories
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import type { VectorStore } from '../lib/protocol/interfaces/embedder.interface';
-import type {
-  UserDatabase,
-  SystemDatabase,
-  SimilarIntent,
-} from '../lib/protocol/interfaces/database.interface';
+// ─────────────────────────────────────────────────────────────────────────────
+// Local types for context-bound database factories
+// (structurally aligned with lib/protocol/interfaces — no import coupling)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal vector store contract used by createSystemDatabase for findSimilarIntentsInScope. */
+interface VectorStore {
+  search<T>(
+    queryVector: number[],
+    collection: string,
+    options?: { limit?: number; filter?: Record<string, unknown>; minScore?: number },
+  ): Promise<{ item: T; score: number }[]>;
+}
+
+/** Intent record with similarity score, returned by findSimilarIntentsInScope. */
+interface SimilarIntent {
+  id: string;
+  payload: string;
+  summary: string | null;
+  isIncognito: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  userId: string;
+  archivedAt: Date | null;
+  similarity: number;
+}
 
 /**
  * Creates a UserDatabase bound to the authenticated user.
@@ -4864,7 +4884,7 @@ import type {
  * @param authUserId - The authenticated user's ID
  * @returns A UserDatabase bound to authUserId
  */
-export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string): UserDatabase {
+export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) {
   return {
     authUserId,
 
@@ -4873,16 +4893,16 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
     // ─────────────────────────────────────────────────────────────────────────────
     getProfile: () => db.getProfile(authUserId),
     getProfileByUserId: () => db.getProfileByUserId(authUserId),
-    saveProfile: (profile) => db.saveProfile(authUserId, profile),
+    saveProfile: (profile: Parameters<ChatDatabaseAdapter['saveProfile']>[1]) => db.saveProfile(authUserId, profile),
     deleteProfile: () => db.deleteProfile(authUserId),
     getUser: () => db.getUser(authUserId),
-    updateUser: (data) => db.updateUser(authUserId, data),
+    updateUser: (data: Parameters<ChatDatabaseAdapter['updateUser']>[1]) => db.updateUser(authUserId, data),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations
     // ─────────────────────────────────────────────────────────────────────────────
     getActiveIntents: () => db.getActiveIntents(authUserId),
-    getIntent: async (intentId) => {
+    getIntent: async (intentId: string) => {
       // Enforce ownership by checking userId on returned intent
       const intent = await db.getIntent(intentId);
       if (!intent) return null;
@@ -4891,27 +4911,27 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
       }
       return intent;
     },
-    createIntent: (data) => db.createIntent({ ...data, userId: authUserId }),
-    updateIntent: async (intentId, data) => {
+    createIntent: (data: Omit<Parameters<ChatDatabaseAdapter['createIntent']>[0], 'userId'>) => db.createIntent({ ...data, userId: authUserId }),
+    updateIntent: async (intentId: string, data: Parameters<ChatDatabaseAdapter['updateIntent']>[1]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.updateIntent(intentId, data);
     },
-    archiveIntent: async (intentId) => {
+    archiveIntent: async (intentId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.archiveIntent(intentId);
     },
-    findSimilarIntents: async (_embedding, _options) => {
+    findSimilarIntents: async (_embedding: number[], _options?: { limit?: number; threshold?: number }) => {
       // findSimilarIntents is not yet implemented on ChatDatabaseAdapter
       // This is a placeholder - would need vector search implementation
       log.warn('UserDatabase.findSimilarIntents called but not fully implemented');
-      return [];
+      return [] as SimilarIntent[];
     },
-    getIntentForIndexing: (intentId) => db.getIntentForIndexing(intentId),
-    associateIntentWithIndexes: async (intentId, indexIds) => {
+    getIntentForIndexing: (intentId: string) => db.getIntentForIndexing(intentId),
+    associateIntentWithIndexes: async (intentId: string, indexIds: string[]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
@@ -4919,20 +4939,20 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
         await db.assignIntentToIndex(intentId, indexId);
       }
     },
-    assignIntentToIndex: async (intentId, indexId, relevancyScore?) => {
+    assignIntentToIndex: async (intentId: string, indexId: string, relevancyScore?: number) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.assignIntentToIndex(intentId, indexId, relevancyScore);
     },
-    unassignIntentFromIndex: async (intentId, indexId) => {
+    unassignIntentFromIndex: async (intentId: string, indexId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.unassignIntentFromIndex(intentId, indexId);
     },
-    getIndexIdsForIntent: (intentId) => db.getIndexIdsForIntent(intentId),
-    isIntentAssignedToIndex: (intentId, indexId) => db.isIntentAssignedToIndex(intentId, indexId),
+    getIndexIdsForIntent: (intentId: string) => db.getIndexIdsForIntent(intentId),
+    isIntentAssignedToIndex: (intentId: string, indexId: string) => db.isIntentAssignedToIndex(intentId, indexId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Membership Operations
@@ -4940,40 +4960,40 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string):
     getIndexMemberships: () => db.getIndexMemberships(authUserId),
     getUserIndexIds: () => db.getUserIndexIds(authUserId),
     getOwnedIndexes: () => db.getOwnedIndexes(authUserId),
-    getIndexMembership: (indexId) => db.getIndexMembership(indexId, authUserId),
-    getIndexMemberContext: (indexId) => db.getIndexMemberContext(indexId, authUserId),
+    getIndexMembership: (indexId: string) => db.getIndexMembership(indexId, authUserId),
+    getIndexMemberContext: (indexId: string) => db.getIndexMemberContext(indexId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index CRUD Operations
     // ─────────────────────────────────────────────────────────────────────────────
-    createIndex: (data) => db.createIndex(data),
-    updateIndexSettings: (indexId, data) => db.updateIndexSettings(indexId, authUserId, data),
-    softDeleteIndex: (indexId) => db.softDeleteIndex(indexId),
+    createIndex: (data: Parameters<ChatDatabaseAdapter['createIndex']>[0]) => db.createIndex(data),
+    updateIndexSettings: (indexId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(indexId, authUserId, data),
+    softDeleteIndex: (indexId: string) => db.softDeleteIndex(indexId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Public Index Discovery
     // ─────────────────────────────────────────────────────────────────────────────
     getPublicIndexesNotJoined: () => db.getPublicIndexesNotJoined(authUserId),
-    joinPublicIndex: (indexId) => db.joinPublicIndex(indexId, authUserId),
+    joinPublicIndex: (indexId: string) => db.joinPublicIndex(indexId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations
     // ─────────────────────────────────────────────────────────────────────────────
-    getOpportunitiesForUser: (options) => db.getOpportunitiesForUser(authUserId, options),
-    getOpportunity: (id) => db.getOpportunity(id),
-    updateOpportunityStatus: (id, status) => db.updateOpportunityStatus(id, status),
-    getAcceptedOpportunitiesBetweenActors: (counterpartUserId) =>
+    getOpportunitiesForUser: (options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForUser']>[1]) => db.getOpportunitiesForUser(authUserId, options),
+    getOpportunity: (id: string) => db.getOpportunity(id),
+    updateOpportunityStatus: (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => db.updateOpportunityStatus(id, status),
+    getAcceptedOpportunitiesBetweenActors: (counterpartUserId: string) =>
       db.getAcceptedOpportunitiesBetweenActors(authUserId, counterpartUserId),
-    acceptSiblingOpportunities: (counterpartUserId, excludeOpportunityId) =>
+    acceptSiblingOpportunities: (counterpartUserId: string, excludeOpportunityId: string) =>
       db.acceptSiblingOpportunities(authUserId, counterpartUserId, excludeOpportunityId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // HyDE Operations
     // ─────────────────────────────────────────────────────────────────────────────
-    getHydeDocument: (sourceType, sourceId, strategy) => db.getHydeDocument(sourceType, sourceId, strategy),
-    getHydeDocumentsForSource: (sourceType, sourceId) => db.getHydeDocumentsForSource(sourceType, sourceId),
-    saveHydeDocument: (data) => db.saveHydeDocument(data),
-    deleteHydeDocumentsForSource: (sourceType, sourceId) => db.deleteHydeDocumentsForSource(sourceType, sourceId),
+    getHydeDocument: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocument']>[0], sourceId: string, strategy: string) => db.getHydeDocument(sourceType, sourceId, strategy),
+    getHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocumentsForSource']>[0], sourceId: string) => db.getHydeDocumentsForSource(sourceType, sourceId),
+    saveHydeDocument: (data: Parameters<ChatDatabaseAdapter['saveHydeDocument']>[0]) => db.saveHydeDocument(data),
+    deleteHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['deleteHydeDocumentsForSource']>[0], sourceId: string) => db.deleteHydeDocumentsForSource(sourceType, sourceId),
   };
 }
 
@@ -4992,7 +5012,7 @@ export function createSystemDatabase(
   authUserId: string,
   indexScope: string[],
   embedder?: VectorStore
-): SystemDatabase {
+) {
   /**
    * Verify that an indexId is within the allowed scope.
    * Throws if the index is not in scope.
@@ -5034,13 +5054,13 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Profile Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getProfile: async (userId) => {
+    getProfile: async (userId: string) => {
       if (!(await verifySharedIndex(userId))) {
         throw new Error('Access denied: no shared index with user');
       }
       return db.getProfile(userId);
     },
-    getUser: async (userId) => {
+    getUser: async (userId: string) => {
       if (!(await verifySharedIndex(userId))) {
         throw new Error('Access denied: no shared index with user');
       }
@@ -5050,18 +5070,18 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Intent Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIntentsInIndex: async (indexId, options) => {
+    getIntentsInIndex: async (indexId: string, options?: { limit?: number; offset?: number }) => {
       verifyScope(indexId);
       return db.getIndexIntentsForMember(indexId, authUserId, options);
     },
-    getUserIntentsInIndex: async (userId, indexId) => {
+    getUserIntentsInIndex: async (userId: string, indexId: string) => {
       verifyScope(indexId);
       return db.getIntentsInIndexForMember(userId, indexId);
     },
-    getIntent: (intentId) => db.getIntent(intentId),
-    findSimilarIntentsInScope: async (embedding, options) => {
+    getIntent: (intentId: string) => db.getIntent(intentId),
+    findSimilarIntentsInScope: async (embedding: number[], options?: { limit?: number; threshold?: number }) => {
       if (!embedder || indexScope.length === 0) {
-        return [];
+        return [] as SimilarIntent[];
       }
       const limit = options?.limit ?? 10;
       const threshold = options?.threshold ?? 0.7;
@@ -5090,28 +5110,28 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Membership Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    isIndexMember: (indexId, userId) => db.isIndexMember(indexId, userId),
-    isIndexOwner: (indexId, userId) => db.isIndexOwner(indexId, userId),
-    getIndexMembers: async (indexId) => {
+    isIndexMember: (indexId: string, userId: string) => db.isIndexMember(indexId, userId),
+    isIndexOwner: (indexId: string, userId: string) => db.isIndexOwner(indexId, userId),
+    getIndexMembers: async (indexId: string) => {
       verifyScope(indexId);
       return db.getIndexMembersForMember(indexId, authUserId);
     },
     getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
-    addMemberToIndex: (indexId, userId, role) => db.addMemberToIndex(indexId, userId, role),
-    removeMemberFromIndex: (indexId, userId) => db.removeMemberFromIndex(indexId, userId),
+    addMemberToIndex: (indexId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToIndex(indexId, userId, role),
+    removeMemberFromIndex: (indexId: string, userId: string) => db.removeMemberFromIndex(indexId, userId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Operations (within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIndex: async (indexId) => {
+    getIndex: async (indexId: string) => {
       verifyScope(indexId);
       return db.getIndex(indexId);
     },
-    getIndexWithPermissions: async (indexId) => {
+    getIndexWithPermissions: async (indexId: string) => {
       verifyScope(indexId);
       return db.getIndexWithPermissions(indexId);
     },
-    getIndexMemberCount: async (indexId) => {
+    getIndexMemberCount: async (indexId: string) => {
       verifyScope(indexId);
       return db.getIndexMemberCount(indexId);
     },
@@ -5119,18 +5139,18 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Opportunity Operations (cross-user within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    createOpportunity: (data) => {
+    createOpportunity: (data: Parameters<ChatDatabaseAdapter['createOpportunity']>[0]) => {
       const indexId = data.context?.indexId;
       if (indexId) verifyScope(indexId);
       return db.createOpportunity(data);
     },
-    createOpportunityAndExpireIds: (data, expireIds) => db.createOpportunityAndExpireIds(data, expireIds),
-    getOpportunity: (id) => db.getOpportunity(id),
-    getOpportunitiesForIndex: async (indexId, options) => {
+    createOpportunityAndExpireIds: (data: Parameters<ChatDatabaseAdapter['createOpportunityAndExpireIds']>[0], expireIds: string[]) => db.createOpportunityAndExpireIds(data, expireIds),
+    getOpportunity: (id: string) => db.getOpportunity(id),
+    getOpportunitiesForIndex: async (indexId: string, options?: Parameters<ChatDatabaseAdapter['getOpportunitiesForIndex']>[1]) => {
       verifyScope(indexId);
       return db.getOpportunitiesForIndex(indexId, options);
     },
-    updateOpportunityStatus: async (id, status) => {
+    updateOpportunityStatus: async (id: string, status: Parameters<ChatDatabaseAdapter['updateOpportunityStatus']>[1]) => {
       const opportunity = await db.getOpportunity(id);
       if (!opportunity) throw new Error('Opportunity not found');
       const opportunityIndexId = opportunity.context?.indexId;
@@ -5138,27 +5158,27 @@ export function createSystemDatabase(
       verifyScope(opportunityIndexId);
       return db.updateOpportunityStatus(id, status);
     },
-    opportunityExistsBetweenActors: (actorIds, indexId) => {
+    opportunityExistsBetweenActors: (actorIds: string[], indexId: string) => {
       verifyScope(indexId);
       return db.opportunityExistsBetweenActors(actorIds, indexId);
     },
-    getOpportunityBetweenActors: (actorIds, indexId) => {
+    getOpportunityBetweenActors: (actorIds: string[], indexId: string) => {
       verifyScope(indexId);
       return db.getOpportunityBetweenActors(actorIds, indexId);
     },
-    findOverlappingOpportunities: (actorUserIds, options) => db.findOverlappingOpportunities(actorUserIds, options),
-    expireOpportunitiesByIntent: (intentId) => db.expireOpportunitiesByIntent(intentId),
-    expireOpportunitiesForRemovedMember: (indexId, userId) => db.expireOpportunitiesForRemovedMember(indexId, userId),
+    findOverlappingOpportunities: (actorUserIds: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[0], options?: Parameters<ChatDatabaseAdapter['findOverlappingOpportunities']>[1]) => db.findOverlappingOpportunities(actorUserIds, options),
+    expireOpportunitiesByIntent: (intentId: string) => db.expireOpportunitiesByIntent(intentId),
+    expireOpportunitiesForRemovedMember: (indexId: string, userId: string) => db.expireOpportunitiesForRemovedMember(indexId, userId),
     expireStaleOpportunities: () => db.expireStaleOpportunities(),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // HyDE Operations (cross-user for opportunity matching)
     // ─────────────────────────────────────────────────────────────────────────────
-    getHydeDocument: (sourceType, sourceId, strategy) => db.getHydeDocument(sourceType, sourceId, strategy),
-    getHydeDocumentsForSource: (sourceType, sourceId) => db.getHydeDocumentsForSource(sourceType, sourceId),
-    saveHydeDocument: (data) => db.saveHydeDocument(data),
+    getHydeDocument: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocument']>[0], sourceId: string, strategy: string) => db.getHydeDocument(sourceType, sourceId, strategy),
+    getHydeDocumentsForSource: (sourceType: Parameters<ChatDatabaseAdapter['getHydeDocumentsForSource']>[0], sourceId: string) => db.getHydeDocumentsForSource(sourceType, sourceId),
+    saveHydeDocument: (data: Parameters<ChatDatabaseAdapter['saveHydeDocument']>[0]) => db.saveHydeDocument(data),
     deleteExpiredHydeDocuments: () => db.deleteExpiredHydeDocuments(),
-    getStaleHydeDocuments: (threshold) => db.getStaleHydeDocuments(threshold),
+    getStaleHydeDocuments: (threshold: Date) => db.getStaleHydeDocuments(threshold),
   };
 }
 
