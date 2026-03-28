@@ -15,7 +15,7 @@ export interface NotificationPreferences {
 export interface OnboardingState {
   completedAt?: ISODateString | null;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
   networkId?: UUID | null;
   invitationCode?: string;
 }

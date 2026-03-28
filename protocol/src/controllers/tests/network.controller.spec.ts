@@ -30,7 +30,7 @@ describe("NetworkController Integration", () => {
   });
 
   afterAll(async () => {
-    if (createdIndexId) await indexAdapter.deleteIndexAndMembers(createdIndexId);
+    if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
     if (testUserId) await userAdapter.deleteById(testUserId);
   });
 
@@ -107,7 +107,7 @@ describe("NetworkController Integration", () => {
   describe("GET /search-users", () => {
     test("should return 200 with users array", async () => {
       const req = new Request("http://localhost/indexes/search-users?q=test");
-      const res = await controller.searchPersonalIndexMembers(req, mockUser());
+      const res = await controller.searchPersonalNetworkMembers(req, mockUser());
       const data = (await res.json()) as { users?: unknown[] };
 
       expect(res.status).toBe(200);
@@ -118,7 +118,7 @@ describe("NetworkController Integration", () => {
   describe("GET /discovery/public", () => {
     test("should return 200 with indexes array", async () => {
       const req = new Request("http://localhost/indexes/discovery/public");
-      const res = await controller.getPublicIndexes(req, mockUser());
+      const res = await controller.getPublicNetworks(req, mockUser());
       const data = (await res.json()) as { indexes?: unknown[] };
 
       expect(res.status).toBe(200);
@@ -172,7 +172,7 @@ describe("NetworkController Integration", () => {
 
       expect(res.status).toBe(200);
       expect(data.success).toBe(true);
-      // Keep createdIndexId so afterAll can run deleteIndexAndMembers (drops index_members), then deleteById(user) won't hit FK
+      // Keep createdIndexId so afterAll can run deleteNetworkAndMembers (drops index_members), then deleteById(user) won't hit FK
     });
   });
 });

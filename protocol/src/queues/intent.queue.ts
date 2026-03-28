@@ -32,7 +32,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToIndex' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -215,7 +215,7 @@ export class IntentQueue implements IntentGraphQueue {
       // Assign no-prompt indexes with default score
       for (const { networkId } of noPromptIndexes) {
         try {
-          await db.assignIntentToIndex(intentId, networkId, 1.0);
+          await db.assignIntentToNetwork(intentId, networkId, 1.0);
           assignedIndexCount++;
         } catch (assignErr) {
           this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });
@@ -248,7 +248,7 @@ export class IntentQueue implements IntentGraphQueue {
 
         for (const { networkId, score } of scoringResults) {
           try {
-            await db.assignIntentToIndex(intentId, networkId, score);
+            await db.assignIntentToNetwork(intentId, networkId, score);
             assignedIndexCount++;
           } catch (assignErr) {
             this.logger.debug('[IntentHyde] Assign intent to index skipped', { intentId, networkId, error: assignErr });

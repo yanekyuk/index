@@ -12,7 +12,7 @@ export interface NetworkPermissions {
   } | null;
 }
 
-export interface IndexMember {
+export interface NetworkMember {
   id: UUID; // This is the userId
   name: string;
   email?: string; // Made optional as protocol doesn't always return it
@@ -24,7 +24,7 @@ export interface IndexMember {
   autoAssign?: boolean;
 }
 
-export interface Index {
+export interface Network {
   id: UUID;
   title: string;
   prompt?: string | null;
@@ -41,7 +41,7 @@ export interface Index {
     intents?: number;
   };
   files?: FileRecord[];
-  members?: IndexMember[];
+  members?: NetworkMember[];
   isMember?: boolean; // Computed field for discovery
 }
 

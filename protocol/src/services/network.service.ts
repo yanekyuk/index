@@ -21,17 +21,17 @@ export class NetworkService {
   /**
    * Get all indexes that a user is a member of, including their personal index.
    */
-  async getIndexesForUser(userId: string) {
+  async getNetworksForUser(userId: string) {
     logger.verbose('[NetworkService] Getting indexes for user', { userId });
-    return this.adapter.getIndexesForUser(userId);
+    return this.adapter.getNetworksForUser(userId);
   }
 
   /**
    * Create a new index with the requesting user as owner.
    */
-  async createIndex(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+  async createNetwork(userId: string, data: { title: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[NetworkService] Creating index', { userId, title: data.title });
-    const index = await this.adapter.createIndex(data);
+    const index = await this.adapter.createNetwork(data);
     // Add the creating user as the owner
     await this.adapter.addMemberToIndex(index.id, userId, 'owner');
     // Fetch the full index details with user and member count
@@ -45,7 +45,7 @@ export class NetworkService {
   /**
    * Get a public index by ID (no auth required). Returns null if not public.
    */
-  async getPublicIndexById(networkId: string) {
+  async getPublicNetworkById(networkId: string) {
     logger.verbose('[NetworkService] Getting public index by id', { networkId });
     return this.adapter.getPublicIndexDetail(networkId);
   }
@@ -54,7 +54,7 @@ export class NetworkService {
    * Get a single index by ID with owner info and member count.
    * Only members of the index can view it.
    */
-  async getIndexById(networkId: string, userId: string) {
+  async getNetworkById(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting index by id', { networkId });
     return this.adapter.getIndexDetail(networkId, userId);
   }
@@ -63,7 +63,7 @@ export class NetworkService {
    * Update index settings (title, prompt, permissions). Owner-only.
    * @throws Error if the index is a personal index.
    */
-  async updateIndex(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
+  async updateNetwork(networkId: string, userId: string, data: { title?: string; prompt?: string | null; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }) {
     logger.verbose('[NetworkService] Updating index', { networkId, userId });
     await this.assertNotPersonal(networkId);
     return this.adapter.updateIndexSettings(networkId, userId, data);
@@ -82,8 +82,8 @@ export class NetworkService {
    * Search users within the caller's personal index members,
    * optionally excluding existing members of a target index.
    */
-  async searchPersonalIndexMembers(userId: string, q: string, excludeIndexId?: string) {
-    return this.adapter.searchPersonalIndexMembers(userId, q, excludeIndexId);
+  async searchPersonalNetworkMembers(userId: string, q: string, excludeIndexId?: string) {
+    return this.adapter.searchPersonalNetworkMembers(userId, q, excludeIndexId);
   }
 
   /**
@@ -110,7 +110,7 @@ export class NetworkService {
    * Soft-delete an index. Owner-only.
    * @throws Error if the index is a personal index.
    */
-  async deleteIndex(networkId: string, userId: string) {
+  async deleteNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Deleting index', { networkId, userId });
     await this.assertNotPersonal(networkId);
     return this.adapter.deleteIndexForOwner(networkId, userId);
@@ -138,7 +138,7 @@ export class NetworkService {
    * Get all members from every index the signed-in user is a member of (deduplicated).
    * Used for mentionable users / @mentions.
    */
-  async getMembersFromMyIndexes(userId: string) {
+  async getMembersFromMyNetworks(userId: string) {
     logger.verbose('[NetworkService] Getting members from user indexes', { userId });
     const raw = await this.adapter.getMembersFromUserIndexes(userId);
     return raw.map(m => ({
@@ -154,15 +154,15 @@ export class NetworkService {
    * @param targetUserId - Profile user ID to compare memberships with.
    * @returns Shared non-personal indexes with member counts.
    */
-  async getSharedIndexes(currentUserId: string, targetUserId: string) {
+  async getSharedNetworks(currentUserId: string, targetUserId: string) {
     logger.verbose('[NetworkService] Getting shared indexes', { currentUserId, targetUserId });
-    return this.adapter.getSharedIndexes(currentUserId, targetUserId);
+    return this.adapter.getSharedNetworks(currentUserId, targetUserId);
   }
 
   /**
    * Get public indexes that the user has not joined (for discovery).
    */
-  async getPublicIndexes(userId: string) {
+  async getPublicNetworks(userId: string) {
     logger.verbose('[NetworkService] Getting public indexes for user', { userId });
     return this.adapter.getPublicIndexesNotJoined(userId);
   }
@@ -172,9 +172,9 @@ export class NetworkService {
    * @param code - The invitation share code from the URL
    * @returns The index with owner info and member count, or null if not found
    */
-  async getIndexByShareCode(code: string) {
+  async getNetworkByShareCode(code: string) {
     logger.verbose('[NetworkService] Getting index by share code');
-    return this.adapter.getIndexByShareCode(code);
+    return this.adapter.getNetworkByShareCode(code);
   }
 
   /**
@@ -192,9 +192,9 @@ export class NetworkService {
   /**
    * Join a public index.
    */
-  async joinPublicIndex(networkId: string, userId: string) {
+  async joinPublicNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Joining public index', { networkId, userId });
-    await this.adapter.joinPublicIndex(networkId, userId);
+    await this.adapter.joinPublicNetwork(networkId, userId);
     return this.adapter.getIndexDetail(networkId, userId);
   }
 
@@ -202,10 +202,10 @@ export class NetworkService {
    * Leave an index. Members (non-owners) can leave.
    * @throws Error if the index is a personal index.
    */
-  async leaveIndex(networkId: string, userId: string) {
+  async leaveNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Leaving index', { networkId, userId });
     await this.assertNotPersonal(networkId);
-    await this.adapter.leaveIndex(networkId, userId);
+    await this.adapter.leaveNetwork(networkId, userId);
   }
 
   /**
@@ -223,7 +223,7 @@ export class NetworkService {
   /**
    * Get current user's intents in an index. Members only.
    */
-  async getMyIntentsInIndex(networkId: string, userId: string) {
+  async getMyIntentsInNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting my intents in index', { networkId, userId });
     return this.adapter.getIndexIntentsForMember(networkId, userId);
   }
@@ -283,7 +283,7 @@ export class NetworkService {
    * @throws Error if the index is personal.
    */
   private async assertNotPersonal(networkId: string): Promise<void> {
-    const isPersonal = await this.adapter.isPersonalIndex(networkId);
+    const isPersonal = await this.adapter.isPersonalNetwork(networkId);
     if (isPersonal) {
       throw new Error('Access denied: personal indexes cannot be modified directly.');
     }

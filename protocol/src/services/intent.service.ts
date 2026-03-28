@@ -173,7 +173,7 @@ export class IntentService {
 
     if (networkId) {
       try {
-        await this.adapter.assignIntentToIndex(created.id, networkId);
+        await this.adapter.assignIntentToNetwork(created.id, networkId);
       } catch (err) {
         logger.warn('[IntentService] Failed to associate intent with index', {
           intentId: created.id,

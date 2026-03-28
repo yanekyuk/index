@@ -47,11 +47,11 @@ describe('OpportunityQueue', () => {
   describe('addJob', () => {
     it('adds discover_opportunities job with data and options', async () => {
       const queue = new OpportunityQueue();
-      const job = await queue.addJob({ intentId: 'i1', userId: 'u1', indexIds: ['idx1'] });
+      const job = await queue.addJob({ intentId: 'i1', userId: 'u1', networkIds: ['idx1'] });
       expect(job.id).toBe('job-1');
       expect(mockAdd).toHaveBeenCalledWith(
         'discover_opportunities',
-        { intentId: 'i1', userId: 'u1', indexIds: ['idx1'] },
+        { intentId: 'i1', userId: 'u1', networkIds: ['idx1'] },
         expect.objectContaining({
           attempts: 3,
           backoff: { type: 'exponential', delay: 1000 },
@@ -97,7 +97,7 @@ describe('OpportunityQueue', () => {
       await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
-        indexIds: ['idx1'],
+        networkIds: ['idx1'],
       });
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -111,7 +111,7 @@ describe('OpportunityQueue', () => {
       );
     });
 
-    it('discover_opportunities: uses indexIds[0] as networkId', async () => {
+    it('discover_opportunities: uses networkIds[0] as networkId', async () => {
       const invokeOpportunityGraph = mock(async () => {});
       const db = {
         getIntentForIndexing: async () => ({ id: 'i1', payload: 'P', userId: 'u1', sourceType: null, sourceId: null }),
@@ -120,7 +120,7 @@ describe('OpportunityQueue', () => {
       await queue.processJob('discover_opportunities', {
         intentId: 'i1',
         userId: 'u1',
-        indexIds: ['idx-a', 'idx-b'],
+        networkIds: ['idx-a', 'idx-b'],
       });
       expect(invokeOpportunityGraph).toHaveBeenCalledWith(
         expect.objectContaining({ networkId: 'idx-a' })

@@ -30,7 +30,7 @@ interface SeedAccount {
 
 // ── Index definitions ───────────────────────────────────────────────────────
 
-interface IndexDef {
+interface NetworkDef {
   id: Id<'networks'>;
   title: string;
   key: string;
@@ -41,7 +41,7 @@ interface IndexDef {
 /** Use full persona list from test-data (up to TESTER_PERSONAS_MAX). */
 const DB_SEED_TESTER_PERSONAS = TESTER_PERSONAS;
 
-const SEED_INDEXES: IndexDef[] = [
+const SEED_INDEXES: NetworkDef[] = [
   // General-purpose indexes (null prompts = auto-assign, no LLM evaluation)
   {
     id: '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c',

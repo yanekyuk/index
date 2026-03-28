@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
-import { ensurePersonalIndex } from './database.adapter';
+import { ensurePersonalNetwork } from './database.adapter';
 
 /**
  * Database adapter for Better Auth integration.
@@ -93,8 +93,8 @@ export class AuthDatabaseAdapter {
    * @param userId - The authenticated user
    * @returns The personal index ID
    */
-  async ensurePersonalIndex(userId: string): Promise<string> {
-    return ensurePersonalIndex(userId);
+  async ensurePersonalNetwork(userId: string): Promise<string> {
+    return ensurePersonalNetwork(userId);
   }
 
   /**

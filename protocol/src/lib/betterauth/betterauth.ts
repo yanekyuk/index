@@ -16,7 +16,7 @@ export const APP_URL =
 export interface AuthDbContract {
   /** Returns a configured adapter object for Better Auth's `database` option. */
   createDrizzleAdapter(): unknown;
-  ensurePersonalIndex(userId: string): Promise<string>;
+  ensurePersonalNetwork(userId: string): Promise<string>;
   /** Flips isGhost to false for the given user. No-op if already non-ghost. */
   claimGhostUser(userId: string): Promise<void>;
 }
@@ -58,7 +58,7 @@ export function createAuth(deps: AuthDeps) {
               logger.error('Failed to claim ghost user on sign-in', { userId: session.userId, error: err });
             }
             try {
-              await authDb.ensurePersonalIndex(session.userId);
+              await authDb.ensurePersonalNetwork(session.userId);
             } catch (err) {
               logger.error('Failed to ensure personal index on sign-in', { userId: session.userId, error: err });
             }
@@ -69,7 +69,7 @@ export function createAuth(deps: AuthDeps) {
         create: {
           after: async (user) => {
             try {
-              await authDb.ensurePersonalIndex(user.id);
+              await authDb.ensurePersonalNetwork(user.id);
             } catch (err) {
               logger.error('Failed to create personal index on registration', { userId: user.id, error: err });
             }

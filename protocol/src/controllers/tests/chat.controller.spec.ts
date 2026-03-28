@@ -72,7 +72,7 @@ describe("ChatController Integration", () => {
 
   afterAll(async () => {
     for (const networkId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
-      if (networkId) await indexAdapter.deleteIndexAndMembers(networkId);
+      if (networkId) await indexAdapter.deleteNetworkAndMembers(networkId);
     }
     if (testUserId) {
       await intentAdapter.deleteByUserId(testUserId);
@@ -188,7 +188,7 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
-      const index = await adapter.createIndex({
+      const index = await adapter.createNetwork({
         title: "Commons",
         prompt: "Test index for chat adapter",
       });
@@ -206,7 +206,7 @@ describe("ChatController Integration", () => {
         activeIntents = await adapter.getActiveIntents(testUserId);
       }
       expect(activeIntents.length).toBeGreaterThan(0);
-      await adapter.assignIntentToIndex(activeIntents[0].id, testIndexId);
+      await adapter.assignIntentToNetwork(activeIntents[0].id, testIndexId);
 
       const intents = await adapter.getIntentsInIndexForMember(testUserId, "Commons");
       expect(intents).toBeArray();
@@ -226,7 +226,7 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return empty when user is not a member of the index", async () => {
-      const index = await adapter.createIndex({
+      const index = await adapter.createNetwork({
         title: "Other Index User Not In",
         prompt: "Index without test user",
       });
@@ -412,7 +412,7 @@ describe("ChatController Integration", () => {
     });
 
     test("messageStream should return 403 when scoped index is not a member index", async () => {
-      const index = await chatAdapter.createIndex({
+      const index = await chatAdapter.createNetwork({
         title: "Unauthorized Stream Index",
         prompt: "Index created for access validation",
       });

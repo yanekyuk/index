@@ -73,7 +73,7 @@ describe("Invitation Endpoints Integration", () => {
   });
 
   afterAll(async () => {
-    if (createdIndexId) await indexAdapter.deleteIndexAndMembers(createdIndexId);
+    if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
     if (ownerUserId) await userAdapter.deleteById(ownerUserId);
     if (joinerUserId) await userAdapter.deleteById(joinerUserId);
   });
@@ -93,7 +93,7 @@ describe("Invitation Endpoints Integration", () => {
   describe("GET /share/:code", () => {
     test("should return 200 with index data for valid invitation code", async () => {
       const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: { id: string; title: string } };
 
       expect(res.status).toBe(200);
@@ -104,7 +104,7 @@ describe("Invitation Endpoints Integration", () => {
 
     test("should return 404 for invalid invitation code", async () => {
       const req = new Request("http://localhost/indexes/share/nonexistent-code");
-      const res = await controller.getIndexByShareCode(req, null, { code: "nonexistent-code" });
+      const res = await controller.getNetworkByShareCode(req, null, { code: "nonexistent-code" });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(404);
@@ -113,7 +113,7 @@ describe("Invitation Endpoints Integration", () => {
 
     test("should not expose internal permissions in public response", async () => {
       const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: Record<string, unknown> };
 
       expect(res.status).toBe(200);
@@ -122,7 +122,7 @@ describe("Invitation Endpoints Integration", () => {
 
     test("should include member count and owner info", async () => {
       const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: { user?: { id: string; name: string }; _count?: { members: number } } };
 
       expect(res.status).toBe(200);

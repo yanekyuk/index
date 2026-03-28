@@ -67,7 +67,7 @@ export class NetworkMembershipGraphFactory {
           }
 
           // Inviting others: must be a member first
-          const isMember = await this.database.isIndexMember(state.networkId, state.userId);
+          const isMember = await this.database.isNetworkMember(state.networkId, state.userId);
           if (!isMember) {
             return { mutationResult: { success: false, error: "You must be a member of that index to add others." } };
           }
@@ -109,7 +109,7 @@ export class NetworkMembershipGraphFactory {
         });
 
         try {
-          const isMember = await this.database.isIndexMember(state.networkId, state.userId);
+          const isMember = await this.database.isNetworkMember(state.networkId, state.userId);
           if (!isMember) {
             return {
               readResult: {

@@ -110,7 +110,7 @@ export class ChatSessionService {
       return { ok: false, status: 404, error: 'Index not found' };
     }
 
-    const isMember = await this.graphDb.isIndexMember(normalizedIndexId, userId);
+    const isMember = await this.graphDb.isNetworkMember(normalizedIndexId, userId);
     if (!isMember) {
       return { ok: false, status: 403, error: 'You are not a member of this index' };
     }

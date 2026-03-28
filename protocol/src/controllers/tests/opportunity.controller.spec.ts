@@ -13,11 +13,11 @@ mock.module("../../queues/notification.queue", () => ({
 
 // Load controllers after mock is registered so createManual path never touches Redis in tests
 let OpportunityControllerClass: typeof import("../opportunity.controller").OpportunityController;
-let IndexOpportunityControllerClass: typeof import("../opportunity.controller").IndexOpportunityController;
+let NetworkOpportunityControllerClass: typeof import("../opportunity.controller").NetworkOpportunityController;
 beforeAll(async () => {
   const mod = await import("../opportunity.controller");
   OpportunityControllerClass = mod.OpportunityController;
-  IndexOpportunityControllerClass = mod.IndexOpportunityController;
+  NetworkOpportunityControllerClass = mod.NetworkOpportunityController;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -103,7 +103,7 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 
 describe("OpportunityController Integration", () => {
   const controller = new OpportunityControllerClass();
-  const indexOpportunityController = new IndexOpportunityControllerClass();
+  const indexOpportunityController = new NetworkOpportunityControllerClass();
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new ProfileDatabaseAdapter();
   const chatDbAdapter = new ChatDatabaseAdapter();
@@ -177,7 +177,7 @@ describe("OpportunityController Integration", () => {
       embedding: Array(2000).fill(0.15) as number[],
     });
 
-    const index = await chatDbAdapter.createIndex({
+    const index = await chatDbAdapter.createNetwork({
       title: "Test Opportunity Index",
       prompt: "Index for opportunity controller tests",
     });
@@ -208,7 +208,7 @@ describe("OpportunityController Integration", () => {
   afterAll(async () => {
     if (testIndexId) {
       const indexAdapter = new NetworkGraphDatabaseAdapter();
-      await indexAdapter.deleteMembersForIndex(testIndexId);
+      await indexAdapter.deleteNetworkAndMembers(testIndexId);
     }
     if (testUserId) {
       await profileAdapter.deleteProfile(testUserId);

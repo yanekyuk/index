@@ -243,11 +243,11 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index memberships for user', async () => {
-    const memberships = await adapter.getIndexMemberships(fixture.userAId);
+    const memberships = await adapter.getNetworkMemberships(fixture.userAId);
     expect(memberships.length).toBeGreaterThanOrEqual(1);
     const m = memberships.find((x) => x.networkId === fixture.networkId);
     expect(m).toBeDefined();
-    expect(m!.indexTitle).toContain('Test Index');
+    expect(m!.networkTitle).toContain('Test Index');
   });
 
   it('should get user index ids for auto-assign member', async () => {
@@ -291,7 +291,7 @@ describe('ChatDatabaseAdapter', () => {
       sourceId: fixture.userBId,
     });
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await adapter.assignIntentToIndex(newIntentId, fixture.networkId);
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
     await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
@@ -339,9 +339,9 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should report index membership', async () => {
-    expect(await adapter.isIndexMember(fixture.networkId, fixture.userAId)).toBe(true);
-    expect(await adapter.isIndexMember(fixture.networkId, fixture.userBId)).toBe(true);
-    expect(await adapter.isIndexMember(fixture.networkId, uuidv4())).toBe(false);
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userBId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, uuidv4())).toBe(false);
   });
 
   describe('getUserByEmail (IND-166)', () => {
@@ -860,7 +860,7 @@ describe('NetworkGraphDatabaseAdapter', () => {
       sourceId: fixture.userBId,
     });
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
-    await adapter.assignIntentToIndex(newIntentId, fixture.networkId);
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
     await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
     expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);

@@ -1,9 +1,9 @@
 import { ISODateString, UUID } from './common.types';
 import { UserSummary } from './users.types';
 
-export interface IntentIndex {
+export interface IntentNetwork {
   networkId: UUID;
-  indexTitle?: string;
+  networkTitle?: string;
 }
 
 export interface Intent {
@@ -16,9 +16,9 @@ export interface Intent {
   archivedAt?: ISODateString | null;
   user: UserSummary;
   _count?: {
-    indexes: number;
+    networks: number;
   };
-  indexes?: IntentIndex[];
+  networks?: IntentNetwork[];
 }
 
 export interface SuggestedIntent {
@@ -29,14 +29,14 @@ export interface SuggestedIntent {
 
 export interface CreateIntentRequest {
   payload: string;
-  indexIds: UUID[];
+  networkIds: UUID[];
   isIncognito?: boolean;
 }
 
 export interface UpdateIntentRequest {
   payload?: string;
   isIncognito?: boolean;
-  indexIds?: UUID[];
+  networkIds?: UUID[];
 }
 
 // Stake related types

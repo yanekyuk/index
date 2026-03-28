@@ -66,7 +66,7 @@ const mockDb = {
   isIndexOwner: async (networkId: string, userId: string) => {
     return networkId === INDEX_OWNED && userId === "user-a";
   },
-  isPersonalIndex: async () => false,
+  isPersonalNetwork: async () => false,
   addMembersBulkToIndex: async (networkId: string, userIds: string[]) => {
     bulkAdded.push({ networkId, userIds });
   },

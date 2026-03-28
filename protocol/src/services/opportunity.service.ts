@@ -380,7 +380,7 @@ export class OpportunityService {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
     }
 
-    const memberships = await this.db.getIndexMemberships(userId);
+    const memberships = await this.db.getNetworkMemberships(userId);
     const indexScope = memberships.map((m) => m.networkId);
 
     if (indexScope.length === 0) {
@@ -409,7 +409,7 @@ export class OpportunityService {
    * @param options - Filter options
    * @returns List of opportunities or error
    */
-  async getOpportunitiesForIndex(
+  async getOpportunitiesForNetwork(
     networkId: string,
     userId: string,
     options?: {
@@ -421,13 +421,13 @@ export class OpportunityService {
     logger.verbose('[OpportunityService] Getting opportunities for index', { networkId, userId, options });
 
     const isOwner = await this.db.isIndexOwner(networkId, userId);
-    const isMember = await this.db.isIndexMember(networkId, userId);
+    const isMember = await this.db.isNetworkMember(networkId, userId);
     
     if (!isOwner && !isMember) {
       return { error: 'Not a member of this index', status: 403 };
     }
 
-    return this.db.getOpportunitiesForIndex(networkId, options);
+    return this.db.getOpportunitiesForNetwork(networkId, options);
   }
 
   /**
@@ -717,7 +717,7 @@ export class OpportunityService {
     
     if (isOwner) return { allowed: true };
     
-    const isMember = await this.db.isIndexMember(networkId, creatorId);
+    const isMember = await this.db.isNetworkMember(networkId, creatorId);
     if (!isMember) return { allowed: false };
     if (isSelfIncluded) return { allowed: true };
     

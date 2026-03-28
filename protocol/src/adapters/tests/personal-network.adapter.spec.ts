@@ -1,7 +1,7 @@
 /**
  * Integration tests for Personal Index lifecycle.
- * Verifies ensurePersonalIndex, getPersonalIndexId, contact sync,
- * contact removal cleanup, getIndexMemberships filtering, and isPersonalIndex.
+ * Verifies ensurePersonalNetwork, getPersonalIndexId, contact sync,
+ * contact removal cleanup, getNetworkMemberships filtering, and isPersonalNetwork.
  *
  * Requires DATABASE_URL and migrated schema.
  * Run: bun test src/adapters/tests/personal-index.adapter.spec.ts
@@ -25,7 +25,7 @@ import {
   personalNetworks,
 } from '../../schemas/database.schema';
 import {
-  ensurePersonalIndex,
+  ensurePersonalNetwork,
   getPersonalIndexId,
   ChatDatabaseAdapter,
 } from '../database.adapter';
@@ -89,8 +89,8 @@ beforeAll(async () => {
     status: 'ACTIVE',
   });
 
-  // Use ensurePersonalIndex to create the owner's personal index
-  const personalIndexId = await ensurePersonalIndex(ownerUserId);
+  // Use ensurePersonalNetwork to create the owner's personal index
+  const personalIndexId = await ensurePersonalNetwork(ownerUserId);
 
   fixture = {
     ownerUserId,
@@ -134,9 +134,9 @@ afterAll(async () => {
   );
 });
 
-// ─── ensurePersonalIndex ────────────────────────────────────────────────────────
+// ─── ensurePersonalNetwork ────────────────────────────────────────────────────────
 
-describe('ensurePersonalIndex', () => {
+describe('ensurePersonalNetwork', () => {
   it('creates a personal index with correct title and personal_indexes entry', async () => {
     const [row] = await db
       .select()
@@ -188,7 +188,7 @@ describe('ensurePersonalIndex', () => {
   });
 
   it('is idempotent — calling twice returns the same index ID', async () => {
-    const secondCall = await ensurePersonalIndex(fixture.ownerUserId);
+    const secondCall = await ensurePersonalNetwork(fixture.ownerUserId);
     expect(secondCall).toBe(fixture.personalIndexId);
 
     // Verify only one personal index exists for this user
@@ -292,13 +292,13 @@ describe('hardDeleteContactMembership → personal index cleanup', () => {
   });
 });
 
-// ─── getIndexMemberships ────────────────────────────────────────────────────────
+// ─── getNetworkMemberships ────────────────────────────────────────────────────────
 
-describe('getIndexMemberships', () => {
+describe('getNetworkMemberships', () => {
   const chatDb = new ChatDatabaseAdapter();
 
   it('returns the user\'s own personal index', async () => {
-    const memberships = await chatDb.getIndexMemberships(fixture.ownerUserId);
+    const memberships = await chatDb.getNetworkMemberships(fixture.ownerUserId);
 
     const personalMembership = memberships.find(m => m.networkId === fixture.personalIndexId);
     expect(personalMembership).toBeDefined();
@@ -306,7 +306,7 @@ describe('getIndexMemberships', () => {
   });
 
   it('returns regular indexes the user is a member of', async () => {
-    const memberships = await chatDb.getIndexMemberships(fixture.ownerUserId);
+    const memberships = await chatDb.getNetworkMemberships(fixture.ownerUserId);
 
     const regularMembership = memberships.find(m => m.networkId === fixture.regularIndexId);
     expect(regularMembership).toBeDefined();
@@ -322,29 +322,29 @@ describe('getIndexMemberships', () => {
     }).onConflictDoNothing();
 
     // Contact's memberships should NOT include the owner's personal index
-    const memberships = await chatDb.getIndexMemberships(fixture.contactUserId);
+    const memberships = await chatDb.getNetworkMemberships(fixture.contactUserId);
     const ownerPersonalIndex = memberships.find(m => m.networkId === fixture.personalIndexId);
     expect(ownerPersonalIndex).toBeUndefined();
   });
 });
 
-// ─── isPersonalIndex ────────────────────────────────────────────────────────────
+// ─── isPersonalNetwork ────────────────────────────────────────────────────────────
 
-describe('isPersonalIndex', () => {
+describe('isPersonalNetwork', () => {
   const chatDb = new ChatDatabaseAdapter();
 
   it('returns true for a personal index', async () => {
-    const result = await chatDb.isPersonalIndex(fixture.personalIndexId);
+    const result = await chatDb.isPersonalNetwork(fixture.personalIndexId);
     expect(result).toBe(true);
   });
 
   it('returns false for a regular index', async () => {
-    const result = await chatDb.isPersonalIndex(fixture.regularIndexId);
+    const result = await chatDb.isPersonalNetwork(fixture.regularIndexId);
     expect(result).toBe(false);
   });
 
   it('returns false for a non-existent index', async () => {
-    const result = await chatDb.isPersonalIndex(crypto.randomUUID());
+    const result = await chatDb.isPersonalNetwork(crypto.randomUUID());
     expect(result).toBe(false);
   });
 });
@@ -354,22 +354,22 @@ describe('isPersonalIndex', () => {
 describe('NetworkService personal index guards', () => {
   const service = new NetworkService();
 
-  it('rejects updateIndex on a personal index', async () => {
+  it('rejects updateNetwork on a personal index', async () => {
     await expect(
-      service.updateIndex(fixture.personalIndexId, fixture.ownerUserId, { title: 'New Title' }),
+      service.updateNetwork(fixture.personalIndexId, fixture.ownerUserId, { title: 'New Title' }),
     ).rejects.toThrow('personal indexes cannot be modified directly');
   });
 
-  it('rejects deleteIndex on a personal index', async () => {
+  it('rejects deleteNetwork on a personal index', async () => {
     await expect(
-      service.deleteIndex(fixture.personalIndexId, fixture.ownerUserId),
+      service.deleteNetwork(fixture.personalIndexId, fixture.ownerUserId),
     ).rejects.toThrow('personal indexes cannot be modified directly');
   });
 
-  it('allows updateIndex on a regular index', async () => {
+  it('allows updateNetwork on a regular index', async () => {
     // Should not throw (may fail for other reasons like permissions, but not the personal guard)
     try {
-      await service.updateIndex(fixture.regularIndexId, fixture.ownerUserId, { title: TEST_PREFIX + 'Updated' });
+      await service.updateNetwork(fixture.regularIndexId, fixture.ownerUserId, { title: TEST_PREFIX + 'Updated' });
     } catch (error: unknown) {
       // Only fail if the error is about personal indexes
       if (error instanceof Error && error.message.includes('personal indexes')) {

@@ -261,21 +261,21 @@ export class OpportunityController {
 }
 
 /**
- * Index-scoped opportunity routes: GET/POST /indexes/:networkId/opportunities.
+ * Network-scoped opportunity routes: GET/POST /networks/:networkId/opportunities.
  * Permission: list requires member; create requires owner or member (with rules).
  */
-@Controller('/indexes')
-export class IndexOpportunityController {
+@Controller('/networks')
+export class NetworkOpportunityController {
 
   /**
-   * GET /indexes/:networkId/opportunities — list opportunities for an index (owner or member).
+   * GET /networks/:networkId/opportunities — list opportunities for a network (owner or member).
    */
   @Get('/:networkId/opportunities')
   @UseGuards(AuthGuard)
   async listForIndex(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
-      return new Response(JSON.stringify({ error: 'Missing index id' }), {
+      return new Response(JSON.stringify({ error: 'Missing network id' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -296,7 +296,7 @@ export class IndexOpportunityController {
       }
     }
 
-    const result = await opportunityService.getOpportunitiesForIndex(networkId, user.id, {
+    const result = await opportunityService.getOpportunitiesForNetwork(networkId, user.id, {
       status: rawStatus ? (rawStatus as z.infer<typeof listStatusSchema>) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
@@ -313,19 +313,19 @@ export class IndexOpportunityController {
   }
 
   /**
-   * POST /indexes/:networkId/opportunities — create a manual opportunity (curator).
+   * POST /networks/:networkId/opportunities — create a manual opportunity (curator).
    */
   @Post('/:networkId/opportunities')
   @UseGuards(AuthGuard)
   async createManual(req: Request, user: AuthenticatedUser, params?: RouteParams) {
     const networkId = params?.networkId;
     if (!networkId) {
-      return new Response(JSON.stringify({ error: 'Missing index id' }), {
+      return new Response(JSON.stringify({ error: 'Missing network id' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
     }
-    
+
     let body: { parties?: Array<{ userId: string; intentId?: string }>; reasoning?: string; category?: string; confidence?: number };
     try {
       body = (await req.json()) as typeof body;

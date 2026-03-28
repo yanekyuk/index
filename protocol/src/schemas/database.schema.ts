@@ -368,15 +368,10 @@ const linksTable = pgTable('links', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
-export const indexLinks = linksTable;
 export const links = linksTable;
 
 export type Link = typeof linksTable.$inferSelect;
 export type NewLink = typeof linksTable.$inferInsert;
-/** @deprecated Use Link instead */
-export type IndexLink = Link;
-/** @deprecated Use NewLink instead */
-export type NewIndexLink = NewLink;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations

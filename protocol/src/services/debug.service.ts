@@ -26,7 +26,7 @@ export interface DiscoveryPreflight {
     isArchived: boolean;
     assignedToIndexes: Array<{ networkId: string; title: string | null }>;
   };
-  userIndexes: Array<{ networkId: string; title: string | null }>;
+  userNetworks: Array<{ networkId: string; title: string | null }>;
   candidatePool: {
     otherMembersInIndexes: number;
     otherMembersWithProfiles: number;
@@ -110,13 +110,13 @@ export class DebugService {
       .select({ networkId: intentNetworks.networkId, title: networks.title })
       .from(intentNetworks)
       .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
-      .where(eq(intentNetworks.intentId, intentId));
+      .where(and(eq(intentNetworks.intentId, intentId), isNull(networks.deletedAt)));
 
     const userIndexRows = await db
       .select({ networkId: networkMembers.networkId, title: networks.title })
       .from(networkMembers)
       .innerJoin(networks, eq(networkMembers.networkId, networks.id))
-      .where(eq(networkMembers.userId, userId));
+      .where(and(eq(networkMembers.userId, userId), isNull(networks.deletedAt)));
 
     const userIndexIds = userIndexRows.map((r) => r.networkId);
     let otherMembersInIndexes = 0;
@@ -172,7 +172,7 @@ export class DebugService {
           isArchived: !!intent.archivedAt,
           assignedToIndexes: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
-        userIndexes: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
+        userNetworks: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         candidatePool: {
           otherMembersInIndexes,
           otherMembersWithProfiles,
