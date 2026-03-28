@@ -1,6 +1,6 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 
-import { IntentNetworker } from "../agents/intent.networker";
+import { IntentIndexer } from "../agents/intent.indexer";
 import type { IntentNetworkGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
 import { timed } from "../support/performance";
@@ -21,7 +21,7 @@ const QUALIFICATION_THRESHOLD = 0.7;
  * Factory class to build and compile the Intent Index Graph.
  *
  * Handles CRUD for the intent_indexes junction table:
- * - create: Assign an intent to an index (direct or evaluated via IntentNetworker agent)
+ * - create: Assign an intent to an index (direct or evaluated via IntentIndexer agent)
  * - read: List intent-index links (by intentId or by networkId)
  * - delete: Unassign an intent from an index
  *
@@ -30,7 +30,7 @@ const QUALIFICATION_THRESHOLD = 0.7;
 export class IntentNetworkGraphFactory {
   constructor(
     private database: IntentNetworkGraphDatabase,
-    private intentNetworker: IntentNetworker,
+    private intentNetworker: IntentIndexer,
   ) {}
 
   public createGraph() {
@@ -42,7 +42,7 @@ export class IntentNetworkGraphFactory {
      * Assign Node: Assign an intent to an index.
      * Two sub-paths:
      * - Direct assignment (skipEvaluation=true): assign immediately
-     * - Evaluated assignment (skipEvaluation=false): load intent + index context, evaluate via IntentNetworker
+     * - Evaluated assignment (skipEvaluation=false): load intent + index context, evaluate via IntentIndexer
      */
     const assignNode = async (state: typeof IntentNetworkGraphState.State) => {
       return timed("IntentNetworkGraph.assign", async () => {
@@ -113,14 +113,14 @@ export class IntentNetworkGraphFactory {
             };
           }
 
-          // Run IntentNetworker evaluation
+          // Run IntentIndexer evaluation
           const sourceName = intentForIndexing.sourceType
             ? `${intentForIndexing.sourceType}:${intentForIndexing.sourceId ?? ""}`
             : undefined;
 
           const _traceEmitterIndexer = requestContext.getStore()?.traceEmitter;
           const _indexerStart = Date.now();
-          _traceEmitterIndexer?.({ type: "agent_start", name: "intent-networker" });
+          _traceEmitterIndexer?.({ type: "agent_start", name: "intent-indexer" });
           let result: Awaited<ReturnType<typeof indexer.evaluate>> | null = null;
           try {
             result = await indexer.evaluate(
@@ -131,8 +131,8 @@ export class IntentNetworkGraphFactory {
             );
           } finally {
             const _indexerMs = Date.now() - _indexerStart;
-            agentTimingsAccum.push({ name: 'intent.networker', durationMs: _indexerMs });
-            _traceEmitterIndexer?.({ type: "agent_end", name: "intent-networker", durationMs: _indexerMs, summary: result ? `Scored: index=${result.indexScore.toFixed(2)}, member=${result.memberScore.toFixed(2)}` : "intent-networker failed" });
+            agentTimingsAccum.push({ name: 'intent.indexer', durationMs: _indexerMs });
+            _traceEmitterIndexer?.({ type: "agent_end", name: "intent-indexer", durationMs: _indexerMs, summary: result ? `Scored: index=${result.indexScore.toFixed(2)}, member=${result.memberScore.toFixed(2)}` : "intent-indexer failed" });
           }
 
           if (!result) {

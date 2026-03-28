@@ -1,5 +1,5 @@
 import { Annotation } from "@langchain/langgraph";
-import type { IntentIndexerOutput } from "../agents/intent.networker";
+import type { IntentIndexerOutput } from "../agents/intent.indexer";
 import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
 
 /**

@@ -9,7 +9,7 @@ import type { IntentGraphQueue } from '../lib/protocol/interfaces/queue.interfac
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
-import { IntentNetworker } from '../lib/protocol/agents/intent.networker';
+import { IntentIndexer } from '../lib/protocol/agents/intent.indexer';
 import { opportunityQueue } from './opportunity.queue';
 
 /** BullMQ queue name for intent HyDE generation and deletion jobs. */
@@ -204,7 +204,7 @@ export class IntentQueue implements IntentGraphQueue {
         })
       );
 
-      // Split: no-prompt indexes get score 1.0, others need IntentNetworker
+      // Split: no-prompt indexes get score 1.0, others need IntentIndexer
       const noPromptIndexes = indexContexts.filter(
         ({ ctx }) => !ctx?.indexPrompt?.trim() && !ctx?.memberPrompt?.trim()
       );
@@ -224,7 +224,7 @@ export class IntentQueue implements IntentGraphQueue {
 
       // Score and assign scorable indexes in parallel
       if (scorableIndexes.length > 0) {
-        const indexer = new IntentNetworker();
+        const indexer = new IntentIndexer();
         const scoringResults = await Promise.all(
           scorableIndexes.map(async ({ networkId, ctx }) => {
             try {
@@ -240,7 +240,7 @@ export class IntentQueue implements IntentGraphQueue {
                 : 1.0;
               return { networkId, score };
             } catch (err) {
-              this.logger.warn('[IntentHyde] IntentNetworker failed for index, using default score', { intentId, networkId, error: err });
+              this.logger.warn('[IntentHyde] IntentIndexer failed for index, using default score', { intentId, networkId, error: err });
               return { networkId, score: 1.0 };
             }
           })
