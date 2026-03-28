@@ -132,21 +132,21 @@ function createMockDb(): ChatDatabaseAdapter {
     getIndexIdsForIntent: mock(() => Promise.resolve([])),
     isIntentAssignedToIndex: mock(() => Promise.resolve(false)),
 
-    // Index membership
-    getIndexMemberships: mock(() => Promise.resolve([])),
+    // Network membership
+    getNetworkMemberships: mock(() => Promise.resolve([])),
     getUserIndexIds: mock(() => Promise.resolve([])),
     getOwnedIndexes: mock(() => Promise.resolve([])),
     getIndexMembership: mock(() => Promise.resolve(null)),
     getIndexMemberContext: mock(() => Promise.resolve(null)),
 
-    // Index CRUD
-    createIndex: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
+    // Network CRUD
+    createNetwork: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
     updateIndexSettings: mock(() => Promise.resolve({})),
     softDeleteIndex: mock(() => Promise.resolve()),
     isIndexOwner: mock(() => Promise.resolve(false)),
     isPersonalIndex: mock(() => Promise.resolve(false)),
 
-    // Public index discovery
+    // Public network discovery
     getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
     joinPublicIndex: mock(() => Promise.resolve({ success: true })),
 
