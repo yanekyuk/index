@@ -149,8 +149,8 @@ export function classifyOpportunity(
   viewerId: string
 ): FeedCategory {
   if (opp.status === 'expired') return 'expired';
-  const hasIntroducer = opp.actors.some((a) => a.role === 'introducer');
-  if (hasIntroducer) return 'connector-flow';
+  const viewerIsIntroducer = opp.actors.some((a) => a.userId === viewerId && a.role === 'introducer');
+  if (viewerIsIntroducer) return 'connector-flow';
   return 'connection';
 }
 
