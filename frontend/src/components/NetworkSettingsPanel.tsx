@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera } from 'lucide-react';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +11,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
-import { Member } from '@/services/indexes';
+import { Member } from '@/services/networks';
 import { validateFiles } from '@/lib/file-validation';
 
 /** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
@@ -25,7 +25,7 @@ import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
 
 interface NetworkSettingsPanelProps {
-  index: Index;
+  index: Network;
   onDeleted?: () => void;
   activeTab: 'settings' | 'access' | 'integrations';
 }

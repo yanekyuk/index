@@ -11,7 +11,7 @@ import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useIndexes } from '@/contexts/APIContext';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 
 export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
 
@@ -56,20 +56,20 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
     navigate(`${resolvedBasePath}${segment ? `/${segment}` : ''}`, { replace: !tabParam });
   }, [navigate, resolvedBasePath, tabParam]);
 
-  const [network, setNetwork] = useState<Index | null>(null);
+  const [network, setNetwork] = useState<Network | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [leaveRequested, setLeaveRequested] = useState(false);
   const isCheckingOwnership = useRef(false);
 
-  const checkOwnership = useCallback(async (indexId: string, indexData?: Index) => {
+  const checkOwnership = useCallback(async (networkId: string, networkData?: Network) => {
     try {
-      const memberSettings = await indexesService.getCurrentUserMemberSettings(indexId);
+      const memberSettings = await indexesService.getCurrentUserMemberSettings(networkId);
       return memberSettings.isOwner;
     } catch (err) {
       console.error('Error loading member settings:', err);
-      return indexData?.user ? user?.id === indexData.user.id : false;
+      return networkData?.user ? user?.id === networkData.user.id : false;
     }
   }, [indexesService, user?.id]);
 

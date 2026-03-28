@@ -24,7 +24,7 @@ interface UseSuggestionsOptions {
   /** Intent ID for dynamic refinement suggestions (e.g. intent detail view) */
   intentId?: string;
   /** Selected index ID to filter/contextualize suggestions */
-  indexId?: string | null;
+  networkId?: string | null;
   /** Whether to fetch suggestions (e.g., on focus) */
   enabled?: boolean;
 }
@@ -40,7 +40,7 @@ export function useSuggestions({
   contextSuggestions,
   hasMessages = false,
   intentId,
-  indexId,
+  networkId,
   enabled = true,
 }: UseSuggestionsOptions = {}): UseSuggestionsResult {
   const [fetchedSuggestions, setFetchedSuggestions] = useState<Suggestion[]>([]);
@@ -70,7 +70,7 @@ export function useSuggestions({
     }
 
     setFetchedSuggestions(STATIC_SUGGESTIONS);
-  }, [intentId, indexId, enabled]);
+  }, [intentId, networkId, enabled]);
 
   useEffect(() => {
     fetchSuggestions();

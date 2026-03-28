@@ -11,7 +11,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import { Index as IndexType } from '@/lib/types';
+import { Network as NetworkType } from '@/lib/types';
 
 export default function NetworksPage() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export default function NetworksPage() {
 
   const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
   const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
-  const [publicNetworks, setPublicNetworks] = useState<(IndexType & { isMember?: boolean })[]>([]);
+  const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
 
@@ -55,7 +55,7 @@ export default function NetworksPage() {
       if (result.alreadyMember) {
         success('You are already a member of this network');
       } else {
-        addIndex(result.index);
+        addIndex(result.network);
         success('Joined network successfully');
       }
       await loadPublicNetworks();

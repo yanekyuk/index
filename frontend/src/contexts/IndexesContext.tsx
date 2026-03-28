@@ -1,23 +1,23 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useIndexesV2 } from '@/services/v2/indexes.service';
+import { useIndexesV2 } from '@/services/v2/networks.service';
 import { useIndexes as useIndexesAPI } from '@/contexts/APIContext';
 
 interface IndexesContextType {
-  indexes: Index[];
+  indexes: Network[];
   loading: boolean;
   error: string | null;
   refreshIndexes: () => Promise<void>;
-  addIndex: (index: Index) => void;
-  updateIndex: (updatedIndex: Index) => void;
-  removeIndex: (indexId: string) => void;
+  addIndex: (network: Network) => void;
+  updateIndex: (updatedNetwork: Network) => void;
+  removeIndex: (networkId: string) => void;
 }
 
 const IndexesContext = createContext<IndexesContextType | undefined>(undefined);
 
 export function IndexesProvider({ children }: { children: ReactNode }) {
-  const [indexes, setIndexes] = useState<Index[]>([]);
+  const [indexes, setIndexes] = useState<Network[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const indexesV2 = useIndexesV2();
@@ -38,26 +38,26 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
       hasFetchedRef.current = true;
       hasDataRef.current = true;
     } catch (err) {
-      console.error('Error fetching indexes:', err);
-      setError('Failed to load indexes');
+      console.error('Error fetching networks:', err);
+      setError('Failed to load networks');
       setIndexes([]);
     } finally {
       setLoading(false);
     }
   }, [indexesV2]);
 
-  const addIndex = useCallback((index: Index) => {
-    setIndexes(prev => [index, ...prev]);
+  const addIndex = useCallback((network: Network) => {
+    setIndexes(prev => [network, ...prev]);
   }, []);
 
-  const updateIndex = useCallback((updatedIndex: Index) => {
-    setIndexes(prev => prev.map(index => 
-      index.id === updatedIndex.id ? updatedIndex : index
+  const updateIndex = useCallback((updatedNetwork: Network) => {
+    setIndexes(prev => prev.map(n =>
+      n.id === updatedNetwork.id ? updatedNetwork : n
     ));
   }, []);
 
-  const removeIndex = useCallback((indexId: string) => {
-    setIndexes(prev => prev.filter(index => index.id !== indexId));
+  const removeIndex = useCallback((networkId: string) => {
+    setIndexes(prev => prev.filter(n => n.id !== networkId));
   }, []);
 
   // Initial load - only fetch once when authenticated
@@ -78,18 +78,18 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated || pendingJoinProcessedRef.current) return;
 
-    const pendingIndexId = typeof window !== 'undefined' 
-      ? localStorage.getItem('pending_index_join') 
+    const pendingNetworkId = typeof window !== 'undefined'
+      ? localStorage.getItem('pending_network_join')
       : null;
-    
-    if (!pendingIndexId) return;
+
+    if (!pendingNetworkId) return;
 
     pendingJoinProcessedRef.current = true;
-    localStorage.removeItem('pending_index_join');
+    localStorage.removeItem('pending_network_join');
 
-    indexesAPI.joinIndex(pendingIndexId)
+    indexesAPI.joinIndex(pendingNetworkId)
       .then(() => refreshIndexes())
-      .catch((err) => console.error('Failed to auto-join pending index:', err));
+      .catch((err) => console.error('Failed to auto-join pending network:', err));
   }, [isAuthenticated, indexesAPI, refreshIndexes]);
 
   return (

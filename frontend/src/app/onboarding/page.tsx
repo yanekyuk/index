@@ -181,7 +181,7 @@ function AssistantMessageContent({
   onOpportunitySecondaryAction?: (id: string, userId: string, role?: string, name?: string) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
+  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
@@ -409,10 +409,10 @@ export default function OnboardingPage() {
   );
 
   const handleIntentProposalApprove = useCallback(
-    async (proposalId: string, description: string, indexId?: string) => {
+    async (proposalId: string, description: string, networkId?: string) => {
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "pending" }));
       try {
-        const result = await opportunitiesService.approveIntentProposal(proposalId, description, indexId);
+        const result = await opportunitiesService.approveIntentProposal(proposalId, description, networkId);
         setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
         if (result?.intentId) {
           setProposalIntentMap((prev) => ({ ...prev, [proposalId]: result.intentId }));
