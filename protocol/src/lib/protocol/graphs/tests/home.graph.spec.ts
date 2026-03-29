@@ -443,15 +443,15 @@ describe('HomeGraph', () => {
     const card = result.sections[0]?.items[0];
     expect(card).toBeDefined();
 
-    // The introducer card name should show each participant exactly once: "User member-a ↔ User member-b"
-    // NOT "User member-a ↔ User member-a ↔ User member-a ↔ User member-b ↔ User member-b ↔ User member-b"
+    // With secondParty present (2 counterparts), card.name should be a single name,
+    // not the joined "A ↔ B" format. The frontend arrow layout renders card.name → secondParty.name.
     const name = card!.name;
-    expect(name).not.toContain('↔ User member-a ↔');
-    expect(name).not.toContain('↔ User member-b ↔');
-    const parts = name.split(' ↔ ');
-    expect(parts.length).toBe(2);
-    expect(parts).toContain('User member-a');
-    expect(parts).toContain('User member-b');
+    expect(name).not.toContain('↔');
+    // card.name and secondParty.name should cover both counterparts
+    expect(card!.secondParty).toBeDefined();
+    const allNames = [name, card!.secondParty!.name];
+    expect(allNames).toContain('User member-a');
+    expect(allNames).toContain('User member-b');
   }, 70000);
 
 });

@@ -178,6 +178,12 @@ export class HomeGraphFactory {
             isActionableForViewer(opp.actors, opp.status, state.userId)
           );
           const sorted = [...visibleForFeed].sort((a, b) => {
+            // Connections before connector-flow so dedup claims counterpart IDs
+            // for direct connections first — prevents introducer cards from
+            // shadowing a user's own connection opportunities.
+            const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+            const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+            if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
             const confA = getConfidence(a);
             const confB = getConfidence(b);
             if (confB !== confA) return confB - confA;
@@ -323,8 +329,12 @@ export class HomeGraphFactory {
             const participantNames = uniqueCounterpartIds
               .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
               .sort();
-            // Introducer always sees both party names (e.g. "Alice ↔ Bob"), regardless of status
-            let userName = isIntroducer && participantNames.length > 0
+            // When secondPartyData will be present (2+ counterparts), use single counterpart name
+            // because the frontend arrow layout renders "card.name → secondParty.name".
+            // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
+            // Only use the joined format when there is a single counterpart (no arrow layout).
+            const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
+            let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
               ? participantNames.join(' ↔ ')
               : (otherUser?.name ?? 'Unknown');
             // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
@@ -620,6 +630,18 @@ export class HomeGraphFactory {
             items,
           };
         });
+
+        // Enforce category ordering: sections with connections first, then
+        // connector-flow only, then expired only. This prevents the LLM
+        // categorizer from placing introducer sections before connection sections.
+        const sectionCategoryPriority = (section: HomeSection): number => {
+          const hasConnection = section.items.some((item) => item.viewerRole !== 'introducer');
+          if (hasConnection) return 0; // mixed or connection-only sections first
+          const hasConnectorFlow = section.items.some((item) => item.viewerRole === 'introducer');
+          if (hasConnectorFlow) return 1; // connector-flow only sections next
+          return 2; // empty or expired sections last
+        };
+        sections.sort((a, b) => sectionCategoryPriority(a) - sectionCategoryPriority(b));
         const meta = {
           totalOpportunities: state.opportunities.length,
           totalSections: sections.length,
