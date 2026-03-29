@@ -75,7 +75,6 @@ export interface HomeViewResponse {
 export interface GetHomeViewOptions {
   indexId?: string;
   limit?: number;
-  noCache?: boolean;
 }
 
 export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -128,16 +127,9 @@ export const createOpportunitiesService = (
     const params = new URLSearchParams();
     if (options?.indexId) params.set('indexId', options.indexId);
     if (options?.limit != null) params.set('limit', String(options.limit));
-    if (options?.noCache) params.set('noCache', 'true');
     const qs = params.toString();
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
     const cacheKey = url;
-
-    // Skip in-memory cache when noCache is requested
-    if (options?.noCache) {
-      return api.get<HomeViewResponse>(url);
-    }
-
     const now = Date.now();
     const recent = homeViewRecent.get(cacheKey);
     if (recent && now - recent.timestamp < HOME_VIEW_RECENT_CACHE_TTL_MS) {

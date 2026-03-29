@@ -40,7 +40,6 @@ export type HomeGraphInvokeInput = {
   userId: string;
   indexId?: string;
   limit?: number;
-  noCache?: boolean;
 };
 
 export type HomeGraphInvokeResult = {
@@ -204,11 +203,6 @@ export class HomeGraphFactory {
         const { opportunities, userId } = state;
         if (opportunities.length === 0) {
           return { cachedCards: new Map(), uncachedOpportunities: [] };
-        }
-
-        if (state.noCache) {
-          logger.verbose('[HomeGraph:checkPresenterCache] noCache flag set, bypassing');
-          return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
 
         try {
@@ -474,11 +468,6 @@ export class HomeGraphFactory {
     const checkCategorizerCacheNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.checkCategorizerCache", async () => {
         if (state.cards.length === 0) {
-          return { categoryCacheHit: false };
-        }
-
-        if (state.noCache) {
-          logger.verbose('[HomeGraph:checkCategorizerCache] noCache flag set, bypassing');
           return { categoryCacheHit: false };
         }
 

@@ -72,7 +72,7 @@ export async function selectContactsForDiscovery(
 ): Promise<ContactWithIntents[]> {
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
-    logger.verbose(`[IntroducerDiscovery] No personal index found for user=${userId}`);
+    logger.verbose('[IntroducerDiscovery] No personal index found', { userId });
     return [];
   }
 
@@ -82,10 +82,11 @@ export async function selectContactsForDiscovery(
     limit,
   );
 
-  logger.verbose(
-    `[IntroducerDiscovery] Selected ${contacts.length}/${limit} contacts for user=${userId} personalIndex=${personalIndexId}` +
-    (contacts.length > 0 ? ` contactUserIds=[${contacts.map(c => c.userId).join(',')}]` : ''),
-  );
+  logger.verbose('[IntroducerDiscovery] Selected contacts for discovery', {
+    userId,
+    totalContacts: contacts.length,
+    limit,
+  });
 
   return contacts;
 }
@@ -122,13 +123,11 @@ export async function runIntroducerDiscovery(
 ): Promise<IntroducerDiscoveryResult> {
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
-    logger.info(`[IntroducerDiscovery] Skipped: no personal index for user=${userId}`);
     return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_personal_index' };
   }
 
   const contacts = await selectContactsForDiscovery(database, userId);
   if (contacts.length === 0) {
-    logger.info(`[IntroducerDiscovery] Skipped: no contacts with intents for user=${userId}`);
     return { contactsEvaluated: 0, jobsEnqueued: 0, skippedReason: 'no_contacts' };
   }
 
@@ -140,7 +139,7 @@ export async function runIntroducerDiscovery(
       // For each contact, we enqueue a discovery job using one of their intents
       // The opportunity graph will use onBehalfOfUserId to discover on behalf of the contact
       // while the userId (introducer) gets the introducer role
-      const jobId = `introducer-discovery-${userId}-${contact.userId}-${bucket}`;
+      const jobId = `introducer-discovery:${userId}:${contact.userId}:${bucket}`;
       try {
         await queue.addJob(
           {
@@ -155,12 +154,13 @@ export async function runIntroducerDiscovery(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (/duplicate|already exists|job.*id/i.test(message)) {
-          logger.verbose(`[IntroducerDiscovery] Job skipped (duplicate) user=${userId} contact=${contact.userId}`);
+          logger.verbose('[IntroducerDiscovery] Job skipped (duplicate)', {
+            userId,
+            contactUserId: contact.userId,
+            error: message,
+          });
           return false;
         }
-        logger.error(
-          `[IntroducerDiscovery] Job failed user=${userId} contact=${contact.userId}: ${message}`,
-        );
         throw err;
       }
     }),
@@ -168,12 +168,11 @@ export async function runIntroducerDiscovery(
 
   jobsEnqueued = results.filter((r) => r.status === 'fulfilled' && r.value).length;
 
-  const skippedCount = results.filter((r) => r.status === 'fulfilled' && !r.value).length;
-  const failedCount = results.filter((r) => r.status === 'rejected').length;
-  logger.info(
-    `[IntroducerDiscovery] Cycle complete for user=${userId}: ` +
-    `contacts=${contacts.length} enqueued=${jobsEnqueued} skipped=${skippedCount} failed=${failedCount}`,
-  );
+  logger.info('[IntroducerDiscovery] Discovery cycle complete', {
+    userId,
+    contactsEvaluated: contacts.length,
+    jobsEnqueued,
+  });
 
   return { contactsEvaluated: contacts.length, jobsEnqueued };
 }
