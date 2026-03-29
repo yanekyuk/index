@@ -70,7 +70,8 @@ export const HomeGraphState = Annotation.Root({
     reducer: (curr, next) => next ?? curr,
     default: () => 50,
   }),
-  /** When true, skip all cache reads (presenter + categorizer). */
+
+  /** When true, bypass presenter and categorizer Redis caches. */
   noCache: Annotation<boolean>({
     reducer: (curr, next) => next ?? curr,
     default: () => false,

@@ -207,7 +207,7 @@ export class HomeGraphFactory {
         }
 
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkPresenterCache] noCache flag set, bypassing');
+          logger.verbose('[HomeGraph:checkPresenterCache] noCache=true, skipping cache');
           return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
 
@@ -478,7 +478,7 @@ export class HomeGraphFactory {
         }
 
         if (state.noCache) {
-          logger.verbose('[HomeGraph:checkCategorizerCache] noCache flag set, bypassing');
+          logger.verbose('[HomeGraph:checkCategorizerCache] noCache=true, skipping cache');
           return { categoryCacheHit: false };
         }
 

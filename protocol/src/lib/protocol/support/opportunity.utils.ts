@@ -207,13 +207,17 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
     unusedSlots -= take;
   }
 
-  // Merge and sort by original position to preserve input order
+  // Merge in category priority order: connection > connector-flow > expired
+  // Within each category, preserve original input order
   const indexMap = new Map(opportunities.map((opp, i) => [opp, i]));
-  const result = [
+  const sortByOriginal = (a: T, b: T) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0);
+  selected.connection.sort(sortByOriginal);
+  selected['connector-flow'].sort(sortByOriginal);
+  selected.expired.sort(sortByOriginal);
+
+  return [
     ...selected.connection,
     ...selected['connector-flow'],
     ...selected.expired,
-  ].sort((a, b) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0));
-
-  return result;
+  ];
 }

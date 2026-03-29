@@ -128,16 +128,16 @@ export const createOpportunitiesService = (
     const params = new URLSearchParams();
     if (options?.indexId) params.set('indexId', options.indexId);
     if (options?.limit != null) params.set('limit', String(options.limit));
-    if (options?.noCache) params.set('noCache', 'true');
+    if (options?.noCache) params.set('noCache', '1');
     const qs = params.toString();
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
-    const cacheKey = url;
 
-    // Skip in-memory cache when noCache is requested
+    // When noCache is set, skip the in-memory dedup cache entirely
     if (options?.noCache) {
       return api.get<HomeViewResponse>(url);
     }
 
+    const cacheKey = url;
     const now = Date.now();
     const recent = homeViewRecent.get(cacheKey);
     if (recent && now - recent.timestamp < HOME_VIEW_RECENT_CACHE_TTL_MS) {

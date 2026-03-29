@@ -123,11 +123,7 @@ export class MaintenanceGraphFactory {
           freshnessWindowMs: FRESHNESS_WINDOW_MS,
         });
 
-        logger.verbose(
-          `[MaintenanceGraph] Feed health for user=${state.userId}: ` +
-          `score=${healthResult.score} shouldMaintain=${healthResult.shouldMaintain} ` +
-          `connections=${connectionCount} connectorFlow=${connectorFlowCount} expired=${state.expiredCount} total=${opps.length}`,
-        );
+        logger.verbose(`[MaintenanceGraph] Feed health scored — userId=${state.userId} score=${healthResult.score} shouldMaintain=${healthResult.shouldMaintain} connectorFlowCount=${connectorFlowCount}`);
 
         return { healthResult, connectorFlowCount };
       } catch (e) {
@@ -154,14 +150,16 @@ export class MaintenanceGraphFactory {
             this.queue.addJob(
               { intentId: intent.id, userId: state.userId },
               { priority: 10, jobId: `rediscovery-${state.userId}-${intent.id}-${bucket}` },
-            ).catch((err) => {
-              const message = err instanceof Error ? err.message : String(err);
-              logger.error(`[MaintenanceGraph] Rediscovery job failed user=${state.userId} intent=${intent.id}: ${message}`);
-              throw err;
-            })
+            )
           )
         );
 
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+            logger.error(`[MaintenanceGraph] Rediscovery job enqueue failed: ${errMsg}`);
+          }
+        }
         enqueued = results.filter((r) => r.status === 'fulfilled').length;
 
         // Record last run timestamp
@@ -188,10 +186,7 @@ export class MaintenanceGraphFactory {
       try {
         const connectorFlowTarget = FEED_SOFT_TARGETS.connectorFlow;
         if (!shouldRunIntroducerDiscovery(state.connectorFlowCount, connectorFlowTarget)) {
-          logger.verbose(
-            `[MaintenanceGraph] Introducer discovery skipped for user=${state.userId}: ` +
-            `connectorFlow=${state.connectorFlowCount} >= target=${connectorFlowTarget}`,
-          );
+          logger.verbose(`[MaintenanceGraph] Introducer discovery skipped — connector-flow target met — userId=${state.userId} connectorFlowCount=${state.connectorFlowCount} connectorFlowTarget=${connectorFlowTarget}`);
           return {};
         }
 
@@ -202,11 +197,7 @@ export class MaintenanceGraphFactory {
           state.userId,
         );
 
-        logger.info(
-          `[MaintenanceGraph] Introducer discovery for user=${state.userId}: ` +
-          `contacts=${result.contactsEvaluated} enqueued=${result.jobsEnqueued}` +
-          (result.skippedReason ? ` skipped=${result.skippedReason}` : ''),
-        );
+        logger.info(`[MaintenanceGraph] Introducer discovery complete — userId=${state.userId} contactsEvaluated=${result.contactsEvaluated} jobsEnqueued=${result.jobsEnqueued}${result.skippedReason ? ` skippedReason=${result.skippedReason}` : ''}`);
 
         return { introducerDiscoveryJobsEnqueued: result.jobsEnqueued };
       } catch (e) {
@@ -217,12 +208,7 @@ export class MaintenanceGraphFactory {
     };
 
     const logMaintenanceNode = async (state: typeof MaintenanceGraphState.State) => {
-      logger.info(
-        `[MaintenanceGraph] Complete for user=${state.userId}: ` +
-        `score=${state.healthResult?.score} shouldMaintain=${state.healthResult?.shouldMaintain} ` +
-        `rediscoveryJobs=${state.rediscoveryJobsEnqueued ?? 0} introducerJobs=${state.introducerDiscoveryJobsEnqueued ?? 0} ` +
-        `intents=${state.activeIntents.length} connectorFlow=${state.connectorFlowCount}`,
-      );
+      logger.info(`[MaintenanceGraph] Maintenance complete — userId=${state.userId} score=${state.healthResult?.score} shouldMaintain=${state.healthResult?.shouldMaintain} rediscoveryJobs=${state.rediscoveryJobsEnqueued} introducerDiscoveryJobs=${state.introducerDiscoveryJobsEnqueued} activeIntents=${state.activeIntents.length} connectorFlowCount=${state.connectorFlowCount}`);
       return {};
     };
 

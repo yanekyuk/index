@@ -577,8 +577,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     }
     setHomeViewLoading(true);
     setHomeViewError(null);
-    const browserNoCache = new URLSearchParams(window.location.search).get('noCache');
-    const noCache = browserNoCache === '1' || browserNoCache === 'true';
+    const urlParams = new URLSearchParams(window.location.search);
+    const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
     opportunitiesService
       .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 5, noCache })
       .then((res) => {
