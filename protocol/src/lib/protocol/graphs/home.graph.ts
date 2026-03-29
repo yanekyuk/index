@@ -330,6 +330,20 @@ export class HomeGraphFactory {
                 ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
                 : '') || 'A promising connection.';
 
+            // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
+            let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
+            if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
+              const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
+              if (secondActor) {
+                const secondUser = userMap.get(secondActor.userId) ?? null;
+                secondPartyData = {
+                  name: secondUser?.name ?? 'Unknown',
+                  avatar: secondUser?.avatar ?? null,
+                  userId: secondActor.userId,
+                };
+              }
+            }
+
             const isCounterpartGhost = otherUser?.isGhost ?? false;
             const fallbackCard = (): HomeCardItem => ({
               opportunityId: opportunity.id,
@@ -348,6 +362,7 @@ export class HomeGraphFactory {
                 : { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               isGhost: isCounterpartGhost,
+              ...(secondPartyData ? { secondParty: secondPartyData } : {}),
               _cardIndex: cardIndex,
             });
 
@@ -402,6 +417,7 @@ export class HomeGraphFactory {
                 narratorChip,
                 viewerRole,
                 isGhost: isCounterpartGhost,
+                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {
