@@ -314,8 +314,11 @@ export class HomeGraphFactory {
             const introducerCounterparts = opportunity.actors.filter(
               (a) => a.userId !== state.userId && a.role !== 'introducer'
             );
-            const participantNames = introducerCounterparts
-              .map((actor) => userMap.get(actor.userId)?.name ?? 'Unknown')
+            // Deduplicate by userId — actors array can contain multiple rows per user
+            // (e.g. from different intents), which would produce repeated names.
+            const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
+            const participantNames = uniqueCounterpartIds
+              .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
               .sort();
             // Introducer always sees both party names (e.g. "Alice ↔ Bob"), regardless of status
             let userName = isIntroducer && participantNames.length > 0

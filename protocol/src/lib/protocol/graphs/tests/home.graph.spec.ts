@@ -396,6 +396,64 @@ describe('HomeGraph', () => {
     expect(totalItems).toBe(0);
   }, 30000);
 
+  // Hypothesis: The bug occurs because opportunity.actors can contain multiple entries
+  // with the same userId (e.g. from different intents), and introducerCounterparts
+  // maps all of them to names without deduplicating, producing repeated names like
+  // "Seref Yarar ↔ Seref Yarar ↔ jiawei ↔ jiawei" instead of "Seref Yarar ↔ jiawei".
+  test('introducer card deduplicates participant names when actors have duplicate userIds', async () => {
+    const viewerId = 'intro-1';
+    const memberA = 'member-a';
+    const memberB = 'member-b';
+
+    // Opportunity where each non-introducer userId appears multiple times
+    // (e.g. from different intents or discovery passes)
+    const duplicateActorsOpp: Opportunity = {
+      id: 'opp-dup-actors',
+      detection: { source: 'manual', timestamp: new Date().toISOString() },
+      actors: [
+        { userId: viewerId, role: 'introducer', indexId: 'idx-1' },
+        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-1' },
+        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-2' },
+        { userId: memberA, role: 'patient', indexId: 'idx-1', intent: 'intent-3' },
+        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-4' },
+        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-5' },
+        { userId: memberB, role: 'agent', indexId: 'idx-1', intent: 'intent-6' },
+      ],
+      interpretation: {
+        reasoning: 'These two should connect.',
+        category: 'connection',
+        confidence: 0.9,
+      },
+      context: { indexId: 'idx-1' },
+      confidence: '0.9',
+      status: 'latent',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      expiresAt: null,
+    };
+
+    const db = createMockDb([duplicateActorsOpp]);
+    const result = await new HomeGraphFactory(db, createMockCache()).createGraph().invoke({ userId: viewerId, limit: 50 });
+
+    expect(result.error).toBeUndefined();
+    expect(result.meta.totalOpportunities).toBe(1);
+    const totalItems = result.sections.reduce((count, section) => count + section.items.length, 0);
+    expect(totalItems).toBe(1);
+
+    const card = result.sections[0]?.items[0];
+    expect(card).toBeDefined();
+
+    // The introducer card name should show each participant exactly once: "User member-a ↔ User member-b"
+    // NOT "User member-a ↔ User member-a ↔ User member-a ↔ User member-b ↔ User member-b ↔ User member-b"
+    const name = card!.name;
+    expect(name).not.toContain('↔ User member-a ↔');
+    expect(name).not.toContain('↔ User member-b ↔');
+    const parts = name.split(' ↔ ');
+    expect(parts.length).toBe(2);
+    expect(parts).toContain('User member-a');
+    expect(parts).toContain('User member-b');
+  }, 70000);
+
 });
 
 describe('HomeGraph caching', () => {
