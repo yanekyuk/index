@@ -56,6 +56,12 @@ export interface HomeViewCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
+  secondParty?: {
+    name: string;
+    avatar?: string | null;
+    userId?: string;
+  };
 }
 
 /** Home view section (dynamic title, icon, items). */
