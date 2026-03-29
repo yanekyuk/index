@@ -44,6 +44,12 @@ export interface OpportunityCardData {
   status?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
+  secondParty?: {
+    name: string;
+    avatar?: string | null;
+    userId?: string;
+  };
 }
 
 /** Status values that allow user actions (accept/reject). Matches DB opportunity_status enum. */
