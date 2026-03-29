@@ -78,7 +78,7 @@ const envSchema = z.object({
   LANGFUSE_SECRET_KEY: z.string().optional(),
   LANGFUSE_BASE_URL: z.string().url().optional(),
   SENTRY_DSN: z.string().url().optional(),
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  LOG_LEVEL: z.enum(['verbose', 'debug', 'info', 'warn', 'error']).optional(),
   LOG_FILTER: z.string().optional(),
   ENABLE_DEBUG_API: z.string().optional(),
   ADMIN_QUEUES_PORT: z.string().regex(/^\d+$/).optional(),
