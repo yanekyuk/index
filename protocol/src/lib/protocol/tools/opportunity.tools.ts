@@ -50,6 +50,8 @@ export function buildMinimalOpportunityCard(
   introducerAvatar?: string | null,
   viewerName?: string,
   secondPartyName?: string,
+  secondPartyAvatar?: string | null,
+  secondPartyUserId?: string,
   isCounterpartGhost?: boolean,
 ): {
   opportunityId: string;
@@ -67,6 +69,7 @@ export function buildMinimalOpportunityCard(
   score: number | undefined;
   status: string;
   isGhost: boolean;
+  secondParty?: { name: string; avatar?: string | null; userId?: string };
 } {
   const viewerActor = opp.actors.find((a) => a.userId === viewerId);
   const viewerRole = viewerActor?.role ?? "party";
@@ -118,6 +121,15 @@ export function buildMinimalOpportunityCard(
     score,
     status: opp.status ?? "latent",
     isGhost: isCounterpartGhost ?? false,
+    ...(viewerIsIntroducer && secondPartyName
+      ? {
+          secondParty: {
+            name: secondPartyName,
+            ...(secondPartyAvatar != null ? { avatar: secondPartyAvatar } : {}),
+            ...(secondPartyUserId ? { userId: secondPartyUserId } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -407,10 +419,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const counterpartName =
           firstEntity?.profile?.name ?? firstPartyId ?? "Someone";
 
-        // Second party name — used in the headline for the introducer view ("A → B")
+        // Second party — used in the headline and arrow layout for the introducer view ("A → B")
         const secondPartyId = introducedPartyUserIds[1];
         const secondEntity = query.entities?.find((e) => e.userId === secondPartyId);
         const secondPartyName = (secondEntity?.profile as { name?: string } | undefined)?.name;
+        const secondPartyAvatar = (secondEntity?.profile as { avatar?: string | null } | undefined)?.avatar ?? null;
+        const secondPartyUser = secondPartyId ? await database.getUser(secondPartyId) : null;
 
         const viewerIsParty = effectivePartyUserIds.includes(context.userId);
         const viewerRole = viewerIsParty ? "party" : "introducer";
@@ -458,6 +472,15 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           isGhost: isCounterpartGhost,
           score: confidence,
           status: created.status ?? "draft",
+          ...(!viewerIsParty && secondPartyName
+            ? {
+                secondParty: {
+                  name: secondPartyName,
+                  avatar: secondPartyUser?.avatar ?? secondPartyAvatar,
+                  ...(secondPartyId ? { userId: secondPartyId } : {}),
+                },
+              }
+            : {}),
         };
         const block =
           CODE_FENCE + "opportunity\n" +
@@ -837,6 +860,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             ? userMap.get(introducerActor.userId) ?? null
             : null;
 
+          const secondPartyUser = secondPartyActorForHeadline
+            ? userMap.get(secondPartyActorForHeadline.userId) ?? null
+            : null;
           const cardData = buildMinimalOpportunityCard(
             opp,
             context.userId,
@@ -847,6 +873,8 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
             introducerUser?.avatar ?? null,
             viewerName,
             secondPartyNameForHeadline,
+            secondPartyUser?.avatar ?? null,
+            secondPartyActorForHeadline?.userId,
           );
 
           opportunityBlocks.push(

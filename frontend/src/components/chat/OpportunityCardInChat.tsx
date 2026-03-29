@@ -243,6 +243,14 @@ export default function OpportunityCard({
     navigate(`/u/${card.userId}`);
   };
 
+  const handleSecondPartyClick = () => {
+    if (card.secondParty?.userId) {
+      navigate(`/u/${card.secondParty.userId}`);
+    }
+  };
+
+  const isIntroducerArrow = card.viewerRole === "introducer" && !!card.secondParty;
+
   const handleNarratorClick = () => {
     if (card.narratorChip?.userId) {
       navigate(`/u/${card.narratorChip.userId}`);
@@ -272,39 +280,104 @@ export default function OpportunityCard({
     <div className={cn("rounded-md p-4", getCardWrapperClass(effectiveStatus))}>
       {/* Header: Avatar, Name, Mutual Intents, Actions */}
       <div className="flex items-center justify-between gap-2 mb-3">
-        <div
-          className="flex items-center gap-2 min-w-0 cursor-pointer"
-          role="link"
-          tabIndex={0}
-          onClick={handleProfileClick}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleProfileClick();
-            }
-          }}
-          aria-label={`View profile of ${card.name || "Someone"}`}
-        >
-          <UserAvatar
-            id={card.userId}
-            name={card.name || "User"}
-            avatar={card.avatar || null}
-            size={32}
-            className="shrink-0"
-            blur={card.isGhost}
-          />
-          <div className="min-w-0">
-            <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
-              {card.viewerRole === "introducer" && card.headline
-                ? card.headline
-                : card.name || "Someone"}
-              {card.isGhost && <GhostBadge />}
-            </h4>
-            <p className="text-[11px] text-[#3D3D3D]">
-              {card.mutualIntentsLabel || "Potential connection"}
-            </p>
+        {isIntroducerArrow ? (
+          /* Introducer arrow layout: [Avatar] Name → [Avatar] Name */
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div
+              className="flex items-center gap-1.5 min-w-0 cursor-pointer"
+              role="link"
+              tabIndex={0}
+              onClick={handleProfileClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleProfileClick();
+                }
+              }}
+              aria-label={`View profile of ${card.name || "Someone"}`}
+            >
+              <UserAvatar
+                id={card.userId}
+                name={card.name || "User"}
+                avatar={card.avatar || null}
+                size={28}
+                className="shrink-0"
+                blur={card.isGhost}
+              />
+              <span className="font-bold text-gray-900 text-sm hover:underline truncate">
+                {card.name || "Someone"}
+              </span>
+            </div>
+            <span className="text-gray-400 text-sm shrink-0">→</span>
+            <div
+              className={cn(
+                "flex items-center gap-1.5 min-w-0",
+                card.secondParty?.userId && "cursor-pointer",
+              )}
+              {...(card.secondParty?.userId
+                ? {
+                    role: "link" as const,
+                    tabIndex: 0,
+                    onClick: handleSecondPartyClick,
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleSecondPartyClick();
+                      }
+                    },
+                    "aria-label": `View profile of ${card.secondParty.name}`,
+                  }
+                : {})}
+            >
+              <UserAvatar
+                id={card.secondParty?.userId}
+                name={card.secondParty!.name}
+                avatar={card.secondParty!.avatar || null}
+                size={28}
+                className="shrink-0"
+              />
+              <span className={cn(
+                "font-bold text-gray-900 text-sm truncate",
+                card.secondParty?.userId && "hover:underline",
+              )}>
+                {card.secondParty!.name}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Standard single-user layout */
+          <div
+            className="flex items-center gap-2 min-w-0 cursor-pointer"
+            role="link"
+            tabIndex={0}
+            onClick={handleProfileClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleProfileClick();
+              }
+            }}
+            aria-label={`View profile of ${card.name || "Someone"}`}
+          >
+            <UserAvatar
+              id={card.userId}
+              name={card.name || "User"}
+              avatar={card.avatar || null}
+              size={32}
+              className="shrink-0"
+              blur={card.isGhost}
+            />
+            <div className="min-w-0">
+              <h4 className="font-bold text-gray-900 text-sm hover:underline flex items-center gap-1.5">
+                {card.name || "Someone"}
+                {card.isGhost && <GhostBadge />}
+              </h4>
+              <p className="text-[11px] text-[#3D3D3D]">
+                {card.mutualIntentsLabel || "Potential connection"}
+              </p>
+            </div>
+          </div>
+        )}
         {hasActions && (
           <div className="flex gap-1.5 shrink-0">
             {onPrimaryAction && (
