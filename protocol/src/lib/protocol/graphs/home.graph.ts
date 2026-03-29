@@ -161,7 +161,10 @@ export class HomeGraphFactory {
           return { error: 'userId is required' };
         }
         try {
-          const fetchLimit = Math.min(150, Math.max(state.limit * 3, state.limit));
+          // Minimum of 50 ensures enough candidates across all feed categories
+          // (connection, connector-flow, expired) for selectByComposition to fill
+          // its soft targets, even after visibility filtering and dedup.
+          const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
           const options: { limit?: number; indexId?: string } = {
             limit: fetchLimit,
           };
