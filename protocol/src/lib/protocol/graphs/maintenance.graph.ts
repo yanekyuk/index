@@ -153,8 +153,12 @@ export class MaintenanceGraphFactory {
           state.activeIntents.map((intent) =>
             this.queue.addJob(
               { intentId: intent.id, userId: state.userId },
-              { priority: 10, jobId: `rediscovery:${state.userId}:${intent.id}:${bucket}` },
-            )
+              { priority: 10, jobId: `rediscovery-${state.userId}-${intent.id}-${bucket}` },
+            ).catch((err) => {
+              const message = err instanceof Error ? err.message : String(err);
+              logger.error(`[MaintenanceGraph] Rediscovery job failed user=${state.userId} intent=${intent.id}: ${message}`);
+              throw err;
+            })
           )
         );
 

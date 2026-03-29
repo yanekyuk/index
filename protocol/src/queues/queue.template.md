@@ -167,7 +167,7 @@ Enqueue from services, graphs, or controllers via the singleton:
 ```typescript
 import { intentQueue } from '../queues/intent.queue';
 
-await intentQueue.addJob('generate_hyde', { intentId, userId }, { jobId: `intent-hyde:${intentId}` });
+await intentQueue.addJob('generate_hyde', { intentId, userId }, { jobId: `intent-hyde-${intentId}` });
 ```
 
 If you keep a convenience function for backward compatibility:
