@@ -44,7 +44,7 @@ function createMockDb(opportunities: Opportunity[]): HomeGraphDatabase {
 function makeIntroducerOpportunity(introducerId: string, partyAId: string, partyBId: string): Opportunity {
   return {
     id: 'opp-intro-1',
-    detection: { source: 'introducer_discovery', timestamp: new Date().toISOString() },
+    detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
     actors: [
       { userId: introducerId, role: 'introducer', indexId: 'idx-1' },
       { userId: partyAId, role: 'party', indexId: 'idx-1' },
