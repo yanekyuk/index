@@ -976,7 +976,9 @@ export class OpportunityGraphFactory {
             });
             const byKey = new Map<string, CandidateMatch>();
             for (const c of all) {
-              const key = `${c.candidateUserId}:${c.indexId}:${c.candidateIntentId ?? 'profile'}`;
+              // Dedup by candidateUserId + intent (or profile), NOT by indexId.
+              // Including indexId caused the same user to appear once per index they belong to.
+              const key = `${c.candidateUserId}:${c.candidateIntentId ?? 'profile'}`;
               if (!byKey.has(key) || c.similarity > (byKey.get(key)?.similarity ?? 0)) {
                 byKey.set(key, c);
               }
@@ -1519,10 +1521,12 @@ export class OpportunityGraphFactory {
             },
           });
 
-          // Create a map of evaluated candidates by userId for quick lookup
+          // Create a map of evaluated candidates by userId for quick lookup.
+          // Use discoveryUserId (which accounts for onBehalfOfUserId in introducer flow)
+          // rather than state.userId (which is the introducer, not present in pairwise actors).
           const evaluatedByUserId = new Map<string, { score: number; reasoning: string }>();
           for (const opp of evaluatedOpportunities) {
-            const candidateActor = opp.actors.find(a => a.userId !== state.userId);
+            const candidateActor = opp.actors.find(a => a.userId !== discoveryUserId);
             if (candidateActor) {
               evaluatedByUserId.set(candidateActor.userId, { score: opp.score, reasoning: opp.reasoning });
             }

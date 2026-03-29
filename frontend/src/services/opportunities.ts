@@ -56,6 +56,12 @@ export interface HomeViewCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Second party in introducer arrow layout (name -> name). Present when viewerRole is 'introducer'. */
+  secondParty?: {
+    name: string;
+    avatar?: string | null;
+    userId?: string;
+  };
 }
 
 /** Home view section (dynamic title, icon, items). */
@@ -75,6 +81,7 @@ export interface HomeViewResponse {
 export interface GetHomeViewOptions {
   indexId?: string;
   limit?: number;
+  noCache?: boolean;
 }
 
 export type OpportunityStatus = 'latent' | 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -127,8 +134,15 @@ export const createOpportunitiesService = (
     const params = new URLSearchParams();
     if (options?.indexId) params.set('indexId', options.indexId);
     if (options?.limit != null) params.set('limit', String(options.limit));
+    if (options?.noCache) params.set('noCache', '1');
     const qs = params.toString();
     const url = qs ? `/opportunities/home?${qs}` : '/opportunities/home';
+
+    // When noCache is set, skip the in-memory dedup cache entirely
+    if (options?.noCache) {
+      return api.get<HomeViewResponse>(url);
+    }
+
     const cacheKey = url;
     const now = Date.now();
     const recent = homeViewRecent.get(cacheKey);

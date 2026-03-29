@@ -99,7 +99,7 @@ describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
   it('uses "Start Chat" as primaryActionLabel even when counterpart is a ghost user', () => {
     const card = buildMinimalOpportunityCard(
       baseOpp, 'viewer-1', 'ghost-user', 'Ghost User', null,
-      undefined, null, undefined, undefined, true,
+      undefined, null, undefined, undefined, undefined, undefined, true,
     );
     expect(card.primaryActionLabel).toBe('Start Chat');
     expect(card.isGhost).toBe(true);
@@ -108,7 +108,7 @@ describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
   it('uses "Start Chat" as primaryActionLabel when counterpart is not a ghost user', () => {
     const card = buildMinimalOpportunityCard(
       baseOpp, 'viewer-1', 'ghost-user', 'Real User', null,
-      undefined, null, undefined, undefined, false,
+      undefined, null, undefined, undefined, undefined, undefined, false,
     );
     expect(card.primaryActionLabel).toBe('Start Chat');
     expect(card.isGhost).toBe(false);
@@ -133,7 +133,7 @@ describe('buildMinimalOpportunityCard - ghost user CTA (IND-161)', () => {
     } as unknown as Opportunity;
     const card = buildMinimalOpportunityCard(
       introOpp, 'introducer-1', 'ghost-user', 'Ghost User', null,
-      undefined, null, undefined, undefined, true,
+      undefined, null, undefined, undefined, undefined, undefined, true,
     );
     expect(card.primaryActionLabel).toBe('Good match');
   });

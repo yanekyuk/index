@@ -24,6 +24,8 @@ export interface HomeCardItem {
   viewerRole?: string;
   /** Whether the counterpart is a ghost (not yet onboarded) user. */
   isGhost?: boolean;
+  /** Second party in introducer arrow layout. Present when viewerRole is 'introducer'. */
+  secondParty?: { name: string; avatar?: string | null; userId?: string };
   /** For section assignment from LLM */
   _cardIndex: number;
 }
@@ -69,6 +71,12 @@ export const HomeGraphState = Annotation.Root({
   limit: Annotation<number>({
     reducer: (curr, next) => next ?? curr,
     default: () => 50,
+  }),
+
+  /** When true, bypass presenter and categorizer Redis caches. */
+  noCache: Annotation<boolean>({
+    reducer: (curr, next) => next ?? curr,
+    default: () => false,
   }),
 
   /** Raw opportunities visible to the viewer (after visibility filter). */

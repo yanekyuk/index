@@ -40,6 +40,7 @@ export type HomeGraphInvokeInput = {
   userId: string;
   indexId?: string;
   limit?: number;
+  noCache?: boolean;
 };
 
 export type HomeGraphInvokeResult = {
@@ -160,7 +161,10 @@ export class HomeGraphFactory {
           return { error: 'userId is required' };
         }
         try {
-          const fetchLimit = Math.min(150, Math.max(state.limit * 3, state.limit));
+          // Minimum of 50 ensures enough candidates across all feed categories
+          // (connection, connector-flow, expired) for selectByComposition to fill
+          // its soft targets, even after visibility filtering and dedup.
+          const fetchLimit = Math.min(150, Math.max(50, state.limit * 3));
           const options: { limit?: number; indexId?: string } = {
             limit: fetchLimit,
           };
@@ -174,6 +178,12 @@ export class HomeGraphFactory {
             isActionableForViewer(opp.actors, opp.status, state.userId)
           );
           const sorted = [...visibleForFeed].sort((a, b) => {
+            // Connections before connector-flow so dedup claims counterpart IDs
+            // for direct connections first — prevents introducer cards from
+            // shadowing a user's own connection opportunities.
+            const aIsIntroducer = a.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+            const bIsIntroducer = b.actors.some((ac) => ac.userId === state.userId && ac.role === 'introducer');
+            if (aIsIntroducer !== bIsIntroducer) return aIsIntroducer ? 1 : -1;
             const confA = getConfidence(a);
             const confB = getConfidence(b);
             if (confB !== confA) return confB - confA;
@@ -203,6 +213,11 @@ export class HomeGraphFactory {
         const { opportunities, userId } = state;
         if (opportunities.length === 0) {
           return { cachedCards: new Map(), uncachedOpportunities: [] };
+        }
+
+        if (state.noCache) {
+          logger.verbose('[HomeGraph:checkPresenterCache] noCache=true, skipping cache');
+          return { cachedCards: new Map(), uncachedOpportunities: opportunities };
         }
 
         try {
@@ -308,11 +323,18 @@ export class HomeGraphFactory {
             const introducerCounterparts = opportunity.actors.filter(
               (a) => a.userId !== state.userId && a.role !== 'introducer'
             );
-            const participantNames = introducerCounterparts
-              .map((actor) => userMap.get(actor.userId)?.name ?? 'Unknown')
+            // Deduplicate by userId — actors array can contain multiple rows per user
+            // (e.g. from different intents), which would produce repeated names.
+            const uniqueCounterpartIds = [...new Set(introducerCounterparts.map((a) => a.userId))];
+            const participantNames = uniqueCounterpartIds
+              .map((uid) => userMap.get(uid)?.name ?? 'Unknown')
               .sort();
-            // Introducer always sees both party names (e.g. "Alice ↔ Bob"), regardless of status
-            let userName = isIntroducer && participantNames.length > 0
+            // When secondPartyData will be present (2+ counterparts), use single counterpart name
+            // because the frontend arrow layout renders "card.name → secondParty.name".
+            // Using the joined "A ↔ B" format here would produce redundant "A ↔ B → B".
+            // Only use the joined format when there is a single counterpart (no arrow layout).
+            const willHaveSecondParty = isIntroducer && uniqueCounterpartIds.length > 1;
+            let userName = isIntroducer && participantNames.length > 0 && !willHaveSecondParty
               ? participantNames.join(' ↔ ')
               : (otherUser?.name ?? 'Unknown');
             // Fallback to profile identity name when users.name is missing (e.g. profile has display name, users row does not)
@@ -329,6 +351,20 @@ export class HomeGraphFactory {
               (typeof opportunity.interpretation?.reasoning === 'string'
                 ? opportunity.interpretation.reasoning.replace(/\s+/g, ' ').trim().slice(0, MAX_REASONING_SNIPPET_LENGTH)
                 : '') || 'A promising connection.';
+
+            // Build secondParty for introducer arrow layout (the party that isn't the display counterpart)
+            let secondPartyData: { name: string; avatar?: string | null; userId?: string } | undefined;
+            if (isIntroducer && introducerCounterparts.length > 1 && otherActor) {
+              const secondActor = introducerCounterparts.find((a) => a.userId !== otherActor.userId);
+              if (secondActor) {
+                const secondUser = userMap.get(secondActor.userId) ?? null;
+                secondPartyData = {
+                  name: secondUser?.name ?? 'Unknown',
+                  avatar: secondUser?.avatar ?? null,
+                  userId: secondActor.userId,
+                };
+              }
+            }
 
             const isCounterpartGhost = otherUser?.isGhost ?? false;
             const fallbackCard = (): HomeCardItem => ({
@@ -348,6 +384,7 @@ export class HomeGraphFactory {
                 : { name: 'Index', text: 'Worth a look.' },
               viewerRole,
               isGhost: isCounterpartGhost,
+              ...(secondPartyData ? { secondParty: secondPartyData } : {}),
               _cardIndex: cardIndex,
             });
 
@@ -402,6 +439,7 @@ export class HomeGraphFactory {
                 narratorChip,
                 viewerRole,
                 isGhost: isCounterpartGhost,
+                ...(secondPartyData ? { secondParty: secondPartyData } : {}),
                 _cardIndex: cardIndex,
               } satisfies HomeCardItem;
             } catch (e) {
@@ -468,6 +506,11 @@ export class HomeGraphFactory {
     const checkCategorizerCacheNode = async (state: typeof HomeGraphState.State) => {
       return timed("HomeGraph.checkCategorizerCache", async () => {
         if (state.cards.length === 0) {
+          return { categoryCacheHit: false };
+        }
+
+        if (state.noCache) {
+          logger.verbose('[HomeGraph:checkCategorizerCache] noCache=true, skipping cache');
           return { categoryCacheHit: false };
         }
 
@@ -587,6 +630,18 @@ export class HomeGraphFactory {
             items,
           };
         });
+
+        // Enforce category ordering: sections with connections first, then
+        // connector-flow only, then expired only. This prevents the LLM
+        // categorizer from placing introducer sections before connection sections.
+        const sectionCategoryPriority = (section: HomeSection): number => {
+          const hasConnection = section.items.some((item) => item.viewerRole !== 'introducer');
+          if (hasConnection) return 0; // mixed or connection-only sections first
+          const hasConnectorFlow = section.items.some((item) => item.viewerRole === 'introducer');
+          if (hasConnectorFlow) return 1; // connector-flow only sections next
+          return 2; // empty or expired sections last
+        };
+        sections.sort((a, b) => sectionCategoryPriority(a) - sectionCategoryPriority(b));
         const meta = {
           totalOpportunities: state.opportunities.length,
           totalSections: sections.length,

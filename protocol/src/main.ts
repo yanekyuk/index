@@ -58,7 +58,7 @@ IntentEvents.onCreated = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent created, triggering discovery + maintenance', { intentId, userId });
   opportunityQueue.addJob(
     { intentId, userId },
-    { priority: 10, jobId: `rediscovery:${userId}:${intentId}:${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
+    { priority: 10, jobId: `rediscovery-${userId}-${intentId}-${Math.floor(Date.now() / (6 * 60 * 60 * 1000))}` },
   ).catch((err) => log.job.from('IntentEvents').error('Failed to enqueue discovery on create', { intentId, userId, error: err }));
   opportunityService.triggerMaintenance(userId, 'intent-created');
 };

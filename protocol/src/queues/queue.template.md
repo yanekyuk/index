@@ -167,7 +167,7 @@ Enqueue from services, graphs, or controllers via the singleton:
 ```typescript
 import { intentQueue } from '../queues/intent.queue';
 
-await intentQueue.addJob('generate_hyde', { intentId, userId }, { jobId: `intent-hyde:${intentId}` });
+await intentQueue.addJob('generate_hyde', { intentId, userId }, { jobId: `intent-hyde-${intentId}` });
 ```
 
 If you keep a convenience function for backward compatibility:
@@ -229,6 +229,7 @@ Queues are **interface adapters**: they receive work (job payloads) and **orches
 ### 2. Job names
 - Use snake_case (e.g. `generate_hyde`, `discover_opportunities`, `process_opportunity_notification`).
 - Route in `processJob` (and in the worker’s processor) with a `switch` on `job.name`.
+- **Custom job IDs must not contain colons** — BullMQ uses colons internally for Redis key namespacing. Use dashes as separators (e.g. `intent-hyde-${intentId}`, not `intent-hyde:${intentId}`).
 
 ### 3. Testing
 - Constructor accepts optional **deps** (e.g. mock database, mock email) so tests don’t hit real DB or Redis.

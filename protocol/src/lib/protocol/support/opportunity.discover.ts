@@ -105,6 +105,12 @@ export interface FormattedDiscoveryCandidate {
     avatar?: string | null;
     userId?: string;
   };
+  /** Second party in introducer arrow layout (candidate -> secondParty). Present when viewer is introducer. */
+  secondParty?: {
+    name: string;
+    avatar?: string | null;
+    userId?: string;
+  };
 }
 
 /** One step for debug visibility (subgraph/subtask). */
@@ -191,7 +197,14 @@ async function enrichOpportunities(
 
   const baseEnrichedRaw = await Promise.all(
     opportunities.map(async (opp) => {
-      const candidateActor = opp.actors.find((a) => a.userId !== userId && a.role !== 'introducer');
+      const viewerIsIntroducer = opp.actors.some((a) => a.role === 'introducer' && a.userId === userId);
+      // When the viewer is the introducer, the "candidate" for the card is the agent
+      // (the discovered person), not the patient (the intro target / onBehalfOfUserId).
+      // For non-introducer views, pick the first non-viewer, non-introducer actor.
+      const nonViewerNonIntroducerActors = opp.actors.filter((a) => a.userId !== userId && a.role !== 'introducer');
+      const candidateActor = viewerIsIntroducer
+        ? (nonViewerNonIntroducerActors.find((a) => a.role === 'agent') ?? nonViewerNonIntroducerActors[0])
+        : nonViewerNonIntroducerActors[0];
       const candidateUserId = candidateActor?.userId ?? "";
       const viewerActor = opp.actors.find((a) => a.userId === userId);
       const [profile, candidateUser] = candidateUserId
@@ -434,6 +447,28 @@ async function enrichOpportunities(
       }
 
       const isGhost = isGhostByUserId.get(item.candidateUserId) ?? false;
+
+      // Build secondParty for introducer view (the other non-introducer party)
+      let secondParty: FormattedDiscoveryCandidate["secondParty"];
+      const viewerIsIntroducerForCard = item.opportunity.actors.some(
+        (a) => a.role === "introducer" && a.userId === userId,
+      );
+      if (viewerIsIntroducerForCard) {
+        const otherPartyActor = item.opportunity.actors.find(
+          (a) => a.role !== "introducer" && a.userId !== item.candidateUserId,
+        );
+        if (otherPartyActor) {
+          const otherName = nameByUserId.get(otherPartyActor.userId) ?? undefined;
+          if (otherName) {
+            secondParty = {
+              name: otherName,
+              avatar: avatarByUserId.get(otherPartyActor.userId) ?? null,
+              userId: otherPartyActor.userId,
+            };
+          }
+        }
+      }
+
       return {
         opportunityId: item.opportunity.id,
         userId: item.candidateUserId,
@@ -453,6 +488,7 @@ async function enrichOpportunities(
           homeCardPresentation: homeCard,
         }),
         ...(narratorChip && { narratorChip }),
+        ...(secondParty && { secondParty }),
       };
     },
   );

@@ -17,15 +17,27 @@ describe('home.graph.ts composition import', () => {
   it('selectByComposition enforces soft targets on mixed feed', () => {
     const viewerId = 'viewer-1';
 
-    function makeOpp(id: string, hasIntroducer: boolean, status = 'latent') {
-      const actors = [
-        { userId: viewerId, role: 'party' },
-        { userId: `other-${id}`, role: 'party' },
-      ];
-      if (hasIntroducer) {
-        actors.push({ userId: `intro-${id}`, role: 'introducer' });
+    function makeOpp(id: string, isConnectorFlow: boolean, status = 'latent') {
+      if (isConnectorFlow) {
+        // Viewer is the introducer on connector-flow opportunities
+        return {
+          id,
+          actors: [
+            { userId: viewerId, role: 'introducer' },
+            { userId: `party-a-${id}`, role: 'party' },
+            { userId: `party-b-${id}`, role: 'party' },
+          ],
+          status,
+        };
       }
-      return { id, actors, status };
+      return {
+        id,
+        actors: [
+          { userId: viewerId, role: 'party' },
+          { userId: `other-${id}`, role: 'party' },
+        ],
+        status,
+      };
     }
 
     // 10 connections, 5 connector-flows, 5 expired -- way more than soft targets

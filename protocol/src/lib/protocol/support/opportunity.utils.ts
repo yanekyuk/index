@@ -7,6 +7,9 @@
  */
 
 import type { HydeTargetCorpus } from '../agents/lens.inferrer';
+import { log } from '../../../lib/log';
+
+const logger = log.graph.from('SelectByComposition');
 
 /** Actor roles in the opportunity model (agent / patient / peer). */
 export type OpportunityActorRole = 'agent' | 'patient' | 'peer';
@@ -207,13 +210,19 @@ export function selectByComposition<T extends { actors: Array<{ userId: string; 
     unusedSlots -= take;
   }
 
-  // Merge and sort by original position to preserve input order
+  // Merge in category priority order: connection > connector-flow > expired
+  // Within each category, preserve original input order
   const indexMap = new Map(opportunities.map((opp, i) => [opp, i]));
-  const result = [
+  const sortByOriginal = (a: T, b: T) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0);
+  selected.connection.sort(sortByOriginal);
+  selected['connector-flow'].sort(sortByOriginal);
+  selected.expired.sort(sortByOriginal);
+
+  logger.info(`[selectByComposition] input=${opportunities.length} buckets: connection=${buckets.connection.length} connector-flow=${buckets['connector-flow'].length} expired=${buckets.expired.length} → selected: connection=${selected.connection.length} connector-flow=${selected['connector-flow'].length} expired=${selected.expired.length}`);
+
+  return [
     ...selected.connection,
     ...selected['connector-flow'],
     ...selected.expired,
-  ].sort((a, b) => (indexMap.get(a) ?? 0) - (indexMap.get(b) ?? 0));
-
-  return result;
+  ];
 }

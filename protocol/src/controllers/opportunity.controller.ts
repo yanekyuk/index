@@ -94,9 +94,12 @@ export class OpportunityController {
     const url = new URL(req.url, `http://${req.headers.get('host') || 'localhost'}`);
     const indexId = url.searchParams.get('indexId') ?? undefined;
     const limitParam = url.searchParams.get('limit');
+    const noCacheParam = url.searchParams.get('noCache');
+    const noCache = noCacheParam === '1' || noCacheParam === 'true';
     const result = await opportunityService.getHomeView(user.id, {
       indexId,
       limit: limitParam ? parseInt(limitParam, 10) : undefined,
+      noCache,
     });
     if ('error' in result) {
       return new Response(JSON.stringify({ error: result.error }), {

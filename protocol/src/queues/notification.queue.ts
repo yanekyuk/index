@@ -237,7 +237,7 @@ export class NotificationQueue {
             }
           : undefined,
       },
-      { jobId: `opportunity-email:${recipientId}:${opportunityId}` }
+      { jobId: `opportunity-email-${recipientId}-${opportunityId}` }
     );
     this.logger.info('[NotificationJob] Enqueued high-priority opportunity email', {
       recipientId,

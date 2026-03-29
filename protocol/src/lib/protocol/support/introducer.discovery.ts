@@ -72,7 +72,7 @@ export async function selectContactsForDiscovery(
 ): Promise<ContactWithIntents[]> {
   const personalIndexId = await database.getPersonalIndexId(userId);
   if (!personalIndexId) {
-    logger.verbose('[IntroducerDiscovery] No personal index found', { userId });
+    logger.verbose(`[IntroducerDiscovery] No personal index found — userId=${userId}`);
     return [];
   }
 
@@ -82,11 +82,7 @@ export async function selectContactsForDiscovery(
     limit,
   );
 
-  logger.verbose('[IntroducerDiscovery] Selected contacts for discovery', {
-    userId,
-    totalContacts: contacts.length,
-    limit,
-  });
+  logger.verbose(`[IntroducerDiscovery] Selected contacts for discovery — userId=${userId} totalContacts=${contacts.length} limit=${limit}`);
 
   return contacts;
 }
@@ -139,7 +135,7 @@ export async function runIntroducerDiscovery(
       // For each contact, we enqueue a discovery job using one of their intents
       // The opportunity graph will use onBehalfOfUserId to discover on behalf of the contact
       // while the userId (introducer) gets the introducer role
-      const jobId = `introducer-discovery:${userId}:${contact.userId}:${bucket}`;
+      const jobId = `introducer-discovery-${userId}-${contact.userId}-${bucket}`;
       try {
         await queue.addJob(
           {
@@ -154,11 +150,7 @@ export async function runIntroducerDiscovery(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (/duplicate|already exists|job.*id/i.test(message)) {
-          logger.verbose('[IntroducerDiscovery] Job skipped (duplicate)', {
-            userId,
-            contactUserId: contact.userId,
-            error: message,
-          });
+          logger.verbose(`[IntroducerDiscovery] Job skipped (duplicate) — userId=${userId} contactUserId=${contact.userId} error=${message}`);
           return false;
         }
         throw err;
@@ -166,13 +158,15 @@ export async function runIntroducerDiscovery(
     }),
   );
 
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      const errMsg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      logger.error(`[IntroducerDiscovery] Job enqueue failed: ${errMsg}`);
+    }
+  }
   jobsEnqueued = results.filter((r) => r.status === 'fulfilled' && r.value).length;
 
-  logger.info('[IntroducerDiscovery] Discovery cycle complete', {
-    userId,
-    contactsEvaluated: contacts.length,
-    jobsEnqueued,
-  });
+  logger.info(`[IntroducerDiscovery] Discovery cycle complete — userId=${userId} contactsEvaluated=${contacts.length} jobsEnqueued=${jobsEnqueued}`);
 
   return { contactsEvaluated: contacts.length, jobsEnqueued };
 }
