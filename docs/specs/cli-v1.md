@@ -8,7 +8,7 @@ updated: 2026-03-30
 
 ## Behavior
 
-The `index` CLI is a standalone Bun-based binary in a new `cli/` workspace at the monorepo root. It communicates with the Index Network protocol server over HTTP/SSE.
+The `index` CLI is a standalone Bun-based binary in a new `cli/` workspace at the monorepo root. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
 
 ### `index login`
 
@@ -54,7 +54,7 @@ Resumes a specific chat session. Works in both one-shot and REPL modes. The sess
 - SSE parsing must handle partial chunks (tokens may arrive mid-line).
 - The CLI must work on macOS and Linux. Windows is not required for v1.
 - No external CLI framework dependency — use Bun's built-in `parseArgs` from `node:util`.
-- The binary name is `index` (via `bin` field in package.json or bun build --compile).
+- The binary name is `index` (via `bin` field in package.json or bun build --compile). Distributed via `npm install -g @index-network/cli`.
 
 ## Acceptance Criteria
 
