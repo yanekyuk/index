@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Index CLI — thin dispatcher that parses arguments, authenticates,
  * and delegates to the appropriate command handler module.
@@ -6,6 +6,8 @@
  * Each command lives in its own `*.command.ts` file following the
  * `handleX(client, ...)` pattern.
  */
+
+import { execFile } from "node:child_process";
 
 import { parseArgs } from "./args.parser";
 import { CredentialStore } from "./auth.store";
@@ -128,7 +130,7 @@ async function runLogin(apiUrlOverride?: string, manualToken?: string): Promise<
           : null;
 
     if (opener) {
-      Bun.spawn([opener, authUrl], { stdout: "ignore", stderr: "ignore" });
+      execFile(opener, [authUrl], { stdio: "ignore" });
     }
   } catch {
     // Browser open failed — user can copy the URL manually.
