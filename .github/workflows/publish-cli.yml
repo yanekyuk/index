@@ -36,7 +36,7 @@ jobs:
             target: bun-linux-arm64
             npm-dir: linux-arm64
             binary-name: index-linux-arm64
-          - os: macos-13
+          - os: macos-latest
             target: bun-darwin-x64
             npm-dir: darwin-x64
             binary-name: index-darwin-x64
