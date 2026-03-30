@@ -14,6 +14,8 @@ export interface ParsedCommand {
   list: boolean;
   /** Override the API base URL. */
   apiUrl?: string;
+  /** Override the frontend app URL. */
+  appUrl?: string;
   /** Manually provided bearer token for login. */
   token?: string;
   /** The unrecognized command string (when command === "unknown"). */
@@ -104,6 +106,9 @@ export function parseArgs(args: string[]): ParsedCommand {
       i += 2;
     } else if (arg === "--api-url") {
       result.apiUrl = args[i + 1];
+      i += 2;
+    } else if (arg === "--app-url") {
+      result.appUrl = args[i + 1];
       i += 2;
     } else if (arg === "--token" || arg === "-t") {
       result.token = args[i + 1];

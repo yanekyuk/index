@@ -12,6 +12,8 @@ export interface LoginOptions {
   signal?: AbortSignal;
   /** Timeout in milliseconds for the callback server. Defaults to 120_000 (2 min). */
   timeoutMs?: number;
+  /** Frontend app URL for the cli-auth page. Defaults to apiUrl if not provided. */
+  appUrl?: string;
 }
 
 /** Return value from handleLogin — gives the caller the auth URL and a promise. */
@@ -45,6 +47,7 @@ export async function handleLogin(
 ): Promise<LoginHandle> {
   const timeoutMs = options.timeoutMs ?? 120_000;
   const baseUrl = apiUrl.replace(/\/$/, "");
+  const appBaseUrl = (options.appUrl ?? apiUrl).replace(/\/$/, "");
 
   let resolveCallback: (result: LoginResult) => void;
   const callbackPromise = new Promise<LoginResult>((resolve) => {
@@ -91,7 +94,7 @@ export async function handleLogin(
   // Default: session exchange page that converts existing browser session to CLI token
   // Falls back to OAuth if no session exists (handled by the frontend page)
   const authUrl =
-    `${baseUrl}/cli-auth?callback=${encodeURIComponent(callbackUrl)}`;
+    `${appBaseUrl}/cli-auth?callback=${encodeURIComponent(callbackUrl)}`;
 
   // Set up timeout
   const timeout = setTimeout(() => {

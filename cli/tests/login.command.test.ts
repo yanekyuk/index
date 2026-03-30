@@ -28,8 +28,8 @@ describe("handleLogin", () => {
     });
 
     expect(authUrl).toContain(apiUrl);
-    expect(authUrl).toContain("/api/auth/sign-in/social");
-    expect(authUrl).toContain(`callbackURL=`);
+    expect(authUrl).toContain("/cli-auth");
+    expect(authUrl).toContain("callback=");
     expect(port).toBeGreaterThan(0);
 
     // Clean up — abort the callback server

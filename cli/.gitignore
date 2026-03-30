@@ -1,0 +1,12 @@
+# dependencies
+/node_modules
+
+# env files
+.env*
+!.env.example
+
+# build
+dist/
+
+# misc
+.DS_Store
