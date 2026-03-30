@@ -11,6 +11,10 @@
  *   index profile                  Show your profile
  *   index profile show <user-id>  Show another user's profile
  *   index profile sync             Regenerate your profile
+ *   index intent list              List your signals
+ *   index intent show <id>         Show signal details
+ *   index intent create <content>  Create a signal from natural language
+ *   index intent archive <id>      Archive a signal
  *   index --help                   Show this help message
  *   index --version                Show version
  */
@@ -40,6 +44,10 @@ Usage:
   index profile                         Show your profile
   index profile show <user-id>          Show another user's profile
   index profile sync                    Regenerate your profile
+  index intent list [--archived] [--limit <n>]  List your signals
+  index intent show <id>               Show signal details
+  index intent create <content>        Create a signal from natural language
+  index intent archive <id>            Archive a signal
   index --help                          Show this help message
   index --version                       Show version
 
@@ -48,6 +56,8 @@ Options:
   --token <token>, -t Provide a bearer token directly (skips browser flow)
   --session <id>, -s  Resume a specific chat session
   --list, -l          List chat sessions
+  --archived          Include archived signals (intent list)
+  --limit <n>         Limit results (intent list)
 `;
 
 /**
@@ -98,8 +108,22 @@ async function main(): Promise<void> {
         await runProfileMe(args.apiUrl);
       }
       return;
+
+    case "intent":
+      await runIntent(args);
+      return;
   }
 }
+
+// ── Intent help text ────────────────────────────────────────────────
+
+const INTENT_HELP = `
+Usage:
+  index intent list [--archived] [--limit <n>]  List your signals
+  index intent show <id>                        Show signal details
+  index intent create <content>                 Create a signal from text
+  index intent archive <id>                     Archive a signal
+`;
 
 // ── Command handlers ─────────────────────────────────────────────────
 
@@ -166,6 +190,67 @@ async function runLogout(): Promise<void> {
   const store = new CredentialStore();
   await store.clear();
   output.success("Logged out. Session cleared.");
+}
+
+async function runIntent(args: import("./args.parser").ParsedCommand): Promise<void> {
+  if (!args.subcommand) {
+    console.log(INTENT_HELP);
+    return;
+  }
+
+  const client = await requireAuth(args.apiUrl);
+
+  switch (args.subcommand) {
+    case "list": {
+      const result = await client.listIntents({
+        archived: args.archived,
+        limit: args.limit,
+      });
+      output.heading("Signals");
+      output.intentTable(result.intents);
+      if (result.pagination.total > 0) {
+        output.dim(
+          `\n  Page ${result.pagination.page} of ${result.pagination.totalPages} (${result.pagination.total} total)`,
+        );
+      }
+      console.log();
+      return;
+    }
+
+    case "show": {
+      if (!args.intentId) {
+        output.error("Missing signal ID. Usage: index intent show <id>", 1);
+        return;
+      }
+      const intent = await client.getIntent(args.intentId);
+      output.intentCard(intent);
+      return;
+    }
+
+    case "create": {
+      if (!args.intentContent) {
+        output.error("Missing content. Usage: index intent create <content>", 1);
+        return;
+      }
+      output.info("Processing signal...");
+      const result = await client.processIntent(args.intentContent);
+      output.success("Signal processed successfully.");
+      if (result.message) {
+        output.dim(`  ${result.message}`);
+      }
+      return;
+    }
+
+    case "archive": {
+      if (!args.intentId) {
+        output.error("Missing signal ID. Usage: index intent archive <id>", 1);
+        return;
+      }
+      await client.archiveIntent(args.intentId);
+      output.success(`Signal ${args.intentId} archived.`);
+      return;
+    }
+  }
 }
 
 async function runChatList(apiUrlOverride?: string): Promise<void> {
