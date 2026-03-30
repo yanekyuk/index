@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Loader2, ArrowUp, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import UserAvatar from '@/components/UserAvatar';
+import GhostBadge from '@/components/GhostBadge';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,7 @@ interface ChatViewProps {
   userId: string;
   userName: string;
   userAvatar?: string;
+  isGhost?: boolean;
   initialGroupId?: string;
   /** Pre-fill the message input. */
   initialMessage?: string;
@@ -24,7 +26,7 @@ interface ChatViewProps {
   onBack?: () => void;
 }
 
-export default function ChatView({ userId, userName, userAvatar, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack }: ChatViewProps) {
+export default function ChatView({ userId, userName, userAvatar, isGhost = false, initialGroupId, initialMessage, autoSend = false, onFirstMessageSent, onClose, onBack }: ChatViewProps) {
   const { user } = useAuthContext();
   const {
     messages: allMessages,
@@ -188,8 +190,14 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
         <div className="flex items-center gap-3">
           <button onClick={handleBack} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
           <Link to={`/u/${userId}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <UserAvatar avatar={userAvatar} id={userId} name={userName} size={44} />
-            <h2 className="font-ibm-plex-mono font-bold text-lg text-black">{userName}</h2>
+            <UserAvatar avatar={userAvatar} id={userId} name={userName} size={44} blur={isGhost} />
+            <div>
+              <h2 className="font-ibm-plex-mono font-bold text-lg text-black flex items-center gap-1.5">
+                {userName}
+                {isGhost && <GhostBadge />}
+              </h2>
+              {isGhost && <p className="text-xs text-gray-400 -mt-0.5">Not yet on Index</p>}
+            </div>
           </Link>
         </div>
         <div className="relative" ref={menuRef}>
@@ -221,9 +229,24 @@ export default function ChatView({ userId, userName, userAvatar, initialGroupId,
               <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
             ) : messages.length === 0 && !contextLoading ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
-                <p className="text-sm">Start a conversation with {userName}</p>
+                {isGhost ? (
+                  <>
+                    <p className="text-sm font-medium">{userName} hasn&apos;t joined Index yet.</p>
+                    <p className="text-xs text-gray-400 mt-1">Send a message and we&apos;ll let you know when they join.</p>
+                  </>
+                ) : (
+                  <p className="text-sm">Start a conversation with {userName}</p>
+                )}
               </div>
             ) : null}
+
+            {isGhost && messages.length > 0 && (
+              <div className="text-center py-3">
+                <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 inline-block">
+                  <span className="font-medium text-gray-500">{userName}</span> is invited by you &mdash; we&apos;ll let you know when they join Index.
+                </p>
+              </div>
+            )}
 
             {messages.map((message, index) => {
               const isOwn = message.senderId === user?.id;
