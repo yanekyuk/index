@@ -502,7 +502,7 @@ export function sessionTable(
 
 // ── Intent output ──────────────────────────────────────────────────
 
-import type { Intent, Opportunity } from "./api.client";
+import type { Intent, Opportunity, Conversation, ConversationMessage } from "./api.client";
 
 /**
  * Print a table of intents (user-facing: "signals").
@@ -892,6 +892,106 @@ export function memberTable(
       `  ${name.padEnd(nameW)}  ${email.padEnd(emailW)}  ${role.padEnd(roleW)}  ${GRAY}${date}${RESET}`,
     );
   }
+}
+
+// ── Conversation output ───────────────────────────────────────────
+
+/**
+ * Print a table of conversations.
+ *
+ * @param conversations - Array of conversation objects from the API.
+ */
+export function conversationTable(conversations: Conversation[]): void {
+  if (conversations.length === 0) {
+    dim("  No conversations found.");
+    return;
+  }
+
+  const idWidth = 36;
+  const participantsWidth = 40;
+  const dateWidth = 20;
+
+  console.log(
+    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Participants".padEnd(participantsWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
+  );
+  console.log(
+    `  ${GRAY}${"-".repeat(idWidth)}  ${"-".repeat(participantsWidth)}  ${"-".repeat(dateWidth)}${RESET}`,
+  );
+
+  for (const c of conversations) {
+    const names = c.participants
+      .map((p) => p.user?.name ?? p.participantId)
+      .join(", ")
+      .slice(0, participantsWidth);
+    const date = new Date(c.createdAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+    console.log(
+      `  ${GRAY}${c.id.padEnd(idWidth)}${RESET}  ${names.padEnd(participantsWidth)}  ${GRAY}${date}${RESET}`,
+    );
+  }
+}
+
+/**
+ * Print a summary card for a conversation (used after DM get-or-create).
+ *
+ * @param conversation - The conversation object from the API.
+ */
+export function conversationCard(conversation: Conversation): void {
+  console.log();
+  console.log(`  ${BOLD}${CYAN}Conversation${RESET}`);
+  console.log(`  ${GRAY}${"─".repeat(40)}${RESET}`);
+  console.log(`  ${BOLD}ID${RESET}            ${GRAY}${conversation.id}${RESET}`);
+
+  if (conversation.participants.length > 0) {
+    const names = conversation.participants
+      .map((p) => p.user?.name ?? p.participantId)
+      .join(", ");
+    console.log(`  ${BOLD}Participants${RESET}  ${names}`);
+  }
+
+  const date = new Date(conversation.createdAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  console.log(`  ${BOLD}Created${RESET}       ${GRAY}${date}${RESET}`);
+  console.log(`  ${GRAY}${"─".repeat(40)}${RESET}`);
+  console.log();
+}
+
+/**
+ * Print a list of messages in a conversation.
+ *
+ * @param messages - Array of message objects from the API.
+ */
+export function messageList(messages: ConversationMessage[]): void {
+  if (messages.length === 0) {
+    dim("  No messages found.");
+    return;
+  }
+
+  for (const msg of messages) {
+    const sender = msg.senderId ?? msg.role;
+    const time = new Date(msg.createdAt).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const date = new Date(msg.createdAt).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const textParts = msg.parts
+      .filter((p) => p.type === "text" && p.text)
+      .map((p) => p.text)
+      .join("");
+
+    console.log(`  ${CYAN}${sender}${RESET}  ${GRAY}${date} ${time}${RESET}`);
+    console.log(`  ${textParts}`);
+    console.log();
   }
 }
 
