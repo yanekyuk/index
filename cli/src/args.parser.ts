@@ -5,12 +5,12 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "help" | "version" | "unknown";
-  /** Chat message for one-shot mode. */
+  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "help" | "version" | "unknown";
+  /** One-shot message for conversation command (H2A agent chat). */
   message?: string;
-  /** Resume a specific chat session. */
+  /** Resume a specific chat session (--session flag). */
   sessionId?: string;
-  /** List chat sessions instead of starting a conversation. */
+  /** @deprecated Unused — sessions are listed via 'conversation sessions' subcommand. */
   list: boolean;
   /** Override the API base URL. */
   apiUrl?: string;
@@ -18,8 +18,8 @@ export interface ParsedCommand {
   token?: string;
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
-  /** Profile subcommand ("show" or "sync"). */
-  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream";
+  /** Subcommand for multi-level commands (profile, intent, opportunity, network, conversation). */
+  subcommand?: "show" | "sync" | "list" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream" | "sessions" | "help";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -40,13 +40,13 @@ export interface ParsedCommand {
   prompt?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "network", "conversation", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "network", "conversation", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite"]);
 
-const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream"]);
+const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream", "sessions", "help"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -142,11 +142,6 @@ export function parseArgs(args: string[]): ParsedCommand {
     return result;
   }
 
-  // First positional after command is the message (for chat)
-  if (positionals.length > 0 && result.command === "chat") {
-    result.message = positionals.join(" ");
-  }
-
   // Profile subcommands: "show <user-id>" or "sync"
   if (result.command === "profile" && positionals.length > 0) {
     const sub = positionals[0];
@@ -176,13 +171,16 @@ export function parseArgs(args: string[]): ParsedCommand {
     }
   }
 
-  // Conversation command: first positional is subcommand, rest are args
+  // Conversation command: first positional is subcommand, rest are args.
+  // If the first positional is not a known subcommand, treat all positionals
+  // as a one-shot message to the AI agent.
   if (result.command === "conversation") {
     if (positionals.length > 0 && CONVERSATION_SUBCOMMANDS.has(positionals[0])) {
       result.subcommand = positionals[0] as ParsedCommand["subcommand"];
       result.positionals = positionals.slice(1);
     } else if (positionals.length > 0) {
-      result.positionals = positionals;
+      // Not a known subcommand — treat as one-shot agent message
+      result.message = positionals.join(" ");
     }
   }
 

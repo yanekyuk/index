@@ -15,7 +15,7 @@ bun run build
 ./dist/index login
 
 # Start chatting
-./dist/index chat
+./dist/index conversation
 ```
 
 ## Commands
@@ -53,16 +53,20 @@ index intent create "Looking for a CTO"     # Create from natural language
 index intent archive <id>                   # Archive a signal
 ```
 
-### `index chat`
+### `index conversation`
 
-Interactive REPL chat with the Index agent. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
+Unified conversation command for AI agent chat and human-to-human messaging. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
 
 ```bash
-index chat                          # Interactive REPL
-index chat "find me collaborators"  # One-shot message
-index chat --session <id>           # Resume a session
-index chat --session <id> "hello"   # Resume + send message
-index chat --list                   # List past sessions
+index conversation                          # Interactive AI chat REPL
+index conversation "find me collaborators"  # One-shot message to AI agent
+index conversation --session <id>           # Resume an AI chat session
+index conversation sessions                 # List AI chat sessions
+index conversation list                     # List all conversations (H2A + H2H)
+index conversation with <user-id>           # Open or resume a DM
+index conversation show <id>               # Show messages
+index conversation send <id> <msg>         # Send a message
+index conversation stream                  # Real-time SSE stream
 ```
 
 ### `index profile`
@@ -140,15 +144,15 @@ bun test
 ```
 cli/
   src/
-    main.ts              Entry point, command routing, REPL loop
-    login.command.ts     OAuth flow with local callback server
-    chat.command.ts      SSE stream processor
-    network.command.ts   Network subcommand handlers
-    output.ts            Terminal formatting, colors, markdown renderer
-    api.client.ts        Typed HTTP client for the protocol API
-    auth.store.ts        Credential persistence (~/.index/credentials.json)
-    args.parser.ts       CLI argument parser (Bun-native parseArgs)
-    sse.parser.ts        Server-Sent Events parser
+    main.ts                  Entry point, command routing
+    login.command.ts         OAuth flow with local callback server
+    conversation.command.ts  H2A agent chat + H2H messaging + SSE stream parser
+    network.command.ts       Network subcommand handlers
+    output.ts                Terminal formatting, colors, markdown renderer
+    api.client.ts            Typed HTTP client for the protocol API
+    auth.store.ts            Credential persistence (~/.index/credentials.json)
+    args.parser.ts           CLI argument parser (Bun-native parseArgs)
+    sse.parser.ts            Server-Sent Events parser
 ```
 
 ## Roadmap
@@ -156,4 +160,4 @@ cli/
 Commands planned for future iterations:
 
 - ~~`index network` — Manage indexes and memberships~~ (shipped!)
-- `index conversation` — H2H and A2A messaging
+- ~~`index conversation` — H2H and A2A messaging~~ (shipped!)

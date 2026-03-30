@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
-import { handleConversation } from "../src/conversation.command";
+import { handleConversation, renderSSEStream } from "../src/conversation.command";
 
 // ── Argument parsing tests ────────────────────────────────────────
 
@@ -250,8 +250,175 @@ describe("handleConversation", () => {
     await handleConversation(client, "send", ["c1", "Hello"]);
   });
 
-  it("prints help when no subcommand given", async () => {
-    // Should not throw — prints help text
+  it("starts REPL when no subcommand given", async () => {
+    // In non-interactive mode stdin closes immediately, so REPL exits cleanly
     await handleConversation(client, undefined, []);
+  });
+});
+
+// ── renderSSEStream tests ────────────────────────────────────────
+
+/**
+ * Creates a mock SSE server that emits the given raw SSE event strings.
+ * The server format matches the protocol's formatSSEEvent: `data: {JSON}\n\n`.
+ */
+function createMockSSEServer(events: string[]) {
+  const server = Bun.serve({
+    port: 0,
+    async fetch(req) {
+      const url = new URL(req.url);
+      if (req.method === "POST" && url.pathname === "/api/chat/stream") {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          start(controller) {
+            for (const event of events) {
+              controller.enqueue(encoder.encode(event));
+            }
+            controller.close();
+          },
+        });
+
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "X-Session-Id": "test-session-id",
+          },
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  return server;
+}
+
+/** Helper to build a `data: {JSON}\n\n` SSE event string. */
+function sseEvent(payload: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+describe("renderSSEStream", () => {
+  it("extracts text tokens from token events", async () => {
+    const events = [
+      sseEvent({ type: "status", sessionId: "s1", timestamp: "t", message: "Processing..." }),
+      sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "Hello " }),
+      sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "world!" }),
+      sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "Hello world!", title: "Test" }),
+    ];
+
+    const server = createMockSSEServer(events);
+    try {
+      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+
+      const tokens: string[] = [];
+      const result = await renderSSEStream(response, { onToken: (text) => tokens.push(text) });
+
+      expect(tokens.join("")).toBe("Hello world!");
+      expect(result.sessionId).toBe("s1");
+      expect(result.title).toBe("Test");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("captures session ID from done event", async () => {
+    const events = [
+      sseEvent({ type: "done", sessionId: "abc-123", timestamp: "t", response: "Hi", title: "Chat" }),
+    ];
+
+    const server = createMockSSEServer(events);
+    try {
+      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+
+      const result = await renderSSEStream(response, { onToken: () => {} });
+      expect(result.sessionId).toBe("abc-123");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("reports errors from error events", async () => {
+    const events = [
+      sseEvent({ type: "error", sessionId: "s1", timestamp: "t", message: "Something went wrong", code: "STREAM_ERROR" }),
+    ];
+
+    const server = createMockSSEServer(events);
+    try {
+      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+
+      const result = await renderSSEStream(response, { onToken: () => {} });
+      expect(result.error).toBe("Something went wrong");
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("shows tool activity in status callback", async () => {
+    const events = [
+      sseEvent({ type: "tool_activity", sessionId: "s1", timestamp: "t", toolName: "search", description: "Searching...", phase: "start" }),
+      sseEvent({ type: "tool_activity", sessionId: "s1", timestamp: "t", toolName: "search", description: "Searching...", phase: "end" }),
+      sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "result" }),
+      sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "result" }),
+    ];
+
+    const server = createMockSSEServer(events);
+    try {
+      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+
+      const statuses: string[] = [];
+      const tokens: string[] = [];
+      await renderSSEStream(
+        response,
+        {
+          onToken: (text) => tokens.push(text),
+          onToolActivity: (desc, phase) => { if (phase === "start") statuses.push(desc); },
+        },
+      );
+
+      expect(tokens.join("")).toBe("result");
+      expect(statuses.length).toBeGreaterThan(0);
+      expect(statuses.some((s) => s.includes("Searching"))).toBe(true);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  it("handles response_reset by clearing accumulated text", async () => {
+    const events = [
+      sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "wrong answer" }),
+      sseEvent({ type: "response_reset", sessionId: "s1", timestamp: "t", reason: "hallucination" }),
+      sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "correct answer" }),
+      sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "correct answer" }),
+    ];
+
+    const server = createMockSSEServer(events);
+    try {
+      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "hi" }),
+      });
+
+      const result = await renderSSEStream(response, { onToken: () => {} });
+      expect(result.response).toBe("correct answer");
+    } finally {
+      server.stop(true);
+    }
   });
 });

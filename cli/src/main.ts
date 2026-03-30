@@ -11,7 +11,6 @@ import { parseArgs } from "./args.parser";
 import { CredentialStore } from "./auth.store";
 import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
-import { handleChat } from "./chat.command";
 import { handleProfile } from "./profile.command";
 import { handleIntent } from "./intent.command";
 import { handleOpportunity } from "./opportunity.command";
@@ -29,9 +28,15 @@ Usage:
   index login                           Authenticate via browser (uses existing session or OAuth)
   index login --token <token>           Authenticate with a manually provided token
   index logout                          Clear stored session
-  index chat [message]                  Chat with the AI agent (REPL if no message)
-  index chat --list                     List chat sessions
-  index chat --session <id> [message]   Resume a specific session
+  index conversation                    Chat with the AI agent (interactive REPL)
+  index conversation "message"          One-shot message to the AI agent
+  index conversation --session <id>     Resume a specific chat session
+  index conversation sessions           List AI chat sessions
+  index conversation list               List all conversations (H2A + H2H)
+  index conversation with <user-id>     Open or resume a DM with a user
+  index conversation show <id>          Show messages in a conversation
+  index conversation send <id> <msg>    Send a message
+  index conversation stream             Listen for real-time events (SSE)
   index profile                         Show your profile
   index profile show <user-id>          Show another user's profile
   index profile sync                    Regenerate your profile
@@ -51,11 +56,6 @@ Usage:
   index network join <id>               Join a public network
   index network leave <id>              Leave a network
   index network invite <id> <email>     Invite a user by email
-  index conversation list                List your conversations
-  index conversation with <user-id>      Open or resume a DM with a user
-  index conversation show <id>           Show messages in a conversation
-  index conversation send <id> <message> Send a message
-  index conversation stream              Listen for real-time events (SSE)
   index --help                          Show this help message
   index --version                       Show version
 
@@ -63,7 +63,6 @@ Options:
   --api-url <url>     Override the API server URL (default: ${DEFAULT_API_URL})
   --token <token>, -t Provide a bearer token directly (skips browser flow)
   --session <id>, -s  Resume a specific chat session
-  --list, -l          List chat sessions
   --archived          Include archived signals (intent list)
   --status <status>   Filter opportunities by status
   --limit <n>         Limit number of results
@@ -107,7 +106,7 @@ async function runLogin(apiUrlOverride?: string, manualToken?: string): Promise<
       const user = await client.getMe();
       output.success(`Logged in as ${user.name} (${user.email})`);
     } catch {
-      output.success("Token stored. Could not verify — check with `index chat`.");
+      output.success("Token stored. Could not verify — check with `index conversation`.");
     }
     return;
   }
@@ -195,13 +194,6 @@ async function main(): Promise<void> {
   const client = await requireAuth(args.apiUrl);
 
   switch (args.command) {
-    case "chat":
-      await handleChat(client, {
-        list: args.list,
-        message: args.message,
-        sessionId: args.sessionId,
-      });
-      return;
     case "profile":
       await handleProfile(client, args.subcommand, args.userId ? [args.userId] : []);
       return;
@@ -228,6 +220,8 @@ async function main(): Promise<void> {
     case "conversation":
       await handleConversation(client, args.subcommand, args.positionals ?? [], {
         limit: args.limit,
+        sessionId: args.sessionId,
+        message: args.message,
       });
       return;
   }

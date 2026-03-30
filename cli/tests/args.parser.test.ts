@@ -8,37 +8,42 @@ describe("parseArgs", () => {
     expect(result.command).toBe("login");
   });
 
-  it("parses 'chat' with no args as REPL mode", () => {
-    const result = parseArgs(["chat"]);
-    expect(result.command).toBe("chat");
+  it("parses 'conversation' with no args as REPL mode", () => {
+    const result = parseArgs(["conversation"]);
+    expect(result.command).toBe("conversation");
     expect(result.message).toBeUndefined();
-    expect(result.sessionId).toBeUndefined();
-    expect(result.list).toBe(false);
+    expect(result.subcommand).toBeUndefined();
   });
 
-  it("parses 'chat' with message as one-shot mode", () => {
-    const result = parseArgs(["chat", "hello world"]);
-    expect(result.command).toBe("chat");
+  it("parses 'conversation' with message as one-shot mode", () => {
+    const result = parseArgs(["conversation", "hello world"]);
+    expect(result.command).toBe("conversation");
     expect(result.message).toBe("hello world");
   });
 
-  it("parses 'chat --list'", () => {
-    const result = parseArgs(["chat", "--list"]);
-    expect(result.command).toBe("chat");
-    expect(result.list).toBe(true);
+  it("parses 'conversation sessions'", () => {
+    const result = parseArgs(["conversation", "sessions"]);
+    expect(result.command).toBe("conversation");
+    expect(result.subcommand).toBe("sessions");
   });
 
-  it("parses 'chat --session <id>'", () => {
-    const result = parseArgs(["chat", "--session", "abc-123"]);
-    expect(result.command).toBe("chat");
+  it("parses 'conversation --session <id>'", () => {
+    const result = parseArgs(["conversation", "--session", "abc-123"]);
+    expect(result.command).toBe("conversation");
     expect(result.sessionId).toBe("abc-123");
   });
 
-  it("parses 'chat --session <id> <message>'", () => {
-    const result = parseArgs(["chat", "--session", "abc-123", "hello"]);
-    expect(result.command).toBe("chat");
+  it("parses 'conversation --session <id> <message>'", () => {
+    const result = parseArgs(["conversation", "--session", "abc-123", "hello"]);
+    expect(result.command).toBe("conversation");
     expect(result.sessionId).toBe("abc-123");
     expect(result.message).toBe("hello");
+  });
+
+  it("treats 'chat' as unknown command", () => {
+    const result = parseArgs(["chat"]);
+    expect(result.command).toBe("unknown");
+    expect(result.unknown).toBe("chat");
   });
 
   it("parses '--help' flag", () => {
@@ -72,9 +77,9 @@ describe("parseArgs", () => {
     expect(result.unknown).toBe("foobar");
   });
 
-  it("parses 'chat --api-url <url>'", () => {
-    const result = parseArgs(["chat", "--api-url", "http://localhost:4000"]);
-    expect(result.command).toBe("chat");
+  it("parses 'conversation --api-url <url>'", () => {
+    const result = parseArgs(["conversation", "--api-url", "http://localhost:4000"]);
+    expect(result.command).toBe("conversation");
     expect(result.apiUrl).toBe("http://localhost:4000");
   });
 
