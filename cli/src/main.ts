@@ -8,6 +8,9 @@
  *   index chat [message]           Start or continue an H2A chat session
  *   index chat --list              List chat sessions
  *   index chat --session <id>      Resume a specific session
+ *   index profile                  Show your profile
+ *   index profile show <user-id>  Show another user's profile
+ *   index profile sync             Regenerate your profile
  *   index --help                   Show this help message
  *   index --version                Show version
  */
@@ -34,6 +37,9 @@ Usage:
   index chat [message]                  Chat with the AI agent (REPL if no message)
   index chat --list                     List chat sessions
   index chat --session <id> [message]   Resume a specific session
+  index profile                         Show your profile
+  index profile show <user-id>          Show another user's profile
+  index profile sync                    Regenerate your profile
   index --help                          Show this help message
   index --version                       Show version
 
@@ -78,6 +84,18 @@ async function main(): Promise<void> {
         await runChatOneShot(args.message, args.sessionId, args.apiUrl);
       } else {
         await runChatRepl(args.sessionId, args.apiUrl);
+      }
+      return;
+
+    case "profile":
+      if (args.subcommand === "sync") {
+        await runProfileSync(args.apiUrl);
+      } else if (args.subcommand === "show" && args.userId) {
+        await runProfileShow(args.userId, args.apiUrl);
+      } else if (args.subcommand === "show") {
+        output.error("Usage: index profile show <user-id>", 1);
+      } else {
+        await runProfileMe(args.apiUrl);
       }
       return;
   }
@@ -254,6 +272,33 @@ async function runChatRepl(
 
   process.stderr.write("\n");
   output.dim("Goodbye!");
+}
+
+// ── Profile handlers ────────────────────────────────────────────────
+
+async function runProfileMe(apiUrlOverride?: string): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  output.info("Loading your profile...");
+  const me = await client.getMe();
+  const user = await client.getUser(me.id);
+  output.profileCard(user);
+}
+
+async function runProfileShow(userId: string, apiUrlOverride?: string): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  output.info("Loading profile...");
+  const user = await client.getUser(userId);
+  output.profileCard(user);
+}
+
+async function runProfileSync(apiUrlOverride?: string): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  output.info("Regenerating profile...");
+  await client.syncProfile();
+  output.success("Profile regeneration triggered. It may take a moment to complete.");
 }
 
 // ── Stream helpers ──────────────────────────────────────────────────
