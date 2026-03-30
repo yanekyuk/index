@@ -54,7 +54,7 @@ Resumes a specific chat session. Works in both one-shot and REPL modes. The sess
 - SSE parsing must handle partial chunks (tokens may arrive mid-line).
 - The CLI must work on macOS and Linux. Windows is not required for v1.
 - No external CLI framework dependency — use Bun's built-in `parseArgs` from `node:util`.
-- The binary name is `index` (via `bin` field in package.json or bun build --compile). Distributed via `npm install -g @index-network/cli`.
+- The binary name is `index` (via `bin` field in package.json or bun build --compile). Distributed via `npm install -g @indexnetwork/cli`.
 
 ## Acceptance Criteria
 

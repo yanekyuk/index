@@ -1,4 +1,4 @@
-# Publish the @index-network/cli package to npm when a cli-v* tag is pushed.
+# Publish the @indexnetwork/cli package to npm when a cli-v* tag is pushed.
 #
 # Creates platform-specific binaries on native runners, then publishes
 # all packages (platform packages first, main package last).
@@ -141,7 +141,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for dir in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
-            echo "Publishing @index-network/cli-$dir..."
+            echo "Publishing @indexnetwork/cli-$dir..."
             npm publish --access public "npm/$dir"
           done
 

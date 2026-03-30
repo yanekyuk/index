@@ -20,7 +20,7 @@ describe("publish script", () => {
     const content = await readFile(PUBLISH_SCRIPT, "utf-8");
 
     // The script should reference publishing platform packages
-    expect(content).toContain("@index-network/cli-");
+    expect(content).toContain("@indexnetwork/cli-");
 
     // It should call the build step
     expect(content).toContain("build");

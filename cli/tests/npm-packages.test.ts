@@ -14,7 +14,7 @@ const PLATFORMS = [
 
 describe("platform package.json files", () => {
   for (const platform of PLATFORMS) {
-    describe(`@index-network/cli-${platform.dir}`, () => {
+    describe(`@indexnetwork/cli-${platform.dir}`, () => {
       let pkg: Record<string, unknown>;
 
       it("has a valid package.json", async () => {
@@ -28,7 +28,7 @@ describe("platform package.json files", () => {
         const pkgPath = join(CLI_ROOT, "npm", platform.dir, "package.json");
         const raw = await readFile(pkgPath, "utf-8");
         pkg = JSON.parse(raw);
-        expect(pkg.name).toBe(`@index-network/cli-${platform.dir}`);
+        expect(pkg.name).toBe(`@indexnetwork/cli-${platform.dir}`);
       });
 
       it("has the correct os field", async () => {
@@ -83,7 +83,7 @@ describe("main package.json", () => {
     expect(optDeps).toBeDefined();
 
     for (const platform of PLATFORMS) {
-      const depName = `@index-network/cli-${platform.dir}`;
+      const depName = `@indexnetwork/cli-${platform.dir}`;
       expect(optDeps[depName]).toBeDefined();
       expect(optDeps[depName]).toBe(pkg.version);
     }

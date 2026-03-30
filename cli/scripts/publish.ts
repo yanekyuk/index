@@ -4,8 +4,8 @@
  *
  * Orchestrates the full release flow:
  *   1. Runs the build script to cross-compile all targets.
- *   2. Publishes each platform-specific package (@index-network/cli-{os}-{arch}).
- *   3. Publishes the main package (@index-network/cli).
+ *   2. Publishes each platform-specific package (@indexnetwork/cli-{os}-{arch}).
+ *   3. Publishes the main package (@indexnetwork/cli).
  *
  * Platform packages must be published first so they exist in the registry
  * when users install the main package.
@@ -85,14 +85,14 @@ if (!skipBuild) {
 console.log("[publish] Publishing platform packages...");
 for (const dir of PLATFORM_DIRS) {
   const pkgDir = join(CLI_ROOT, "npm", dir);
-  const name = `@index-network/cli-${dir}`;
+  const name = `@indexnetwork/cli-${dir}`;
   await publishPackage(pkgDir, name);
 }
 console.log();
 
 // Step 3: Publish main package
 console.log("[publish] Publishing main package...");
-await publishPackage(CLI_ROOT, "@index-network/cli");
+await publishPackage(CLI_ROOT, "@indexnetwork/cli");
 
 console.log();
 console.log(`[publish] Done! All packages ${dryRun ? "validated" : "published"} for v${version}.`);

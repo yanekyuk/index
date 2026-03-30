@@ -8,12 +8,12 @@ updated: 2026-03-31
 
 ## Behavior
 
-The Index CLI is distributed as an npm package (`@index-network/cli`) that installs a native binary via platform-specific optional dependency packages. This follows the same pattern used by esbuild and turbo.
+The Index CLI is distributed as an npm package (`@indexnetwork/cli`) that installs a native binary via platform-specific optional dependency packages. This follows the same pattern used by esbuild and turbo.
 
 ### Installation
 
 ```bash
-npm install -g @index-network/cli
+npm install -g @indexnetwork/cli
 ```
 
 npm resolves the correct platform package from `optionalDependencies` based on the user's OS and CPU architecture. The result is a single `index` command available on the PATH.
@@ -24,10 +24,10 @@ Each platform package contains exactly one precompiled Bun binary:
 
 | Package | OS | CPU | Binary |
 |---|---|---|---|
-| `@index-network/cli-linux-x64` | linux | x64 | `bin/index` |
-| `@index-network/cli-linux-arm64` | linux | arm64 | `bin/index` |
-| `@index-network/cli-darwin-x64` | darwin | x64 | `bin/index` |
-| `@index-network/cli-darwin-arm64` | darwin | arm64 | `bin/index` |
+| `@indexnetwork/cli-linux-x64` | linux | x64 | `bin/index` |
+| `@indexnetwork/cli-linux-arm64` | linux | arm64 | `bin/index` |
+| `@indexnetwork/cli-darwin-x64` | darwin | x64 | `bin/index` |
+| `@indexnetwork/cli-darwin-arm64` | darwin | arm64 | `bin/index` |
 
 Each package.json uses npm's `os` and `cpu` fields so npm only downloads the matching binary.
 
@@ -36,7 +36,7 @@ Each package.json uses npm's `os` and `cpu` fields so npm only downloads the mat
 The main package's `bin` entry points to `bin/index.js`, a thin JavaScript shim that:
 
 1. Determines the current platform and architecture (`process.platform`, `process.arch`).
-2. Looks for the platform binary in the corresponding `@index-network/cli-{os}-{arch}` package.
+2. Looks for the platform binary in the corresponding `@indexnetwork/cli-{os}-{arch}` package.
 3. If found, executes it via `child_process.execFileSync`, forwarding all arguments and stdio.
 4. If not found, falls back to running `cli/dist/index.js` via `node` (the bundled JS fallback).
 
@@ -62,8 +62,8 @@ These Node APIs work in both Bun and Node runtimes, so the compiled Bun binaries
 A publish script (`cli/scripts/publish.ts`) automates the release:
 
 1. Runs the build script.
-2. Publishes each platform package (`@index-network/cli-{os}-{arch}`).
-3. Publishes the main package (`@index-network/cli`).
+2. Publishes each platform package (`@indexnetwork/cli-{os}-{arch}`).
+3. Publishes the main package (`@indexnetwork/cli`).
 
 Platform packages must be published first so they exist in the registry when users install the main package.
 

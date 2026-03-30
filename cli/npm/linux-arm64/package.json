@@ -1,7 +1,7 @@
 {
-  "name": "@index-network/cli-linux-arm64",
+  "name": "@indexnetwork/cli-linux-arm64",
   "version": "0.7.0",
-  "description": "Platform-specific binary for @index-network/cli (Linux arm64)",
+  "description": "Platform-specific binary for @indexnetwork/cli (Linux arm64)",
   "license": "MIT",
   "os": ["linux"],
   "cpu": ["arm64"],

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Thin bin shim for @index-network/cli.
+ * Thin bin shim for @indexnetwork/cli.
  *
  * Resolves and executes the platform-specific precompiled binary from
  * the corresponding optional dependency package. If no platform binary
@@ -25,7 +25,7 @@ const path = require("path");
  * @returns {string} The scoped package name.
  */
 function platformPackageName(os, arch) {
-  return `@index-network/cli-${os}-${arch}`;
+  return `@indexnetwork/cli-${os}-${arch}`;
 }
 
 /**
@@ -103,8 +103,8 @@ if (fallbackJs) {
 
 // No binary, no fallback — report error
 console.error(
-  `@index-network/cli: No precompiled binary found for ${process.platform}-${process.arch},\n` +
+  `@indexnetwork/cli: No precompiled binary found for ${process.platform}-${process.arch},\n` +
   `and no bundled JS fallback available at dist/index.js.\n\n` +
-  `Try reinstalling: npm install -g @index-network/cli`
+  `Try reinstalling: npm install -g @indexnetwork/cli`
 );
 process.exit(1);

@@ -1,7 +1,7 @@
 {
-  "name": "@index-network/cli-linux-x64",
+  "name": "@indexnetwork/cli-linux-x64",
   "version": "0.7.0",
-  "description": "Platform-specific binary for @index-network/cli (Linux x64)",
+  "description": "Platform-specific binary for @indexnetwork/cli (Linux x64)",
   "license": "MIT",
   "os": ["linux"],
   "cpu": ["x64"],

@@ -12,7 +12,7 @@ import { existsSync } from "node:fs";
 
 /** Platform binary package name for a given os/arch combination. */
 function platformPackageName(os: string, arch: string): string {
-  return `@index-network/cli-${os}-${arch}`;
+  return `@indexnetwork/cli-${os}-${arch}`;
 }
 
 /** Resolve the path to the platform binary, or null if not installed. */
@@ -33,10 +33,10 @@ function resolvePlatformBinary(os: string, arch: string): string | null {
 
 describe("bin shim platform resolution", () => {
   it("constructs correct package names for all supported platforms", () => {
-    expect(platformPackageName("linux", "x64")).toBe("@index-network/cli-linux-x64");
-    expect(platformPackageName("linux", "arm64")).toBe("@index-network/cli-linux-arm64");
-    expect(platformPackageName("darwin", "x64")).toBe("@index-network/cli-darwin-x64");
-    expect(platformPackageName("darwin", "arm64")).toBe("@index-network/cli-darwin-arm64");
+    expect(platformPackageName("linux", "x64")).toBe("@indexnetwork/cli-linux-x64");
+    expect(platformPackageName("linux", "arm64")).toBe("@indexnetwork/cli-linux-arm64");
+    expect(platformPackageName("darwin", "x64")).toBe("@indexnetwork/cli-darwin-x64");
+    expect(platformPackageName("darwin", "arm64")).toBe("@indexnetwork/cli-darwin-arm64");
   });
 
   it("returns null when platform binary is not installed", () => {
@@ -47,7 +47,7 @@ describe("bin shim platform resolution", () => {
 
   it("handles unsupported platform/arch combinations", () => {
     const pkg = platformPackageName("win32", "x64");
-    expect(pkg).toBe("@index-network/cli-win32-x64");
+    expect(pkg).toBe("@indexnetwork/cli-win32-x64");
     // This package doesn't exist, so resolution returns null
     const result = resolvePlatformBinary("win32", "x64");
     expect(result).toBeNull();
