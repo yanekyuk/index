@@ -80,6 +80,59 @@ Unlike traditional matching systems that operate on profile similarity, Index tr
 - **OpenRouter** for LLM-powered agents with Zod-validated structured output
 - **BullMQ (Redis)** for asynchronous job processing and event-driven orchestration
 
+## CLI
+
+The Index CLI lets you interact with the protocol directly from your terminal — chat with the AI agent, manage signals, review opportunities, and message other users.
+
+### Installation
+
+```bash
+npm install -g @indexnetwork/cli
+```
+
+### Quick Start
+
+```bash
+# Authenticate (opens browser)
+index login
+
+# Chat with the AI agent (interactive REPL)
+index conversation
+
+# One-shot message
+index conversation "What opportunities do I have?"
+
+# Browse your signals
+index intent list
+
+# Review pending opportunities
+index opportunity list
+
+# Message another user
+index conversation with <user-id>
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `index login` | Authenticate via browser (OAuth) or `--token` |
+| `index logout` | Clear stored session |
+| `index conversation` | Chat with the AI agent (REPL or one-shot) |
+| `index conversation sessions` | List AI chat sessions |
+| `index conversation list` | List all conversations (H2A + H2H) |
+| `index conversation with <user-id>` | Open or resume a DM |
+| `index profile` | Show your profile |
+| `index profile sync` | Regenerate your profile |
+| `index intent list` | List your signals |
+| `index intent create <content>` | Create a signal |
+| `index opportunity list` | List your opportunities |
+| `index opportunity accept/reject <id>` | Act on an opportunity |
+| `index network list` | List your networks |
+| `index network create <name>` | Create a network |
+
+For the full command reference and rendered output examples, see [cli/cli-output-reference.html](cli/cli-output-reference.html).
+
 ## Getting Started
 
 ### Prerequisites
@@ -205,6 +258,9 @@ Detailed documentation lives in the `docs/` directory:
 ### Specs
 
 - **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
+- **[CLI Reference](cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
+- **[CLI v1 Spec](docs/specs/cli-v1.md)** -- Login and conversation command specification
+- **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
 ## Contributing
 

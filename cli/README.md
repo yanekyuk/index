@@ -2,20 +2,29 @@
 
 Command-line interface for [Index Network](https://index.network). Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.
 
-> **Status: v0.5.0**
-> Supports `login`, `chat`, `profile`, `intent` (signal management), `opportunity`, and `network` commands.
+## Installation
+
+```bash
+npm install -g @indexnetwork/cli
+```
 
 ## Quick Start
 
 ```bash
-# Build the binary
-bun run build
-
 # Authenticate (opens browser)
-./dist/index login
+index login
 
-# Start chatting
-./dist/index chat
+# Chat with the AI agent (interactive REPL)
+index conversation
+
+# One-shot message
+index conversation "What opportunities do I have?"
+
+# Browse your signals
+index intent list
+
+# Review pending opportunities
+index opportunity list
 ```
 
 ## Commands
@@ -40,6 +49,32 @@ Clear stored credentials.
 index logout
 ```
 
+### `index conversation`
+
+Unified conversation command for AI agent chat and human-to-human messaging. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
+
+```bash
+index conversation                          # Interactive AI chat REPL
+index conversation "find me collaborators"  # One-shot message to AI agent
+index conversation --session <id>           # Resume an AI chat session
+index conversation sessions                 # List AI chat sessions
+index conversation list                     # List all conversations (H2A + H2H)
+index conversation with <user-id>           # Open or resume a DM
+index conversation show <id>               # Show messages
+index conversation send <id> <msg>         # Send a message
+index conversation stream                  # Real-time SSE stream
+```
+
+### `index profile`
+
+View user profiles and trigger profile regeneration.
+
+```bash
+index profile                       # Show your own profile
+index profile show <user-id>        # Show another user's profile
+index profile sync                  # Regenerate your profile
+```
+
 ### `index intent`
 
 Manage your signals (intents). Create signals from natural language, list active signals, view details, and archive signals you no longer need.
@@ -51,28 +86,6 @@ index intent list --limit 5                 # Limit to 5 results
 index intent show <id>                      # Show full signal details
 index intent create "Looking for a CTO"     # Create from natural language
 index intent archive <id>                   # Archive a signal
-```
-
-### `index chat`
-
-Interactive REPL chat with the Index agent. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
-
-```bash
-index chat                          # Interactive REPL
-index chat "find me collaborators"  # One-shot message
-index chat --session <id>           # Resume a session
-index chat --session <id> "hello"   # Resume + send message
-index chat --list                   # List past sessions
-```
-
-### `index profile`
-
-View user profiles and trigger profile regeneration.
-
-```bash
-index profile                       # Show your own profile
-index profile show <user-id>        # Show another user's profile
-index profile sync                  # Regenerate your profile
 ```
 
 ### `index opportunity`
@@ -90,8 +103,6 @@ index opportunity reject <id>              # Reject an opportunity
 
 Status values: `pending`, `accepted`, `rejected`, `expired`.
 
-The `show` command displays a detailed card with parties (including valency roles: Helper, Seeker, Peer), reasoning, confidence, and presentation text.
-
 ### `index network`
 
 Manage networks (communities). List, create, join, leave, and invite members.
@@ -106,15 +117,14 @@ index network leave <id>               # Leave a network
 index network invite <id> user@email   # Invite a user by email
 ```
 
-
 ## Options
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--api-url <url>` | | Override API server (default: `http://localhost:3000`) |
+| `--api-url <url>` | | Override API server (default: `https://protocol.index.network`) |
+| `--app-url <url>` | | Override app URL for login (default: `https://index.network`) |
 | `--token <token>` | `-t` | Provide bearer token directly |
 | `--session <id>` | `-s` | Resume a specific chat session |
-| `--list` | `-l` | List chat sessions |
 | `--archived` | | Include archived signals (intent list) |
 | `--status <status>` | | Filter opportunities by status |
 | `--limit <n>` | | Limit number of results |
@@ -126,34 +136,44 @@ index network invite <id> user@email   # Invite a user by email
 
 ```bash
 # Run directly with Bun (no build step)
-bun src/main.ts chat
+bun src/main.ts conversation
 
-# Build a standalone binary
-bun run build        # outputs to dist/index
+# Build for all platforms
+bun run build
+
+# Build for current platform only (fast dev builds)
+bun scripts/build.ts --current
 
 # Run tests
 bun test
+
+# Dry-run publish
+bun scripts/publish.ts --dry-run
 ```
 
 ### Project Structure
 
 ```
 cli/
+  bin/
+    index.cjs                  Bin shim (resolves platform binary or JS fallback)
+  npm/
+    {os}-{arch}/               Platform-specific packages with precompiled binaries
+  scripts/
+    build.ts                   Cross-compilation build script
+    publish.ts                 npm publish orchestration
   src/
-    main.ts              Entry point, command routing, REPL loop
-    login.command.ts     OAuth flow with local callback server
-    chat.command.ts      SSE stream processor
-    network.command.ts   Network subcommand handlers
-    output.ts            Terminal formatting, colors, markdown renderer
-    api.client.ts        Typed HTTP client for the protocol API
-    auth.store.ts        Credential persistence (~/.index/credentials.json)
-    args.parser.ts       CLI argument parser (Bun-native parseArgs)
-    sse.parser.ts        Server-Sent Events parser
+    main.ts                    Entry point, command routing
+    login.command.ts           OAuth flow with local callback server
+    conversation.command.ts    H2A agent chat + H2H messaging + SSE stream parser
+    profile.command.ts         Profile subcommand handlers
+    intent.command.ts          Intent (signal) subcommand handlers
+    opportunity.command.ts     Opportunity subcommand handlers
+    network.command.ts         Network subcommand handlers
+    output/                    Terminal formatting, colors, markdown renderer
+    api.client.ts              Typed HTTP client for the protocol API
+    auth.store.ts              Credential persistence (~/.index/credentials.json)
+    args.parser.ts             CLI argument parser
+    sse.parser.ts              Server-Sent Events parser
+    types.ts                   Shared type definitions
 ```
-
-## Roadmap
-
-Commands planned for future iterations:
-
-- ~~`index network` — Manage indexes and memberships~~ (shipped!)
-- `index conversation` — H2H and A2A messaging

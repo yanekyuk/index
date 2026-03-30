@@ -4,6 +4,51 @@
  * All methods attach the stored Bearer token and handle
  * common error patterns (401, network errors).
  */
+
+import type {
+  ChatSession,
+  UserProfile,
+  StreamChatParams,
+  UserData,
+  SyncProfileResult,
+  Intent,
+  ListIntentsOptions,
+  IntentListResult,
+  OpportunityListOptions,
+  Opportunity,
+  Network,
+  NetworkMember,
+  SearchedUser,
+  AddMemberResult,
+  Conversation,
+  ConversationMessage,
+} from "./types";
+
+// Re-export all types for backward compatibility
+export type {
+  ChatSession,
+  UserProfile,
+  StreamChatParams,
+  UserData,
+  SyncProfileResult,
+  Intent,
+  ListIntentsOptions,
+  IntentListResult,
+  OpportunityListOptions,
+  Opportunity,
+  OpportunityActor,
+  OpportunityInterpretation,
+  OpportunityDetection,
+  Network,
+  NetworkMember,
+  SearchedUser,
+  AddMemberResult,
+  ConversationParticipant,
+  Conversation,
+  MessagePart,
+  ConversationMessage,
+} from "./types";
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -491,198 +536,3 @@ export class ApiClient {
   }
 }
 
-// ── Types ────────────────────────────────────────────────────────────
-
-/** A chat session as returned by the API. */
-export interface ChatSession {
-  id: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt?: string;
-}
-
-/** User profile from GET /api/auth/me. */
-export interface UserProfile {
-  id: string;
-  name: string;
-  email: string;
-}
-
-/** Parameters for POST /api/chat/stream. */
-export interface StreamChatParams {
-  message: string;
-  sessionId?: string;
-}
-
-/** Full user data from GET /api/users/:userId. */
-export interface UserData {
-  id: string;
-  name: string | null;
-  intro: string | null;
-  avatar: string | null;
-  location: string | null;
-  socials: Record<string, string> | null;
-  isGhost: boolean;
-  createdAt: string;
-  updatedAt: string | null;
-}
-
-/** Result from POST /api/profiles/sync. */
-export interface SyncProfileResult {
-  success: boolean;
-  [key: string]: unknown;
-}
-
-/** An intent as returned by the API. */
-export interface Intent {
-  id: string;
-  payload: string;
-  summary: string | null;
-  status: string;
-  sourceType: string | null;
-  confidence?: number;
-  inferenceType?: string;
-  intentMode?: string;
-  speechActType?: string;
-  semanticEntropy?: number;
-  isIncognito?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  archivedAt: string | null;
-  indexes?: Array<{ id: string; title: string; relevancyScore?: number }>;
-}
-
-/** Options for listing intents. */
-export interface ListIntentsOptions {
-  page?: number;
-  limit?: number;
-  archived?: boolean;
-  sourceType?: string;
-}
-
-/** Result from POST /api/intents/list. */
-export interface IntentListResult {
-  intents: Intent[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-/** Options for listing opportunities. */
-export interface OpportunityListOptions {
-  status?: string;
-  limit?: number;
-}
-
-/** An actor (party) in an opportunity. */
-export interface OpportunityActor {
-  userId: string;
-  name?: string;
-  role?: "agent" | "patient" | "peer";
-  indexId?: string;
-  intent?: string;
-}
-
-/** Interpretation (evaluation) of an opportunity. */
-export interface OpportunityInterpretation {
-  category?: string;
-  reasoning?: string;
-  confidence?: number;
-  signals?: Array<{ type: string; weight: number; detail: string }>;
-}
-
-/** Detection provenance for an opportunity. */
-export interface OpportunityDetection {
-  source?: string;
-  triggeredBy?: string;
-  createdBy?: string;
-  createdByName?: string;
-  timestamp?: string;
-}
-
-/** An opportunity object as returned by the API. */
-export interface Opportunity {
-  id: string;
-  status: string;
-  actors?: OpportunityActor[];
-  interpretation?: OpportunityInterpretation;
-  detection?: OpportunityDetection;
-  presentation?: string;
-  counterpartName?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-/** A network (index) as returned by the API. */
-export interface Network {
-  id: string;
-  title: string;
-  prompt?: string | null;
-  joinPolicy?: string;
-  isPersonal?: boolean;
-  memberCount?: number;
-  createdAt?: string;
-  owner?: { id: string; name: string; email: string };
-  /** Role of the current user (from list endpoint). */
-  role?: string;
-}
-
-/** A member of a network. */
-export interface NetworkMember {
-  userId: string;
-  user: { id?: string; name: string; email: string; image?: string | null };
-  permissions: string[];
-  createdAt?: string;
-}
-
-/** A user returned from the search endpoint. */
-export interface SearchedUser {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-}
-
-/** Result of adding a member to a network. */
-export interface AddMemberResult {
-  member: { userId: string };
-  message: string;
-}
-
-// ── Conversation types ──────────────────────────────────────────────
-
-/** A participant in a conversation. */
-export interface ConversationParticipant {
-  participantId: string;
-  participantType: "user" | "agent";
-  user?: { name: string; email?: string };
-}
-
-/** A conversation as returned by the API. */
-export interface Conversation {
-  id: string;
-  createdAt: string;
-  updatedAt?: string;
-  metadata?: Record<string, unknown>;
-  participants: ConversationParticipant[];
-}
-
-/** A message part (A2A-compatible). */
-export interface MessagePart {
-  type: string;
-  text?: string;
-  [key: string]: unknown;
-}
-
-/** A message in a conversation. */
-export interface ConversationMessage {
-  id: string;
-  role: string;
-  senderId?: string;
-  parts: MessagePart[];
-  createdAt: string;
-  metadata?: Record<string, unknown>;
-}

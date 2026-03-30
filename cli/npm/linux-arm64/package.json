@@ -1,0 +1,12 @@
+{
+  "name": "@indexnetwork/cli-linux-arm64",
+  "version": "0.7.0",
+  "description": "Platform-specific binary for @indexnetwork/cli (Linux arm64)",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "bin": {
+    "index": "bin/index"
+  },
+  "files": ["bin/"]
+}

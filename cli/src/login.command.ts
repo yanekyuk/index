@@ -1,3 +1,5 @@
+import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+
 import type { CredentialStore } from "./auth.store";
 
 /** Result of the login callback flow. */
@@ -25,6 +27,19 @@ export interface LoginHandle {
 }
 
 /**
+ * Close an HTTP server, resolving once all connections are terminated.
+ *
+ * @param server - The HTTP server to close.
+ */
+function closeServer(server: Server): Promise<void> {
+  return new Promise<void>((resolve) => {
+    server.close(() => resolve());
+    // Force-close any lingering keep-alive connections
+    server.closeAllConnections();
+  });
+}
+
+/**
  * Start the OAuth login flow.
  *
  * 1. Starts a local HTTP server on an ephemeral port.
@@ -34,64 +49,70 @@ export interface LoginHandle {
  * 5. Saves the received token to the credential store.
  *
  * @param apiUrl - The protocol server base URL.
+ * @param appUrl - The frontend app URL (serves the /cli-auth page).
  * @param store - The credential store instance.
  * @param options - Optional signal and timeout configuration.
  * @returns A handle with the auth URL and a promise for the result.
  */
 export async function handleLogin(
   apiUrl: string,
+  appUrl: string,
   store: CredentialStore,
   options: LoginOptions = {},
 ): Promise<LoginHandle> {
   const timeoutMs = options.timeoutMs ?? 120_000;
   const baseUrl = apiUrl.replace(/\/$/, "");
+  const baseAppUrl = appUrl.replace(/\/$/, "");
 
   let resolveCallback: (result: LoginResult) => void;
   const callbackPromise = new Promise<LoginResult>((resolve) => {
     resolveCallback = resolve;
   });
 
-  // Start local callback server on ephemeral port
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      const url = new URL(req.url);
+  // Start local callback server on ephemeral port using node:http
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? "/", `http://localhost`);
 
-      if (url.pathname === "/callback") {
-        const sessionToken = url.searchParams.get("session_token");
+    if (url.pathname === "/callback") {
+      const sessionToken = url.searchParams.get("session_token");
 
-        if (sessionToken) {
-          await store.save({ token: sessionToken, apiUrl: baseUrl });
-          resolveCallback({ success: true });
+      if (sessionToken) {
+        await store.save({ token: sessionToken, apiUrl: baseUrl });
+        resolveCallback({ success: true });
 
-          return new Response(callbackHtml("CLI authorized", "You can close this window and return to the terminal."), {
-            headers: { "Content-Type": "text/html" },
-          });
-        }
-
-        resolveCallback({
-          success: false,
-          error: "No session token received in callback.",
-        });
-
-        return new Response(callbackHtml("Authorization failed", "No session token received. Please try again."), {
-          headers: { "Content-Type": "text/html" },
-          status: 400,
-        });
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(callbackHtml("CLI authorized", "You can close this window and return to the terminal."));
+        return;
       }
 
-      return new Response("Not Found", { status: 404 });
-    },
+      resolveCallback({
+        success: false,
+        error: "No session token received in callback.",
+      });
+
+      res.writeHead(400, { "Content-Type": "text/html" });
+      res.end(callbackHtml("Authorization failed", "No session token received. Please try again."));
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
   });
 
-  const port = server.port;
+  // Listen on port 0 for ephemeral port assignment
+  await new Promise<void>((resolve) => {
+    server.listen(0, () => resolve());
+  });
+
+  const addr = server.address();
+  const port = typeof addr === "object" && addr ? addr.port : 0;
   const callbackUrl = `http://localhost:${port}/callback`;
 
   // Construct the auth URL
   // Default: session exchange page that converts existing browser session to CLI token
   // Falls back to OAuth if no session exists (handled by the frontend page)
   const authUrl =
-    `${baseUrl}/cli-auth?callback=${encodeURIComponent(callbackUrl)}`;
+    `${baseAppUrl}/cli-auth?callback=${encodeURIComponent(callbackUrl)}`;
 
   // Set up timeout
   const timeout = setTimeout(() => {
@@ -99,14 +120,14 @@ export async function handleLogin(
       success: false,
       error: "Login timed out. No callback received.",
     });
-    server.stop(true);
+    closeServer(server);
   }, timeoutMs);
 
   // Set up abort handler
   if (options.signal) {
     options.signal.addEventListener("abort", () => {
       clearTimeout(timeout);
-      server.stop(true);
+      closeServer(server);
       resolveCallback({
         success: false,
         error: "Login cancelled.",
@@ -119,7 +140,7 @@ export async function handleLogin(
   const wrappedPromise = callbackPromise.then(async (result) => {
     clearTimeout(timeout);
     await new Promise((r) => setTimeout(r, 100));
-    server.stop(true);
+    await closeServer(server);
     return result;
   });
 

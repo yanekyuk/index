@@ -23,13 +23,13 @@ describe("handleLogin", () => {
     const apiUrl = "http://localhost:3001";
     const controller = new AbortController();
 
-    const { authUrl, port, callbackPromise } = await handleLogin(apiUrl, store, {
+    const { authUrl, port, callbackPromise } = await handleLogin(apiUrl, apiUrl, store, {
       signal: controller.signal,
     });
 
     expect(authUrl).toContain(apiUrl);
-    expect(authUrl).toContain("/api/auth/sign-in/social");
-    expect(authUrl).toContain(`callbackURL=`);
+    expect(authUrl).toContain("/cli-auth");
+    expect(authUrl).toContain("callback=");
     expect(port).toBeGreaterThan(0);
 
     // Clean up — abort the callback server
@@ -42,7 +42,7 @@ describe("handleLogin", () => {
     const apiUrl = "http://localhost:3001";
     const controller = new AbortController();
 
-    const { port, callbackPromise } = await handleLogin(apiUrl, store, {
+    const { port, callbackPromise } = await handleLogin(apiUrl, apiUrl, store, {
       signal: controller.signal,
     });
 
@@ -65,7 +65,7 @@ describe("handleLogin", () => {
     const apiUrl = "http://localhost:3001";
     const controller = new AbortController();
 
-    const { callbackPromise } = await handleLogin(apiUrl, store, {
+    const { callbackPromise } = await handleLogin(apiUrl, apiUrl, store, {
       signal: controller.signal,
       timeoutMs: 200, // Short timeout for test
     });

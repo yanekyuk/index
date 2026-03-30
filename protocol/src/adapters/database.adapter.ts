@@ -627,6 +627,7 @@ export class IntentDatabaseAdapter {
       .where(
         and(
           eq(schema.intentIndexes.indexId, indexId),
+          eq(schema.intents.userId, requestingUserId),
           isNull(schema.intents.archivedAt)
         )
       )
@@ -1844,7 +1845,11 @@ export class ChatDatabaseAdapter {
       .from(intentIndexes)
       .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(eq(intentIndexes.indexId, indexId), isNull(intents.archivedAt)))
+      .where(and(
+        eq(intentIndexes.indexId, indexId),
+        eq(intents.userId, requestingUserId),
+        isNull(intents.archivedAt),
+      ))
       .orderBy(desc(intents.createdAt))
       .limit(limit)
       .offset(offset);

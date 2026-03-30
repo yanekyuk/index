@@ -1,17 +1,29 @@
 {
-  "name": "@index-network/cli",
-  "version": "0.6.0",
+  "name": "@indexnetwork/cli",
+  "version": "0.7.0",
+  "description": "Command-line interface for Index Network",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "bin": {
-    "index": "src/main.ts"
+    "index": "bin/index.cjs"
   },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "dev": "bun src/main.ts",
-    "build": "bun build src/main.ts --compile --outfile dist/index",
+    "build": "bun scripts/build.ts",
     "test": "NODE_ENV=test bun test",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "publish:all": "bun scripts/publish.ts"
+  },
+  "optionalDependencies": {
+    "@indexnetwork/cli-linux-x64": "0.7.0",
+    "@indexnetwork/cli-linux-arm64": "0.7.0",
+    "@indexnetwork/cli-darwin-x64": "0.7.0",
+    "@indexnetwork/cli-darwin-arm64": "0.7.0"
   },
   "devDependencies": {
     "@types/bun": "latest"
