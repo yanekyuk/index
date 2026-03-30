@@ -3,7 +3,7 @@
 Command-line interface for [Index Network](https://index.network). Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.
 
 > **Status: v0.3.0**
-> Supports `login`, `chat`, and `intent` (signal management) commands.
+> Supports `login`, `chat`, `profile`, `intent` (signal management), and `opportunity` commands.
 
 ## Quick Start
 
@@ -75,6 +75,23 @@ index profile show <user-id>        # Show another user's profile
 index profile sync                  # Regenerate your profile
 ```
 
+### `index opportunity`
+
+Browse and manage discovered opportunities.
+
+```bash
+index opportunity list                     # List all opportunities
+index opportunity list --status pending    # Filter by status
+index opportunity list --limit 5           # Limit results
+index opportunity show <id>                # Show full details
+index opportunity accept <id>              # Accept an opportunity
+index opportunity reject <id>              # Reject an opportunity
+```
+
+Status values: `pending`, `accepted`, `rejected`, `expired`.
+
+The `show` command displays a detailed card with parties (including valency roles: Helper, Seeker, Peer), reasoning, confidence, and presentation text.
+
 ## Options
 
 | Flag | Short | Description |
@@ -84,7 +101,8 @@ index profile sync                  # Regenerate your profile
 | `--session <id>` | `-s` | Resume a specific chat session |
 | `--list` | `-l` | List chat sessions |
 | `--archived` | | Include archived signals (intent list) |
-| `--limit <n>` | | Limit results (intent list) |
+| `--status <status>` | | Filter opportunities by status |
+| `--limit <n>` | | Limit number of results |
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 
@@ -120,6 +138,5 @@ cli/
 
 Commands planned for future iterations:
 
-- `index opportunity` — Browse and manage discovered opportunities
 - `index network` — Manage indexes and memberships
 - `index conversation` — H2H and A2A messaging
