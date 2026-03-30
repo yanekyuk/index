@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "profile" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "chat" | "profile" | "intent" | "help" | "version" | "unknown";
   /** Chat message for one-shot mode. */
   message?: string;
   /** Resume a specific chat session. */
@@ -19,12 +19,20 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Profile subcommand ("show" or "sync"). */
-  subcommand?: "show" | "sync";
+  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
+  /** Intent ID for show/archive subcommands. */
+  intentId?: string;
+  /** Content string for intent create subcommand. */
+  intentContent?: string;
+  /** Include archived intents in listing. */
+  archived?: boolean;
+  /** Limit for intent list pagination. */
+  limit?: number;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "help", "version"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -86,6 +94,12 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--token" || arg === "-t") {
       result.token = args[i + 1];
       i += 2;
+    } else if (arg === "--archived") {
+      result.archived = true;
+      i++;
+    } else if (arg === "--limit") {
+      result.limit = parseInt(args[i + 1], 10);
+      i += 2;
     } else if (arg.startsWith("--")) {
       // Skip unknown flags
       i++;
@@ -113,5 +127,40 @@ export function parseArgs(args: string[]): ParsedCommand {
     }
   }
 
+  // Intent subcommand parsing
+  if (result.command === "intent") {
+    parseIntentArgs(positionals, result);
+  }
+
   return result;
+}
+
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive"]);
+
+/**
+ * Parse intent-specific positional arguments into subcommand, ID, or content.
+ *
+ * @param positionals - Positional arguments after flags have been extracted.
+ * @param result - The parsed command object to populate.
+ */
+function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
+  if (positionals.length === 0) return;
+
+  const sub = positionals[0];
+  if (!INTENT_SUBCOMMANDS.has(sub)) return;
+
+  result.subcommand = sub as ParsedCommand["subcommand"];
+  const rest = positionals.slice(1);
+
+  switch (result.subcommand) {
+    case "show":
+    case "archive":
+      result.intentId = rest[0];
+      break;
+    case "create":
+      if (rest.length > 0) {
+        result.intentContent = rest.join(" ");
+      }
+      break;
+  }
 }

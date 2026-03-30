@@ -500,6 +500,110 @@ export function sessionTable(
   }
 }
 
+// ── Intent output ──────────────────────────────────────────────────
+
+import type { Intent } from "./api.client";
+
+/**
+ * Print a table of intents (user-facing: "signals").
+ *
+ * @param intents - Array of intent objects from the API.
+ */
+export function intentTable(intents: Intent[]): void {
+  if (intents.length === 0) {
+    dim("  No signals found.");
+    return;
+  }
+
+  const descWidth = 50;
+  const statusWidth = 10;
+  const sourceWidth = 16;
+  const dateWidth = 20;
+
+  console.log(
+    `  ${BOLD}${"Signal".padEnd(descWidth)}  ${"Status".padEnd(statusWidth)}  ${"Source".padEnd(sourceWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
+  );
+  console.log(
+    `  ${GRAY}${"-".repeat(descWidth)}  ${"-".repeat(statusWidth)}  ${"-".repeat(sourceWidth)}  ${"-".repeat(dateWidth)}${RESET}`,
+  );
+
+  for (const intent of intents) {
+    const desc = (intent.summary ?? intent.payload).slice(0, descWidth);
+    const status = (intent.status ?? "").padEnd(statusWidth);
+    const source = (intent.sourceType ?? "-").padEnd(sourceWidth);
+    const date = new Date(intent.createdAt).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+
+    const statusColor = intent.status === "ACTIVE" ? GREEN : GRAY;
+    console.log(
+      `  ${desc.padEnd(descWidth)}  ${statusColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
+    );
+  }
+}
+
+/**
+ * Print a detailed card for a single intent (user-facing: "signal").
+ *
+ * @param intent - The intent object from the API.
+ */
+export function intentCard(intent: Intent): void {
+  console.log();
+  console.log(`  ${BOLD}${CYAN}Signal Details${RESET}`);
+  console.log(`  ${GRAY}${"─".repeat(50)}${RESET}`);
+  console.log(`  ${BOLD}ID${RESET}            ${GRAY}${intent.id}${RESET}`);
+  console.log(`  ${BOLD}Status${RESET}        ${intent.status === "ACTIVE" ? GREEN : GRAY}${intent.status}${RESET}`);
+
+  if (intent.summary) {
+    console.log(`  ${BOLD}Summary${RESET}       ${intent.summary}`);
+  }
+
+  console.log();
+  console.log(`  ${BOLD}Description${RESET}`);
+  console.log(`  ${intent.payload}`);
+
+  if (intent.speechActType) {
+    console.log();
+    console.log(`  ${BOLD}Speech Act${RESET}    ${intent.speechActType}`);
+  }
+  if (intent.intentMode) {
+    console.log(`  ${BOLD}Mode${RESET}          ${intent.intentMode}`);
+  }
+  if (intent.sourceType) {
+    console.log(`  ${BOLD}Source${RESET}        ${intent.sourceType}`);
+  }
+  if (intent.confidence !== undefined) {
+    console.log(`  ${BOLD}Confidence${RESET}    ${confidenceBar(intent.confidence)}`);
+  }
+  if (intent.semanticEntropy !== undefined) {
+    console.log(`  ${BOLD}Entropy${RESET}       ${intent.semanticEntropy.toFixed(2)}`);
+  }
+  if (intent.isIncognito) {
+    console.log(`  ${BOLD}Incognito${RESET}     ${YELLOW}Yes${RESET}`);
+  }
+
+  console.log();
+  console.log(`  ${BOLD}Created${RESET}       ${GRAY}${new Date(intent.createdAt).toLocaleString()}${RESET}`);
+  console.log(`  ${BOLD}Updated${RESET}       ${GRAY}${new Date(intent.updatedAt).toLocaleString()}${RESET}`);
+  if (intent.archivedAt) {
+    console.log(`  ${BOLD}Archived${RESET}      ${GRAY}${new Date(intent.archivedAt).toLocaleString()}${RESET}`);
+  }
+
+  if (intent.indexes && intent.indexes.length > 0) {
+    console.log();
+    console.log(`  ${BOLD}Index Assignments${RESET}`);
+    for (const idx of intent.indexes) {
+      const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
+      console.log(`  ${CYAN}*${RESET} ${idx.title}${GRAY}${score}${RESET}`);
+    }
+  }
+
+  console.log(`  ${GRAY}${"─".repeat(50)}${RESET}`);
+  console.log();
+}
+
 // ── Tool descriptions ───────────────────────────────────────────────
 
 /** Human-friendly descriptions for protocol tools (mirrors frontend). */
