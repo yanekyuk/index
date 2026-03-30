@@ -25,13 +25,11 @@
  *   index --version                Show version
  */
 
-import { createInterface } from "node:readline/promises";
-
 import { parseArgs } from "./args.parser";
 import { CredentialStore } from "./auth.store";
 import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
-import { renderSSEStream } from "./chat.command";
+import { handleChat } from "./chat.command";
 import { handleProfile } from "./profile.command";
 import { handleIntent } from "./intent.command";
 import { handleOpportunity } from "./opportunity.command";
@@ -116,15 +114,15 @@ async function main(): Promise<void> {
       await runLogout();
       return;
 
-    case "chat":
-      if (args.list) {
-        await runChatList(args.apiUrl);
-      } else if (args.message) {
-        await runChatOneShot(args.message, args.sessionId, args.apiUrl);
-      } else {
-        await runChatRepl(args.sessionId, args.apiUrl);
-      }
+    case "chat": {
+      const client = await requireAuth(args.apiUrl);
+      await handleChat(client, {
+        list: args.list,
+        message: args.message,
+        sessionId: args.sessionId,
+      });
       return;
+    }
 
     case "profile": {
       const client = await requireAuth(args.apiUrl);
@@ -236,182 +234,6 @@ async function runLogout(): Promise<void> {
   const store = new CredentialStore();
   await store.clear();
   output.success("Logged out. Session cleared.");
-}
-
-async function runChatList(apiUrlOverride?: string): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-
-  const sessions = await client.listSessions();
-  output.heading("Chat Sessions");
-  output.sessionTable(sessions);
-  console.log();
-}
-
-async function runChatOneShot(
-  message: string,
-  sessionId?: string,
-  apiUrlOverride?: string,
-): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-
-  const response = await client.streamChat({ message, sessionId });
-
-  if (!response.ok) {
-    handleStreamError(response);
-    return;
-  }
-
-  const result = await streamToTerminal(response);
-
-  if (result.error) {
-    output.error(result.error, 1);
-    return;
-  }
-
-  if (result.sessionId) {
-    output.dim(`\nSession: ${result.sessionId}`);
-  }
-}
-
-async function runChatRepl(
-  sessionId?: string,
-  apiUrlOverride?: string,
-): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-  let currentSessionId = sessionId;
-
-  output.chatHeader();
-
-  const PROMPT_STR = output.PROMPT_STR;
-
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stderr,
-    terminal: true,
-  });
-  rl.setPrompt(PROMPT_STR);
-  rl.prompt();
-
-  try {
-    for await (const line of rl) {
-      const input = line.trim();
-      if (!input) {
-        rl.prompt();
-        continue;
-      }
-      if (input === "exit" || input === "quit") break;
-
-      const response = await client.streamChat({
-        message: input,
-        sessionId: currentSessionId,
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          output.error(
-            "Session expired. Run `index login` to re-authenticate.",
-            1,
-          );
-          return;
-        }
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        output.error(body.error ?? `HTTP ${response.status}`);
-        rl.prompt();
-        continue;
-      }
-
-      const result = await streamToTerminal(response);
-
-      if (result.error) {
-        output.error(result.error);
-      }
-
-      // Track session for continuity
-      if (result.sessionId) {
-        currentSessionId = result.sessionId;
-      }
-
-      process.stderr.write("\n");
-      rl.prompt();
-    }
-  } finally {
-    rl.close();
-  }
-
-  process.stderr.write("\n");
-  output.dim("Goodbye!");
-}
-
-// ── Stream helpers ──────────────────────────────────────────────────
-
-import type { StreamResult } from "./chat.command";
-import { MarkdownRenderer } from "./output";
-
-/**
- * Stream an SSE response to the terminal with formatting.
- * Handles status messages, tool activity, and markdown rendering.
- */
-async function streamToTerminal(response: Response): Promise<StreamResult> {
-  let hasTokens = false;
-  const md = new MarkdownRenderer();
-  let lastToolDesc = "";
-
-  const result = await renderSSEStream(response, {
-    onToken(text) {
-      if (!hasTokens) {
-        output.clearStatus();
-        hasTokens = true;
-      }
-      md.write(text);
-      // Once tokens flow, clear last tool so it can show again after new text
-      lastToolDesc = "";
-    },
-    onStatus(msg) {
-      if (!hasTokens) {
-        output.status(msg);
-      }
-    },
-    onToolActivity(description, phase) {
-      if (phase === "start") {
-        const friendly = output.humanizeToolName(description);
-        // Skip if identical to the last tool line with no text in between
-        if (friendly === lastToolDesc) return;
-        lastToolDesc = friendly;
-        // Finalize any buffered markdown before the tool line
-        md.finalize();
-        hasTokens = false;
-        output.toolActivity(friendly);
-      }
-    },
-    onResponseReset(reason) {
-      md.reset(reason);
-      hasTokens = false;
-    },
-  });
-
-  md.finalize();
-  output.clearStatus();
-  if (hasTokens) {
-    console.log(); // newline after streamed tokens
-  }
-
-  return result;
-}
-
-/** Handle non-OK stream responses. */
-async function handleStreamError(response: Response): Promise<void> {
-  if (response.status === 401) {
-    output.error(
-      "Session expired or invalid. Run `index login` to re-authenticate.",
-      1,
-    );
-  }
-  const body = (await response.json().catch(() => ({}))) as {
-    error?: string;
-  };
-  output.error(body.error ?? `HTTP ${response.status}`, 1);
 }
 
 // ── Auth helper ──────────────────────────────────────────────────────
