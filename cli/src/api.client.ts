@@ -42,6 +42,31 @@ export class ApiClient {
   }
 
   /**
+   * Get a user by ID.
+   *
+   * @param userId - The user ID to look up.
+   * @returns The user profile data.
+   * @throws Error on auth failure or network error.
+   */
+  async getUser(userId: string): Promise<UserData> {
+    const res = await this.get(`/api/users/${userId}`);
+    const body = (await res.json()) as { user: UserData };
+    return body.user;
+  }
+
+  /**
+   * Trigger profile sync/regeneration for the authenticated user.
+   *
+   * @returns The sync result.
+   * @throws Error on auth failure or network error.
+   */
+  async syncProfile(): Promise<SyncProfileResult> {
+    const res = await this.post("/api/profiles/sync");
+    const body = (await res.json()) as SyncProfileResult;
+    return body;
+  }
+
+  /**
    * Open an SSE stream to the chat endpoint.
    *
    * Returns the raw Response so the caller can read the body
@@ -78,6 +103,23 @@ export class ApiClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
       },
+    });
+
+    if (!res.ok) {
+      await this.handleError(res);
+    }
+
+    return res;
+  }
+
+  private async post(path: string, body?: unknown): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
     if (!res.ok) {
@@ -132,4 +174,23 @@ export interface UserProfile {
 export interface StreamChatParams {
   message: string;
   sessionId?: string;
+}
+
+/** Full user data from GET /api/users/:userId. */
+export interface UserData {
+  id: string;
+  name: string | null;
+  intro: string | null;
+  avatar: string | null;
+  location: string | null;
+  socials: Record<string, string> | null;
+  isGhost: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+/** Result from POST /api/profiles/sync. */
+export interface SyncProfileResult {
+  success: boolean;
+  [key: string]: unknown;
 }

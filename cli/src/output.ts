@@ -371,6 +371,97 @@ export class MarkdownRenderer {
   }
 }
 
+// ── Profile card ────────────────────────────────────────────────────
+
+/** User data shape for profile card rendering. */
+export interface ProfileData {
+  id: string;
+  name: string | null;
+  intro: string | null;
+  avatar: string | null;
+  location: string | null;
+  socials: Record<string, string> | null;
+  isGhost: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+/**
+ * Render a styled profile card and return it as a string.
+ * Also prints the card to stdout.
+ *
+ * @param data - The user profile data.
+ * @returns The rendered card string (with ANSI codes).
+ */
+export function profileCard(data: ProfileData): string {
+  const lines: string[] = [];
+  const W = 56;
+  const border = (ch: string) => `${CYAN}${ch}${RESET}`;
+  const hline = `  ${border("+")}${CYAN}${"─".repeat(W)}${RESET}${border("+")}`;
+
+  lines.push("");
+  lines.push(hline);
+
+  // Name line
+  const displayName = data.name ?? "(unnamed)";
+  const ghostTag = data.isGhost ? `  ${YELLOW}[ghost]${RESET}` : "";
+  const nameContent = `${BOLD}${WHITE}${displayName}${RESET}${ghostTag}`;
+  lines.push(`  ${border("|")} ${nameContent}${padTo(W - 2, stripAnsi(displayName + (data.isGhost ? "  [ghost]" : "")))}${border("|")}`);
+
+  // Intro / bio
+  if (data.intro) {
+    lines.push(`  ${border("|")}${" ".repeat(W)}${border("|")}`);
+    const wrapped = wordWrap(data.intro, W - 4);
+    for (const line of wrapped) {
+      lines.push(`  ${border("|")}  ${AGENT_TEXT}${line}${RESET}${padTo(W - 2, line)}${border("|")}`);
+    }
+  }
+
+  // Location
+  if (data.location) {
+    lines.push(`  ${border("|")}${" ".repeat(W)}${border("|")}`);
+    const locLine = `Location: ${data.location}`;
+    lines.push(`  ${border("|")}  ${GRAY}${locLine}${RESET}${padTo(W - 2, locLine)}${border("|")}`);
+  }
+
+  // Socials
+  if (data.socials && Object.keys(data.socials).length > 0) {
+    lines.push(`  ${border("|")}${" ".repeat(W)}${border("|")}`);
+    for (const [platform, url] of Object.entries(data.socials)) {
+      const socialLine = `${platform}: ${url}`;
+      lines.push(`  ${border("|")}  ${BLUE}${socialLine}${RESET}${padTo(W - 2, socialLine)}${border("|")}`);
+    }
+  }
+
+  // Member since
+  const since = new Date(data.createdAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const sinceLine = `Member since ${since}`;
+  lines.push(`  ${border("|")}${" ".repeat(W)}${border("|")}`);
+  lines.push(`  ${border("|")}  ${DIM}${sinceLine}${RESET}${padTo(W - 2, sinceLine)}${border("|")}`);
+
+  lines.push(hline);
+  lines.push("");
+
+  const output = lines.join("\n");
+  console.log(output);
+  return output;
+}
+
+/** Pad remaining space to fill a fixed-width card cell. */
+function padTo(cellWidth: number, plainText: string): string {
+  const remaining = Math.max(0, cellWidth - plainText.length);
+  return " ".repeat(remaining);
+}
+
+/** Strip ANSI escape sequences from a string. */
+function stripAnsi(str: string): string {
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 // ── Session table ───────────────────────────────────────────────────
 
 /**
