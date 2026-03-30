@@ -1323,6 +1323,17 @@ export class ChatDatabaseAdapter {
       });
   }
 
+  /**
+   * Soft-delete a ghost user and all their contact memberships.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param userId - The ghost user to soft-delete
+   * @returns true if the user was soft-deleted
+   */
+  async softDeleteGhost(userId: string): Promise<boolean> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.softDeleteGhost(userId);
+  }
+
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
       const [created] = await db.insert(schema.intents)
