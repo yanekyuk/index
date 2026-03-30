@@ -7,6 +7,13 @@ const logger = log.service.from('ConversationService');
 
 /**
  * Manages conversation lifecycle, messaging, and DM deduplication.
+ *
+ * Part of the unified conversation architecture:
+ * - ConversationDatabaseAdapter: single data layer for all conversation types (H2A, H2H, future A2A)
+ * - ConversationService: general conversation operations (create, message, DM, metadata, real-time)
+ * - ChatSessionService: layered on top for H2A-specific behavior (graph invocation, SSE streaming,
+ *   title generation, sharing, ghost invites)
+ *
  * @remarks Delegates all persistence to ConversationDatabaseAdapter. Does not call other services.
  */
 export class ConversationService {

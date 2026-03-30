@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import { chatDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ChatGraphFactory } from '../lib/protocol/graphs/chat.graph';
@@ -26,17 +26,15 @@ function generateSnowflakeId(): string {
 }
 
 /**
- * ChatSessionService
- * 
- * Manages chat sessions, messages, and chat graph invocation.
- * Uses ChatDatabaseAdapter for database operations.
- * Uses protocol adapters for graph invocation.
- * 
- * CONTEXT:
- * - Chat sessions are persistent conversations between a user and the system
- * - Each session contains multiple messages with role-based attribution
- * - Messages can store routing decisions and subgraph results for debugging
- * - Graph processing for AI-powered chat responses
+ * ChatSessionService — H2A (Human-to-Agent) conversation layer.
+ *
+ * Builds on the unified ConversationDatabaseAdapter to add agent-specific behavior:
+ * graph invocation, SSE streaming, title generation, sharing, and ghost invites.
+ *
+ * Part of the unified conversation architecture:
+ * - ConversationDatabaseAdapter: single data layer for all conversation types
+ * - ConversationService: general conversation operations (H2H, DMs, metadata)
+ * - ChatSessionService (this): H2A-specific behavior layered on top
  */
 export class ChatSessionService {
   private graphDb: ChatGraphCompositeDatabase;
@@ -44,7 +42,7 @@ export class ChatSessionService {
   private scraper: Scraper;
   private _factory: ChatGraphFactory | null = null;
 
-  constructor(private db = chatDatabaseAdapter) {
+  constructor(private db: ConversationDatabaseAdapter = conversationDatabaseAdapter) {
     // Initialize protocol adapters for graph processing
     this.graphDb = new ChatDatabaseAdapter();
     this.embedder = new EmbedderAdapter();
@@ -70,7 +68,7 @@ export class ChatSessionService {
     logger.verbose('Creating new session', { userId, hasTitle: Boolean(title?.trim()), indexId: indexId ?? undefined });
 
     const id = crypto.randomUUID();
-    await this.db.createSession({ id, userId, title, indexId });
+    await this.db.createChatSession({ id, userId, title, indexId });
 
     return id;
   }
@@ -89,7 +87,7 @@ export class ChatSessionService {
       return false;
     }
 
-    await this.db.updateSessionIndex(sessionId, indexId?.trim() || null);
+    await this.db.updateChatSessionIndex(sessionId, indexId?.trim() || null);
 
     logger.verbose('Session index updated', { sessionId, indexId: indexId ?? null });
     return true;
@@ -127,7 +125,7 @@ export class ChatSessionService {
   async getSession(sessionId: string, userId: string) {
     logger.verbose('Getting session', { sessionId, userId });
     
-    const session = await this.db.getSession(sessionId);
+    const session = await this.db.getChatSession(sessionId);
     
     if (!session || session.userId !== userId) {
       logger.warn('Session not found or unauthorized', { sessionId, userId });
@@ -147,7 +145,7 @@ export class ChatSessionService {
   async getUserSessions(userId: string, limit = 10) {
     logger.verbose('Getting user sessions', { userId, limit });
     
-    return this.db.getUserSessions(userId, limit);
+    return this.db.getUserChatSessions(userId, limit);
   }
 
   /**
@@ -172,7 +170,7 @@ export class ChatSessionService {
 
     const id = generateSnowflakeId();
 
-    await this.db.createMessage({
+    await this.db.createChatMessage({
       id,
       sessionId: params.sessionId,
       role: params.role,
@@ -183,7 +181,7 @@ export class ChatSessionService {
     });
 
     // Update session timestamp
-    await this.db.updateSessionTimestamp(params.sessionId);
+    await this.db.updateChatSessionTimestamp(params.sessionId);
 
     return id;
   }
@@ -198,7 +196,7 @@ export class ChatSessionService {
   async getSessionMessages(sessionId: string, limit?: number) {
     logger.verbose('Getting session messages', { sessionId, limit });
     
-    return this.db.getSessionMessages(sessionId, limit);
+    return this.db.getChatSessionMessages(sessionId, limit);
   }
 
   /**
@@ -217,7 +215,7 @@ export class ChatSessionService {
       return false;
     }
     
-    await this.db.deleteSession(sessionId);
+    await this.db.deleteChatSession(sessionId);
     
     logger.verbose('Session deleted', { sessionId });
     return true;
@@ -239,7 +237,7 @@ export class ChatSessionService {
       return false;
     }
     
-    await this.db.updateSessionTitle(sessionId, title);
+    await this.db.updateChatSessionTitle(sessionId, title);
     
     return true;
   }
@@ -251,7 +249,7 @@ export class ChatSessionService {
     if (session.shareToken) return session.shareToken;
 
     const token = crypto.randomUUID();
-    await this.db.setShareToken(sessionId, token);
+    await this.db.setChatShareToken(sessionId, token);
     logger.verbose('Session shared', { sessionId });
     return token;
   }
@@ -260,16 +258,16 @@ export class ChatSessionService {
     const session = await this.getSession(sessionId, userId);
     if (!session) return false;
 
-    await this.db.setShareToken(sessionId, null);
+    await this.db.setChatShareToken(sessionId, null);
     logger.verbose('Session unshared', { sessionId });
     return true;
   }
 
   async getSharedSession(shareToken: string) {
-    const session = await this.db.getSessionByShareToken(shareToken);
+    const session = await this.db.getChatSessionByShareToken(shareToken);
     if (!session) return null;
 
-    const messages = await this.db.getSessionMessages(session.id, 200);
+    const messages = await this.db.getChatSessionMessages(session.id, 200);
     return { session, messages };
   }
 
@@ -332,7 +330,7 @@ export class ChatSessionService {
    * @returns True if the message exists and its session is owned by the user
    */
   async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> {
-    return this.db.verifyMessageOwnership(messageId, userId);
+    return this.db.verifyChatMessageOwnership(messageId, userId);
   }
 
   /**
@@ -347,11 +345,11 @@ export class ChatSessionService {
     debugMeta?: unknown;
   }): Promise<void> {
     if (params.userId) {
-      const isOwner = await this.db.verifyMessageOwnership(params.messageId, params.userId);
+      const isOwner = await this.db.verifyChatMessageOwnership(params.messageId, params.userId);
       if (!isOwner) throw new Error('Not authorized');
     }
     const id = generateSnowflakeId();
-    await this.db.upsertMessageMetadata({
+    await this.db.upsertChatMessageMetadata({
       id,
       messageId: params.messageId,
       traceEvents: params.traceEvents,
@@ -369,7 +367,7 @@ export class ChatSessionService {
     metadata: unknown;
   }): Promise<void> {
     const id = generateSnowflakeId();
-    await this.db.upsertSessionMetadata({
+    await this.db.upsertChatSessionMetadata({
       id,
       sessionId: params.sessionId,
       metadata: params.metadata,
@@ -383,7 +381,7 @@ export class ChatSessionService {
    * @returns Array of message metadata records
    */
   async getMessageMetadataByMessageIds(messageIds: string[]) {
-    return this.db.getMessageMetadataByMessageIds(messageIds);
+    return this.db.getChatMessageMetadataByIds(messageIds);
   }
 
   /**
@@ -393,7 +391,7 @@ export class ChatSessionService {
    * @returns The session metadata record or undefined
    */
   async getSessionMetadata(sessionId: string) {
-    return this.db.getSessionMetadata(sessionId);
+    return this.db.getChatSessionMetadata(sessionId);
   }
 
   /**
