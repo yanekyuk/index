@@ -1,0 +1,19 @@
+{
+  "name": "@index-network/cli",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "index": "src/main.ts"
+  },
+  "scripts": {
+    "dev": "bun src/main.ts",
+    "build": "bun build src/main.ts --compile --outfile dist/index",
+    "test": "NODE_ENV=test bun test",
+    "lint": "eslint src/**/*.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}
