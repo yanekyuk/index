@@ -20,6 +20,7 @@
  *   index opportunity accept <id>  Accept an opportunity
  *   index opportunity reject <id>  Reject an opportunity
  *   index network <subcommand>     Manage networks (list, create, show, join, leave, invite)
+ *   index conversation <subcommand> H2H direct messaging (list, with, show, send, stream)
  *   index --help                   Show this help message
  *   index --version                Show version
  */
@@ -32,6 +33,7 @@ import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
 import { renderSSEStream } from "./chat.command";
 import { handleNetwork } from "./network.command";
+import { handleConversation } from "./conversation.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "http://localhost:3000";
@@ -66,6 +68,11 @@ Usage:
   index network join <id>               Join a public network
   index network leave <id>              Leave a network
   index network invite <id> <email>     Invite a user by email
+  index conversation list                List your conversations
+  index conversation with <user-id>      Open or resume a DM with a user
+  index conversation show <id>           Show messages in a conversation
+  index conversation send <id> <message> Send a message
+  index conversation stream              Listen for real-time events (SSE)
   index --help                          Show this help message
   index --version                       Show version
 
@@ -140,6 +147,14 @@ async function main(): Promise<void> {
       const client = await requireAuth(args.apiUrl);
       await handleNetwork(client, args.subcommand, args.positionals ?? [], {
         prompt: args.prompt,
+      });
+      return;
+    }
+
+    case "conversation": {
+      const client = await requireAuth(args.apiUrl);
+      await handleConversation(client, args.subcommand, args.positionals ?? [], {
+        limit: args.limit,
       });
       return;
     }
