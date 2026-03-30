@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "network" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "help" | "version" | "unknown";
   /** Chat message for one-shot mode. */
   message?: string;
   /** Resume a specific chat session. */
@@ -19,7 +19,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Profile subcommand ("show" or "sync"). */
-  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite";
+  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite" | "with" | "send" | "stream";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -40,11 +40,13 @@ export interface ParsedCommand {
   prompt?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "network", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "network", "conversation", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite"]);
+
+const CONVERSATION_SUBCOMMANDS = new Set(["list", "with", "show", "send", "stream"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -170,6 +172,16 @@ export function parseArgs(args: string[]): ParsedCommand {
       result.positionals = positionals.slice(1);
     } else if (positionals.length > 0) {
       // Unknown subcommand — treat as positionals
+      result.positionals = positionals;
+    }
+  }
+
+  // Conversation command: first positional is subcommand, rest are args
+  if (result.command === "conversation") {
+    if (positionals.length > 0 && CONVERSATION_SUBCOMMANDS.has(positionals[0])) {
+      result.subcommand = positionals[0] as ParsedCommand["subcommand"];
+      result.positionals = positionals.slice(1);
+    } else if (positionals.length > 0) {
       result.positionals = positionals;
     }
   }

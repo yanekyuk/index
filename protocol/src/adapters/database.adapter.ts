@@ -22,7 +22,7 @@ import { IndexMembershipEvents } from '../events/index_membership.event';
 const logger = log.lib.from('database.adapter');
 
 /** Sentinel participant ID for the built-in chat agent. */
-const SYSTEM_AGENT_ID = 'system-agent';
+export const SYSTEM_AGENT_ID = 'system-agent';
 
 /**
  * Creates a personal index for the user if one doesn't exist.
@@ -649,9 +649,8 @@ export class IntentDatabaseAdapter {
 // Chat Graph Database Adapter
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Chat Session and Message interfaces (internal to ChatDatabaseAdapter)
-// These remain backward-compatible so callers (chat.service, chat.controller) need no changes.
-interface ChatSession {
+// Chat Session and Message interfaces — exported so the unified ConversationService can use them.
+export interface ChatSession {
   id: string;
   userId: string;
   title: string | null;
@@ -661,7 +660,7 @@ interface ChatSession {
   updatedAt: Date;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string;
   sessionId: string;
   role: 'user' | 'assistant' | 'system';
@@ -673,7 +672,7 @@ interface ChatMessage {
 }
 
 /** Shape stored inside conversation_metadata.metadata for agent-chat sessions. */
-interface ChatConversationMeta {
+export interface ChatConversationMeta {
   title?: string | null;
   indexId?: string | null;
   shareToken?: string | null;
@@ -682,7 +681,7 @@ interface ChatConversationMeta {
 }
 
 /** Shape stored inside messages.metadata for agent-chat messages. */
-interface ChatMessageMeta {
+export interface ChatMessageMeta {
   routingDecision?: Record<string, unknown> | null;
   subgraphResults?: Record<string, unknown> | null;
   tokenCount?: number | null;
@@ -691,14 +690,14 @@ interface ChatMessageMeta {
   [key: string]: unknown;
 }
 
-interface CreateSessionInput {
+export interface CreateSessionInput {
   id: string;
   userId: string;
   title?: string;
   indexId?: string;
 }
 
-interface CreateMessageInput {
+export interface CreateMessageInput {
   id: string;
   sessionId: string;
   role: 'user' | 'assistant' | 'system';
@@ -709,7 +708,18 @@ interface CreateMessageInput {
 }
 
 /**
+ * Lazy getter for the ConversationDatabaseAdapter singleton.
+ * Avoids circular reference since conversationDatabaseAdapter is instantiated after chatDatabaseAdapter.
+ */
+let _convDbInstance: ConversationDatabaseAdapter | null = null;
+function _convDb(): ConversationDatabaseAdapter {
+  if (!_convDbInstance) _convDbInstance = new ConversationDatabaseAdapter();
+  return _convDbInstance;
+}
+
+/**
  * Database adapter for Chat Graph and its subgraphs.
+ * Session/message methods delegate to ConversationDatabaseAdapter (unified adapter).
  */
 export class ChatDatabaseAdapter {
   private readonly hydeAdapter = new HydeDatabaseAdapter();
@@ -720,460 +730,42 @@ export class ChatDatabaseAdapter {
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Session Methods (backed by conversations + conversation_participants + conversation_metadata)
+  // Chat Session Methods — delegated to ConversationDatabaseAdapter
+  // (kept for backward compatibility; new code should use conversationDatabaseAdapter directly)
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Helper: read ChatConversationMeta from conversation_metadata for a conversation.
-   */
-  private async _getConvMeta(conversationId: string): Promise<ChatConversationMeta | null> {
-    const [row] = await db
-      .select({ metadata: schema.conversationMetadata.metadata })
-      .from(schema.conversationMetadata)
-      .where(eq(schema.conversationMetadata.conversationId, conversationId))
-      .limit(1);
-    return (row?.metadata as ChatConversationMeta) ?? null;
-  }
-
-  /**
-   * Helper: upsert ChatConversationMeta into conversation_metadata.
-   */
-  private async _upsertConvMeta(conversationId: string, patch: Partial<ChatConversationMeta>): Promise<void> {
-    const existing = await this._getConvMeta(conversationId);
-    const merged: ChatConversationMeta = { ...(existing ?? {}), ...patch };
-    await db
-      .insert(schema.conversationMetadata)
-      .values({ conversationId, metadata: merged })
-      .onConflictDoUpdate({
-        target: schema.conversationMetadata.conversationId,
-        set: { metadata: merged, updatedAt: new Date() },
-      });
-  }
-
-  /**
-   * Helper: convert a conversations row + metadata into a backward-compatible ChatSession.
-   */
-  private _toChatSession(
-    conv: { id: string; createdAt: Date; updatedAt: Date },
-    userId: string,
-    meta: ChatConversationMeta | null,
-  ): ChatSession {
-    return {
-      id: conv.id,
-      userId,
-      title: meta?.title ?? null,
-      indexId: meta?.indexId ?? null,
-      shareToken: meta?.shareToken ?? null,
-      createdAt: conv.createdAt,
-      updatedAt: conv.updatedAt,
-    };
-  }
-
-  /**
-   * Create a new chat session.
-   * Creates a conversation, adds user + system-agent as participants,
-   * and stores title/indexId in conversation_metadata.
-   */
-  async createSession(data: CreateSessionInput): Promise<void> {
-    const now = new Date();
-    await db.transaction(async (tx) => {
-      await tx.insert(schema.conversations).values({
-        id: data.id,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      await tx.insert(schema.conversationParticipants).values([
-        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
-        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
-      ]);
-
-      // Store title and indexId in conversation_metadata
-      const meta: ChatConversationMeta = {};
-      if (data.title) meta.title = data.title;
-      if (data.indexId?.trim()) meta.indexId = data.indexId.trim();
-      if (Object.keys(meta).length > 0) {
-        await tx.insert(schema.conversationMetadata).values({
-          conversationId: data.id,
-          metadata: meta,
-        });
-      }
-    });
-  }
-
-  /**
-   * Get session by ID.
-   * Queries conversations + conversation_metadata and returns backward-compatible ChatSession.
-   */
-  async getSession(sessionId: string): Promise<ChatSession | null> {
-    const [conv] = await db.select()
-      .from(schema.conversations)
-      .where(eq(schema.conversations.id, sessionId))
-      .limit(1);
-
-    if (!conv) return null;
-
-    // Find the user participant (not the agent)
-    const [userParticipant] = await db
-      .select({ participantId: schema.conversationParticipants.participantId })
-      .from(schema.conversationParticipants)
-      .where(
-        and(
-          eq(schema.conversationParticipants.conversationId, sessionId),
-          eq(schema.conversationParticipants.participantType, 'user'),
-        ),
-      )
-      .limit(1);
-
-    const userId = userParticipant?.participantId ?? '';
-    const meta = await this._getConvMeta(sessionId);
-    return this._toChatSession(conv, userId, meta);
-  }
-
-  /**
-   * Get all sessions for a user, ordered by most recent.
-   * Queries conversation_participants to find the user's conversations.
-   */
-  async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> {
-    // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
-    const chatSessionIds = db
-      .select({ conversationId: schema.conversationParticipants.conversationId })
-      .from(schema.conversationParticipants)
-      .where(
-        and(
-          eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
-          eq(schema.conversationParticipants.participantType, 'agent'),
-        ),
-      );
-
-    const rows = await db
-      .select({
-        id: schema.conversations.id,
-        createdAt: schema.conversations.createdAt,
-        updatedAt: schema.conversations.updatedAt,
-      })
-      .from(schema.conversationParticipants)
-      .innerJoin(
-        schema.conversations,
-        eq(schema.conversationParticipants.conversationId, schema.conversations.id),
-      )
-      .where(
-        and(
-          eq(schema.conversationParticipants.participantId, userId),
-          eq(schema.conversationParticipants.participantType, 'user'),
-          isNull(schema.conversationParticipants.hiddenAt),
-          inArray(schema.conversations.id, chatSessionIds),
-        ),
-      )
-      .orderBy(desc(schema.conversations.updatedAt))
-      .limit(limit);
-
-    if (rows.length === 0) return [];
-
-    // Batch-fetch metadata for chat conversations
-    const chatConvIdList = rows.map((r) => r.id);
-    const metaRows = await db
-      .select()
-      .from(schema.conversationMetadata)
-      .where(inArray(schema.conversationMetadata.conversationId, chatConvIdList));
-    const metaMap = new Map(metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]));
-
-    return rows.map((conv) => this._toChatSession(conv, userId, metaMap.get(conv.id) ?? null));
-  }
-
-  /**
-   * Update session index.
-   */
-  async updateSessionIndex(sessionId: string, indexId: string | null): Promise<void> {
-    await this._upsertConvMeta(sessionId, { indexId });
-    await db
-      .update(schema.conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.conversations.id, sessionId));
-  }
-
-  /**
-   * Update session title.
-   */
-  async updateSessionTitle(sessionId: string, title: string): Promise<void> {
-    await this._upsertConvMeta(sessionId, { title });
-    await db
-      .update(schema.conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.conversations.id, sessionId));
-  }
-
-  /**
-   * Update session timestamp.
-   */
-  async updateSessionTimestamp(sessionId: string): Promise<void> {
-    await db.update(schema.conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.conversations.id, sessionId));
-  }
-
-  /**
-   * Delete a session (FK cascades delete participants, messages, metadata).
-   */
-  async deleteSession(sessionId: string): Promise<void> {
-    await db.delete(schema.conversations)
-      .where(eq(schema.conversations.id, sessionId));
-  }
-
-  /**
-   * Set or clear the share token for a session.
-   */
-  async setShareToken(sessionId: string, token: string | null): Promise<void> {
-    await this._upsertConvMeta(sessionId, { shareToken: token });
-    await db
-      .update(schema.conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(schema.conversations.id, sessionId));
-  }
-
-  /**
-   * Find a session by its share token.
-   */
-  async getSessionByShareToken(token: string): Promise<ChatSession | null> {
-    // Query conversation_metadata for the share token
-    const metaRows = await db
-      .select()
-      .from(schema.conversationMetadata)
-      .where(sql`${schema.conversationMetadata.metadata}->>'shareToken' = ${token}`)
-      .limit(1);
-
-    if (metaRows.length === 0) return null;
-
-    const convId = metaRows[0].conversationId;
-    return this.getSession(convId);
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Message Methods (backed by messages table)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Create a message in the new messages table.
-   * Maps role: 'assistant'|'system' -> role: 'agent', senderId: SYSTEM_AGENT_ID.
-   * Maps role: 'user' -> role: 'user', senderId looked up from conversation_participants.
-   * Stores routingDecision/subgraphResults/tokenCount in messages.metadata.
-   */
-  async createMessage(data: CreateMessageInput): Promise<void> {
-    const isAgent = data.role === 'assistant' || data.role === 'system';
-    let senderId: string;
-
-    if (isAgent) {
-      senderId = SYSTEM_AGENT_ID;
-    } else {
-      // Look up the user participant for this conversation
-      const [participant] = await db
-        .select({ participantId: schema.conversationParticipants.participantId })
-        .from(schema.conversationParticipants)
-        .where(
-          and(
-            eq(schema.conversationParticipants.conversationId, data.sessionId),
-            eq(schema.conversationParticipants.participantType, 'user'),
-          ),
-        )
-        .limit(1);
-      if (!participant?.participantId) {
-        throw new Error(`Conversation participant not found for session ${data.sessionId}`);
-      }
-      senderId = participant.participantId;
-    }
-
-    // Build metadata from non-null optional fields
-    const msgMeta: ChatMessageMeta = {};
-    if (data.routingDecision) msgMeta.routingDecision = data.routingDecision;
-    if (data.subgraphResults) msgMeta.subgraphResults = data.subgraphResults;
-    if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
-
-    await db.insert(schema.messages).values({
-      id: data.id,
-      conversationId: data.sessionId,
-      senderId,
-      role: isAgent ? 'agent' : 'user',
-      parts: [{ type: 'text', text: data.content }],
-      metadata: Object.keys(msgMeta).length > 0 ? msgMeta : null,
-      createdAt: new Date(),
-    });
-
-    // Update conversation.lastMessageAt
-    await db
-      .update(schema.conversations)
-      .set({ lastMessageAt: new Date() })
-      .where(eq(schema.conversations.id, data.sessionId));
-  }
-
-  /**
-   * Get messages for a session, reconstructing the backward-compatible ChatMessage shape.
-   */
-  async getSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
-    let query = db.select()
-      .from(schema.messages)
-      .where(eq(schema.messages.conversationId, sessionId))
-      .orderBy(asc(schema.messages.createdAt));
-
-    const rows = limit ? await query.limit(limit) : await query;
-
-    return rows.map((msg) => {
-      const parts = msg.parts as Array<{ type?: string; text?: string }>;
-      const content =
-        parts?.find((p) => p?.type === 'text' && typeof p.text === 'string')?.text
-        ?? parts?.find((p) => typeof p?.text === 'string')?.text
-        ?? '';
-      const meta = (msg.metadata ?? {}) as ChatMessageMeta;
-
-      // Map role back: 'agent' -> 'assistant'
-      const role: 'user' | 'assistant' | 'system' = msg.role === 'agent' ? 'assistant' : 'user';
-
-      return {
-        id: msg.id,
-        sessionId,
-        role,
-        content,
-        routingDecision: (meta.routingDecision as Record<string, unknown>) ?? null,
-        subgraphResults: (meta.subgraphResults as Record<string, unknown>) ?? null,
-        tokenCount: typeof meta.tokenCount === 'number' ? meta.tokenCount : null,
-        createdAt: msg.createdAt,
-      };
-    });
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // Chat Metadata Methods (backed by messages.metadata and conversation_metadata)
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Verify that a message belongs to a conversation the user participates in.
-   * @param messageId - The message ID to check
-   * @param userId - The user ID to verify ownership against
-   * @returns True if the message exists and the user is a participant
-   */
-  async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> {
-    const [row] = await db
-      .select({ conversationId: schema.messages.conversationId })
-      .from(schema.messages)
-      .where(eq(schema.messages.id, messageId))
-      .limit(1);
-
-    if (!row) return false;
-
-    const [participant] = await db
-      .select({ participantId: schema.conversationParticipants.participantId })
-      .from(schema.conversationParticipants)
-      .where(
-        and(
-          eq(schema.conversationParticipants.conversationId, row.conversationId),
-          eq(schema.conversationParticipants.participantId, userId),
-        ),
-      )
-      .limit(1);
-
-    return !!participant;
-  }
-
-  /**
-   * Upsert message metadata (traceEvents, debugMeta) into the message's metadata JSONB column.
-   */
-  async upsertMessageMetadata(params: {
-    id: string;
-    messageId: string;
-    traceEvents?: unknown;
-    debugMeta?: unknown;
-  }): Promise<void> {
-    if (params.traceEvents === undefined && params.debugMeta === undefined) return;
-
-    // Read current metadata from the message row
-    const [msg] = await db
-      .select({ metadata: schema.messages.metadata })
-      .from(schema.messages)
-      .where(eq(schema.messages.id, params.messageId))
-      .limit(1);
-
-    if (!msg) return;
-
-    const existing = (msg.metadata ?? {}) as ChatMessageMeta;
-    const merged: ChatMessageMeta = { ...existing };
-    if (params.traceEvents !== undefined) merged.traceEvents = params.traceEvents;
-    if (params.debugMeta !== undefined) merged.debugMeta = params.debugMeta;
-
-    await db
-      .update(schema.messages)
-      .set({ metadata: merged })
-      .where(eq(schema.messages.id, params.messageId));
-  }
-
-  /**
-   * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
-   * Returns a backward-compatible shape matching the old ChatMessageMetadata type.
-   */
-  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> {
-    if (messageIds.length === 0) return [];
-    const rows = await db
-      .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
-      .from(schema.messages)
-      .where(inArray(schema.messages.id, messageIds));
-
-    return rows.map((r) => {
-      const meta = (r.metadata ?? {}) as ChatMessageMeta;
-      return {
-        id: r.id,
-        messageId: r.id,
-        traceEvents: meta.traceEvents ?? null,
-        debugMeta: meta.debugMeta ?? null,
-        createdAt: r.createdAt,
-      };
-    });
-  }
-
-  /**
-   * Upsert session-level metadata into conversation_metadata.
-   */
-  async upsertSessionMetadata(params: {
-    id: string;
-    sessionId: string;
-    metadata: unknown;
-  }): Promise<void> {
-    const existing = await this._getConvMeta(params.sessionId);
-    // Merge the session-level metadata under a `_sessionMeta` key to avoid
-    // colliding with title/indexId/shareToken, but also keep backward compat
-    // by storing the raw payload under the same shape the callers expect.
-    const merged: ChatConversationMeta = {
-      ...(existing ?? {}),
-      _sessionMeta: params.metadata,
-    };
-    await db
-      .insert(schema.conversationMetadata)
-      .values({ conversationId: params.sessionId, metadata: merged })
-      .onConflictDoUpdate({
-        target: schema.conversationMetadata.conversationId,
-        set: { metadata: merged, updatedAt: new Date() },
-      });
-  }
-
-  /**
-   * Retrieve session metadata by session ID.
-   * Returns a backward-compatible shape matching the old ChatSessionMetadata type.
-   */
-  async getSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> {
-    const [row] = await db
-      .select()
-      .from(schema.conversationMetadata)
-      .where(eq(schema.conversationMetadata.conversationId, sessionId))
-      .limit(1);
-
-    if (!row) return undefined;
-
-    const meta = (row.metadata ?? {}) as ChatConversationMeta;
-    return {
-      id: row.conversationId,
-      sessionId: row.conversationId,
-      metadata: meta._sessionMeta ?? null,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
-  }
+  /** @deprecated Use conversationDatabaseAdapter.createChatSession */
+  async createSession(data: CreateSessionInput): Promise<void> { return _convDb().createChatSession(data); }
+  /** @deprecated Use conversationDatabaseAdapter.getChatSession */
+  async getSession(sessionId: string): Promise<ChatSession | null> { return _convDb().getChatSession(sessionId); }
+  /** @deprecated Use conversationDatabaseAdapter.getUserChatSessions */
+  async getUserSessions(userId: string, limit: number): Promise<ChatSession[]> { return _convDb().getUserChatSessions(userId, limit); }
+  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionIndex */
+  async updateSessionIndex(sessionId: string, indexId: string | null): Promise<void> { return _convDb().updateChatSessionIndex(sessionId, indexId); }
+  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTitle */
+  async updateSessionTitle(sessionId: string, title: string): Promise<void> { return _convDb().updateChatSessionTitle(sessionId, title); }
+  /** @deprecated Use conversationDatabaseAdapter.updateChatSessionTimestamp */
+  async updateSessionTimestamp(sessionId: string): Promise<void> { return _convDb().updateChatSessionTimestamp(sessionId); }
+  /** @deprecated Use conversationDatabaseAdapter.deleteChatSession */
+  async deleteSession(sessionId: string): Promise<void> { return _convDb().deleteChatSession(sessionId); }
+  /** @deprecated Use conversationDatabaseAdapter.setChatShareToken */
+  async setShareToken(sessionId: string, token: string | null): Promise<void> { return _convDb().setChatShareToken(sessionId, token); }
+  /** @deprecated Use conversationDatabaseAdapter.getChatSessionByShareToken */
+  async getSessionByShareToken(token: string): Promise<ChatSession | null> { return _convDb().getChatSessionByShareToken(token); }
+  /** @deprecated Use conversationDatabaseAdapter.createChatMessage */
+  async createMessage(data: CreateMessageInput): Promise<void> { return _convDb().createChatMessage(data); }
+  /** @deprecated Use conversationDatabaseAdapter.getChatSessionMessages */
+  async getSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> { return _convDb().getChatSessionMessages(sessionId, limit); }
+  /** @deprecated Use conversationDatabaseAdapter.verifyChatMessageOwnership */
+  async verifyMessageOwnership(messageId: string, userId: string): Promise<boolean> { return _convDb().verifyChatMessageOwnership(messageId, userId); }
+  /** @deprecated Use conversationDatabaseAdapter.upsertChatMessageMetadata */
+  async upsertMessageMetadata(params: { id: string; messageId: string; traceEvents?: unknown; debugMeta?: unknown }): Promise<void> { return _convDb().upsertChatMessageMetadata(params); }
+  /** @deprecated Use conversationDatabaseAdapter.getChatMessageMetadataByIds */
+  async getMessageMetadataByMessageIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> { return _convDb().getChatMessageMetadataByIds(messageIds); }
+  /** @deprecated Use conversationDatabaseAdapter.upsertChatSessionMetadata */
+  async upsertSessionMetadata(params: { id: string; sessionId: string; metadata: unknown }): Promise<void> { return _convDb().upsertChatSessionMetadata(params); }
+  /** @deprecated Use conversationDatabaseAdapter.getChatSessionMetadata */
+  async getSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> { return _convDb().getChatSessionMetadata(sessionId); }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Chat Graph Methods (Profiles, Intents, Indexes)
@@ -6175,6 +5767,453 @@ export class ConversationDatabaseAdapter {
       .offset(offset);
 
     return rows.map((r) => ({ ...r.task, artifact: r.artifact }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Chat Session Methods (H2A conversations with system-agent participant)
+  // Unified from former ChatDatabaseAdapter session/message/metadata methods.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Helper: read ChatConversationMeta from conversation_metadata for a conversation.
+   */
+  private async _getConvMeta(conversationId: string): Promise<ChatConversationMeta | null> {
+    const [row] = await db
+      .select({ metadata: schema.conversationMetadata.metadata })
+      .from(schema.conversationMetadata)
+      .where(eq(schema.conversationMetadata.conversationId, conversationId))
+      .limit(1);
+    return (row?.metadata as ChatConversationMeta) ?? null;
+  }
+
+  /**
+   * Helper: upsert ChatConversationMeta into conversation_metadata.
+   */
+  private async _upsertConvMeta(conversationId: string, patch: Partial<ChatConversationMeta>): Promise<void> {
+    const existing = await this._getConvMeta(conversationId);
+    const merged: ChatConversationMeta = { ...(existing ?? {}), ...patch };
+    await db
+      .insert(schema.conversationMetadata)
+      .values({ conversationId, metadata: merged })
+      .onConflictDoUpdate({
+        target: schema.conversationMetadata.conversationId,
+        set: { metadata: merged, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Helper: convert a conversations row + metadata into a backward-compatible ChatSession.
+   */
+  private _toChatSession(
+    conv: { id: string; createdAt: Date; updatedAt: Date },
+    userId: string,
+    meta: ChatConversationMeta | null,
+  ): ChatSession {
+    return {
+      id: conv.id,
+      userId,
+      title: meta?.title ?? null,
+      indexId: meta?.indexId ?? null,
+      shareToken: meta?.shareToken ?? null,
+      createdAt: conv.createdAt,
+      updatedAt: conv.updatedAt,
+    };
+  }
+
+  /**
+   * Create a new chat session (H2A conversation with system-agent participant).
+   * Creates a conversation, adds user + system-agent as participants,
+   * and stores title/indexId in conversation_metadata.
+   */
+  async createChatSession(data: CreateSessionInput): Promise<void> {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.conversations).values({
+        id: data.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx.insert(schema.conversationParticipants).values([
+        { conversationId: data.id, participantId: data.userId, participantType: 'user' as const },
+        { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
+      ]);
+
+      // Store title and indexId in conversation_metadata
+      const meta: ChatConversationMeta = {};
+      if (data.title) meta.title = data.title;
+      if (data.indexId?.trim()) meta.indexId = data.indexId.trim();
+      if (Object.keys(meta).length > 0) {
+        await tx.insert(schema.conversationMetadata).values({
+          conversationId: data.id,
+          metadata: meta,
+        });
+      }
+    });
+  }
+
+  /**
+   * Get chat session by ID.
+   * Queries conversations + conversation_metadata and returns backward-compatible ChatSession.
+   */
+  async getChatSession(sessionId: string): Promise<ChatSession | null> {
+    const [conv] = await db.select()
+      .from(schema.conversations)
+      .where(eq(schema.conversations.id, sessionId))
+      .limit(1);
+
+    if (!conv) return null;
+
+    // Find the user participant (not the agent)
+    const [userParticipant] = await db
+      .select({ participantId: schema.conversationParticipants.participantId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, sessionId),
+          eq(schema.conversationParticipants.participantType, 'user'),
+        ),
+      )
+      .limit(1);
+
+    const userId = userParticipant?.participantId ?? '';
+    const meta = await this._getConvMeta(sessionId);
+    return this._toChatSession(conv, userId, meta);
+  }
+
+  /**
+   * Get all chat sessions for a user, ordered by most recent.
+   * Queries conversation_participants to find conversations with system-agent.
+   */
+  async getUserChatSessions(userId: string, limit: number): Promise<ChatSession[]> {
+    // Subquery: conversation IDs that include the system agent (i.e. chat sessions, not DMs)
+    const chatSessionIds = db
+      .select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.participantId, SYSTEM_AGENT_ID),
+          eq(schema.conversationParticipants.participantType, 'agent'),
+        ),
+      );
+
+    const rows = await db
+      .select({
+        id: schema.conversations.id,
+        createdAt: schema.conversations.createdAt,
+        updatedAt: schema.conversations.updatedAt,
+      })
+      .from(schema.conversationParticipants)
+      .innerJoin(
+        schema.conversations,
+        eq(schema.conversationParticipants.conversationId, schema.conversations.id),
+      )
+      .where(
+        and(
+          eq(schema.conversationParticipants.participantId, userId),
+          eq(schema.conversationParticipants.participantType, 'user'),
+          isNull(schema.conversationParticipants.hiddenAt),
+          inArray(schema.conversations.id, chatSessionIds),
+        ),
+      )
+      .orderBy(desc(schema.conversations.updatedAt))
+      .limit(limit);
+
+    if (rows.length === 0) return [];
+
+    // Batch-fetch metadata for chat conversations
+    const chatConvIdList = rows.map((r) => r.id);
+    const metaRows = await db
+      .select()
+      .from(schema.conversationMetadata)
+      .where(inArray(schema.conversationMetadata.conversationId, chatConvIdList));
+    const metaMap = new Map(metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]));
+
+    return rows.map((conv) => this._toChatSession(conv, userId, metaMap.get(conv.id) ?? null));
+  }
+
+  /**
+   * Update chat session index scope.
+   */
+  async updateChatSessionIndex(sessionId: string, indexId: string | null): Promise<void> {
+    await this._upsertConvMeta(sessionId, { indexId });
+    await db
+      .update(schema.conversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Update chat session title.
+   */
+  async updateChatSessionTitle(sessionId: string, title: string): Promise<void> {
+    await this._upsertConvMeta(sessionId, { title });
+    await db
+      .update(schema.conversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Update chat session timestamp.
+   */
+  async updateChatSessionTimestamp(sessionId: string): Promise<void> {
+    await db.update(schema.conversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Delete a chat session (FK cascades delete participants, messages, metadata).
+   */
+  async deleteChatSession(sessionId: string): Promise<void> {
+    await db.delete(schema.conversations)
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Set or clear the share token for a chat session.
+   */
+  async setChatShareToken(sessionId: string, token: string | null): Promise<void> {
+    await this._upsertConvMeta(sessionId, { shareToken: token });
+    await db
+      .update(schema.conversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.conversations.id, sessionId));
+  }
+
+  /**
+   * Find a chat session by its share token.
+   */
+  async getChatSessionByShareToken(token: string): Promise<ChatSession | null> {
+    const metaRows = await db
+      .select()
+      .from(schema.conversationMetadata)
+      .where(sql`${schema.conversationMetadata.metadata}->>'shareToken' = ${token}`)
+      .limit(1);
+
+    if (metaRows.length === 0) return null;
+
+    const convId = metaRows[0].conversationId;
+    return this.getChatSession(convId);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Chat Message Methods (H2A message CRUD with role mapping)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a chat message in the messages table.
+   * Maps role: 'assistant'|'system' -> role: 'agent', senderId: SYSTEM_AGENT_ID.
+   * Maps role: 'user' -> role: 'user', senderId looked up from conversation_participants.
+   * Stores routingDecision/subgraphResults/tokenCount in messages.metadata.
+   */
+  async createChatMessage(data: CreateMessageInput): Promise<void> {
+    const isAgent = data.role === 'assistant' || data.role === 'system';
+    let senderId: string;
+
+    if (isAgent) {
+      senderId = SYSTEM_AGENT_ID;
+    } else {
+      // Look up the user participant for this conversation
+      const [participant] = await db
+        .select({ participantId: schema.conversationParticipants.participantId })
+        .from(schema.conversationParticipants)
+        .where(
+          and(
+            eq(schema.conversationParticipants.conversationId, data.sessionId),
+            eq(schema.conversationParticipants.participantType, 'user'),
+          ),
+        )
+        .limit(1);
+      if (!participant?.participantId) {
+        throw new Error(`Conversation participant not found for session ${data.sessionId}`);
+      }
+      senderId = participant.participantId;
+    }
+
+    // Build metadata from non-null optional fields
+    const msgMeta: ChatMessageMeta = {};
+    if (data.routingDecision) msgMeta.routingDecision = data.routingDecision;
+    if (data.subgraphResults) msgMeta.subgraphResults = data.subgraphResults;
+    if (data.tokenCount !== undefined) msgMeta.tokenCount = data.tokenCount;
+
+    await db.insert(schema.messages).values({
+      id: data.id,
+      conversationId: data.sessionId,
+      senderId,
+      role: isAgent ? 'agent' : 'user',
+      parts: [{ type: 'text', text: data.content }],
+      metadata: Object.keys(msgMeta).length > 0 ? msgMeta : null,
+      createdAt: new Date(),
+    });
+
+    // Update conversation.lastMessageAt
+    await db
+      .update(schema.conversations)
+      .set({ lastMessageAt: new Date() })
+      .where(eq(schema.conversations.id, data.sessionId));
+  }
+
+  /**
+   * Get chat messages for a session, reconstructing the backward-compatible ChatMessage shape.
+   */
+  async getChatSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
+    let query = db.select()
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, sessionId))
+      .orderBy(asc(schema.messages.createdAt));
+
+    const rows = limit ? await query.limit(limit) : await query;
+
+    return rows.map((msg) => {
+      const parts = msg.parts as Array<{ type?: string; text?: string }>;
+      const content =
+        parts?.find((p) => p?.type === 'text' && typeof p.text === 'string')?.text
+        ?? parts?.find((p) => typeof p?.text === 'string')?.text
+        ?? '';
+      const meta = (msg.metadata ?? {}) as ChatMessageMeta;
+
+      // Map role back: 'agent' -> 'assistant'
+      const role: 'user' | 'assistant' | 'system' = msg.role === 'agent' ? 'assistant' : 'user';
+
+      return {
+        id: msg.id,
+        sessionId,
+        role,
+        content,
+        routingDecision: (meta.routingDecision as Record<string, unknown>) ?? null,
+        subgraphResults: (meta.subgraphResults as Record<string, unknown>) ?? null,
+        tokenCount: typeof meta.tokenCount === 'number' ? meta.tokenCount : null,
+        createdAt: msg.createdAt,
+      };
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Chat Metadata Methods (trace events, debug meta, session metadata)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Verify that a message belongs to a conversation the user participates in.
+   */
+  async verifyChatMessageOwnership(messageId: string, userId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ conversationId: schema.messages.conversationId })
+      .from(schema.messages)
+      .where(eq(schema.messages.id, messageId))
+      .limit(1);
+
+    if (!row) return false;
+
+    const [participant] = await db
+      .select({ participantId: schema.conversationParticipants.participantId })
+      .from(schema.conversationParticipants)
+      .where(
+        and(
+          eq(schema.conversationParticipants.conversationId, row.conversationId),
+          eq(schema.conversationParticipants.participantId, userId),
+        ),
+      )
+      .limit(1);
+
+    return !!participant;
+  }
+
+  /**
+   * Upsert message metadata (traceEvents, debugMeta) into the message's metadata JSONB column.
+   */
+  async upsertChatMessageMetadata(params: {
+    id: string;
+    messageId: string;
+    traceEvents?: unknown;
+    debugMeta?: unknown;
+  }): Promise<void> {
+    if (params.traceEvents === undefined && params.debugMeta === undefined) return;
+
+    const [msg] = await db
+      .select({ metadata: schema.messages.metadata })
+      .from(schema.messages)
+      .where(eq(schema.messages.id, params.messageId))
+      .limit(1);
+
+    if (!msg) return;
+
+    const existing = (msg.metadata ?? {}) as ChatMessageMeta;
+    const merged: ChatMessageMeta = { ...existing };
+    if (params.traceEvents !== undefined) merged.traceEvents = params.traceEvents;
+    if (params.debugMeta !== undefined) merged.debugMeta = params.debugMeta;
+
+    await db
+      .update(schema.messages)
+      .set({ metadata: merged })
+      .where(eq(schema.messages.id, params.messageId));
+  }
+
+  /**
+   * Get message metadata (traceEvents, debugMeta) for a list of message IDs.
+   */
+  async getChatMessageMetadataByIds(messageIds: string[]): Promise<Array<{ id: string; messageId: string; traceEvents: unknown; debugMeta: unknown; createdAt: Date }>> {
+    if (messageIds.length === 0) return [];
+    const rows = await db
+      .select({ id: schema.messages.id, metadata: schema.messages.metadata, createdAt: schema.messages.createdAt })
+      .from(schema.messages)
+      .where(inArray(schema.messages.id, messageIds));
+
+    return rows.map((r) => {
+      const meta = (r.metadata ?? {}) as ChatMessageMeta;
+      return {
+        id: r.id,
+        messageId: r.id,
+        traceEvents: meta.traceEvents ?? null,
+        debugMeta: meta.debugMeta ?? null,
+        createdAt: r.createdAt,
+      };
+    });
+  }
+
+  /**
+   * Upsert session-level metadata into conversation_metadata.
+   */
+  async upsertChatSessionMetadata(params: {
+    id: string;
+    sessionId: string;
+    metadata: unknown;
+  }): Promise<void> {
+    const existing = await this._getConvMeta(params.sessionId);
+    const merged: ChatConversationMeta = {
+      ...(existing ?? {}),
+      _sessionMeta: params.metadata,
+    };
+    await db
+      .insert(schema.conversationMetadata)
+      .values({ conversationId: params.sessionId, metadata: merged })
+      .onConflictDoUpdate({
+        target: schema.conversationMetadata.conversationId,
+        set: { metadata: merged, updatedAt: new Date() },
+      });
+  }
+
+  /**
+   * Retrieve session metadata by session ID.
+   */
+  async getChatSessionMetadata(sessionId: string): Promise<{ id: string; sessionId: string; metadata: unknown; createdAt: Date; updatedAt: Date } | undefined> {
+    const [row] = await db
+      .select()
+      .from(schema.conversationMetadata)
+      .where(eq(schema.conversationMetadata.conversationId, sessionId))
+      .limit(1);
+
+    if (!row) return undefined;
+
+    const meta = (row.metadata ?? {}) as ChatConversationMeta;
+    return {
+      id: row.conversationId,
+      sessionId: row.conversationId,
+      metadata: meta._sessionMeta ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 }
 

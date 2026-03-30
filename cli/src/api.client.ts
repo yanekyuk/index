@@ -304,6 +304,104 @@ export class ApiClient {
     return body;
   }
 
+  // ── Conversation methods ─────────────────────────────────────────
+
+  /**
+   * List all conversations for the authenticated user.
+   *
+   * @returns Array of conversation objects.
+   * @throws Error on auth failure or network error.
+   */
+  async listConversations(): Promise<Conversation[]> {
+    const res = await this.get("/api/conversations");
+    const body = (await res.json()) as { conversations: Conversation[] };
+    return body.conversations;
+  }
+
+  /**
+   * Get or create a DM conversation with a peer user.
+   *
+   * @param peerUserId - The peer user's ID.
+   * @returns The conversation object (existing or newly created).
+   * @throws Error on auth failure or network error.
+   */
+  async getOrCreateDM(peerUserId: string): Promise<Conversation> {
+    const res = await this.post("/api/conversations/dm", { peerUserId });
+    const body = (await res.json()) as { conversation: Conversation };
+    return body.conversation;
+  }
+
+  /**
+   * Get messages for a conversation.
+   *
+   * @param conversationId - The conversation ID.
+   * @param opts - Optional filters (limit, before cursor).
+   * @returns Array of message objects.
+   * @throws Error on auth failure or network error.
+   */
+  async getMessages(conversationId: string, opts?: { limit?: number; before?: string }): Promise<ConversationMessage[]> {
+    const params = new URLSearchParams();
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.before) params.set("before", opts.before);
+    const qs = params.toString();
+    const path = qs
+      ? `/api/conversations/${conversationId}/messages?${qs}`
+      : `/api/conversations/${conversationId}/messages`;
+    const res = await this.get(path);
+    const body = (await res.json()) as { messages: ConversationMessage[] };
+    return body.messages;
+  }
+
+  /**
+   * Send a text message in a conversation.
+   *
+   * @param conversationId - The conversation ID.
+   * @param text - The message text.
+   * @returns The created message object.
+   * @throws Error on auth failure or network error.
+   */
+  async sendMessage(conversationId: string, text: string): Promise<ConversationMessage> {
+    const res = await this.post(`/api/conversations/${conversationId}/messages`, {
+      parts: [{ type: "text", text }],
+    });
+    const body = (await res.json()) as { message: ConversationMessage };
+    return body.message;
+  }
+
+  /**
+   * Hide a conversation (soft-hide via hiddenAt).
+   *
+   * @param conversationId - The conversation ID.
+   * @throws Error on auth failure or network error.
+   */
+  async hideConversation(conversationId: string): Promise<void> {
+    await this.del(`/api/conversations/${conversationId}`);
+  }
+
+  /**
+   * Open an SSE stream for real-time conversation events.
+   *
+   * Returns the raw Response so the caller can read the body
+   * as a stream and parse SSE events incrementally.
+   *
+   * @returns The raw fetch Response with SSE body.
+   * @throws Error on auth failure or network error.
+   */
+  async streamConversationEvents(): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}/api/conversations/stream`, {
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "text/event-stream",
+      },
+    });
+
+    if (!res.ok) {
+      await this.handleError(res);
+    }
+
+    return res;
+  }
+
   // ── Private helpers ──────────────────────────────────────────────
 
   private async get(path: string): Promise<Response> {
@@ -345,6 +443,21 @@ export class ApiClient {
         Authorization: `Bearer ${this.token}`,
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+
+    if (!res.ok) {
+      await this.handleError(res);
+    }
+
+    return res;
+  }
+
+  private async del(path: string): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
     });
 
     if (!res.ok) {
@@ -537,4 +650,39 @@ export interface SearchedUser {
 export interface AddMemberResult {
   member: { userId: string };
   message: string;
+}
+
+// ── Conversation types ──────────────────────────────────────────────
+
+/** A participant in a conversation. */
+export interface ConversationParticipant {
+  participantId: string;
+  participantType: "user" | "agent";
+  user?: { name: string; email?: string };
+}
+
+/** A conversation as returned by the API. */
+export interface Conversation {
+  id: string;
+  createdAt: string;
+  updatedAt?: string;
+  metadata?: Record<string, unknown>;
+  participants: ConversationParticipant[];
+}
+
+/** A message part (A2A-compatible). */
+export interface MessagePart {
+  type: string;
+  text?: string;
+  [key: string]: unknown;
+}
+
+/** A message in a conversation. */
+export interface ConversationMessage {
+  id: string;
+  role: string;
+  senderId?: string;
+  parts: MessagePart[];
+  createdAt: string;
+  metadata?: Record<string, unknown>;
 }

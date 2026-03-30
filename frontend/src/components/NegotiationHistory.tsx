@@ -50,7 +50,7 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
       <div className={`flex-1 pb-4 ${isLast ? "" : ""}`}>
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-gray-900 flex items-center gap-1">
-            {turn.speaker.name}
+            {turn.speaker.name}'s Agent
             <Bot className="w-3 h-3 text-gray-400" />
           </span>
           <span className={`text-xs font-medium ${actionInfo.color}`}>{actionInfo.label}</span>
@@ -200,7 +200,7 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
                     className="text-sm font-bold text-gray-900 truncate hover:underline"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {neg.counterparty.name}
+                    {neg.counterparty.name}'s Agent
                   </Link>
                   {neg.outcome ? (
                     <span
