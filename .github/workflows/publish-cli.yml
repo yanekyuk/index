@@ -87,7 +87,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
@@ -142,7 +142,7 @@ jobs:
         run: |
           for dir in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
             echo "Publishing @indexnetwork/cli-$dir..."
-            npm publish --access public "npm/$dir"
+            npm publish --access public "./npm/$dir"
           done
 
       - name: Publish main package
