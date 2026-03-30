@@ -1,28 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Index CLI — command-line interface for Index Network.
+ * Index CLI — thin dispatcher that parses arguments, authenticates,
+ * and delegates to the appropriate command handler module.
  *
- * Usage:
- *   index login                    Authenticate via browser OAuth
- *   index logout                   Clear stored session
- *   index chat [message]           Start or continue an H2A chat session
- *   index chat --list              List chat sessions
- *   index chat --session <id>      Resume a specific session
- *   index profile                  Show your profile
- *   index profile show <user-id>  Show another user's profile
- *   index profile sync             Regenerate your profile
- *   index intent list              List your signals
- *   index intent show <id>         Show signal details
- *   index intent create <content>  Create a signal from natural language
- *   index intent archive <id>      Archive a signal
- *   index opportunity list         List your opportunities
- *   index opportunity show <id>    Show opportunity details
- *   index opportunity accept <id>  Accept an opportunity
- *   index opportunity reject <id>  Reject an opportunity
- *   index network <subcommand>     Manage networks (list, create, show, join, leave, invite)
- *   index conversation <subcommand> H2H direct messaging (list, with, show, send, stream)
- *   index --help                   Show this help message
- *   index --version                Show version
+ * Each command lives in its own `*.command.ts` file following the
+ * `handleX(client, ...)` pattern.
  */
 
 import { parseArgs } from "./args.parser";
@@ -87,90 +69,32 @@ Options:
   --limit <n>         Limit number of results
 `;
 
+// ── Auth helper ──────────────────────────────────────────────────────
+
 /**
- * Main CLI entry point.
+ * Load stored auth and return an API client, or exit with an error.
+ *
+ * @param apiUrlOverride - Optional API URL override from --api-url flag.
+ * @returns Authenticated API client.
  */
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
+  const store = new CredentialStore();
+  const creds = await store.load();
 
-  switch (args.command) {
-    case "help":
-      console.log(HELP_TEXT);
-      return;
-
-    case "version":
-      console.log(VERSION);
-      return;
-
-    case "unknown":
-      output.error(`Unknown command: ${args.unknown}`, 1);
-      return;
-
-    case "login":
-      await runLogin(args.apiUrl, args.token);
-      return;
-
-    case "logout":
-      await runLogout();
-      return;
-
-    case "chat": {
-      const client = await requireAuth(args.apiUrl);
-      await handleChat(client, {
-        list: args.list,
-        message: args.message,
-        sessionId: args.sessionId,
-      });
-      return;
-    }
-
-    case "profile": {
-      const client = await requireAuth(args.apiUrl);
-      await handleProfile(client, args.subcommand, args.userId ? [args.userId] : []);
-      return;
-    }
-
-    case "intent": {
-      const client = await requireAuth(args.apiUrl);
-      await handleIntent(client, args.subcommand, {
-        intentId: args.intentId,
-        intentContent: args.intentContent,
-        archived: args.archived,
-        limit: args.limit,
-      });
-      return;
-    }
-
-    case "opportunity": {
-      const client = await requireAuth(args.apiUrl);
-      await handleOpportunity(client, args.subcommand, {
-        targetId: args.targetId,
-        status: args.status,
-        limit: args.limit,
-      });
-      return;
-    }
-
-    case "network": {
-      const client = await requireAuth(args.apiUrl);
-      await handleNetwork(client, args.subcommand, args.positionals ?? [], {
-        prompt: args.prompt,
-      });
-      return;
-    }
-
-    case "conversation": {
-      const client = await requireAuth(args.apiUrl);
-      await handleConversation(client, args.subcommand, args.positionals ?? [], {
-        limit: args.limit,
-      });
-      return;
-    }
+  if (!creds) {
+    output.error("Not logged in. Run `index login` first.", 1);
+    process.exit(1); // TypeScript needs this for never return
   }
+
+  const apiUrl = apiUrlOverride ?? creds.apiUrl;
+  return new ApiClient(apiUrl, creds.token);
 }
 
-// ── Command handlers ─────────────────────────────────────────────────
+// ── Login / Logout ──────────────────────────────────────────────────
 
+/**
+ * Handle the login command — supports both browser OAuth and manual token.
+ */
 async function runLogin(apiUrlOverride?: string, manualToken?: string): Promise<void> {
   const store = new CredentialStore();
   const apiUrl = apiUrlOverride ?? DEFAULT_API_URL;
@@ -230,28 +154,83 @@ async function runLogin(apiUrlOverride?: string, manualToken?: string): Promise<
   }
 }
 
+/**
+ * Handle the logout command — clear stored session.
+ */
 async function runLogout(): Promise<void> {
   const store = new CredentialStore();
   await store.clear();
   output.success("Logged out. Session cleared.");
 }
 
-// ── Auth helper ──────────────────────────────────────────────────────
+// ── Main dispatcher ─────────────────────────────────────────────────
 
 /**
- * Load stored auth and return an API client, or exit with an error.
+ * Main CLI entry point — parses args, authenticates when needed,
+ * and dispatches to the appropriate command handler.
  */
-async function requireAuth(apiUrlOverride?: string): Promise<ApiClient> {
-  const store = new CredentialStore();
-  const creds = await store.load();
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
 
-  if (!creds) {
-    output.error("Not logged in. Run `index login` first.", 1);
-    process.exit(1); // TypeScript needs this for never return
+  // Commands that don't require authentication
+  switch (args.command) {
+    case "help":
+      console.log(HELP_TEXT);
+      return;
+    case "version":
+      console.log(VERSION);
+      return;
+    case "unknown":
+      output.error(`Unknown command: ${args.unknown}`, 1);
+      return;
+    case "login":
+      await runLogin(args.apiUrl, args.token);
+      return;
+    case "logout":
+      await runLogout();
+      return;
   }
 
-  const apiUrl = apiUrlOverride ?? creds.apiUrl;
-  return new ApiClient(apiUrl, creds.token);
+  // All remaining commands require authentication
+  const client = await requireAuth(args.apiUrl);
+
+  switch (args.command) {
+    case "chat":
+      await handleChat(client, {
+        list: args.list,
+        message: args.message,
+        sessionId: args.sessionId,
+      });
+      return;
+    case "profile":
+      await handleProfile(client, args.subcommand, args.userId ? [args.userId] : []);
+      return;
+    case "intent":
+      await handleIntent(client, args.subcommand, {
+        intentId: args.intentId,
+        intentContent: args.intentContent,
+        archived: args.archived,
+        limit: args.limit,
+      });
+      return;
+    case "opportunity":
+      await handleOpportunity(client, args.subcommand, {
+        targetId: args.targetId,
+        status: args.status,
+        limit: args.limit,
+      });
+      return;
+    case "network":
+      await handleNetwork(client, args.subcommand, args.positionals ?? [], {
+        prompt: args.prompt,
+      });
+      return;
+    case "conversation":
+      await handleConversation(client, args.subcommand, args.positionals ?? [], {
+        limit: args.limit,
+      });
+      return;
+  }
 }
 
 // ── Run ──────────────────────────────────────────────────────────────
