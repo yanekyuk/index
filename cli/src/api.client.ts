@@ -96,6 +96,61 @@ export class ApiClient {
     return res;
   }
 
+  /**
+   * List intents with optional pagination and filters.
+   *
+   * @param options - Optional filters: limit, archived, sourceType.
+   * @returns Object with intents array and pagination metadata.
+   * @throws Error on auth failure or network error.
+   */
+  async listIntents(options: ListIntentsOptions = {}): Promise<IntentListResult> {
+    const body: Record<string, unknown> = {};
+    if (options.limit !== undefined) body.limit = options.limit;
+    if (options.archived !== undefined) body.archived = options.archived;
+    if (options.sourceType !== undefined) body.sourceType = options.sourceType;
+    if (options.page !== undefined) body.page = options.page;
+
+    const res = await this.post("/api/intents/list", body);
+    return (await res.json()) as IntentListResult;
+  }
+
+  /**
+   * Get a single intent by ID.
+   *
+   * @param id - The intent ID.
+   * @returns The intent object.
+   * @throws Error on auth failure, not found, or network error.
+   */
+  async getIntent(id: string): Promise<Intent> {
+    const res = await this.get(`/api/intents/${id}`);
+    const body = (await res.json()) as { intent: Intent };
+    return body.intent;
+  }
+
+  /**
+   * Process natural language content through the intent graph.
+   *
+   * @param content - The natural language content to process.
+   * @returns The processing result from the intent graph.
+   * @throws Error on auth failure or network error.
+   */
+  async processIntent(content: string): Promise<Record<string, unknown>> {
+    const res = await this.post("/api/intents/process", { content });
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * Archive an intent by ID.
+   *
+   * @param id - The intent ID to archive.
+   * @returns Object with success boolean.
+   * @throws Error on auth failure, not found, or network error.
+   */
+  async archiveIntent(id: string): Promise<{ success: boolean }> {
+    const res = await this.patch(`/api/intents/${id}/archive`);
+    return (await res.json()) as { success: boolean };
+  }
+
   // ── Private helpers ──────────────────────────────────────────────
 
   private async get(path: string): Promise<Response> {
@@ -120,6 +175,21 @@ export class ApiClient {
         Authorization: `Bearer ${this.token}`,
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+
+    if (!res.ok) {
+      await this.handleError(res);
+    }
+
+    return res;
+  }
+
+  private async patch(path: string): Promise<Response> {
+    const res = await fetch(`${this.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
     });
 
     if (!res.ok) {
@@ -193,4 +263,42 @@ export interface UserData {
 export interface SyncProfileResult {
   success: boolean;
   [key: string]: unknown;
+}
+
+/** An intent as returned by the API. */
+export interface Intent {
+  id: string;
+  payload: string;
+  summary: string | null;
+  status: string;
+  sourceType: string | null;
+  confidence?: number;
+  inferenceType?: string;
+  intentMode?: string;
+  speechActType?: string;
+  semanticEntropy?: number;
+  isIncognito?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  indexes?: Array<{ id: string; title: string; relevancyScore?: number }>;
+}
+
+/** Options for listing intents. */
+export interface ListIntentsOptions {
+  page?: number;
+  limit?: number;
+  archived?: boolean;
+  sourceType?: string;
+}
+
+/** Result from POST /api/intents/list. */
+export interface IntentListResult {
+  intents: Intent[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }

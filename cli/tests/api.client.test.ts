@@ -98,6 +98,78 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("listIntents", () => {
+    it("sends a POST to /api/intents/list and returns intents", async () => {
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/intents/list", async (req) => {
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({
+          intents: [
+            { id: "i1", payload: "Looking for a co-founder", summary: "Co-founder search", status: "ACTIVE", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", archivedAt: null },
+          ],
+          pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+        });
+      });
+
+      const result = await client.listIntents();
+      expect(result.intents).toHaveLength(1);
+      expect(result.intents[0].id).toBe("i1");
+      expect(result.pagination.total).toBe(1);
+      expect(receivedBody).toEqual({});
+    });
+
+    it("passes pagination and filter options in the request body", async () => {
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/intents/list", async (req) => {
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ intents: [], pagination: { page: 1, limit: 5, total: 0, totalPages: 0 } });
+      });
+
+      await client.listIntents({ limit: 5, archived: true });
+      expect(receivedBody.limit).toBe(5);
+      expect(receivedBody.archived).toBe(true);
+    });
+  });
+
+  describe("getIntent", () => {
+    it("fetches a single intent by ID", async () => {
+      mock.on("GET", "/api/intents/i1", () =>
+        Response.json({
+          intent: { id: "i1", payload: "Looking for a co-founder", summary: "Co-founder search", status: "ACTIVE", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", archivedAt: null },
+        }),
+      );
+
+      const intent = await client.getIntent("i1");
+      expect(intent.id).toBe("i1");
+      expect(intent.payload).toBe("Looking for a co-founder");
+    });
+  });
+
+  describe("processIntent", () => {
+    it("sends content to POST /api/intents/process", async () => {
+      let receivedBody: Record<string, unknown> = {};
+      mock.on("POST", "/api/intents/process", async (req) => {
+        receivedBody = await req.json() as Record<string, unknown>;
+        return Response.json({ success: true, message: "Intent processed" });
+      });
+
+      const result = await client.processIntent("Looking for a co-founder");
+      expect(receivedBody.content).toBe("Looking for a co-founder");
+      expect(result).toHaveProperty("success");
+    });
+  });
+
+  describe("archiveIntent", () => {
+    it("sends PATCH to /api/intents/:id/archive", async () => {
+      mock.on("PATCH", "/api/intents/i1/archive", () =>
+        Response.json({ success: true }),
+      );
+
+      const result = await client.archiveIntent("i1");
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe("streamChat", () => {
     it("returns a readable response for SSE streaming", async () => {
       mock.on("POST", "/api/chat/stream", async (req) => {
