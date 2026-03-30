@@ -59,7 +59,7 @@ describe("renderSSEStream", () => {
       });
 
       const output: string[] = [];
-      const result = await renderSSEStream(response, (text) => output.push(text));
+      const result = await renderSSEStream(response, { onToken: (text) => output.push(text) });
 
       expect(output.join("")).toBe("Hello world!");
       expect(result.sessionId).toBe("s1");
@@ -82,7 +82,7 @@ describe("renderSSEStream", () => {
         body: JSON.stringify({ message: "hi" }),
       });
 
-      const result = await renderSSEStream(response, () => {});
+      const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.sessionId).toBe("abc-123");
     } finally {
       server.stop(true);
@@ -102,7 +102,7 @@ describe("renderSSEStream", () => {
         body: JSON.stringify({ message: "hi" }),
       });
 
-      const result = await renderSSEStream(response, () => {});
+      const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.error).toBe("Something went wrong");
     } finally {
       server.stop(true);
@@ -112,6 +112,7 @@ describe("renderSSEStream", () => {
   it("shows tool activity in status callback", async () => {
     const events = [
       sseEvent({ type: "tool_activity", sessionId: "s1", timestamp: "t", toolName: "search", description: "Searching...", phase: "start" }),
+      sseEvent({ type: "tool_activity", sessionId: "s1", timestamp: "t", toolName: "search", description: "Searching...", phase: "end" }),
       sseEvent({ type: "token", sessionId: "s1", timestamp: "t", content: "result" }),
       sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "result" }),
     ];
@@ -128,8 +129,10 @@ describe("renderSSEStream", () => {
       const output: string[] = [];
       await renderSSEStream(
         response,
-        (text) => output.push(text),
-        (status) => statuses.push(status),
+        {
+          onToken: (text) => output.push(text),
+          onToolActivity: (desc, phase) => { if (phase === "start") statuses.push(desc); },
+        },
       );
 
       expect(output.join("")).toBe("result");
@@ -156,7 +159,7 @@ describe("renderSSEStream", () => {
         body: JSON.stringify({ message: "hi" }),
       });
 
-      const result = await renderSSEStream(response, () => {});
+      const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.response).toBe("correct answer");
     } finally {
       server.stop(true);
