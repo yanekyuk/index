@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "chat" | "profile" | "help" | "version" | "unknown";
   /** Chat message for one-shot mode. */
   message?: string;
   /** Resume a specific chat session. */
@@ -18,9 +18,13 @@ export interface ParsedCommand {
   token?: string;
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
+  /** Profile subcommand ("show" or "sync"). */
+  subcommand?: "show" | "sync";
+  /** Target user ID for `profile show <user-id>`. */
+  userId?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "help", "version"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -94,6 +98,19 @@ export function parseArgs(args: string[]): ParsedCommand {
   // First positional after command is the message (for chat)
   if (positionals.length > 0 && result.command === "chat") {
     result.message = positionals.join(" ");
+  }
+
+  // Profile subcommands: "show <user-id>" or "sync"
+  if (result.command === "profile" && positionals.length > 0) {
+    const sub = positionals[0];
+    if (sub === "show") {
+      result.subcommand = "show";
+      if (positionals[1]) {
+        result.userId = positionals[1];
+      }
+    } else if (sub === "sync") {
+      result.subcommand = "sync";
+    }
   }
 
   return result;
