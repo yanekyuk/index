@@ -1323,6 +1323,17 @@ export class ChatDatabaseAdapter {
       });
   }
 
+  /**
+   * Soft-delete a ghost user and all their contact memberships.
+   * Delegates to ProfileDatabaseAdapter.
+   * @param userId - The ghost user to soft-delete
+   * @returns true if the user was soft-deleted
+   */
+  async softDeleteGhost(userId: string): Promise<boolean> {
+    const profileAdapter = new ProfileDatabaseAdapter();
+    return profileAdapter.softDeleteGhost(userId);
+  }
+
   async createIntent(data: CreateIntentInput): Promise<CreatedIntentRow> {
     try {
       const [created] = await db.insert(schema.intents)
@@ -5909,6 +5920,56 @@ export class ConversationDatabaseAdapter {
       .limit(1);
 
     return (row?.metadata as Record<string, unknown>) ?? null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Users (for ghost invite emails)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Looks up a user by ID.
+   * @param userId - User ID
+   * @returns Core user fields, or null if not found
+   */
+  async getUser(userId: string): Promise<{ id: string; name: string | null; email: string | null; isGhost: boolean; deletedAt: Date | null } | null> {
+    const [row] = await db
+      .select({
+        id: schema.users.id,
+        name: schema.users.name,
+        email: schema.users.email,
+        isGhost: schema.users.isGhost,
+        deletedAt: schema.users.deletedAt,
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Returns notification settings for a user, creating a default row if none exists.
+   * @param userId - The user's ID
+   * @returns The notification settings row (includes unsubscribeToken)
+   */
+  async getOrCreateNotificationSettings(userId: string): Promise<{ id: string; userId: string; unsubscribeToken: string }> {
+    const projection = {
+      id: schema.userNotificationSettings.id,
+      userId: schema.userNotificationSettings.userId,
+      unsubscribeToken: schema.userNotificationSettings.unsubscribeToken,
+    };
+
+    await db.insert(schema.userNotificationSettings)
+      .values({ userId })
+      .onConflictDoNothing({ target: schema.userNotificationSettings.userId });
+
+    const [row] = await db.select(projection)
+      .from(schema.userNotificationSettings)
+      .where(eq(schema.userNotificationSettings.userId, userId))
+      .limit(1);
+    if (!row) {
+      throw new Error(`Failed to get or create notification settings for user ${userId}`);
+    }
+    return row;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

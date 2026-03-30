@@ -14,70 +14,58 @@ export const executeSendEmail = async (options: {
   text: string;
   headers?: Record<string, string>;
 }) => {
-  // SAFETY: Override recipient for testing
-  const isTestMode = process.env.ENABLE_EMAIL_TESTING === 'true';
-  const recipient = isTestMode ? process.env.TESTING_EMAIL_ADDRESS : options.to;
-
-  if (isTestMode && !recipient) {
-    logger.warn('[EmailTransport] TESTING_EMAIL_ADDRESS not set - skipping email');
-    return { data: null, skipped: true, reason: 'testing_email_not_set' };
-  }
-
-  if (isTestMode) {
-    const { appendFile } = await import('fs/promises');
-    const { resolve } = await import('path');
-    const debugPath = resolve(process.cwd(), 'email-debug.md');
-    const separator = '='.repeat(80);
-    const timestamp = new Date().toISOString();
-
-    // Format headers for display
-    const headersStr = options.headers
-      ? Object.entries(options.headers).map(([k, v]) => `${k}: ${v}`).join('\n      ')
-      : '(none)';
-
-    const content = `
-      ${separator}
-      [${timestamp}] Email Sent
-      ${separator}
-      To: ${Array.isArray(recipient) ? recipient.join(', ') : recipient}
-      Subject: ${options.subject}
-      Headers:
-      ${headersStr}
-
-      --- TEXT CONTENT ---
-      ${options.text}
-
-      --- HTML CONTENT ---
-      ${options.html}
-    `;
-    try {
-      await appendFile(debugPath, content);
-      logger.debug(`Email logged to ${debugPath}`);
-    } catch (err) {
-      logger.error('Failed to log email to file', { error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
   if (!process.env.RESEND_API_KEY || !resend || process.env.RESEND_API_KEY === 'DISABLED') {
     logger.warn('[EmailTransport] RESEND_API_KEY not configured or disabled - email not sent');
     return { data: null, skipped: true, reason: 'resend_not_configured' };
   }
 
-  if (!isTestMode) {
-    logger.debug('[EmailTransport] Email sending disabled (ENABLE_EMAIL_TESTING is not true)');
-    return { data: null, skipped: true, reason: 'email_testing_disabled' };
-  }
+  const isProduction = process.env.EMAIL_PRODUCTION_MODE === 'true';
+  let recipient: string | string[] = options.to;
 
-  if (!recipient) {
-    if (isTestMode) {
-      logger.warn('[EmailTransport] TESTING_EMAIL_ADDRESS not set - skipping email');
-      return { data: null, skipped: true, reason: 'testing_email_not_set' };
+  if (!isProduction) {
+    const testAddress = process.env.TESTING_EMAIL_ADDRESS;
+    if (!testAddress) {
+      logger.debug('[EmailTransport] Non-production and no TESTING_EMAIL_ADDRESS - skipping');
+      return { data: null, skipped: true, reason: 'no_test_recipient' };
     }
-    logger.error('[EmailTransport] No recipient defined for email');
-    return { data: null, skipped: true, reason: 'no_recipient' };
+    recipient = testAddress;
+
+    // Log to debug file in non-production mode
+    try {
+      const { appendFile } = await import('fs/promises');
+      const { resolve } = await import('path');
+      const debugPath = resolve(process.cwd(), 'email-debug.md');
+      const separator = '='.repeat(80);
+      const timestamp = new Date().toISOString();
+      const headersStr = options.headers
+        ? Object.entries(options.headers).map(([k, v]) => `${k}: ${v}`).join('\n      ')
+        : '(none)';
+
+      await appendFile(debugPath, `
+${separator}
+[${timestamp}] Email Sent (redirected to test address)
+${separator}
+Original To: ${Array.isArray(options.to) ? options.to.join(', ') : options.to}
+Actual To: ${testAddress}
+Subject: ${options.subject}
+Headers: ${headersStr}
+
+--- TEXT ---
+${options.text}
+
+--- HTML ---
+${options.html}
+`);
+    } catch (err) {
+      logger.error('Failed to log email to debug file', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
-  logger.verbose(`[EmailTransport] Sending email to test recipient`, { recipient: String(recipient), originalTo: String(options.to) });
+  logger.verbose('[EmailTransport] Sending email', {
+    recipient: String(recipient),
+    originalTo: String(options.to),
+    production: isProduction,
+  });
 
   try {
     const result = await resend!.emails.send({
