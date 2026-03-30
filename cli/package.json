@@ -1,6 +1,6 @@
 {
   "name": "@index-network/cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Command-line interface for Index Network",
   "license": "MIT",
   "type": "module",
@@ -19,10 +19,10 @@
     "publish:all": "bun scripts/publish.ts"
   },
   "optionalDependencies": {
-    "@index-network/cli-linux-x64": "0.6.0",
-    "@index-network/cli-linux-arm64": "0.6.0",
-    "@index-network/cli-darwin-x64": "0.6.0",
-    "@index-network/cli-darwin-arm64": "0.6.0"
+    "@index-network/cli-linux-x64": "0.7.0",
+    "@index-network/cli-linux-arm64": "0.7.0",
+    "@index-network/cli-darwin-x64": "0.7.0",
+    "@index-network/cli-darwin-arm64": "0.7.0"
   },
   "devDependencies": {
     "@types/bun": "latest"

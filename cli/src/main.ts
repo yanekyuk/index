@@ -21,7 +21,7 @@ import { handleConversation } from "./conversation.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "http://localhost:3000";
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 
 const HELP_TEXT = `
 Index CLI v${VERSION}
