@@ -29,8 +29,6 @@ const streamBodySchema = z.object({
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
   indexId: z.string().nullish(),
-  /** The recipient user ID for DM-style chats (used for ghost invite emails). */
-  recipientUserId: z.string().nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -305,19 +303,10 @@ export class ChatController {
           }
 
           // Persist user message and assistant response
-          let recipientUserId: string | undefined =
-            typeof body.recipientUserId === "string" && body.recipientUserId.trim()
-              ? body.recipientUserId.trim()
-              : undefined;
-          if (recipientUserId && recipientUserId === user.id) {
-            recipientUserId = undefined; // Can't be your own recipient
-          }
           await chatSessionService.addMessage({
             sessionId,
             role: "user",
             content: messageContent,
-            recipientUserId,
-            senderUserId: user.id,
           });
           let assistantMessageId: string | undefined;
           if (fullResponse) {
