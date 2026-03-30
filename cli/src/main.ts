@@ -268,6 +268,7 @@ import { MarkdownRenderer } from "./output";
 async function streamToTerminal(response: Response): Promise<StreamResult> {
   let hasTokens = false;
   const md = new MarkdownRenderer();
+  let lastToolDesc = "";
 
   const result = await renderSSEStream(response, {
     onToken(text) {
@@ -276,6 +277,8 @@ async function streamToTerminal(response: Response): Promise<StreamResult> {
         hasTokens = true;
       }
       md.write(text);
+      // Once tokens flow, clear last tool so it can show again after new text
+      lastToolDesc = "";
     },
     onStatus(msg) {
       if (!hasTokens) {
@@ -284,10 +287,19 @@ async function streamToTerminal(response: Response): Promise<StreamResult> {
     },
     onToolActivity(description, phase) {
       if (phase === "start") {
-        output.toolActivity(description);
-      } else {
-        output.clearStatus();
+        const friendly = output.humanizeToolName(description);
+        // Skip if identical to the last tool line with no text in between
+        if (friendly === lastToolDesc) return;
+        lastToolDesc = friendly;
+        // Finalize any buffered markdown before the tool line
+        md.finalize();
+        hasTokens = false;
+        output.toolActivity(friendly);
       }
+    },
+    onResponseReset(reason) {
+      md.reset(reason);
+      hasTokens = false;
     },
   });
 

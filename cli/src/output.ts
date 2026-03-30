@@ -96,9 +96,9 @@ export function clearStatus(): void {
   process.stderr.write("\r\x1b[K");
 }
 
-/** Print a tool activity indicator. */
+/** Print a persistent tool activity line (clears any status first). */
 export function toolActivity(description: string): void {
-  process.stderr.write(`\r${ORANGE}> ${description}${RESET}\x1b[K`);
+  process.stderr.write(`\r\x1b[K${ORANGE}> ${description}${RESET}\n`);
 }
 
 // ── Markdown streaming renderer ─────────────────────────────────────
@@ -339,6 +339,24 @@ export class MarkdownRenderer {
     }
   }
 
+  /**
+   * Reset the renderer state after a response_reset event.
+   * Prints a visual separator so the user knows output was discarded.
+   */
+  reset(reason?: string): void {
+    // Flush any partial content first
+    if (this.buffer.length > 0 || this.inCodeBlock) {
+      this.buffer = "";
+      this.inCodeBlock = false;
+      this.codeBlockContent = "";
+      this.codeBlockLang = "";
+    }
+    if (!this.pristine) {
+      process.stdout.write(`\n${GRAY}--- retrying${reason ? `: ${reason}` : ""} ---${RESET}\n`);
+    }
+    this.pristine = true;
+  }
+
   /** Finalize — flush any remaining buffered content. */
   finalize(): void {
     if (this.inCodeBlock) {
@@ -389,6 +407,44 @@ export function sessionTable(
       `  ${GRAY}${s.id.padEnd(idWidth)}${RESET}  ${title.padEnd(titleWidth)}  ${GRAY}${date}${RESET}`,
     );
   }
+}
+
+// ── Tool descriptions ───────────────────────────────────────────────
+
+/** Human-friendly descriptions for protocol tools (mirrors frontend). */
+const TOOL_DESCRIPTIONS: Record<string, string> = {
+  read_user_profiles: "Reading your profile...",
+  create_user_profile: "Creating your profile...",
+  update_user_profile: "Updating your profile...",
+  read_intents: "Fetching your active signals...",
+  create_intent: "Creating a new signal...",
+  update_intent: "Updating signal...",
+  delete_intent: "Removing signal...",
+  create_intent_index: "Saving signal to index...",
+  read_intent_indexes: "Fetching signals in index...",
+  delete_intent_index: "Removing signal from index...",
+  read_indexes: "Checking your indexes...",
+  create_index: "Creating a new index...",
+  update_index: "Updating index...",
+  delete_index: "Deleting index...",
+  create_index_membership: "Adding member to index...",
+  read_index_memberships: "Fetching index memberships...",
+  create_opportunities: "Searching for relevant connections...",
+  list_my_opportunities: "Listing your opportunities...",
+  update_opportunity: "Updating opportunity status...",
+  scrape_url: "Reading content from URL...",
+  read_docs: "Looking up documentation...",
+  import_gmail_contacts: "Importing Gmail contacts...",
+  import_contacts: "Importing contacts...",
+  list_contacts: "Listing your contacts...",
+  add_contact: "Adding contact...",
+  remove_contact: "Removing contact...",
+  send_opportunity: "Sending opportunity...",
+};
+
+/** Get a human-friendly description for a raw tool name. */
+export function humanizeToolName(name: string): string {
+  return TOOL_DESCRIPTIONS[name] ?? name.replace(/_/g, " ") + "...";
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

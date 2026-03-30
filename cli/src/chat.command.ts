@@ -20,6 +20,8 @@ export interface StreamCallbacks {
    * description string. Phase is "start" or "end".
    */
   onToolActivity?: (description: string, phase: "start" | "end", success?: boolean) => void;
+  /** Called when the agent detects a hallucination and resets its response. */
+  onResponseReset?: (reason?: string) => void;
 }
 
 /**
@@ -35,7 +37,7 @@ export async function renderSSEStream(
   response: Response,
   callbacks: StreamCallbacks,
 ): Promise<StreamResult> {
-  const { onToken, onStatus, onToolActivity } = callbacks;
+  const { onToken, onStatus, onToolActivity, onResponseReset } = callbacks;
   const result: StreamResult = {};
 
   if (!response.body) {
@@ -129,8 +131,8 @@ export async function renderSSEStream(
 
               case "response_reset":
                 result.response = undefined;
-                if (onStatus && typeof event.reason === "string") {
-                  onStatus(`Retrying: ${event.reason}`);
+                if (onResponseReset) {
+                  onResponseReset(typeof event.reason === "string" ? event.reason : undefined);
                 }
                 break;
 
