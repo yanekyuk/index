@@ -15,6 +15,10 @@
  *   index intent show <id>         Show signal details
  *   index intent create <content>  Create a signal from natural language
  *   index intent archive <id>      Archive a signal
+ *   index opportunity list         List your opportunities
+ *   index opportunity show <id>    Show opportunity details
+ *   index opportunity accept <id>  Accept an opportunity
+ *   index opportunity reject <id>  Reject an opportunity
  *   index --help                   Show this help message
  *   index --version                Show version
  */
@@ -29,7 +33,7 @@ import { renderSSEStream } from "./chat.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "http://localhost:3000";
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const HELP_TEXT = `
 Index CLI v${VERSION}
@@ -48,6 +52,12 @@ Usage:
   index intent show <id>               Show signal details
   index intent create <content>        Create a signal from natural language
   index intent archive <id>            Archive a signal
+  index opportunity list                List your opportunities
+  index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
+  index opportunity list --limit <n>    Limit results
+  index opportunity show <id>           Show full opportunity details
+  index opportunity accept <id>         Accept an opportunity
+  index opportunity reject <id>         Reject an opportunity
   index --help                          Show this help message
   index --version                       Show version
 
@@ -57,7 +67,8 @@ Options:
   --session <id>, -s  Resume a specific chat session
   --list, -l          List chat sessions
   --archived          Include archived signals (intent list)
-  --limit <n>         Limit results (intent list)
+  --status <status>   Filter opportunities by status
+  --limit <n>         Limit number of results
 `;
 
 /**
@@ -111,6 +122,10 @@ async function main(): Promise<void> {
 
     case "intent":
       await runIntent(args);
+      return;
+
+    case "opportunity":
+      await runOpportunity(args.subcommand, args.targetId, args.status, args.limit, args.apiUrl);
       return;
   }
 }
@@ -384,6 +399,100 @@ async function runProfileSync(apiUrlOverride?: string): Promise<void> {
   output.info("Regenerating profile...");
   await client.syncProfile();
   output.success("Profile regeneration triggered. It may take a moment to complete.");
+}
+
+// ── Opportunity handlers ────────────────────────────────────────────
+
+const OPPORTUNITY_HELP = `
+Usage:
+  index opportunity list                List your opportunities
+  index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
+  index opportunity list --limit <n>    Limit results
+  index opportunity show <id>           Show full opportunity details
+  index opportunity accept <id>         Accept an opportunity
+  index opportunity reject <id>         Reject an opportunity
+`;
+
+async function runOpportunity(
+  subcommand?: string,
+  targetId?: string,
+  status?: string,
+  limit?: number,
+  apiUrlOverride?: string,
+): Promise<void> {
+  if (!subcommand) {
+    console.log(OPPORTUNITY_HELP);
+    return;
+  }
+
+  switch (subcommand) {
+    case "list":
+      await runOpportunityList(status, limit, apiUrlOverride);
+      return;
+
+    case "show":
+      if (!targetId) {
+        output.error("Missing opportunity ID. Usage: index opportunity show <id>", 1);
+        return;
+      }
+      await runOpportunityShow(targetId, apiUrlOverride);
+      return;
+
+    case "accept":
+      if (!targetId) {
+        output.error("Missing opportunity ID. Usage: index opportunity accept <id>", 1);
+        return;
+      }
+      await runOpportunityStatusUpdate(targetId, "accepted", apiUrlOverride);
+      return;
+
+    case "reject":
+      if (!targetId) {
+        output.error("Missing opportunity ID. Usage: index opportunity reject <id>", 1);
+        return;
+      }
+      await runOpportunityStatusUpdate(targetId, "rejected", apiUrlOverride);
+      return;
+
+    default:
+      output.error(`Unknown subcommand: ${subcommand}`, 1);
+      return;
+  }
+}
+
+async function runOpportunityList(
+  status?: string,
+  limit?: number,
+  apiUrlOverride?: string,
+): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  const opportunities = await client.listOpportunities({ status, limit });
+  output.heading("Opportunities");
+  output.opportunityTable(opportunities);
+  console.log();
+}
+
+async function runOpportunityShow(
+  id: string,
+  apiUrlOverride?: string,
+): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  const opportunity = await client.getOpportunity(id);
+  output.opportunityCard(opportunity);
+}
+
+async function runOpportunityStatusUpdate(
+  id: string,
+  status: "accepted" | "rejected",
+  apiUrlOverride?: string,
+): Promise<void> {
+  const client = await requireAuth(apiUrlOverride);
+
+  await client.updateOpportunityStatus(id, status);
+  const label = status === "accepted" ? "accepted" : "rejected";
+  output.success(`Opportunity ${label}.`);
 }
 
 // ── Stream helpers ──────────────────────────────────────────────────

@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "profile" | "intent" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "help" | "version" | "unknown";
   /** Chat message for one-shot mode. */
   message?: string;
   /** Resume a specific chat session. */
@@ -19,7 +19,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Profile subcommand ("show" or "sync"). */
-  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive";
+  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -28,11 +28,17 @@ export interface ParsedCommand {
   intentContent?: string;
   /** Include archived intents in listing. */
   archived?: boolean;
-  /** Limit for intent list pagination. */
+  /** Positional ID argument for subcommands that require a target (e.g. opportunity show <id>). */
+  targetId?: string;
+  /** Status filter for list subcommands (e.g. --status pending). */
+  status?: string;
+  /** Limit for list subcommands (e.g. --limit 10). */
   limit?: number;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "help", "version"]);
+
+const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -97,6 +103,9 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--archived") {
       result.archived = true;
       i++;
+    } else if (arg === "--status") {
+      result.status = args[i + 1];
+      i += 2;
     } else if (arg === "--limit") {
       result.limit = parseInt(args[i + 1], 10);
       i += 2;
@@ -107,6 +116,19 @@ export function parseArgs(args: string[]): ParsedCommand {
       positionals.push(arg);
       i++;
     }
+  }
+
+  // Opportunity subcommand parsing
+  if (result.command === "opportunity") {
+    const sub = positionals[0];
+    if (sub && OPPORTUNITY_SUBCOMMANDS.has(sub)) {
+      result.subcommand = sub;
+      // Second positional is the target ID (for show/accept/reject)
+      if (positionals[1]) {
+        result.targetId = positionals[1];
+      }
+    }
+    return result;
   }
 
   // First positional after command is the message (for chat)

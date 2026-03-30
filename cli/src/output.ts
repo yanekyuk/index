@@ -502,7 +502,7 @@ export function sessionTable(
 
 // ── Intent output ──────────────────────────────────────────────────
 
-import type { Intent } from "./api.client";
+import type { Intent, Opportunity } from "./api.client";
 
 /**
  * Print a table of intents (user-facing: "signals").
@@ -537,9 +537,9 @@ export function intentTable(intents: Intent[]): void {
       day: "numeric",
     });
 
-    const statusColor = intent.status === "ACTIVE" ? GREEN : GRAY;
+    const sColor = intent.status === "ACTIVE" ? GREEN : GRAY;
     console.log(
-      `  ${desc.padEnd(descWidth)}  ${statusColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
+      `  ${desc.padEnd(descWidth)}  ${sColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
     );
   }
 }
@@ -602,6 +602,163 @@ export function intentCard(intent: Intent): void {
 
   console.log(`  ${GRAY}${"─".repeat(50)}${RESET}`);
   console.log();
+}
+
+// ── Opportunity output ──────────────────────────────────────────────
+
+/** Human-readable labels for valency roles with color. */
+const ROLE_LABELS: Record<string, { label: string; color: string }> = {
+  agent: { label: "Helper", color: GREEN },
+  patient: { label: "Seeker", color: YELLOW },
+  peer: { label: "Peer", color: CYAN },
+};
+
+/**
+ * Get a colored role label for an actor's valency role.
+ *
+ * @param role - Valency role string (agent, patient, peer).
+ * @returns Colored label string.
+ */
+function roleLabel(role?: string): string {
+  const entry = role ? ROLE_LABELS[role] : undefined;
+  if (!entry) return `${GRAY}Unknown${RESET}`;
+  return `${entry.color}${entry.label}${RESET}`;
+}
+
+/**
+ * Print a table of opportunities.
+ *
+ * @param opportunities - Array of opportunity objects.
+ */
+export function opportunityTable(opportunities: Opportunity[]): void {
+  if (opportunities.length === 0) {
+    dim("  No opportunities found.");
+    return;
+  }
+
+  const nameW = 24;
+  const catW = 20;
+  const statusW = 10;
+  const confW = 8;
+  const dateW = 20;
+
+  process.stdout.write(
+    `  ${BOLD}${"Counterparty".padEnd(nameW)}  ${"Category".padEnd(catW)}  ${"Status".padEnd(statusW)}  ${"Conf".padEnd(confW)}  ${"Created".padEnd(dateW)}${RESET}\n`,
+  );
+  process.stdout.write(
+    `  ${GRAY}${"-".repeat(nameW)}  ${"-".repeat(catW)}  ${"-".repeat(statusW)}  ${"-".repeat(confW)}  ${"-".repeat(dateW)}${RESET}\n`,
+  );
+
+  for (const opp of opportunities) {
+    const name = (opp.counterpartName ?? "Unknown").slice(0, nameW);
+    const category = (opp.interpretation?.category ?? "-").slice(0, catW);
+    const st = opp.status.slice(0, statusW);
+    const conf = opp.interpretation?.confidence != null ? `${opp.interpretation.confidence}%` : "-";
+    const date = opp.createdAt
+      ? new Date(opp.createdAt).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "-";
+
+    process.stdout.write(
+      `  ${name.padEnd(nameW)}  ${GRAY}${category.padEnd(catW)}${RESET}  ${statusColor(st)}${st.padEnd(statusW)}${RESET}  ${GRAY}${conf.padEnd(confW)}${RESET}  ${GRAY}${date.padEnd(dateW)}${RESET}\n`,
+    );
+  }
+}
+
+/**
+ * Print a detailed opportunity card.
+ *
+ * @param opp - Opportunity object with full details.
+ */
+export function opportunityCard(opp: Opportunity): void {
+  const width = 58;
+  const innerWidth = width - 2;
+
+  process.stdout.write(`\n  ${BLUE}+${"─".repeat(width)}+${RESET}\n`);
+  process.stdout.write(`  ${BLUE}|${RESET} ${BOLD}${BLUE}Opportunity${RESET}${" ".repeat(innerWidth - 12)}${BLUE}|${RESET}\n`);
+  process.stdout.write(`  ${BLUE}+${"─".repeat(width)}+${RESET}\n`);
+
+  // Status and category
+  const st = opp.status ?? "unknown";
+  const category = opp.interpretation?.category ?? "Uncategorized";
+  cardLine(`${BOLD}Status:${RESET}  ${statusColor(st)}${st}${RESET}`, innerWidth);
+  cardLine(`${BOLD}Category:${RESET}  ${category}`, innerWidth);
+
+  // Confidence
+  if (opp.interpretation?.confidence != null) {
+    const bar = confidenceBar(opp.interpretation.confidence);
+    cardLine(`${BOLD}Confidence:${RESET}  ${bar}`, innerWidth);
+  }
+
+  // Parties
+  if (opp.actors && opp.actors.length > 0) {
+    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
+    cardLine(`${BOLD}Parties:${RESET}`, innerWidth);
+    for (const actor of opp.actors) {
+      const name = actor.name ?? actor.userId;
+      const role = roleLabel(actor.role);
+      cardLine(`  ${name}  ${role}`, innerWidth);
+    }
+  }
+
+  // Reasoning
+  if (opp.interpretation?.reasoning) {
+    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
+    cardLine(`${BOLD}Reasoning:${RESET}`, innerWidth);
+    const wrapped = wordWrap(opp.interpretation.reasoning, innerWidth - 4);
+    for (const line of wrapped) {
+      cardLine(`  ${AGENT_TEXT}${line}${RESET}`, innerWidth);
+    }
+  }
+
+  // Presentation
+  if (opp.presentation) {
+    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
+    cardLine(`${BOLD}Presentation:${RESET}`, innerWidth);
+    const wrapped = wordWrap(opp.presentation, innerWidth - 4);
+    for (const line of wrapped) {
+      cardLine(`  ${AGENT_TEXT}${line}${RESET}`, innerWidth);
+    }
+  }
+
+  // Timestamps
+  if (opp.createdAt) {
+    process.stdout.write(`  ${BLUE}|${RESET}${" ".repeat(innerWidth)}${BLUE}|${RESET}\n`);
+    const created = new Date(opp.createdAt).toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    cardLine(`${GRAY}Created: ${created}${RESET}`, innerWidth);
+  }
+
+  process.stdout.write(`  ${BLUE}+${"─".repeat(width)}+${RESET}\n\n`);
+}
+
+/** Print a line inside a card box. */
+function cardLine(content: string, _innerWidth: number): void {
+  process.stdout.write(`  ${BLUE}|${RESET} ${content}\n`);
+}
+
+/** Get ANSI color for an opportunity status. */
+function statusColor(st: string): string {
+  switch (st) {
+    case "accepted":
+      return GREEN;
+    case "rejected":
+      return RED;
+    case "pending":
+      return YELLOW;
+    case "expired":
+      return GRAY;
+    default:
+      return "";
+  }
 }
 
 // ── Tool descriptions ───────────────────────────────────────────────

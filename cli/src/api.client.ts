@@ -67,6 +67,49 @@ export class ApiClient {
   }
 
   /**
+   * List opportunities for the authenticated user.
+   *
+   * @param opts - Optional filters (status, limit).
+   * @returns Array of opportunity objects.
+   * @throws Error on auth failure or network error.
+   */
+  async listOpportunities(opts?: OpportunityListOptions): Promise<Opportunity[]> {
+    const params = new URLSearchParams();
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    const path = qs ? `/api/opportunities?${qs}` : "/api/opportunities";
+    const res = await this.get(path);
+    const body = (await res.json()) as { opportunities: Opportunity[] };
+    return body.opportunities;
+  }
+
+  /**
+   * Get a single opportunity with presentation details.
+   *
+   * @param id - Opportunity ID.
+   * @returns Opportunity object with presentation.
+   * @throws Error on auth failure, not found, or network error.
+   */
+  async getOpportunity(id: string): Promise<Opportunity> {
+    const res = await this.get(`/api/opportunities/${id}`);
+    return (await res.json()) as Opportunity;
+  }
+
+  /**
+   * Update an opportunity's status (accept/reject).
+   *
+   * @param id - Opportunity ID.
+   * @param status - New status value.
+   * @returns Updated opportunity object.
+   * @throws Error on auth failure or network error.
+   */
+  async updateOpportunityStatus(id: string, status: string): Promise<Opportunity> {
+    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
+    return (await res.json()) as Opportunity;
+  }
+
+  /**
    * Open an SSE stream to the chat endpoint.
    *
    * Returns the raw Response so the caller can read the body
@@ -184,12 +227,14 @@ export class ApiClient {
     return res;
   }
 
-  private async patch(path: string): Promise<Response> {
+  private async patch(path: string, body?: unknown): Promise<Response> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "PATCH",
       headers: {
+        "Content-Type": "application/json",
         Authorization: `Bearer ${this.token}`,
       },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
     if (!res.ok) {
@@ -301,4 +346,49 @@ export interface IntentListResult {
     total: number;
     totalPages: number;
   };
+}
+
+/** Options for listing opportunities. */
+export interface OpportunityListOptions {
+  status?: string;
+  limit?: number;
+}
+
+/** An actor (party) in an opportunity. */
+export interface OpportunityActor {
+  userId: string;
+  name?: string;
+  role?: "agent" | "patient" | "peer";
+  indexId?: string;
+  intent?: string;
+}
+
+/** Interpretation (evaluation) of an opportunity. */
+export interface OpportunityInterpretation {
+  category?: string;
+  reasoning?: string;
+  confidence?: number;
+  signals?: Array<{ type: string; weight: number; detail: string }>;
+}
+
+/** Detection provenance for an opportunity. */
+export interface OpportunityDetection {
+  source?: string;
+  triggeredBy?: string;
+  createdBy?: string;
+  createdByName?: string;
+  timestamp?: string;
+}
+
+/** An opportunity object as returned by the API. */
+export interface Opportunity {
+  id: string;
+  status: string;
+  actors?: OpportunityActor[];
+  interpretation?: OpportunityInterpretation;
+  detection?: OpportunityDetection;
+  presentation?: string;
+  counterpartName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
