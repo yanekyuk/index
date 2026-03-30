@@ -11,30 +11,31 @@ export interface StreamResult {
   error?: string;
 }
 
+/** Callbacks for stream rendering. */
+export interface StreamCallbacks {
+  onToken: (text: string) => void;
+  onStatus?: (message: string) => void;
+  /**
+   * Tool activity from the protocol — uses the server's own human-friendly
+   * description string. Phase is "start" or "end".
+   */
+  onToolActivity?: (description: string, phase: "start" | "end", success?: boolean) => void;
+}
+
 /**
- * Read an SSE Response body, dispatch token content to `onToken`, and
+ * Read an SSE Response body, dispatch token content to callbacks, and
  * return a summary result once the stream ends.
  *
- * The protocol server emits `data: {JSON}\n\n` events where the JSON
- * payload contains a `type` field. The key event types for CLI rendering:
- *
- * - `token`          — incremental text; `content` is appended to output
- * - `status`         — processing status; forwarded to `onStatus`
- * - `tool_activity`  — tool narration; forwarded to `onStatus`
- * - `response_reset` — discard accumulated tokens (hallucination recovery)
- * - `done`           — final event with `sessionId`, `response`, `title`
- * - `error`          — error event with `message`
- *
- * @param response - The raw fetch Response with SSE body.
- * @param onToken - Called for each text token (for real-time rendering).
- * @param onStatus - Optional callback for status/activity messages.
- * @returns A summary of the completed stream.
+ * The protocol emits `tool_activity` events with human-friendly descriptions
+ * (e.g. "Proposing a new signal for game development"). These are the
+ * canonical tool call indicators — `tool_start`/`tool_end` events are only
+ * used to track the insideToolCall state for token suppression, not displayed.
  */
 export async function renderSSEStream(
   response: Response,
-  onToken: (text: string) => void,
-  onStatus?: (message: string) => void,
+  callbacks: StreamCallbacks,
 ): Promise<StreamResult> {
+  const { onToken, onStatus, onToolActivity } = callbacks;
   const result: StreamResult = {};
 
   if (!response.body) {
@@ -45,6 +46,10 @@ export async function renderSSEStream(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  /** Tracks whether we're inside a tool call (suppress tool-name tokens). */
+  let insideToolCall = false;
+  /** Maps toolName -> human-friendly description from the start event. */
+  const toolDescriptions = new Map<string, string>();
 
   try {
     while (true) {
@@ -59,7 +64,6 @@ export async function renderSSEStream(
         const raw = buffer.slice(0, idx);
         buffer = buffer.slice(idx + 2);
 
-        // Each line should be "data: {JSON}"
         for (const line of raw.split("\n")) {
           if (!line.startsWith("data:")) continue;
 
@@ -71,11 +75,12 @@ export async function renderSSEStream(
             const type = event.type as string;
 
             switch (type) {
-              case "token":
-                if (typeof event.content === "string") {
-                  onToken(event.content);
-                }
+              case "token": {
+                if (typeof event.content !== "string") break;
+                if (insideToolCall) break;
+                onToken(event.content);
                 break;
+              }
 
               case "status":
                 if (onStatus && typeof event.message === "string") {
@@ -83,15 +88,46 @@ export async function renderSSEStream(
                 }
                 break;
 
-              case "tool_activity":
-                if (onStatus && typeof event.description === "string") {
-                  onStatus(event.description);
+              case "tool_activity": {
+                const phase = event.phase as string;
+                const toolName = typeof event.toolName === "string" ? event.toolName : "";
+                const desc = typeof event.description === "string" ? event.description : undefined;
+
+                if (phase === "start") {
+                  insideToolCall = true;
+                  // Store the human-friendly description from the start event
+                  if (desc && toolName) {
+                    toolDescriptions.set(toolName, desc);
+                  }
+                  if (onToolActivity && desc) {
+                    onToolActivity(desc, "start");
+                  }
+                } else if (phase === "end") {
+                  insideToolCall = false;
+                  // Reuse the start description — end events often have the raw tool name
+                  const startDesc = toolName ? toolDescriptions.get(toolName) : undefined;
+                  if (onToolActivity) {
+                    onToolActivity(startDesc ?? desc ?? toolName, "end", event.success !== false);
+                  }
+                  if (toolName) toolDescriptions.delete(toolName);
                 }
+                break;
+              }
+
+              case "tool_start":
+                // Only used for token suppression — tool_activity handles display.
+                insideToolCall = true;
+                break;
+
+              case "tool_end":
+                insideToolCall = false;
+                break;
+
+              case "llm_start":
+                insideToolCall = false;
                 break;
 
               case "response_reset":
-                // The agent detected a hallucination and is retrying.
-                // Clear accumulated response — new tokens will follow.
                 result.response = undefined;
                 if (onStatus && typeof event.reason === "string") {
                   onStatus(`Retrying: ${event.reason}`);
@@ -118,7 +154,6 @@ export async function renderSSEStream(
                     : "Unknown stream error";
                 break;
 
-              // Ignore all other event types (routing, debug_meta, etc.)
               default:
                 break;
             }

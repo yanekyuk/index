@@ -169,39 +169,11 @@ async function runChatOneShot(
   const response = await client.streamChat({ message, sessionId });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      output.error(
-        "Session expired or invalid. Run `index login` to re-authenticate.",
-        1,
-      );
-    }
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
-    output.error(body.error ?? `HTTP ${response.status}`, 1);
+    handleStreamError(response);
     return;
   }
 
-  let hasTokens = false;
-
-  const result = await renderSSEStream(
-    response,
-    (text) => {
-      hasTokens = true;
-      output.token(text);
-    },
-    (statusMsg) => {
-      if (!hasTokens) {
-        output.status(statusMsg);
-      }
-    },
-  );
-
-  // Clear status line and add final newline after tokens
-  output.clearStatus();
-  if (hasTokens) {
-    console.log(); // newline after streamed tokens
-  }
+  const result = await streamToTerminal(response);
 
   if (result.error) {
     output.error(result.error, 1);
@@ -209,7 +181,7 @@ async function runChatOneShot(
   }
 
   if (result.sessionId) {
-    output.dim(`Session: ${result.sessionId}`);
+    output.dim(`\nSession: ${result.sessionId}`);
   }
 }
 
@@ -220,19 +192,25 @@ async function runChatRepl(
   const client = await requireAuth(apiUrlOverride);
   let currentSessionId = sessionId;
 
-  output.heading("Index Chat");
-  output.dim('Type your message and press Enter. Type "exit" or Ctrl+C to quit.\n');
+  output.chatHeader();
+
+  const PROMPT_STR = output.PROMPT_STR;
 
   const rl = createInterface({
     input: process.stdin,
     output: process.stderr,
     terminal: true,
   });
+  rl.setPrompt(PROMPT_STR);
+  rl.prompt();
 
   try {
     for await (const line of rl) {
       const input = line.trim();
-      if (!input) continue;
+      if (!input) {
+        rl.prompt();
+        continue;
+      }
       if (input === "exit" || input === "quit") break;
 
       const response = await client.streamChat({
@@ -252,28 +230,11 @@ async function runChatRepl(
           error?: string;
         };
         output.error(body.error ?? `HTTP ${response.status}`);
+        rl.prompt();
         continue;
       }
 
-      let hasTokens = false;
-
-      const result = await renderSSEStream(
-        response,
-        (text) => {
-          hasTokens = true;
-          output.token(text);
-        },
-        (statusMsg) => {
-          if (!hasTokens) {
-            output.status(statusMsg);
-          }
-        },
-      );
-
-      output.clearStatus();
-      if (hasTokens) {
-        console.log(); // newline after streamed tokens
-      }
+      const result = await streamToTerminal(response);
 
       if (result.error) {
         output.error(result.error);
@@ -284,13 +245,73 @@ async function runChatRepl(
         currentSessionId = result.sessionId;
       }
 
-      console.log(); // blank line between turns
+      process.stderr.write("\n");
+      rl.prompt();
     }
   } finally {
     rl.close();
   }
 
+  process.stderr.write("\n");
   output.dim("Goodbye!");
+}
+
+// ── Stream helpers ──────────────────────────────────────────────────
+
+import type { StreamResult } from "./chat.command";
+import { MarkdownRenderer } from "./output";
+
+/**
+ * Stream an SSE response to the terminal with formatting.
+ * Handles status messages, tool activity, and markdown rendering.
+ */
+async function streamToTerminal(response: Response): Promise<StreamResult> {
+  let hasTokens = false;
+  const md = new MarkdownRenderer();
+
+  const result = await renderSSEStream(response, {
+    onToken(text) {
+      if (!hasTokens) {
+        output.clearStatus();
+        hasTokens = true;
+      }
+      md.write(text);
+    },
+    onStatus(msg) {
+      if (!hasTokens) {
+        output.status(msg);
+      }
+    },
+    onToolActivity(description, phase) {
+      if (phase === "start") {
+        output.toolActivity(description);
+      } else {
+        output.clearStatus();
+      }
+    },
+  });
+
+  md.finalize();
+  output.clearStatus();
+  if (hasTokens) {
+    console.log(); // newline after streamed tokens
+  }
+
+  return result;
+}
+
+/** Handle non-OK stream responses. */
+async function handleStreamError(response: Response): Promise<void> {
+  if (response.status === 401) {
+    output.error(
+      "Session expired or invalid. Run `index login` to re-authenticate.",
+      1,
+    );
+  }
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string;
+  };
+  output.error(body.error ?? `HTTP ${response.status}`, 1);
 }
 
 // ── Auth helper ──────────────────────────────────────────────────────
