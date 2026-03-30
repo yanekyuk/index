@@ -32,6 +32,7 @@ import { CredentialStore } from "./auth.store";
 import { ApiClient } from "./api.client";
 import { handleLogin } from "./login.command";
 import { renderSSEStream } from "./chat.command";
+import { handleProfile } from "./profile.command";
 import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
 import * as output from "./output";
@@ -123,17 +124,11 @@ async function main(): Promise<void> {
       }
       return;
 
-    case "profile":
-      if (args.subcommand === "sync") {
-        await runProfileSync(args.apiUrl);
-      } else if (args.subcommand === "show" && args.userId) {
-        await runProfileShow(args.userId, args.apiUrl);
-      } else if (args.subcommand === "show") {
-        output.error("Usage: index profile show <user-id>", 1);
-      } else {
-        await runProfileMe(args.apiUrl);
-      }
+    case "profile": {
+      const client = await requireAuth(args.apiUrl);
+      await handleProfile(client, args.subcommand, args.userId ? [args.userId] : []);
       return;
+    }
 
     case "intent":
       await runIntent(args);
@@ -403,33 +398,6 @@ async function runChatRepl(
 
   process.stderr.write("\n");
   output.dim("Goodbye!");
-}
-
-// ── Profile handlers ────────────────────────────────────────────────
-
-async function runProfileMe(apiUrlOverride?: string): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-
-  output.info("Loading your profile...");
-  const me = await client.getMe();
-  const user = await client.getUser(me.id);
-  output.profileCard(user);
-}
-
-async function runProfileShow(userId: string, apiUrlOverride?: string): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-
-  output.info("Loading profile...");
-  const user = await client.getUser(userId);
-  output.profileCard(user);
-}
-
-async function runProfileSync(apiUrlOverride?: string): Promise<void> {
-  const client = await requireAuth(apiUrlOverride);
-
-  output.info("Regenerating profile...");
-  await client.syncProfile();
-  output.success("Profile regeneration triggered. It may take a moment to complete.");
 }
 
 // ── Opportunity handlers ────────────────────────────────────────────
