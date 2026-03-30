@@ -334,6 +334,7 @@ const enrichmentResultSchema = z.object({
     websites: z.array(z.string()).optional(),
   }),
   confidentMatch: z.boolean(),
+  isHuman: z.boolean(),
 });
 
 /** Structured profile enrichment result from Parallel Chat API. */
@@ -392,8 +393,12 @@ const profileEnrichmentSchema = {
           type: "boolean",
           description: "true when public sources clearly identify this person and the profile data is reliable; false when the person could not be found or data is too thin/ambiguous.",
         },
+        isHuman: {
+          type: "boolean",
+          description: "true when this is an individual person; false when this is a company, team, service account, mailing list, bot, or automated sender.",
+        },
       },
-      required: ["identity", "narrative", "attributes", "socials", "confidentMatch"],
+      required: ["identity", "narrative", "attributes", "socials", "confidentMatch", "isHuman"],
     },
   },
 };
@@ -487,8 +492,18 @@ export async function enrichUserProfile(request: ParallelSearchRequestStruct): P
         messages: [
           {
             role: 'system',
-            content:
-              'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person. Extract their professional background, skills, interests, and social links. Be thorough but concise.\n\nIMPORTANT: Only use data the person explicitly published on their profile (headline, about, experience, education, skills). Do NOT infer roles, programs, affiliations, or biographical facts from LinkedIn reactions, likes, comments, reposts, or engagement signals. Activity signals indicate interest, not participation.\n\nPRIVACY: identity.bio and narrative.context are shown as a public profile summary. Never include email addresses, phone numbers, physical addresses, government IDs, or other direct contact or identifier details — even when they appear in search results or source text. Social links belong in the socials fields only (handles/URLs as structured data), not quoted as contact instructions inside bio or narrative.\n\nCONFIDENCE: Set confidentMatch to true only when you can clearly identify the person from public sources and the profile data is reliable. Set it to false when the person cannot be found, the match is ambiguous, or data is too thin to produce a meaningful profile.',
+            content: [
+              'You are an expert profiler. Your task is to research and synthesize a structured User Profile from public information about a person.',
+              'Extract their professional background, skills, interests, and social links. Be thorough but concise.',
+              '',
+              'CONFIDENCE: Set confidentMatch to true only when you can clearly identify the person from public sources and the profile data is reliable.',
+              'Set it to false when the person cannot be found, the match is ambiguous, or data is too thin to produce a meaningful profile.',
+              '',
+              'IS_HUMAN: Set isHuman to true if this is an individual person. Set it to false if this is a company, team, service account, mailing list, bot, or automated sender.',
+              '',
+              'PRIVACY: Never include email addresses, phone numbers, physical addresses, or government IDs in bio or narrative fields.',
+              'Social links belong in the socials fields only.',
+            ].join('\n'),
           },
           { role: 'user', content: userMessage },
         ],

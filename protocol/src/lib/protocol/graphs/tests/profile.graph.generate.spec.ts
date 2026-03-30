@@ -77,6 +77,7 @@ describe('ProfileGraph - Generate Mode', () => {
       attributes: { skills: ['TypeScript', 'React', 'Node.js'], interests: ['AI', 'Open Source'] },
       socials: { linkedin: 'janedoe', twitter: 'janedoe', github: 'janedoe', websites: [] },
       confidentMatch: true,
+      isHuman: true,
     };
 
     it('should use pre-populated profile, skipping LLM generation', async () => {
@@ -204,6 +205,7 @@ describe('ProfileGraph - Generate Mode', () => {
         attributes: { skills: [], interests: [] },
         socials: {},
         confidentMatch: true,
+        isHuman: true,
       });
 
       const graph = buildGraph();
@@ -237,6 +239,7 @@ describe('ProfileGraph - Generate Mode', () => {
         attributes: { skills: ['JavaScript'], interests: ['Web'] },
         socials: {},
         confidentMatch: false,
+        isHuman: true,
       });
 
       const graph = buildGraph();

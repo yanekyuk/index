@@ -23,22 +23,22 @@ describe("shouldEnrichGhostDisplayNameFromParallel", () => {
     ).toBe(false);
   });
 
-  it("returns false when enriched name is single word", () => {
+  it("returns true when enriched name is single word and differs from current", () => {
     expect(
       shouldEnrichGhostDisplayNameFromParallel(
-        { name: "jane", email: "jane@company.com", isGhost: true },
+        { name: "jdoe", email: "jdoe@company.com", isGhost: true },
         "Jane",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("returns false when current name is not the email-local placeholder", () => {
+  it("returns true when ghost has importer-supplied name and enriched name differs", () => {
     expect(
       shouldEnrichGhostDisplayNameFromParallel(
         { name: "Jane Doe", email: "jane@company.com", isGhost: true },
         "Jane Public",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns false when enriched name matches current name", () => {

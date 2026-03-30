@@ -402,6 +402,11 @@ export class ProfileGraphFactory {
           try {
             const enrichment = await enrichUserProfile(request);
 
+            if (enrichment && !enrichment.isHuman) {
+              logger.info("Enrichment detected non-human entity, skipping", { userId: state.userId });
+              return { error: "Non-human entity detected" };
+            }
+
             const hasMeaningfulEnrichment = !!enrichment &&
               enrichment.confidentMatch &&
               (
