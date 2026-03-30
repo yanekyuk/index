@@ -2,8 +2,8 @@
 
 Command-line interface for [Index Network](https://index.network). Chat with the AI agent, manage signals, and discover opportunities — all from your terminal.
 
-> **Status: v0.1.0 — Early Preview**
-> First iteration with `login` and `chat` commands. More commands coming soon.
+> **Status: v0.2.0**
+> Supports `login`, `chat`, and `intent` (signal management) commands.
 
 ## Quick Start
 
@@ -40,6 +40,19 @@ Clear stored credentials.
 index logout
 ```
 
+### `index intent`
+
+Manage your signals (intents). Create signals from natural language, list active signals, view details, and archive signals you no longer need.
+
+```bash
+index intent list                           # List active signals
+index intent list --archived                # Include archived signals
+index intent list --limit 5                 # Limit to 5 results
+index intent show <id>                      # Show full signal details
+index intent create "Looking for a CTO"     # Create from natural language
+index intent archive <id>                   # Archive a signal
+```
+
 ### `index chat`
 
 Interactive REPL chat with the Index agent. Supports streaming responses, inline markdown formatting, tool call indicators, and special blocks (signal proposals, opportunities).
@@ -70,6 +83,8 @@ index profile sync                  # Regenerate your profile
 | `--token <token>` | `-t` | Provide bearer token directly |
 | `--session <id>` | `-s` | Resume a specific chat session |
 | `--list` | `-l` | List chat sessions |
+| `--archived` | | Include archived signals (intent list) |
+| `--limit <n>` | | Limit results (intent list) |
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 
@@ -105,7 +120,6 @@ cli/
 
 Commands planned for future iterations:
 
-- `index intent` — Create, list, update, and delete signals
 - `index opportunity` — Browse and manage discovered opportunities
 - `index network` — Manage indexes and memberships
 - `index conversation` — H2H and A2A messaging
