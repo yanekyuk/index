@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "chat" | "profile" | "intent" | "opportunity" | "network" | "help" | "version" | "unknown";
   /** Chat message for one-shot mode. */
   message?: string;
   /** Resume a specific chat session. */
@@ -19,7 +19,7 @@ export interface ParsedCommand {
   /** The unrecognized command string (when command === "unknown"). */
   unknown?: string;
   /** Profile subcommand ("show" or "sync"). */
-  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject";
+  subcommand?: "show" | "sync" | "list" | "show" | "create" | "archive" | "accept" | "reject" | "join" | "leave" | "invite";
   /** Target user ID for `profile show <user-id>`. */
   userId?: string;
   /** Intent ID for show/archive subcommands. */
@@ -34,11 +34,17 @@ export interface ParsedCommand {
   status?: string;
   /** Limit for list subcommands (e.g. --limit 10). */
   limit?: number;
+  /** Positional arguments after command/subcommand (e.g. id, name, email). */
+  positionals?: string[];
+  /** Prompt text for network create --prompt. */
+  prompt?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "chat", "profile", "intent", "opportunity", "network", "help", "version"]);
 
 const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
+
+const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite"]);
 
 /**
  * Parse raw CLI arguments into a structured command object.
@@ -109,6 +115,9 @@ export function parseArgs(args: string[]): ParsedCommand {
     } else if (arg === "--limit") {
       result.limit = parseInt(args[i + 1], 10);
       i += 2;
+    } else if (arg === "--prompt" || arg === "-p") {
+      result.prompt = args[i + 1];
+      i += 2;
     } else if (arg.startsWith("--")) {
       // Skip unknown flags
       i++;
@@ -152,6 +161,17 @@ export function parseArgs(args: string[]): ParsedCommand {
   // Intent subcommand parsing
   if (result.command === "intent") {
     parseIntentArgs(positionals, result);
+  }
+
+  // Network command: first positional is subcommand, rest are args
+  if (result.command === "network") {
+    if (positionals.length > 0 && NETWORK_SUBCOMMANDS.has(positionals[0])) {
+      result.subcommand = positionals[0];
+      result.positionals = positionals.slice(1);
+    } else if (positionals.length > 0) {
+      // Unknown subcommand — treat as positionals
+      result.positionals = positionals;
+    }
   }
 
   return result;
