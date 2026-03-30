@@ -51,7 +51,6 @@ async function readVersion(): Promise<string> {
  * @param name - Display name for logging.
  */
 async function publishPackage(dir: string, name: string): Promise<void> {
-  const flag = dryRun ? "--dry-run" : "";
   console.log(`[publish] ${dryRun ? "(dry-run) " : ""}Publishing ${name}...`);
 
   try {
