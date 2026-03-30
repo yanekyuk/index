@@ -53,6 +53,7 @@ describe('ProfileGraph - Pre-Populated Profile Path', () => {
       }),
       getHydeDocument: mock(async () => null),
       saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
+      softDeleteGhost: mock(async () => true),
     } as unknown as ProfileGraphDatabase;
 
     mockEmbedder = {

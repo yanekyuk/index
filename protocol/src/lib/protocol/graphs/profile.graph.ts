@@ -403,7 +403,8 @@ export class ProfileGraphFactory {
             const enrichment = await enrichUserProfile(request);
 
             if (enrichment && !enrichment.isHuman) {
-              logger.info("Enrichment detected non-human entity, skipping", { userId: state.userId });
+              logger.info("Enrichment detected non-human entity, soft-deleting ghost", { userId: state.userId });
+              await this.database.softDeleteGhost(state.userId);
               return { error: "Non-human entity detected" };
             }
 
@@ -465,8 +466,18 @@ export class ProfileGraphFactory {
               };
             }
 
+            if (user.isGhost) {
+              logger.info("Low-confidence enrichment for ghost, soft-deleting", { userId: state.userId });
+              await this.database.softDeleteGhost(state.userId);
+              return { error: "Enrichment not confident for ghost user" };
+            }
             logger.warn("Chat API returned low-signal enrichment, falling back to basic info", { userId: state.userId });
           } catch (enrichErr) {
+            if (user.isGhost) {
+              logger.info("Enrichment failed for ghost, soft-deleting", { userId: state.userId });
+              await this.database.softDeleteGhost(state.userId);
+              return { error: "Enrichment failed for ghost user" };
+            }
             logger.warn("Chat API enrichment failed, falling back to basic info", {
               userId: state.userId,
               error: enrichErr instanceof Error ? enrichErr.message : String(enrichErr),

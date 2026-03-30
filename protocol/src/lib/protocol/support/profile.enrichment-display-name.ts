@@ -17,7 +17,7 @@ export function shouldEnrichGhostDisplayNameFromParallel(
   const trimmed = enrichedName.trim();
   if (!trimmed || trimmed.includes("@")) return false;
 
-  const current = user.name.trim().toLowerCase();
+  const current = user.name.trim();
   if (current === trimmed.toLowerCase()) return false;
 
   return true;

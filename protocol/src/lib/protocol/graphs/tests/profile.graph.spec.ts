@@ -53,6 +53,7 @@ describe('ProfileGraph', () => {
       saveProfile: mock(async () => {}),
       getHydeDocument: mock(async () => null),
       saveHydeDocument: mock(async () => ({ id: 'mock-hyde-doc-id' })),
+      softDeleteGhost: mock(async () => true),
     } as any;
 
     // Mock embedder

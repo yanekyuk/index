@@ -419,6 +419,14 @@ export interface Database {
    */
   updateUser(userId: string, data: { name?: string; intro?: string; location?: string; socials?: UserSocials; onboarding?: OnboardingState }): Promise<UserRecord | null>;
 
+  /**
+   * Soft-delete a ghost user and all their contact memberships.
+   * Used when enrichment determines the entity is not a real person.
+   * @param userId - The ghost user to soft-delete
+   * @returns true if the user was soft-deleted
+   */
+  softDeleteGhost(userId: string): Promise<boolean>;
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Pre-Graph Operations (State Population)
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1544,7 +1552,7 @@ export interface SystemDatabase {
  */
 export type ProfileGraphDatabase = Pick<
   Database,
-  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument'
+  'getProfile' | 'getUser' | 'updateUser' | 'saveProfile' | 'getProfileByUserId' | 'getHydeDocument' | 'saveHydeDocument' | 'softDeleteGhost'
 >;
 
 /**

@@ -3736,6 +3736,34 @@ export class ProfileDatabaseAdapter {
   }) {
     return this.hydeAdapter.saveHydeDocument(data);
   }
+
+  /**
+   * Soft-delete a ghost user and all their contact memberships.
+   * Used when enrichment detects the entity is not human.
+   * @param userId - The ghost user to soft-delete
+   * @returns true if the user was soft-deleted
+   */
+  async softDeleteGhost(userId: string): Promise<boolean> {
+    const [user] = await db.select({ id: schema.users.id, isGhost: schema.users.isGhost })
+      .from(schema.users)
+      .where(and(eq(schema.users.id, userId), isNull(schema.users.deletedAt)))
+      .limit(1);
+    if (!user || !user.isGhost) return false;
+
+    await db.update(schema.indexMembers)
+      .set({ deletedAt: new Date() })
+      .where(and(
+        eq(schema.indexMembers.userId, userId),
+        sql`'contact' = ANY(${schema.indexMembers.permissions})`,
+        isNull(schema.indexMembers.deletedAt),
+      ));
+
+    await db.update(schema.users)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.users.id, userId));
+
+    return true;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
