@@ -502,7 +502,7 @@ export function sessionTable(
 
 // ── Intent output ──────────────────────────────────────────────────
 
-import type { Intent, Opportunity, OpportunityActor } from "./api.client";
+import type { Intent, Opportunity } from "./api.client";
 
 /**
  * Print a table of intents (user-facing: "signals").
