@@ -12,9 +12,9 @@ import * as output from "./output";
 const INTENT_HELP = `
 Usage:
   index intent list [--archived] [--limit <n>]  List your signals
-  index intent show <id>                        Show signal details
+  index intent show <id>                        Show signal details (accepts short ID)
   index intent create <content>                 Create a signal from text
-  index intent archive <id>                     Archive a signal
+  index intent archive <id>                     Archive a signal (accepts short ID)
 `;
 
 /**

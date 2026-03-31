@@ -14,9 +14,9 @@ Usage:
   index opportunity list                List your opportunities
   index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
   index opportunity list --limit <n>    Limit results
-  index opportunity show <id>           Show full opportunity details
-  index opportunity accept <id>         Accept an opportunity
-  index opportunity reject <id>         Reject an opportunity
+  index opportunity show <id>           Show full opportunity details (accepts short ID)
+  index opportunity accept <id>         Accept an opportunity (accepts short ID)
+  index opportunity reject <id>         Reject an opportunity (accepts short ID)
 `;
 
 /**

@@ -14,10 +14,10 @@ Network Commands:
   index network list                     List your networks
   index network create <name>            Create a new network
   index network create <name> --prompt   Create with a description
-  index network show <id>                Show network details and members
-  index network join <id>                Join a public network
-  index network leave <id>               Leave a network
-  index network invite <id> <email>      Invite a user by email
+  index network show <id|key>            Show network details and members
+  index network join <id|key>            Join a public network
+  index network leave <id|key>           Leave a network
+  index network invite <id|key> <email>  Invite a user by email
 `;
 
 /**
@@ -86,6 +86,9 @@ async function networkCreate(client: ApiClient, name: string | undefined, prompt
 
   const network = await client.createNetwork(name, prompt);
   output.success(`Network created: ${network.title}`);
+  if (network.key) {
+    output.dim(`  Key: ${network.key}`);
+  }
   output.dim(`  ID: ${network.id}`);
   output.dim(`  Join Policy: ${(network.joinPolicy ?? "invite_only").replace("_", " ")}`);
 }

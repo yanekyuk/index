@@ -192,10 +192,10 @@ Conversation Commands:
   index conversation --session <id>        Resume a specific chat session
   index conversation sessions              List AI chat sessions
   index conversation list                  List all conversations (H2A + H2H)
-  index conversation with <user-id>        Open or resume a DM with a user
-  index conversation show <id>             Show messages in a conversation
+  index conversation with <user-id|key>    Open or resume a DM with a user
+  index conversation show <id>             Show messages (accepts short ID)
   index conversation show <id> --limit <n> Limit number of messages
-  index conversation send <id> <message>   Send a message
+  index conversation send <id> <message>   Send a message (accepts short ID)
   index conversation stream                Listen for real-time events (SSE)
 `;
 

@@ -471,6 +471,7 @@ export function networkTable(
  */
 export function networkCard(network: {
   id: string;
+  key?: string | null;
   title: string;
   prompt?: string | null;
   joinPolicy?: string;
@@ -480,6 +481,9 @@ export function networkCard(network: {
   console.log();
   console.log(`  ${BOLD}${network.title}${RESET}`);
   console.log(`  ${GRAY}${"─".repeat(40)}${RESET}`);
+  if (network.key) {
+    console.log(`  ${GRAY}Key:${RESET}         ${CYAN}${network.key}${RESET}`);
+  }
   console.log(`  ${GRAY}ID:${RESET}          ${network.id}`);
   if (network.prompt) {
     console.log(`  ${GRAY}Prompt:${RESET}      ${network.prompt}`);
