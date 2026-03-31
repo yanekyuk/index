@@ -14,6 +14,7 @@ import { profileService } from '../services/profile.service';
 import { profileQueue } from '../queues/profile.queue';
 import type { Id } from '../types/common.types';
 
+import { toKebabKey } from '../lib/keys';
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
 import type { SeedProfile } from './test-data';
 
@@ -32,6 +33,7 @@ interface SeedAccount {
 interface IndexDef {
   id: Id<'indexes'>;
   title: string;
+  key: string;
   prompt: string | null;
   joinPolicy: 'anyone' | 'invite_only';
 }
@@ -44,12 +46,14 @@ const SEED_INDEXES: IndexDef[] = [
   {
     id: '5aff6cd6-d64e-4ef9-8bcf-6c89815f771c',
     title: 'Commons',
+    key: 'commons',
     prompt: null,
     joinPolicy: 'anyone',
   },
   {
     id: '99999999-d64e-4ef9-8bcf-6c89815f771c',
     title: 'Vault',
+    key: 'vault',
     prompt: null,
     joinPolicy: 'invite_only',
   },
@@ -58,24 +62,28 @@ const SEED_INDEXES: IndexDef[] = [
   {
     id: 'aaaaaaaa-0001-4000-8000-000000000001',
     title: 'Stack',
+    key: 'stack',
     prompt: 'Software engineering, programming, coding projects, developer tools, and technical implementation',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0002-4000-8000-000000000002',
     title: 'Latent',
+    key: 'latent',
     prompt: 'Artificial intelligence, machine learning, deep learning, LLMs, neural networks, and data science',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0003-4000-8000-000000000003',
     title: 'Pixel',
+    key: 'pixel',
     prompt: 'UI/UX design, graphic design, creative projects, branding, and visual communication',
     joinPolicy: 'invite_only',
   },
   {
     id: 'aaaaaaaa-0004-4000-8000-000000000004',
     title: 'Launch',
+    key: 'launch',
     prompt: 'Startups, entrepreneurship, business strategy, fundraising, and go-to-market',
     joinPolicy: 'anyone',
   },
@@ -84,36 +92,42 @@ const SEED_INDEXES: IndexDef[] = [
   {
     id: 'aaaaaaaa-0005-4000-8000-000000000005',
     title: 'Atelier',
+    key: 'atelier',
     prompt: 'Visual art, illustration, music, writing, performance art, crafts, and creative projects',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0006-4000-8000-000000000006',
     title: 'Arena',
+    key: 'arena',
     prompt: 'Video games, tabletop RPGs, streaming, esports, game development, and gaming community',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0007-4000-8000-000000000007',
     title: 'Syllabus',
+    key: 'syllabus',
     prompt: 'Teaching, tutoring, education, learning, academic research, and knowledge sharing',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0008-4000-8000-000000000008',
     title: 'Reps',
+    key: 'reps',
     prompt: 'Sports, fitness, running, cycling, climbing, swimming, coaching, and athletic activities',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-0009-4000-8000-000000000009',
     title: 'Tribe',
+    key: 'tribe',
     prompt: 'Community organizing, volunteering, mutual aid, local initiatives, and civic engagement',
     joinPolicy: 'anyone',
   },
   {
     id: 'aaaaaaaa-000a-4000-8000-00000000000a',
     title: 'Bench',
+    key: 'bench',
     prompt: 'Hobbies, makers, DIY, ceramics, cooking, photography, and hands-on projects',
     joinPolicy: 'anyone',
   },
@@ -253,6 +267,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         await db.insert(indexes).values({
           id: idx.id,
           title: idx.title,
+          key: idx.key,
           prompt: idx.prompt,
           permissions: {
             joinPolicy: idx.joinPolicy,

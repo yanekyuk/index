@@ -249,8 +249,11 @@ export class ApiClient {
    */
   async listNetworks(): Promise<Network[]> {
     const res = await this.get("/api/indexes");
-    const body = (await res.json()) as { indexes: Network[] };
-    return body.indexes;
+    const body = (await res.json()) as { indexes: Array<Network & { permissions?: { joinPolicy?: string } }> };
+    return body.indexes.map((n) => ({
+      ...n,
+      joinPolicy: n.joinPolicy ?? n.permissions?.joinPolicy,
+    }));
   }
 
   /**
@@ -279,8 +282,9 @@ export class ApiClient {
    */
   async getNetwork(id: string): Promise<Network> {
     const res = await this.get(`/api/indexes/${id}`);
-    const body = (await res.json()) as { index: Network };
-    return body.index;
+    const body = (await res.json()) as { index: Network & { permissions?: { joinPolicy?: string } } };
+    const n = body.index;
+    return { ...n, joinPolicy: n.joinPolicy ?? n.permissions?.joinPolicy };
   }
 
   /**

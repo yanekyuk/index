@@ -218,6 +218,13 @@
       "when": 1775145600000,
       "tag": "0030_add_users_indexes_key",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1775232000000,
+      "tag": "0031_backfill_index_keys",
+      "breakpoints": true
     }
   ]
 }
