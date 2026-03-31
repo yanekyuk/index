@@ -357,8 +357,15 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async leaveIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      await indexService.leaveIndex(params.id, user.id);
-      logger.verbose('User left index', { indexId: params.id, userId: user.id });
+      const resolvedId = await indexService.resolveIndexId(params.id);
+      if (!resolvedId) {
+        return new Response(JSON.stringify({ error: 'Index not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      await indexService.leaveIndex(resolvedId, user.id);
+      logger.verbose('User left index', { indexId: resolvedId, userId: user.id });
       return Response.json({ success: true });
     } catch (err: unknown) {
       const msg = errorMessage(err);

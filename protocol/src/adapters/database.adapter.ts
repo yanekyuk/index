@@ -2157,12 +2157,23 @@ export class ChatDatabaseAdapter {
    * @returns The index UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
-    if (isUuidFormat) {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
+    if (isFullUuid) {
       return idOrKey;
     }
+    // Try key lookup first
     const row = await this.getIndexByKey(idOrKey);
-    return row?.id ?? null;
+    if (row) return row.id;
+    // Fall back to hex prefix matching
+    const isHexPrefix = /^[0-9a-f]+$/i.test(idOrKey);
+    if (isHexPrefix) {
+      const rows = await db.select({ id: indexes.id })
+        .from(indexes)
+        .where(and(sql`${indexes.id} LIKE ${idOrKey + '%'}`, isNull(indexes.deletedAt)))
+        .limit(2);
+      if (rows.length === 1) return rows[0].id;
+    }
+    return null;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
