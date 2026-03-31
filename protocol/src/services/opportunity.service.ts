@@ -175,18 +175,14 @@ export class OpportunityService {
    * @returns Resolved ID, or error object with status
    */
   async resolveId(idOrPrefix: string, userId: string): Promise<{ id: string } | { error: string; status: number }> {
-    if ('resolveOpportunityId' in this.db && typeof (this.db as Record<string, unknown>).resolveOpportunityId === 'function') {
-      const result = await (this.db as unknown as { resolveOpportunityId(id: string, uid: string): Promise<{ id: string } | { ambiguous: true } | null> }).resolveOpportunityId(idOrPrefix, userId);
-      if (!result) {
-        return { error: 'Opportunity not found', status: 404 };
-      }
-      if ('ambiguous' in result) {
-        return { error: 'Ambiguous ID prefix, please provide more characters', status: 409 };
-      }
-      return { id: result.id };
+    const result = await this.db.resolveOpportunityId(idOrPrefix, userId);
+    if (!result) {
+      return { error: 'Opportunity not found', status: 404 };
     }
-    // Fallback: treat as UUID
-    return { id: idOrPrefix };
+    if ('ambiguous' in result) {
+      return { error: 'Ambiguous ID prefix, please provide more characters', status: 409 };
+    }
+    return { id: result.id };
   }
 
   /**
