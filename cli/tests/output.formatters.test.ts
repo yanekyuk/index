@@ -193,6 +193,41 @@ describe("opportunityTable", () => {
     expect(output).toContain("80%");
   });
 
+  it("displays confidence correctly for 0-1 scale values", () => {
+    const output = captureLogs(() => {
+      opportunityTable([
+        {
+          id: "o2",
+          status: "pending",
+          counterpartName: "Alice",
+          interpretation: { category: "networking", confidence: 0.72, reasoning: "" },
+          createdAt: "2026-01-01T00:00:00Z",
+        } as Opportunity,
+      ]);
+    });
+    expect(output).toContain("72%");
+    expect(output).not.toContain("0.72%");
+  });
+
+  it("extracts counterpart name from actors when counterpartName is missing", () => {
+    const output = captureLogs(() => {
+      opportunityTable([
+        {
+          id: "o3",
+          status: "pending",
+          actors: [
+            { userId: "u1", name: "Alice", role: "agent" },
+            { userId: "u2", name: "Bob", role: "patient" },
+          ],
+          interpretation: { category: "collaboration", confidence: 0.9, reasoning: "" },
+          createdAt: "2026-01-01T00:00:00Z",
+        } as Opportunity,
+      ]);
+    });
+    // Without counterpartName, should not show "Unknown" if actors have names
+    expect(output).not.toContain("Unknown");
+  });
+
   it("prints empty message for no opportunities", () => {
     const output = captureLogs(() => {
       opportunityTable([]);

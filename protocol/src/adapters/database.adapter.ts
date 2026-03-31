@@ -139,6 +139,7 @@ interface IntentListRow {
   id: string;
   payload: string;
   summary: string | null;
+  status: string | null;
   isIncognito: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -438,6 +439,7 @@ export class IntentDatabaseAdapter {
         id: schema.intents.id,
         payload: schema.intents.payload,
         summary: schema.intents.summary,
+        status: schema.intents.status,
         isIncognito: schema.intents.isIncognito,
         createdAt: schema.intents.createdAt,
         updatedAt: schema.intents.updatedAt,
@@ -461,6 +463,7 @@ export class IntentDatabaseAdapter {
       id: schema.intents.id,
       payload: schema.intents.payload,
       summary: schema.intents.summary,
+      status: schema.intents.status,
       isIncognito: schema.intents.isIncognito,
       createdAt: schema.intents.createdAt,
       updatedAt: schema.intents.updatedAt,
@@ -482,8 +485,8 @@ export class IntentDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveIntentId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    if (isFullUuid) {
       return { id: idOrPrefix };
     }
     const rows = await db.select({ id: schema.intents.id })
@@ -3560,8 +3563,8 @@ export class OpportunityDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveOpportunityId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    if (isFullUuid) {
       return { id: idOrPrefix };
     }
     const rows = await db.select({ id: opportunities.id })
@@ -5236,8 +5239,8 @@ export class ConversationDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveConversationId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    if (isFullUuid) {
       return { id: idOrPrefix };
     }
     const rows = await db.select({ id: schema.conversationParticipants.conversationId })

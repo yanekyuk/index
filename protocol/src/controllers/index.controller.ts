@@ -274,8 +274,16 @@ export class IndexController {
   @UseGuards(AuthGuard)
   async joinPublicIndex(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
     try {
-      const index = await indexService.joinPublicIndex(params.id, user.id);
-      logger.verbose('User joined public index', { indexId: params.id, userId: user.id });
+      // Resolve key or UUID to actual index UUID
+      const resolvedId = await indexService.resolveIndexId(params.id);
+      if (!resolvedId) {
+        return new Response(JSON.stringify({ error: 'Index not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const index = await indexService.joinPublicIndex(resolvedId, user.id);
+      logger.verbose('User joined public index', { indexId: resolvedId, userId: user.id });
       return Response.json({ index });
     } catch (err: unknown) {
       const msg = errorMessage(err);
