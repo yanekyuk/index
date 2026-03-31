@@ -485,14 +485,15 @@ export class IntentDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveIntentId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
     if (isFullUuid) {
-      return { id: idOrPrefix };
+      return { id: normalized };
     }
     const rows = await db.select({ id: schema.intents.id })
       .from(schema.intents)
       .where(and(
-        sql`${schema.intents.id} LIKE ${idOrPrefix + '%'}`,
+        sql`${schema.intents.id} LIKE ${normalized + '%'}`,
         eq(schema.intents.userId, userId),
       ))
       .limit(2);
@@ -3574,14 +3575,15 @@ export class OpportunityDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveOpportunityId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
     if (isFullUuid) {
-      return { id: idOrPrefix };
+      return { id: normalized };
     }
     const rows = await db.select({ id: opportunities.id })
       .from(opportunities)
       .where(and(
-        sql`${opportunities.id} LIKE ${idOrPrefix + '%'}`,
+        sql`${opportunities.id} LIKE ${normalized + '%'}`,
         sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
       ))
       .limit(2);
@@ -5250,14 +5252,15 @@ export class ConversationDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveConversationId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrPrefix);
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
     if (isFullUuid) {
-      return { id: idOrPrefix };
+      return { id: normalized };
     }
     const rows = await db.select({ id: schema.conversationParticipants.conversationId })
       .from(schema.conversationParticipants)
       .where(and(
-        sql`${schema.conversationParticipants.conversationId} LIKE ${idOrPrefix + '%'}`,
+        sql`${schema.conversationParticipants.conversationId} LIKE ${normalized + '%'}`,
         eq(schema.conversationParticipants.participantId, userId),
       ))
       .limit(2);
