@@ -157,19 +157,21 @@ export function intentTable(intents: Intent[]): void {
     return;
   }
 
-  const descWidth = 50;
+  const idWidth = 8;
+  const descWidth = 44;
   const statusWidth = 10;
   const sourceWidth = 16;
   const dateWidth = 20;
 
   console.log(
-    `  ${BOLD}${"Signal".padEnd(descWidth)}  ${"Status".padEnd(statusWidth)}  ${"Source".padEnd(sourceWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
+    `  ${BOLD}${"ID".padEnd(idWidth)}  ${"Signal".padEnd(descWidth)}  ${"Status".padEnd(statusWidth)}  ${"Source".padEnd(sourceWidth)}  ${"Created".padEnd(dateWidth)}${RESET}`,
   );
   console.log(
-    `  ${GRAY}${"-".repeat(descWidth)}  ${"-".repeat(statusWidth)}  ${"-".repeat(sourceWidth)}  ${"-".repeat(dateWidth)}${RESET}`,
+    `  ${GRAY}${"-".repeat(idWidth)}  ${"-".repeat(descWidth)}  ${"-".repeat(statusWidth)}  ${"-".repeat(sourceWidth)}  ${"-".repeat(dateWidth)}${RESET}`,
   );
 
   for (const intent of intents) {
+    const shortId = intent.id.slice(0, 8);
     const desc = (intent.summary ?? intent.payload).slice(0, descWidth);
     const status = (intent.status ?? "").padEnd(statusWidth);
     const source = (intent.sourceType ?? "-").padEnd(sourceWidth);
@@ -181,7 +183,7 @@ export function intentTable(intents: Intent[]): void {
 
     const sColor = intent.status === "ACTIVE" ? GREEN : GRAY;
     console.log(
-      `  ${desc.padEnd(descWidth)}  ${sColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
+      `  ${CYAN}${shortId}${RESET}  ${desc.padEnd(descWidth)}  ${sColor}${status}${RESET}  ${GRAY}${source}${RESET}  ${GRAY}${date}${RESET}`,
     );
   }
 }
@@ -278,20 +280,22 @@ export function opportunityTable(opportunities: Opportunity[]): void {
     return;
   }
 
-  const nameW = 24;
-  const catW = 20;
+  const idW = 8;
+  const nameW = 20;
+  const catW = 18;
   const statusW = 10;
   const confW = 8;
   const dateW = 20;
 
   process.stdout.write(
-    `  ${BOLD}${"Counterparty".padEnd(nameW)}  ${"Category".padEnd(catW)}  ${"Status".padEnd(statusW)}  ${"Conf".padEnd(confW)}  ${"Created".padEnd(dateW)}${RESET}\n`,
+    `  ${BOLD}${"ID".padEnd(idW)}  ${"Counterparty".padEnd(nameW)}  ${"Category".padEnd(catW)}  ${"Status".padEnd(statusW)}  ${"Conf".padEnd(confW)}  ${"Created".padEnd(dateW)}${RESET}\n`,
   );
   process.stdout.write(
-    `  ${GRAY}${"-".repeat(nameW)}  ${"-".repeat(catW)}  ${"-".repeat(statusW)}  ${"-".repeat(confW)}  ${"-".repeat(dateW)}${RESET}\n`,
+    `  ${GRAY}${"-".repeat(idW)}  ${"-".repeat(nameW)}  ${"-".repeat(catW)}  ${"-".repeat(statusW)}  ${"-".repeat(confW)}  ${"-".repeat(dateW)}${RESET}\n`,
   );
 
   for (const opp of opportunities) {
+    const shortId = opp.id.slice(0, 8);
     const name = (opp.counterpartName ?? "Unknown").slice(0, nameW);
     const category = (opp.interpretation?.category ?? "-").slice(0, catW);
     const st = opp.status.slice(0, statusW);
@@ -305,7 +309,7 @@ export function opportunityTable(opportunities: Opportunity[]): void {
       : "-";
 
     process.stdout.write(
-      `  ${name.padEnd(nameW)}  ${GRAY}${category.padEnd(catW)}${RESET}  ${statusColor(st)}${st.padEnd(statusW)}${RESET}  ${GRAY}${conf.padEnd(confW)}${RESET}  ${GRAY}${date.padEnd(dateW)}${RESET}\n`,
+      `  ${CYAN}${shortId}${RESET}  ${name.padEnd(nameW)}  ${GRAY}${category.padEnd(catW)}${RESET}  ${statusColor(st)}${st.padEnd(statusW)}${RESET}  ${GRAY}${conf.padEnd(confW)}${RESET}  ${GRAY}${date.padEnd(dateW)}${RESET}\n`,
     );
   }
 }
@@ -413,6 +417,7 @@ function statusColor(st: string): string {
 export function networkTable(
   networks: Array<{
     id: string;
+    key?: string | null;
     title: string;
     memberCount?: number;
     role?: string;
@@ -425,20 +430,22 @@ export function networkTable(
     return;
   }
 
-  const titleW = 30;
+  const keyW = 24;
+  const titleW = 26;
   const membersW = 8;
   const roleW = 10;
   const policyW = 12;
   const dateW = 18;
 
   console.log(
-    `  ${BOLD}${"Title".padEnd(titleW)}  ${"Members".padEnd(membersW)}  ${"Role".padEnd(roleW)}  ${"Join Policy".padEnd(policyW)}  ${"Created".padEnd(dateW)}${RESET}`,
+    `  ${BOLD}${"Key".padEnd(keyW)}  ${"Title".padEnd(titleW)}  ${"Members".padEnd(membersW)}  ${"Role".padEnd(roleW)}  ${"Join Policy".padEnd(policyW)}  ${"Created".padEnd(dateW)}${RESET}`,
   );
   console.log(
-    `  ${GRAY}${"-".repeat(titleW)}  ${"-".repeat(membersW)}  ${"-".repeat(roleW)}  ${"-".repeat(policyW)}  ${"-".repeat(dateW)}${RESET}`,
+    `  ${GRAY}${"-".repeat(keyW)}  ${"-".repeat(titleW)}  ${"-".repeat(membersW)}  ${"-".repeat(roleW)}  ${"-".repeat(policyW)}  ${"-".repeat(dateW)}${RESET}`,
   );
 
   for (const n of networks) {
+    const key = (n.key ?? n.id.slice(0, 8)).slice(0, keyW);
     const title = n.title.slice(0, titleW);
     const members = String(n.memberCount ?? "-");
     const role = n.role ?? "member";
@@ -452,7 +459,7 @@ export function networkTable(
       : "-";
 
     console.log(
-      `  ${title.padEnd(titleW)}  ${members.padEnd(membersW)}  ${role.padEnd(roleW)}  ${policy.padEnd(policyW)}  ${GRAY}${date}${RESET}`,
+      `  ${CYAN}${key.padEnd(keyW)}${RESET}  ${title.padEnd(titleW)}  ${members.padEnd(membersW)}  ${role.padEnd(roleW)}  ${policy.padEnd(policyW)}  ${GRAY}${date}${RESET}`,
     );
   }
 }
@@ -549,8 +556,8 @@ export function conversationTable(conversations: Conversation[]): void {
     return;
   }
 
-  const idWidth = 36;
-  const participantsWidth = 40;
+  const idWidth = 8;
+  const participantsWidth = 46;
   const dateWidth = 20;
 
   console.log(
@@ -561,6 +568,7 @@ export function conversationTable(conversations: Conversation[]): void {
   );
 
   for (const c of conversations) {
+    const shortId = c.id.slice(0, 8);
     const names = c.participants
       .map((p) => p.user?.name ?? p.participantId)
       .join(", ")
@@ -572,7 +580,7 @@ export function conversationTable(conversations: Conversation[]): void {
     });
 
     console.log(
-      `  ${GRAY}${c.id.padEnd(idWidth)}${RESET}  ${names.padEnd(participantsWidth)}  ${GRAY}${date}${RESET}`,
+      `  ${CYAN}${shortId}${RESET}  ${names.padEnd(participantsWidth)}  ${GRAY}${date}${RESET}`,
     );
   }
 }
