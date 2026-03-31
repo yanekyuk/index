@@ -375,7 +375,6 @@ export default function FoundInTranslationPage() {
             <span style={s({ display: 'block', fontSize: 'clamp(4.5rem,13vw,12rem)', fontStyle: 'italic', color: 'rgba(240,237,228,.3)', paddingLeft: 'clamp(.5rem,2vw,2rem)' })}>Translation</span>
           </h1>
           <p style={s({ fontFamily: SANS, fontSize: 'clamp(.88rem,1.4vw,.98rem)', color: C.oatMid, letterSpacing: '.04em', maxWidth: '38ch', margin: 0 })}>
-            Some things find you. Most don't.
           </p>
         </div>
 
@@ -393,7 +392,7 @@ export default function FoundInTranslationPage() {
         <section style={s({ padding: '6rem 0 4rem' })}>
           <Tag n="01" label="The Conversation" />
           <p data-fade style={s({ ...P, fontFamily: GARAMOND, fontSize: 'clamp(1.2rem,2.3vw,1.5rem)', fontStyle: 'italic', color: C.ink, lineHeight: 1.65, marginBottom: '2.5rem' })}>
-            They get archived away in secret conversations, thoughts expressed as free agents between a second margarita with a coworker on a sunny patio—where language flows as naturally as it gets.
+            Some things find you. Most don't. They get archived away in secret conversations, thoughts expressed as free agents between a second margarita with a coworker on a sunny patio—where language flows as naturally as it gets.
           </p>
           <ImgBox desc='Abstract image of two people talking — "i have this idea, is it crazy? is there anyone else who cares?"' label="Fig. 01" />
           <p data-fade style={P}>You sleep on your idea, wake up and start searching for someone who might just share your flavor of weird.</p>

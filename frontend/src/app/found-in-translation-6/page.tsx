@@ -766,7 +766,7 @@ export default function FoundInTranslation1() {
 
   const P: React.CSSProperties = {
     fontFamily: SANS,
-    fontSize: 'max(16px, 1.08rem)', lineHeight: 1.85, color: '#222', marginBottom: '1.5rem',
+    fontSize: 'max(18px, 1.2rem)', lineHeight: 1.4, color: '#222', marginBottom: '0.8rem',
   };
   const WRAP: React.CSSProperties = { maxWidth: 720, margin: '0 auto', padding: '0 2rem' };
 
@@ -799,7 +799,7 @@ export default function FoundInTranslation1() {
         </svg>
 
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, display: 'flex', alignItems: 'stretch', zIndex: 5 }}>
-          <div style={{ borderRight: '1px solid rgba(255,255,255,0.25)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.62rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+          <div style={{ borderRight: '1px solid rgba(255,255,255,0.25)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
             <Link to="/" style={{ color: '#fff', textDecoration: 'none' }}>Index Network</Link>
           </div>
           <div style={{ flex: 1 }} />
@@ -808,19 +808,28 @@ export default function FoundInTranslation1() {
           </div>
         </div>
 
-        <div style={{ position: 'absolute', bottom: 52, left: 0, right: 0, zIndex: 4, padding: '0 3rem 3rem' }}>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)', marginBottom: '1.5rem' }}>
-            Continuous Monument Series · Language &amp; Intent
-          </div>
-          <h1 style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(4rem,14vw,13rem)', lineHeight: 0.88, letterSpacing: '-0.04em', textTransform: 'uppercase', margin: 0, color: '#fff' }}>
-            FOUND
-            <br />
-            <span style={{ color: 'rgba(255,255,255,0.4)' }}>IN</span>
-            <br />
-            TRANS
-            <br />
-            LATION
-          </h1>
+        <div
+          style={{
+            position: 'absolute',
+            top: 88,
+            left: 24,
+            zIndex: 4,
+            maxWidth: 360,
+            fontFamily: "'IBM Plex Mono', monospace",
+            fontSize: '0.52rem',
+            lineHeight: 1.7,
+            letterSpacing: '0.04em',
+            color: 'rgba(255,255,255,0.92)',
+            textShadow: '0 1px 2px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.35)',
+            whiteSpace: 'pre-line',
+          }}
+        >
+          {`Find opportunities — Found 3 match(es). - 29.29s
+Index membership. - 3.04s
+Opportunity graph - 26.27s
+Inferring lenses — Inferred 3 lens(es) - 5.15s
+Generating HyDE (3) — no matches - 7.67s total
+Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         </div>
 
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.2)', height: 36, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
@@ -831,10 +840,13 @@ export default function FoundInTranslation1() {
       </section>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 3rem' }}>
-        <p data-fade style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(2rem,5vw,4.5rem)', lineHeight: 0.95, letterSpacing: '-0.03em', color: '#000', marginBottom: '1.75rem' }}>
-          Some things find you. Most don&apos;t.
+        <p data-fade style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(2.2rem,5vw,4.8rem)', lineHeight: 0.95, letterSpacing: '-0.04em', color: '#000', marginBottom: '1.75rem' }}>
+          Found in Translation
         </p>
         <p data-fade style={{ ...P, marginBottom: 0 }}>
+          Some things find you. Most don&apos;t.
+          <br />
+          <br />
           They get archived away in secret conversations, thoughts expressed as free agents between a second margarita with a coworker on a sunny patio—where language flows as naturally as it gets.
         </p>
       </div>

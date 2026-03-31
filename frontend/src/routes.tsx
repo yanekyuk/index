@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet } from "react-router";
+import { createBrowserRouter, Outlet, ScrollRestoration } from "react-router";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
@@ -22,6 +22,7 @@ function RootLayout() {
             <AIChatSessionsProvider>
               <AIChatProvider>
                 <ClientWrapper>
+                  <ScrollRestoration />
                   <Outlet />
                 </ClientWrapper>
               </AIChatProvider>

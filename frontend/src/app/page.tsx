@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import ClientLayout from "@/components/ClientLayout";
 import { useAuthContext } from "@/contexts/AuthContext";
 import ChatContent from "@/components/ChatContent";
@@ -6,8 +7,6 @@ import Footer from "@/components/Footer";
 import { apiUrl } from "@/lib/api";
 
 function LandingPage() {
-  const discoveryVisualRef = useRef<HTMLDivElement>(null);
-  
   // Waitlist modal state
   const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
   const [waitlistForm, setWaitlistForm] = useState({
@@ -73,198 +72,6 @@ function LandingPage() {
     }
   };
 
-  useEffect(() => {
-    const container = discoveryVisualRef.current;
-    if (!container) return;
-
-    const nodeCount = 30;
-    const minDist = 12;
-    const activationMinDist = 25;
-    const nodes: Array<{
-      el: HTMLDivElement;
-      wrapper: HTMLDivElement;
-      bubble: HTMLDivElement;
-      x: number;
-      y: number;
-      bx: number;
-      by: number;
-      bw: number;
-      bh: number;
-      intentIndex: number;
-    }> = [];
-    const positions: Array<{ x: number; y: number }> = [];
-
-    const intents = [
-      "Building a CPG company with someone who also hates performative hustle",
-      "Having like-minded peers to think through an early startup idea",
-      "Looking for a co-founder or partner who shares my growth principles",
-      "Finding a technical co-founder who shares my vision for climate tech",
-      "Looking for a thoughtful design partner",
-      "Finding collaborators who share my passion for sustainable innovation",
-      "I want to build something but I don't have an idea",
-      "Seeking someone to collaborate on AI infrastructure",
-      "Looking for an advisor with fintech experience",
-      "Finding early believers for a dev tools startup",
-    ];
-
-    const bubbleW = 200,
-      bubbleH = 100;
-
-    for (let i = 0; i < nodeCount; i++) {
-      let x: number,
-        y: number,
-        valid: boolean,
-        attempts = 0;
-      do {
-        x = 5 + Math.random() * 90;
-        y = 5 + Math.random() * 90;
-        valid = positions.every((p) => {
-          const dx = p.x - x,
-            dy = p.y - y;
-          return Math.sqrt(dx * dx + dy * dy) >= minDist;
-        });
-        attempts++;
-      } while (!valid && attempts < 100);
-
-      positions.push({ x, y });
-
-      const wrapper = document.createElement("div");
-      wrapper.className = "node-wrapper";
-      wrapper.style.cssText = `position: absolute; left: ${x}%; top: ${y}%;`;
-
-      const node = document.createElement("div");
-      node.className = "discovery-node";
-      wrapper.appendChild(node);
-
-      const bubble = document.createElement("div");
-      bubble.className = "intent-bubble";
-      bubble.innerHTML =
-        '<span class="dot"></span>' + intents[i % intents.length];
-
-      const containerW = container.offsetWidth || 500;
-      const containerH = container.offsetHeight || 500;
-      const nodeX = (x / 100) * containerW;
-      const nodeY = (y / 100) * containerH;
-
-      let bx: number, by: number;
-
-      if (nodeX + 15 + bubbleW > containerW - 10) {
-        bubble.style.right = "12px";
-        bx = x - (bubbleW / containerW) * 100;
-      } else {
-        bubble.style.left = "12px";
-        bx = x + 3;
-      }
-
-      if (nodeY + 10 + bubbleH > containerH - 10) {
-        bubble.style.bottom = "12px";
-        by = y - (bubbleH / containerH) * 100;
-      } else {
-        bubble.style.top = "-4px";
-        by = y;
-      }
-
-      wrapper.appendChild(bubble);
-      container.appendChild(wrapper);
-      nodes.push({
-        el: node,
-        wrapper,
-        bubble,
-        x,
-        y,
-        bx,
-        by,
-        bw: (bubbleW / containerW) * 100,
-        bh: (bubbleH / containerH) * 100,
-        intentIndex: i % intents.length,
-      });
-    }
-
-    function dist(
-      a: { x: number; y: number },
-      b: { x: number; y: number }
-    ) {
-      const dx = a.x - b.x,
-        dy = a.y - b.y;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    function bubblesOverlap(
-      a: { bx: number; by: number; bw: number; bh: number },
-      b: { bx: number; by: number; bw: number; bh: number }
-    ) {
-      return !(
-        a.bx + a.bw < b.bx ||
-        b.bx + b.bw < a.bx ||
-        a.by + a.bh < b.by ||
-        b.by + b.bh < a.by
-      );
-    }
-
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    // Track which intent indices are currently visible
-    const activeIntentIndices = new Set<number>();
-
-    function activateSequence() {
-      const count = 2 + Math.floor(Math.random() * 2);
-      const available = nodes.filter(
-        (n) => !n.el.classList.contains("active")
-      );
-      const toActivate: typeof nodes = [];
-
-      for (let i = available.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [available[i], available[j]] = [available[j], available[i]];
-      }
-
-      for (const candidate of available) {
-        if (toActivate.length >= count) break;
-        const farEnough = toActivate.every(
-          (n) => dist(n, candidate) >= activationMinDist
-        );
-        const noOverlap = toActivate.every(
-          (n) => !bubblesOverlap(n, candidate)
-        );
-        // Ensure no duplicate intents are shown at the same time (including currently visible ones)
-        const uniqueIntent = toActivate.every(
-          (n) => n.intentIndex !== candidate.intentIndex
-        ) && !activeIntentIndices.has(candidate.intentIndex);
-        if (farEnough && noOverlap && uniqueIntent) {
-          toActivate.push(candidate);
-        }
-      }
-
-      toActivate.forEach((node) => {
-        node.el.classList.add("active");
-        node.bubble.classList.add("visible");
-        activeIntentIndices.add(node.intentIndex);
-      });
-
-      setTimeout(() => {
-        toActivate.forEach((node) => {
-          node.el.classList.remove("active");
-          node.bubble.classList.remove("visible");
-          activeIntentIndices.delete(node.intentIndex);
-        });
-      }, 2200);
-    }
-
-    function loop() {
-      activateSequence();
-      timeoutId = setTimeout(loop, 2600 + Math.random() * 400);
-    }
-
-    const initTimeout = setTimeout(() => loop(), 500);
-
-    return () => {
-      clearTimeout(initTimeout);
-      clearTimeout(timeoutId);
-      // Clean up created elements
-      nodes.forEach((n) => n.wrapper.remove());
-    };
-  }, []);
-
   return (
     <ClientLayout hideFeedback>
       <style jsx global>{`
@@ -275,143 +82,6 @@ function LandingPage() {
         .landing-page p.text-lg {
           font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif;
           font-size: 15px;
-        }
-
-        /* Floating Ideas in Background */
-        .floating-ideas {
-          position: relative;
-          width: 100%;
-          height: 500px;
-          z-index: 1;
-          background: radial-gradient(ellipse at center, rgba(64, 145, 187, 0.04) 0%, rgba(64, 145, 187, 0.01) 40%, transparent 70%);
-          overflow: hidden;
-        }
-
-        /* Discovery Nodes */
-        .discovery-node {
-          width: 8px;
-          height: 8px;
-          background: #aab5c4;
-          border-radius: 50%;
-          opacity: 0.4;
-          transition: all 0.4s ease;
-        }
-
-        .discovery-node.active {
-          width: 24px;
-          height: 24px;
-          margin: -8px 0 0 -8px;
-          opacity: 1;
-          background: #4091BB;
-          border-radius: 50%;
-          box-shadow: 0 0 16px rgba(64, 145, 187, 0.6);
-        }
-
-        /* Intent Bubbles */
-        .intent-bubble {
-          position: absolute;
-          font-family: 'IBM Plex Mono', monospace;
-          font-size: 0.75rem;
-          color: #222222;
-          background: rgba(255, 255, 255, 0.95);
-          border: 1px solid rgba(64, 145, 187, 0.3);
-          padding: 0.6rem 0.85rem;
-          border-radius: 3px;
-          pointer-events: none;
-          opacity: 0;
-          transition: opacity 0.3s ease;
-          z-index: 10;
-          width: 200px;
-          white-space: normal;
-          line-height: 1.4;
-          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-        }
-
-        .intent-bubble.visible { opacity: 1; }
-
-        .intent-bubble .dot {
-          display: inline-block;
-          width: 6px;
-          height: 6px;
-          background: #4091BB;
-          border-radius: 50%;
-          margin-right: 8px;
-          vertical-align: middle;
-          box-shadow: 0 0 6px rgba(64, 145, 187, 0.5);
-        }
-
-        /* Agents */
-        .agent-container {
-          position: absolute;
-          width: 40px;
-          height: 40px;
-          filter: drop-shadow(0 0 12px rgba(64, 145, 187, 0.5));
-        }
-
-        .agent-core {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 12px;
-          height: 12px;
-          background: #4091BB;
-          border-radius: 50%;
-          box-shadow: 0 0 16px rgba(64, 145, 187, 0.6);
-          animation: agentPulse 1.5s ease-in-out infinite;
-        }
-
-        .agent-ring {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          border: 2px solid rgba(64, 145, 187, 0.6);
-          border-radius: 50%;
-          animation: agentRing 2s ease-out infinite;
-        }
-
-        .agent-1 { animation: agentMove1 14s ease-in-out infinite; }
-        .agent-2 { animation: agentMove2 18s ease-in-out infinite; }
-        .agent-3 { animation: agentMove3 11s ease-in-out infinite; }
-
-        @keyframes agentPulse {
-          0%, 100% { transform: translate(-50%, -50%) scale(1); }
-          50% { transform: translate(-50%, -50%) scale(1.4); }
-        }
-
-        @keyframes agentRing {
-          0% { width: 12px; height: 12px; opacity: 0.8; }
-          100% { width: 62px; height: 62px; opacity: 0; }
-        }
-
-        @keyframes agentMove1 {
-          0%, 100% { left: 8%; top: 18%; }
-          20% { left: 25%; top: 55%; }
-          40% { left: 55%; top: 25%; }
-          60% { left: 75%; top: 60%; }
-          80% { left: 40%; top: 75%; }
-        }
-
-        @keyframes agentMove2 {
-          0%, 100% { left: 85%; top: 25%; }
-          25% { left: 60%; top: 70%; }
-          50% { left: 20%; top: 45%; }
-          75% { left: 45%; top: 15%; }
-        }
-
-        @keyframes agentMove3 {
-          0%, 100% { left: 50%; top: 80%; }
-          17% { left: 15%; top: 35%; }
-          33% { left: 70%; top: 20%; }
-          50% { left: 90%; top: 55%; }
-          67% { left: 35%; top: 65%; }
-          83% { left: 65%; top: 40%; }
-        }
-
-        @keyframes radar {
-          0% { transform: scale(1); opacity: 0.8; }
-          100% { transform: scaleY(1.6) scaleX(1.2); opacity: 0; }
         }
 
         @keyframes pulse-shadow {
@@ -456,56 +126,6 @@ function LandingPage() {
           background-position: center;
           display: inline-block;
           flex-shrink: 0;
-        }
-
-        /* Link-style button */
-        .btn-link {
-          background-color: transparent !important;
-          color: #000 !important;
-          border: none !important;
-          border-radius: 0 !important;
-          padding: 0 !important;
-          font-weight: 600 !important;
-          font-size: 14px !important;
-          font-family: 'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          gap: 8px !important;
-          transition: all 0.2s ease !important;
-          text-decoration: underline !important;
-          text-underline-offset: 4px !important;
-          cursor: pointer !important;
-        }
-
-        .btn-link:hover {
-          color: #333 !important;
-        }
-
-        .btn-link::after {
-          content: '';
-          width: 16px;
-          height: 16px;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23000' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'/%3E%3C/svg%3E");
-          background-size: contain;
-          background-repeat: no-repeat;
-          background-position: center;
-          display: inline-block;
-          flex-shrink: 0;
-          transition: all 0.2s ease;
-        }
-
-        .btn-link:hover::after {
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23333' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'/%3E%3C/svg%3E");
-        }
-
-        @media (max-width: 768px) {
-          .floating-ideas {
-            height: 300px !important;
-          }
-          .intent-bubble {
-            width: 160px;
-            font-size: 0.65rem;
-          }
         }
 
         /* Retro Modal Styles */
@@ -935,61 +555,65 @@ function LandingPage() {
           </div>
         </section>
 
-        {/* Manifesto Section */}
+        {/* Manifesto Promo Section */}
         <section
-          className="py-12 lg:py-16 px-6 lg:px-12 relative overflow-hidden"
+          className="relative overflow-hidden border-y border-[#E5E5E5] bg-[#041729]"
         >
-          <div className="max-w-[960px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            {/* Graph */}
-            <div className="order-2 lg:order-1">
-              <div className="floating-ideas" ref={discoveryVisualRef}>
-                <div className="agent-container agent-1">
-                  <div className="agent-core"></div>
-                  <div className="agent-ring"></div>
-                </div>
-                <div className="agent-container agent-2">
-                  <div className="agent-core"></div>
-                  <div className="agent-ring"></div>
-                </div>
-                <div className="agent-container agent-3">
-                  <div className="agent-core"></div>
-                  <div className="agent-ring"></div>
-                </div>
-              </div>
-            </div>
-            {/* Text */}
-            <div className="order-1 lg:order-2 text-left">
-              <h2
-                className="text-[32px] md:text-[36px] font-garamond font-normal text-black mb-8 leading-tight"
-              >
-                They&apos;re closer than you think
-              </h2>
-              <div className="mb-8">
-                <p
-                  className="text-[17px] leading-relaxed text-black/80 mb-6 font-normal"
+          <div className="relative">
+            <img
+              src="/found-in-translation/found-in-translation-1-hero.png"
+              alt="Found in Translation hero visual"
+              className="block w-full h-auto"
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(0,0,0,0.78)_0%,rgba(0,0,0,0.4)_35%,transparent_65%)]" />
+
+            <svg
+              className="absolute inset-0 h-full w-full"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              {[0.25, 0.5, 0.75].map((t, i) => (
+                <line
+                  key={`h-${i}`}
+                  x1="0"
+                  y1={`${t * 100}%`}
+                  x2="100%"
+                  y2={`${t * 100}%`}
+                  stroke="rgba(255,255,255,0.07)"
+                  strokeWidth="1"
+                />
+              ))}
+              {[0.2, 0.4, 0.6, 0.8].map((t, i) => (
+                <line
+                  key={`v-${i}`}
+                  x1={`${t * 100}%`}
+                  y1="0"
+                  x2={`${t * 100}%`}
+                  y2="100%"
+                  stroke="rgba(255,255,255,0.07)"
+                  strokeWidth="1"
+                />
+              ))}
+            </svg>
+
+            <div className="absolute inset-0 z-10 flex items-end justify-end px-6 py-8 lg:px-12 lg:py-10">
+              <div className="max-w-[340px] rounded-xl bg-white/5 p-6 text-left backdrop-blur-md lg:max-w-[380px] lg:p-8">
+                <p className="mb-4 font-garamond text-[28px] leading-[1.1] text-white lg:text-[34px]">
+                  Some things find you.<br />Most don&apos;t.
+                </p>
+                <a
+                  href="/found-in-translation-6"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group inline-flex items-center gap-2 border-b border-white/40 pb-0.5 font-sans text-[15px] text-white/90 transition-colors hover:border-white hover:text-white"
                   style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
                 >
-                  You&apos;ve been here before. Something new is brewing inside you—maybe it&apos;s just an inkling, maybe it&apos;s a full-fledged idea. Either way, you need others to help it take shape. Others who can be your teammates and patrons, whetstones and cheerleaders.
-                </p>
-
-                <p
-                  className="text-[17px] leading-relaxed text-black/80 mb-6 font-normal"
-                  style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
-                >
-                  You&apos;ve got platforms to post, share, search, and shout. But despite the flood of tools, you&apos;re still stuck trying to meet someone who shares your flavor of weird. How is it still this hard to find your others?
-                </p>
-
-                <p
-                  className="text-[17px] leading-relaxed text-black/80 font-normal"
-                  style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
-                >
-                  Meet Index. Instead of shouting into the void, now you can just say the word, and AI agents will run ambient discovery based on the shape of what you meant. It&apos;s not that the people you&apos;re looking for don&apos;t exist. They do, and they&apos;re closer than you think.
-                </p>
-              </div>
-
-              <div className="mt-5">
-                <a href="https://index.network/blog/the-shape-of-what-you-meant" target="_blank" rel="noopener noreferrer" className="btn-link uppercase tracking-wider font-sans">
-                  Read the story
+                  Why we built this
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/40 transition-colors group-hover:border-white">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                      <path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
                 </a>
               </div>
             </div>
