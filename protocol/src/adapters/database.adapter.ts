@@ -139,6 +139,7 @@ interface IntentListRow {
   id: string;
   payload: string;
   summary: string | null;
+  status: string | null;
   isIncognito: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -438,6 +439,7 @@ export class IntentDatabaseAdapter {
         id: schema.intents.id,
         payload: schema.intents.payload,
         summary: schema.intents.summary,
+        status: schema.intents.status,
         isIncognito: schema.intents.isIncognito,
         createdAt: schema.intents.createdAt,
         updatedAt: schema.intents.updatedAt,
@@ -461,6 +463,7 @@ export class IntentDatabaseAdapter {
       id: schema.intents.id,
       payload: schema.intents.payload,
       summary: schema.intents.summary,
+      status: schema.intents.status,
       isIncognito: schema.intents.isIncognito,
       createdAt: schema.intents.createdAt,
       updatedAt: schema.intents.updatedAt,
@@ -482,14 +485,15 @@ export class IntentDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveIntentId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
-      return { id: idOrPrefix };
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
+    if (isFullUuid) {
+      return { id: normalized };
     }
     const rows = await db.select({ id: schema.intents.id })
       .from(schema.intents)
       .where(and(
-        sql`${schema.intents.id} LIKE ${idOrPrefix + '%'}`,
+        sql`${schema.intents.id} LIKE ${normalized + '%'}`,
         eq(schema.intents.userId, userId),
       ))
       .limit(2);
@@ -2154,12 +2158,23 @@ export class ChatDatabaseAdapter {
    * @returns The index UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
-    if (isUuidFormat) {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrKey);
+    if (isFullUuid) {
       return idOrKey;
     }
+    // Try key lookup first
     const row = await this.getIndexByKey(idOrKey);
-    return row?.id ?? null;
+    if (row) return row.id;
+    // Fall back to hex prefix matching
+    const isHexPrefix = /^[0-9a-f]+$/i.test(idOrKey);
+    if (isHexPrefix) {
+      const rows = await db.select({ id: indexes.id })
+        .from(indexes)
+        .where(and(sql`${indexes.id} LIKE ${idOrKey + '%'}`, isNull(indexes.deletedAt)))
+        .limit(2);
+      if (rows.length === 1) return rows[0].id;
+    }
+    return null;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -3560,14 +3575,15 @@ export class OpportunityDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveOpportunityId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
-      return { id: idOrPrefix };
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
+    if (isFullUuid) {
+      return { id: normalized };
     }
     const rows = await db.select({ id: opportunities.id })
       .from(opportunities)
       .where(and(
-        sql`${opportunities.id} LIKE ${idOrPrefix + '%'}`,
+        sql`${opportunities.id} LIKE ${normalized + '%'}`,
         sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
       ))
       .limit(2);
@@ -5236,14 +5252,15 @@ export class ConversationDatabaseAdapter {
    * @returns Object with resolved id, or null/ambiguous status
    */
   async resolveConversationId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
-    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
-    if (isUuidFormat) {
-      return { id: idOrPrefix };
+    const normalized = idOrPrefix.trim().toLowerCase();
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(normalized);
+    if (isFullUuid) {
+      return { id: normalized };
     }
     const rows = await db.select({ id: schema.conversationParticipants.conversationId })
       .from(schema.conversationParticipants)
       .where(and(
-        sql`${schema.conversationParticipants.conversationId} LIKE ${idOrPrefix + '%'}`,
+        sql`${schema.conversationParticipants.conversationId} LIKE ${normalized + '%'}`,
         eq(schema.conversationParticipants.participantId, userId),
       ))
       .limit(2);

@@ -297,10 +297,12 @@ export function opportunityTable(opportunities: Opportunity[]): void {
 
   for (const opp of opportunities) {
     const shortId = opp.id.slice(0, 8);
-    const name = (opp.counterpartName ?? "Unknown").slice(0, nameW);
+    const fallbackName = opp.actors?.[1]?.name ?? opp.actors?.find((a) => a.name)?.name;
+    const name = (opp.counterpartName ?? fallbackName ?? "Unknown").slice(0, nameW);
     const category = (opp.interpretation?.category ?? "-").slice(0, catW);
     const st = opp.status.slice(0, statusW);
-    const conf = opp.interpretation?.confidence != null ? `${opp.interpretation.confidence}%` : "-";
+    const rawConf = opp.interpretation?.confidence;
+    const conf = rawConf != null ? `${Math.round(rawConf <= 1 ? rawConf * 100 : rawConf)}%` : "-";
     const date = opp.createdAt
       ? new Date(opp.createdAt).toLocaleDateString("en-US", {
           year: "numeric",

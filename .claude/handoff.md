@@ -1,55 +1,53 @@
 ---
-trigger: "Add 'key' fields (human-readable identifiers) to users and indexes. Use prefix-matching for other entities in CLI. CLI list commands should display short IDs."
-type: feat
-branch: feat/user-index-keys
+trigger: "5 CLI bugs: (1) missing status in intent list, (2) short-form ID fails in intent show, (3) opportunity list shows Unknown counterparty and wrong confidence, (4) short-form ID fails in network join, (5) conversation show returns Forbidden for own conversations"
+type: fix
+branch: fix/cli-id-resolution
 base-branch: dev
 created: 2026-03-31
 ---
 
 ## Related Files
-- protocol/src/schemas/database.schema.ts (users table ~L38, indexes table ~L232)
-- protocol/src/adapters/database.adapter.ts (user lookups ~L4047, index lookups ~L2089)
-- protocol/src/services/user.service.ts (findById, findByIds, findWithGraph)
-- protocol/src/services/index.service.ts (getIndexById, getPublicIndexById)
-- protocol/src/controllers/user.controller.ts (user endpoints)
-- protocol/src/controllers/index.controller.ts (index endpoints with :id params)
-- cli/src/output/formatters.ts (list display — network ~L413, intent ~L154, opportunity ~L275, conversation ~L546)
-- cli/src/intent.command.ts
-- cli/src/opportunity.command.ts
-- cli/src/network.command.ts
-- cli/src/conversation.command.ts
-- cli/src/api.client.ts (typed HTTP client)
+- cli/src/output/formatters.ts — intent/opportunity table formatting
+- cli/src/types.ts — CLI type definitions (Opportunity, Intent)
+- cli/src/intent.command.ts — intent CLI commands
+- cli/src/opportunity.command.ts — opportunity CLI commands
+- cli/src/network.command.ts — network join command
+- cli/src/conversation.command.ts — conversation show command
+- cli/src/api.client.ts — API client methods
+- protocol/src/controllers/intent.controller.ts — intent endpoints
+- protocol/src/controllers/opportunity.controller.ts — opportunity list endpoint
+- protocol/src/controllers/index.controller.ts — index join endpoint (missing resolveIndexId)
+- protocol/src/controllers/conversation.controller.ts — conversation message endpoint
+- protocol/src/services/intent.service.ts — resolveId method
+- protocol/src/services/index.service.ts — resolveIndexId, joinPublicIndex
+- protocol/src/services/conversation.service.ts — resolveId, verifyParticipant
+- protocol/src/adapters/database.adapter.ts — listIntents query (missing status), resolveConversationId, resolveIntentId, OpportunityRow
 
 ## Relevant Docs
-- docs/specs/api-reference.md
-- docs/design/protocol-deep-dive.md
-- docs/design/architecture-overview.md
+- docs/specs/user-index-keys.md — key format and prefix-matching spec
+- docs/specs/cli-intent-command.md — intent CLI spec
+- docs/specs/cli-opportunity.md — opportunity CLI spec
+- docs/specs/cli-network.md — network CLI spec
+- docs/specs/cli-conversation.md — conversation CLI spec
 
 ## Related Issues
 None — no related issues found.
 
 ## Scope
 
-### 1. Schema: Add `key` column to users and indexes
-- Add `key: text('key').unique()` to both `users` and `indexes` tables
-- Generate migration, rename following convention
-- Auto-generate keys on creation (from name/title, kebab-case, with uniqueness suffix if needed)
-- Users and index owners can update their key via API
+Five bugs to fix, all related to the recently shipped keys/prefix-matching feature (PR #615):
 
-### 2. Backend: Key-based lookup
-- Adapter: Add `findByKey(key)` for users, `getIndexByKey(key)` for indexes
-- Adapter: Update existing lookup methods to accept `idOrKey` (detect UUID vs key format)
-- Service: Propagate idOrKey resolution
-- Controller: User and index endpoints accept key or UUID in path params
-- API: Add PUT endpoint for updating key (with validation: lowercase, alphanumeric + hyphens, min 3 chars)
+### Bug 1: Missing `status` in `index intent list`
+The `listIntents` query in `database.adapter.ts` does not SELECT the `status` column from the intents table (intentStatusEnum: ACTIVE/PAUSED/FULFILLED/EXPIRED). The CLI formatter expects `intent.status` but it's undefined. Fix: add `status` to the select in `listIntents` and ensure the controller maps it through.
 
-### 3. Backend: Prefix-matching for other entities
-- Adapter/Service: For intents, opportunities, conversations — support ID prefix lookup (WHERE id LIKE '$prefix%')
-- Controller: Accept short IDs in path params, resolve to full UUID
+### Bug 2: `index intent show <shortId>` returns "Intent not found"
+The `resolveIntentId` in database.adapter.ts and the controller both look correct. Investigate deeper — may be a routing issue (another route matching before `/:id`), a UUID detection false positive, or userId mismatch. Check if the short prefix actually matches when queried with LIKE.
 
-### 4. CLI: Display short IDs in list commands
-- Intent list: Show first 8 chars of UUID
-- Opportunity list: Show first 8 chars of UUID
-- Conversation list: Show first 8 chars instead of full UUID
-- Network list: Show key (not UUID)
-- All `show`, `archive`, `accept`, `reject` subcommands: Accept short ID prefix or key
+### Bug 3: Opportunity list shows "Unknown" counterparty and wrong confidence
+The API returns raw `OpportunityRow` objects which don't have a `counterpartName` field — the CLI defaults to "Unknown". The `actors` JSONB array contains participant info but names aren't extracted. Confidence shows as e.g. "0.7%" suggesting the raw 0-1 float is being displayed with a % suffix. Fix: either enrich the API response with counterpart name extracted from actors, or fix the CLI to extract it from the actors array. Fix confidence display (multiply by 100 or remove %).
+
+### Bug 4: `index network join <shortId>` fails
+The POST `/:id/join` endpoint in `index.controller.ts` passes `params.id` directly to `joinPublicIndex` without calling `resolveIndexId()` first. Fix: add ID resolution (key or prefix) before the join call, same pattern as GET `/:id`.
+
+### Bug 5: `index conversation show <id>` returns "Forbidden: not a participant"
+The user can list conversations (sees themselves as participant) but `conversation show` returns 403. `resolveConversationId` scopes by participant and `verifyParticipant` checks the same table — both should pass if the user is a participant. Investigate the actual flow: check if resolveId returns the correct conversation ID, verify participantId storage matches auth user.id.
