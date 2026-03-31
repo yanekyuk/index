@@ -1,6 +1,7 @@
 import { log } from '../lib/log';
 import { userDatabaseAdapter } from '../adapters/database.adapter';
 import type { User } from '../schemas/database.schema';
+import { validateKey } from '../lib/keys';
 
 const logger = log.service.from("UserService");
 
@@ -74,6 +75,41 @@ export class UserService {
      */
     async updateLastWeeklyEmailSent(userId: string) {
         await this.db.updateLastWeeklyEmailSent(userId);
+    }
+
+    /**
+     * Find a user by UUID or key.
+     * @param idOrKey - UUID or human-readable key
+     * @returns User record or null
+     */
+    async findByIdOrKey(idOrKey: string) {
+        logger.verbose('[UserService] Finding user by ID or key', { idOrKey });
+        return this.db.findByIdOrKey(idOrKey);
+    }
+
+    /**
+     * Update the authenticated user's key.
+     * @param userId - The user ID
+     * @param key - The new key value
+     * @returns Updated user or error object
+     */
+    async updateKey(userId: string, key: string): Promise<{ user: User } | { error: string; status: number }> {
+        const validation = validateKey(key);
+        if (!validation.valid) {
+            return { error: validation.error!, status: 400 };
+        }
+
+        const existing = await this.db.keyExists(key);
+        if (existing) {
+            return { error: 'Key is already taken', status: 409 };
+        }
+
+        const updated = await this.db.updateKey(userId, key);
+        if (!updated) {
+            return { error: 'User not found', status: 404 };
+        }
+
+        return { user: updated };
     }
 
     /**

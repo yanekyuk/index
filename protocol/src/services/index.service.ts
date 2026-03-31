@@ -1,5 +1,6 @@
 import { log } from '../lib/log';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { validateKey } from '../lib/keys';
 
 const logger = log.service.from("IndexService");
 
@@ -225,6 +226,56 @@ export class IndexService {
   async getMyIntentsInIndex(indexId: string, userId: string) {
     logger.verbose('[IndexService] Getting my intents in index', { indexId, userId });
     return this.adapter.getIndexIntentsForMember(indexId, userId);
+  }
+
+  /**
+   * Resolve an index identifier (UUID or key) to a UUID.
+   * @param idOrKey - UUID or human-readable key
+   * @returns The index UUID, or null if not found
+   */
+  async resolveIndexId(idOrKey: string): Promise<string | null> {
+    logger.verbose('[IndexService] Resolving index ID or key', { idOrKey });
+    return this.adapter.resolveIndexId(idOrKey);
+  }
+
+  /**
+   * Update an index's key. Owner-only.
+   * @param indexId - The index ID
+   * @param userId - The requesting user ID (must be owner)
+   * @param key - The new key value
+   * @returns Updated index or error object
+   */
+  async updateKey(indexId: string, userId: string, key: string): Promise<{ index: unknown } | { error: string; status: number }> {
+    const validation = validateKey(key);
+    if (!validation.valid) {
+      return { error: validation.error!, status: 400 };
+    }
+
+    const existing = await this.adapter.indexKeyExists(key);
+    if (existing) {
+      return { error: 'Key is already taken', status: 409 };
+    }
+
+    // Verify ownership
+    try {
+      const detail = await this.adapter.getIndexDetail(indexId, userId);
+      if (!detail) {
+        return { error: 'Index not found', status: 404 };
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Access denied')) {
+        return { error: 'Access denied: only the owner can update the key', status: 403 };
+      }
+      throw err;
+    }
+
+    const updated = await this.adapter.updateIndexKey(indexId, key);
+    if (!updated) {
+      return { error: 'Index not found', status: 404 };
+    }
+
+    return { index: updated };
   }
 
   /**

@@ -2529,6 +2529,16 @@ export class ChatDatabaseAdapter {
   async getOpportunity(id: string): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.getOpportunity(id);
   }
+  /**
+   * Resolve an opportunity ID from a full UUID or short prefix.
+   * Delegates to OpportunityDatabaseAdapter.
+   * @param idOrPrefix - Full UUID or prefix (e.g. first 8 chars)
+   * @param userId - The user ID (for visibility scoping)
+   * @returns Object with resolved id, or null/ambiguous status
+   */
+  async resolveOpportunityId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
+    return this.opportunityAdapter.resolveOpportunityId(idOrPrefix, userId);
+  }
   async getOpportunitiesForUser(
     userId: string,
     options?: { status?: string; indexId?: string; role?: string; limit?: number; offset?: number; conversationId?: string }
@@ -3532,6 +3542,29 @@ export class OpportunityDatabaseAdapter {
     const rows = await db.select().from(opportunities).where(eq(opportunities.id, id)).limit(1);
     const row = rows[0];
     return row ? toOpportunityRow(row) : null;
+  }
+
+  /**
+   * Resolve an opportunity ID from a full UUID or short prefix.
+   * @param idOrPrefix - Full UUID or prefix (e.g. first 8 chars)
+   * @param userId - The user ID (for visibility scoping via actors jsonb)
+   * @returns Object with resolved id, or null/ambiguous status
+   */
+  async resolveOpportunityId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
+    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
+    if (isUuidFormat) {
+      return { id: idOrPrefix };
+    }
+    const rows = await db.select({ id: opportunities.id })
+      .from(opportunities)
+      .where(and(
+        sql`${opportunities.id} LIKE ${idOrPrefix + '%'}`,
+        sql`${opportunities.actors}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`,
+      ))
+      .limit(2);
+    if (rows.length === 0) return null;
+    if (rows.length > 1) return { ambiguous: true };
+    return { id: rows[0].id };
   }
 
   async getOpportunitiesForUser(
@@ -5185,6 +5218,29 @@ export class ConversationDatabaseAdapter {
     });
 
     return { id, dmPair: null, lastMessageAt: null, createdAt: now, updatedAt: now };
+  }
+
+  /**
+   * Resolve a conversation ID from a full UUID or short prefix.
+   * @param idOrPrefix - Full UUID or prefix (e.g. first 8 chars)
+   * @param userId - The user ID (for participant scoping)
+   * @returns Object with resolved id, or null/ambiguous status
+   */
+  async resolveConversationId(idOrPrefix: string, userId: string): Promise<{ id: string } | { ambiguous: true } | null> {
+    const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(idOrPrefix);
+    if (isUuidFormat) {
+      return { id: idOrPrefix };
+    }
+    const rows = await db.select({ id: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(and(
+        sql`${schema.conversationParticipants.conversationId} LIKE ${idOrPrefix + '%'}`,
+        eq(schema.conversationParticipants.participantId, userId),
+      ))
+      .limit(2);
+    if (rows.length === 0) return null;
+    if (rows.length > 1) return { ambiguous: true };
+    return { id: rows[0].id };
   }
 
   /**

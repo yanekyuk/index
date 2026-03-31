@@ -100,15 +100,32 @@ export class IntentService {
   }
 
   /**
+   * Resolve an intent identifier (full UUID or short prefix) to a full UUID.
+   * @param idOrPrefix - Full UUID or short hex prefix
+   * @param userId - The user ID (for ownership scoping)
+   * @returns Resolved ID, or error object with status
+   */
+  async resolveId(idOrPrefix: string, userId: string): Promise<{ id: string } | { error: string; status: number }> {
+    const result = await this.adapter.resolveIntentId(idOrPrefix, userId);
+    if (!result) {
+      return { error: 'Intent not found', status: 404 };
+    }
+    if ('ambiguous' in result) {
+      return { error: 'Ambiguous ID prefix, please provide more characters', status: 409 };
+    }
+    return { id: result.id };
+  }
+
+  /**
    * Get a single intent by ID.
-   * 
+   *
    * @param intentId - The intent ID
    * @param userId - The user ID (for ownership verification)
    * @returns Intent record or null if not found or unauthorized
    */
   async getById(intentId: string, userId: string) {
     logger.verbose('[IntentService] Getting intent by ID', { intentId, userId });
-    
+
     return this.adapter.getIntentById(intentId, userId);
   }
 
