@@ -82,19 +82,26 @@ export class ConversationController {
 
   /**
    * GET /conversations/:id/messages — get messages for a conversation.
+   * Accepts full UUID or short ID prefix.
    *
    * @param req - Optional query params: limit, before, taskId
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID
+   * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with messages array
    */
   @Get('/:id/messages')
   @UseGuards(AuthGuard)
   async getMessages(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
-    if (!conversationId) {
+    const rawId = params?.id;
+    if (!rawId) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     const url = new URL(req.url);
     const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!, 10) : undefined;
@@ -116,19 +123,26 @@ export class ConversationController {
 
   /**
    * POST /conversations/:id/messages — send a message in a conversation.
+   * Accepts full UUID or short ID prefix.
    *
    * @param req - Must include `parts` array in JSON body; optional `taskId`, `metadata`
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID
+   * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with created message
    */
   @Post('/:id/messages')
   @UseGuards(AuthGuard)
   async sendMessage(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
-    if (!conversationId) {
+    const rawId = params?.id;
+    if (!rawId) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     let body: { parts?: unknown[]; taskId?: string; metadata?: Record<string, unknown> };
     try {
@@ -189,19 +203,26 @@ export class ConversationController {
 
   /**
    * PATCH /conversations/:id/metadata — update metadata for a conversation.
+   * Accepts full UUID or short ID prefix.
    *
    * @param req - Must include `metadata` object in JSON body
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID
+   * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with success status
    */
   @Patch('/:id/metadata')
   @UseGuards(AuthGuard)
   async updateMetadata(req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
-    if (!conversationId) {
+    const rawId = params?.id;
+    if (!rawId) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     let body: { metadata?: Record<string, unknown> };
     try {
@@ -229,19 +250,26 @@ export class ConversationController {
 
   /**
    * DELETE /conversations/:id — hide a conversation for the authenticated user.
+   * Accepts full UUID or short ID prefix.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID
+   * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with success status
    */
   @Delete('/:id')
   @UseGuards(AuthGuard)
   async hideConversation(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
-    if (!conversationId) {
+    const rawId = params?.id;
+    if (!rawId) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     try {
       await this.conversationService.hideConversation(user.id, conversationId);
@@ -258,19 +286,26 @@ export class ConversationController {
 
   /**
    * GET /conversations/:id/tasks — list all tasks for a conversation.
+   * Accepts full UUID or short ID prefix.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID
+   * @param params - Route params containing the conversation ID or prefix
    * @returns JSON with tasks array
    */
   @Get('/:id/tasks')
   @UseGuards(AuthGuard)
   async listTasks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
-    if (!conversationId) {
+    const rawId = params?.id;
+    if (!rawId) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     try {
       await this.conversationService.verifyParticipant(user.id, conversationId);
@@ -288,20 +323,27 @@ export class ConversationController {
 
   /**
    * GET /conversations/:id/tasks/:taskId — get a single task.
+   * Accepts full UUID or short ID prefix for conversation ID.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID and task ID
+   * @param params - Route params containing the conversation ID (or prefix) and task ID
    * @returns JSON with task, or 404 if not found
    */
   @Get('/:id/tasks/:taskId')
   @UseGuards(AuthGuard)
   async getTask(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
+    const rawId = params?.id;
     const taskId = params?.taskId;
-    if (!conversationId || !taskId) {
+    if (!rawId || !taskId) {
       return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     try {
       await this.conversationService.verifyParticipant(user.id, conversationId);
@@ -322,20 +364,27 @@ export class ConversationController {
 
   /**
    * GET /conversations/:id/tasks/:taskId/artifacts — get artifacts for a task.
+   * Accepts full UUID or short ID prefix for conversation ID.
    *
    * @param _req - The HTTP request object (unused)
    * @param user - Authenticated user from AuthGuard
-   * @param params - Route params containing the conversation ID and task ID
+   * @param params - Route params containing the conversation ID (or prefix) and task ID
    * @returns JSON with artifacts array
    */
   @Get('/:id/tasks/:taskId/artifacts')
   @UseGuards(AuthGuard)
   async getArtifacts(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const conversationId = params?.id;
+    const rawId = params?.id;
     const taskId = params?.taskId;
-    if (!conversationId || !taskId) {
+    if (!rawId || !taskId) {
       return Response.json({ error: 'Conversation ID and Task ID required' }, { status: 400 });
     }
+
+    const resolved = await this.conversationService.resolveId(rawId, user.id);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const conversationId = resolved.id;
 
     try {
       await this.conversationService.verifyParticipant(user.id, conversationId);
