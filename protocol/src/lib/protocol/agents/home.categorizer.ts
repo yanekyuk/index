@@ -15,7 +15,7 @@ config({ path: '.env.development' });
 import type { HomeSectionProposal } from '../states/home.state';
 import { getIconNamesForPrompt, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { protocolLogger } from '../support/protocol.logger';
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 const logger = protocolLogger('HomeCategorizer');

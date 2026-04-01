@@ -28,7 +28,7 @@ import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } fro
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../support/opportunity.constants';
 import { protocolLogger } from '../support/protocol.logger';
-import { timed } from '../../performance';
+import { timed } from '../support/performance';
 import { requestContext } from '../../request-context';
 
 const logger = protocolLogger('HomeGraph');

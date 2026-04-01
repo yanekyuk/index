@@ -3,7 +3,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import { protocolLogger } from "../support/protocol.logger";
 import { config } from "dotenv";
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 config({ path: '.env.development', override: true });

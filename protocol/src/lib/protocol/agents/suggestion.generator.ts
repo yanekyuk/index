@@ -3,7 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import type { ChatSuggestion } from "../../../types/chat-streaming.types";
 import { protocolLogger } from "../support/protocol.logger";
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 const logger = protocolLogger("SuggestionGenerator");

@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 const logger = protocolLogger("IntentReconciler");

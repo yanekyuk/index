@@ -1,7 +1,7 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import type { IndexMembershipGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 import { IndexMembershipGraphState } from "../states/index_membership.state";
 
 const logger = protocolLogger("IndexMembershipGraphFactory");

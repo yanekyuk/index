@@ -3,7 +3,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import { IntentIndexer } from "../agents/intent.indexer";
 import type { IntentIndexGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 import { requestContext } from "../../request-context";
 
 import {

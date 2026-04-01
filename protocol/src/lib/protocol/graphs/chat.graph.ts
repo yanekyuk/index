@@ -10,7 +10,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import { chatSessionService } from "../../../services/chat.service";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "../support/chat.utils";
 import { ChatStreamer } from "../streamers";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 
 const logger = protocolLogger("ChatGraphFactory");
 

@@ -8,7 +8,7 @@ import { Scraper } from "../interfaces/scraper.interface";
 import { enrichUserProfile } from "../../../lib/parallel/parallel";
 import { shouldEnrichGhostDisplayNameFromParallel } from "../support/profile.enrichment-display-name";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 import { requestContext } from "../../request-context";
 
 const logger = protocolLogger("ProfileGraphFactory");

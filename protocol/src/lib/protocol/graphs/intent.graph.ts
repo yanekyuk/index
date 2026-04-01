@@ -7,7 +7,7 @@ import { IntentGraphDatabase } from "../interfaces/database.interface";
 import type { EmbeddingGenerator } from "../interfaces/embedder.interface";
 import type { IntentGraphQueue } from "../interfaces/queue.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 import { requestContext } from "../../request-context";
 
 const logger = protocolLogger("IntentGraphFactory");
