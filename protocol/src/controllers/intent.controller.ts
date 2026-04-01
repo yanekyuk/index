@@ -4,7 +4,6 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 import { Controller, Get, Patch, Post, UseGuards } from '../lib/router/router.decorators';
 import { intentService } from '../services/intent.service';
-import { userService } from '../services/user.service';
 
 const logger = log.controller.from('intent');
 
@@ -187,26 +186,4 @@ export class IntentController {
     return Response.json({ success: true });
   }
 
-  /**
-   * Process user input through the Intent Graph.
-   */
-  @Post('/process')
-  @UseGuards(AuthGuard)
-  async process(req: Request, user: AuthenticatedUser) {
-    logger.verbose('Intent process requested', { userId: user.id });
-
-    let content: string | undefined;
-    try {
-      const body = await req.json() as { content?: string };
-      content = body.content;
-    } catch {
-      // No body or invalid JSON
-    }
-
-    const userWithGraph = await userService.findWithGraph(user.id);
-    const userProfile = userWithGraph?.profile ? JSON.stringify(userWithGraph.profile) : '{}';
-    const result = await intentService.processIntent(user.id, userProfile, content);
-
-    return Response.json(result);
-  }
 }
