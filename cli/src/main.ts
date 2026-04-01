@@ -286,6 +286,7 @@ async function main(): Promise<void> {
         json: args.json,
       });
       return;
+<<<<<<< HEAD
     case "contact":
       await handleContact(client, args.subcommand, args.positionals ?? [], {
         json: args.json,
