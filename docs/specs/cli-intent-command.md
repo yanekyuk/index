@@ -23,14 +23,15 @@ The `index intent` command exposes four subcommands for managing intents (user-f
 
 ### `index intent create <content>`
 
-1. Calls `POST /api/intents/process` with `{ content }`.
+1. Calls `create_intent` tool via Tool HTTP API with `{ description }`.
 2. Prints the processing result summary.
 3. Content is the remaining positional arguments joined with spaces.
 
 ### `index intent archive <id>`
 
-1. Calls `PATCH /api/intents/:id/archive`.
-2. Prints confirmation message on success, error on failure.
+1. Resolves short ID to full UUID via `GET /api/intents/:id`.
+2. Calls `delete_intent` tool via Tool HTTP API with `{ intentId }`.
+3. Prints confirmation message on success, error on failure.
 
 ## Constraints
 
