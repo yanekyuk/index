@@ -18,6 +18,8 @@ import { handleIntent } from "./intent.command";
 import { handleOpportunity } from "./opportunity.command";
 import { handleNetwork } from "./network.command";
 import { handleConversation } from "./conversation.command";
+import { handleContact } from "./contact.command";
+import { handleScrape } from "./scrape.command";
 import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
@@ -43,22 +45,33 @@ Usage:
   index profile                         Show your profile
   index profile show <user-id>          Show another user's profile
   index profile sync                    Regenerate your profile
+  index profile search <query>          Search user profiles
   index intent list [--archived] [--limit <n>]  List your signals
   index intent show <id>               Show signal details
   index intent create <content>        Create a signal from natural language
+  index intent update <id> <content>   Update a signal's description
   index intent archive <id>            Archive a signal
+  index intent link <id> <network-id>  Link a signal to a network
+  index intent unlink <id> <network-id> Unlink a signal from a network
+  index intent links <id>              Show linked networks for a signal
   index opportunity list                List your opportunities
   index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
   index opportunity list --limit <n>    Limit results
   index opportunity show <id>           Show full opportunity details
   index opportunity accept <id>         Accept an opportunity
   index opportunity reject <id>         Reject an opportunity
+  index opportunity discover <query>    Discover opportunities by search query
   index network list                    List your networks
   index network create <name>           Create a new network
   index network show <id>               Show network details and members
   index network join <id>               Join a public network
   index network leave <id>              Leave a network
   index network invite <id> <email>     Invite a user by email
+  index contact list                    List your contacts
+  index contact add <email>             Add a contact by email
+  index contact remove <email>          Remove a contact
+  index contact import --gmail          Import contacts from Gmail
+  index scrape <url>                    Extract content from a URL
   index --help                          Show this help message
   index --version                       Show version
 
@@ -70,6 +83,12 @@ Options:
   --archived          Include archived signals (intent list)
   --status <status>   Filter opportunities by status
   --limit <n>         Limit number of results
+  --json              Output raw JSON instead of formatted text
+  --name <name>       Name for contact add
+  --gmail             Import source flag for contact import
+  --objective <text>  Objective for scrape command
+  --target <uid>      Target user for opportunity discover
+  --introduce <uid>   Source user for introduction discovery
 `;
 
 // ── Auth helper ──────────────────────────────────────────────────────
@@ -200,7 +219,12 @@ async function main(): Promise<void> {
 
   switch (args.command) {
     case "profile":
-      await handleProfile(client, args.subcommand, args.userId ? [args.userId] : []);
+      await handleProfile(
+        client,
+        args.subcommand,
+        args.subcommand === "search" ? (args.positionals ?? []) : (args.userId ? [args.userId] : []),
+        { json: args.json },
+      );
       return;
     case "intent":
       await handleIntent(client, args.subcommand, {
@@ -208,6 +232,8 @@ async function main(): Promise<void> {
         intentContent: args.intentContent,
         archived: args.archived,
         limit: args.limit,
+        json: args.json,
+        targetId: args.targetId,
       });
       return;
     case "opportunity":
@@ -215,6 +241,10 @@ async function main(): Promise<void> {
         targetId: args.targetId,
         status: args.status,
         limit: args.limit,
+        json: args.json,
+        positionals: args.positionals,
+        target: args.target,
+        introduce: args.introduce,
       });
       return;
     case "network":
@@ -227,6 +257,19 @@ async function main(): Promise<void> {
         limit: args.limit,
         sessionId: args.sessionId,
         message: args.message,
+      });
+      return;
+    case "contact":
+      await handleContact(client, args.subcommand, args.positionals ?? [], {
+        json: args.json,
+        name: args.name,
+        gmail: args.gmail,
+      });
+      return;
+    case "scrape":
+      await handleScrape(client, args.positionals ?? [], {
+        json: args.json,
+        objective: args.objective,
       });
       return;
   }

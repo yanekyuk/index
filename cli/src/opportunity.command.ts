@@ -11,12 +11,15 @@ import * as output from "./output";
 
 const OPPORTUNITY_HELP = `
 Usage:
-  index opportunity list                List your opportunities
-  index opportunity list --status <s>   Filter by status (pending|accepted|rejected|expired)
-  index opportunity list --limit <n>    Limit results
-  index opportunity show <id>           Show full opportunity details (accepts short ID)
-  index opportunity accept <id>         Accept an opportunity (accepts short ID)
-  index opportunity reject <id>         Reject an opportunity (accepts short ID)
+  index opportunity list                        List your opportunities
+  index opportunity list --status <s>           Filter by status (pending|accepted|rejected|expired)
+  index opportunity list --limit <n>            Limit results
+  index opportunity show <id>                   Show full opportunity details (accepts short ID)
+  index opportunity accept <id>                 Accept an opportunity (accepts short ID)
+  index opportunity reject <id>                 Reject an opportunity (accepts short ID)
+  index opportunity discover <query>            Discover opportunities by search query
+  index opportunity discover --target <uid> <q> Discover for a specific user
+  index opportunity discover --introduce <a> <b> Introduce two users
 `;
 
 /**
@@ -33,16 +36,24 @@ export async function handleOpportunity(
     targetId?: string;
     status?: string;
     limit?: number;
+    json?: boolean;
+    positionals?: string[];
+    target?: string;
+    introduce?: string;
   },
 ): Promise<void> {
   if (!subcommand) {
-    console.log(OPPORTUNITY_HELP);
+    if (options.json) {
+      console.log(JSON.stringify({ error: "No subcommand provided" }));
+    } else {
+      console.log(OPPORTUNITY_HELP);
+    }
     return;
   }
 
   switch (subcommand) {
     case "list":
-      await opportunityList(client, options.status, options.limit);
+      await opportunityList(client, options.status, options.limit, options.json);
       return;
 
     case "show":
@@ -50,7 +61,7 @@ export async function handleOpportunity(
         output.error("Missing opportunity ID. Usage: index opportunity show <id>", 1);
         return;
       }
-      await opportunityShow(client, options.targetId);
+      await opportunityShow(client, options.targetId, options.json);
       return;
 
     case "accept":
@@ -58,7 +69,7 @@ export async function handleOpportunity(
         output.error("Missing opportunity ID. Usage: index opportunity accept <id>", 1);
         return;
       }
-      await opportunityStatusUpdate(client, options.targetId, "accepted");
+      await opportunityStatusUpdate(client, options.targetId, "accepted", options.json);
       return;
 
     case "reject":
@@ -66,8 +77,36 @@ export async function handleOpportunity(
         output.error("Missing opportunity ID. Usage: index opportunity reject <id>", 1);
         return;
       }
-      await opportunityStatusUpdate(client, options.targetId, "rejected");
+      await opportunityStatusUpdate(client, options.targetId, "rejected", options.json);
       return;
+
+    case "discover": {
+      const query = options.positionals?.join(" ");
+      if (!query && !options.introduce) {
+        output.error("Usage: index opportunity discover <query>", 1);
+        return;
+      }
+      output.info("Discovering opportunities...");
+      const toolQuery: Record<string, unknown> = {};
+      if (options.introduce) {
+        toolQuery.mode = "introduction";
+        toolQuery.sourceUserId = options.introduce;
+        toolQuery.targetUserId = options.positionals?.[0];
+      } else if (options.target) {
+        toolQuery.mode = "direct";
+        toolQuery.targetUserId = options.target;
+        toolQuery.searchQuery = query;
+      } else {
+        toolQuery.searchQuery = query;
+      }
+      const result = await client.callTool("create_opportunities", toolQuery);
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Discovery failed", 1); return; }
+      output.success("Discovery complete.");
+      const data = result.data as { message?: string };
+      if (data?.message) output.dim(`  ${data.message}`);
+      return;
+    }
 
     default:
       output.error(`Unknown subcommand: ${subcommand}`, 1);
@@ -82,8 +121,10 @@ async function opportunityList(
   client: ApiClient,
   status?: string,
   limit?: number,
+  json?: boolean,
 ): Promise<void> {
   const opportunities = await client.listOpportunities({ status, limit });
+  if (json) { console.log(JSON.stringify(opportunities)); return; }
   output.heading("Opportunities");
   output.opportunityTable(opportunities);
   console.log();
@@ -92,8 +133,9 @@ async function opportunityList(
 /**
  * Show detailed information for a single opportunity.
  */
-async function opportunityShow(client: ApiClient, id: string): Promise<void> {
+async function opportunityShow(client: ApiClient, id: string, json?: boolean): Promise<void> {
   const opportunity = await client.getOpportunity(id);
+  if (json) { console.log(JSON.stringify(opportunity)); return; }
   output.opportunityCard(opportunity);
 }
 
@@ -104,8 +146,10 @@ async function opportunityStatusUpdate(
   client: ApiClient,
   id: string,
   status: "accepted" | "rejected",
+  json?: boolean,
 ): Promise<void> {
-  await client.updateOpportunityStatus(id, status);
+  const result = await client.updateOpportunityStatus(id, status);
+  if (json) { console.log(JSON.stringify(result)); return; }
   const label = status === "accepted" ? "accepted" : "rejected";
   output.success(`Opportunity ${label}.`);
 }

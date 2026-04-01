@@ -107,6 +107,29 @@ export function profileCard(data: ProfileData): string {
   return output;
 }
 
+// ── Contact table ──────────────────────────────────────────────────
+
+/**
+ * Print a table of contacts.
+ *
+ * @param contacts - Array of contact objects from the API.
+ */
+export function contactTable(
+  contacts: Array<{ userId: string; name: string; email: string; isGhost?: boolean }>,
+): void {
+  if (contacts.length === 0) {
+    console.log("  No contacts yet.");
+    return;
+  }
+  const nameWidth = Math.max(6, ...contacts.map((c) => c.name.length));
+  const header = `  ${"Name".padEnd(nameWidth)}  Email`;
+  console.log(`${BOLD}${header}${RESET}`);
+  for (const c of contacts) {
+    const ghost = c.isGhost ? ` ${DIM}(ghost)${RESET}` : "";
+    console.log(`  ${c.name.padEnd(nameWidth)}  ${c.email}${ghost}`);
+  }
+}
+
 // ── Session table ───────────────────────────────────────────────────
 
 /**

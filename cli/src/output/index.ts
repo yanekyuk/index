@@ -56,6 +56,7 @@ export { MarkdownRenderer } from "./markdown";
 export type { ProfileData } from "./formatters";
 export {
   profileCard,
+  contactTable,
   sessionTable,
   intentTable,
   intentCard,

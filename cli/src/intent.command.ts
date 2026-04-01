@@ -14,7 +14,11 @@ Usage:
   index intent list [--archived] [--limit <n>]  List your signals
   index intent show <id>                        Show signal details (accepts short ID)
   index intent create <content>                 Create a signal from text
+  index intent update <id> <content>            Update a signal's description
   index intent archive <id>                     Archive a signal (accepts short ID)
+  index intent link <id> <network-id>           Link a signal to a network
+  index intent unlink <id> <network-id>         Unlink a signal from a network
+  index intent links <id>                       Show linked networks for a signal
 `;
 
 /**
@@ -32,10 +36,16 @@ export async function handleIntent(
     intentContent?: string;
     archived?: boolean;
     limit?: number;
+    json?: boolean;
+    targetId?: string;
   },
 ): Promise<void> {
   if (!subcommand) {
-    console.log(INTENT_HELP);
+    if (options.json) {
+      console.log(JSON.stringify({ error: "No subcommand provided" }));
+    } else {
+      console.log(INTENT_HELP);
+    }
     return;
   }
 
@@ -45,6 +55,7 @@ export async function handleIntent(
         archived: options.archived,
         limit: options.limit,
       });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
       output.heading("Signals");
       output.intentTable(result.intents);
       if (result.pagination.total > 0) {
@@ -62,6 +73,7 @@ export async function handleIntent(
         return;
       }
       const intent = await client.getIntent(options.intentId);
+      if (options.json) { console.log(JSON.stringify(intent)); return; }
       output.intentCard(intent);
       return;
     }
@@ -73,10 +85,31 @@ export async function handleIntent(
       }
       output.info("Processing signal...");
       const result = await client.processIntent(options.intentContent);
+      if (options.json) { console.log(JSON.stringify(result)); return; }
       output.success("Signal processed successfully.");
       if (result.message) {
         output.dim(`  ${result.message}`);
       }
+      return;
+    }
+
+    case "update": {
+      if (!options.intentId) {
+        output.error("Missing signal ID. Usage: index intent update <id> <content>", 1);
+        return;
+      }
+      if (!options.intentContent) {
+        output.error("Missing content. Usage: index intent update <id> <content>", 1);
+        return;
+      }
+      output.info("Updating signal...");
+      const result = await client.callTool("update_intent", {
+        intentId: options.intentId,
+        newDescription: options.intentContent,
+      });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Failed to update signal", 1); return; }
+      output.success("Signal updated.");
       return;
     }
 
@@ -86,7 +119,62 @@ export async function handleIntent(
         return;
       }
       await client.archiveIntent(options.intentId);
+      if (options.json) { console.log(JSON.stringify({ success: true })); return; }
       output.success(`Signal ${options.intentId} archived.`);
+      return;
+    }
+
+    case "link": {
+      if (!options.intentId || !options.targetId) {
+        output.error("Usage: index intent link <intent-id> <network-id>", 1);
+        return;
+      }
+      const result = await client.callTool("create_intent_index", {
+        intentId: options.intentId,
+        indexId: options.targetId,
+      });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Failed to link signal", 1); return; }
+      output.success("Signal linked to network.");
+      return;
+    }
+
+    case "unlink": {
+      if (!options.intentId || !options.targetId) {
+        output.error("Usage: index intent unlink <intent-id> <network-id>", 1);
+        return;
+      }
+      const result = await client.callTool("delete_intent_index", {
+        intentId: options.intentId,
+        indexId: options.targetId,
+      });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Failed to unlink signal", 1); return; }
+      output.success("Signal unlinked from network.");
+      return;
+    }
+
+    case "links": {
+      if (!options.intentId) {
+        output.error("Missing signal ID. Usage: index intent links <id>", 1);
+        return;
+      }
+      const result = await client.callTool("read_intent_indexes", {
+        intentId: options.intentId,
+      });
+      if (options.json) { console.log(JSON.stringify(result)); return; }
+      if (!result.success) { output.error(result.error ?? "Failed to read linked networks", 1); return; }
+      const data = result.data as { indexes: Array<{ indexId: string; title: string; relevancyScore?: number }> };
+      output.heading("Linked Networks");
+      if (!data.indexes?.length) {
+        output.dim("  No linked networks.");
+      } else {
+        for (const idx of data.indexes) {
+          const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
+          console.log(`  ${idx.title} ${output.DIM}${idx.indexId.slice(0, 8)}${score}${output.RESET}`);
+        }
+      }
+      console.log();
       return;
     }
   }

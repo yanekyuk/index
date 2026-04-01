@@ -5,7 +5,7 @@
  * are populated only when relevant to the active command.
  */
 export interface ParsedCommand {
-  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "help" | "version" | "unknown";
+  command: "login" | "logout" | "profile" | "intent" | "opportunity" | "network" | "conversation" | "contact" | "scrape" | "help" | "version" | "unknown";
   /** One-shot message for conversation command (H2A agent chat). */
   message?: string;
   /** Resume a specific chat session (--session flag). */
@@ -54,9 +54,9 @@ export interface ParsedCommand {
   introduce?: string;
 }
 
-const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "network", "conversation", "help", "version"]);
+const KNOWN_COMMANDS = new Set(["login", "logout", "profile", "intent", "opportunity", "network", "conversation", "contact", "scrape", "help", "version"]);
 
-const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject"]);
+const OPPORTUNITY_SUBCOMMANDS = new Set(["list", "show", "accept", "reject", "discover"]);
 
 const NETWORK_SUBCOMMANDS = new Set(["list", "create", "show", "join", "leave", "invite"]);
 
@@ -169,15 +169,18 @@ export function parseArgs(args: string[]): ParsedCommand {
     const sub = positionals[0];
     if (sub && OPPORTUNITY_SUBCOMMANDS.has(sub)) {
       result.subcommand = sub as ParsedCommand["subcommand"];
-      // Second positional is the target ID (for show/accept/reject)
-      if (positionals[1]) {
+      if (sub === "discover") {
+        // Remaining positionals are the search query
+        result.positionals = positionals.slice(1);
+      } else if (positionals[1]) {
+        // Second positional is the target ID (for show/accept/reject)
         result.targetId = positionals[1];
       }
     }
     return result;
   }
 
-  // Profile subcommands: "show <user-id>" or "sync"
+  // Profile subcommands: "show <user-id>", "sync", or "search <query>"
   if (result.command === "profile" && positionals.length > 0) {
     const sub = positionals[0];
     if (sub === "show") {
@@ -187,7 +190,26 @@ export function parseArgs(args: string[]): ParsedCommand {
       }
     } else if (sub === "sync") {
       result.subcommand = "sync";
+    } else if (sub === "search") {
+      result.subcommand = "search";
+      result.positionals = positionals.slice(1);
     }
+  }
+
+  // Contact command: first positional is subcommand, rest are args
+  if (result.command === "contact") {
+    if (positionals.length > 0) {
+      const sub = positionals[0];
+      if (["list", "add", "remove", "import"].includes(sub)) {
+        result.subcommand = sub as ParsedCommand["subcommand"];
+        result.positionals = positionals.slice(1);
+      }
+    }
+  }
+
+  // Scrape command: positionals are the URL and any extra args
+  if (result.command === "scrape") {
+    result.positionals = positionals;
   }
 
   // Intent subcommand parsing
@@ -222,7 +244,7 @@ export function parseArgs(args: string[]): ParsedCommand {
   return result;
 }
 
-const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive"]);
+const INTENT_SUBCOMMANDS = new Set(["list", "show", "create", "archive", "update", "link", "unlink", "links"]);
 
 /**
  * Parse intent-specific positional arguments into subcommand, ID, or content.
@@ -242,12 +264,24 @@ function parseIntentArgs(positionals: string[], result: ParsedCommand): void {
   switch (result.subcommand) {
     case "show":
     case "archive":
+    case "links":
       result.intentId = rest[0];
       break;
     case "create":
       if (rest.length > 0) {
         result.intentContent = rest.join(" ");
       }
+      break;
+    case "update":
+      result.intentId = rest[0];
+      if (rest.length > 1) {
+        result.intentContent = rest.slice(1).join(" ");
+      }
+      break;
+    case "link":
+    case "unlink":
+      result.intentId = rest[0];
+      result.targetId = rest[1]; // networkId
       break;
   }
 }

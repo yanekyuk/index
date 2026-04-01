@@ -11,9 +11,10 @@ import * as output from "./output";
 
 const PROFILE_HELP = `
 Usage:
-  index profile                  Show your profile
-  index profile show <user-id>   Show another user's profile
-  index profile sync             Regenerate your profile
+  index profile                      Show your profile
+  index profile show <user-id>       Show another user's profile
+  index profile sync                 Regenerate your profile
+  index profile search <query>       Search user profiles
 `;
 
 /**
@@ -27,6 +28,7 @@ export async function handleProfile(
   client: ApiClient,
   subcommand: string | undefined,
   positionals: string[],
+  options: { json?: boolean } = {},
 ): Promise<void> {
   if (subcommand === "sync") {
     await profileSync(client);
@@ -40,6 +42,26 @@ export async function handleProfile(
       return;
     }
     await profileShow(client, userId);
+    return;
+  }
+
+  if (subcommand === "search") {
+    const query = positionals.join(" ");
+    if (!query) { output.error("Usage: index profile search <query>", 1); return; }
+    const result = await client.callTool("read_user_profiles", { query });
+    if (options.json) { console.log(JSON.stringify(result)); return; }
+    if (!result.success) { output.error(result.error ?? "Search failed", 1); return; }
+    const data = result.data as { profiles: Array<{ userId: string; name: string; profile?: { bio: string } }> };
+    output.heading("Search Results");
+    if (!data.profiles?.length) {
+      output.dim("  No profiles found.");
+    } else {
+      for (const p of data.profiles) {
+        console.log(`  ${p.name} (${p.userId.slice(0, 8)})`);
+        if (p.profile?.bio) output.dim(`    ${p.profile.bio.slice(0, 100)}`);
+      }
+    }
+    console.log();
     return;
   }
 
