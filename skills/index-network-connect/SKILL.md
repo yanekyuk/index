@@ -7,26 +7,96 @@ description: Use when the user wants to manage networks (create, join, leave, in
 
 Help users manage their communities and personal network.
 
+## Prerequisites
+
+The parent skill (index-network) has already verified CLI availability and auth. Context has been gathered silently.
+
 ## Networks
 
-- `read_indexes` — List the user's networks
-- `create_index` — Create a new network with a title and optional prompt
-- `update_index` — Update network title or prompt (owner only)
-- `delete_index` — Delete a network (owner only, must be sole member)
-- `read_index_memberships` — See who is in a network
-- `create_index_membership` — Invite someone by email
-- `delete_index_membership` — Leave a network
+List networks:
+
+```
+index network list --json
+```
+
+Create a new network:
+
+```
+index network create "<name>" --prompt "<purpose>" --json
+```
 
 When creating a network, help the user write a good prompt — it guides how the system evaluates intents within that community.
 
+Update network title or prompt (owner only):
+
+```
+index network update <id> --title "<new title>" --prompt "<new prompt>" --json
+```
+
+Delete a network (owner only):
+
+```
+index network delete <id> --json
+```
+
+Show network members:
+
+```
+index network show <id> --json
+```
+
+Invite someone by email:
+
+```
+index network invite <id> <email> --json
+```
+
+Join a public network:
+
+```
+index network join <id> --json
+```
+
+Leave a network:
+
+```
+index network leave <id> --json
+```
+
 ## Contacts
 
-- `list_contacts` — Show the user's contacts
-- `add_contact` — Add someone by email (creates a ghost user if they are not on the platform)
-- `remove_contact` — Remove a contact
-- `import_contacts` — Bulk import
-- `import_gmail_contacts` — Import from Gmail (opens browser for OAuth)
+List contacts:
+
+```
+index contact list --json
+```
+
+Add someone by email (creates a ghost user if they are not on the platform):
+
+```
+index contact add <email> --json
+```
+
+Remove a contact:
+
+```
+index contact remove <email> --json
+```
+
+Bulk import:
+
+```
+index contact import --json
+```
+
+Import from Gmail (opens browser for OAuth):
+
+```
+index contact import --gmail --json
+```
 
 ## Join Policies
 
-Networks have join policies: `public` (anyone can join) or `invite_only` (requires invitation). When a user asks to join a network, check the policy first.
+Networks have join policies: `public` (anyone can join) or `invite_only` (requires invitation). When a user asks to join a network, check the policy first by running `index network show <id> --json`.
+
+After any network or contact mutation, silently re-run the relevant list command to refresh context.
