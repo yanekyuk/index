@@ -1,7 +1,7 @@
 /**
  * Profile command handlers for the Index CLI.
  *
- * Implements: (default), show, sync subcommands.
+ * Implements: (default), show, sync, create, update subcommands.
  * Follows the same handleX(client, subcommand, positionals, options)
  * pattern as network.command.ts and conversation.command.ts.
  */
@@ -25,9 +25,9 @@ Usage:
  * Route a profile subcommand to the appropriate handler.
  *
  * @param client - Authenticated API client.
- * @param subcommand - The subcommand (show, sync, or undefined for self).
+ * @param subcommand - The subcommand (show, sync, create, update, or undefined for self).
  * @param positionals - Positional arguments after the subcommand.
- * @param options - Additional options (json).
+ * @param options - Additional options (json, linkedin, github, twitter).
  */
 export async function handleProfile(
   client: ApiClient,
