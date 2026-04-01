@@ -7,24 +7,68 @@ description: Use when the user wants to express what they are looking for or off
 
 Help users articulate and manage their intents — what they are looking for or what they can offer.
 
+## Prerequisites
+
+The parent skill (index-network) has already verified CLI availability and auth. Context has been gathered silently.
+
 ## Creating Intents
 
-When a user describes a need or offering, call `create_intent` with their natural language description. The server handles enrichment, similarity checks, and indexing.
+When a user describes a need or offering, run:
 
-Do not ask the user to structure their intent — the server processes natural language.
+```
+index intent create "<their natural language description>" --json
+```
+
+Do not ask the user to structure their intent — the server processes natural language. After creating, silently re-run `index intent list --json` to refresh context.
 
 ## Updating Intents
 
-If a user wants to refine an existing intent, call `update_intent`. The server checks similarity with the old version and enriches as needed.
+If a user wants to refine an existing intent:
+
+```
+index intent update <id> "<new description>" --json
+```
+
+The server checks similarity with the old version and enriches as needed.
 
 ## Linking to Networks
 
-After creating an intent, suggest linking it to relevant networks with `create_intent_index`. Use `read_intent_indexes` to show current links. Use `delete_intent_index` to unlink.
+After creating an intent, suggest linking it to relevant networks:
+
+```
+index intent link <intent-id> <network-id> --json
+```
+
+Show current links:
+
+```
+index intent links <intent-id> --json
+```
+
+Unlink:
+
+```
+index intent unlink <intent-id> <network-id> --json
+```
 
 ## Archiving
 
-When an intent is fulfilled or no longer relevant, call `delete_intent` to archive it.
+When an intent is fulfilled or no longer relevant:
+
+```
+index intent archive <id> --json
+```
 
 ## Reading
 
-Use `read_intents` to list the user's active or archived intents. Scope to a network with `indexId` if the conversation is about a specific community.
+List the user's active or archived intents:
+
+```
+index intent list [--archived] [--limit <n>] --json
+```
+
+Show details of a specific intent:
+
+```
+index intent show <id> --json
+```
