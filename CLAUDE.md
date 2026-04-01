@@ -312,7 +312,21 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 
 ### Finishing a Branch
 
-1. Update CLAUDE.md if structural changes were introduced
-2. Merge into dev: `git checkout dev && git merge <branch-name>`
-3. Push both remotes: `git push upstream dev && git push origin dev`
-4. Clean up: delete branch and remove worktree
+1. Update all relevant documentation:
+   - `CLAUDE.md` — if structural or architectural changes were introduced
+   - `README.md` files — any affected package READMEs
+   - `docs/specs/` — API and CLI specs
+   - `docs/guides/` — setup and usage guides
+   - `docs/domain/` — domain concept docs
+   - `docs/design/` — architecture and deep-dive docs
+2. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
+3. Merge into dev: `git checkout dev && git merge <branch-name>`
+4. Push both remotes: `git push upstream dev && git push origin dev`
+5. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
+6. Clean up: delete branch and remove worktree
+
+## Superpowers Workflow
+
+### Implementation via Subagents in Worktrees
+
+When executing implementation plans, **always use subagent-driven development with worktree isolation** (`isolation: "worktree"`). This keeps `dev` stable and allows parallel independent tasks. Combine the `superpowers:subagent-driven-development` and `superpowers:using-git-worktrees` skills.
