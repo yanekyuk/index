@@ -27,9 +27,9 @@ Network Commands:
  * Route a network subcommand to the appropriate handler.
  *
  * @param client - Authenticated API client.
- * @param subcommand - The subcommand (list, create, show, join, leave, invite).
+ * @param subcommand - The subcommand (list, create, show, join, leave, invite, update, delete).
  * @param positionals - Positional arguments after the subcommand.
- * @param options - Additional options (e.g. prompt, json).
+ * @param options - Additional options (e.g. prompt, title, json).
  */
 export async function handleNetwork(
   client: ApiClient,
@@ -243,3 +243,4 @@ async function networkInvite(
     output.dim(`  ${result.message}`);
   }
 }
+
