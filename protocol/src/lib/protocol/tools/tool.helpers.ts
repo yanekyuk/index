@@ -11,6 +11,8 @@ import type { Scraper } from "../interfaces/scraper.interface";
 import type { Cache } from "../interfaces/cache.interface";
 import type { CompiledOpportunityGraph } from "../support/opportunity.discover";
 import type { IntegrationAdapter } from "../interfaces/integration.interface";
+import type { ContactServiceAdapter } from "../interfaces/contact.interface";
+import type { ProfileEnricher } from "../interfaces/enrichment.interface";
 
 /** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
 export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
@@ -251,6 +253,16 @@ export interface ToolDeps {
   embedder: import('../interfaces/embedder.interface').Embedder;
   cache: Cache;
   integration: IntegrationAdapter;
+  contactService: ContactServiceAdapter;
+  integrationImporter: {
+    importContacts(userId: string, toolkit: string): Promise<{
+      imported: number;
+      skipped: number;
+      newContacts: number;
+      existingContacts: number;
+    }>;
+  };
+  enricher: ProfileEnricher;
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;

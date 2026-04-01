@@ -7,7 +7,7 @@ import type { ChatGraphCompositeDatabase } from "../interfaces/database.interfac
 import type { Embedder } from "../interfaces/embedder.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { chatSessionService } from "../../../services/chat.service";
+import type { ChatSessionReader } from "../interfaces/chat-session.interface";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "../support/chat.utils";
 import { ChatStreamer } from "../streamers";
 import { timed } from "../support/performance";
@@ -55,7 +55,8 @@ export class ChatGraphFactory {
   constructor(
     private database: ChatGraphCompositeDatabase,
     private embedder: Embedder,
-    private scraper: Scraper
+    private scraper: Scraper,
+    private chatSession?: ChatSessionReader,
   ) {
     this.streamingService = new ChatStreamer(
       (sessionId, maxMessages) => this.loadSessionContext(sessionId, maxMessages),
@@ -102,7 +103,9 @@ export class ChatGraphFactory {
     });
 
     try {
-      const messages = await chatSessionService.getSessionMessages(sessionId, maxMessages);
+      const messages = this.chatSession
+        ? await this.chatSession.getSessionMessages(sessionId, maxMessages)
+        : [];
 
       if (messages.length === 0) {
         logger.verbose("No previous messages found", { sessionId });

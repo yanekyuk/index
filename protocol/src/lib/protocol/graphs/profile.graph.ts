@@ -5,7 +5,7 @@ import { HydeGenerator } from "../agents/profile.hyde.generator";
 import { ProfileGraphDatabase } from "../interfaces/database.interface";
 import { Embedder } from "../interfaces/embedder.interface";
 import { Scraper } from "../interfaces/scraper.interface";
-import { enrichUserProfile } from "../../../lib/parallel/parallel";
+import type { ProfileEnricher } from "../interfaces/enrichment.interface";
 import { shouldEnrichGhostDisplayNameFromParallel } from "../support/profile.enrichment-display-name";
 import { protocolLogger } from "../support/protocol.logger";
 import { timed } from "../support/performance";
@@ -91,7 +91,8 @@ export class ProfileGraphFactory {
   constructor(
     private database: ProfileGraphDatabase,
     private embedder: Embedder,
-    private scraper: Scraper
+    private scraper: Scraper,
+    private enricher?: ProfileEnricher,
   ) { }
 
   public createGraph() {
@@ -400,7 +401,9 @@ export class ProfileGraphFactory {
           };
 
           try {
-            const enrichment = await enrichUserProfile(request);
+            const enrichment = this.enricher
+              ? await this.enricher.enrichUserProfile(request)
+              : null;
 
             if (enrichment && !enrichment.isHuman) {
               logger.info("Enrichment detected non-human entity, soft-deleting ghost", { userId: state.userId });
