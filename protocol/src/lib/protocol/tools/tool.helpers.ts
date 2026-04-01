@@ -216,6 +216,22 @@ export type DefineTool = <T extends z.ZodType>(opts: {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }) => any;
 
+/**
+ * A raw tool definition before LangChain wrapping.
+ * Used by the tool registry for direct HTTP invocation.
+ */
+export interface RawToolDefinition {
+  name: string;
+  description: string;
+  schema: z.ZodType;
+  handler: (input: { context: ResolvedToolContext; query: unknown }) => Promise<string>;
+}
+
+/**
+ * Registry mapping tool names to their raw definitions.
+ */
+export type ToolRegistry = Map<string, RawToolDefinition>;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TOOL DEPENDENCIES
 // ═══════════════════════════════════════════════════════════════════════════════
