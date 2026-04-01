@@ -67,8 +67,14 @@ export class ToolController {
       const message = err instanceof Error ? err.message : String(err);
       logger.error('Tool invoke failed', { userId: user.id, toolName, error: message });
 
-      // Tool not found or validation errors are client errors
-      if (message.includes('not found') || message.includes('Invalid query')) {
+      if (message.includes('not found')) {
+        return new Response(
+          JSON.stringify({ error: message }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (message.includes('Invalid query')) {
         return new Response(
           JSON.stringify({ error: message }),
           { status: 400, headers: { 'Content-Type': 'application/json' } },

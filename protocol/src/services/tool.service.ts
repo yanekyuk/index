@@ -45,6 +45,7 @@ const logger = log.service.from('tool');
 class ToolService {
   private embedder = new EmbedderAdapter();
   private scraper = new ScraperAdapter();
+  private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
 
   /**
    * Invoke a single tool by name for the given user.
@@ -153,7 +154,9 @@ class ToolService {
    * @returns Array of tool metadata
    */
   async listTools(): Promise<Array<{ name: string; description: string; schema: Record<string, unknown> }>> {
-    logger.verbose('Listing tools');
+    if (this.cachedToolList) return this.cachedToolList;
+
+    logger.verbose('Building tool list (first call, will be cached)');
 
     // Build a minimal deps object to enumerate tools.
     // createToolRegistry only registers schemas/handlers; it doesn't call any DB methods.
@@ -209,13 +212,15 @@ class ToolService {
 
     const registry = createToolRegistry(toolDeps);
 
-    return Array.from(registry.values()).map((t) => ({
+    this.cachedToolList = Array.from(registry.values()).map((t) => ({
       name: t.name,
       description: t.description,
       schema: t.schema instanceof z.ZodType
         ? JSON.parse(JSON.stringify((t.schema as z.ZodObject<z.ZodRawShape>).shape ? zodToJsonSchema(t.schema) : {}))
         : {},
     }));
+
+    return this.cachedToolList;
   }
 }
 
