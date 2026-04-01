@@ -130,7 +130,12 @@ async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
   if (!json) output.info("Regenerating profile...");
   // Check if profile exists
   const check = await client.callTool("read_user_profiles", {});
-  const hasProfile = check.success && (check.data as Record<string, unknown>)?.hasProfile;
+  if (!check.success) {
+    if (json) { console.log(JSON.stringify(check)); return; }
+    output.error(check.error ?? "Failed to check profile status", 1);
+    return;
+  }
+  const hasProfile = (check.data as Record<string, unknown>)?.hasProfile;
 
   let result;
   if (hasProfile) {
