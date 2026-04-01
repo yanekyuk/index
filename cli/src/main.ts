@@ -275,6 +275,7 @@ async function main(): Promise<void> {
       await handleNetwork(client, args.subcommand, args.positionals ?? [], {
         prompt: args.prompt,
         title: args.title,
+        json: args.json,
       });
       return;
     case "conversation":
@@ -282,6 +283,7 @@ async function main(): Promise<void> {
         limit: args.limit,
         sessionId: args.sessionId,
         message: args.message,
+        json: args.json,
       });
       return;
     case "contact":

@@ -204,6 +204,7 @@ export interface ConversationOptions {
   limit?: number;
   sessionId?: string;
   message?: string;
+  json?: boolean;
 }
 
 /**
@@ -236,10 +237,10 @@ export async function handleConversation(
 
   switch (subcommand) {
     case "sessions":
-      await chatSessionsList(client);
+      await chatSessionsList(client, options?.json);
       return;
     case "list":
-      await conversationList(client);
+      await conversationList(client, options?.json);
       return;
     case "with":
       await conversationWith(client, positionals[0]);
@@ -264,9 +265,13 @@ export async function handleConversation(
 /**
  * List conversations for the authenticated user.
  */
-async function conversationList(client: ApiClient): Promise<void> {
+async function conversationList(client: ApiClient, json?: boolean): Promise<void> {
   const conversations = await client.listConversations();
 
+  if (json) {
+    console.log(JSON.stringify(conversations));
+    return;
+  }
   output.heading("Conversations");
   output.conversationTable(conversations);
   console.log();
@@ -389,8 +394,12 @@ async function conversationStream(client: ApiClient): Promise<void> {
 /**
  * List all H2A chat sessions.
  */
-async function chatSessionsList(client: ApiClient): Promise<void> {
+async function chatSessionsList(client: ApiClient, json?: boolean): Promise<void> {
   const sessions = await client.listSessions();
+  if (json) {
+    console.log(JSON.stringify(sessions));
+    return;
+  }
   output.heading("Chat Sessions");
   output.sessionTable(sessions);
   console.log();

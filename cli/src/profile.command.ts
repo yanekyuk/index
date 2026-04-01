@@ -27,6 +27,7 @@ Usage:
  * @param client - Authenticated API client.
  * @param subcommand - The subcommand (show, sync, or undefined for self).
  * @param positionals - Positional arguments after the subcommand.
+ * @param options - Additional options (json).
  */
 export async function handleProfile(
   client: ApiClient,
@@ -50,7 +51,7 @@ export async function handleProfile(
   }
 
   if (subcommand === "sync") {
-    await profileSync(client);
+    await profileSync(client, options?.json);
     return;
   }
 
@@ -60,7 +61,7 @@ export async function handleProfile(
       output.error("Usage: index profile show <user-id>", 1);
       return;
     }
-    await profileShow(client, userId);
+    await profileShow(client, userId, options?.json);
     return;
   }
 
@@ -85,34 +86,52 @@ export async function handleProfile(
   }
 
   // Default: show own profile
-  await profileMe(client);
+  await profileMe(client, options?.json);
 }
 
 /**
  * Show the authenticated user's own profile.
  */
-async function profileMe(client: ApiClient): Promise<void> {
-  output.info("Loading your profile...");
+async function profileMe(client: ApiClient, json?: boolean): Promise<void> {
+  if (!json) {
+    output.info("Loading your profile...");
+  }
   const me = await client.getMe();
   const user = await client.getUser(me.id);
+  if (json) {
+    console.log(JSON.stringify(user));
+    return;
+  }
   output.profileCard(user);
 }
 
 /**
  * Show another user's profile by ID.
  */
-async function profileShow(client: ApiClient, userId: string): Promise<void> {
-  output.info("Loading profile...");
+async function profileShow(client: ApiClient, userId: string, json?: boolean): Promise<void> {
+  if (!json) {
+    output.info("Loading profile...");
+  }
   const user = await client.getUser(userId);
+  if (json) {
+    console.log(JSON.stringify(user));
+    return;
+  }
   output.profileCard(user);
 }
 
 /**
  * Trigger profile regeneration for the authenticated user.
  */
-async function profileSync(client: ApiClient): Promise<void> {
-  output.info("Regenerating profile...");
-  await client.syncProfile();
+async function profileSync(client: ApiClient, json?: boolean): Promise<void> {
+  if (!json) {
+    output.info("Regenerating profile...");
+  }
+  const result = await client.syncProfile();
+  if (json) {
+    console.log(JSON.stringify(result));
+    return;
+  }
   output.success("Profile regeneration triggered. It may take a moment to complete.");
 }
 
