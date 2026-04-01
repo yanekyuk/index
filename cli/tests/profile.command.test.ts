@@ -140,27 +140,6 @@ describe("ApiClient — profile methods", () => {
     });
   });
 
-  describe("syncProfile", () => {
-    it("triggers profile sync and returns result", async () => {
-      mock.on("POST", "/api/profiles/sync", () =>
-        Response.json({ success: true }),
-      );
-
-      const result = await client.syncProfile();
-      expect(result.success).toBe(true);
-    });
-
-    it("sends the authorization header", async () => {
-      let receivedAuth = "";
-      mock.on("POST", "/api/profiles/sync", (req) => {
-        receivedAuth = req.headers.get("authorization") ?? "";
-        return Response.json({ success: true });
-      });
-
-      await client.syncProfile();
-      expect(receivedAuth).toBe("Bearer test-token-123");
-    });
-  });
 });
 
 // ── Profile card rendering ──────────────────────────────────────────

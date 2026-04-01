@@ -165,19 +165,6 @@ describe("opportunity API client", () => {
     });
   });
 
-  describe("updateOpportunityStatus", () => {
-    it("sends PATCH with status body", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("PATCH", "/api/opportunities/opp-456/status", async (req) => {
-        receivedBody = (await req.json()) as Record<string, unknown>;
-        return Response.json({ id: "opp-456", status: "accepted" });
-      });
-
-      const result = await client.updateOpportunityStatus("opp-456", "accepted");
-      expect(receivedBody.status).toBe("accepted");
-      expect(result.status).toBe("accepted");
-    });
-  });
 });
 
 // ── Output renderer tests ─────────────────────────────────────────

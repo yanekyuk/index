@@ -145,31 +145,6 @@ describe("ApiClient", () => {
     });
   });
 
-  describe("processIntent", () => {
-    it("sends content to POST /api/intents/process", async () => {
-      let receivedBody: Record<string, unknown> = {};
-      mock.on("POST", "/api/intents/process", async (req) => {
-        receivedBody = await req.json() as Record<string, unknown>;
-        return Response.json({ success: true, message: "Intent processed" });
-      });
-
-      const result = await client.processIntent("Looking for a co-founder");
-      expect(receivedBody.content).toBe("Looking for a co-founder");
-      expect(result).toHaveProperty("success");
-    });
-  });
-
-  describe("archiveIntent", () => {
-    it("sends PATCH to /api/intents/:id/archive", async () => {
-      mock.on("PATCH", "/api/intents/i1/archive", () =>
-        Response.json({ success: true }),
-      );
-
-      const result = await client.archiveIntent("i1");
-      expect(result.success).toBe(true);
-    });
-  });
-
   describe("streamChat", () => {
     it("returns a readable response for SSE streaming", async () => {
       mock.on("POST", "/api/chat/stream", async (req) => {

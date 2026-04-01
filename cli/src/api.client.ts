@@ -10,7 +10,6 @@ import type {
   UserProfile,
   StreamChatParams,
   UserData,
-  SyncProfileResult,
   Intent,
   ListIntentsOptions,
   IntentListResult,
@@ -31,7 +30,6 @@ export type {
   UserProfile,
   StreamChatParams,
   UserData,
-  SyncProfileResult,
   Intent,
   ListIntentsOptions,
   IntentListResult,
@@ -102,18 +100,6 @@ export class ApiClient {
   }
 
   /**
-   * Trigger profile sync/regeneration for the authenticated user.
-   *
-   * @returns The sync result.
-   * @throws Error on auth failure or network error.
-   */
-  async syncProfile(): Promise<SyncProfileResult> {
-    const res = await this.post("/api/profiles/sync");
-    const body = (await res.json()) as SyncProfileResult;
-    return body;
-  }
-
-  /**
    * List opportunities for the authenticated user.
    *
    * @param opts - Optional filters (status, limit).
@@ -140,19 +126,6 @@ export class ApiClient {
    */
   async getOpportunity(id: string): Promise<Opportunity> {
     const res = await this.get(`/api/opportunities/${id}`);
-    return (await res.json()) as Opportunity;
-  }
-
-  /**
-   * Update an opportunity's status (accept/reject).
-   *
-   * @param id - Opportunity ID.
-   * @param status - New status value.
-   * @returns Updated opportunity object.
-   * @throws Error on auth failure or network error.
-   */
-  async updateOpportunityStatus(id: string, status: string): Promise<Opportunity> {
-    const res = await this.patch(`/api/opportunities/${id}/status`, { status });
     return (await res.json()) as Opportunity;
   }
 
@@ -215,30 +188,6 @@ export class ApiClient {
     const res = await this.get(`/api/intents/${id}`);
     const body = (await res.json()) as { intent: Intent };
     return body.intent;
-  }
-
-  /**
-   * Process natural language content through the intent graph.
-   *
-   * @param content - The natural language content to process.
-   * @returns The processing result from the intent graph.
-   * @throws Error on auth failure or network error.
-   */
-  async processIntent(content: string): Promise<Record<string, unknown>> {
-    const res = await this.post("/api/intents/process", { content });
-    return (await res.json()) as Record<string, unknown>;
-  }
-
-  /**
-   * Archive an intent by ID.
-   *
-   * @param id - The intent ID to archive.
-   * @returns Object with success boolean.
-   * @throws Error on auth failure, not found, or network error.
-   */
-  async archiveIntent(id: string): Promise<{ success: boolean }> {
-    const res = await this.patch(`/api/intents/${id}/archive`);
-    return (await res.json()) as { success: boolean };
   }
 
   // ── Network methods ─────────────────────────────────────────────
@@ -487,23 +436,6 @@ export class ApiClient {
   private async post(path: string, body?: unknown): Promise<Response> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-
-    if (!res.ok) {
-      await this.handleError(res);
-    }
-
-    return res;
-  }
-
-  private async patch(path: string, body?: unknown): Promise<Response> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.token}`,
