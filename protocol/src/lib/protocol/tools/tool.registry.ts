@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { ResolvedToolContext, ToolDeps, RawToolDefinition, ToolRegistry } from './tool.helpers';
+import type { DefineTool, ResolvedToolContext, ToolDeps, RawToolDefinition, ToolRegistry } from './tool.helpers';
 import { createProfileTools } from './profile.tools';
 import { createIntentTools } from './intent.tools';
 import { createIndexTools } from './index.tools';
@@ -22,7 +22,7 @@ const logger = protocolLogger('ToolRegistry');
  * @param context - Resolved user context for this request.
  * @returns Map of tool name to raw tool definition.
  */
-export function createToolRegistry(deps: ToolDeps, context: ResolvedToolContext): ToolRegistry {
+export function createToolRegistry(deps: ToolDeps): ToolRegistry {
   const registry: ToolRegistry = new Map();
 
   // defineTool that captures raw handlers into the registry
@@ -54,14 +54,14 @@ export function createToolRegistry(deps: ToolDeps, context: ResolvedToolContext)
 
     registry.set(opts.name, entry);
 
-    // Return a dummy value -- the create*Tools functions expect defineTool to return something
-    // (they collect return values into arrays), but for the registry path we don't need LangChain tools.
-    return { name: opts.name } as ReturnType<typeof import('@langchain/core/tools').tool>;
+    // Return a dummy — create*Tools functions collect return values into arrays,
+    // but for the registry path we only need the side-effect on the Map.
+    return null as unknown;
   }
 
-  // Create all tool domains -- each one calls defineTool() which populates the registry
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dt = defineTool as any;
+  // Create all tool domains -- each one calls defineTool() which populates the registry.
+  // The local defineTool is compatible with DefineTool (which returns any).
+  const dt = defineTool as DefineTool;
   createProfileTools(dt, deps);
   createIntentTools(dt, deps);
   createIndexTools(dt, deps);
