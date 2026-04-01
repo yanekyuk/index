@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { DefineTool, ToolDeps } from './tool.helpers';
 import { success, error } from './tool.helpers';
 import { requestContext } from "../support/request-context";
-import { log } from '../../../lib/log';
+import { log } from '../support/log';
 import { IntegrationService } from '../../../services/integration.service';
 
 const logger = log.lib.from('integration.tools');
