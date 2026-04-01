@@ -8,6 +8,7 @@ import type { Embedder } from "../interfaces/embedder.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
 import { protocolLogger } from "../support/protocol.logger";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface";
+import type { ProtocolDeps } from "../tools/tool.helpers";
 import { truncateToTokenLimit, MAX_CONTEXT_TOKENS } from "../support/chat.utils";
 import { ChatStreamer } from "../streamers";
 import { timed } from "../support/performance";
@@ -57,6 +58,7 @@ export class ChatGraphFactory {
     private embedder: Embedder,
     private scraper: Scraper,
     private chatSession?: ChatSessionReader,
+    private protocolDeps?: ProtocolDeps,
   ) {
     this.streamingService = new ChatStreamer(
       (sessionId, maxMessages) => this.loadSessionContext(sessionId, maxMessages),
@@ -182,6 +184,7 @@ export class ChatGraphFactory {
     const database = this.database;
     const embedder = this.embedder;
     const scraper = this.scraper;
+    const protocolDeps = this.protocolDeps;
 
     // ─────────────────────────────────────────────────────────────────────────
     // AGENT LOOP NODE
@@ -215,7 +218,8 @@ export class ChatGraphFactory {
             scraper,
             indexId,
             sessionId: state.sessionId,
-          });
+            ...(protocolDeps ?? {}),
+          } as import("../tools/tool.helpers").ToolContext);
           // Direct streaming writer - emit events immediately instead of buffering
           const directWriter = (data: unknown) => {
             try {

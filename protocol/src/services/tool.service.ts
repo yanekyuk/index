@@ -30,6 +30,9 @@ import { NegotiationProposer } from '../lib/protocol/agents/negotiation.proposer
 import { NegotiationResponder } from '../lib/protocol/agents/negotiation.responder';
 import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
 import { intentQueue } from '../queues/intent.queue';
+import { contactService } from './contact.service';
+import { IntegrationService } from './integration.service';
+import { enrichUserProfile } from '../lib/parallel/parallel';
 
 import type { ToolDeps } from '../lib/protocol/tools/tool.helpers';
 import { resolveChatContext } from '../lib/protocol/tools/tool.helpers';
@@ -47,6 +50,7 @@ class ToolService {
   private scraper = new ScraperAdapter();
   private cache = new RedisCacheAdapter();
   private integration = new ComposioIntegrationAdapter();
+  private integrationService = new IntegrationService(this.integration);
   private compiledGraphs: ToolDeps['graphs'] | null = null;
   private cachedToolList: Array<{ name: string; description: string; schema: Record<string, unknown> }> | null = null;
 
@@ -85,6 +89,9 @@ class ToolService {
       embedder: this.embedder,
       cache: this.cache,
       integration: this.integration,
+      contactService,
+      integrationImporter: this.integrationService,
+      enricher: { enrichUserProfile },
       graphs,
     };
 
@@ -139,6 +146,9 @@ class ToolService {
       embedder: this.embedder,
       cache: this.cache,
       integration: this.integration,
+      contactService,
+      integrationImporter: this.integrationService,
+      enricher: { enrichUserProfile },
       graphs,
     };
 

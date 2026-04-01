@@ -1,7 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import type { HydeGraphDatabase } from "../interfaces/database.interface";
-import type { HydeCache } from "../interfaces/cache.interface";
 import { IntentGraphFactory } from "../graphs/intent.graph";
 import { ProfileGraphFactory } from "../graphs/profile.graph";
 import { OpportunityGraphFactory } from "../graphs/opportunity.graph";
@@ -14,15 +13,6 @@ import { IntentIndexGraphFactory } from "../graphs/intent_index.graph";
 import { NegotiationGraphFactory } from "../graphs/negotiation.graph";
 import { NegotiationProposer } from "../agents/negotiation.proposer";
 import { NegotiationResponder } from "../agents/negotiation.responder";
-import { RedisCacheAdapter } from "../../../adapters/cache.adapter";
-import { ComposioIntegrationAdapter } from "../../../adapters/integration.adapter";
-import {
-  chatDatabaseAdapter,
-  conversationDatabaseAdapter,
-  createUserDatabase,
-  createSystemDatabase,
-} from "../../../adapters/database.adapter";
-import { intentQueue } from "../../../queues/intent.queue";
 import { protocolLogger } from "../support/protocol.logger";
 
 import {
@@ -41,7 +31,7 @@ import { createIntegrationTools } from "./integration.tools";
 import { createContactTools } from "./contact.tools";
 
 // Re-export types for consumers
-export type { ToolContext, ResolvedToolContext } from "./tool.helpers";
+export type { ToolContext, ResolvedToolContext, ProtocolDeps } from "./tool.helpers";
 export type { ToolDeps } from "./tool.helpers";
 
 const logger = protocolLogger("ChatTools");
@@ -54,6 +44,9 @@ const logger = protocolLogger("ChatTools");
  * Creates all chat tools bound to a specific user context.
  * Resolves user/index identity from DB at init time.
  * Tools are created fresh for each user session to ensure proper isolation.
+ *
+ * All external dependencies (cache, integration, queue, etc.) are provided
+ * via the `deps` parameter — the protocol lib never imports concrete adapters.
  */
 export async function createChatTools(
   deps: ToolContext,
@@ -103,9 +96,9 @@ export async function createChatTools(
   }
 
   // ─── Compile subgraphs ─────────────────────────────────────────────────────
-  const intentGraph = new IntentGraphFactory(database, embedder, intentQueue).createGraph();
-  const profileGraph = new ProfileGraphFactory(database, embedder, scraper).createGraph();
-  const hydeCache: HydeCache = new RedisCacheAdapter();
+  const intentGraph = new IntentGraphFactory(database, embedder, deps.intentQueue).createGraph();
+  const profileGraph = new ProfileGraphFactory(database, embedder, scraper, deps.enricher).createGraph();
+  const hydeCache = deps.hydeCache;
   const lensInferrer = new LensInferrer();
   const hydeGenerator = new HydeGenerator();
   const compiledHydeGraph = new HydeGraphFactory(
@@ -116,7 +109,7 @@ export async function createChatTools(
     hydeGenerator
   ).createGraph();
   const negotiationGraph = new NegotiationGraphFactory(
-    conversationDatabaseAdapter,
+    deps.negotiationDatabase,
     new NegotiationProposer(),
     new NegotiationResponder(),
   ).createGraph();
@@ -139,12 +132,12 @@ export async function createChatTools(
   // Use injected instances when provided (e.g. tests). Otherwise create from the same
   // database used for graphs so that scope checks (e.g. ensureScopedMembership, opportunity
   // update) use the same adapter as the rest of the tool pipeline.
-  const userDb = deps.userDb ?? createUserDatabase(database as Parameters<typeof createUserDatabase>[0], resolvedContext.userId);
-  const systemDb = deps.systemDb ?? createSystemDatabase(database as Parameters<typeof createSystemDatabase>[0], resolvedContext.userId, indexScope, embedder);
+  const userDb = deps.userDb ?? deps.createUserDatabase(database, resolvedContext.userId);
+  const systemDb = deps.systemDb ?? deps.createSystemDatabase(database, resolvedContext.userId, indexScope, embedder);
 
   // ─── Assemble dependencies ─────────────────────────────────────────────────
-  const cache = new RedisCacheAdapter();
-  const integration = new ComposioIntegrationAdapter();
+  const cache = deps.cache;
+  const integration = deps.integration;
   const toolDeps: ToolDeps = {
     database,
     userDb,
@@ -153,6 +146,9 @@ export async function createChatTools(
     embedder,
     cache,
     integration,
+    contactService: deps.contactService,
+    integrationImporter: deps.integrationImporter,
+    enricher: deps.enricher,
     graphs: {
       profile: profileGraph,
       intent: intentGraph,
