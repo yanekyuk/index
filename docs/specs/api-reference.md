@@ -1387,21 +1387,6 @@ Batch-check proposal statuses. Returns which proposal IDs have been confirmed.
 }
 ```
 
-### POST /api/intents/process
-
-Process user input through the Intent Graph.
-
-**Auth**: AuthGuard
-
-**Request body**:
-```json
-{
-  "content": "string (optional)"
-}
-```
-
-**Response**: JSON with intent graph execution result.
-
 ### GET /api/intents/:id
 
 Get a single intent by ID.
