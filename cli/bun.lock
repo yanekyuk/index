@@ -7,21 +7,21 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.8.1",
-        "@indexnetwork/cli-darwin-x64": "0.8.1",
-        "@indexnetwork/cli-linux-arm64": "0.8.1",
-        "@indexnetwork/cli-linux-x64": "0.8.1",
+        "@indexnetwork/cli-darwin-arm64": "0.9.1",
+        "@indexnetwork/cli-darwin-x64": "0.9.1",
+        "@indexnetwork/cli-linux-arm64": "0.9.1",
+        "@indexnetwork/cli-linux-x64": "0.9.1",
       },
     },
   },
   "packages": {
-    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.8.1", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-gT6MxzXFX9zVIzgDUdujM6q6N07GfaRaaLS/Y+QHmE7OSDd6Kupw8qvbZrXvkhy4Sk/blO9UKLqPfPAe3dPnnw=="],
+    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.9.1", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-VR5TXNXTgyciF1tfrAgamHFOHt/9LJ4/IVmfM/Y043sjTJONW7WLtWR4u9YWKY2Sq4Ezy1JlMzVzMbpMbrDnww=="],
 
-    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.8.1", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-yimGo+QLIo5AS8395tJ7EHZF0oMjuQ8kdgyrVx/i097Oz1gZ597atqeEeTFY6fhFk+fmE0m6aA42oP25OlLJ7Q=="],
+    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.9.1", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-uNfvYdrXrwiIox18tQUCgVfAbD3KIwzJY/iqPKLE+LEd+h4NYfl1l+Zm/kQIwlz67Re/k1jSL3c3L2iW/YhG/g=="],
 
-    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.8.1", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-M3md4VSsk4H+np905GwZB26IFFs74vlWXDSTJzlbSBOrVsXucZgprrQEOlZQUkN2Kc0k9wRsTEOrjex9tKdJHg=="],
+    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.9.1", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-XDbIWe7Pg6iPtjRfdBt/x4VcDOqAQ7HTd5XWYrmyruQXmP0s5xqZRuEm3VaPZ6bX16iSwEnSex0xUgN1+rNZNA=="],
 
-    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.8.1", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-Gxx5+UpSPOTbXa2z8gCjtQoVoZ6lJc4wnT/9QrOJFSZ/KH7/GOl0QQz7CnXxM+ghX0VeMlLrulHwpYm4pENIgg=="],
+    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.9.1", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-6FoWJkaGnkr5YnAl7fH5HGr/KhVj5iyGVihr94fQyPNjmqNfRwlqHY0TroVbcaGzemjhngeDxf667sMKPGghyw=="],
 
     "@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
