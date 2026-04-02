@@ -2,3 +2,4 @@
 	path = plugin
 	url = https://github.com/indexnetwork/claude-plugin.git
 	branch = main
+	update = merge
