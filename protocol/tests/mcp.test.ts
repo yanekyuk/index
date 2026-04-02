@@ -6,6 +6,7 @@ import { createMcpServer } from '../src/lib/protocol/mcp/mcp.server';
 import { createToolRegistry } from '../src/lib/protocol/tools/tool.registry';
 import type { ToolDeps } from '../src/lib/protocol/tools/tool.helpers';
 import type { McpAuthResolver } from '../src/lib/protocol/interfaces/auth.interface';
+import type { ScopedDepsFactory } from '../src/lib/protocol/mcp/mcp.server';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MOCK DEPENDENCIES
@@ -35,19 +36,27 @@ const mockAuthResolver: McpAuthResolver = {
   resolveUserId: async () => 'test-user-id',
 };
 
+/** Mock scoped deps factory — never called during tool registration. */
+const mockScopedDepsFactory: ScopedDepsFactory = {
+  create: () => ({
+    userDb: {} as ToolDeps['userDb'],
+    systemDb: {} as ToolDeps['systemDb'],
+  }),
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TESTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('MCP Server Factory', () => {
   it('creates an McpServer instance', () => {
-    const server = createMcpServer(mockDeps, mockAuthResolver);
+    const server = createMcpServer(mockDeps, mockAuthResolver, mockScopedDepsFactory);
     expect(server).toBeInstanceOf(McpServer);
   });
 
   it('registers the same tools as createToolRegistry', () => {
     const registry = createToolRegistry(mockDeps);
-    const server = createMcpServer(mockDeps, mockAuthResolver);
+    const server = createMcpServer(mockDeps, mockAuthResolver, mockScopedDepsFactory);
 
     // The MCP server should have registered every tool from the registry.
     // We verify by checking the registry size matches expected count.
