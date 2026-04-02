@@ -1,26 +1,15 @@
 import { z } from "zod";
 
-import { requestContext } from "../../request-context";
-import { enrichUserProfile } from "../../../lib/parallel/parallel";
+import { requestContext } from "../support/request-context";
 
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, needsClarification, UUID_REGEX } from "./tool.helpers";
 import { protocolLogger } from "../support/protocol.logger";
+import type { EnrichmentResult, ProfileEnricher } from "../interfaces/enrichment.interface";
 
 const logger = protocolLogger("ChatTools:Profile");
 
-async function enrichFromUserRecord(user: { name?: string | null; email?: string | null; socials?: { linkedin?: string; x?: string; github?: string; websites?: string[] } | null }) {
-  return enrichUserProfile({
-    name: user.name || undefined,
-    email: user.email || undefined,
-    linkedin: user.socials?.linkedin || undefined,
-    twitter: user.socials?.x || undefined,
-    github: user.socials?.github || undefined,
-    websites: user.socials?.websites?.length ? user.socials.websites : undefined,
-  });
-}
-
-function isMeaningfulEnrichment(enrichment: Awaited<ReturnType<typeof enrichUserProfile>>): enrichment is NonNullable<typeof enrichment> {
+function isMeaningfulEnrichment(enrichment: EnrichmentResult | null): enrichment is EnrichmentResult {
   return !!enrichment &&
     enrichment.confidentMatch &&
     (
@@ -32,7 +21,18 @@ function isMeaningfulEnrichment(enrichment: Awaited<ReturnType<typeof enrichUser
 }
 
 export function createProfileTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { userDb, systemDb, database, graphs } = deps;
+  const { userDb, systemDb, database, graphs, enricher } = deps;
+
+  async function enrichFromUserRecord(user: { name?: string | null; email?: string | null; socials?: { linkedin?: string; x?: string; github?: string; websites?: string[] } | null }) {
+    return enricher.enrichUserProfile({
+      name: user.name || undefined,
+      email: user.email || undefined,
+      linkedin: user.socials?.linkedin || undefined,
+      twitter: user.socials?.x || undefined,
+      github: user.socials?.github || undefined,
+      websites: user.socials?.websites?.length ? user.socials.websites : undefined,
+    });
+  }
 
   const readUserProfiles = defineTool({
     name: "read_user_profiles",

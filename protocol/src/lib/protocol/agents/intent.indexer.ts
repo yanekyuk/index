@@ -2,8 +2,8 @@ import type { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { log } from "../../log";
-import { Timed } from "../../performance";
+import { log } from "../support/log";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 // ──────────────────────────────────────────────────────────────

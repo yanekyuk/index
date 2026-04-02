@@ -1,6 +1,6 @@
 import { Annotation } from '@langchain/langgraph';
 import type { Opportunity } from '../interfaces/database.interface';
-import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 
 /**
  * Home view card item: one opportunity with full presenter-driven display contract.

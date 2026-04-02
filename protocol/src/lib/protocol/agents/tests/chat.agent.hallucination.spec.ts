@@ -132,6 +132,17 @@ describe("ChatAgent hallucination auto-retry", () => {
       scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
+      cache: {} as any,
+      hydeCache: {} as any,
+      integration: {} as any,
+      intentQueue: {} as any,
+      contactService: {} as any,
+      chatSession: {} as any,
+      enricher: {} as any,
+      negotiationDatabase: {} as any,
+      integrationImporter: {} as any,
+      createUserDatabase: () => ({}) as any,
+      createSystemDatabase: () => ({}) as any,
     });
 
     const hallucinatedText = `Here's what I found:
@@ -209,6 +220,17 @@ I've created an intent for you!`;
       scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
+      cache: {} as any,
+      hydeCache: {} as any,
+      integration: {} as any,
+      intentQueue: {} as any,
+      contactService: {} as any,
+      chatSession: {} as any,
+      enricher: {} as any,
+      negotiationDatabase: {} as any,
+      integrationImporter: {} as any,
+      createUserDatabase: () => ({}) as any,
+      createSystemDatabase: () => ({}) as any,
     });
 
     const hallucinatedText = `I found matches:
@@ -259,6 +281,17 @@ I've created an intent for you!`;
       scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
+      cache: {} as any,
+      hydeCache: {} as any,
+      integration: {} as any,
+      intentQueue: {} as any,
+      contactService: {} as any,
+      chatSession: {} as any,
+      enricher: {} as any,
+      negotiationDatabase: {} as any,
+      integrationImporter: {} as any,
+      createUserDatabase: () => ({}) as any,
+      createSystemDatabase: () => ({}) as any,
     });
 
     // Make create_intent throw on invoke
@@ -312,6 +345,17 @@ I've created an intent for you!`;
       scraper: {} as any,
       userId: "test-user",
       sessionId: "test-session",
+      cache: {} as any,
+      hydeCache: {} as any,
+      integration: {} as any,
+      intentQueue: {} as any,
+      contactService: {} as any,
+      chatSession: {} as any,
+      enricher: {} as any,
+      negotiationDatabase: {} as any,
+      integrationImporter: {} as any,
+      createUserDatabase: () => ({}) as any,
+      createSystemDatabase: () => ({}) as any,
     });
 
     // Model returns a tool call (not hallucinated text)

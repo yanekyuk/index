@@ -140,7 +140,7 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 1. **Controllers** import **services** (or protocol graph factories). Must not import adapters.
 2. **Services** import **adapters** for data access. Must not import other services -- use events, queues, or shared lib for cross-service orchestration.
-3. **Protocol layer** (`lib/protocol/`) receives adapters via **constructor injection** through interfaces in `src/lib/protocol/interfaces/`. Never imports adapters directly.
+3. **Protocol layer** (`lib/protocol/`) is fully self-contained — zero imports from parent directories. Receives adapters via **constructor injection** through interfaces in `src/lib/protocol/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
 4. **Adapters** must not import from `src/lib/protocol/interfaces/` -- they define their own aligned types.
 
 ### Template Files

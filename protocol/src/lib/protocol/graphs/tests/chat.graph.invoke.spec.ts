@@ -23,6 +23,7 @@ import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
+import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks";
 import { ChatAgent } from "../../agents/chat.agent";
 
 const testUserId = "test-chat-invoke-user";
@@ -136,7 +137,7 @@ describe("Chat Graph invoke (Smartest)", () => {
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   });
 
   describe("Simple conversational message", () => {

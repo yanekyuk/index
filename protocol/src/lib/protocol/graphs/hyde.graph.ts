@@ -15,8 +15,9 @@ import type { EmbeddingGenerator } from '../interfaces/embedder.interface';
 import type { HydeCache } from '../interfaces/cache.interface';
 import { HYDE_DEFAULT_CACHE_TTL } from '../agents/hyde.strategies';
 import { protocolLogger } from '../support/protocol.logger';
-import { timed } from '../../performance';
-import { requestContext } from '../../request-context';
+import { timed } from '../support/performance';
+import { requestContext } from "../support/request-context";
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 
 const logger = protocolLogger("HyDEGraphFactory");
 
@@ -64,7 +65,7 @@ export class HydeGraphFactory {
 
         logger.verbose('Inferring lenses', { sourceTextLength: sourceText.length, hasProfileContext: !!profileContext });
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         try {
           const _traceEmitterLens = requestContext.getStore()?.traceEmitter;
@@ -163,7 +164,7 @@ export class HydeGraphFactory {
           lenses: missing.map(l => l.label),
         });
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
         const generated: Record<string, HydeDocumentState> = {};
 
         await Promise.all(

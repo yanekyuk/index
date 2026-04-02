@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import type { DefineTool, ToolDeps } from './tool.helpers';
 import { success, error } from './tool.helpers';
-import { contactService } from '../../../services/contact.service';
 
 /**
  * Creates contact management tools for the chat agent.
  * Enables importing, listing, and managing the user's network.
  */
-export function createContactTools(defineTool: DefineTool, _deps: ToolDeps) {
+export function createContactTools(defineTool: DefineTool, deps: ToolDeps) {
+  const { contactService } = deps;
 
   const import_contacts = defineTool({
     name: 'import_contacts',

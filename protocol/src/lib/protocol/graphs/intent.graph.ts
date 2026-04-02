@@ -7,8 +7,9 @@ import { IntentGraphDatabase } from "../interfaces/database.interface";
 import type { EmbeddingGenerator } from "../interfaces/embedder.interface";
 import type { IntentGraphQueue } from "../interfaces/queue.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
-import { requestContext } from "../../request-context";
+import { timed } from "../support/performance";
+import { requestContext } from "../support/request-context";
+import type { DebugMetaAgent } from "../types/chat-streaming.types";
 
 const logger = protocolLogger("IntentGraphFactory");
 const MAX_PERMISSIBLE_ENTROPY = 0.75;
@@ -188,7 +189,7 @@ export class IntentGraphFactory {
           conversationMessagesCount: state.conversationContext?.length || 0
         });
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         // Phase 4: Control profile fallback based on operation mode
         // Only allow for create operations without explicit content
@@ -254,7 +255,7 @@ export class IntentGraphFactory {
 
         logger.verbose(`Verifying ${intents.length} intents in parallel...`);
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         // Parallel Execution
         const verificationResults = await Promise.all(
@@ -387,7 +388,7 @@ export class IntentGraphFactory {
           targetIntentIds: state.targetIntentIds
         });
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         // Phase 4: Handle delete operations directly
         if (state.operationMode === 'delete') {

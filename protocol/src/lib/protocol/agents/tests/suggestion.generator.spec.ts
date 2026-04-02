@@ -7,7 +7,7 @@ config({ path: ".env.test" });
 
 import { describe, test, expect } from "bun:test";
 import { SuggestionGenerator } from "../suggestion.generator";
-import type { ChatSuggestion } from "../../../../types/chat-streaming.types";
+import type { ChatSuggestion } from "../../types/chat-streaming.types";
 
 const HAS_OPENROUTER_KEY = !!process.env.OPENROUTER_API_KEY;
 

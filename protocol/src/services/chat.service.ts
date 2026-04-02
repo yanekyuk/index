@@ -52,7 +52,10 @@ export class ChatSessionService {
 
   private get factory(): ChatGraphFactory {
     if (!this._factory) {
-      this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper);
+      // Lazy import to avoid circular dependency (protocol-init imports this service).
+      const { createDefaultProtocolDeps } = require('../protocol-init');
+      const protocolDeps = createDefaultProtocolDeps();
+      this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper, this, protocolDeps);
     }
     return this._factory;
   }

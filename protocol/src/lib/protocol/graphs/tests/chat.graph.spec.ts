@@ -13,6 +13,7 @@ import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
+import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks";
 
 const testUserId = "test-chat-graph-user";
 
@@ -97,7 +98,7 @@ describe("ChatGraphFactory", () => {
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   });
 
   describe("Graph Creation", () => {

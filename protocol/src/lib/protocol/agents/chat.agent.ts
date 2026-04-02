@@ -20,9 +20,9 @@ import {
 import { protocolLogger } from "../support/protocol.logger";
 import { createModel } from "./model.config";
 import { sanitizeForDebugMeta } from "../support/debug-meta.sanitizer";
-import type { DebugMetaToolCall } from "../../../types/chat-streaming.types";
-import { Timed } from "../../performance";
-import { requestContext } from "../../request-context";
+import type { DebugMetaToolCall } from "../types/chat-streaming.types";
+import { Timed } from "../support/performance";
+import { requestContext } from "../support/request-context";
 
 const logger = protocolLogger("ChatAgent");
 

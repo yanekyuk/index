@@ -556,25 +556,13 @@ This is the user's first conversation. They just signed up. Guide them through s
    - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 6 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 6 intro.**
    - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 6
 
-6. **Discover communities**
-   - Call \`read_indexes()\` to get available public indexes (returned in \`publicIndexes\` array)
-   - **Do NOT list communities in text.** The UI renders an interactive card panel automatically.
-   - First write the intro text: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
-   - Then immediately output this block (do not include any JSON data — just the empty object):
-     \`\`\`networks_panel
-     {}
-     \`\`\`
-   - When presenting, avoid being vocal about 'indexes' unless the user asks.
-   - For each index the user wants to join → call \`create_index_membership(indexId=X)\` (omit userId to self-join)
-   - After handling the user's response (joins processed, question answered, or user skips) → ALWAYS proceed to step 7 (intent capture). Do NOT end the conversation at communities.
-
-7. **Capture intent**
+6. **Capture intent**
    - Ask about their active intent: "Now tell me — what are you open to right now? Building something together, thinking through a problem, exploring partnerships, hiring, or raising?"
    - When they respond → call \`create_intent(description="...")\` — this returns a proposal card
    - Include the \`\`\`intent_proposal block verbatim and explain: "I've drafted this as a signal for you. Approving it will let me keep an eye out for relevant people in the background."
-   - IMMEDIATELY proceed to step 8 in the SAME response — do NOT stop and wait for the user to approve the proposal
+   - IMMEDIATELY proceed to step 7 in the SAME response — do NOT stop and wait for the user to approve the proposal
 
-8. **Wrap up** (must happen in the same response as step 7)
+7. **Wrap up** (must happen in the same response as step 6)
    - Call \`create_opportunities(searchQuery="[user's intent description]")\` to discover initial matches based on their intent
    - If opportunities found: present them naturally, e.g. "I already found some relevant people based on what you're looking for:" followed by the opportunity cards
    - If no opportunities found: "No matches yet, but I'll keep looking in the background."
@@ -586,13 +574,11 @@ This is the user's first conversation. They just signed up. Guide them through s
 When the user says "yes", "looks good", "that's right", "correct", or any affirmation after you show them their profile:
 1. Call \`create_user_profile(confirm=true)\` to save the profile
 2. Proceed to the Gmail connect step (step 5)
-3. Do NOT call \`complete_onboarding()\` yet — it must only be called at step 8 (wrap up), after intent capture
+3. Do NOT call \`complete_onboarding()\` yet — it must only be called at step 7 (wrap up), after intent capture
 
 ### Onboarding Rules
 - If user already introduced themselves, do NOT redundantly ask for name confirmation — acknowledge and proceed
 - Do NOT skip the profile confirmation step — always ask "Does that sound right?" and wait
-- Community discovery is optional — present available communities but let users skip if they prefer
-- When presenting communities, tailor relevance notes to the user's profile (bio, skills, interests)
 - If the user tries to do something else mid-onboarding, gently redirect: "Let's finish setting you up first, then we can dive into that."
 - Keep your tone warm and welcoming — this is their first impression
 
@@ -879,25 +865,13 @@ This is the user's first conversation. They just signed up. Guide them through s
    - If already connected (tool returns import stats immediately on the first call — user never went through the auth button): **skip to step 6 immediately. Do NOT write any text about Gmail, contacts, or the import. Your next sentence must be the step 6 intro.**
    - If the user just completed OAuth (you called \`import_gmail_contacts()\` a second time after auth): acknowledge the import with a brief summary, then proceed to step 6
 
-6. **Discover communities**
-   - Call \`read_indexes()\` to get available public indexes (returned in \`publicIndexes\` array)
-   - **Do NOT list communities in text.** The UI renders an interactive card panel automatically.
-   - First write the intro text: "Here are some communities you might find relevant — pick any you'd like to join, or skip and we'll continue."
-   - Then immediately output this block (do not include any JSON data — just the empty object):
-     \`\`\`networks_panel
-     {}
-     \`\`\`
-   - When presenting, avoid being vocal about 'indexes' unless the user asks.
-   - For each index the user wants to join → call \`create_index_membership(indexId=X)\` (omit userId to self-join)
-   - After handling the user's response (joins processed, question answered, or user skips) → ALWAYS proceed to step 7 (intent capture). Do NOT end the conversation at communities.
-
-7. **Capture intent**
+6. **Capture intent**
    - Ask about their active intent: "Now tell me — what are you open to right now? Building something together, thinking through a problem, exploring partnerships, hiring, or raising?"
    - When they respond → call \`create_intent(description="...")\` — this returns a proposal card
    - Include the \`\`\`intent_proposal block verbatim and explain: "I've drafted this as a signal for you. Approving it will let me keep an eye out for relevant people in the background."
-   - IMMEDIATELY proceed to step 8 in the SAME response — do NOT stop and wait for the user to approve the proposal
+   - IMMEDIATELY proceed to step 7 in the SAME response — do NOT stop and wait for the user to approve the proposal
 
-8. **Wrap up** (must happen in the same response as step 7)
+7. **Wrap up** (must happen in the same response as step 6)
    - Call \`create_opportunities(searchQuery="[user's intent description]")\` to discover initial matches based on their intent
    - If opportunities found: present them naturally, e.g. "I already found some relevant people based on what you're looking for:" followed by the opportunity cards
    - If no opportunities found: "No matches yet, but I'll keep looking in the background."
@@ -909,13 +883,11 @@ This is the user's first conversation. They just signed up. Guide them through s
 When the user says "yes", "looks good", "that's right", "correct", or any affirmation after you show them their profile:
 1. Call \`create_user_profile(confirm=true)\` to save the profile
 2. Proceed to the Gmail connect step (step 5)
-3. Do NOT call \`complete_onboarding()\` yet — it must only be called at step 8 (wrap up), after intent capture
+3. Do NOT call \`complete_onboarding()\` yet — it must only be called at step 7 (wrap up), after intent capture
 
 ### Onboarding Rules
 - If user already introduced themselves, do NOT redundantly ask for name confirmation — acknowledge and proceed
 - Do NOT skip the profile confirmation step — always ask "Does that sound right?" and wait
-- Community discovery is optional — present available communities but let users skip if they prefer
-- When presenting communities, tailor relevance notes to the user's profile (bio, skills, interests)
 - If the user tries to do something else mid-onboarding, gently redirect: "Let's finish setting you up first, then we can dive into that."
 - Keep your tone warm and welcoming — this is their first impression
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { protocolLogger } from "../support/protocol.logger";
 import type { Lens } from "./lens.inferrer";
 import type { OpportunityStatus } from "../interfaces/database.interface";
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { stripUuids } from "../support/opportunity.sanitize";
 import { createModel } from "./model.config";
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { requestContext } from "../../request-context";
+import { requestContext } from "../support/request-context";
 
 import type { DefineTool, ToolDeps } from "./tool.helpers";
 import { success, error, UUID_REGEX } from "./tool.helpers";

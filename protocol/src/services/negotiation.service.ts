@@ -1,7 +1,9 @@
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { createDefaultNegotiationGraph } from '../lib/protocol/graphs/negotiation.graph';
+import { NegotiationProposer } from '../lib/protocol/agents/negotiation.proposer';
+import { NegotiationResponder } from '../lib/protocol/agents/negotiation.responder';
 import type { UserNegotiationContext } from '../lib/protocol/states/negotiation.state';
 
 const logger = log.service.from('NegotiationService');
@@ -28,7 +30,11 @@ export class NegotiationService {
       this.buildUserContext(candidateUserId),
     ]);
 
-    const graph = createDefaultNegotiationGraph();
+    const graph = createDefaultNegotiationGraph({
+      database: conversationDatabaseAdapter,
+      proposer: new NegotiationProposer(),
+      responder: new NegotiationResponder(),
+    });
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });
 

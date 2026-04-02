@@ -32,7 +32,9 @@ import {
   createChatGraphMockDb,
   mockProfile,
   mockActiveIntent,
+  createMockProtocolDeps,
 } from "../graphs/tests/chat.graph.mocks";
+import type { ChatSessionReader } from "../interfaces/chat-session.interface";
 import type { IndexMembership } from "../interfaces/database.interface";
 
 /**
@@ -120,6 +122,9 @@ function sharedMembership(extra?: Partial<IndexMembership>): IndexMembership {
   };
 }
 
+const mockChatSession: ChatSessionReader = { getSessionMessages: async () => [] };
+const mockProtocolDeps = createMockProtocolDeps();
+
 describe("Chat Prompt Dynamic Modules (Smartest)", () => {
   let factory: ChatGraphFactory;
 
@@ -127,7 +132,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
     const mockDatabase = createChatGraphMockDb({
       getUser: (userId: string) => completedUser(userId),
     });
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSession, mockProtocolDeps);
   });
 
   describe("Discovery routing (core rule, no module needed)", () => {
@@ -235,7 +240,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
           return completedUser(userId);
         },
       });
-      const mentionFactory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+      const mentionFactory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSession, mockProtocolDeps);
       const compiledGraph = mentionFactory.createGraph();
 
       const result = await runScenario(
@@ -382,6 +387,8 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
         mentionDb,
         mockEmbedder,
         mockScraper,
+        mockChatSession,
+        mockProtocolDeps,
       );
       const graph = mentionFactory.createGraph();
 
@@ -441,6 +448,8 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
         intentDb,
         mockEmbedder,
         mockScraper,
+        mockChatSession,
+        mockProtocolDeps,
       );
       const graph = intentFactory.createGraph();
 
@@ -510,6 +519,8 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
         communityDb,
         mockEmbedder,
         mockScraper,
+        mockChatSession,
+        mockProtocolDeps,
       );
       const graph = communityFactory.createGraph();
 
@@ -585,6 +596,8 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
         introDb,
         mockEmbedder,
         mockScraper,
+        mockChatSession,
+        mockProtocolDeps,
       );
       const graph = introFactory.createGraph();
 

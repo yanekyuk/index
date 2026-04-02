@@ -2,7 +2,7 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 
 import { IndexGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
+import { timed } from "../support/performance";
 
 import { IndexGraphState } from "../states/index.state";
 

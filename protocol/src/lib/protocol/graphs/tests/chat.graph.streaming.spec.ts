@@ -14,8 +14,9 @@ import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { chatSessionService } from "../../../../services/chat.service";
-import type { ChatStreamEvent } from "../../../../types/chat-streaming.types";
+import type { ChatSessionReader } from "../../interfaces/chat-session.interface";
+import { createMockProtocolDeps } from "./chat.graph.mocks";
+import type { ChatStreamEvent } from "../../types/chat-streaming.types";
 
 const testUserId = "test-chat-stream-user";
 const testSessionId = "test-session-stream";
@@ -100,9 +101,12 @@ async function collectStreamEvents(gen: AsyncGenerator<ChatStreamEvent>): Promis
 
 describe("Chat Graph streaming", () => {
   let factory: ChatGraphFactory;
+  const localChatSessionReader: ChatSessionReader = {
+    getSessionMessages: async () => [],
+  };
 
   beforeAll(() => {
-    factory = new ChatGraphFactory(createMockDatabase(), mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(createMockDatabase(), mockEmbedder, mockScraper, localChatSessionReader, createMockProtocolDeps());
   });
 
   describe("streamChatEvents", () => {
@@ -147,11 +151,11 @@ describe("Chat Graph streaming", () => {
 
   describe("streamChatEventsWithContext", () => {
     afterEach(() => {
-      spyOn(chatSessionService, "getSessionMessages").mockRestore?.();
+      spyOn(localChatSessionReader, "getSessionMessages").mockRestore?.();
     });
 
     it("should load session context then stream events", async () => {
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
+      spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue([]);
 
       const events = await collectStreamEvents(
         factory.streamChatEventsWithContext(
@@ -172,7 +176,7 @@ describe("Chat Graph streaming", () => {
     }, 120000);
 
     it("should call getSessionMessages with sessionId and maxContextMessages", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
+      const getSessionMessagesSpy = spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue([]);
 
       const events: ChatStreamEvent[] = [];
       for await (const e of factory.streamChatEventsWithContext({
@@ -191,7 +195,7 @@ describe("Chat Graph streaming", () => {
     it("when getSessionMessages throws, loadSessionContext returns [] and stream still runs with current message only", async () => {
       // Factory's loadSessionContext catches and returns [] on error, so streamChatEventsWithContext
       // does not yield an error event; it proceeds with empty context + current message.
-      spyOn(chatSessionService, "getSessionMessages").mockRejectedValue(new Error("DB error"));
+      spyOn(localChatSessionReader, "getSessionMessages").mockRejectedValue(new Error("DB error"));
 
       const events: ChatStreamEvent[] = [];
       for await (const e of factory.streamChatEventsWithContext({

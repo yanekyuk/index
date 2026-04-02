@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import type { DefineTool, ToolDeps } from './tool.helpers';
 import { success, error } from './tool.helpers';
-import { requestContext } from '../../request-context';
-import { log } from '../../../lib/log';
-import { IntegrationService } from '../../../services/integration.service';
+import { requestContext } from "../support/request-context";
+import { log } from '../support/log';
 
 const logger = log.lib.from('integration.tools');
 
@@ -18,8 +17,7 @@ const logger = log.lib.from('integration.tools');
  * @returns An array of tool definitions to register with the chat agent.
  */
 export function createIntegrationTools(defineTool: DefineTool, deps: ToolDeps) {
-  const { integration } = deps;
-  const integrationService = new IntegrationService(integration);
+  const { integration, integrationImporter } = deps;
 
   const import_gmail_contacts = defineTool({
     name: 'import_gmail_contacts',
@@ -53,7 +51,7 @@ Returns import statistics or an auth URL if authentication is needed.`,
           });
         }
 
-        const importResult = await integrationService.importContacts(context.userId, 'gmail');
+        const importResult = await integrationImporter.importContacts(context.userId, 'gmail');
 
         logger.info('Gmail contacts imported', {
           userId: context.userId,

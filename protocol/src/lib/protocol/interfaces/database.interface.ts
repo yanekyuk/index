@@ -1,13 +1,65 @@
 import { ProfileDocument } from '../agents/profile.generator';
-import type {
-  OpportunityDetection,
-  OpportunityActor,
-  OpportunityInterpretation,
-  OpportunityContext,
-  UserSocials,
-  OnboardingState,
-} from '../../../schemas/database.schema';
-import type { Id } from '../../../types/common.types';
+
+// ─── Inlined types (previously imported from outside the protocol lib) ───────
+
+/** Branded string ID for type-safe entity references (keyed by Drizzle table name). */
+export type Id<T extends string = string> = string & { readonly __table?: T };
+
+/** Onboarding flow state stored as JSON on the user record. */
+export interface OnboardingState {
+  completedAt?: string;
+  flow?: 1 | 2 | 3;
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
+  indexId?: string;
+  invitationCode?: string;
+}
+
+/** Social-media handles stored as JSON on the user record. */
+export interface UserSocials {
+  x?: string;
+  linkedin?: string;
+  github?: string;
+  websites?: string[];
+}
+
+/** Detection metadata recorded when an opportunity is created. */
+export interface OpportunityDetection {
+  source: 'opportunity_graph' | 'chat' | 'manual' | 'cron' | 'member_added' | 'enrichment';
+  createdBy?: Id<'users'> | string;
+  createdByName?: string;
+  triggeredBy?: Id<'intents'>;
+  timestamp: string;
+  enrichedFrom?: string[];
+}
+
+/** A participant (user + index) involved in an opportunity. */
+export interface OpportunityActor {
+  indexId: Id<'indexes'>;
+  userId: Id<'users'>;
+  intent?: Id<'intents'>;
+  role: string;
+}
+
+/** Individual signal contributing to an opportunity score. */
+export interface OpportunitySignal {
+  type: string;
+  weight: number;
+  detail?: string;
+}
+
+/** LLM-generated interpretation of an opportunity's category and confidence. */
+export interface OpportunityInterpretation {
+  category: string;
+  reasoning: string;
+  confidence: number;
+  signals?: OpportunitySignal[];
+}
+
+/** Optional scoping context (index / conversation) for an opportunity. */
+export interface OpportunityContext {
+  indexId?: Id<'indexes'>;
+  conversationId?: Id<'conversations'>;
+}
 
 /** User record returned by getUser (minimal fields plus optional profile fields). */
 export interface UserRecord {
@@ -329,14 +381,6 @@ export interface CreateHydeDocumentData {
 // ═══════════════════════════════════════════════════════════════════════════════
 // OPPORTUNITY TYPES (Opportunity Redesign)
 // ═══════════════════════════════════════════════════════════════════════════════
-
-export type {
-  OpportunityDetection,
-  OpportunityActor,
-  OpportunityInterpretation,
-  OpportunityContext,
-  OpportunitySignal,
-} from '../../../schemas/database.schema';
 
 export type OpportunityStatus = 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
 

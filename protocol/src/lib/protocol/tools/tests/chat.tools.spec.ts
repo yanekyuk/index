@@ -261,10 +261,95 @@ const mockScraper = {
   extractUrlContent: async (_url: string, _options?: { objective?: string }) => "",
 } as unknown as Scraper;
 
+/** Stub protocol-level deps for ToolContext (not invoked in most unit tests). */
+const mockProtocolDeps: Omit<ToolContext, 'userId' | 'database' | 'embedder' | 'scraper' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'> = {
+  cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
+  hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
+  integration: { createSession: async () => ({}) as any, executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) },
+  intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) },
+  contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} },
+  chatSession: { getSessionMessages: async () => [] },
+  enricher: { enrichUserProfile: async () => null },
+  negotiationDatabase: {} as unknown as import("../../interfaces/database.interface").NegotiationDatabase,
+  integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
+  createUserDatabase: (db: any, _userId: string) => ({
+    getActiveIntents: db.getActiveIntents ?? (async () => []),
+    getIntent: db.getIntent ?? (async () => null),
+    createIntent: db.createIntent ?? (async () => ({ id: "", payload: "", summary: null, isIncognito: false, createdAt: new Date(), updatedAt: new Date(), userId: "" })),
+    updateIntent: db.updateIntent ?? (async () => null),
+    archiveIntent: db.archiveIntent ?? (async () => ({ success: true })),
+    getProfile: db.getProfile ?? (async () => null),
+    getProfileByUserId: db.getProfileByUserId ?? (async () => null),
+    saveProfile: db.saveProfile ?? (async () => {}),
+    deleteProfile: db.deleteProfile ?? (async () => {}),
+    getUser: db.getUser ?? (async () => null),
+    updateUser: db.updateUser ?? (async () => null),
+    getIndexMemberships: db.getIndexMemberships ?? (async () => []),
+    getUserIndexIds: db.getUserIndexIds ?? (async () => []),
+    getOwnedIndexes: db.getOwnedIndexes ?? (async () => []),
+    getIndexMembership: db.getIndexMembership ?? (async () => null),
+    getIndexMemberContext: db.getIndexMemberContext ?? (async () => null),
+    createIndex: db.createIndex ?? (async () => ({ id: "", title: "" })),
+    updateIndexSettings: db.updateIndexSettings ?? (async () => ({})),
+    softDeleteIndex: db.softDeleteIndex ?? (async () => {}),
+    getPublicIndexesNotJoined: db.getPublicIndexesNotJoined ?? (async () => ({ indexes: [] })),
+    joinPublicIndex: db.joinPublicIndex ?? (async () => {}),
+    getOpportunitiesForUser: db.getOpportunitiesForUser ?? (async () => []),
+    getOpportunity: db.getOpportunity ?? (async () => null),
+    updateOpportunityStatus: db.updateOpportunityStatus ?? (async () => null),
+    findSimilarIntents: db.findSimilarIntents ?? (async () => []),
+    getIntentForIndexing: db.getIntentForIndexing ?? (async () => null),
+    associateIntentWithIndexes: db.associateIntentWithIndexes ?? (async () => {}),
+    assignIntentToIndex: db.assignIntentToIndex ?? (async () => {}),
+    unassignIntentFromIndex: db.unassignIntentFromIndex ?? (async () => {}),
+    getIndexIdsForIntent: db.getIndexIdsForIntent ?? (async () => []),
+    isIntentAssignedToIndex: db.isIntentAssignedToIndex ?? (async () => false),
+    getAcceptedOpportunitiesBetweenActors: db.getAcceptedOpportunitiesBetweenActors ?? (async () => []),
+    acceptSiblingOpportunities: db.acceptSiblingOpportunities ?? (async () => {}),
+    getHydeDocument: db.getHydeDocument ?? (async () => null),
+    getHydeDocumentsForSource: db.getHydeDocumentsForSource ?? (async () => []),
+    saveHydeDocument: db.saveHydeDocument ?? (async () => {}),
+    deleteHydeDocumentsForSource: db.deleteHydeDocumentsForSource ?? (async () => {}),
+  }) as unknown as import("../../interfaces/database.interface").UserDatabase,
+  createSystemDatabase: (db: any, _userId: string, _scope: string[]) => ({
+    isIndexMember: db.isIndexMember ?? (async () => false),
+    isIndexOwner: db.isIndexOwner ?? (async () => false),
+    getProfile: db.getProfile ?? (async () => null),
+    getUser: db.getUser ?? (async () => null),
+    getIntentsInIndex: db.getIntentsInIndexForMember ?? (async () => []),
+    getUserIntentsInIndex: db.getIntentsInIndexForMember ?? (async () => []),
+    getIntent: db.getIntent ?? (async () => null),
+    findSimilarIntentsInScope: async () => [],
+    getIndexMembers: db.getIndexMembersForMember ?? (async () => []),
+    getMembersFromScope: db.getMembersFromUserIndexes ?? (async () => []),
+    addMemberToIndex: db.addMemberToIndex ?? (async () => ({ success: true })),
+    removeMemberFromIndex: async () => {},
+    getIndex: db.getIndex ?? (async () => null),
+    getIndexWithPermissions: db.getIndexWithPermissions ?? (async () => null),
+    getIndexMemberCount: db.getIndexMemberCount ?? (async () => 0),
+    createOpportunity: db.createOpportunity ?? (async () => null),
+    createOpportunityAndExpireIds: db.createOpportunityAndExpireIds ?? (async () => null),
+    getOpportunity: db.getOpportunity ?? (async () => null),
+    getOpportunitiesForIndex: async () => [],
+    updateOpportunityStatus: db.updateOpportunityStatus ?? (async () => null),
+    opportunityExistsBetweenActors: db.opportunityExistsBetweenActors ?? (async () => false),
+    getOpportunityBetweenActors: db.getOpportunityBetweenActors ?? (async () => null),
+    findOverlappingOpportunities: db.findOverlappingOpportunities ?? (async () => []),
+    expireOpportunitiesByIntent: async () => {},
+    expireOpportunitiesForRemovedMember: async () => {},
+    expireStaleOpportunities: async () => {},
+    getHydeDocument: db.getHydeDocument ?? (async () => null),
+    getHydeDocumentsForSource: db.getHydeDocumentsForSource ?? (async () => []),
+    saveHydeDocument: db.saveHydeDocument ?? (async () => {}),
+    deleteExpiredHydeDocuments: async () => {},
+    getStaleHydeDocuments: async () => [],
+  }) as unknown as import("../../interfaces/database.interface").SystemDatabase,
+};
+
 describe("createChatTools", () => {
   test("returns an array that includes read_intents, read_indexes, read_index_memberships", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     expect(tools).toBeArray();
     expect(tools.find((t: { name: string }) => t.name === "read_intents")).toBeDefined();
@@ -274,7 +359,7 @@ describe("createChatTools", () => {
 
   test("does not include list_opportunities (chat only proposes opportunities from create_opportunities; home shows the rest)", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     expect(tools.find((t: { name: string }) => t.name === "list_opportunities")).toBeUndefined();
     expect(tools.find((t: { name: string }) => t.name === "create_opportunities")).toBeDefined();
@@ -306,7 +391,7 @@ describe("read_intents tool", () => {
       getIndexIntentsForMember: async (_indexId, _requestingUserId) =>
         _indexId === testIndexId ? indexIntentsForMember : [],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents");
     if (!tool || typeof (tool as { invoke?: (args: unknown) => Promise<unknown> }).invoke !== "function") {
@@ -349,7 +434,7 @@ describe("read_intents tool", () => {
         return [];
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     await tool.invoke({ indexId: testIndexId });
@@ -366,7 +451,7 @@ describe("read_intents tool", () => {
         return [{ id: "i1", payload: "In index", summary: "X", createdAt: new Date(), userId: testUserId, userName: "Test" }];
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: testIndexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: testIndexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({});
@@ -378,7 +463,7 @@ describe("read_intents tool", () => {
 
   test("when indexId is invalid UUID returns error", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId: "not-a-uuid" });
@@ -409,7 +494,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
         return allIndexIntents;
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string; userId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId });
@@ -431,7 +516,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
       if (uid === otherUserId && idx === indexId) return [{ id: "bob-1", payload: "Bob intent", summary: "B", createdAt: new Date() }];
       return [];
     }, { isIndexMember: async () => true });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string; userId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId, userId: otherUserId });
@@ -459,7 +544,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
         return allIntentsInIndex;
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId });
@@ -480,7 +565,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
       getUser: async (uid: string) =>
         uid === otherUserId ? { id: uid, name: "Bob", email: "bob@example.com" } : { id: testUserId, name: "Test User", email: "test@example.com" },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string; userId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId, userId: otherUserId });
@@ -500,7 +585,7 @@ describe("read_intents tool (index-scoped: owner vs member)", () => {
       isIndexOwner: async () => false,
       isIndexMember: async () => false,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId });
@@ -532,7 +617,7 @@ describe("read_intents tool (no indexId)", () => {
         return globalIntents;
       },
     };
-    const context: ToolContext = { userId: testUserId, database: dbWithSpy, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: dbWithSpy, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({});
@@ -557,7 +642,7 @@ describe("read_intents tool (no indexId)", () => {
         return indexScopedWithUser;
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({});
@@ -577,7 +662,7 @@ describe("read_intents tool (no indexId)", () => {
       isIndexMember: async () => true,
       getIndexIntentsForMember: async () => indexIntents,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: Record<string, unknown>) => Promise<string> };
     const result = await tool.invoke({});
@@ -590,7 +675,7 @@ describe("read_intents tool (no indexId)", () => {
 
   test("without indexId, when userId arg is another user, returns error (no viewing other users' global intents)", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { userId?: string }) => Promise<string> };
     const result = await tool.invoke({ userId: "other-user-id" });
@@ -607,7 +692,7 @@ describe("read_intents tool (no indexId)", () => {
     const mockDb = createMockDatabase(async () => [], {
       getActiveIntents: async () => globalIntents,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: Record<string, unknown>) => Promise<string> };
     const result = await tool.invoke({});
@@ -619,7 +704,7 @@ describe("read_intents tool (no indexId)", () => {
 
   test("with indexId when not a member returns error", async () => {
     const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => false });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as { invoke: (args: { indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ indexId: testIndexId });
@@ -639,7 +724,7 @@ describe("read_intents tool (no indexId)", () => {
       isIndexMember: async () => true,
       getIndexIntentsForMember: async () => threeIntents,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_intents") as {
       invoke: (args: { indexId?: string; limit?: number; page?: number }) => Promise<string>;
@@ -675,7 +760,7 @@ describe("read_index_memberships tool (list members)", () => {
         throw new Error("Access denied: Not a member of this index");
       },
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_index_memberships") as { invoke: (args: { indexId: string }) => Promise<string> };
     const result = await tool.invoke({ indexId: memberIndexId });
@@ -692,7 +777,7 @@ describe("read_index_memberships tool (list members)", () => {
     const mockDb = createMockDatabase(async () => [], {
       isIndexMember: async () => false,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_index_memberships") as { invoke: (args: { indexId: string }) => Promise<string> };
     const result = await tool.invoke({ indexId: memberIndexId });
@@ -704,7 +789,7 @@ describe("read_index_memberships tool (list members)", () => {
 
   test("invoke returns error when indexId is not a valid UUID", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_index_memberships") as { invoke: (args: { indexId: string }) => Promise<string> };
     const result = await tool.invoke({ indexId: "not-a-uuid" });
@@ -717,7 +802,7 @@ describe("read_index_memberships tool (list members)", () => {
 describe("create_intent tool (Phase 2 index scope)", () => {
   test("create_intent tool schema includes optional indexId", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const createIntentTool = tools.find((t: { name: string }) => t.name === "create_intent");
     expect(createIntentTool).toBeDefined();
@@ -730,7 +815,7 @@ describe("create_intent tool (Phase 2 index scope)", () => {
 describe("scrape_url tool", () => {
   test("returns a tool named scrape_url", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "scrape_url");
     expect(tool).toBeDefined();
@@ -749,7 +834,7 @@ describe("scrape_url tool", () => {
       },
     } as unknown as Scraper;
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
     await tool.invoke({ url: "https://example.com/page" });
@@ -769,7 +854,7 @@ describe("scrape_url tool", () => {
       },
     } as unknown as Scraper;
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperWithSpy, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
     const objective = "User wants to create an intent from this link (project/repo or similar).";
@@ -784,7 +869,7 @@ describe("scrape_url tool", () => {
       extractUrlContent: async () => "Scraped page text for example.com",
     } as unknown as Scraper;
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperReturningContent };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: scraperReturningContent, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string; objective?: string }) => Promise<string> };
     const result = await tool.invoke({ url: "https://example.com" });
@@ -797,7 +882,7 @@ describe("scrape_url tool", () => {
 
   test("invoke returns error for invalid URL", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "scrape_url") as { invoke: (args: { url: string }) => Promise<string> };
     const result = await tool.invoke({ url: "not-a-valid-url" });
@@ -818,7 +903,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
       getOwnedIndexes: async () => [],
       isIndexMember: async () => true,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: scopedIndexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: scopedIndexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_indexes") as { invoke: (args: { showAll?: boolean }) => Promise<string> };
     const result = await tool.invoke({});
@@ -839,7 +924,7 @@ describe("read_indexes (Phase 3 index-scoped)", () => {
       getOwnedIndexes: async () => [],
       isIndexMember: async () => true,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: scopedIndexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId: scopedIndexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     // Note: showAll is no longer in querySchema, but even if passed it's ignored
     const tool = tools.find((t: { name: string }) => t.name === "read_indexes") as { invoke: (args: Record<string, unknown>) => Promise<string> };
@@ -863,7 +948,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       if (uid === testUserId && idx === indexId) return [intentInIndex];
       return [];
     }, { isIndexMember: async () => true });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_intent") as { invoke: (args: { intentId: string; newDescription: string }) => Promise<string> };
     const result = await tool.invoke({ intentId: intentNotInIndex, newDescription: "Updated" });
@@ -878,7 +963,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       if (uid === testUserId && idx === indexId) return [intentInIndex];
       return [];
     }, { isIndexMember: async () => true });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "delete_intent") as { invoke: (args: { intentId: string }) => Promise<string> };
     const result = await tool.invoke({ intentId: intentNotInIndex });
@@ -896,7 +981,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       isIndexMember: async () => true,
       getIndexIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [indexId] : []),
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_intent") as { invoke: (args: { intentId: string; newDescription: string }) => Promise<string> };
     const result = await tool.invoke({ intentId: intentInIndex.id, newDescription: "Updated" });
@@ -914,7 +999,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
       isIndexMember: async () => true,
       getIndexIdsForIntent: async (intentId: string) => (intentId === intentInIndex.id ? [indexId] : []),
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, indexId, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "delete_intent") as { invoke: (args: { intentId: string }) => Promise<string> };
     const result = await tool.invoke({ intentId: intentInIndex.id });
@@ -928,7 +1013,7 @@ describe("update_intent and delete_intent (Phase 3 index-scoping)", () => {
 describe("create_opportunities tool", () => {
   test("returns a tool named create_opportunities with schema containing searchQuery, optional indexId, and optional intentId", async () => {
     const mockDb = createMockDatabase(async () => []);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities");
     expect(tool).toBeDefined();
@@ -943,7 +1028,7 @@ describe("create_opportunities tool", () => {
     const mockDb = createMockDatabase(async () => [], {
       getIndexMemberships: async () => [],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as { invoke: (args: { searchQuery: string; indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ searchQuery: "Find a co-founder" });
@@ -955,7 +1040,7 @@ describe("create_opportunities tool", () => {
 
   test("introduction mode: when partyUserIds given but entities empty, returns error", async () => {
     const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { partyUserIds?: string[]; entities?: unknown[] }) => Promise<string>;
@@ -971,7 +1056,7 @@ describe("create_opportunities tool", () => {
 
   test("introduction mode: when entities missing indexId, returns error", async () => {
     const mockDb = createMockDatabase(async () => [], { isIndexMember: async () => true });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { partyUserIds?: string[]; entities?: Array<{ userId: string; indexId?: string }> }) => Promise<string>;
@@ -1012,7 +1097,7 @@ describe("create_opportunities tool", () => {
           expiresAt: null,
         }) as Opportunity,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: {
@@ -1054,7 +1139,7 @@ describe("create_opportunities tool", () => {
           expiresAt: null,
         }) as Opportunity,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: {
@@ -1102,7 +1187,7 @@ describe("create_opportunities tool", () => {
           expiresAt: null,
         }) as Opportunity,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: {
@@ -1148,7 +1233,7 @@ describe("create_opportunities tool", () => {
           expiresAt: null,
         }) as Opportunity,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: {
@@ -1202,7 +1287,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
@@ -1242,7 +1327,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery?: string }) => Promise<string>;
@@ -1280,7 +1365,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery: string; introTargetUserId: string }) => Promise<string>;
@@ -1316,7 +1401,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery: string; introTargetUserId: string }) => Promise<string>;
@@ -1356,7 +1441,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
@@ -1400,7 +1485,7 @@ describe("create_opportunities tool", () => {
         joinedAt: new Date(),
       }],
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { searchQuery: string }) => Promise<string>;
@@ -1429,7 +1514,7 @@ describe("create_opportunities tool", () => {
       pagination: { remaining: 2, discoveryId: "disc-continue-123" },
     };
     const mockDb = createMockDatabase(async () => [], {});
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { continueFrom: string }) => Promise<string>;
@@ -1461,7 +1546,7 @@ describe("create_opportunities tool", () => {
       }],
     };
     const mockDb = createMockDatabase(async () => [], {});
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "create_opportunities") as {
       invoke: (args: { continueFrom: string; introTargetUserId: string }) => Promise<string>;
@@ -1502,7 +1587,7 @@ describe("update_opportunity tool (send via status pending)", () => {
       getOpportunity: async () => latentOpportunity,
       updateOpportunityStatus: updateStatusSpy,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
     const result = await tool.invoke({ opportunityId, status: "pending" });
@@ -1534,7 +1619,7 @@ describe("update_opportunity tool (send via status pending)", () => {
       getOpportunity: async () => draftOpportunity,
       updateOpportunityStatus: updateStatusSpy,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
     const result = await tool.invoke({ opportunityId, status: "pending" });
@@ -1549,7 +1634,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => null,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
     const result = await tool.invoke({ opportunityId: "00000000-0000-0000-0000-000000000099", status: "pending" });
@@ -1577,7 +1662,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => pendingOpportunity,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
     const result = await tool.invoke({ opportunityId, status: "pending" });
@@ -1605,7 +1690,7 @@ describe("update_opportunity tool (send via status pending)", () => {
     const mockDb = createMockDatabase(async () => [], {
       getOpportunity: async () => opportunityWithoutUser,
     });
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "update_opportunity") as { invoke: (args: { opportunityId: string; status: string }) => Promise<string> };
     const result = await tool.invoke({ opportunityId, status: "pending" });
@@ -1661,7 +1746,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query finds a member by name across all indexes", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Priya" });
@@ -1678,7 +1763,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query is case-insensitive", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "priya nair" });
@@ -1691,7 +1776,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query with indexId scopes to that index", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string; indexId?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Mei", indexId: indexA });
@@ -1704,7 +1789,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query returns empty when no name matches", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Nonexistent Person" });
@@ -1718,7 +1803,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query excludes the current user from results", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Test User" });
@@ -1730,7 +1815,7 @@ describe("read_user_profiles tool (query parameter — name search)", () => {
   test("query returns profile as undefined when user has no profile", async () => {
     const mockDb = createMockDatabase(async () => []);
     const mockSystemDb = createMockSystemDb();
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, systemDb: mockSystemDb, ...mockProtocolDeps };
     const tools = await createChatTools(context);
     const tool = tools.find((t: { name: string }) => t.name === "read_user_profiles") as { invoke: (args: { query?: string }) => Promise<string> };
     const result = await tool.invoke({ query: "Diego" });
@@ -1776,7 +1861,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
         return opts?.limit ? fakeOpps.slice(0, opts.limit) : fakeOpps;
       },
     } as unknown as MockOverrides);
-    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper };
+    const context: ToolContext = { userId: testUserId, database: mockDb, embedder: mockEmbedder, scraper: mockScraper, ...mockProtocolDeps };
     // createChatTools filters out list_opportunities; access all opportunity tools via the full tool set
     // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
     // Instead, we import createOpportunityTools and wire a minimal defineTool.

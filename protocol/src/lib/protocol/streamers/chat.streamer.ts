@@ -5,7 +5,7 @@ import { protocolLogger } from "../support/protocol.logger";
 import type {
   ChatStreamEvent,
   DebugMetaToolCall,
-} from "../../../types/chat-streaming.types";
+} from "../types/chat-streaming.types";
 import {
   createAgentEndEvent,
   createAgentStartEvent,
@@ -22,7 +22,7 @@ import {
   createStatusEvent,
   createTokenEvent,
   createToolActivityEvent,
-} from "../../../types/chat-streaming.types";
+} from "../types/chat-streaming.types";
 import type { AgentStreamEvent } from "../agents/chat.agent";
 
 const logger = protocolLogger("ChatStreamer");

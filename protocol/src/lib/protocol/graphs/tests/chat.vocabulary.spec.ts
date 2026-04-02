@@ -23,6 +23,7 @@ import type {
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
+import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks";
 
 const testUserId = "test-vocabulary-user";
 const testIndexId = "test-vocabulary-index";
@@ -171,7 +172,7 @@ describe("Chat Graph Vocabulary Compliance (Smartest)", () => {
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   });
 
   describe("Banned word: search", () => {

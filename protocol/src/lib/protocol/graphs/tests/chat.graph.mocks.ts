@@ -15,6 +15,8 @@ import type {
   Opportunity,
   OpportunityStatus,
 } from "../../interfaces/database.interface";
+import type { ChatSessionReader } from "../../interfaces/chat-session.interface";
+import type { ProtocolDeps } from "../../tools/tool.helpers";
 
 // Minimal profile shape for getProfileByUserId (avoids importing ProfileDocument)
 export interface MockProfileFixture {
@@ -269,4 +271,52 @@ export function createChatGraphMockDb(
     getIndexMemberCount: async () => 0,
     addMemberToIndex: noop,
   } as unknown as ChatGraphCompositeDatabase;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MOCK CHAT SESSION READER & PROTOCOL DEPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Mock ChatSessionReader with stub implementations for graph tests. */
+export const mockChatSessionReader: ChatSessionReader = {
+  getSessionMessages: async () => [],
+};
+
+/**
+ * Create a mock ProtocolDeps with stub implementations for all fields.
+ * Pass overrides to customise individual deps for specific tests.
+ */
+export function createMockProtocolDeps(overrides?: Partial<ProtocolDeps>): ProtocolDeps {
+  // NOTE: database, embedder, scraper are intentionally omitted.
+  // ChatGraphFactory spreads protocolDeps over {database, embedder, scraper, ...},
+  // so including stubs here would overwrite the real mocks passed to the constructor.
+  return {
+    cache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false, mget: async () => [], deleteByPattern: async () => 0 },
+    hydeCache: { get: async () => null, set: async () => {}, delete: async () => false, exists: async () => false },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    integration: { createSession: async () => ({ toolkits: async () => ({ items: [] }), authorize: async () => ({ redirectUrl: "" }) }), executeToolAction: async () => ({ successful: true }), listConnections: async () => [], getAuthUrl: async () => ({ redirectUrl: "" }), disconnect: async () => ({ success: true }) } as unknown as ProtocolDeps["integration"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    intentQueue: { addGenerateHydeJob: async () => ({}), addDeleteHydeJob: async () => ({}) } as any,
+    contactService: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] }), listContacts: async () => [], addContact: async () => ({ userId: "", isNew: false, isGhost: false }), removeContact: async () => {} } as unknown as ProtocolDeps["contactService"],
+    chatSession: { getSessionMessages: async () => [] },
+    enricher: { enrichUserProfile: async () => null } as unknown as ProtocolDeps["enricher"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    negotiationDatabase: {} as any,
+    integrationImporter: { importContacts: async () => ({ imported: 0, skipped: 0, newContacts: 0, existingContacts: 0 }) },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createUserDatabase: (db: any, _userId: string) => {
+      return new Proxy({}, {
+        get: (_target, prop) => db[prop] ?? (async () => null),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any;
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    createSystemDatabase: (db: any, _userId: string, _scope: string[]) => {
+      return new Proxy({}, {
+        get: (_target, prop) => db[prop] ?? (async () => null),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any;
+    },
+    ...overrides,
+  } as ProtocolDeps;
 }

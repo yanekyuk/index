@@ -83,7 +83,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 ```
 
-The **protocol layer** (`src/lib/protocol/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It receives all infrastructure dependencies via constructor injection and never imports adapters directly.
+The **protocol layer** (`src/lib/protocol/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `src/lib/protocol/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters to these interfaces via `createDefaultProtocolDeps()`.
 
 ### Layer Responsibilities
 

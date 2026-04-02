@@ -4,9 +4,9 @@
  */
 
 import { Annotation } from '@langchain/langgraph';
-import type { Id } from '../../../types/common.types';
+import type { Id } from '../interfaces/database.interface';
 import type { Lens, HydeTargetCorpus } from '../agents/lens.inferrer';
-import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 
 /** Single HyDE document (text + embedding) for one lens. */
 export interface HydeDocumentState {

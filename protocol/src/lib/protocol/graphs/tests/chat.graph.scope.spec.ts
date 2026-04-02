@@ -16,6 +16,8 @@ import {
   createChatGraphMockDb,
   mockActiveIntent,
   mockIndexedIntent,
+  mockChatSessionReader,
+  createMockProtocolDeps,
 } from "./chat.graph.mocks";
 
 const testUserId = "scope-test-user";
@@ -46,7 +48,7 @@ function runInvokeScenario(
   message: string,
   options: { indexId?: string; userId?: string } = {}
 ) {
-  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper);
+  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   const graph = factory.createGraph();
   const userId = options.userId ?? testUserId;
   return runScenario(

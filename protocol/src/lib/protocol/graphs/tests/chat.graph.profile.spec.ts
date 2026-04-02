@@ -12,7 +12,7 @@ import { runScenario, defineScenario, expectSmartest } from "../../../smartest";
 import { ChatGraphFactory } from "../chat.graph";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { createChatGraphMockDb, mockProfile } from "./chat.graph.mocks";
+import { createChatGraphMockDb, mockProfile, mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks";
 
 const testUserId = "profile-test-user";
 
@@ -40,7 +40,7 @@ function runProfileScenario(
   db: ReturnType<typeof createChatGraphMockDb>,
   message: string
 ) {
-  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper);
+  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   const graph = factory.createGraph();
   return runScenario(
     defineScenario({

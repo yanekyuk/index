@@ -14,7 +14,8 @@ import { ChatGraphFactory } from "../chat.graph";
 import type { ChatGraphCompositeDatabase, CreateIntentData } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
-import { chatSessionService } from "../../../../services/chat.service";
+import type { ChatSessionReader } from "../../interfaces/chat-session.interface";
+import { createMockProtocolDeps } from "./chat.graph.mocks";
 
 const testUserId = "test-chat-factory-user";
 
@@ -91,10 +92,13 @@ const mockScraper: Scraper = {
 describe("ChatGraphFactory", () => {
   let factory: ChatGraphFactory;
   let mockDatabase: ChatGraphCompositeDatabase;
+  const localChatSessionReader: ChatSessionReader = {
+    getSessionMessages: async () => [],
+  };
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, localChatSessionReader, createMockProtocolDeps());
   });
 
   describe("Graph creation", () => {
@@ -121,11 +125,11 @@ describe("ChatGraphFactory", () => {
 
   describe("loadSessionContext", () => {
     afterEach(() => {
-      spyOn(chatSessionService, "getSessionMessages").mockRestore?.();
+      spyOn(localChatSessionReader, "getSessionMessages").mockRestore?.();
     });
 
     it("should return empty array when session has no messages", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
+      const getSessionMessagesSpy = spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue([]);
 
       const result = await factory.loadSessionContext("session-empty", 20);
 
@@ -138,7 +142,7 @@ describe("ChatGraphFactory", () => {
         { id: "1", sessionId: "s1", role: "user" as const, content: "Hello", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
         { id: "2", sessionId: "s1", role: "assistant" as const, content: "Hi there!", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
       ];
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue(dbMessages as any);
+      spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue(dbMessages as any);
 
       const result = await factory.loadSessionContext("session-with-messages", 20);
 
@@ -150,7 +154,7 @@ describe("ChatGraphFactory", () => {
     });
 
     it("should respect maxMessages parameter", async () => {
-      const getSessionMessagesSpy = spyOn(chatSessionService, "getSessionMessages").mockResolvedValue([]);
+      const getSessionMessagesSpy = spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue([]);
 
       await factory.loadSessionContext("session-any", 5);
 
@@ -164,7 +168,7 @@ describe("ChatGraphFactory", () => {
         { id: "1", sessionId: "s1", role: "user" as const, content: longContent, createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
         { id: "2", sessionId: "s1", role: "assistant" as const, content: "Reply", createdAt: new Date(), routingDecision: null, subgraphResults: null, tokenCount: null },
       ];
-      spyOn(chatSessionService, "getSessionMessages").mockResolvedValue(dbMessages as any);
+      spyOn(localChatSessionReader, "getSessionMessages").mockResolvedValue(dbMessages as any);
 
       const result = await factory.loadSessionContext("session-long", 20);
 
@@ -173,7 +177,7 @@ describe("ChatGraphFactory", () => {
     });
 
     it("should return empty array on getSessionMessages error and not throw", async () => {
-      spyOn(chatSessionService, "getSessionMessages").mockRejectedValue(new Error("DB unavailable"));
+      spyOn(localChatSessionReader, "getSessionMessages").mockRejectedValue(new Error("DB unavailable"));
 
       const result = await factory.loadSessionContext("session-fail", 20);
 

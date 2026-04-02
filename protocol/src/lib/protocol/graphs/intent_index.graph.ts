@@ -3,8 +3,9 @@ import { StateGraph, START, END } from "@langchain/langgraph";
 import { IntentIndexer } from "../agents/intent.indexer";
 import type { IntentIndexGraphDatabase } from "../interfaces/database.interface";
 import { protocolLogger } from "../support/protocol.logger";
-import { timed } from "../../performance";
-import { requestContext } from "../../request-context";
+import { timed } from "../support/performance";
+import { requestContext } from "../support/request-context";
+import type { DebugMetaAgent } from "../types/chat-streaming.types";
 
 import {
   IntentIndexGraphState,
@@ -46,7 +47,7 @@ export class IntentIndexGraphFactory {
         const indexId = state.indexId;
         logger.verbose("Assign intent to index", { userId: state.userId, intentId, indexId, skipEvaluation: state.skipEvaluation });
 
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
 
         if (!intentId || !indexId) {
           return { agentTimings: agentTimingsAccum, mutationResult: { success: false, error: "Both intentId and indexId are required." } };

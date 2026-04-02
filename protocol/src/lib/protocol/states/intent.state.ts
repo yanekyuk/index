@@ -3,7 +3,7 @@ import { BaseMessage } from "@langchain/core/messages";
 import { InferredIntent } from "../agents/intent.inferrer";
 import { SemanticVerifierOutput } from "../agents/intent.verifier";
 import { IntentReconcilerOutput } from "../agents/intent.reconciler";
-import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 
 /**
  * Extended InferredIntent that includes verification results.

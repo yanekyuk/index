@@ -22,6 +22,7 @@ import type {
 } from "../../interfaces/database.interface";
 import type { Embedder } from "../../interfaces/embedder.interface";
 import type { Scraper } from "../../interfaces/scraper.interface";
+import { mockChatSessionReader, createMockProtocolDeps } from "./chat.graph.mocks";
 
 const testUserId = "test-chat-discover-user";
 
@@ -112,7 +113,7 @@ describe("Chat discovery (Step 11 – Smartest E2E)", () => {
 
   beforeAll(() => {
     mockDatabase = createMockDatabase();
-    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper);
+    factory = new ChatGraphFactory(mockDatabase, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   });
 
   describe("Discovery query: find me a mentor", () => {

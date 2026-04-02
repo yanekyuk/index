@@ -27,9 +27,10 @@ import { HomeCategorizerAgent } from '../agents/home.categorizer';
 import { canUserSeeOpportunity, isActionableForViewer, selectByComposition } from '../support/opportunity.utils';
 import { resolveHomeSectionIcon, DEFAULT_HOME_SECTION_ICON } from '../support/lucide.icon-catalog';
 import { getPrimaryActionLabel, SECONDARY_ACTION_LABEL } from '../support/opportunity.constants';
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 import { protocolLogger } from '../support/protocol.logger';
-import { timed } from '../../performance';
-import { requestContext } from '../../request-context';
+import { timed } from '../support/performance';
+import { requestContext } from "../support/request-context";
 
 const logger = protocolLogger('HomeGraph');
 
@@ -295,7 +296,7 @@ export class HomeGraphFactory {
         state.opportunities.map((opp, idx) => [opp.id, idx])
       );
 
-      const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+      const agentTimingsAccum: DebugMetaAgent[] = [];
 
       for (let i = 0; i < opportunities.length; i += PRESENTATION_CONCURRENCY) {
         const chunk = opportunities.slice(i, i + PRESENTATION_CONCURRENCY);
@@ -550,7 +551,7 @@ export class HomeGraphFactory {
           logger.verbose('[HomeGraph:categorizeDynamically] exit', { sectionProposalsCount: 0 });
           return { sectionProposals: [], agentTimings: [] };
         }
-        const agentTimingsAccum: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+        const agentTimingsAccum: DebugMetaAgent[] = [];
         const categorizerInput = state.cards.map((c) => ({
           index: c._cardIndex,
           headline: c.headline,

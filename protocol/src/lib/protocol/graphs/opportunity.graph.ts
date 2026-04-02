@@ -13,8 +13,8 @@
  */
 
 import { StateGraph, START, END, Annotation } from '@langchain/langgraph';
-import type { Id } from '../../../types/common.types';
-import type { DebugMetaAgent } from '../../../types/chat-streaming.types';
+import type { Id } from '../interfaces/database.interface';
+import type { DebugMetaAgent } from '../types/chat-streaming.types';
 import {
   OpportunityGraphState,
   type IndexedIntent,
@@ -67,8 +67,8 @@ import { persistOpportunities } from '../support/opportunity.persist';
 import { negotiateCandidates, type NegotiationCandidate } from "./negotiation.graph";
 import type { NegotiationGraphLike } from "../states/negotiation.state";
 import { protocolLogger, withCallLogging } from '../support/protocol.logger';
-import { timed } from '../../performance';
-import { requestContext } from "../../request-context";
+import { timed } from '../support/performance';
+import { requestContext } from "../support/request-context";
 
 const logger = protocolLogger('OpportunityGraph');
 
@@ -343,7 +343,7 @@ export class OpportunityGraphFactory {
             // Chat path: score query against target indexes in parallel
             try {
               const indexer = new IntentIndexer();
-              const scopeAgentTimings: import('../../../types/chat-streaming.types').DebugMetaAgent[] = [];
+              const scopeAgentTimings: DebugMetaAgent[] = [];
               const scorableIndexes = targetIndexes.filter(ti => ti.title !== 'Unknown');
               const scoringPromises = scorableIndexes.map(async (ti) => {
                 try {

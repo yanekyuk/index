@@ -13,7 +13,7 @@ import type {
   OpportunityStatus,
 } from '../interfaces/database.interface';
 import type { Embedder } from '../interfaces/embedder.interface';
-import type { Id } from '../../../types/common.types';
+import type { Id } from '../interfaces/database.interface';
 import { protocolLogger } from './protocol.logger';
 
 const logger = protocolLogger('OpportunityEnricher');

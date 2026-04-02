@@ -10,10 +10,6 @@ import type { Scraper } from '../../interfaces/scraper.interface';
 
 const mockEnrichUserProfile = mock(async () => null as any);
 
-mock.module('../../../../lib/parallel/parallel', () => ({
-  enrichUserProfile: mockEnrichUserProfile,
-}));
-
 /**
  * Integration tests for generate mode (ghost user profile generation).
  *
@@ -55,7 +51,7 @@ describe('ProfileGraph - Generate Mode', () => {
   });
 
   function buildGraph() {
-    return new ProfileGraphFactory(mockDatabase, mockEmbedder, mockScraper).createGraph();
+    return new ProfileGraphFactory(mockDatabase, mockEmbedder, mockScraper, { enrichUserProfile: mockEnrichUserProfile }).createGraph();
   }
 
   // ─────────────────────────────────────────────────────────

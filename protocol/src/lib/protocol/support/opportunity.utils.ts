@@ -7,7 +7,7 @@
  */
 
 import type { HydeTargetCorpus } from '../agents/lens.inferrer';
-import { log } from '../../../lib/log';
+import { log } from './log';
 
 const logger = log.graph.from('SelectByComposition');
 

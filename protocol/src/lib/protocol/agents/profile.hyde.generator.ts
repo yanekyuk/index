@@ -8,7 +8,7 @@ import { ProfileDocument } from "./profile.generator";
  */
 import { config } from "dotenv";
 config({ path: '.env.development', override: true });
-import { Timed } from "../../performance";
+import { Timed } from "../support/performance";
 import { createModel } from "./model.config";
 
 const logger = protocolLogger("HyDEGenerator");

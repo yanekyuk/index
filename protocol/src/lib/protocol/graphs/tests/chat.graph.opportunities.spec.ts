@@ -17,6 +17,8 @@ import {
   createChatGraphMockDb,
   mockOpportunity,
   mockActiveIntent,
+  mockChatSessionReader,
+  createMockProtocolDeps,
 } from "./chat.graph.mocks";
 
 const testUserId = "opp-test-user";
@@ -47,7 +49,7 @@ function runOpportunityScenario(
   message: string,
   options: { indexId?: string } = {}
 ) {
-  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper);
+  const factory = new ChatGraphFactory(db, mockEmbedder, mockScraper, mockChatSessionReader, createMockProtocolDeps());
   const graph = factory.createGraph();
   return runScenario(
     defineScenario({

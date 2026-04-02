@@ -6,11 +6,17 @@ import type {
   UserRecord,
   UserDatabase,
   SystemDatabase,
+  NegotiationDatabase,
 } from "../interfaces/database.interface";
 import type { Scraper } from "../interfaces/scraper.interface";
-import type { Cache } from "../interfaces/cache.interface";
+import type { Cache, HydeCache } from "../interfaces/cache.interface";
 import type { CompiledOpportunityGraph } from "../support/opportunity.discover";
 import type { IntegrationAdapter } from "../interfaces/integration.interface";
+import type { ContactServiceAdapter } from "../interfaces/contact.interface";
+import type { ProfileEnricher } from "../interfaces/enrichment.interface";
+import type { IntentGraphQueue } from "../interfaces/queue.interface";
+import type { ChatSessionReader } from "../interfaces/chat-session.interface";
+import type { Embedder } from "../interfaces/embedder.interface";
 
 /** Profile without embedding — used in resolved context to avoid bloating prompts and memory. */
 export type ProfileContext = Omit<ProfileDocument, "embedding"> | null;
@@ -75,13 +81,51 @@ export interface ToolContext {
   userDb?: UserDatabase;
   /** Context-bound database for LLM/system operations on cross-user resources within shared indexes. Created internally if not provided. */
   systemDb?: SystemDatabase;
-  embedder: import("../interfaces/embedder.interface").Embedder;
+  embedder: Embedder;
   scraper: Scraper;
   /** When set, chat is scoped to this index; tools use it as default for read_intents and create_intent. */
   indexId?: string;
   /** Chat session ID when creating tools for a chat; enables draft opportunities with context.conversationId. */
   sessionId?: string;
+
+  // ─── Protocol-level dependencies (injected by composition root) ──────────
+  /** General-purpose cache (e.g. for tool results). */
+  cache: Cache;
+  /** Dedicated cache for HyDE graph (may be same instance as cache). */
+  hydeCache: HydeCache;
+  /** External integration platform adapter (OAuth, tool actions). */
+  integration: IntegrationAdapter;
+  /** Queue for enqueuing follow-up intent processing (HyDE generation/deletion). */
+  intentQueue: IntentGraphQueue;
+  /** Contact management operations. */
+  contactService: ContactServiceAdapter;
+  /** Chat session reader for loading conversation history. */
+  chatSession: ChatSessionReader;
+  /** Profile enrichment from external data sources. */
+  enricher: ProfileEnricher;
+  /** Database adapter for negotiation/conversation operations. */
+  negotiationDatabase: NegotiationDatabase;
+  /** Integration importer for bulk contact import from toolkits. */
+  integrationImporter: {
+    importContacts(userId: string, toolkit: string): Promise<{
+      imported: number;
+      skipped: number;
+      newContacts: number;
+      existingContacts: number;
+    }>;
+  };
+  /** Factory for user-scoped database access. */
+  createUserDatabase: (db: ChatGraphCompositeDatabase, userId: string) => UserDatabase;
+  /** Factory for system-scoped database access. */
+  createSystemDatabase: (db: ChatGraphCompositeDatabase, userId: string, indexScope: string[], embedder?: Embedder) => SystemDatabase;
 }
+
+/**
+ * All external dependencies needed to initialize the protocol tool engine.
+ * The host application (composition root) must provide concrete implementations.
+ * This is the subset of ToolContext that is NOT per-request (no userId, indexId, sessionId).
+ */
+export type ProtocolDeps = Omit<ToolContext, 'userId' | 'indexId' | 'sessionId' | 'userDb' | 'systemDb'>;
 
 /**
  * Thrown when a requested chat scope is invalid for the authenticated user.
@@ -251,6 +295,16 @@ export interface ToolDeps {
   embedder: import('../interfaces/embedder.interface').Embedder;
   cache: Cache;
   integration: IntegrationAdapter;
+  contactService: ContactServiceAdapter;
+  integrationImporter: {
+    importContacts(userId: string, toolkit: string): Promise<{
+      imported: number;
+      skipped: number;
+      newContacts: number;
+      existingContacts: number;
+    }>;
+  };
+  enricher: ProfileEnricher;
   graphs: {
     profile: CompiledGraph;
     intent: CompiledGraph;
