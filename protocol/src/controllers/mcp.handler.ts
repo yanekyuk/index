@@ -39,6 +39,7 @@ import type { ToolDeps } from '../lib/protocol/tools/tool.helpers';
 import type { McpAuthResolver } from '../lib/protocol/interfaces/auth.interface';
 import { createMcpServer } from '../lib/protocol/mcp/mcp.server';
 import type { ScopedDepsFactory } from '../lib/protocol/mcp/mcp.server';
+import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
 
 const logger = log.server.from('mcp');
@@ -113,7 +114,7 @@ function getOrCompileGraphs(): ToolDeps['graphs'] {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const JWKS = createRemoteJWKSet(
-  new URL(`http://localhost:${process.env.PORT || 3001}/api/auth/jwks`),
+  new URL(`${BASE_URL}/api/auth/jwks`),
 );
 
 /**
@@ -145,8 +146,7 @@ const authResolver: McpAuthResolver = {
     const apiKey = request.headers.get('x-api-key');
     if (apiKey) {
       try {
-        const port = process.env.PORT || 3001;
-        const verifyRes = await fetch(`http://localhost:${port}/api/auth/api-key/verify`, {
+        const verifyRes = await fetch(`${BASE_URL}/api/auth/api-key/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ key: apiKey }),
@@ -218,13 +218,34 @@ function getOrCreateMcpServer(): McpServer {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TRANSPORT (created once, reused across requests)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let mcpTransport: WebStandardStreamableHTTPServerTransport | null = null;
+
+/**
+ * Creates or returns the cached transport, connected to the MCP server.
+ * The transport is stateless (no session tracking) — each request is independent.
+ */
+async function getOrCreateTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
+  if (mcpTransport) return mcpTransport;
+
+  const server = getOrCreateMcpServer();
+  mcpTransport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+  });
+  await server.connect(mcpTransport);
+  logger.info('MCP transport connected');
+  return mcpTransport;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HTTP HANDLER
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
  * Handles an incoming MCP HTTP request.
- * Creates a per-request transport, connects it to the shared MCP server,
- * and delegates request handling to the transport.
+ * Uses the shared transport connected to the MCP server.
  *
  * @param req - The incoming HTTP request
  * @param corsHeaders - CORS headers to merge into the response
@@ -235,17 +256,9 @@ export async function mcpHandler(
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
   try {
-    const server = getOrCreateMcpServer();
+    const transport = await getOrCreateTransport();
 
-    // Create a stateless per-request transport
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-
-    // Connect the MCP server to this transport for request handling
-    await server.connect(transport);
-
-    // Handle the request through the transport
+    // Handle the request through the shared transport
     const response = await transport.handleRequest(req);
 
     // Merge CORS headers into the response

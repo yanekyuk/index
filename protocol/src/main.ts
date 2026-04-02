@@ -216,11 +216,8 @@ Bun.serve({
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
     }
 
-    // MCP Streamable HTTP endpoint
+    // MCP Streamable HTTP endpoint (OPTIONS already handled globally above)
     if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
-      if (method === 'OPTIONS') {
-        return new Response(null, { status: 204, headers: corsHeaders });
-      }
       return mcpHandler(req, corsHeaders);
     }
 

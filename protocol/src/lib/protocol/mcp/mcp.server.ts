@@ -145,7 +145,14 @@ export function createMcpServer(
 
           // Validate input against the original Zod schema
           const parseResult = (toolDef.schema as z.ZodType).safeParse(args);
-          const validatedArgs = parseResult.success ? parseResult.data : args;
+          if (!parseResult.success) {
+            const issues = parseResult.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+            return {
+              content: [{ type: 'text' as const, text: JSON.stringify({ success: false, error: `Invalid input: ${issues}` }) }],
+              isError: true,
+            };
+          }
+          const validatedArgs = parseResult.data;
 
           // Execute the tool handler
           const result = await requestTool.handler({ context, query: validatedArgs });

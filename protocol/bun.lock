@@ -16,7 +16,6 @@
         "@langchain/langgraph": "^1.1.2",
         "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
         "@langchain/openai": "^1.2.3",
-        "@modelcontextprotocol/hono": "^2.0.0-alpha.2",
         "@modelcontextprotocol/server": "^2.0.0-alpha.2",
         "@sentry/node": "^10.29.0",
         "better-auth": "^1.4.18",
@@ -324,8 +323,6 @@
     "@langchain/langgraph-ui": ["@langchain/langgraph-ui@0.0.38", "", { "dependencies": { "@commander-js/extra-typings": "^13.0.0", "commander": "^13.0.0", "esbuild": "^0.25.0", "esbuild-plugin-tailwindcss": "^2.0.1", "zod": "^3.23.8" }, "bin": { "langgraphjs-ui": "dist/cli.mjs" } }, "sha512-0FwkMeoKFIMLaqhIjkDvs31+vDnauD94bgtK2d9hzC0Ze7khC5oar2s2+xwibScu2dFd7udafZ4Cxsk7Q+9mVw=="],
 
     "@langchain/openai": ["@langchain/openai@1.2.4", "", { "dependencies": { "js-tiktoken": "^1.0.12", "openai": "^6.16.0", "zod": "^3.25.76 || ^4" }, "peerDependencies": { "@langchain/core": "^1.0.0" } }, "sha512-3ThBOIXAJ6eXuqGGO41XDgr4rp/qpl/RpZmGcjv1S3+CRLS4UQBgXkZEab7mun85HfdsUWLs/v1+pDwbMFixcA=="],
-
-    "@modelcontextprotocol/hono": ["@modelcontextprotocol/hono@2.0.0-alpha.2", "", { "peerDependencies": { "@modelcontextprotocol/server": "^2.0.0-alpha.2", "hono": "^4.11.4" } }, "sha512-X6Rg5F6eXlLsahl9HYSNJ3/7/w7SxbkZUtDKp0FBjS3p4Tydr0rKh3iorRPVC5f/Z5UfV83ARFxfRlnOgMZuDA=="],
 
     "@modelcontextprotocol/server": ["@modelcontextprotocol/server@2.0.0-alpha.2", "", { "dependencies": { "zod": "^4.0" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-gmLgdHzlYM8L7Aw/+VE0kxjT25WKamtUSLNhdOgrJq5CrESvqVSoAfWSJJeNPUXNTluQ+dYDGFbKVitdsJtbPA=="],
 
