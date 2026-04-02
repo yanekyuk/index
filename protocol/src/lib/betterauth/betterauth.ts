@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
 import { magicLink, bearer, jwt } from "better-auth/plugins";
+import { apiKey } from "@better-auth/api-key";
+import { oauthProvider } from "@better-auth/oauth-provider";
 
 import { log } from "../log";
 
@@ -109,6 +111,13 @@ export function createAuth(deps: AuthDeps) {
             name: user.name,
           }),
         },
+      }),
+      apiKey({
+        enableSessionForAPIKeys: true,
+      }),
+      oauthProvider({
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
       }),
     ],
     advanced: {

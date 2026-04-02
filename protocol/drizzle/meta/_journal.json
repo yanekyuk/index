@@ -225,6 +225,13 @@
       "when": 1775232000000,
       "tag": "0031_backfill_index_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1775090166955,
+      "tag": "0032_add_api_key_and_oauth_tables",
+      "breakpoints": true
     }
   ]
 }
