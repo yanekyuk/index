@@ -40,8 +40,32 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
     }
     return { type: 'object', properties, ...(required.length ? { required } : {}) };
   }
-  if (schema instanceof z.ZodString) return { type: 'string' };
-  if (schema instanceof z.ZodNumber) return { type: 'number' };
+  if (schema instanceof z.ZodString) {
+    const result: Record<string, unknown> = { type: 'string' };
+    // Detect .url(), .email(), .uuid() etc. via Zod's internal checks array
+    const checks = (schema as z.ZodString & { _def: { checks: Array<{ kind: string }> } })._def?.checks;
+    if (checks) {
+      for (const check of checks) {
+        if (check.kind === 'url') result.format = 'uri';
+        else if (check.kind === 'email') result.format = 'email';
+        else if (check.kind === 'uuid') result.format = 'uuid';
+        else if (check.kind === 'datetime') result.format = 'date-time';
+      }
+    }
+    return result;
+  }
+  if (schema instanceof z.ZodNumber) {
+    const checks = (schema as z.ZodNumber & { _def: { checks: Array<{ kind: string; value?: number }> } })._def?.checks;
+    const result: Record<string, unknown> = { type: 'number' };
+    if (checks) {
+      for (const check of checks) {
+        if (check.kind === 'int') result.type = 'integer';
+        else if (check.kind === 'min') result.minimum = check.value;
+        else if (check.kind === 'max') result.maximum = check.value;
+      }
+    }
+    return result;
+  }
   if (schema instanceof z.ZodBoolean) return { type: 'boolean' };
   if (schema instanceof z.ZodArray) {
     return { type: 'array', items: zodToJsonSchema((schema as z.ZodArray<z.ZodType>).element) };
@@ -54,6 +78,10 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   }
   if (schema instanceof z.ZodEnum) {
     return { type: 'string', enum: (schema as z.ZodEnum<[string, ...string[]]>).options };
+  }
+  if (schema instanceof z.ZodNullable) {
+    const inner = zodToJsonSchema((schema as z.ZodNullable<z.ZodType>).unwrap());
+    return { ...inner, nullable: true };
   }
   if (schema instanceof z.ZodRecord) {
     return { type: 'object', additionalProperties: true };

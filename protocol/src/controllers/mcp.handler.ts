@@ -92,8 +92,8 @@ const JWKS = createRemoteJWKSet(
 const authResolver: McpAuthResolver = {
   async resolveUserId(request: Request): Promise<string> {
     const authHeader = request.headers.get('Authorization');
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
+    const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
+    if (scheme?.toLowerCase() === 'bearer' && token) {
       try {
         const { payload } = await jwtVerify(token, JWKS);
         if (typeof payload.id === 'string') return payload.id;
@@ -226,17 +226,26 @@ export async function mcpHandler(
     const message = err instanceof Error ? err.message : String(err);
     logger.error('MCP handler error', { error: message });
 
+    // Explicit invalid credentials → 401
     const isAuthError =
       message.includes('Authentication required') ||
       message.includes('Invalid or expired access token') ||
       message.includes('Invalid API key') ||
+      message.includes('JWT payload missing user ID');
+
+    // Verifier transport failures (timeout, network) → 503
+    const isVerifierError =
+      message.includes('API key verification failed') ||
       message.includes('API key authentication failed') ||
-      message.includes('API key verification failed');
+      message.includes('AbortError') ||
+      message.includes('fetch failed');
+
+    const status = isAuthError ? 401 : isVerifierError ? 503 : 500;
 
     return new Response(
       JSON.stringify({ error: message }),
       {
-        status: isAuthError ? 401 : 500,
+        status,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       },
     );
