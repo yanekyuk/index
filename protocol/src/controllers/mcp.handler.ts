@@ -100,7 +100,12 @@ const authResolver: McpAuthResolver = {
         if (typeof payload.sub === 'string') return payload.sub;
         throw new Error('JWT payload missing user ID');
       } catch (err) {
-        throw new Error(`Invalid or expired access token: ${err instanceof Error ? err.message : String(err)}`);
+        // Distinguish JWKS transport errors (network/fetch) from credential errors
+        const msg = err instanceof Error ? err.message : String(err);
+        const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
+          msg.includes('timeout') || msg.includes('NetworkError');
+        if (isTransport) throw new Error(`JWKS transport error: ${msg}`);
+        throw new Error(`Invalid or expired access token: ${msg}`);
       }
     }
 
@@ -233,10 +238,11 @@ export async function mcpHandler(
       message.includes('Invalid API key') ||
       message.includes('JWT payload missing user ID');
 
-    // Verifier transport failures (timeout, network) → 503
+    // Verifier/JWKS transport failures (timeout, network) → 503
     const isVerifierError =
       message.includes('API key verification failed') ||
       message.includes('API key authentication failed') ||
+      message.includes('JWKS transport error') ||
       message.includes('AbortError') ||
       message.includes('fetch failed');
 
