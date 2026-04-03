@@ -73,5 +73,9 @@ if [ -f "$CLAUDE_SRC" ]; then
   fi
 fi
 
+# Configure git hooks path (points to committed scripts/hooks/)
+git -C "$WORKTREE" config core.hooksPath "$REPO_ROOT/scripts/hooks"
+echo "  [git] hooksPath -> scripts/hooks"
+
 echo ""
 echo "Done. Worktree '$1' is ready."

@@ -74,12 +74,14 @@ bun test                                    # Run CLI tests
 
 The `plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
 
-```bash
-# Pull upstream changes into plugin/
-git subtree pull --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main --squash
+**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `plugin/` in this repo and push normally.
 
-# Push local changes back to upstream
+```bash
+# Manual push if the hook failed
 git subtree push --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+
+# Pull if claude-plugin was edited directly (avoid this — always edit via this repo)
+git subtree pull --squash --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
 ```
 
 ### Root
