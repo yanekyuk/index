@@ -328,11 +328,12 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
    - `docs/domain/` — if the domain model changed (entities, relationships, concepts)
    - `docs/specs/` — if public interfaces changed (API endpoints, CLI commands)
    - `docs/guides/` — if dev workflow or environment setup changed
-2. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
-3. Merge into dev: `git checkout dev && git merge <branch-name>`
-4. Push both remotes: `git push upstream dev && git push origin dev`
-5. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
-6. Clean up: delete branch and remove worktree
+2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
+3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
+4. Merge into dev: `git checkout dev && git merge <branch-name>`
+5. Push both remotes: `git push upstream dev && git push origin dev`
+6. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
+7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow
 
