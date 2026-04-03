@@ -254,6 +254,25 @@ export async function mcpHandler(
   req: Request,
   corsHeaders: Record<string, string>,
 ): Promise<Response> {
+  // Reject unauthenticated requests at the HTTP level before they reach the MCP transport.
+  // The transport catches errors and wraps them as HTTP 200 isError responses, which means
+  // Claude Code never sees a 401 and never triggers OAuth. By checking here, we return a
+  // proper HTTP 401 + WWW-Authenticate so Claude Code can initiate the OAuth flow.
+  const hasAuth = req.headers.has('Authorization') || req.headers.has('x-api-key');
+  if (!hasAuth) {
+    return new Response(
+      JSON.stringify({ error: 'Authentication required: provide Bearer token or x-api-key header' }),
+      {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+          ...corsHeaders,
+        },
+      },
+    );
+  }
+
   try {
     const transport = await getOrCreateTransport();
     const response = await transport.handleRequest(req);

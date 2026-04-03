@@ -211,7 +211,17 @@ Bun.serve({
     ];
     const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
     if (isBetterAuthRoute) {
-      const res = await auth.handler(req);
+      // better-call strips basePath via `pathname.split(basePath)`, which only works
+      // for paths that contain the basePath string. Root-level /.well-known/* paths
+      // don't contain "/api/auth" so the split yields a 1-element array → empty path → 404.
+      // Rewriting to /api/auth/.well-known/* makes the split work correctly.
+      let handlerReq = req;
+      if (url.pathname.startsWith('/.well-known/')) {
+        const rewritten = new URL(req.url);
+        rewritten.pathname = `/api/auth${url.pathname}`;
+        handlerReq = new Request(rewritten.toString(), req);
+      }
+      const res = await auth.handler(handlerReq);
       const newHeaders = new Headers(res.headers);
       Object.entries(corsHeaders).forEach(([key, value]) => newHeaders.set(key, value));
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers: newHeaders });
