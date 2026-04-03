@@ -334,7 +334,7 @@ describe("OpportunityController Integration", () => {
   });
 
   test("listForIndex should return 400 when networkId is missing", async () => {
-    const req = new Request("http://localhost/indexes/opportunities");
+    const req = new Request("http://localhost/networks/opportunities");
     const res = await indexOpportunityController.listForIndex(req, mockUser(), {});
     const data = (await res.json()) as { error?: string };
 
@@ -343,7 +343,7 @@ describe("OpportunityController Integration", () => {
   });
 
   test("listForIndex should return 200 with opportunities for index", async () => {
-    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities");
+    const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities");
     const res = await indexOpportunityController.listForIndex(req, mockUser(), { networkId: testIndexId });
     const data = (await res.json()) as { opportunities?: unknown[] };
 
@@ -353,7 +353,7 @@ describe("OpportunityController Integration", () => {
   });
 
   test("createManual should return 400 when networkId is missing", async () => {
-    const req = new Request("http://localhost/indexes/opportunities", {
+    const req = new Request("http://localhost/networks/opportunities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -369,7 +369,7 @@ describe("OpportunityController Integration", () => {
   });
 
   test("createManual should return 400 when body missing parties or reasoning", async () => {
-    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities", {
+    const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -382,7 +382,7 @@ describe("OpportunityController Integration", () => {
   });
 
   test("createManual should return 201 when valid or 409 when opportunity already exists", async () => {
-    const req = new Request("http://localhost/indexes/" + testIndexId + "/opportunities", {
+    const req = new Request("http://localhost/networks/" + testIndexId + "/opportunities", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

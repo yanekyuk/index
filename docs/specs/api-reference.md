@@ -18,12 +18,12 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Chat](#chat)
 - [Conversation](#conversation)
 - [Debug](#debug)
-- [Index](#index)
+- [Network](#network)
 - [Integration](#integration)
 - [Intent](#intent)
 - [Link](#link)
 - [Opportunity](#opportunity)
-- [Index Opportunity](#index-opportunity)
+- [Network Opportunity](#network-opportunity)
 - [Profile](#profile)
 - [Storage](#storage)
 - [Subscribe](#subscribe)
@@ -63,8 +63,8 @@ Debug endpoints apply both guards: `DebugGuard` first, then `AuthGuard`.
 Some routes have no guard at all:
 - `GET /api/auth/providers`
 - `GET /api/chat/shared/:token`
-- `GET /api/indexes/share/:code`
-- `GET /api/indexes/public/:id`
+- `GET /api/networks/share/:code`
+- `GET /api/networks/public/:id`
 - `POST /api/subscribe/`
 - `GET /api/unsubscribe/:token`
 - `GET /api/storage/avatars/:userId/:filename`
@@ -834,11 +834,11 @@ Returns a debug-friendly view of a chat session, including messages and per-turn
 
 ---
 
-## Index
+## Network
 
-**Controller prefix**: `/indexes`
+**Controller prefix**: `/networks`
 
-### GET /api/indexes
+### GET /api/networks
 
 List indexes the authenticated user is a member of, including their personal index.
 
@@ -847,11 +847,11 @@ List indexes the authenticated user is a member of, including their personal ind
 **Response**:
 ```json
 {
-  "indexes": [...]
+  "networks": [...]
 }
 ```
 
-### POST /api/indexes
+### POST /api/networks
 
 Create a new index.
 
@@ -875,7 +875,7 @@ Create a new index.
 }
 ```
 
-### GET /api/indexes/search-users
+### GET /api/networks/search-users
 
 Search users by name/email, optionally excluding existing members of an index.
 
@@ -883,7 +883,7 @@ Search users by name/email, optionally excluding existing members of an index.
 
 **Query params**:
 - `q` — Search query string
-- `indexId` — Exclude members of this index (optional)
+- `indexId` — Exclude members of this network (optional)
 
 **Response**:
 ```json
@@ -892,7 +892,7 @@ Search users by name/email, optionally excluding existing members of an index.
 }
 ```
 
-### GET /api/indexes/my-members
+### GET /api/networks/my-members
 
 Get all members of every index the signed-in user is a member of (deduplicated). Used for @mentions in chat.
 
@@ -905,7 +905,7 @@ Get all members of every index the signed-in user is a member of (deduplicated).
 }
 ```
 
-### GET /api/indexes/discovery/public
+### GET /api/networks/discovery/public
 
 Get public indexes the user has not joined.
 
@@ -914,11 +914,11 @@ Get public indexes the user has not joined.
 **Response**:
 ```json
 {
-  "indexes": [...]
+  "networks": [...]
 }
 ```
 
-### GET /api/indexes/share/:code
+### GET /api/networks/share/:code
 
 Get an index by its invitation share code. Used for invitation page preview.
 
@@ -934,14 +934,14 @@ Get an index by its invitation share code. Used for invitation page preview.
 }
 ```
 
-### GET /api/indexes/public/:id
+### GET /api/networks/public/:id
 
 Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 
 **Auth**: None (public)
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -950,7 +950,7 @@ Get a public index by ID. Only works for indexes with `joinPolicy: 'anyone'`.
 }
 ```
 
-### GET /api/indexes/shared/:userId
+### GET /api/networks/shared/:userId
 
 Get non-personal indexes shared between the authenticated user and a target user.
 
@@ -962,11 +962,11 @@ Get non-personal indexes shared between the authenticated user and a target user
 **Response**:
 ```json
 {
-  "indexes": [...]
+  "networks": [...]
 }
 ```
 
-### POST /api/indexes/invitation/:code/accept
+### POST /api/networks/invitation/:code/accept
 
 Accept an invitation to join an index using the invitation code.
 
@@ -977,14 +977,14 @@ Accept an invitation to join an index using the invitation code.
 
 **Response**: JSON with accepted index details.
 
-### GET /api/indexes/:id
+### GET /api/networks/:id
 
 Get a single index by ID with owner info and member count. Members only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -993,14 +993,14 @@ Get a single index by ID with owner info and member count. Members only.
 }
 ```
 
-### PUT /api/indexes/:id
+### PUT /api/networks/:id
 
 Update an index (title, prompt, image, join policy). Owner only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Request body**:
 ```json
@@ -1020,28 +1020,28 @@ Update an index (title, prompt, image, join policy). Owner only.
 }
 ```
 
-### DELETE /api/indexes/:id
+### DELETE /api/networks/:id
 
 Soft-delete an index. Owner only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
 { "success": true }
 ```
 
-### GET /api/indexes/:id/members
+### GET /api/networks/:id/members
 
 Get members of an index. Owner only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -1052,14 +1052,14 @@ Get members of an index. Owner only.
 }
 ```
 
-### POST /api/indexes/:id/members
+### POST /api/networks/:id/members
 
 Add a member to an index. Owner/admin only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Request body**:
 ```json
@@ -1077,14 +1077,14 @@ Add a member to an index. Owner/admin only.
 }
 ```
 
-### DELETE /api/indexes/:id/members/:memberId
+### DELETE /api/networks/:id/members/:memberId
 
 Remove a member from an index. Owner only. Cannot remove yourself.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 - `memberId` — User ID to remove
 
 **Response**:
@@ -1092,14 +1092,14 @@ Remove a member from an index. Owner only. Cannot remove yourself.
 { "success": true }
 ```
 
-### PATCH /api/indexes/:id/permissions
+### PATCH /api/networks/:id/permissions
 
 Update index permissions (join policy, guest vibe check). Owner only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Request body**:
 ```json
@@ -1116,25 +1116,25 @@ Update index permissions (join policy, guest vibe check). Owner only.
 }
 ```
 
-### GET /api/indexes/:id/member-settings
+### GET /api/networks/:id/member-settings
 
 Get current user's member settings (permissions and ownership status).
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**: JSON with member settings.
 
-### GET /api/indexes/:id/my-intents
+### GET /api/networks/:id/my-intents
 
 Get current user's intents in an index. Members only.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -1143,14 +1143,14 @@ Get current user's intents in an index. Members only.
 }
 ```
 
-### POST /api/indexes/:id/join
+### POST /api/networks/:id/join
 
 Join a public index.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -1163,14 +1163,14 @@ Join a public index.
 - `404` — Index not found
 - `403` — Index not public
 
-### POST /api/indexes/:id/leave
+### POST /api/networks/:id/leave
 
 Leave an index. Members (non-owners) can leave.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Index ID
+- `id` — Network ID
 
 **Response**:
 ```json
@@ -1196,7 +1196,7 @@ List connected accounts for the authenticated user.
 **Auth**: AuthGuard
 
 **Query params**:
-- `indexId` — Filter to connections linked to this index (optional)
+- `indexId` — Filter to connections linked to this network (optional)
 
 **Response**:
 ```json
@@ -1247,7 +1247,7 @@ Unlink a toolkit from an index. Does not revoke the OAuth connection.
 - `toolkit` — `gmail` or `slack`
 
 **Query params**:
-- `indexId` — Index to unlink from (required)
+- `indexId` — Network to unlink from (required)
 
 **Response**:
 ```json
@@ -1517,7 +1517,7 @@ List opportunities for the authenticated user.
 
 **Query params**:
 - `status` — Filter by status: `pending`, `viewed`, `accepted`, `rejected`, `expired` (optional)
-- `indexId` — Filter by index (optional)
+- `indexId` — Filter by network (optional)
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
 
@@ -1546,7 +1546,7 @@ Home view with dynamic sections including LLM-categorized opportunities, present
 **Auth**: AuthGuard
 
 **Query params**:
-- `indexId` — Scope to a specific index (optional)
+- `indexId` — Scope to a specific network (optional)
 - `limit` — Max results (optional)
 
 **Response**: JSON with categorized home sections.
@@ -1609,18 +1609,18 @@ Update opportunity status.
 
 ---
 
-## Index Opportunity
+## Network Opportunity
 
-**Controller prefix**: `/indexes` (separate controller registered alongside IndexController)
+**Controller prefix**: `/networks` (separate controller registered alongside NetworkController)
 
-### GET /api/indexes/:indexId/opportunities
+### GET /api/networks/:indexId/opportunities
 
 List opportunities for an index. Requires membership.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `indexId` — Index ID
+- `indexId` — Network ID
 
 **Query params**:
 - `status` — Filter by status (optional)
@@ -1634,14 +1634,14 @@ List opportunities for an index. Requires membership.
 }
 ```
 
-### POST /api/indexes/:indexId/opportunities
+### POST /api/networks/:indexId/opportunities
 
 Create a manual opportunity (curator). Requires owner or member permission.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `indexId` — Index ID
+- `indexId` — Network ID
 
 **Request body**:
 ```json

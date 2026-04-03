@@ -42,7 +42,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET '' (list)", () => {
     test("should return 200 with indexes array", async () => {
-      const req = new Request("http://localhost/indexes");
+      const req = new Request("http://localhost/networks");
       const res = await controller.list(req, mockUser());
       const data = (await res.json()) as { networks?: unknown[] };
 
@@ -53,7 +53,7 @@ describe("NetworkController Integration", () => {
 
   describe("POST '' (create)", () => {
     test("should return 400 when title is missing", async () => {
-      const req = new Request("http://localhost/indexes", {
+      const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
@@ -66,7 +66,7 @@ describe("NetworkController Integration", () => {
     });
 
     test("should return 200 and create index when title provided", async () => {
-      const req = new Request("http://localhost/indexes", {
+      const req = new Request("http://localhost/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Test Index", prompt: "A test index" }),
@@ -83,7 +83,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET /:id", () => {
     test("should return 200 and index when member", async () => {
-      const req = new Request("http://localhost/indexes/" + createdIndexId);
+      const req = new Request("http://localhost/networks/" + createdIndexId);
       const res = await controller.get(req, mockUser(), { id: createdIndexId });
       const data = (await res.json()) as { index?: { id: string; title: string } };
 
@@ -95,7 +95,7 @@ describe("NetworkController Integration", () => {
 
     test("should return 404 when index id does not exist", async () => {
       const fakeId = "00000000-0000-0000-0000-000000000000";
-      const req = new Request("http://localhost/indexes/" + fakeId);
+      const req = new Request("http://localhost/networks/" + fakeId);
       const res = await controller.get(req, mockUser(), { id: fakeId });
       const data = (await res.json()) as { error?: string };
 
@@ -106,7 +106,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET /search-users", () => {
     test("should return 200 with users array", async () => {
-      const req = new Request("http://localhost/indexes/search-users?q=test");
+      const req = new Request("http://localhost/networks/search-users?q=test");
       const res = await controller.searchPersonalNetworkMembers(req, mockUser());
       const data = (await res.json()) as { users?: unknown[] };
 
@@ -117,7 +117,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET /discovery/public", () => {
     test("should return 200 with indexes array", async () => {
-      const req = new Request("http://localhost/indexes/discovery/public");
+      const req = new Request("http://localhost/networks/discovery/public");
       const res = await controller.getPublicNetworks(req, mockUser());
       const data = (await res.json()) as { networks?: unknown[] };
 
@@ -128,7 +128,7 @@ describe("NetworkController Integration", () => {
 
   describe("PUT /:id", () => {
     test("should return 200 and updated index when owner", async () => {
-      const req = new Request("http://localhost/indexes/" + createdIndexId, {
+      const req = new Request("http://localhost/networks/" + createdIndexId, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Updated Test Index" }),
@@ -144,7 +144,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET /:id/members", () => {
     test("should return 200 with members array when owner", async () => {
-      const req = new Request("http://localhost/indexes/" + createdIndexId + "/members");
+      const req = new Request("http://localhost/networks/" + createdIndexId + "/members");
       const res = await controller.getMembers(req, mockUser(), { id: createdIndexId });
       const data = (await res.json()) as { members?: unknown[] };
 
@@ -155,7 +155,7 @@ describe("NetworkController Integration", () => {
 
   describe("GET /:id/member-settings", () => {
     test("should return 200 with settings when member", async () => {
-      const req = new Request("http://localhost/indexes/" + createdIndexId + "/member-settings");
+      const req = new Request("http://localhost/networks/" + createdIndexId + "/member-settings");
       const res = await controller.getMemberSettings(req, mockUser(), { id: createdIndexId });
       const data = (await res.json()) as Record<string, unknown>;
 
@@ -166,7 +166,7 @@ describe("NetworkController Integration", () => {
 
   describe("DELETE /:id", () => {
     test("should return 200 and success when owner", async () => {
-      const req = new Request("http://localhost/indexes/" + createdIndexId, { method: "DELETE" });
+      const req = new Request("http://localhost/networks/" + createdIndexId, { method: "DELETE" });
       const res = await controller.delete(req, mockUser(), { id: createdIndexId });
       const data = (await res.json()) as { success?: boolean };
 
