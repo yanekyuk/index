@@ -123,6 +123,9 @@ export function createAuth(deps: AuthDeps) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mcp({
         loginPage: `${APP_URL}/login`,
+        // No consentPage needed: the mcp() plugin skips consent automatically when the
+        // authorization request does not include prompt=consent, which Claude Code never
+        // sends. The flow goes: /mcp/authorize → session check → code → callback.
       }) as any,
     ],
     advanced: {

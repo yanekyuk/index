@@ -33,7 +33,6 @@
     "@aws-sdk/client-s3": "^3.939.0",
     "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@better-auth/api-key": "^1.5.6",
-    "@better-auth/oauth-provider": "^1.5.6",
     "@bull-board/api": "^6.15.0",
     "@bull-board/hono": "^6.15.0",
     "@composio/core": "^0.6.3",

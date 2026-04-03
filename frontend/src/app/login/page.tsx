@@ -26,6 +26,9 @@ function LoginPage() {
       } else {
         setSessionChecked(true);
       }
+    }).catch(() => {
+      // Network error — show login form rather than blank screen
+      setSessionChecked(true);
     });
   }, []);
 
