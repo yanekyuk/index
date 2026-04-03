@@ -252,11 +252,11 @@ export class OpportunityService {
     const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.userId !== viewerId);
     const otherPartyIds = nonIntroducerActors.map((a) => a.userId);
 
-    const contextIndexId = opp.context?.networkId;
-    const actorIndexId = opp.actors[0]?.networkId;
-    const indexIdForDisplay = contextIndexId ?? actorIndexId;
+    const contextNetworkId = opp.context?.networkId;
+    const actorNetworkId = nonIntroducerActors[0]?.networkId ?? myActor?.networkId;
+    const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
     const [indexRecord, ...userRecords] = await Promise.all([
-      indexIdForDisplay ? this.db.getIndex(indexIdForDisplay) : Promise.resolve(null),
+      networkIdForDisplay ? this.db.getIndex(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
     const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
@@ -292,7 +292,7 @@ export class OpportunityService {
       introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (indexIdForDisplay ? { id: indexIdForDisplay, title: '' } : { id: '', title: '' }),
+      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       isGhost: isCounterpartGhost,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
@@ -411,7 +411,7 @@ export class OpportunityService {
     const isMember = await this.db.isNetworkMember(networkId, userId);
     
     if (!isOwner && !isMember) {
-      return { error: 'Not a member of this index', status: 403 };
+      return { error: 'Not a member of this network', status: 403 };
     }
 
     return this.db.getOpportunitiesForNetwork(networkId, options);
@@ -440,7 +440,7 @@ export class OpportunityService {
     // Check permission
     const permission = await this.checkCreatePermission(creatorId, data.parties, networkId);
     if (!permission.allowed) {
-      return { error: 'Not authorized to create opportunities in this index', status: 403 };
+      return { error: 'Not authorized to create opportunities in this network', status: 403 };
     }
 
     // Check for duplicates
