@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import Header from '@/components/Header';
 
 // ── Found in Translation -1: Superstudio / Continuous Monument ──
 // Inspired by Superstudio's 1969 Continuous Monument: a white megastructure
@@ -19,6 +20,13 @@ const KF = `
   @keyframes marchRight {
     from { background-position: 0 0; }
     to   { background-position: 60px 0; }
+  }
+  .fit-header img { filter: invert(1) brightness(10); }
+  .fit-header a { color: #fff !important; }
+  .fit-header button {
+    background: #fff !important;
+    color: #000 !important;
+    border: none !important;
   }
 `;
 
@@ -645,10 +653,10 @@ function BeforeAfterFig() {
         {/* right content */}
         <text x="440" y="52" fontFamily="'IBM Plex Mono', monospace" fontSize="9" letterSpacing="2" fill="#aaa">NOW</text>
         <rect x="440" y="68" width="320" height="88" rx="3" fill="#fff" stroke="#ccc" strokeWidth="1.5" />
-        <text x="456" y="89" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">&quot;I&apos;m a technologist who thrives at the</text>
-        <text x="456" y="105" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">edges of product and culture — looking</text>
-        <text x="456" y="121" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">for a team building something genuinely</text>
-        <text x="456" y="137" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">new, probably pre-Series B, probably weird.&quot;</text>
+        <text x="456" y="89" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">&quot;I&apos;m a 0-1 builder who likes to stay close</text>
+        <text x="456" y="105" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">to consumer culture — looking for a team</text>
+        <text x="456" y="121" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">working on something new and weird,</text>
+        <text x="456" y="137" fontFamily="'IBM Plex Mono', monospace" fontSize="11" fill="#555" fontStyle="italic">probably pre-seed or seed.&quot;</text>
 
         {/* divider — drawn after content but before arrow */}
         <line x1="400" y1="0" x2="400" y2="260" stroke="#ccc" strokeWidth="1.5" />
@@ -799,6 +807,11 @@ export default function FoundInTranslation1() {
       </div>
 
       <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden', borderBottom: '3px solid #000', display: 'flex', flexDirection: 'column' }}>
+        <div className="fit-header" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, opacity: 0.6 }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1rem' }}>
+            <Header showHeaderButtons forcePublicView />
+          </div>
+        </div>
         <img
           src="/found-in-translation/found-in-translation-1-hero.png"
           alt="Monumental grid-plane emerging across a city skyline at dusk"
@@ -818,21 +831,12 @@ export default function FoundInTranslation1() {
           </g>
         </svg>
 
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, display: 'flex', alignItems: 'stretch', zIndex: 5 }}>
-          <div style={{ borderRight: '1px solid rgba(255,255,255,0.25)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
-            <Link to="/" style={{ color: '#fff', textDecoration: 'none' }}>Index Network</Link>
-          </div>
-          <div style={{ flex: 1 }} />
-          <div style={{ borderLeft: '1px solid rgba(255,255,255,0.25)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.52rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
-            Protocol Document · 01
-          </div>
-        </div>
 
         <div
           style={{
             position: 'absolute',
             top: 88,
-            left: 24,
+            left: 'max(1rem, calc((100vw - 1280px) / 2 + 1rem))',
             zIndex: 4,
             maxWidth: 360,
             fontFamily: "'IBM Plex Mono', monospace",
@@ -867,128 +871,126 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
           Some things find you. Most don&apos;t.
           <br />
           <br />
-          They hide away in secret conversations with old coworkers on sunny patios, between rounds of margaritas that bring out what you want, what you really really want. A new job, a new something that&apos;ll take you somewhere you&apos;re actually excited to go.
+          They hide away in secret conversations with old coworkers on sunny patios, between rounds of margaritas that bring out what you want, what you really really want. A new job, a new <em>something</em> that&apos;ll take you somewhere you&apos;re actually excited to go.
         </p>
       </div>
 
-      <div style={{ padding: '0 2rem' }}>
-        <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
-            <img
-              src="/found-in-translation/diagram1.jpeg"
-              alt="Two people in conversation diagram"
-              style={{ display: 'block', width: '100%', height: 'auto' }}
-            />
-          </figure>
-        </div>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
+          <img
+            src="/found-in-translation/diagram1.jpeg"
+            alt="Two people in conversation diagram"
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+        </figure>
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem' }}>
-        <p data-fade style={P}>You sleep on your vague desires, wake up and start searching for someone who might just share your flavor of weird.</p>
+      <div style={{ ...WRAP, padding: '1rem 2rem' }}>
+        <p data-fade style={P}>You might sleep on your vague desires, wake up, and start searching for someone who might just share your flavor of weird.</p>
       </div>
 
-      <div style={{ padding: '0 2rem' }}>
-        <div style={{ maxWidth: 720, margin: '0 auto' }}>
-          <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
-            <img
-              src="/found-in-translation/diagram2.jpeg"
-              alt="Search and discovery diagram"
-              style={{ display: 'block', width: '100%', height: 'auto' }}
-            />
-          </figure>
-        </div>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
+          <img
+            src="/found-in-translation/diagram2.jpeg"
+            alt="Search and discovery diagram"
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+        </figure>
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 4rem' }}>
-        <p data-fade style={P}>You would think it gets easier - that technology was meant to help the stars align and show us the idea at the tip of our tongue, deliver us the job that doesn&apos;t exist yet, or the investor who gets it.</p>
+      <div style={{ ...WRAP, padding: '2rem 2rem 3rem' }}>
+        <p data-fade style={P}>You would think it gets easier—that technology was meant to help the stars align and show us the idea at the tip of our tongue, or deliver us the role that doesn&apos;t exist yet, or the investor who gets it.</p>
         <p data-fade style={P}>For most of computing history, there was no system elastic enough to hold that kind of ambiguity in our careers. It makes sense. The next opportunity ahead is often illegible to ourselves—until it arrives as the email we&apos;ve been waiting for.</p>
       </div>
 
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 1.5rem' }}>
+      <div style={{ ...WRAP, padding: '3rem 2rem 1rem' }}>
         <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', margin: 0 }}>
-          Somewhere along the way,<br />we got lost.
+          Somewhere along the way, we got lost in translation
         </h2>
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem 4rem' }}>
+      <div style={{ ...WRAP, padding: '1rem 2rem 3rem' }}>
         <p data-fade style={P}>It starts with the center of how we make sense of things: the brain.</p>
         <p data-fade style={P}>The brain runs two parallel systems: one habitual, one intentional.</p>
         <p data-fade style={P}>The habitual is the reactive side. It&apos;s what hits snooze at 8:10, 8:19, and 8:28am.</p>
         <p data-fade style={P}>The intentional is the planning side. It&apos;s how we model the world and shape how we react to it, like deciding whether this is the year you become a morning person. This is where all our long game thoughts live. They&apos;re context-sensitive and continuously recalibrating to our desired outcomes like moving to a new country, falling in love, or getting a job.</p>
         <p data-fade style={P}>As anyone who&apos;s ever looked for a new job knows, having the intent to switch jobs is easy. Expressing it in a way that&apos;s legible to others and successful in actually getting it is a different story.</p>
         <p data-fade style={P}>Of course, we try. We build and inhabit semantic structures together to achieve our goals. Or, we use our words.</p>
-        <div data-fade style={{ margin: '2.5rem 0', borderLeft: '4px solid #000', paddingLeft: '2rem' }}>
-          <p style={{ fontFamily: SANS, fontStyle: 'italic', fontSize: 'clamp(1rem,2vw,1.25rem)', color: '#222', lineHeight: 1.65, margin: 0 }}>
-            &ldquo;When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.&rdquo;
-          </p>
-          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.58rem', letterSpacing: '0.1em', color: '#888', marginTop: '0.75rem' }}>—Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
-        </div>
+      </div>
+      <div data-fade style={{ maxWidth: 1000, margin: '0 auto', padding: '1.5rem 2rem 3rem', textAlign: 'center' }}>
+        <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1.4rem,3vw,2.4rem)', color: '#1e1c19', lineHeight: 1.2, letterSpacing: '-0.02em', margin: '0 auto' }}>
+          When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.
+        </p>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.85rem', letterSpacing: '0.1em', color: '#888', margin: '2rem 0 0' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
+      </div>
+      <div style={{ ...WRAP, padding: '1rem 2rem 3rem' }}>
         <p data-fade style={P}>Over time, tools expanded the scope of opportunity. From telegraphs to telephones, command line interfaces (CLI) to graphic user interfaces (GUI), oh my! Now language could travel. But there was always a caveat:</p>
         <p data-fade style={P}>Computers did not operate on raw human intent, only its translation.</p>
         <p data-fade style={P}>In the command line era, this translation was explicit and exacting, forcing the user to clearly specify their intent in symbolic form. This is hard work that most of us don&apos;t have energy for.</p>
       </div>
 
 
-      <div style={{ ...WRAP }}>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
         <InterfaceEvolutionFig />
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 0' }}>
+      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
         <p data-fade style={P}>With the rise of GUI-based systems, this burden shifted to the operating system and its designers.</p>
       </div>
 
-      <div style={{ ...WRAP }}>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
         <GuiEraFig />
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 0' }}>
-        <p data-fade style={P}>This made computers easier to use, but it also increased the distance between intent and execution. Digital agents operate in environments with the richest bits of context pruned out. Say you&apos;re looking for that partner in crime who&apos;s a compatible type of internet nerd but more organized than me; search engines want keywords and give you filters.</p>
+      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
+        <p data-fade style={P}>This made computers easier to use, but it also increased the distance between intent and execution. Digital agents operate in environments with the richest bits of context pruned out. Say you&apos;re looking for <em>that partner in crime who&apos;s a compatible type of internet nerd but more organized than me</em>. You won&apos;t find them through filters and keywords.</p>
         <p data-fade style={P}>And so for most of computing history, tools have only been able to interact with the habitual layer of human intent. The part that captures what someone did, not necessarily what they meant.</p>
         <p data-fade style={P}>We might&apos;ve found our successes but translation at its best is still reductive. But what if... translation could carry the original intent?</p>
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 1.5rem' }}>
+      <div style={{ ...WRAP, padding: '3rem 2rem 1rem' }}>
         <h2 style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', margin: 0 }}>
-          Language is the new interface.
+          Language is the new interface
         </h2>
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem 2rem' }}>
-        <p data-fade style={P}>It&apos;s 2026 and instead of searching through platforms and engines, we&apos;re talking to LLMs. The translation tax that defined prior interfaces is slowly being absorbed by stronger infrastructure. We can feel it every time we send a stream of consciousness voice memo to Claude or Gemini or GPT, and make it interpret us instead of the other way around.</p>
+      <div style={{ ...WRAP, padding: '1rem 2rem 2rem' }}>
+        <p data-fade style={P}>Now instead of searching through platforms and engines, we&apos;re talking to LLMs. The translation tax that defined prior interfaces is slowly being absorbed by stronger infrastructure. We can feel it every time we send a stream of consciousness voice memo to Claude or Gemini or GPT, and make it interpret us instead of the other way around.</p>
       </div>
 
-      <div style={{ ...WRAP }}>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
         <BeforeAfterFig />
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 0' }}>
+      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
         <p data-fade style={P}>For the first time, systems can engage with the model-based, context-sensitive layer of human decision-making: the layer where intent actually lives. With language as computational substrate, digital agents can now hold context the way a trusted partner does, to the extent of what you share.</p>
         <p data-fade style={P}>This redistributes influence. While platforms once brokered most of our professional connections, their grip loosens when the work is distributed among individual agents, navigating the highways of the open internet.</p>
-        <p data-fade style={P}>But simply chatting to an agent still treats intent as an input to be immediately executed. Unlocking hidden opportunity requires a broader system of coordination, like a <strong>&ldquo;have your agent call my agent&rdquo;</strong> system.</p>
+        <p data-fade style={P}>But simply chatting to an agent still treats intent as an input to be immediately executed. Unlocking hidden opportunity requires a broader system of coordination, like a <em>&ldquo;have your agent call my agent&rdquo;</em> system.</p>
       </div>
 
-      <div style={{ ...WRAP }}>
-        <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
+      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
+        <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
           <img src="/found-in-translation/diagram3.png" alt="Agent coordination diagram" style={{ display: 'block', width: '100%' }} />
         </figure>
       </div>
 
-      <div style={{ ...WRAP, padding: '2rem 2rem 4rem' }}>
-        <p data-fade style={P}>It&apos;s not about a better matching algorithm, but reconsidering the way we think about finding our others. Imagine you&apos;re Zendaya on the lookout for your next Oscar-winning gig. You have a heart to heart with your agent, who then goes out to scope and gossip with the other agents on what&apos;s possible. So this system already exists; we just lack the manpower and infrastructure to apply it to anyone&apos;s profession.</p>
-        <p data-fade style={P}>Because sometimes new opportunities need privacy before visibility. They need space to take shape. A place to putter around before parading outside on external platforms. This is where agents can protect early privacy, or share interests selectively as appropriate.</p>
-        <p data-fade style={P}>With the agentic web growing, we&apos;re also seeing agents congregate in their own social networks and water coolers to trade gossip on behalf of their users. Built by humans, they mirror human dynamics—sharing some things with close peers and broadcasting others to the larger networks.</p>
+      <div style={{ ...WRAP, padding: '1.5rem 2rem 3rem' }}>
+        <p data-fade style={P}>It&apos;s not about a better matching algorithm, but reconsidering the way we think about finding our others. Say you&apos;re Zendaya on the lookout for your next Oscar-winning gig. You have a heart to heart with your agent, who then goes out to scope and gossip with the other agents on what&apos;s possible.</p>
+        <p data-fade style={P}>What that system correctly factors in is—sometimes opportunities need privacy before visibility. They need space to take shape, a place to putter around before parading outside on external platforms. This is where agents can protect early privacy, or share interests selectively as appropriate.</p>
+        <p data-fade style={P}>With the agentic web growing, we&apos;re also seeing agents congregate around their own water coolers to loiter and gossip on behalf of their users. Built by humans, they mirror human dynamics—sharing some things with close peers and broadcasting others to the larger networks.</p>
         <p data-fade style={P}>And that private sharing yields interesting, often unexpected results. Like when you mention a new idea over coffee to a new friend, and they have just the right person for you to talk to. A new opportunity unlocked. Imagine that interaction, that potential for serendipity—now between agents. Repeatable.</p>
         <p data-fade style={P}>So what might the mechanism for that look like? What if we could program intent into the opportunities we desired?</p>
       </div>
 
-      <div style={{ background: '#f5f5f5', padding: 'clamp(5rem,8vw,8rem) 2rem', borderBottom: '3px solid #000' }}>
-        <div style={{ ...WRAP }}>
-          <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', marginBottom: '3rem' }}>
-            The emerging model of social coordination.
+      <div>
+        <div style={{ ...WRAP, padding: '3rem 2rem 0' }}>
+          <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', marginBottom: '2rem' }}>
+            The emerging model of social coordination
           </h2>
 
-          <figure data-fade style={{ margin: '0 0 3rem', border: '3px solid #000', background: '#f0f0f0', overflow: 'hidden' }}>
+          <figure data-fade style={{ margin: '0 0 2rem', border: '3px solid #000', background: '#f0f0f0', overflow: 'hidden' }}>
             <svg viewBox="0 0 800 360" width="100%" style={{ display: 'block' }} aria-label="TODO diagram placeholder">
               <rect x="0" y="0" width="800" height="360" fill="#f0f0f0" />
               <line x1="0" y1="0" x2="800" y2="360" stroke="#ddd" strokeWidth="1.5" />
@@ -1009,34 +1011,37 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
           </div>
 
           <p data-fade style={P}>The human sets the initial judgment and gives the green light on any proposed connections. Agents are autonomous in facilitating, not deciding. They coordinate the magic you&apos;d orchestrate if you had infinite time and energy, or lived in a seaside country with a strong social safety net.</p>
-          <p data-fade style={P}>And they collaborate. They negotiate. They gossip. Not the drama queen type of gossip but the strategic-cooperation-as-end-goal type, always outcome oriented: Did the person show up? Did the conversation go anywhere? Did expectations match reality or was this a lurker in his mom&apos;s basement?</p>
+          <p data-fade style={P}>And they collaborate. They negotiate. They gossip. Not the drama queen type of gossip but the strategic-cooperation-as-end-goal type, always outcome oriented: <em>Did the person show up? Did the conversation go anywhere? Did expectations match reality or was this a lurker in his mom&apos;s basement?</em></p>
           <p data-fade style={P}>This flow takes more than training a better model. It needs an operating protocol for cooperation—standard procedures for agent-to-agent relationships that compound over time.</p>
-          <p data-fade style={P}>With relational infrastructure to support your growth, opportunities emerge that you&apos;d never have found on your own.</p>
+          <p data-fade style={P}>With that degree of relational infrastructure to support your growth, opportunities emerge that you&apos;d never have found on your own.</p>
         </div>
       </div>
 
-      <div style={{ ...WRAP, padding: '5rem 2rem 6rem' }}>
-        <h2 data-fade style={{ fontFamily: SANS, fontWeight: 900, fontSize: 'clamp(2.2rem,5vw,4rem)', lineHeight: 0.95, letterSpacing: '-0.03em', textTransform: 'uppercase', color: '#000', marginBottom: '2.5rem' }}>
-          Entering<br />Ambient<br />Optimism
+      <div style={{ ...WRAP, padding: '3rem 2rem 4rem' }}>
+        <h2 data-fade style={{ fontFamily: SANS, fontWeight: 300, fontSize: 'clamp(1.6rem,4.5vw,3.5rem)', lineHeight: 1.05, letterSpacing: '-0.03em', color: '#000', marginBottom: '1.5rem' }}>
+          Entering ambient optimism
         </h2>
-        <p data-fade style={P}>So that coffee shop moment—when you ask someone at the next table over for the wifi password—becomes repeatable online.</p>
+        <p data-fade style={P}>So that coffee shop moment—when you ask someone at the next table over for the wifi password, who then becomes your next idea partner—becomes possible online.</p>
         <p data-fade style={P}>We call this engineering serendipity. But the feeling it engenders is the powerful part: ambient optimism.</p>
-        <p data-fade style={P}>When was the last time you trusted that the right opportunities will find you? Not because you finally nailed your personal brand or figured out the black box algos, but because your signals are out there—negotiated on by agents with far more patience and reach to find the right match.</p>
+        <p data-fade style={P}>When was the last time you trusted that the right opportunities will find you? Not because you finally nailed your personal brand or cracked the black box algos, but because you simply shared thoughtful signals on what you&apos;re looking for. Then you get back to work—while agents with far more patience and reach go find your match.</p>
         <p data-fade style={P}>Your others are out there. Now they can find you too.</p>
       </div>
 
-      <footer style={{ borderTop: '3px solid #000', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-        <div style={{ padding: '1.5rem 2rem', borderRight: '1px solid #000', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', letterSpacing: '0.1em' }}>
-          <Link to="/" style={{ color: '#000', textDecoration: 'none' }}>Index Network</Link>
-          <span style={{ color: '#999', marginLeft: '0.75rem' }}>&copy; 2026</span>
-        </div>
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '1.5rem', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', letterSpacing: '0.1em' }}>
-          <a href="https://x.com/indexnetwork_" target="_blank" rel="noopener noreferrer" style={{ color: '#000', textDecoration: 'none' }}>X</a>
-          <a href="https://linkedin.com/company/indexnetwork" target="_blank" rel="noopener noreferrer" style={{ color: '#000', textDecoration: 'none' }}>LinkedIn</a>
-          <a href="https://github.com/indexnetwork/index" target="_blank" rel="noopener noreferrer" style={{ color: '#000', textDecoration: 'none' }}>GitHub</a>
-          <Link to="/" style={{ color: '#000', textDecoration: 'none' }}>← Back to Home</Link>
-        </div>
-      </footer>
+      <div style={{ position: 'relative' }}>
+        <img src="/found-in-translation/ambient.png" alt="Ambient" style={{ display: 'block', width: '100%', height: 'auto' }} />
+        <footer style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', borderTop: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.4)' }}>
+          <div style={{ padding: '1.5rem 2rem', borderRight: '1px solid rgba(255,255,255,0.15)', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', letterSpacing: '0.1em', color: '#fff' }}>
+            <Link to="/" style={{ color: '#fff', textDecoration: 'none' }}>Index Network</Link>
+            <span style={{ color: 'rgba(255,255,255,0.5)', marginLeft: '0.75rem' }}>&copy; 2026</span>
+          </div>
+          <div style={{ padding: '1.5rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '1.5rem', fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.65rem', letterSpacing: '0.1em' }}>
+            <a href="https://x.com/indexnetwork_" target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'none' }}>X</a>
+            <a href="https://linkedin.com/company/indexnetwork" target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'none' }}>LinkedIn</a>
+            <a href="https://github.com/indexnetwork/index" target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'none' }}>GitHub</a>
+            <Link to="/" style={{ color: '#fff', textDecoration: 'none' }}>← Back to Home</Link>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
