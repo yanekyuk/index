@@ -34,6 +34,9 @@ export class AuthDatabaseAdapter {
         account: schema.accounts,
         verification: schema.verifications,
         jwks: schema.jwks,
+        oauthApplication: schema.oauthApplications,
+        oauthAccessToken: schema.oauthAccessTokens,
+        oauthConsent: schema.oauthConsents,
       },
     });
 

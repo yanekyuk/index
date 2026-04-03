@@ -232,6 +232,13 @@
       "when": 1775090166955,
       "tag": "0032_add_key_columns_for_auth_plugins",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1775193984983,
+      "tag": "0033_add_mcp_oauth_tables",
+      "breakpoints": true
     }
   ]
 }
