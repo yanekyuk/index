@@ -127,7 +127,7 @@ function createMockDb(): ChatDatabaseAdapter {
     updateIntent: mock(() => Promise.resolve({ ...ownedIntent })),
     archiveIntent: mock(() => Promise.resolve({ success: true })),
     getIntentForIndexing: mock(() => Promise.resolve(null)),
-    assignIntentToIndex: mock(() => Promise.resolve()),
+    assignIntentToNetwork: mock(() => Promise.resolve()),
     unassignIntentFromIndex: mock(() => Promise.resolve()),
     getIndexIdsForIntent: mock(() => Promise.resolve([])),
     isIntentAssignedToIndex: mock(() => Promise.resolve(false)),
@@ -136,7 +136,7 @@ function createMockDb(): ChatDatabaseAdapter {
     getNetworkMemberships: mock(() => Promise.resolve([])),
     getUserIndexIds: mock(() => Promise.resolve([])),
     getOwnedIndexes: mock(() => Promise.resolve([])),
-    getIndexMembership: mock(() => Promise.resolve(null)),
+    getNetworkMembership: mock(() => Promise.resolve(null)),
     getIndexMemberContext: mock(() => Promise.resolve(null)),
 
     // Network CRUD
@@ -148,7 +148,7 @@ function createMockDb(): ChatDatabaseAdapter {
 
     // Public network discovery
     getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
-    joinPublicIndex: mock(() => Promise.resolve({ success: true })),
+    joinPublicNetwork: mock(() => Promise.resolve({ success: true })),
 
     // Opportunities
     getOpportunitiesForUser: mock(() => Promise.resolve([])),
@@ -272,9 +272,9 @@ describe('createUserDatabase', () => {
     it('associateIntentWithIndexes succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
       await userDb.associateIntentWithIndexes('intent-1', ['idx-a', 'idx-b']);
-      expect(mockDb.assignIntentToIndex).toHaveBeenCalledTimes(2);
-      expect(mockDb.assignIntentToIndex).toHaveBeenCalledWith('intent-1', 'idx-a');
-      expect(mockDb.assignIntentToIndex).toHaveBeenCalledWith('intent-1', 'idx-b');
+      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledTimes(2);
+      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-a');
+      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-b');
     });
 
     it('associateIntentWithIndexes throws for intent owned by another user', async () => {
@@ -282,15 +282,15 @@ describe('createUserDatabase', () => {
       await expect(userDb.associateIntentWithIndexes('intent-2', ['idx-a'])).rejects.toThrow('Access denied');
     });
 
-    it('assignIntentToIndex succeeds for owned intent', async () => {
+    it('assignIntentToNetwork succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
-      await userDb.assignIntentToIndex('intent-1', 'idx-a', 0.9);
-      expect(mockDb.assignIntentToIndex).toHaveBeenCalledWith('intent-1', 'idx-a', 0.9);
+      await userDb.assignIntentToNetwork('intent-1', 'idx-a', 0.9);
+      expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-a', 0.9);
     });
 
-    it('assignIntentToIndex throws for intent owned by another user', async () => {
+    it('assignIntentToNetwork throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
-      await expect(userDb.assignIntentToIndex('intent-2', 'idx-a')).rejects.toThrow('Access denied');
+      await expect(userDb.assignIntentToNetwork('intent-2', 'idx-a')).rejects.toThrow('Access denied');
     });
 
     it('unassignIntentFromIndex succeeds for owned intent', async () => {
@@ -384,10 +384,10 @@ describe('createUserDatabase', () => {
   // Index Membership Operations — authUserId binding
   // ─────────────────────────────────────────────────────────────────────────────
 
-  describe('index membership operations bind authUserId', () => {
-    it('getIndexMemberships delegates with authUserId', async () => {
-      await userDb.getIndexMemberships();
-      expect(mockDb.getIndexMemberships).toHaveBeenCalledWith(AUTH_USER);
+  describe('network membership operations bind authUserId', () => {
+    it('getNetworkMemberships delegates with authUserId', async () => {
+      await userDb.getNetworkMemberships();
+      expect(mockDb.getNetworkMemberships).toHaveBeenCalledWith(AUTH_USER);
     });
 
     it('getUserIndexIds delegates with authUserId', async () => {
@@ -400,9 +400,9 @@ describe('createUserDatabase', () => {
       expect(mockDb.getOwnedIndexes).toHaveBeenCalledWith(AUTH_USER);
     });
 
-    it('getIndexMembership delegates with indexId and authUserId', async () => {
-      await userDb.getIndexMembership('idx-a');
-      expect(mockDb.getIndexMembership).toHaveBeenCalledWith('idx-a', AUTH_USER);
+    it('getNetworkMembership delegates with networkId and authUserId', async () => {
+      await userDb.getNetworkMembership('idx-a');
+      expect(mockDb.getNetworkMembership).toHaveBeenCalledWith('idx-a', AUTH_USER);
     });
 
     it('getIndexMemberContext delegates with indexId and authUserId', async () => {
@@ -415,11 +415,11 @@ describe('createUserDatabase', () => {
   // Index CRUD Operations
   // ─────────────────────────────────────────────────────────────────────────────
 
-  describe('index CRUD operations', () => {
-    it('createIndex delegates directly', async () => {
-      const data = { title: 'Test Index' };
-      await userDb.createIndex(data);
-      expect(mockDb.createIndex).toHaveBeenCalledWith(data);
+  describe('network CRUD operations', () => {
+    it('createNetwork delegates directly', async () => {
+      const data = { title: 'Test Network' };
+      await userDb.createNetwork(data);
+      expect(mockDb.createNetwork).toHaveBeenCalledWith(data);
     });
 
     it('updateIndexSettings delegates with authUserId', async () => {
@@ -452,16 +452,16 @@ describe('createUserDatabase', () => {
   // Public Index Discovery
   // ─────────────────────────────────────────────────────────────────────────────
 
-  describe('public index discovery binds authUserId', () => {
+  describe('public network discovery binds authUserId', () => {
     it('getPublicIndexesNotJoined delegates with authUserId', async () => {
       const result = await userDb.getPublicIndexesNotJoined();
       expect(mockDb.getPublicIndexesNotJoined).toHaveBeenCalledWith(AUTH_USER);
       expect(result).toEqual({ networks: [] });
     });
 
-    it('joinPublicIndex delegates with indexId and authUserId', async () => {
-      await userDb.joinPublicIndex('idx-public');
-      expect(mockDb.joinPublicIndex).toHaveBeenCalledWith('idx-public', AUTH_USER);
+    it('joinPublicNetwork delegates with networkId and authUserId', async () => {
+      await userDb.joinPublicNetwork('idx-public');
+      expect(mockDb.joinPublicNetwork).toHaveBeenCalledWith('idx-public', AUTH_USER);
     });
   });
 

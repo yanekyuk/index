@@ -46,10 +46,10 @@ function createMockDb(): ChatDatabaseAdapter {
     getIndexIntentsForMember: mock(() => Promise.resolve([])),
     getIntentsInIndexForMember: mock(() => Promise.resolve([])),
 
-    // Index membership
-    getIndexMemberships: mock(() => Promise.resolve([])),
-    getIndexMembership: mock(() => Promise.resolve(null)),
-    isIndexMember: mock(() => Promise.resolve(false)),
+    // Network membership
+    getNetworkMemberships: mock(() => Promise.resolve([])),
+    getNetworkMembership: mock(() => Promise.resolve(null)),
+    isNetworkMember: mock(() => Promise.resolve(false)),
     isIndexOwner: mock(() => Promise.resolve(false)),
     getIndexMembersForMember: mock(() => Promise.resolve([])),
     getMembersFromUserIndexes: mock(() => Promise.resolve([])),
@@ -65,7 +65,7 @@ function createMockDb(): ChatDatabaseAdapter {
     createOpportunity: mock(() => Promise.resolve({})),
     createOpportunityAndExpireIds: mock(() => Promise.resolve({ created: {}, expired: [] })),
     getOpportunity: mock(() => Promise.resolve(null)),
-    getOpportunitiesForIndex: mock(() => Promise.resolve([])),
+    getOpportunitiesForNetwork: mock(() => Promise.resolve([])),
     updateOpportunityStatus: mock(() => Promise.resolve(null)),
     opportunityExistsBetweenActors: mock(() => Promise.resolve(false)),
     getOpportunityBetweenActors: mock(() => Promise.resolve(null)),
@@ -172,14 +172,14 @@ describe('createSystemDatabase', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('verifyScope — opportunity operations', () => {
-    it('createOpportunity allows scoped indexId in context', async () => {
-      const data = { context: { indexId: SCOPED_INDEX } } as never;
+    it('createOpportunity allows scoped networkId in context', async () => {
+      const data = { context: { networkId: SCOPED_INDEX } } as never;
       await sysDb.createOpportunity(data);
       expect(mockDb.createOpportunity).toHaveBeenCalledWith(data);
     });
 
-    it('createOpportunity throws for out-of-scope indexId in context', () => {
-      const data = { context: { indexId: OUT_OF_SCOPE_INDEX } } as never;
+    it('createOpportunity throws for out-of-scope networkId in context', () => {
+      const data = { context: { networkId: OUT_OF_SCOPE_INDEX } } as never;
       expect(() => sysDb.createOpportunity(data)).toThrow('not in scope');
     });
 
@@ -189,19 +189,19 @@ describe('createSystemDatabase', () => {
       expect(mockDb.createOpportunity).toHaveBeenCalled();
     });
 
-    it('getOpportunitiesForIndex allows scoped index', async () => {
-      await sysDb.getOpportunitiesForIndex(SCOPED_INDEX);
-      expect(mockDb.getOpportunitiesForIndex).toHaveBeenCalledWith(SCOPED_INDEX, undefined);
+    it('getOpportunitiesForNetwork allows scoped index', async () => {
+      await sysDb.getOpportunitiesForNetwork(SCOPED_INDEX);
+      expect(mockDb.getOpportunitiesForNetwork).toHaveBeenCalledWith(SCOPED_INDEX, undefined);
     });
 
-    it('getOpportunitiesForIndex throws for out-of-scope index', async () => {
-      await expect(sysDb.getOpportunitiesForIndex(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getOpportunitiesForNetwork throws for out-of-scope index', async () => {
+      await expect(sysDb.getOpportunitiesForNetwork(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
     it('updateOpportunityStatus validates scope via opportunity lookup', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce({
         id: 'opp-1',
-        context: { indexId: SCOPED_INDEX },
+        context: { networkId: SCOPED_INDEX },
       });
       await sysDb.updateOpportunityStatus('opp-1', 'accepted' as never);
       expect(mockDb.updateOpportunityStatus).toHaveBeenCalledWith('opp-1', 'accepted');
@@ -215,12 +215,12 @@ describe('createSystemDatabase', () => {
     it('updateOpportunityStatus throws for out-of-scope opportunity', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce({
         id: 'opp-1',
-        context: { indexId: OUT_OF_SCOPE_INDEX },
+        context: { networkId: OUT_OF_SCOPE_INDEX },
       });
       await expect(sysDb.updateOpportunityStatus('opp-1', 'accepted' as never)).rejects.toThrow('not in scope');
     });
 
-    it('updateOpportunityStatus throws for opportunity without indexId', async () => {
+    it('updateOpportunityStatus throws for opportunity without networkId', async () => {
       (mockDb.getOpportunity as ReturnType<typeof mock>).mockResolvedValueOnce({
         id: 'opp-1',
         context: {},
@@ -269,9 +269,9 @@ describe('createSystemDatabase', () => {
       expect(mockDb.getIntent).toHaveBeenCalledWith('intent-1');
     });
 
-    it('isIndexMember delegates directly (used by graphs for membership checks)', async () => {
-      await sysDb.isIndexMember(SCOPED_INDEX, OTHER_USER);
-      expect(mockDb.isIndexMember).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
+    it('isNetworkMember delegates directly (used by graphs for membership checks)', async () => {
+      await sysDb.isNetworkMember(SCOPED_INDEX, OTHER_USER);
+      expect(mockDb.isNetworkMember).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER);
     });
 
     it('isIndexOwner delegates directly (used by graphs for ownership checks)', async () => {
@@ -461,24 +461,24 @@ describe('createSystemDatabase', () => {
       expect(mockDb.getUser).toHaveBeenCalledWith(AUTH_USER);
     });
 
-    it('getProfile allows access when other user shares a scoped index', async () => {
-      (mockDb.getIndexMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
-        { indexId: SCOPED_INDEX },
+    it('getProfile allows access when other user shares a scoped network', async () => {
+      (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
+        { networkId: SCOPED_INDEX },
       ]);
       await sysDb.getProfile(OTHER_USER);
       expect(mockDb.getProfile).toHaveBeenCalledWith(OTHER_USER);
     });
 
-    it('getProfile throws when other user shares no scoped index and no personal index contact', async () => {
+    it('getProfile throws when other user shares no scoped network and no personal network contact', async () => {
       // No shared memberships, getPersonalIndexId returns null (mocked)
-      (mockDb.getIndexMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
-        { indexId: 'some-unrelated-index' },
+      (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([
+        { networkId: 'some-unrelated-network' },
       ]);
       await expect(sysDb.getProfile(OTHER_USER)).rejects.toThrow('no shared index');
     });
 
-    it('getUser throws when other user shares no scoped index and no personal index contact', async () => {
-      (mockDb.getIndexMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([]);
+    it('getUser throws when other user shares no scoped network and no personal network contact', async () => {
+      (mockDb.getNetworkMemberships as ReturnType<typeof mock>).mockResolvedValueOnce([]);
       await expect(sysDb.getUser(OTHER_USER)).rejects.toThrow('no shared index');
     });
   });

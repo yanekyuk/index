@@ -23,7 +23,7 @@ const mockDeps: ToolDeps = {
     profile: { invoke: async () => ({}) },
     intent: { invoke: async () => ({}) },
     index: { invoke: async () => ({}) },
-    indexMembership: { invoke: async () => ({}) },
+    networkMembership: { invoke: async () => ({}) },
     intentIndex: { invoke: async () => ({}) },
     opportunity: { invoke: async () => ({}) } as ToolDeps['graphs']['opportunity'],
   },

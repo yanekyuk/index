@@ -137,11 +137,11 @@ describe("ToolController Integration", () => {
     console.log("list_contacts result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
-  test("POST /tools/read_indexes should return indexes for user", async () => {
-    const { status, data } = await invokeTool("read_indexes", {});
+  test("POST /tools/read_networks should return indexes for user", async () => {
+    const { status, data } = await invokeTool("read_networks", {});
     expect(status).toBe(200);
     expect(data).toBeDefined();
-    console.log("read_indexes result:", JSON.stringify(data).slice(0, 200));
+    console.log("read_networks result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
   test("POST /tools/read_user_profiles should return profile data", async () => {
@@ -296,18 +296,18 @@ describe("ToolController Integration", () => {
 
     // ── Network (CLI: network update, delete) ────────────────────
 
-    test("update_index with indexId + settings (CLI: network update)", async () => {
-      const { status, data } = await invokeTool("update_index", {
-        indexId: "00000000-0000-0000-0000-000000000000",
+    test("update_network with networkId + settings (CLI: network update)", async () => {
+      const { status, data } = await invokeTool("update_network", {
+        networkId: "00000000-0000-0000-0000-000000000000",
         settings: { title: "New Name", prompt: "Updated description" },
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 60_000);
 
-    test("delete_index with indexId (CLI: network delete)", async () => {
-      const { status, data } = await invokeTool("delete_index", {
-        indexId: "00000000-0000-0000-0000-000000000000",
+    test("delete_network with networkId (CLI: network delete)", async () => {
+      const { status, data } = await invokeTool("delete_network", {
+        networkId: "00000000-0000-0000-0000-000000000000",
       });
       expect(status).toBe(200);
       expect(String(data.error ?? "")).not.toContain("Invalid query");
@@ -340,8 +340,8 @@ describe("ToolController Integration", () => {
 
     // ── Membership (CLI: introduce prerequisite calls) ───────────
 
-    test("read_index_memberships with userId (CLI: introduce step 1)", async () => {
-      const { status, data } = await invokeTool("read_index_memberships", {
+    test("read_network_memberships with userId (CLI: introduce step 1)", async () => {
+      const { status, data } = await invokeTool("read_network_memberships", {
         userId: testUserId,
       });
       expect(status).toBe(200);
@@ -372,7 +372,7 @@ describe("ToolController Integration", () => {
     // ── Sync (CLI: sync) ─────────────────────────────────────────
 
     test("all sync tools accept empty query (CLI: sync)", async () => {
-      const syncTools = ["read_user_profiles", "read_indexes", "read_intents", "list_contacts"];
+      const syncTools = ["read_user_profiles", "read_networks", "read_intents", "list_contacts"];
       for (const toolName of syncTools) {
         const { status, data } = await invokeTool(toolName, {});
         expect(status).toBe(200);
