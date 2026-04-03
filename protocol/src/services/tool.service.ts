@@ -20,9 +20,9 @@ import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
-import { IndexGraphFactory } from '../lib/protocol/graphs/index.graph';
-import { IndexMembershipGraphFactory } from '../lib/protocol/graphs/index_membership.graph';
-import { IntentIndexGraphFactory } from '../lib/protocol/graphs/intent_index.graph';
+import { NetworkGraphFactory } from '../lib/protocol/graphs/network.graph';
+import { NetworkMembershipGraphFactory } from '../lib/protocol/graphs/network_membership.graph';
+import { IntentNetworkGraphFactory } from '../lib/protocol/graphs/intent_network.graph';
 import { NegotiationGraphFactory } from '../lib/protocol/graphs/negotiation.graph';
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
@@ -200,9 +200,9 @@ class ToolService {
       undefined,
       negotiationGraph,
     ).createGraph();
-    const indexGraph = new IndexGraphFactory(database).createGraph();
-    const indexMembershipGraph = new IndexMembershipGraphFactory(database).createGraph();
-    const intentIndexGraph = new IntentIndexGraphFactory(database).createGraph();
+    const indexGraph = new NetworkGraphFactory(database).createGraph();
+    const indexMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
+    const intentIndexGraph = new IntentNetworkGraphFactory(database).createGraph();
 
     this.compiledGraphs = {
       profile: profileGraph,

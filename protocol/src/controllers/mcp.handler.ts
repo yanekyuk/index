@@ -23,11 +23,11 @@ import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.grap
 // eslint-disable-next-line boundaries/dependencies
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
 // eslint-disable-next-line boundaries/dependencies
-import { IndexGraphFactory } from '../lib/protocol/graphs/index.graph';
+import { NetworkGraphFactory } from '../lib/protocol/graphs/network.graph';
 // eslint-disable-next-line boundaries/dependencies
-import { IndexMembershipGraphFactory } from '../lib/protocol/graphs/index_membership.graph';
+import { NetworkMembershipGraphFactory } from '../lib/protocol/graphs/network_membership.graph';
 // eslint-disable-next-line boundaries/dependencies
-import { IntentIndexGraphFactory } from '../lib/protocol/graphs/intent_index.graph';
+import { IntentNetworkGraphFactory } from '../lib/protocol/graphs/intent_network.graph';
 // eslint-disable-next-line boundaries/dependencies
 import { NegotiationGraphFactory } from '../lib/protocol/graphs/negotiation.graph';
 // eslint-disable-next-line boundaries/dependencies
@@ -85,9 +85,9 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
   ).createGraph();
-  const indexGraph = new IndexGraphFactory(database).createGraph();
-  const indexMembershipGraph = new IndexMembershipGraphFactory(database).createGraph();
-  const intentIndexGraph = new IntentIndexGraphFactory(database).createGraph();
+  const indexGraph = new NetworkGraphFactory(database).createGraph();
+  const indexMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
+  const intentIndexGraph = new IntentNetworkGraphFactory(database).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,
