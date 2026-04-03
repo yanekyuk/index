@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
       "Read",
       "Bash(git check-ignore:*)",
@@ -32,6 +33,7 @@
     "typescript-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": false,
-    "swe@arcana": false
+    "swe@arcana": false,
+    "claude-code-setup@claude-plugins-official": true
   }
 }

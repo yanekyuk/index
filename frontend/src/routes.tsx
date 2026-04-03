@@ -126,6 +126,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/cli-auth/page"),
       },
       {
+        path: "/login",
+        lazy: () => import("@/app/login/page"),
+      },
+      {
         path: "/dev/intent-proposal",
         lazy: () => import("@/app/dev/intent-proposal/page"),
       },

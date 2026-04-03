@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Syncs plugin/ subtree to indexnetwork/claude-plugin when pushing dev to upstream.
+# Runs automatically — no manual subtree push needed.
+
+PLUGIN_REMOTE="https://github.com/indexnetwork/claude-plugin.git"
+
+while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+  # Only sync on upstream pushes to dev
+  [[ "$1" != "upstream" ]] && continue
+  [[ "$remote_ref" != "refs/heads/dev" ]] && continue
+
+  # Determine commit range
+  if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
+    range="$local_sha"
+  else
+    range="${remote_sha}..${local_sha}"
+  fi
+
+  # Skip if no commits in range touch plugin/
+  if ! git log --oneline "$range" -- plugin/ 2>/dev/null | grep -q .; then
+    continue
+  fi
+
+  echo "[pre-push] plugin/ changed — syncing to indexnetwork/claude-plugin..."
+  if git subtree push --prefix=plugin "$PLUGIN_REMOTE" main 2>&1; then
+    echo "[pre-push] ✓ synced to indexnetwork/claude-plugin"
+  else
+    echo "[pre-push] ✗ plugin sync failed — run manually: git subtree push --prefix=plugin $PLUGIN_REMOTE main" >&2
+    # Warn but don't block the main push
+  fi
+done
+
+exit 0

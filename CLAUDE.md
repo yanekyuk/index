@@ -70,12 +70,18 @@ bun run build                               # Build native binaries for all plat
 bun test                                    # Run CLI tests
 ```
 
-### Plugin (submodule)
+### Plugin (subtree)
 
-The `plugin/` directory is a git submodule pointing to `indexnetwork/claude-plugin`. It contains **skills only** (markdown files) — no code, no build step. After cloning, initialize it:
+The `plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
+
+**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `plugin/` in this repo and push normally.
 
 ```bash
-git submodule update --init                 # Fetch plugin source
+# Manual push if the hook failed
+git subtree push --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+
+# Pull if claude-plugin was edited directly (avoid this — always edit via this repo)
+git subtree pull --squash --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
 ```
 
 ### Root
@@ -100,10 +106,17 @@ index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── cli/               # CLI client (@indexnetwork/cli) — Bun, TypeScript
-├── plugin/            # Claude plugin (skills-only, submodule → indexnetwork/claude-plugin)
+├── plugin/            # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
+
+### Documentation Directories
+
+- `docs/design/` — Architecture and deep-dive docs. Describes how the system is built: layering, data flow, agent graphs, key subsystems. Update when architecture changes.
+- `docs/domain/` — Domain concept docs. Explains the business model: what intents, indexes, opportunities, profiles, contacts are and how they relate. Update when domain model changes.
+- `docs/specs/` — API and CLI specs. Describes external interfaces: endpoints, CLI commands, input/output contracts. Update when public interfaces change.
+- `docs/guides/` — Setup and usage guides for developers. Update when dev workflow or environment setup changes.
 
 ### Protocol Key Directories
 
@@ -310,18 +323,19 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 
 ### Finishing a Branch
 
-1. Update all relevant documentation:
+1. Update all relevant documentation (see **Documentation Directories** above for what belongs where):
    - `CLAUDE.md` — if structural or architectural changes were introduced
    - `README.md` files — any affected package READMEs
-   - `docs/specs/` — API and CLI specs
-   - `docs/guides/` — setup and usage guides
-   - `docs/domain/` — domain concept docs
-   - `docs/design/` — architecture and deep-dive docs
-2. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
-3. Merge into dev: `git checkout dev && git merge <branch-name>`
-4. Push both remotes: `git push upstream dev && git push origin dev`
-5. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
-6. Clean up: delete branch and remove worktree
+   - `docs/design/` — if architecture or data flow changed
+   - `docs/domain/` — if the domain model changed (entities, relationships, concepts)
+   - `docs/specs/` — if public interfaces changed (API endpoints, CLI commands)
+   - `docs/guides/` — if dev workflow or environment setup changed
+2. Delete any related superpowers plans/specs from `docs/superpowers/plans/` and `docs/superpowers/specs/`
+3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
+4. Merge into dev: `git checkout dev && git merge <branch-name>`
+5. Push both remotes: `git push upstream dev && git push origin dev`
+6. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
+7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow
 
@@ -339,11 +353,13 @@ When handling CodeRabbitAI reviews on PRs, follow this workflow:
    - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns). Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
 3. **Resolve all conversations**: Every conversation must be resolved (either by fixing or by responding with reasoning) before the PR can merge. Zero unresolved conversations is the merge gate.
 
+> **IMPORTANT:** Always reply directly in each conversation thread using the replies endpoint. Never post a top-level PR comment to address review feedback — CodeRabbitAI tracks resolution per conversation thread, and a top-level comment does not mark threads as resolved or create memory for the bot.
+
 **Key commands:**
 ```bash
 # List PR review comments (filter for unresolved)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments
 
-# Reply to a specific review comment thread
+# Reply to a specific review comment thread (USE THIS — not gh pr comment)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..."
 ```

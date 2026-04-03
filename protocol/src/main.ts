@@ -204,9 +204,10 @@ Bun.serve({
       '/api/auth/token', '/api/auth/jwks',
       // API key management
       '/api/auth/api-key',
-      // OAuth 2.1 provider
-      '/oauth2/',
+      // MCP OAuth endpoints
+      '/api/auth/mcp/',
       '/.well-known/oauth-authorization-server',
+      '/.well-known/oauth-protected-resource',
     ];
     const isBetterAuthRoute = betterAuthPaths.some(p => url.pathname.startsWith(p));
     if (isBetterAuthRoute) {

@@ -9,25 +9,45 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/server';
 
+// TODO: fix layering violation — controller should not import from init layer
+// eslint-disable-next-line boundaries/dependencies
 import { createDefaultProtocolDeps } from '../protocol-init';
 
+// TODO: fix layering violation — controller should not import protocol directly
+// eslint-disable-next-line boundaries/dependencies
 import { IntentGraphFactory } from '../lib/protocol/graphs/intent.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { ProfileGraphFactory } from '../lib/protocol/graphs/profile.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { OpportunityGraphFactory } from '../lib/protocol/graphs/opportunity.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { HydeGraphFactory } from '../lib/protocol/graphs/hyde.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IndexGraphFactory } from '../lib/protocol/graphs/index.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IndexMembershipGraphFactory } from '../lib/protocol/graphs/index_membership.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { IntentIndexGraphFactory } from '../lib/protocol/graphs/intent_index.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationGraphFactory } from '../lib/protocol/graphs/negotiation.graph';
+// eslint-disable-next-line boundaries/dependencies
 import { HydeGenerator } from '../lib/protocol/agents/hyde.generator';
+// eslint-disable-next-line boundaries/dependencies
 import { LensInferrer } from '../lib/protocol/agents/lens.inferrer';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationProposer } from '../lib/protocol/agents/negotiation.proposer';
+// eslint-disable-next-line boundaries/dependencies
 import { NegotiationResponder } from '../lib/protocol/agents/negotiation.responder';
+// eslint-disable-next-line boundaries/dependencies
 import type { HydeGraphDatabase } from '../lib/protocol/interfaces/database.interface';
 
+// eslint-disable-next-line boundaries/dependencies
 import type { ToolDeps } from '../lib/protocol/tools/tool.helpers';
+// eslint-disable-next-line boundaries/dependencies
 import type { McpAuthResolver } from '../lib/protocol/interfaces/auth.interface';
+// eslint-disable-next-line boundaries/dependencies
 import { createMcpServer } from '../lib/protocol/mcp/mcp.server';
+// eslint-disable-next-line boundaries/dependencies
 import type { ScopedDepsFactory } from '../lib/protocol/mcp/mcp.server';
 import { BASE_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
@@ -93,19 +113,40 @@ const authResolver: McpAuthResolver = {
   async resolveUserId(request: Request): Promise<string> {
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
+
     if (scheme?.toLowerCase() === 'bearer' && token) {
-      try {
-        const { payload } = await jwtVerify(token, JWKS);
-        if (typeof payload.id === 'string') return payload.id;
-        if (typeof payload.sub === 'string') return payload.sub;
-        throw new Error('JWT payload missing user ID');
-      } catch (err) {
-        // Distinguish JWKS transport errors (network/fetch) from credential errors
-        const msg = err instanceof Error ? err.message : String(err);
-        const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
-          msg.includes('timeout') || msg.includes('NetworkError');
-        if (isTransport) throw new Error(`JWKS transport error: ${msg}`);
-        throw new Error(`Invalid or expired access token: ${msg}`);
+      const isJwt = token.split('.').length === 3;
+
+      if (isJwt) {
+        // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use)
+        try {
+          const { payload } = await jwtVerify(token, JWKS);
+          if (typeof payload.id === 'string') return payload.id;
+          if (typeof payload.sub === 'string') return payload.sub;
+          throw new Error('JWT payload missing user ID');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isTransport = msg.includes('fetch') || msg.includes('ECONNREFUSED') ||
+            msg.includes('timeout') || msg.includes('NetworkError');
+          if (isTransport) throw new Error(`JWKS transport error: ${msg}`);
+          throw new Error(`Invalid or expired access token: ${msg}`);
+        }
+      } else {
+        // Opaque token path: issued by the mcp() plugin via OAuth flow
+        try {
+          const res = await fetch(`${BASE_URL}/api/auth/mcp/get-session`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const data = await res.json() as { userId?: string } | null;
+            if (data?.userId) return data.userId;
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`MCP token lookup failed: ${msg}`);
+        }
+        throw new Error('Invalid or expired access token');
       }
     }
 
@@ -247,6 +288,20 @@ export async function mcpHandler(
       message.includes('fetch failed');
 
     const status = isAuthError ? 401 : isVerifierError ? 503 : 500;
+
+    if (isAuthError) {
+      return new Response(
+        JSON.stringify({ error: message }),
+        {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'WWW-Authenticate': `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+            ...corsHeaders,
+          },
+        },
+      );
+    }
 
     return new Response(
       JSON.stringify({ error: message }),

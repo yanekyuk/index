@@ -1,7 +1,6 @@
 import { betterAuth } from "better-auth";
-import { magicLink, bearer, jwt } from "better-auth/plugins";
+import { magicLink, bearer, jwt, mcp } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
-import { oauthProvider } from "@better-auth/oauth-provider";
 
 import { log } from "../log";
 
@@ -9,6 +8,9 @@ const logger = log.server.from("betterauth");
 
 export const BASE_URL =
   process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+export const APP_URL =
+  process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
 
 /** Contract for the auth database adapter injected into createAuth. */
 export interface AuthDbContract {
@@ -119,11 +121,11 @@ export function createAuth(deps: AuthDeps) {
         enableSessionForAPIKeys: true,
       }) as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      oauthProvider({
-        loginPage: "/login",
-        consentPage: "/oauth/consent",
-        allowDynamicClientRegistration: true,
-        allowUnauthenticatedClientRegistration: false,
+      mcp({
+        loginPage: `${APP_URL}/login`,
+        // No consentPage needed: the mcp() plugin skips consent automatically when the
+        // authorization request does not include prompt=consent, which Claude Code never
+        // sends. The flow goes: /mcp/authorize → session check → code → callback.
       }) as any,
     ],
     advanced: {

@@ -7,11 +7,13 @@ const API_BASE = '/api';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Override the post-login redirect URL. Defaults to window.location.origin. */
+  callbackURL?: string;
 }
 
 type AuthView = 'main' | 'magic-link-sent' | 'email-password';
 
-export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, callbackURL }: AuthModalProps) {
   const [view, setView] = useState<AuthView>('main');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,7 +59,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       const { error: magicLinkError } = await authClient.signIn.magicLink({
         email,
-        callbackURL: typeof window !== 'undefined' ? window.location.origin : '/',
+        callbackURL: callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/'),
       });
       if (magicLinkError) {
         setError(magicLinkError.message || 'Failed to send sign-in link');
@@ -112,7 +114,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     try {
       await authClient.signIn.social({
         provider: 'google',
-        callbackURL: typeof window !== 'undefined' ? window.location.origin : '/',
+        callbackURL: callbackURL ?? (typeof window !== 'undefined' ? window.location.origin : '/'),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google sign in failed');
