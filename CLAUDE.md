@@ -351,11 +351,13 @@ When handling CodeRabbitAI reviews on PRs, follow this workflow:
    - **No fix needed**: Reply in the comment thread with technical reasoning for why the current code is correct (e.g., YAGNI, reviewer lacks context, breaks existing patterns). Use `gh api repos/{owner}/{repo}/pulls/{pr}/comments/{id}/replies` to reply inline.
 3. **Resolve all conversations**: Every conversation must be resolved (either by fixing or by responding with reasoning) before the PR can merge. Zero unresolved conversations is the merge gate.
 
+> **IMPORTANT:** Always reply directly in each conversation thread using the replies endpoint. Never post a top-level PR comment to address review feedback — CodeRabbitAI tracks resolution per conversation thread, and a top-level comment does not mark threads as resolved or create memory for the bot.
+
 **Key commands:**
 ```bash
 # List PR review comments (filter for unresolved)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments
 
-# Reply to a specific review comment thread
+# Reply to a specific review comment thread (USE THIS — not gh pr comment)
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -f body="..."
 ```
