@@ -47,7 +47,7 @@ describe("Invitation Endpoints Integration", () => {
     joinerUserId = joiner.id;
 
     // Create an invite_only index as owner
-    const createReq = new Request("http://localhost/indexes", {
+    const createReq = new Request("http://localhost/networks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Invite Test Index", prompt: "Testing invitations", joinPolicy: "invite_only" }),
@@ -60,7 +60,7 @@ describe("Invitation Endpoints Integration", () => {
     createdIndexId = createData.index!.id;
 
     // Update permissions to generate invitation link code
-    const updateReq = new Request("http://localhost/indexes/" + createdIndexId + "/permissions", {
+    const updateReq = new Request("http://localhost/networks/" + createdIndexId + "/permissions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ joinPolicy: "invite_only" }),
@@ -92,7 +92,7 @@ describe("Invitation Endpoints Integration", () => {
 
   describe("GET /share/:code", () => {
     test("should return 200 with index data for valid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: { id: string; title: string } };
 
@@ -103,7 +103,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should return 404 for invalid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/share/nonexistent-code");
+      const req = new Request("http://localhost/networks/share/nonexistent-code");
       const res = await controller.getNetworkByShareCode(req, null, { code: "nonexistent-code" });
       const data = (await res.json()) as { error?: string };
 
@@ -112,7 +112,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should not expose internal permissions in public response", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: Record<string, unknown> };
 
@@ -121,7 +121,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should include member count and owner info", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
       const data = (await res.json()) as { index?: { user?: { id: string; name: string }; _count?: { members: number } } };
 
@@ -134,7 +134,7 @@ describe("Invitation Endpoints Integration", () => {
 
   describe("POST /invitation/:code/accept", () => {
     test("should return 200 and add user as member for valid code", async () => {
-      const req = new Request("http://localhost/indexes/invitation/" + invitationCode + "/accept", {
+      const req = new Request("http://localhost/networks/invitation/" + invitationCode + "/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: invitationCode });
@@ -147,7 +147,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should return alreadyMember=true when user accepts again", async () => {
-      const req = new Request("http://localhost/indexes/invitation/" + invitationCode + "/accept", {
+      const req = new Request("http://localhost/networks/invitation/" + invitationCode + "/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: invitationCode });
@@ -158,7 +158,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should return 400 for invalid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/invitation/bad-code/accept", {
+      const req = new Request("http://localhost/networks/invitation/bad-code/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: "bad-code" });

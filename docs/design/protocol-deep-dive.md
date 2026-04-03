@@ -195,7 +195,7 @@ All operations are database-only -- no LLM calls. Create sets the caller as owne
 
 ### 3.7 Index Membership Graph
 
-**File:** `index_membership.graph.ts`
+**File:** `network_membership.graph.ts`
 **Purpose:** Manage member join/leave/invite for indexes.
 **Nodes:** `add_member`, `list_members`, `remove_member`
 **State:** `IndexMembershipGraphState` (userId, operationMode, indexId, targetUserId, readResult, mutationResult)
@@ -211,7 +211,7 @@ Self-join is only allowed for public indexes (`joinPolicy: 'anyone'`). Inviting 
 ### 3.8 Intent Index Graph
 
 **File:** `intent_index.graph.ts`
-**Purpose:** Manage the many-to-many relationship between intents and indexes (the `intent_indexes` junction table).
+**Purpose:** Manage the many-to-many relationship between intents and indexes (the `intent_networks` junction table).
 **Nodes:** `assign`, `read`, `unassign`
 **State:** `IntentIndexGraphState` (userId, operationMode, intentId, indexId, skipEvaluation, evaluation, assignmentResult, etc.)
 **Conditional edges:**
@@ -427,7 +427,7 @@ Tools bridge the ChatAgent to subgraphs. Each tool file defines LangChain tool f
 |-----------|-------|---------------------|
 | `profile.tools.ts` | read_user_profiles, create_user_profile, update_user_profile | Profile Graph |
 | `intent.tools.ts` | read_intents, create_intent, update_intent, delete_intent, create_intent_index, read_intent_indexes, delete_intent_index | Intent Graph, Intent Index Graph, Opportunity Graph (auto-discovery on create) |
-| `index.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
+| `network.tools.ts` | read_indexes, read_users, create_index, update_index, delete_index, create_index_membership | Index Graph, Index Membership Graph |
 | `opportunity.tools.ts` | create_opportunities, list_my_opportunities, send_opportunity | Opportunity Graph |
 | `contact.tools.ts` | add_contact, list_contacts | (direct service calls) |
 | `utility.tools.ts` | scrape_url, confirm_action, cancel_action | (direct scraper call, pending action state) |
@@ -539,7 +539,7 @@ Each match gets a score (0-100), reasoning (written from a third-party analytica
 
 ### Deduplication and ranking
 
-Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with the highest-scoring entry winning. When a candidate appears across multiple shared indexes, the index with the highest relevancy score (from `intent_indexes.relevancyScore`) is preferred as the tiebreaker.
+Candidates are deduplicated by `(sourceUserId, candidateUserId, indexId)` with the highest-scoring entry winning. When a candidate appears across multiple shared indexes, the index with the highest relevancy score (from `intent_networks.relevancyScore`) is preferred as the tiebreaker.
 
 ### Negotiation (optional)
 
