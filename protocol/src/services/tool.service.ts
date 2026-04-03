@@ -208,7 +208,7 @@ class ToolService {
       profile: profileGraph,
       intent: intentGraph,
       index: indexGraph,
-      indexMembership: indexMembershipGraph,
+      networkMembership: indexMembershipGraph,
       intentIndex: intentIndexGraph,
       opportunity: opportunityGraph,
     };

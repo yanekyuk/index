@@ -93,7 +93,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     profile: profileGraph,
     intent: intentGraph,
     index: indexGraph,
-    indexMembership: indexMembershipGraph,
+    networkMembership: indexMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
   };

@@ -379,7 +379,6 @@ export type NewLink = typeof linksTable.$inferInsert;
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
-  networks: many(networks),
   memberOf: many(networkMembers),
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
