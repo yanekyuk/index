@@ -8,7 +8,7 @@ updated: 2026-03-31
 
 ## Behavior
 
-The `index` CLI (v0.7.0) is a standalone Bun-based binary in a `cli/` workspace at the monorepo root. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
+The `index` CLI (v0.7.0) is a standalone Bun-based binary in a `packages/cli/` workspace under `packages/`. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
 
 ### `index login`
 
