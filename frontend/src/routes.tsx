@@ -51,30 +51,6 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/found-in-translation/page"),
       },
       {
-        path: "/found-in-translation-1",
-        lazy: () => import("@/app/found-in-translation-1/page"),
-      },
-      {
-        path: "/found-in-translation-2",
-        lazy: () => import("@/app/found-in-translation-2/page"),
-      },
-      {
-        path: "/found-in-translation-3",
-        lazy: () => import("@/app/found-in-translation-3/page"),
-      },
-      {
-        path: "/found-in-translation-4",
-        lazy: () => import("@/app/found-in-translation-4/page"),
-      },
-      {
-        path: "/found-in-translation-5",
-        lazy: () => import("@/app/found-in-translation-5/page"),
-      },
-      {
-        path: "/found-in-translation-6",
-        lazy: () => import("@/app/found-in-translation-6/page"),
-      },
-      {
         path: "/blog",
         lazy: () => import("@/app/blog/page"),
       },
