@@ -4,13 +4,12 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { NetworkController } from "../network.controller";
-import { UserDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("NetworkController Integration", () => {
   const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
-  const chatAdapter = new ChatDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   let createdIndexId: string;
@@ -72,12 +71,12 @@ describe("NetworkController Integration", () => {
         body: JSON.stringify({ title: "Test Index", prompt: "A test index" }),
       });
       const res = await controller.create(req, mockUser());
-      const data = (await res.json()) as { index?: { id: string; title: string } };
+      const data = (await res.json()) as { network?: { id: string; title: string } };
 
       expect(res.status).toBe(200);
-      expect(data.index).toBeDefined();
-      expect(data.index!.title).toBe("Test Index");
-      createdIndexId = data.index!.id;
+      expect(data.network).toBeDefined();
+      expect(data.network!.title).toBe("Test Index");
+      createdIndexId = data.network!.id;
     });
   });
 
@@ -85,12 +84,12 @@ describe("NetworkController Integration", () => {
     test("should return 200 and index when member", async () => {
       const req = new Request("http://localhost/networks/" + createdIndexId);
       const res = await controller.get(req, mockUser(), { id: createdIndexId });
-      const data = (await res.json()) as { index?: { id: string; title: string } };
+      const data = (await res.json()) as { network?: { id: string; title: string } };
 
       expect(res.status).toBe(200);
-      expect(data.index).toBeDefined();
-      expect(data.index!.id).toBe(createdIndexId);
-      expect(data.index!.title).toBe("Test Index");
+      expect(data.network).toBeDefined();
+      expect(data.network!.id).toBe(createdIndexId);
+      expect(data.network!.title).toBe("Test Index");
     });
 
     test("should return 404 when index id does not exist", async () => {
@@ -100,7 +99,7 @@ describe("NetworkController Integration", () => {
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(404);
-      expect(data.error).toBe("Index not found");
+      expect(data.error).toBe("Network not found");
     });
   });
 
@@ -134,11 +133,11 @@ describe("NetworkController Integration", () => {
         body: JSON.stringify({ title: "Updated Test Index" }),
       });
       const res = await controller.update(req, mockUser(), { id: createdIndexId });
-      const data = (await res.json()) as { index?: { title: string } };
+      const data = (await res.json()) as { network?: { title: string } };
 
       expect(res.status).toBe(200);
-      expect(data.index).toBeDefined();
-      expect(data.index!.title).toBe("Updated Test Index");
+      expect(data.network).toBeDefined();
+      expect(data.network!.title).toBe("Updated Test Index");
     });
   });
 

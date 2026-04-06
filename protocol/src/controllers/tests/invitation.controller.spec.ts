@@ -4,13 +4,12 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { NetworkController } from "../network.controller";
-import { UserDatabaseAdapter, ChatDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("Invitation Endpoints Integration", () => {
   const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
-  const chatAdapter = new ChatDatabaseAdapter();
   const indexAdapter = new NetworkGraphDatabaseAdapter();
 
   let ownerUserId: string;
@@ -54,10 +53,10 @@ describe("Invitation Endpoints Integration", () => {
     });
     const createRes = await controller.create(createReq, mockOwner());
     expect(createRes.status).toBe(200);
-    const createData = (await createRes.json()) as { index?: { id: string; permissions?: Record<string, unknown> } };
-    expect(createData.index).not.toBeNull();
-    expect(createData.index!.id).toBeTruthy();
-    createdIndexId = createData.index!.id;
+    const createData = (await createRes.json()) as { network?: { id: string; permissions?: Record<string, unknown> } };
+    expect(createData.network).not.toBeNull();
+    expect(createData.network!.id).toBeTruthy();
+    createdIndexId = createData.network!.id;
 
     // Update permissions to generate invitation link code
     const updateReq = new Request("http://localhost/networks/" + createdIndexId + "/permissions", {
@@ -67,9 +66,9 @@ describe("Invitation Endpoints Integration", () => {
     });
     const updateRes = await controller.updatePermissions(updateReq, mockOwner(), { id: createdIndexId });
     expect(updateRes.status).toBe(200);
-    const updateData = (await updateRes.json()) as { index?: { permissions?: { invitationLink?: { code: string } } } };
-    expect(updateData.index?.permissions?.invitationLink?.code).toBeTruthy();
-    invitationCode = updateData.index!.permissions!.invitationLink!.code;
+    const updateData = (await updateRes.json()) as { network?: { permissions?: { invitationLink?: { code: string } } } };
+    expect(updateData.network?.permissions?.invitationLink?.code).toBeTruthy();
+    invitationCode = updateData.network!.permissions!.invitationLink!.code;
   });
 
   afterAll(async () => {
@@ -94,12 +93,12 @@ describe("Invitation Endpoints Integration", () => {
     test("should return 200 with index data for valid invitation code", async () => {
       const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: { id: string; title: string } };
+      const data = (await res.json()) as { network?: { id: string; title: string } };
 
       expect(res.status).toBe(200);
-      expect(data.index).not.toBeNull();
-      expect(data.index!.id).toBe(createdIndexId);
-      expect(data.index!.title).toBe("Invite Test Index");
+      expect(data.network).not.toBeNull();
+      expect(data.network!.id).toBe(createdIndexId);
+      expect(data.network!.title).toBe("Invite Test Index");
     });
 
     test("should return 404 for invalid invitation code", async () => {
@@ -114,21 +113,21 @@ describe("Invitation Endpoints Integration", () => {
     test("should not expose internal permissions in public response", async () => {
       const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: Record<string, unknown> };
+      const data = (await res.json()) as { network?: Record<string, unknown> };
 
       expect(res.status).toBe(200);
-      expect(data.index!.permissions).toBeUndefined();
+      expect(data.network!.permissions).toBeUndefined();
     });
 
     test("should include member count and owner info", async () => {
       const req = new Request("http://localhost/networks/share/" + invitationCode);
       const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: { user?: { id: string; name: string }; _count?: { members: number } } };
+      const data = (await res.json()) as { network?: { user?: { id: string; name: string }; _count?: { members: number } } };
 
       expect(res.status).toBe(200);
-      expect(data.index!.user!.id).toBe(ownerUserId);
-      expect(data.index!.user!.name).toBe("Invite Owner");
-      expect(data.index!._count!.members).toBeGreaterThanOrEqual(1);
+      expect(data.network!.user!.id).toBe(ownerUserId);
+      expect(data.network!.user!.name).toBe("Invite Owner");
+      expect(data.network!._count!.members).toBeGreaterThanOrEqual(1);
     });
   });
 
