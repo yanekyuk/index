@@ -71,11 +71,11 @@ const ownedOpportunity = {
   id: 'opp-1',
   detection: stubDetection,
   actors: [
-    { userId: AUTH_USER, indexId: 'idx-a', role: 'patient' },
-    { userId: OTHER_USER, indexId: 'idx-a', role: 'peer' },
+    { userId: AUTH_USER, networkId: 'idx-a', role: 'patient' },
+    { userId: OTHER_USER, networkId: 'idx-a', role: 'peer' },
   ],
   interpretation: stubInterpretation,
-  context: { indexId: 'idx-a' },
+  context: { networkId: 'idx-a' },
   confidence: '0.9',
   status: 'pending' as const,
   ...stubDates,
@@ -85,11 +85,11 @@ const otherOpportunity = {
   id: 'opp-2',
   detection: stubDetection,
   actors: [
-    { userId: 'user-random-789', indexId: 'idx-b', role: 'patient' },
-    { userId: OTHER_USER, indexId: 'idx-b', role: 'peer' },
+    { userId: 'user-random-789', networkId: 'idx-b', role: 'patient' },
+    { userId: OTHER_USER, networkId: 'idx-b', role: 'peer' },
   ],
   interpretation: stubInterpretation,
-  context: { indexId: 'idx-b' },
+  context: { networkId: 'idx-b' },
   confidence: '0.9',
   status: 'pending' as const,
   ...stubDates,
@@ -430,7 +430,7 @@ describe('createUserDatabase', () => {
 
     it('softDeleteIndex succeeds when user is owner and index is not personal', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
-      (mockDb.isPersonalIndex as ReturnType<typeof mock>).mockResolvedValueOnce(false);
+      (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(false);
       await userDb.softDeleteIndex('idx-a');
       expect(mockDb.isIndexOwner).toHaveBeenCalledWith('idx-a', AUTH_USER);
       expect(mockDb.softDeleteIndex).toHaveBeenCalledWith('idx-a');
@@ -443,7 +443,7 @@ describe('createUserDatabase', () => {
 
     it('softDeleteIndex throws when index is personal even if user is owner', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
-      (mockDb.isPersonalIndex as ReturnType<typeof mock>).mockResolvedValueOnce(true);
+      (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       await expect(userDb.softDeleteIndex('idx-personal')).rejects.toThrow('Cannot delete personal index');
     });
   });
@@ -456,7 +456,7 @@ describe('createUserDatabase', () => {
     it('getPublicIndexesNotJoined delegates with authUserId', async () => {
       const result = await userDb.getPublicIndexesNotJoined();
       expect(mockDb.getPublicIndexesNotJoined).toHaveBeenCalledWith(AUTH_USER);
-      expect(result).toEqual({ networks: [] });
+      expect(result).toEqual({ networks: [], pagination: { current: 1, total: 1, count: 0, totalCount: 0 } });
     });
 
     it('joinPublicNetwork delegates with networkId and authUserId', async () => {

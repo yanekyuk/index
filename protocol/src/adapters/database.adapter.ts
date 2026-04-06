@@ -2000,8 +2000,8 @@ export class ChatDatabaseAdapter {
    */
   async getIndexByKey(key: string) {
     const rows = await db.select()
-      .from(indexes)
-      .where(and(eq(indexes.key, key), isNull(indexes.deletedAt)))
+      .from(networks)
+      .where(and(eq(networks.key, key), isNull(networks.deletedAt)))
       .limit(1);
     return rows[0] ?? null;
   }
@@ -2012,9 +2012,9 @@ export class ChatDatabaseAdapter {
    * @returns True if the key is taken
    */
   async indexKeyExists(key: string): Promise<boolean> {
-    const result = await db.select({ id: indexes.id })
-      .from(indexes)
-      .where(eq(indexes.key, key))
+    const result = await db.select({ id: networks.id })
+      .from(networks)
+      .where(eq(networks.key, key))
       .limit(1);
     return result.length > 0;
   }
@@ -2026,9 +2026,9 @@ export class ChatDatabaseAdapter {
    * @returns Updated index or null
    */
   async updateIndexKey(indexId: string, key: string) {
-    const result = await db.update(indexes)
+    const result = await db.update(networks)
       .set({ key, updatedAt: new Date() })
-      .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+      .where(and(eq(networks.id, indexId), isNull(networks.deletedAt)))
       .returning();
     return result[0] ?? null;
   }
@@ -2163,9 +2163,9 @@ export class ChatDatabaseAdapter {
     // Fall back to hex prefix matching
     const isHexPrefix = /^[0-9a-f]+$/i.test(idOrKey);
     if (isHexPrefix) {
-      const rows = await db.select({ id: indexes.id })
-        .from(indexes)
-        .where(and(sql`${indexes.id} LIKE ${idOrKey + '%'}`, isNull(indexes.deletedAt)))
+      const rows = await db.select({ id: networks.id })
+        .from(networks)
+        .where(and(sql`${networks.id} LIKE ${idOrKey + '%'}`, isNull(networks.deletedAt)))
         .limit(2);
       if (rows.length === 1) return rows[0].id;
     }
@@ -3211,32 +3211,32 @@ export class ChatDatabaseAdapter {
     try {
       const rows = await db
         .select({
-          userId: schema.indexMembers.userId,
+          userId: schema.networkMembers.userId,
           latestIntentAt: sql<string | null>`MAX(${schema.intents.updatedAt})`.as('latest_intent_at'),
           intentCount: sql<number>`COUNT(${schema.intents.id})::int`.as('intent_count'),
         })
-        .from(schema.indexMembers)
+        .from(schema.networkMembers)
         .innerJoin(
           schema.users,
-          eq(schema.indexMembers.userId, schema.users.id),
+          eq(schema.networkMembers.userId, schema.users.id),
         )
         .leftJoin(
           schema.intents,
           and(
-            eq(schema.intents.userId, schema.indexMembers.userId),
+            eq(schema.intents.userId, schema.networkMembers.userId),
             isNull(schema.intents.archivedAt),
           ),
         )
         .where(
           and(
-            eq(schema.indexMembers.indexId, personalIndexId),
-            sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-            isNull(schema.indexMembers.deletedAt),
+            eq(schema.networkMembers.networkId, personalIndexId),
+            sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+            isNull(schema.networkMembers.deletedAt),
             isNull(schema.users.deletedAt),
-            sql`${schema.indexMembers.userId} != ${ownerId}`,
+            sql`${schema.networkMembers.userId} != ${ownerId}`,
           ),
         )
-        .groupBy(schema.indexMembers.userId)
+        .groupBy(schema.networkMembers.userId)
         .orderBy(sql`MAX(${schema.intents.updatedAt}) DESC NULLS LAST`)
         .limit(limit);
 
@@ -3459,12 +3459,12 @@ export class ProfileDatabaseAdapter {
       .limit(1);
     if (!user || !user.isGhost) return false;
 
-    await db.update(schema.indexMembers)
+    await db.update(schema.networkMembers)
       .set({ deletedAt: new Date() })
       .where(and(
-        eq(schema.indexMembers.userId, userId),
-        sql`'contact' = ANY(${schema.indexMembers.permissions})`,
-        isNull(schema.indexMembers.deletedAt),
+        eq(schema.networkMembers.userId, userId),
+        sql`'contact' = ANY(${schema.networkMembers.permissions})`,
+        isNull(schema.networkMembers.deletedAt),
       ));
 
     await db.update(schema.users)
@@ -4899,7 +4899,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     softDeleteIndex: async (networkId: string) => {
       const isOwner = await db.isIndexOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not index owner');
-      const isPersonal = await db.isPersonalIndex(networkId);
+      const isPersonal = await db.isPersonalNetwork(networkId);
       if (isPersonal) throw new Error('Cannot delete personal index');
       return db.softDeleteIndex(networkId);
     },
@@ -6020,7 +6020,7 @@ export class ConversationDatabaseAdapter {
       id: conv.id,
       userId,
       title: meta?.title ?? null,
-      indexId: meta?.indexId ?? null,
+      networkId: meta?.networkId ?? null,
       shareToken: meta?.shareToken ?? null,
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
@@ -6046,10 +6046,10 @@ export class ConversationDatabaseAdapter {
         { conversationId: data.id, participantId: SYSTEM_AGENT_ID, participantType: 'agent' as const },
       ]);
 
-      // Store title and indexId in conversation_metadata
+      // Store title and networkId in conversation_metadata
       const meta: ChatConversationMeta = {};
       if (data.title) meta.title = data.title;
-      if (data.indexId?.trim()) meta.indexId = data.indexId.trim();
+      if (data.networkId?.trim()) meta.networkId = data.networkId.trim();
       if (Object.keys(meta).length > 0) {
         await tx.insert(schema.conversationMetadata).values({
           conversationId: data.id,

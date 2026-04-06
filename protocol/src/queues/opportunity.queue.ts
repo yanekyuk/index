@@ -192,7 +192,7 @@ export class OpportunityQueue {
       }
       searchQuery = contactIntents[0].payload;
       onBehalfOfUserId = contactUserId;
-      this.logger.info('[OpportunityDiscovery] Starting introducer discovery', { userId, contactUserId, indexIds });
+      this.logger.info('[OpportunityDiscovery] Starting introducer discovery', { userId, contactUserId, networkIds });
     } else {
       const intent = await db.getIntentForIndexing(intentId);
       if (!intent) {
