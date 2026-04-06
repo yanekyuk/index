@@ -38,7 +38,7 @@ The main package's `bin` entry points to `bin/index.js`, a thin JavaScript shim 
 1. Determines the current platform and architecture (`process.platform`, `process.arch`).
 2. Looks for the platform binary in the corresponding `@indexnetwork/cli-{os}-{arch}` package.
 3. If found, executes it via `child_process.execFileSync`, forwarding all arguments and stdio.
-4. If not found, falls back to running `packages/cli/dist/index.js` via `node` (the bundled JS fallback).
+4. If not found, falls back to running `dist/index.js` via `node` (the bundled JS fallback).
 
 ### Build process
 

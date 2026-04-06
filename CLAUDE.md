@@ -350,7 +350,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`
-6. If the CLI package (`packages/cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
+6. If the CLI package (`packages/cli/`) was updated: create a git tag (`cli-vX.Y.Z`) with release notes so the NPM package gets published
 7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow
