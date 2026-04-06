@@ -559,7 +559,7 @@ function LandingPage() {
         <section
           className="relative overflow-hidden border-y border-[#E5E5E5] bg-[#041729]"
         >
-          <div className="relative">
+          <a href="/found-in-translation-6" target="_blank" rel="noopener noreferrer" className="relative block cursor-pointer">
             <img
               src="/found-in-translation/found-in-translation-1-hero.png"
               alt="Found in Translation hero visual"
@@ -597,27 +597,24 @@ function LandingPage() {
             </svg>
 
             <div className="absolute inset-0 z-10 flex items-end justify-end px-6 py-8 lg:px-12 lg:py-10">
-              <div className="max-w-[340px] rounded-xl bg-white/5 p-6 text-left backdrop-blur-md lg:max-w-[380px] lg:p-8">
+              <div className="max-w-[340px] rounded-md bg-white/5 p-4 text-left backdrop-blur-md lg:max-w-[380px] lg:p-5">
                 <p className="mb-4 font-garamond text-[28px] leading-[1.1] text-white lg:text-[34px]">
                   Some things find you.<br />Most don&apos;t.
                 </p>
-                <a
-                  href="/found-in-translation-6"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group inline-flex items-center gap-2 border-b border-white/40 pb-0.5 font-sans text-[15px] text-white/90 transition-colors hover:border-white hover:text-white"
+                <span
+                  className="inline-flex items-center gap-2 border-b border-white/40 pb-0.5 font-sans text-[15px] text-white/90"
                   style={{ fontFamily: "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif" }}
                 >
                   Why we built this
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/40 transition-colors group-hover:border-white">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/40">
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                       <path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </span>
-                </a>
+                </span>
               </div>
             </div>
-          </div>
+          </a>
         </section>
 
         {/* Community + Testimonial Section */}

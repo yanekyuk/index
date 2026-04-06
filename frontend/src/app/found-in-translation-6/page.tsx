@@ -25,15 +25,16 @@ const KF = `
   .fit-header img { filter: invert(1) brightness(10); }
   .fit-header a { color: #fff !important; }
   .fit-header button {
-    background: #fff !important;
-    color: #000 !important;
-    border: none !important;
+    background: transparent !important;
+    color: #fff !important;
+    border: 2px solid rgba(255,255,255,0.8) !important;
   }
   .fit-footer footer { background: rgba(0,0,0,0.45) !important; }
   .fit-footer a, .fit-footer p, .fit-footer span, .fit-footer label { color: rgba(255,255,255,0.75) !important; }
   .fit-footer input { background: rgba(255,255,255,0.1) !important; border-color: rgba(255,255,255,0.25) !important; color: #fff !important; }
   .fit-footer input::placeholder { color: rgba(255,255,255,0.4) !important; }
   .fit-footer svg { color: rgba(255,255,255,0.75) !important; }
+  .fit-footer button { background: transparent !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.6) !important; }
 `;
 
 const SANS = "'Public Sans', -apple-system, BlinkMacSystemFont, sans-serif";
@@ -593,7 +594,7 @@ function MonumentElevation({ label }: { label: string }) {
 // ── FIG 03: CLI ERA ──────────────────────────────────────────────
 function InterfaceEvolutionFig() {
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#0a0a0a', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#0a0a0a', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 320" width="100%" style={{ display: 'block' }} aria-label="CLI era terminal">
         <rect x="0" y="0" width="800" height="32" fill="#1a1a1a" />
         {['#e74c3c', '#f39c12', '#27ae60'].map((c, i) => (
@@ -614,7 +615,7 @@ function InterfaceEvolutionFig() {
 // ── FIG 04: GUI ERA ──────────────────────────────────────────────
 function GuiEraFig() {
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#e8e8e8', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#e8e8e8', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 320" width="100%" style={{ display: 'block' }} aria-label="GUI era interface">
         <rect x="0" y="0" width="800" height="32" fill="#c0c0c0" />
         {['#e74c3c', '#f39c12', '#27ae60'].map((c, i) => (
@@ -644,7 +645,7 @@ function GuiEraFig() {
 // ── FIG 05: BEFORE / AFTER ──────────────────────────────────────
 function BeforeAfterFig() {
   return (
-    <figure data-fade style={{ margin: '3rem 0', border: '3px solid #000', background: '#f5f4f0', overflow: 'hidden' }}>
+    <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#f5f4f0', overflow: 'hidden' }}>
       <svg viewBox="0 0 800 260" width="100%" style={{ display: 'block' }} aria-label="Before and after: keyword search vs expressive intent">
         {/* backgrounds first */}
         <rect x="0" y="0" width="400" height="260" fill="#f5f4f0" />
@@ -805,7 +806,7 @@ export default function FoundInTranslation1() {
   const WRAP: React.CSSProperties = { maxWidth: 720, margin: '0 auto', padding: '0 2rem' };
 
   return (
-    <div ref={pageRef} style={{ background: '#fff', color: '#000', minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
+    <div ref={pageRef} style={{ background: '#f5f3ef', color: '#000', minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
       <style>{KF}</style>
 
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 4, zIndex: 100, background: '#e0e0e0' }}>
@@ -813,8 +814,8 @@ export default function FoundInTranslation1() {
       </div>
 
       <section style={{ position: 'relative', minHeight: '100vh', overflow: 'hidden', borderBottom: '3px solid #000', display: 'flex', flexDirection: 'column' }}>
-        <div className="fit-header" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, opacity: 0.6 }}>
-          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1rem' }}>
+        <div className="fit-header" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, transparent 100%)' }}>
+          <div className="max-w-7xl mx-auto px-4">
             <Header showHeaderButtons forcePublicView />
           </div>
         </div>
@@ -869,7 +870,7 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         </div>
       </section>
 
-      <div style={{ ...WRAP, padding: '4rem 2rem 3rem' }}>
+      <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
         <p data-fade style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(2.2rem,5vw,4.8rem)', lineHeight: 0.95, letterSpacing: '-0.04em', color: '#000', marginBottom: '1.75rem' }}>
           Found in Translation
         </p>
@@ -895,16 +896,6 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         <p data-fade style={P}>You might sleep on your vague desires, wake up, and start searching for someone who might just share your flavor of weird.</p>
       </div>
 
-      <div style={{ ...WRAP, padding: '0 2rem' }}>
-        <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
-          <img
-            src="/found-in-translation/diagram2.jpeg"
-            alt="Search and discovery diagram"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
-          />
-        </figure>
-      </div>
-
       <div style={{ ...WRAP, padding: '2rem 2rem 3rem' }}>
         <p data-fade style={P}>You would think it gets easier—that technology was meant to help the stars align and show us the idea at the tip of our tongue, or deliver us the role that doesn&apos;t exist yet, or the investor who gets it.</p>
         <p data-fade style={P}>For most of computing history, there was no system elastic enough to hold that kind of ambiguity in our careers. It makes sense. The next opportunity ahead is often illegible to ourselves—until it arrives as the email we&apos;ve been waiting for.</p>
@@ -926,12 +917,12 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         <p data-fade style={P}>Of course, we try. We build and inhabit semantic structures together to achieve our goals. Or, we use our words.</p>
       </div>
       <div data-fade style={{ maxWidth: 1000, margin: '0 auto', padding: '1.5rem 2rem 3rem', textAlign: 'center' }}>
-        <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1.4rem,3vw,2.4rem)', color: '#1e1c19', lineHeight: 1.2, letterSpacing: '-0.02em', margin: '0 auto' }}>
-          When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.
+        <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1rem,2vw,1.5rem)', color: '#1e1c19', lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
+          &ldquo;When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.&rdquo;
         </p>
-        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.85rem', letterSpacing: '0.1em', color: '#888', margin: '2rem 0 0' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
+        <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.85rem', letterSpacing: '0.1em', color: '#888', margin: '2rem 0 0', lineHeight: 1.6 }}>Andrew Hinton<br />Understanding Context: Environment, Language, and Information Architecture (2014)</div>
       </div>
-      <div style={{ ...WRAP, padding: '1rem 2rem 3rem' }}>
+      <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
         <p data-fade style={P}>Over time, tools expanded the scope of opportunity. From telegraphs to telephones, command line interfaces (CLI) to graphic user interfaces (GUI), oh my! Now language could travel. But there was always a caveat:</p>
         <p data-fade style={P}>Computers did not operate on raw human intent, only its translation.</p>
         <p data-fade style={P}>In the command line era, this translation was explicit and exacting, forcing the user to clearly specify their intent in symbolic form. This is hard work that most of us don&apos;t have energy for.</p>
@@ -942,7 +933,7 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         <InterfaceEvolutionFig />
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
+      <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
         <p data-fade style={P}>With the rise of GUI-based systems, this burden shifted to the operating system and its designers.</p>
       </div>
 
@@ -962,7 +953,7 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         </h2>
       </div>
 
-      <div style={{ ...WRAP, padding: '1rem 2rem 2rem' }}>
+      <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
         <p data-fade style={P}>Now instead of searching through platforms and engines, we&apos;re talking to LLMs. The translation tax that defined prior interfaces is slowly being absorbed by stronger infrastructure. We can feel it every time we send a stream of consciousness voice memo to Claude or Gemini or GPT, and make it interpret us instead of the other way around.</p>
       </div>
 
@@ -970,13 +961,13 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         <BeforeAfterFig />
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
+      <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
         <p data-fade style={P}>For the first time, systems can engage with the model-based, context-sensitive layer of human decision-making: the layer where intent actually lives. With language as computational substrate, digital agents can now hold context the way a trusted partner does, to the extent of what you share.</p>
         <p data-fade style={P}>This redistributes influence. While platforms once brokered most of our professional connections, their grip loosens when the work is distributed among individual agents, navigating the highways of the open internet.</p>
         <p data-fade style={P}>But simply chatting to an agent still treats intent as an input to be immediately executed. Unlocking hidden opportunity requires a broader system of coordination, like a <em>&ldquo;have your agent call my agent&rdquo;</em> system.</p>
       </div>
 
-      <div style={{ ...WRAP, padding: '1.5rem 2rem 0' }}>
+      <div style={{ ...WRAP, padding: '0 2rem' }}>
         <figure data-fade style={{ margin: '2rem 0', border: '3px solid #000', background: '#fff', overflow: 'hidden' }}>
           <img src="/found-in-translation/diagram3.png" alt="Agent coordination diagram" style={{ display: 'block', width: '100%' }} />
         </figure>
