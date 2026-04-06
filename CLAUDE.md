@@ -84,18 +84,44 @@ git tag protocol-vX.Y.Z
 git push upstream protocol-vX.Y.Z
 ```
 
-### Plugin (subtree)
+### Subtrees
 
-The `packages/claude-plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
+Three packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` to `upstream`.
 
-**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `packages/claude-plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `packages/claude-plugin/` in this repo and push normally.
+#### packages/claude-plugin/ → indexnetwork/claude-plugin
+
+Contains **skills only** (markdown files) — no code, no build step. Checked in as regular files — no special init needed after cloning.
 
 ```bash
 # Manual push if the hook failed
 git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
 
-# Pull if claude-plugin was edited directly (avoid this — always edit via this repo)
+# Pull if upstream was edited directly (avoid — always edit via this repo)
 git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+```
+
+#### packages/protocol/ → indexnetwork/protocol
+
+The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
+
+```bash
+# Manual push if the hook failed
+git subtree push --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+```
+
+#### packages/cli/ → indexnetwork/cli
+
+The `@indexnetwork/cli` npm package (CLI binary). Two-way: edit here or in the external repo.
+
+```bash
+# Manual push if the hook failed
+git subtree push --prefix=packages/cli https://github.com/indexnetwork/cli.git main
+
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/cli https://github.com/indexnetwork/cli.git main
 ```
 
 ### Root
