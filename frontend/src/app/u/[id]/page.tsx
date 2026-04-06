@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router";
 import { Loader2, MessageCircle } from "lucide-react";
 import GhostBadge from "@/components/GhostBadge";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useUsers, useIndexes } from "@/contexts/APIContext";
+import { useUsers, useNetworks } from "@/contexts/APIContext";
 import UserAvatar from "@/components/UserAvatar";
 import { User } from "@/lib/types";
 import { Link } from "react-router";
@@ -17,7 +17,7 @@ export default function UserProfilePage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading: authLoading } = useAuthContext();
   const usersService = useUsers();
-  const indexesService = useIndexes();
+  const indexesService = useNetworks();
 
   const [profileData, setProfileData] = useState<User | null>(null);
   const [sharedNetworks, setSharedNetworks] = useState<Array<{ id: string; title: string; _count: { members: number } }>>([]);

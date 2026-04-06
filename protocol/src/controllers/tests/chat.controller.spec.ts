@@ -194,7 +194,7 @@ describe("ChatController Integration", () => {
       });
       testIndexId = index.id;
 
-      await adapter.addMemberToIndex(testIndexId, testUserId, 'member');
+      await adapter.addMemberToNetwork(testIndexId, testUserId, 'member');
 
       // Ensure we have an active intent to assign (previous test may have archived the one it created)
       let activeIntents = await adapter.getActiveIntents(testUserId);

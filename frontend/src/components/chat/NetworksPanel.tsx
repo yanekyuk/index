@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Loader2, Users } from "lucide-react";
 
-import { useIndexes } from "@/contexts/APIContext";
-import { useIndexesState } from "@/contexts/IndexesContext";
+import { useNetworks } from "@/contexts/APIContext";
+import { useNetworksState } from "@/contexts/IndexesContext";
 
-import IndexAvatar from "@/components/IndexAvatar";
+import NetworkAvatar from "@/components/IndexAvatar";
 import { Button } from "@/components/ui/button";
 import type { Network } from "@/lib/types";
 
@@ -19,8 +19,8 @@ interface NetworksPanelProps {
  * Works in any chat context — onboarding or regular chat.
  */
 export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: NetworksPanelProps) {
-  const indexesService = useIndexes();
-  const { indexes: joinedIndexes } = useIndexesState();
+  const indexesService = useNetworks();
+  const { indexes: joinedIndexes } = useNetworksState();
 
   const [publicNetworks, setPublicNetworks] = useState<(Network & { isMember?: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +64,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
         {joinedNonPersonal.map((network) => (
           <div key={network.id} className="flex items-center gap-3 px-4 py-2.5">
             <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
-              <IndexAvatar
+              <NetworkAvatar
                 id={network.id}
                 title={network.title}
                 imageUrl={network.imageUrl}
@@ -89,7 +89,7 @@ export default function NetworksPanel({ onJoin, pendingJoinIds = new Set() }: Ne
           return (
             <div key={network.id} className="flex items-center gap-3 px-4 py-2.5">
               <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
-                <IndexAvatar
+                <NetworkAvatar
                   id={network.id}
                   title={network.title}
                   imageUrl={network.imageUrl}

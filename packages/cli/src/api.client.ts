@@ -278,13 +278,13 @@ export class ApiClient {
    * Search users by query string, optionally filtering by index membership.
    *
    * @param query - Search query (email or name).
-   * @param indexId - Optional network ID to exclude existing members.
+   * @param networkId - Optional network ID to exclude existing members.
    * @returns Array of matching user objects.
    * @throws Error on auth failure or network error.
    */
-  async searchUsers(query: string, indexId?: string): Promise<SearchedUser[]> {
+  async searchUsers(query: string, networkId?: string): Promise<SearchedUser[]> {
     const params = new URLSearchParams({ q: query });
-    if (indexId) params.set("indexId", indexId);
+    if (networkId) params.set("indexId", networkId);
     const res = await this.get(`/api/indexes/search-users?${params.toString()}`);
     const body = (await res.json()) as { users: SearchedUser[] };
     return body.users;

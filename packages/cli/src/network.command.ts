@@ -188,7 +188,7 @@ async function networkUpdate(
     return;
   }
 
-  const result = await client.callTool("update_index", { indexId: id, settings });
+  const result = await client.callTool("update_index", { networkId: id, settings });
   if (json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) {
     output.error(result.error ?? "Network update failed", 1);
@@ -206,7 +206,7 @@ async function networkDelete(client: ApiClient, id: string | undefined, json?: b
     return;
   }
 
-  const result = await client.callTool("delete_index", { indexId: id });
+  const result = await client.callTool("delete_index", { networkId: id });
   if (json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) {
     output.error(result.error ?? "Network deletion failed", 1);

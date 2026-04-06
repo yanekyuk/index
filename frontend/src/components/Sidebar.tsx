@@ -3,17 +3,17 @@ import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
 import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useIndexFilter } from '@/contexts/IndexFilterContext';
+import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
 import { useAIChat } from '@/contexts/AIChatContext';
 import { useConversation } from '@/contexts/ConversationContext';
 import { apiClient } from '@/lib/api';
 import UserAvatar from '@/components/UserAvatar';
-import { useIndexesState } from '@/contexts/IndexesContext';
-import { useIndexes } from '@/contexts/APIContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworks } from '@/contexts/APIContext';
 import { useOpportunities } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import CreateIndexModal from '@/components/modals/CreateIndexModal';
+import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 
 
 interface ChatSession {
@@ -32,10 +32,10 @@ export default function Sidebar() {
   const totalUnreadCount = 0; // Unread tracking out of scope for now
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
-  const { setSelectedIndexIds } = useIndexFilter();
-  const indexesService = useIndexes();
+  const { setSelectedNetworkIds } = useNetworkFilter();
+  const indexesService = useNetworks();
   const opportunitiesService = useOpportunities();
-  const { indexes, addIndex } = useIndexesState();
+  const { indexes, addIndex } = useNetworksState();
   const { success, error } = useNotifications();
   
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -66,7 +66,7 @@ export default function Sidebar() {
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy
       };
-      const newIndex = await indexesService.createIndex(createRequest);
+      const newIndex = await indexesService.createNetwork(createRequest);
       addIndex(newIndex);
       setCreateIndexModalOpen(false);
       success('Index created successfully');
@@ -78,7 +78,7 @@ export default function Sidebar() {
 
   const handleDiscoverClick = () => {
     clearChat({ abortStream: false });
-    setSelectedIndexIds([]);
+    setSelectedNetworkIds([]);
     navigate('/');
   };
 
@@ -343,8 +343,8 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Create Index Modal */}
-      <CreateIndexModal
+      {/* Create Network Modal */}
+      <CreateNetworkModal
         open={createIndexModalOpen}
         onOpenChange={setCreateIndexModalOpen}
         onSubmit={handleCreateIndex}

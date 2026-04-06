@@ -4,12 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Network, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import { useIndexes } from '@/contexts/APIContext';
+import { useNetworks } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/networks';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Lock, Users, Loader2 } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 type PageStep = 'loading' | 'auth-required' | 'onboarding-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
@@ -32,10 +32,10 @@ export default function InvitationPage() {
 
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
-  const indexesService = useIndexes();
+  const indexesService = useNetworks();
   const navigate = useNavigate();
   const { success, error: notifyError } = useNotifications();
-  const { refreshIndexes } = useIndexesState();
+  const { refreshIndexes } = useNetworksState();
   const { refetchUser } = useAuthContext();
 
   // Load index and check user state

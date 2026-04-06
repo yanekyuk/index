@@ -22,7 +22,7 @@ export class NetworkService {
    * Get all indexes that a user is a member of, including their personal index.
    */
   async getNetworksForUser(userId: string) {
-    logger.verbose('[NetworkService] Getting indexes for user', { userId });
+    logger.verbose('[NetworkService] Getting networks for user', { userId });
     return this.adapter.getNetworksForUser(userId);
   }
 
@@ -33,9 +33,9 @@ export class NetworkService {
     logger.verbose('[NetworkService] Creating index', { userId, title: data.title });
     const index = await this.adapter.createNetwork(data);
     // Add the creating user as the owner
-    await this.adapter.addMemberToIndex(index.id, userId, 'owner');
+    await this.adapter.addMemberToNetwork(index.id, userId, 'owner');
     // Fetch the full index details with user and member count
-    const fullIndex = await this.adapter.getIndexDetail(index.id, userId);
+    const fullIndex = await this.adapter.getNetworkDetail(index.id, userId);
     if (!fullIndex) {
       throw new Error('Failed to create index');
     }
@@ -56,7 +56,7 @@ export class NetworkService {
    */
   async getNetworkById(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting index by id', { networkId });
-    return this.adapter.getIndexDetail(networkId, userId);
+    return this.adapter.getNetworkDetail(networkId, userId);
   }
 
   /**
@@ -195,7 +195,7 @@ export class NetworkService {
   async joinPublicNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Joining public index', { networkId, userId });
     await this.adapter.joinPublicNetwork(networkId, userId);
-    return this.adapter.getIndexDetail(networkId, userId);
+    return this.adapter.getNetworkDetail(networkId, userId);
   }
 
   /**
@@ -234,31 +234,31 @@ export class NetworkService {
    * @returns The index UUID, or null if not found
    */
   async resolveIndexId(idOrKey: string): Promise<string | null> {
-    logger.verbose('[IndexService] Resolving index ID or key', { idOrKey });
+    logger.verbose('[NetworkService] Resolving network ID or key', { idOrKey });
     return this.adapter.resolveIndexId(idOrKey);
   }
 
   /**
-   * Update an index's key. Owner-only.
-   * @param indexId - The index ID
+   * Update a network's key. Owner-only.
+   * @param networkId - The network ID
    * @param userId - The requesting user ID (must be owner)
    * @param key - The new key value
-   * @returns Updated index or error object
+   * @returns Updated network or error object
    */
-  async updateKey(indexId: string, userId: string, key: string): Promise<{ index: unknown } | { error: string; status: number }> {
+  async updateKey(networkId: string, userId: string, key: string): Promise<{ index: unknown } | { error: string; status: number }> {
     const validation = validateKey(key);
     if (!validation.valid) {
       return { error: validation.error!, status: 400 };
     }
 
-    const existing = await this.adapter.indexKeyExists(key);
+    const existing = await this.adapter.networkKeyExists(key);
     if (existing) {
       return { error: 'Key is already taken', status: 409 };
     }
 
     // Verify ownership
     try {
-      const detail = await this.adapter.getIndexDetail(indexId, userId);
+      const detail = await this.adapter.getNetworkDetail(networkId, userId);
       if (!detail) {
         return { error: 'Index not found', status: 404 };
       }
@@ -270,7 +270,7 @@ export class NetworkService {
       throw err;
     }
 
-    const updated = await this.adapter.updateIndexKey(indexId, key);
+    const updated = await this.adapter.updateIndexKey(networkId, key);
     if (!updated) {
       return { error: 'Index not found', status: 404 };
     }

@@ -53,11 +53,11 @@ function createMockDb(): ChatDatabaseAdapter {
     isIndexOwner: mock(() => Promise.resolve(false)),
     getIndexMembersForMember: mock(() => Promise.resolve([])),
     getMembersFromUserIndexes: mock(() => Promise.resolve([])),
-    addMemberToIndex: mock(() => Promise.resolve({ success: true })),
+    addMemberToNetwork: mock(() => Promise.resolve({ success: true })),
     removeMemberFromIndex: mock(() => Promise.resolve({ success: true })),
 
     // Index operations
-    getIndex: mock(() => Promise.resolve(null)),
+    getNetwork: mock(() => Promise.resolve(null)),
     getIndexWithPermissions: mock(() => Promise.resolve(null)),
     getIndexMemberCount: mock(() => Promise.resolve(0)),
 
@@ -139,13 +139,13 @@ describe('createSystemDatabase', () => {
       await expect(sysDb.getIndexMembers(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
-    it('getIndex allows scoped index', async () => {
-      await sysDb.getIndex(SCOPED_INDEX);
-      expect(mockDb.getIndex).toHaveBeenCalledWith(SCOPED_INDEX);
+    it('getNetwork allows scoped index', async () => {
+      await sysDb.getNetwork(SCOPED_INDEX);
+      expect(mockDb.getNetwork).toHaveBeenCalledWith(SCOPED_INDEX);
     });
 
-    it('getIndex throws for out-of-scope index', async () => {
-      await expect(sysDb.getIndex(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getNetwork throws for out-of-scope index', async () => {
+      await expect(sysDb.getNetwork(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
     it('getIndexWithPermissions allows scoped index', async () => {
@@ -279,9 +279,9 @@ describe('createSystemDatabase', () => {
       expect(mockDb.isIndexOwner).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
     });
 
-    it('addMemberToIndex delegates directly (used by join flows and invitation acceptance)', async () => {
-      await sysDb.addMemberToIndex(SCOPED_INDEX, OTHER_USER, 'member');
-      expect(mockDb.addMemberToIndex).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER, 'member');
+    it('addMemberToNetwork delegates directly (used by join flows and invitation acceptance)', async () => {
+      await sysDb.addMemberToNetwork(SCOPED_INDEX, OTHER_USER, 'member');
+      expect(mockDb.addMemberToNetwork).toHaveBeenCalledWith(SCOPED_INDEX, OTHER_USER, 'member');
     });
 
     it('removeMemberFromIndex delegates directly (used by leave/kick flows)', async () => {

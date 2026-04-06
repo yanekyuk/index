@@ -4,8 +4,8 @@ import { useLocation } from 'react-router';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import ChatSidebar from "@/components/ChatSidebar";
-import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
-import { IndexesProvider } from "@/contexts/IndexesContext";
+import { NetworkFilterProvider } from "@/contexts/IndexFilterContext";
+import { NetworksProvider } from "@/contexts/IndexesContext";
 import { ConversationProvider } from "@/contexts/ConversationContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 
@@ -52,13 +52,13 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   [pathname]);
 
   if (isBareRoute) {
-    return <IndexesProvider>{children}</IndexesProvider>;
+    return <NetworksProvider>{children}</NetworksProvider>;
   }
 
   return (
-    <IndexesProvider>
+    <NetworksProvider>
       <ConversationProvider>
-      <IndexFilterProvider>
+      <NetworkFilterProvider>
           <div className="backdrop relative min-h-screen bg-[#FDFDFD]">
             <style jsx>{`
               .backdrop:after {
@@ -164,8 +164,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
               </>
             )}
           </div>
-      </IndexFilterProvider>
+      </NetworkFilterProvider>
       </ConversationProvider>
-    </IndexesProvider>
+    </NetworksProvider>
   );
 }

@@ -182,7 +182,7 @@ describe("OpportunityController Integration", () => {
       prompt: "Index for opportunity controller tests",
     });
     testIndexId = index.id;
-    await chatDbAdapter.addMemberToIndex(testIndexId, testUserId, "owner");
+    await chatDbAdapter.addMemberToNetwork(testIndexId, testUserId, "owner");
 
     const opp = await opportunityAdapter.createOpportunity({
       detection: {

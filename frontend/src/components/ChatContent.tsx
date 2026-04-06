@@ -41,8 +41,8 @@ import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useIndexFilter } from "@/contexts/IndexFilterContext";
-import { useIndexesState } from "@/contexts/IndexesContext";
+import { useNetworkFilter } from "@/contexts/IndexFilterContext";
+import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
 
@@ -540,10 +540,10 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [proposalIdsKey]);
 
   // Index filter
-  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
-  const { indexes } = useIndexesState();
+  const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
+  const { indexes } = useNetworksState();
   const selectedIndexId =
-    selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
+    selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
 
   // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
@@ -556,12 +556,12 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   const handleIndexSelect = useCallback(
     (networkId: string | null) => {
       if (networkId === null) {
-        setSelectedIndexIds([]);
+        setSelectedNetworkIds([]);
       } else {
-        setSelectedIndexIds([networkId]);
+        setSelectedNetworkIds([networkId]);
       }
     },
-    [setSelectedIndexIds],
+    [setSelectedNetworkIds],
   );
 
   // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
@@ -625,7 +625,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigatingToHomeRef.current = true;
       // Don't abort in-flight stream so the new session can finish and appear in the sidebar
       clearChat({ abortStream: false });
-      setSelectedIndexIds([]);
+      setSelectedNetworkIds([]);
       setSessionLoaded(true);
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
@@ -1083,7 +1083,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // HOME STATE - No messages yet
   if (messages.length === 0) {
     const personalIndex = indexes.find((i) => i.isPersonal);
-    const selectedIndex = indexes.find((i) => selectedIndexIds.includes(i.id));
+    const selectedIndex = indexes.find((i) => selectedNetworkIds.includes(i.id));
 
     const renderScopeDropdown = () => {
       if (indexes.length === 0) return null;
@@ -1132,7 +1132,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    selectedIndexIds.length === 0 &&
+                    selectedNetworkIds.length === 0 &&
                       "text-gray-900 font-medium",
                   )}
                 >
@@ -1147,7 +1147,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     }}
                     className={cn(
                       "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                      selectedIndexIds.includes(personalIndex.id) &&
+                      selectedNetworkIds.includes(personalIndex.id) &&
                         "text-gray-900 font-medium",
                     )}
                   >
@@ -1177,7 +1177,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       }}
                       className={cn(
                         "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                        selectedIndexIds.includes(index.id) &&
+                        selectedNetworkIds.includes(index.id) &&
                           "text-gray-900 font-medium",
                       )}
                     >
@@ -1508,7 +1508,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           type="button"
           onClick={() => {
             clearChat({ abortStream: false });
-            setSelectedIndexIds([]);
+            setSelectedNetworkIds([]);
             navigate("/");
           }}
           className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"

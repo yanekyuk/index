@@ -4,10 +4,10 @@ import { LogOut } from 'lucide-react';
 import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
-import { useIndexes } from '@/contexts/APIContext';
+import { useNetworks } from '@/contexts/APIContext';
 
 interface NetworkOverviewPanelProps {
   index: Network;
@@ -18,10 +18,10 @@ interface NetworkOverviewPanelProps {
 }
 
 export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRequest, onLeaveRequestHandled }: NetworkOverviewPanelProps) {
-  const { removeIndex } = useIndexesState();
+  const { removeIndex } = useNetworksState();
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
-  const indexesService = useIndexes();
+  const indexesService = useNetworks();
 
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);

@@ -1101,7 +1101,7 @@ export class ChatDatabaseAdapter {
     }
   }
 
-  async getIndex(networkId: string): Promise<{ id: string; title: string } | null> {
+  async getNetwork(networkId: string): Promise<{ id: string; title: string } | null> {
     const rows = await db
       .select({ id: schema.networks.id, title: schema.networks.title })
       .from(schema.networks)
@@ -1517,7 +1517,7 @@ export class ChatDatabaseAdapter {
       );
   }
 
-  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+  async getNetworkIdsForIntent(intentId: string): Promise<string[]> {
     const rows = await db
       .select({ networkId: intentNetworks.networkId })
       .from(intentNetworks)
@@ -1973,7 +1973,7 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async softDeleteIndex(networkId: string): Promise<void> {
+  async softDeleteNetwork(networkId: string): Promise<void> {
     await db.delete(intentNetworks).where(eq(intentNetworks.networkId, networkId));
     await db.delete(networkMembers).where(eq(networkMembers.networkId, networkId));
     await db.update(networks).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(networks.id, networkId));
@@ -1998,7 +1998,7 @@ export class ChatDatabaseAdapter {
    * @param key - The index's key
    * @returns Index record or null
    */
-  async getIndexByKey(key: string) {
+  async getNetworkByKey(key: string) {
     const rows = await db.select()
       .from(networks)
       .where(and(eq(networks.key, key), isNull(networks.deletedAt)))
@@ -2007,11 +2007,11 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Check if an index key already exists.
+   * Check if a network key already exists.
    * @param key - The key to check
    * @returns True if the key is taken
    */
-  async indexKeyExists(key: string): Promise<boolean> {
+  async networkKeyExists(key: string): Promise<boolean> {
     const result = await db.select({ id: networks.id })
       .from(networks)
       .where(eq(networks.key, key))
@@ -2020,10 +2020,10 @@ export class ChatDatabaseAdapter {
   }
 
   /**
-   * Update an index's key. Owner-only check should be done at the service level.
-   * @param indexId - The index ID
+   * Update a network's key. Owner-only check should be done at the service level.
+   * @param indexId - The network ID
    * @param key - The new key value
-   * @returns Updated index or null
+   * @returns Updated network or null
    */
   async updateIndexKey(indexId: string, key: string) {
     const result = await db.update(networks)
@@ -2086,7 +2086,7 @@ export class ChatDatabaseAdapter {
     return Number(r?.count ?? 0);
   }
 
-  async addMemberToIndex(
+  async addMemberToNetwork(
     networkId: string,
     userId: string,
     role: 'owner' | 'admin' | 'member'
@@ -2108,7 +2108,7 @@ export class ChatDatabaseAdapter {
       try {
         NetworkMembershipEvents.onMemberAdded(userId, networkId);
       } catch (err) {
-        logger.warn('addMemberToIndex event hook failed (non-fatal)', { networkId, userId, error: err instanceof Error ? err.message : String(err) });
+        logger.warn('addMemberToNetwork event hook failed (non-fatal)', { networkId, userId, error: err instanceof Error ? err.message : String(err) });
       }
     }
     return { success: true, alreadyMember: result.length === 0 };
@@ -2158,7 +2158,7 @@ export class ChatDatabaseAdapter {
       return idOrKey;
     }
     // Try key lookup first
-    const row = await this.getIndexByKey(idOrKey);
+    const row = await this.getNetworkByKey(idOrKey);
     if (row) return row.id;
     // Fall back to hex prefix matching
     const isHexPrefix = /^[0-9a-f]+$/i.test(idOrKey);
@@ -2297,7 +2297,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Invalid or expired invitation link');
     }
 
-    const result = await this.addMemberToIndex(index.id, userId, 'member');
+    const result = await this.addMemberToNetwork(index.id, userId, 'member');
 
     const [memberRow] = await db
       .select({
@@ -2329,7 +2329,7 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async getIndexDetail(networkId: string, requestingUserId: string) {
+  async getNetworkDetail(networkId: string, requestingUserId: string) {
     const rows = await db
       .select({
         id: networks.id,
@@ -2444,7 +2444,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Access denied: Only owners or admins can add members');
     }
 
-    const result = await this.addMemberToIndex(networkId, userId, role);
+    const result = await this.addMemberToNetwork(networkId, userId, role);
     const user = await this.getUser(userId);
 
     return {
@@ -2499,7 +2499,7 @@ export class ChatDatabaseAdapter {
       throw new Error('This index is not public');
     }
 
-    return await this.addMemberToIndex(networkId, userId, 'member');
+    return await this.addMemberToNetwork(networkId, userId, 'member');
   }
 
   /**
@@ -2532,7 +2532,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Access denied: Not an owner of this index');
     }
 
-    await this.softDeleteIndex(networkId);
+    await this.softDeleteNetwork(networkId);
   }
 
   // Opportunity operations (delegate to OpportunityDatabaseAdapter)
@@ -3958,7 +3958,7 @@ export class NetworkGraphDatabaseAdapter {
       );
   }
 
-  async getIndexIdsForIntent(intentId: string): Promise<string[]> {
+  async getNetworkIdsForIntent(intentId: string): Promise<string[]> {
     const rows = await db
       .select({ networkId: intentNetworks.networkId })
       .from(intentNetworks)
@@ -4849,7 +4849,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       }
       return intent;
     },
-    associateIntentWithIndexes: async (intentId: string, indexIds: string[]) => {
+    associateIntentWithNetworks: async (intentId: string, indexIds: string[]) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
@@ -4869,11 +4869,11 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
       return db.unassignIntentFromIndex(intentId, networkId);
     },
-    getIndexIdsForIntent: async (intentId: string) => {
+    getNetworkIdsForIntent: async (intentId: string) => {
       const intent = await db.getIntent(intentId);
       if (!intent) throw new Error('Intent not found');
       if (intent.userId !== authUserId) throw new Error('Access denied: intent not owned by user');
-      return db.getIndexIdsForIntent(intentId);
+      return db.getNetworkIdsForIntent(intentId);
     },
     isIntentAssignedToIndex: async (intentId: string, networkId: string) => {
       const intent = await db.getIntent(intentId);
@@ -4896,12 +4896,12 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     // ─────────────────────────────────────────────────────────────────────────────
     createNetwork: (data: Parameters<ChatDatabaseAdapter['createNetwork']>[0]) => db.createNetwork(data),
     updateIndexSettings: (networkId: string, data: Parameters<ChatDatabaseAdapter['updateIndexSettings']>[2]) => db.updateIndexSettings(networkId, authUserId, data),
-    softDeleteIndex: async (networkId: string) => {
+    softDeleteNetwork: async (networkId: string) => {
       const isOwner = await db.isIndexOwner(networkId, authUserId);
       if (!isOwner) throw new Error('Access denied: not index owner');
       const isPersonal = await db.isPersonalNetwork(networkId);
       if (isPersonal) throw new Error('Cannot delete personal index');
-      return db.softDeleteIndex(networkId);
+      return db.softDeleteNetwork(networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -5083,7 +5083,7 @@ export function createSystemDatabase(
      * @remarks Intentionally unscoped -- used by join flows, invitation acceptance, and
      * contact addition that operate outside the caller's current index scope.
      */
-    addMemberToIndex: (networkId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToIndex(networkId, userId, role),
+    addMemberToNetwork: (networkId: string, userId: string, role: 'owner' | 'admin' | 'member') => db.addMemberToNetwork(networkId, userId, role),
     /**
      * Removes a member from an index without scope check.
      * @remarks Intentionally unscoped -- used by leave/kick flows and member removal
@@ -5094,9 +5094,9 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     // Index Operations (within scope)
     // ─────────────────────────────────────────────────────────────────────────────
-    getIndex: async (networkId: string) => {
+    getNetwork: async (networkId: string) => {
       verifyScope(networkId);
-      return db.getIndex(networkId);
+      return db.getNetwork(networkId);
     },
     getIndexWithPermissions: async (networkId: string) => {
       verifyScope(networkId);
@@ -6134,7 +6134,7 @@ export class ConversationDatabaseAdapter {
       .select()
       .from(schema.conversationMetadata)
       .where(inArray(schema.conversationMetadata.conversationId, chatConvIdList));
-    const metaMap = new Map(metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]));
+    const metaMap = new Map<string, ChatConversationMeta>(metaRows.map((m) => [m.conversationId, m.metadata as ChatConversationMeta]));
 
     return rows.map((conv) => this._toChatSession(conv, userId, metaMap.get(conv.id) ?? null));
   }
@@ -6142,8 +6142,8 @@ export class ConversationDatabaseAdapter {
   /**
    * Update chat session index scope.
    */
-  async updateChatSessionIndex(sessionId: string, indexId: string | null): Promise<void> {
-    await this._upsertConvMeta(sessionId, { indexId });
+  async updateChatSessionIndex(sessionId: string, networkId: string | null): Promise<void> {
+    await this._upsertConvMeta(sessionId, { networkId });
     await db
       .update(schema.conversations)
       .set({ updatedAt: new Date() })

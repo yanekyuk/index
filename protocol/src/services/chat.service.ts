@@ -103,7 +103,7 @@ export class ChatSessionService {
     networkId: string
   ): Promise<{ ok: true } | { ok: false; status: 403 | 404; error: string }> {
     const normalizedIndexId = networkId.trim();
-    const index = await this.graphDb.getIndex(normalizedIndexId);
+    const index = await this.graphDb.getNetwork(normalizedIndexId);
     if (!index) {
       return { ok: false, status: 404, error: 'Index not found' };
     }

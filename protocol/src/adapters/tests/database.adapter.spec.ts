@@ -275,9 +275,9 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index ids for intent', async () => {
-    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
     expect(indexIds).toEqual([fixture.networkId]);
-    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    const empty = await adapter.getNetworkIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });
 
@@ -844,9 +844,9 @@ describe('NetworkGraphDatabaseAdapter', () => {
   });
 
   it('should get index ids for intent', async () => {
-    const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
+    const indexIds = await adapter.getNetworkIdsForIntent(fixture.intent1Id);
     expect(indexIds).toEqual([fixture.networkId]);
-    const empty = await adapter.getIndexIdsForIntent(uuidv4());
+    const empty = await adapter.getNetworkIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });
 

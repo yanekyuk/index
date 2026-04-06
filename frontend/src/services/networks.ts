@@ -50,7 +50,7 @@ const myMembersRecent = new Map<string, { data: { members: Member[] }; timestamp
 
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all networks with pagination
-  getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network>> => {
+  getNetworks: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Network>> => {
     const response = await api.get<APIResponse<Network>>(`/networks?page=${page}&limit=${limit}`);
     return {
       data: response.networks || [],
@@ -74,7 +74,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get single network by ID
-  getIndex: async (id: string): Promise<Network> => {
+  getNetwork: async (id: string): Promise<Network> => {
     const response = await api.get<APIResponse<Network>>(`/networks/${id}`);
     if (!response.network) {
       throw new Error('Network not found');
@@ -110,7 +110,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Create new network
-  createIndex: async (data: CreateNetworkRequest): Promise<Network> => {
+  createNetwork: async (data: CreateNetworkRequest): Promise<Network> => {
     const response = await api.post<APIResponse<Network>>('/networks', data);
     if (!response.network) {
       throw new Error('Failed to create network');
@@ -119,7 +119,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Update network
-  updateIndex: async (id: string, data: UpdateNetworkRequest): Promise<Network> => {
+  updateNetwork: async (id: string, data: UpdateNetworkRequest): Promise<Network> => {
     const response = await api.put<APIResponse<Network>>(`/networks/${id}`, data);
     if (!response.network) {
       throw new Error('Failed to update network');
@@ -128,7 +128,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Delete network
-  deleteIndex: async (id: string): Promise<void> => {
+  deleteNetwork: async (id: string): Promise<void> => {
     await api.delete(`/networks/${id}`);
   },
 
@@ -357,17 +357,17 @@ export const indexesService = {
   },
 
   // Legacy methods that require authentication
-  getIndexes: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  getIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  createIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  updateIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  deleteIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  addMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  removeMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
+  getNetworks: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  getNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  createNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  updateNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  deleteNetwork: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  addMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
+  removeMember: () => { throw new Error('Use useNetworkService() hook instead of indexesService directly'); },
 };
 
-// Hook for using indexes service with proper error handling
-export function useIndexService() {
+// Hook for using networks service with proper error handling
+export function useNetworkService() {
   const api = useAuthenticatedAPI();
   return useMemo(() => createIndexesService(api), [api]);
 } 

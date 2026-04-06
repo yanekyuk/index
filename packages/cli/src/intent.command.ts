@@ -136,7 +136,7 @@ export async function handleIntent(
       }
       const result = await client.callTool("create_intent_index", {
         intentId: options.intentId,
-        indexId: options.targetId,
+        networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to link signal", 1); return; }
@@ -151,7 +151,7 @@ export async function handleIntent(
       }
       const result = await client.callTool("delete_intent_index", {
         intentId: options.intentId,
-        indexId: options.targetId,
+        networkId: options.targetId,
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to unlink signal", 1); return; }
@@ -169,14 +169,14 @@ export async function handleIntent(
       });
       if (options.json) { console.log(JSON.stringify(result)); return; }
       if (!result.success) { output.error(result.error ?? "Failed to read linked networks", 1); return; }
-      const data = result.data as { indexes: Array<{ indexId: string; title: string; relevancyScore?: number }> };
+      const data = result.data as { indexes: Array<{ networkId: string; title: string; relevancyScore?: number }> };
       output.heading("Linked Networks");
       if (!data.indexes?.length) {
         output.dim("  No linked networks.");
       } else {
         for (const idx of data.indexes) {
           const score = idx.relevancyScore !== undefined ? ` (${idx.relevancyScore.toFixed(2)})` : "";
-          console.log(`  ${idx.title} ${output.DIM}${idx.indexId.slice(0, 8)}${score}${output.RESET}`);
+          console.log(`  ${idx.title} ${output.DIM}${idx.networkId.slice(0, 8)}${score}${output.RESET}`);
         }
       }
       console.log();

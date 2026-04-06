@@ -212,7 +212,7 @@ export class ChatController {
     const sessionId = currentSessionId;
     const factory = chatSessionService.getGraphFactory();
     const useCheckpointer = body.useCheckpointer ?? true;
-    const indexIdForStream = effectiveIndexId;
+    const networkIdForStream = effectiveIndexId;
 
     // User message is persisted after the stream completes (with the assistant response) so that
     // loadSessionContext during streaming does not include it and the current message is not
@@ -261,7 +261,7 @@ export class ChatController {
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
-              networkId: indexIdForStream,
+              networkId: networkIdForStream,
               prefillMessages: body.prefillMessages,
             },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

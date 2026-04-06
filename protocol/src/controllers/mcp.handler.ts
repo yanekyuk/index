@@ -55,14 +55,14 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     undefined, undefined, negotiationGraph,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
-  const indexMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
+  const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
   const intentIndexGraph = new IntentNetworkGraphFactory(database, new IntentIndexer()).createGraph();
 
   compiledGraphs = {
     profile: profileGraph,
     intent: intentGraph,
     index: indexGraph,
-    networkMembership: indexMembershipGraph,
+    networkMembership: networkMembershipGraph,
     intentIndex: intentIndexGraph,
     opportunity: opportunityGraph,
   };

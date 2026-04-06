@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunities, useIndexes } from "@/contexts/APIContext";
-import { useIndexesState } from "@/contexts/IndexesContext";
+import { useOpportunities, useNetworks } from "@/contexts/APIContext";
+import { useNetworksState } from "@/contexts/IndexesContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
@@ -282,8 +282,8 @@ export default function OnboardingPage() {
   } = useAIChat();
 
   const opportunitiesService = useOpportunities();
-  const indexesService = useIndexes();
-  const { refreshIndexes } = useIndexesState();
+  const indexesService = useNetworks();
+  const { refreshIndexes } = useNetworksState();
   const { error: showError } = useNotifications();
 
   const [input, setInput] = useState("");

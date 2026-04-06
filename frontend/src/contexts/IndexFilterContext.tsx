@@ -1,33 +1,33 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
-interface IndexFilterContextType {
-  selectedIndexIds: string[];
-  setSelectedIndexIds: (indexIds: string[]) => void;
+interface NetworkFilterContextType {
+  selectedNetworkIds: string[];
+  setSelectedNetworkIds: (networkIds: string[]) => void;
 }
 
-const IndexFilterContext = createContext<IndexFilterContextType | undefined>(undefined);
+const NetworkFilterContext = createContext<NetworkFilterContextType | undefined>(undefined);
 
-export function IndexFilterProvider({ children }: { children: ReactNode }) {
-  const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([]);
+export function NetworkFilterProvider({ children }: { children: ReactNode }) {
+  const [selectedNetworkIds, setSelectedNetworkIds] = useState<string[]>([]);
 
-  const handleSetSelectedIndexIds = useCallback((indexIds: string[]) => {
-    setSelectedIndexIds(indexIds);
+  const handleSetSelectedNetworkIds = useCallback((networkIds: string[]) => {
+    setSelectedNetworkIds(networkIds);
   }, []);
 
   return (
-    <IndexFilterContext.Provider value={{
-      selectedIndexIds,
-      setSelectedIndexIds: handleSetSelectedIndexIds,
+    <NetworkFilterContext.Provider value={{
+      selectedNetworkIds,
+      setSelectedNetworkIds: handleSetSelectedNetworkIds,
     }}>
       {children}
-    </IndexFilterContext.Provider>
+    </NetworkFilterContext.Provider>
   );
 }
 
-export function useIndexFilter() {
-  const context = useContext(IndexFilterContext);
+export function useNetworkFilter() {
+  const context = useContext(NetworkFilterContext);
   if (context === undefined) {
-    throw new Error('useIndexFilter must be used within an IndexFilterProvider');
+    throw new Error('useNetworkFilter must be used within a NetworkFilterProvider');
   }
   return context;
 }

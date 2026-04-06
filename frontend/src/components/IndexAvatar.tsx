@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Avatar from 'boring-avatars';
 import { apiUrl } from '@/lib/api';
 
-interface IndexAvatarProps {
+interface NetworkAvatarProps {
   id?: string;
   title?: string;
   imageUrl?: string | null;
@@ -11,7 +11,7 @@ interface IndexAvatarProps {
   rounded?: 'full' | 'sm';
 }
 
-export function resolveIndexImageSrc(imageUrl: string): string {
+export function resolveNetworkImageSrc(imageUrl: string): string {
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     return imageUrl;
   }
@@ -35,7 +35,7 @@ function BoringFallback({ id, title, size, rounded, className }: { id?: string; 
   );
 }
 
-export default function IndexAvatar({ id, title, imageUrl, size, className = '', rounded = 'full' }: IndexAvatarProps) {
+export default function NetworkAvatar({ id, title, imageUrl, size, className = '', rounded = 'full' }: NetworkAvatarProps) {
   const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function IndexAvatar({ id, title, imageUrl, size, className = '',
       style={{ width: size, height: size }}
     >
       <img
-        src={resolveIndexImageSrc(imageUrl)}
+        src={resolveNetworkImageSrc(imageUrl)}
         alt={title || 'Network'}
         width={size}
         height={size}

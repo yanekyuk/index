@@ -98,7 +98,7 @@ export interface OpportunityActor {
   userId: string;
   name?: string;
   role?: "agent" | "patient" | "peer";
-  indexId?: string;
+  networkId?: string;
   intent?: string;
 }
 

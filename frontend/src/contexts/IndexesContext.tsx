@@ -2,9 +2,9 @@ import { createContext, useContext, ReactNode, useState, useEffect, useCallback,
 import { Network } from '@/lib/types';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useIndexesV2 } from '@/services/v2/networks.service';
-import { useIndexes as useIndexesAPI } from '@/contexts/APIContext';
+import { useNetworks as useIndexesAPI } from '@/contexts/APIContext';
 
-interface IndexesContextType {
+interface NetworksContextType {
   indexes: Network[];
   loading: boolean;
   error: string | null;
@@ -14,9 +14,9 @@ interface IndexesContextType {
   removeIndex: (networkId: string) => void;
 }
 
-const IndexesContext = createContext<IndexesContextType | undefined>(undefined);
+const NetworksContext = createContext<NetworksContextType | undefined>(undefined);
 
-export function IndexesProvider({ children }: { children: ReactNode }) {
+export function NetworksProvider({ children }: { children: ReactNode }) {
   const [indexes, setIndexes] = useState<Network[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, indexesAPI, refreshIndexes]);
 
   return (
-    <IndexesContext.Provider value={{
+    <NetworksContext.Provider value={{
       indexes,
       loading,
       error,
@@ -103,14 +103,14 @@ export function IndexesProvider({ children }: { children: ReactNode }) {
       removeIndex
     }}>
       {children}
-    </IndexesContext.Provider>
+    </NetworksContext.Provider>
   );
 }
 
-export function useIndexesState() {
-  const context = useContext(IndexesContext);
+export function useNetworksState() {
+  const context = useContext(NetworksContext);
   if (context === undefined) {
-    throw new Error('useIndexesState must be used within an IndexesProvider');
+    throw new Error('useNetworksState must be used within a NetworksProvider');
   }
   return context;
 }

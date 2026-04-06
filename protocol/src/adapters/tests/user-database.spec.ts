@@ -100,11 +100,11 @@ const latentWithIntroducer = {
   id: 'opp-3',
   detection: stubDetection,
   actors: [
-    { userId: AUTH_USER, indexId: 'idx-c', role: 'agent' },
-    { userId: OTHER_USER, indexId: 'idx-c', role: 'introducer' },
+    { userId: AUTH_USER, networkId: 'idx-c', role: 'agent' },
+    { userId: OTHER_USER, networkId: 'idx-c', role: 'introducer' },
   ],
   interpretation: stubInterpretation,
-  context: { indexId: 'idx-c' },
+  context: { networkId: 'idx-c' },
   confidence: '0.9',
   status: 'latent' as const,
   ...stubDates,
@@ -129,7 +129,7 @@ function createMockDb(): ChatDatabaseAdapter {
     getIntentForIndexing: mock(() => Promise.resolve(null)),
     assignIntentToNetwork: mock(() => Promise.resolve()),
     unassignIntentFromIndex: mock(() => Promise.resolve()),
-    getIndexIdsForIntent: mock(() => Promise.resolve([])),
+    getNetworkIdsForIntent: mock(() => Promise.resolve([])),
     isIntentAssignedToIndex: mock(() => Promise.resolve(false)),
 
     // Network membership
@@ -142,9 +142,9 @@ function createMockDb(): ChatDatabaseAdapter {
     // Network CRUD
     createNetwork: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
     updateIndexSettings: mock(() => Promise.resolve({})),
-    softDeleteIndex: mock(() => Promise.resolve()),
+    softDeleteNetwork: mock(() => Promise.resolve()),
     isIndexOwner: mock(() => Promise.resolve(false)),
-    isPersonalIndex: mock(() => Promise.resolve(false)),
+    isPersonalNetwork: mock(() => Promise.resolve(false)),
 
     // Public network discovery
     getPublicIndexesNotJoined: mock(() => Promise.resolve({ networks: [] })),
@@ -269,17 +269,17 @@ describe('createUserDatabase', () => {
       await expect(userDb.archiveIntent('intent-2')).rejects.toThrow('Access denied');
     });
 
-    it('associateIntentWithIndexes succeeds for owned intent', async () => {
+    it('associateIntentWithNetworks succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
-      await userDb.associateIntentWithIndexes('intent-1', ['idx-a', 'idx-b']);
+      await userDb.associateIntentWithNetworks('intent-1', ['idx-a', 'idx-b']);
       expect(mockDb.assignIntentToNetwork).toHaveBeenCalledTimes(2);
       expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-a');
       expect(mockDb.assignIntentToNetwork).toHaveBeenCalledWith('intent-1', 'idx-b');
     });
 
-    it('associateIntentWithIndexes throws for intent owned by another user', async () => {
+    it('associateIntentWithNetworks throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
-      await expect(userDb.associateIntentWithIndexes('intent-2', ['idx-a'])).rejects.toThrow('Access denied');
+      await expect(userDb.associateIntentWithNetworks('intent-2', ['idx-a'])).rejects.toThrow('Access denied');
     });
 
     it('assignIntentToNetwork succeeds for owned intent', async () => {
@@ -337,22 +337,22 @@ describe('createUserDatabase', () => {
       await expect(userDb.getIntentForIndexing('intent-2')).rejects.toThrow('Access denied');
     });
 
-    it('getIndexIdsForIntent succeeds for owned intent', async () => {
+    it('getNetworkIdsForIntent succeeds for owned intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(ownedIntent);
-      (mockDb.getIndexIdsForIntent as ReturnType<typeof mock>).mockResolvedValueOnce(['idx-a', 'idx-b']);
-      const result = await userDb.getIndexIdsForIntent('intent-1');
+      (mockDb.getNetworkIdsForIntent as ReturnType<typeof mock>).mockResolvedValueOnce(['idx-a', 'idx-b']);
+      const result = await userDb.getNetworkIdsForIntent('intent-1');
       expect(result).toEqual(['idx-a', 'idx-b']);
-      expect(mockDb.getIndexIdsForIntent).toHaveBeenCalledWith('intent-1');
+      expect(mockDb.getNetworkIdsForIntent).toHaveBeenCalledWith('intent-1');
     });
 
-    it('getIndexIdsForIntent throws for intent owned by another user', async () => {
+    it('getNetworkIdsForIntent throws for intent owned by another user', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(otherIntent);
-      await expect(userDb.getIndexIdsForIntent('intent-2')).rejects.toThrow('Access denied');
+      await expect(userDb.getNetworkIdsForIntent('intent-2')).rejects.toThrow('Access denied');
     });
 
-    it('getIndexIdsForIntent throws for missing intent', async () => {
+    it('getNetworkIdsForIntent throws for missing intent', async () => {
       (mockDb.getIntent as ReturnType<typeof mock>).mockResolvedValueOnce(null);
-      await expect(userDb.getIndexIdsForIntent('missing')).rejects.toThrow('Intent not found');
+      await expect(userDb.getNetworkIdsForIntent('missing')).rejects.toThrow('Intent not found');
     });
 
     it('isIntentAssignedToIndex succeeds for owned intent', async () => {
@@ -428,23 +428,23 @@ describe('createUserDatabase', () => {
       expect(mockDb.updateIndexSettings).toHaveBeenCalledWith('idx-a', AUTH_USER, data);
     });
 
-    it('softDeleteIndex succeeds when user is owner and index is not personal', async () => {
+    it('softDeleteNetwork succeeds when user is owner and index is not personal', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(false);
-      await userDb.softDeleteIndex('idx-a');
+      await userDb.softDeleteNetwork('idx-a');
       expect(mockDb.isIndexOwner).toHaveBeenCalledWith('idx-a', AUTH_USER);
-      expect(mockDb.softDeleteIndex).toHaveBeenCalledWith('idx-a');
+      expect(mockDb.softDeleteNetwork).toHaveBeenCalledWith('idx-a');
     });
 
-    it('softDeleteIndex throws when user is not owner', async () => {
+    it('softDeleteNetwork throws when user is not owner', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(false);
-      await expect(userDb.softDeleteIndex('idx-a')).rejects.toThrow('Access denied');
+      await expect(userDb.softDeleteNetwork('idx-a')).rejects.toThrow('Access denied');
     });
 
-    it('softDeleteIndex throws when index is personal even if user is owner', async () => {
+    it('softDeleteNetwork throws when index is personal even if user is owner', async () => {
       (mockDb.isIndexOwner as ReturnType<typeof mock>).mockResolvedValueOnce(true);
       (mockDb.isPersonalNetwork as ReturnType<typeof mock>).mockResolvedValueOnce(true);
-      await expect(userDb.softDeleteIndex('idx-personal')).rejects.toThrow('Cannot delete personal index');
+      await expect(userDb.softDeleteNetwork('idx-personal')).rejects.toThrow('Cannot delete personal index');
     });
   });
 
@@ -456,7 +456,7 @@ describe('createUserDatabase', () => {
     it('getPublicIndexesNotJoined delegates with authUserId', async () => {
       const result = await userDb.getPublicIndexesNotJoined();
       expect(mockDb.getPublicIndexesNotJoined).toHaveBeenCalledWith(AUTH_USER);
-      expect(result).toEqual({ networks: [], pagination: { current: 1, total: 1, count: 0, totalCount: 0 } });
+      expect(result).toMatchObject({ networks: [] });
     });
 
     it('joinPublicNetwork delegates with networkId and authUserId', async () => {

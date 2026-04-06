@@ -2,26 +2,26 @@ import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Plus, Users, Loader2 } from 'lucide-react';
-import IndexAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
-import CreateIndexModal from '@/components/modals/CreateIndexModal';
+import CreateNetworkModal from '@/components/modals/CreateIndexModal';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useIndexes } from '@/contexts/APIContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworks } from '@/contexts/APIContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { Network as NetworkType } from '@/lib/types';
 
 export default function NetworksPage() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const { success, error } = useNotifications();
-  const indexesService = useIndexes();
-  const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useIndexesState();
+  const indexesService = useNetworks();
+  const { indexes: rawIndexes, loading: indexesLoading, addIndex } = useNetworksState();
 
   const [activeTab, setActiveTab] = useState<'my-networks' | 'discover'>('my-networks');
-  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
+  const [createNetworkModalOpen, setCreateNetworkModalOpen] = useState(false);
   const [publicNetworks, setPublicNetworks] = useState<(NetworkType & { isMember?: boolean })[]>([]);
   const [loadingPublic, setLoadingPublic] = useState(false);
   const [joiningNetwork, setJoiningNetwork] = useState<string | null>(null);
@@ -69,14 +69,14 @@ export default function NetworksPage() {
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
-      const newIndex = await indexesService.createIndex({
+      const newIndex = await indexesService.createNetwork({
         title: indexData.name,
         prompt: indexData.prompt,
         imageUrl: indexData.imageUrl,
         joinPolicy: indexData.joinPolicy,
       });
       addIndex(newIndex);
-      setCreateIndexModalOpen(false);
+      setCreateNetworkModalOpen(false);
       navigate(`/networks/${newIndex.id}`);
       success('Network created successfully');
     } catch (err) {
@@ -95,7 +95,7 @@ export default function NetworksPage() {
               <h1 className="text-2xl font-bold text-black font-ibm-plex-mono">Networks</h1>
               {user?.email?.endsWith('@index.network') && (
                 <button
-                  onClick={() => setCreateIndexModalOpen(true)}
+                  onClick={() => setCreateNetworkModalOpen(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-sm transition-colors"
                 >
                   <Plus className="w-4 h-4" />
@@ -140,7 +140,7 @@ export default function NetworksPage() {
                           }`}
                         >
                           <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
-                            <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
+                            <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-black truncate">{network.title}</p>
@@ -177,7 +177,7 @@ export default function NetworksPage() {
                     {publicNetworks.map((network) => (
                       <div key={network.id} className="flex items-center gap-3 py-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
-                          <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
+                          <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={40} rounded="full" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-black truncate">{network.title}</p>
@@ -216,9 +216,9 @@ export default function NetworksPage() {
         </ContentContainer>
       </div>
 
-      <CreateIndexModal
-        open={createIndexModalOpen}
-        onOpenChange={setCreateIndexModalOpen}
+      <CreateNetworkModal
+        open={createNetworkModalOpen}
+        onOpenChange={setCreateNetworkModalOpen}
         onSubmit={handleCreateIndex}
         uploadIndexImage={indexesService.uploadIndexImage}
       />

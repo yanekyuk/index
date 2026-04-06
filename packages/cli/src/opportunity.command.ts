@@ -196,10 +196,10 @@ async function discoverIntroduction(
     return;
   }
 
-  const indexesA = ((membershipsA.data?.memberships ?? membershipsA.data?.indexes) as Array<{ indexId: string }>) ?? [];
-  const indexesB = ((membershipsB.data?.memberships ?? membershipsB.data?.indexes) as Array<{ indexId: string }>) ?? [];
-  const idsA = new Set(indexesA.map((m) => m.indexId));
-  const shared = indexesB.filter((m) => idsA.has(m.indexId));
+  const indexesA = ((membershipsA.data?.memberships ?? membershipsA.data?.indexes) as Array<{ networkId: string }>) ?? [];
+  const indexesB = ((membershipsB.data?.memberships ?? membershipsB.data?.indexes) as Array<{ networkId: string }>) ?? [];
+  const idsA = new Set(indexesA.map((m) => m.networkId));
+  const shared = indexesB.filter((m) => idsA.has(m.networkId));
 
   if (shared.length === 0) {
     const err = "No shared indexes found between these users. They must be members of at least one common network.";
@@ -208,15 +208,15 @@ async function discoverIntroduction(
     return;
   }
 
-  const sharedIndexId = shared[0].indexId;
-  output.dim(`  Found shared network: ${sharedIndexId}`);
+  const sharedNetworkId = shared[0].networkId;
+  output.dim(`  Found shared network: ${sharedNetworkId}`);
 
   // Step 2: Gather profiles and intents in parallel
   const [profileA, profileB, intentsA, intentsB] = await Promise.all([
     client.callTool("read_user_profiles", { userId: userA }),
     client.callTool("read_user_profiles", { userId: userB }),
-    client.callTool("read_intents", { userId: userA, indexId: sharedIndexId }),
-    client.callTool("read_intents", { userId: userB, indexId: sharedIndexId }),
+    client.callTool("read_intents", { userId: userA, networkId: sharedNetworkId }),
+    client.callTool("read_intents", { userId: userB, networkId: sharedNetworkId }),
   ]);
 
   const extractProfile = (result: { success: boolean; data?: Record<string, unknown> }) => {
@@ -237,8 +237,8 @@ async function discoverIntroduction(
   };
 
   const entities = [
-    { userId: userA, profile: extractProfile(profileA), intents: extractIntents(intentsA), indexId: sharedIndexId },
-    { userId: userB, profile: extractProfile(profileB), intents: extractIntents(intentsB), indexId: sharedIndexId },
+    { userId: userA, profile: extractProfile(profileA), intents: extractIntents(intentsA), networkId: sharedNetworkId },
+    { userId: userB, profile: extractProfile(profileB), intents: extractIntents(intentsB), networkId: sharedNetworkId },
   ];
 
   output.dim("  Profiles and intents gathered. Creating introduction...");

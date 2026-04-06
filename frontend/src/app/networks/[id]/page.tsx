@@ -3,14 +3,14 @@ import { useParams, useNavigate } from 'react-router';
 import { ChevronLeft, Loader2, Globe, Lock, Users, LogOut } from 'lucide-react';
 import * as Tabs from '@radix-ui/react-tabs';
 
-import IndexAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/IndexAvatar';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkSettingsPanel from '@/components/NetworkSettingsPanel';
 import NetworkOverviewPanel from '@/components/NetworkOverviewPanel';
 import { ContentContainer } from '@/components/layout';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
-import { useIndexes } from '@/contexts/APIContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworks } from '@/contexts/APIContext';
 import { Network } from '@/lib/types';
 
 export type TabValue = 'overview' | 'settings' | 'access' | 'integrations';
@@ -37,8 +37,8 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
   const params = useParams();
   const navigate = useNavigate();
   const { user } = useAuthContext();
-  const { indexes } = useIndexesState();
-  const indexesService = useIndexes();
+  const { indexes } = useNetworksState();
+  const indexesService = useNetworks();
 
   const networkId = networkIdOverride || (params.id as string);
   // Splat route (*) captures the tab segment; avoids remounts between tab navigations
@@ -85,7 +85,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
       }
 
       try {
-        const fetchedNetwork = await indexesService.getIndex(networkId);
+        const fetchedNetwork = await indexesService.getNetwork(networkId);
         const ownerStatus = await checkOwnership(networkId, fetchedNetwork);
         setNetwork(fetchedNetwork);
         setIsOwner(ownerStatus);
@@ -172,7 +172,7 @@ export default function NetworkDetailPage({ networkIdOverride, basePath }: Netwo
               <div className="flex items-start justify-between mb-8">
                 <div className="flex items-start gap-4">
                   <div className="w-16 h-16 rounded-full overflow-hidden shrink-0">
-                    <IndexAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="full" />
+                    <NetworkAvatar id={network.id} title={network.title} imageUrl={network.imageUrl} size={64} rounded="full" />
                   </div>
                   <div>
                   <h1 className="text-2xl font-bold text-black font-ibm-plex-mono mb-3">

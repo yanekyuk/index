@@ -75,7 +75,7 @@ export function useAPI() {
 }
 
 // Convenience hooks for direct service access
-export function useIndexes() {
+export function useNetworks() {
   const { indexesService } = useAPI();
   return indexesService;
 }

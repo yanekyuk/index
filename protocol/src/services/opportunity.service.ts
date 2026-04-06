@@ -256,7 +256,7 @@ export class OpportunityService {
     const actorNetworkId = nonIntroducerActors[0]?.networkId ?? myActor?.networkId;
     const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
     const [indexRecord, ...userRecords] = await Promise.all([
-      networkIdForDisplay ? this.db.getIndex(networkIdForDisplay) : Promise.resolve(null),
+      networkIdForDisplay ? this.db.getNetwork(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
     const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
