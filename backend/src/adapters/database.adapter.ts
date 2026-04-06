@@ -567,6 +567,11 @@ export class IntentDatabaseAdapter {
    * Delete all intents for a user (for test teardown).
    */
   async deleteByUserId(userId: string): Promise<void> {
+    const userIntentIds = db
+      .select({ id: schema.intents.id })
+      .from(schema.intents)
+      .where(eq(schema.intents.userId, userId));
+    await db.delete(schema.intentNetworks).where(inArray(schema.intentNetworks.intentId, userIntentIds));
     await db.delete(schema.intents).where(eq(schema.intents.userId, userId));
   }
 

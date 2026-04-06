@@ -1,10 +1,9 @@
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(import.meta.dir, '../.env.development') });
+import { config } from 'dotenv';
+config({ path: '.env.development' });
 
 import { describe, it, expect, afterAll } from 'bun:test';
-import { ConversationService } from '../src/services/conversation.service';
-import { TaskService } from '../src/services/task.service';
+import { ConversationService } from '../conversation.service';
+import { TaskService } from '../task.service';
 
 const conversationService = new ConversationService();
 const taskService = new TaskService();
@@ -13,7 +12,7 @@ const cleanupIds: string[] = [];
 afterAll(async () => {
   for (const id of cleanupIds) {
     try {
-      const { conversationDatabaseAdapter } = await import('../src/adapters/database.adapter');
+      const { conversationDatabaseAdapter } = await import('../../adapters/database.adapter');
       await conversationDatabaseAdapter.deleteConversation(id);
     } catch {}
   }

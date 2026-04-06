@@ -1,5 +1,5 @@
 import { log } from '../lib/log';
-import { ChatDatabaseAdapter } from '../adapters/database.adapter';
+import { ContactDatabaseAdapter } from '../adapters/contact.database.adapter';
 import { profileQueue } from '../queues/profile.queue';
 import { deduplicateContacts, getPreset } from '../lib/dedup/dedup';
 
@@ -102,7 +102,7 @@ export interface ResolveResult {
  * - List and manage contacts
  */
 export class ContactService {
-  constructor(private db = new ChatDatabaseAdapter()) {}
+  constructor(private db = new ContactDatabaseAdapter()) {}
 
   /**
    * Add a single contact by email.

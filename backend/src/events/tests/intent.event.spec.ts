@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.development' });
 
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
-import { IntentEvents } from '../src/events/intent.event';
+import { IntentEvents } from '../intent.event';
 
 /**
  * Tests that IntentEvents hooks trigger maintenance for all lifecycle events.

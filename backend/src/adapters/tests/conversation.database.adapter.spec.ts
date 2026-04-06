@@ -1,9 +1,8 @@
-import dotenv from 'dotenv';
-import path from 'path';
-dotenv.config({ path: path.resolve(import.meta.dir, '../.env.development') });
+import { config } from 'dotenv';
+config({ path: '.env.development' });
 
 import { describe, it, expect, afterAll } from 'bun:test';
-import { ConversationDatabaseAdapter } from '../src/adapters/database.adapter';
+import { ConversationDatabaseAdapter } from '../database.adapter';
 
 describe('ConversationDatabaseAdapter', () => {
   const adapter = new ConversationDatabaseAdapter();

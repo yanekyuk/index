@@ -1,3 +1,7 @@
+import { config } from 'dotenv';
+config({ path: 'backend/.env.test', override: true });
+config({ path: '.env.test', override: true });
+
 import { describe, it, expect, jest, beforeEach, mock } from 'bun:test';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail } from '../notification.sender';
 import * as emailModule from '../transport.helper';
@@ -55,14 +59,16 @@ describe('Email Handlers', () => {
 
       await sendConnectionRequestEmail(to, initiatorName, receiverName, synthesisHtml, subject);
 
-      const unsubscribeUrl = "https://protocol.index.network/api/notifications/unsubscribe?token=token&type=connectionUpdates";
+      const unsubscribeUrl = `${process.env.BASE_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
       expect(templatesModule.connectionRequestTemplate).toHaveBeenCalledWith(initiatorName, receiverName, synthesisHtml, subject, unsubscribeUrl);
-      expect(emailModule.sendEmail).toHaveBeenCalledWith({
-        to,
-        subject: 'Request Subject',
-        html: '<p>Request HTML</p>',
-        text: 'Request Text'
-      });
+      expect(emailModule.sendEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to,
+          subject: 'Request Subject',
+          html: '<p>Request HTML</p>',
+          text: 'Request Text',
+        })
+      );
     });
   });
 
@@ -75,14 +81,20 @@ describe('Email Handlers', () => {
 
       await sendConnectionAcceptedEmail(to, initiatorName, accepterName, synthesisHtml);
 
-      const unsubscribeUrl = "https://protocol.index.network/api/notifications/unsubscribe?token=token&type=connectionUpdates";
+      const unsubscribeUrl = `${process.env.BASE_URL || 'https://protocol.index.network'}/api/notifications/unsubscribe?token=token&type=connectionUpdates`;
       expect(connectionAcceptedTemplateModule.connectionAcceptedTemplate).toHaveBeenCalledWith(initiatorName, accepterName, synthesisHtml, unsubscribeUrl);
-      expect(emailModule.sendEmail).toHaveBeenCalledWith({
-        to,
-        subject: 'Accepted Subject',
-        html: '<p>Accepted HTML</p>',
-        text: 'Accepted Text'
-      });
+      // Sends one email per recipient
+      expect(emailModule.sendEmail).toHaveBeenCalledTimes(2);
+      for (const recipient of to) {
+        expect(emailModule.sendEmail).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: recipient,
+            subject: 'Accepted Subject',
+            html: '<p>Accepted HTML</p>',
+            text: 'Accepted Text',
+          })
+        );
+      }
     });
   });
 

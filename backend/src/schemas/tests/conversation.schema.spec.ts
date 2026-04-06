@@ -5,7 +5,7 @@ import { describe, it, expect } from 'bun:test';
 import {
   conversations, conversationParticipants, messages, tasks, artifacts, conversationMetadata,
   participantTypeEnum, messageRoleEnum, taskStateEnum,
-} from '../src/schemas/conversation.schema';
+} from '../conversation.schema';
 
 describe('conversation schema', () => {
   it('exports all tables', () => {

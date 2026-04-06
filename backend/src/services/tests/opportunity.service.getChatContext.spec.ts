@@ -171,7 +171,12 @@ mock.module("../../adapters/embedder.adapter", () => ({
   EmbedderAdapter: class {},
 }));
 mock.module("../../adapters/cache.adapter", () => ({
-  RedisCacheAdapter: class {},
+  RedisCacheAdapter: class {
+    mget() { return Promise.resolve([]); }
+    get() { return Promise.resolve(null); }
+    set() { return Promise.resolve(); }
+    del() { return Promise.resolve(); }
+  },
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -74,7 +74,7 @@ beforeAll(async () => {
   });
   await db.insert(networkMembers).values([
     { networkId, userId: userAId, permissions: ['owner'], autoAssign: false },
-    { networkId, userId: userBId, permissions: [], prompt: 'Member prompt', autoAssign: true },
+    { networkId, userId: userBId, permissions: ['member'], prompt: 'Member prompt', autoAssign: true },
   ]);
   await db.insert(intents).values({
     id: intent1Id,

@@ -183,17 +183,17 @@ describe('deduplicateContacts', () => {
     expect(result.removed.length).toBe(1);
   });
 
-  it('uses full email as name when name is empty', () => {
+  it('uses email local-part as name when name is empty', () => {
     const contacts = [
-      { name: '', email: 'sam@gmail.com' },
-      { name: '', email: 'sam@company.com' },
+      { name: '', email: 'alice@gmail.com' },
+      { name: '', email: 'bob@yahoo.com' },
     ];
     const details = [
-      { email: 'sam@gmail.com', userId: 'u1', isNew: true },
-      { email: 'sam@company.com', userId: 'u2', isNew: true },
+      { email: 'alice@gmail.com', userId: 'u1', isNew: true },
+      { email: 'bob@yahoo.com', userId: 'u2', isNew: true },
     ];
     const result = deduplicateContacts(contacts, details, preset);
-    // Full emails as names: "sam@gmail.com" vs "sam@company.com" — low name similarity
+    // Local-parts as names: "alice" vs "bob" — low name similarity, kept separate
     expect(result.kept.length).toBe(2);
   });
 

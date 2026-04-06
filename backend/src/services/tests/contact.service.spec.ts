@@ -8,7 +8,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test', override: true });
 
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
-import { eq, and, inArray, sql, isNull } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import db from '../../lib/drizzle/drizzle';
 import {
   users,
@@ -33,7 +33,7 @@ const ghostEmail1 = `${TEST_PREFIX}ghost1@example.com`;
 // Track IDs for cleanup
 const createdUserIds: string[] = [];
 
-const svc = new ContactService();
+let svc: ContactService;
 
 /**
  * Helper: create a user and personal index for testing.
@@ -61,6 +61,8 @@ async function createTestUser(id: string, email: string, name: string): Promise<
 }
 
 beforeAll(async () => {
+  svc = new ContactService();
+
   ownerId = crypto.randomUUID();
   existingUserId = crypto.randomUUID();
 
@@ -82,6 +84,8 @@ afterAll(async () => {
   if (allUserIds.length > 0) {
     await db.delete(networkMembers).where(inArray(networkMembers.userId, allUserIds));
   }
+  // Remove all members from personal index before deleting it (avoids FK constraint)
+  await db.delete(networkMembers).where(eq(networkMembers.networkId, personalIndexId));
   // Clean personal_indexes for owner
   await db.delete(personalNetworks).where(eq(personalNetworks.userId, ownerId));
   await db.delete(networks).where(eq(networks.id, personalIndexId));
@@ -89,6 +93,7 @@ afterAll(async () => {
     await db.delete(userProfiles).where(inArray(userProfiles.userId, allUserIds));
     await db.delete(users).where(inArray(users.id, allUserIds));
   }
+  await db.delete(users).where(eq(users.id, ownerId));
 }, 60_000);
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -344,11 +349,11 @@ describe('importContacts', () => {
     const bulkEmail2 = `${TEST_PREFIX}bulk2@example.com`;
 
     const result = await svc.importContacts(ownerId, [
-      { name: 'Bulk One', email: bulkEmail1 },
-      { name: 'Bulk Two', email: bulkEmail2 },
-      { name: 'Duplicate', email: bulkEmail1 }, // duplicate
-      { name: 'Self', email: ownerEmail },       // self
-      { name: 'Invalid', email: 'notanemail' },  // invalid
+      { name: 'Alice Chen', email: bulkEmail1 },
+      { name: 'Robert Kumar', email: bulkEmail2 },
+      { name: 'Alice Chen', email: bulkEmail1 }, // duplicate
+      { name: 'Self', email: ownerEmail },        // self
+      { name: 'Invalid', email: 'notanemail' },   // invalid
       { name: '', email: 'noreply@company.com' }, // non-human
     ]);
 
@@ -457,10 +462,12 @@ describe('importContacts — name dedup', () => {
   }, 60_000);
 
   it('does not merge nameless contacts with very different emails', async () => {
-    // Use sufficiently distinct local-parts + domains so scoring-based dedup
-    // keeps them separate even with the long TEST_PREFIX in the email.
-    const email1 = `${TEST_PREFIX}samantha_home_address@gmail.com`;
-    const email2 = `${TEST_PREFIX}robert_work_office@company.com`;
+    // Use short, clearly distinct local-parts so the name-fallback (local-part)
+    // scores low in Jaro-Winkler. Uniqueness provided by UUIDs, not a shared prefix.
+    const uid1 = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+    const uid2 = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+    const email1 = `xyz_${uid1}@gmail.com`;
+    const email2 = `abc_${uid2}@company.com`;
 
     const result = await svc.importContacts(ownerId, [
       { name: '', email: email1 },

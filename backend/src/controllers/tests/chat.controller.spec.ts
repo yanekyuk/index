@@ -3,9 +3,12 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { eq } from "drizzle-orm";
 import { ChatController } from "../chat.controller";
 import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";
+import db from "../../lib/drizzle/drizzle";
+import { networkMembers, personalNetworks } from "../../schemas/database.schema";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 // Response type for chat controller
@@ -36,6 +39,8 @@ describe("ChatController Integration", () => {
     const existingUser = await userAdapter.findByEmail(email);
     if (existingUser) {
       await intentAdapter.deleteByUserId(existingUser.id);
+      await db.delete(networkMembers).where(eq(networkMembers.userId, existingUser.id));
+      await db.delete(personalNetworks).where(eq(personalNetworks.userId, existingUser.id));
       await userAdapter.deleteByEmail(email);
     }
 
@@ -77,6 +82,8 @@ describe("ChatController Integration", () => {
     if (testUserId) {
       await intentAdapter.deleteByUserId(testUserId);
       await profileAdapter.deleteProfile(testUserId);
+      await db.delete(networkMembers).where(eq(networkMembers.userId, testUserId));
+      await db.delete(personalNetworks).where(eq(personalNetworks.userId, testUserId));
       await userAdapter.deleteById(testUserId);
     }
   });

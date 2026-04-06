@@ -102,8 +102,8 @@ describe("OpportunityDatabaseAdapter Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Integration", () => {
-  const controller = new OpportunityControllerClass();
-  const indexOpportunityController = new NetworkOpportunityControllerClass();
+  let controller: InstanceType<typeof OpportunityControllerClass>;
+  let indexOpportunityController: InstanceType<typeof NetworkOpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new ProfileDatabaseAdapter();
   const chatDbAdapter = new ChatDatabaseAdapter();
@@ -116,6 +116,8 @@ describe("OpportunityController Integration", () => {
   const candidateEmail = `test-opportunity-candidate-${Date.now()}@example.com`;
 
   beforeAll(async () => {
+    controller = new OpportunityControllerClass();
+    indexOpportunityController = new NetworkOpportunityControllerClass();
     for (const email of [testEmail, candidateEmail]) {
       const existingUser = await userAdapter.findByEmail(email);
       if (existingUser) {
@@ -339,7 +341,7 @@ describe("OpportunityController Integration", () => {
     const data = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(400);
-    expect(data.error).toBe("Missing index id");
+    expect(data.error).toBe("Missing network id");
   });
 
   test("listForIndex should return 200 with opportunities for index", async () => {
@@ -365,7 +367,7 @@ describe("OpportunityController Integration", () => {
     const data = (await res.json()) as { error?: string };
 
     expect(res.status).toBe(400);
-    expect(data.error).toBe("Missing index id");
+    expect(data.error).toBe("Missing network id");
   });
 
   test("createManual should return 400 when body missing parties or reasoning", async () => {
@@ -541,12 +543,14 @@ describe("OpportunityController Integration", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("OpportunityController Edge Cases", () => {
-  const controller = new OpportunityControllerClass();
+  let controller: InstanceType<typeof OpportunityControllerClass>;
   const userAdapter = new UserDatabaseAdapter();
   let testUserIdNoProfile: string;
   const testEmailNoProfile = `test-opp-no-profile-${Date.now()}@example.com`;
 
   beforeAll(async () => {
+    controller = new OpportunityControllerClass();
+
     const existingUser = await userAdapter.findByEmail(testEmailNoProfile);
     if (existingUser) await userAdapter.deleteByEmail(testEmailNoProfile);
 

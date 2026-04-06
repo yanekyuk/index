@@ -7,15 +7,27 @@ import { selectByComposition } from '@indexnetwork/protocol';
 describe('selectByComposition', () => {
   const viewerId = 'user-1';
 
-  function makeOpp(id: string, hasIntroducer: boolean, status = 'pending') {
-    const actors = [
-      { userId: viewerId, role: 'party' },
-      { userId: `other-${id}`, role: 'party' },
-    ];
-    if (hasIntroducer) {
-      actors.push({ userId: `intro-${id}`, role: 'introducer' });
+  function makeOpp(id: string, isConnectorFlow: boolean, status = 'pending') {
+    if (isConnectorFlow) {
+      // Viewer is the introducer — classifyOpportunity checks viewerId role
+      return {
+        id,
+        actors: [
+          { userId: viewerId, role: 'introducer' },
+          { userId: `party-a-${id}`, role: 'party' },
+          { userId: `party-b-${id}`, role: 'party' },
+        ],
+        status,
+      };
     }
-    return { id, actors, status };
+    return {
+      id,
+      actors: [
+        { userId: viewerId, role: 'party' },
+        { userId: `other-${id}`, role: 'party' },
+      ],
+      status,
+    };
   }
 
   it('fills soft targets when enough items exist', () => {

@@ -12,7 +12,7 @@
         "@bull-board/hono": "^6.15.0",
         "@composio/core": "^0.6.3",
         "@composio/langchain": "^0.6.3",
-        "@indexnetwork/protocol": "0.3.0",
+        "@indexnetwork/protocol": "^0.3.2",
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
         "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
@@ -297,7 +297,7 @@
 
     "@humanwhocodes/retry": ["@humanwhocodes/retry@0.4.3", "", {}, "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ=="],
 
-    "@indexnetwork/protocol": ["@indexnetwork/protocol@0.3.0", "", { "dependencies": { "@langchain/core": "^1.1.17", "@langchain/langgraph": "^1.1.2", "@langchain/langgraph-checkpoint-postgres": "^1.0.0", "@langchain/openai": "^1.2.3", "@modelcontextprotocol/server": "^2.0.0-alpha.2", "dotenv": "^16.3.1", "zod": "^3.22.4" } }, "sha512-BwGkJgkOVNEr/rgtNJrryy2yCLU6pY1K7njjXkW5A/GSSQno1Fbfom6vL7+cLrNCFMe3g8rc0HSuyN+sGvxAgg=="],
+    "@indexnetwork/protocol": ["@indexnetwork/protocol@0.3.2", "", { "dependencies": { "@langchain/core": "^1.1.17", "@langchain/langgraph": "^1.1.2", "@langchain/langgraph-checkpoint-postgres": "^1.0.0", "@langchain/openai": "^1.2.3", "@modelcontextprotocol/server": "^2.0.0-alpha.2", "dotenv": "^16.3.1", "zod": "^3.22.4" } }, "sha512-SLtfOsQ/UNvvLRC4/I1//1banaHyKH9fSFPnY0vIHGnCKwTZBFw42VkHvU0t08sQbsf3laekkWjByfITlJDW7Q=="],
 
     "@ioredis/commands": ["@ioredis/commands@1.5.0", "", {}, "sha512-eUgLqrMf8nJkZxT24JvVRrQya1vZkQh8BBeYNwGDqa5I0VUi8ACx7uFvAaLxintokpTenkK6DASvo/bvNbBGow=="],
 

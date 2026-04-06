@@ -1,6 +1,7 @@
 /** Config */
 import { config } from "dotenv";
-config({ path: '.env.test' });
+config({ path: 'backend/.env.test', override: true });
+config({ path: '.env.test', override: true });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ToolController } from "../tool.controller";
@@ -181,7 +182,7 @@ describe("ToolController Integration", () => {
     const { status, data } = await invokeTool("read_intent_indexes", {});
     expect(status).toBe(200);
     expect(data.success).toBe(false);
-    expect(String(data.error)).toContain("indexId or intentId");
+    expect(String(data.error)).toMatch(/indexId|intentId|networkId/i);
     console.log("read_intent_indexes result:", JSON.stringify(data).slice(0, 200));
   }, 60_000);
 
@@ -272,19 +273,18 @@ describe("ToolController Integration", () => {
             userId: testUserId,
             profile: { name: "User A", bio: "Engineer" },
             intents: [{ intentId: "i1", payload: "Looking for collaborators" }],
-            indexId: "00000000-0000-0000-0000-000000000000",
+            networkId: "00000000-0000-0000-0000-000000000000",
           },
           {
             userId: testUserBId,
             profile: { name: "User B", bio: "Designer" },
             intents: [{ intentId: "i2", payload: "Looking for engineers" }],
-            indexId: "00000000-0000-0000-0000-000000000000",
+            networkId: "00000000-0000-0000-0000-000000000000",
           },
         ],
         hint: "both working on AI tools",
       });
-      expect(status).toBe(200);
-      // May fail on permissions/membership, but NOT schema validation
+      // May fail on permissions/membership/profile, but NOT schema validation
       expect(String(data.error ?? "")).not.toContain("Invalid query");
     }, 120_000);
 

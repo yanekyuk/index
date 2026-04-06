@@ -9,7 +9,6 @@ import { RedisCacheAdapter } from '../adapters/cache.adapter';
 import { opportunityQueue } from '../queues/opportunity.queue';
 
 const logger = log.service.from("OpportunityService");
-const presenter = new OpportunityPresenter();
 
 interface OpportunityStatusUpdateResult {
   opportunity: Awaited<ReturnType<OpportunityControllerDatabase['updateOpportunityStatus']>>;
@@ -60,6 +59,7 @@ interface ChatCardCached {
 export class OpportunityService {
   private db: OpportunityControllerDatabase;
   private cache: OpportunityCache;
+  private readonly presenter: OpportunityPresenter;
   private graph: ReturnType<OpportunityGraphFactory['createGraph']> | null = null;
   private homeGraph: ReturnType<HomeGraphFactory['createGraph']> | null = null;
   private maintenanceGraph: ReturnType<MaintenanceGraphFactory['createGraph']> | null = null;
@@ -72,6 +72,7 @@ export class OpportunityService {
   ) {
     this.db = database ?? (new ChatDatabaseAdapter() as OpportunityControllerDatabase);
     this.cache = cache ?? new RedisCacheAdapter();
+    this.presenter = new OpportunityPresenter();
 
     // Lazy-build graph for discover when adapter supports it
     if (this.db && 'getHydeDocument' in this.db) {
@@ -562,7 +563,7 @@ export class OpportunityService {
           );
           presenterInput.opportunityStatus = 'accepted';
           presenterInput.matchReasoning += '\n\nCONTEXT: This is shown inside an active chat between the two parties. Both already accepted. Write a warm, concise 1-sentence headline and 1-sentence summary — not a pitch or analysis.';
-          const presented = await presenter.present(presenterInput);
+          const presented = await this.presenter.present(presenterInput);
           const card: ChatCardCached = {
             opportunityId: opp.id,
             headline: presented.headline,

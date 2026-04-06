@@ -162,12 +162,15 @@ export function deduplicateContacts(
   }
 
   // Build email → normalized name map
+  // Fall back to the local-part of the email when name is empty, so that a long
+  // shared test-prefix (or real shared domain) does not inflate Jaro-Winkler scores.
   const emailToName = new Map<string, string>();
   for (const c of contacts) {
     const email = c.email.toLowerCase().trim();
     if (!emailToName.has(email)) {
       const name = c.name?.trim();
-      emailToName.set(email, name ? name.toLowerCase().replace(/\s+/g, ' ') : email);
+      const localPart = email.split('@')[0] ?? email;
+      emailToName.set(email, name ? name.toLowerCase().replace(/\s+/g, ' ') : localPart);
     }
   }
 

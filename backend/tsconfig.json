@@ -37,6 +37,10 @@
     "node_modules",
     "dist",
     "src/agents/playground/src",
-    "src/agents/playground/vite.config.mts"
+    "src/agents/playground/vite.config.mts",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.tsx",
+    "src/**/*.test.tsx"
   ]
 }
