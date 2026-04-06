@@ -66,7 +66,7 @@ bun install
 
 ```
 index/
-├── protocol/          # Backend API and agent engine (Bun, Express, TypeScript)
+├── backend/           # Backend API and agent engine (Bun, Express, TypeScript)
 ├── packages/
 │   └── protocol/      # @indexnetwork/protocol NPM package (graphs, agents, tools)
 ├── frontend/          # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
@@ -81,13 +81,13 @@ index/
 Copy the example environment files for both workspaces:
 
 ```bash
-cp protocol/.env.example protocol/.env
+cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-### Protocol environment variables (protocol/.env)
+### Backend environment variables (backend/.env)
 
-Open `protocol/.env` and fill in the required values:
+Open `backend/.env` and fill in the required values:
 
 **Required:**
 
@@ -154,7 +154,7 @@ TRUSTED_ORIGINS=http://localhost:3000
 # LOG_LEVEL=debug
 ```
 
-See `protocol/.env.example` for the full list with inline comments.
+See `backend/.env.example` for the full list with inline comments.
 
 ### Frontend environment variables (frontend/.env)
 
@@ -191,11 +191,11 @@ psql protocol_db -c 'CREATE EXTENSION IF NOT EXISTS vector;'
 ### 3. Run migrations
 
 ```bash
-cd protocol
+cd backend
 bun run db:migrate
 ```
 
-This applies all migration files under `protocol/drizzle/` in sequence. The first migration creates the pgvector extension as well, but creating it manually in step 2 avoids permission issues on some setups.
+This applies all migration files under `backend/drizzle/` in sequence. The first migration creates the pgvector extension as well, but creating it manually in step 2 avoids permission issues on some setups.
 
 ### 4. Seed sample data (optional)
 
@@ -226,8 +226,8 @@ bun run dev
 This opens an interactive selector that lets you pick which workspace to run. Alternatively, start each workspace directly:
 
 ```bash
-# Terminal 1: Protocol server (port 3001)
-cd protocol
+# Terminal 1: Backend server (port 3001)
+cd backend
 bun run dev
 
 # Terminal 2: Frontend dev server (port 3000, proxies /api to 3001)
@@ -239,8 +239,8 @@ Once both servers are running, open http://localhost:3000 in your browser.
 
 ### What to expect
 
-- The protocol server starts on **port 3001** with hot reload via Bun.serve.
-- The frontend Vite dev server starts on **port 3000** and proxies API requests to the protocol.
+- The backend server starts on **port 3001** with hot reload via Bun.serve.
+- The frontend Vite dev server starts on **port 3000** and proxies API requests to the backend.
 - On first visit you will see the authentication flow. If you have not configured Google OAuth, use email-based auth.
 - After login the onboarding flow guides you through profile creation, community selection, and intent definition.
 
@@ -249,7 +249,7 @@ Once both servers are running, open http://localhost:3000 in your browser.
 ### Testing
 
 ```bash
-cd protocol
+cd backend
 
 # Run a specific test file (preferred)
 bun test tests/e2e.test.ts
@@ -270,14 +270,14 @@ Always target specific test files affected by your changes rather than running t
 bun run lint
 
 # Or per workspace
-cd protocol && bun run lint
+cd backend && bun run lint
 cd frontend && bun run lint
 ```
 
 ### Database operations
 
 ```bash
-cd protocol
+cd backend
 
 bun run db:generate     # Generate migrations after schema changes
 bun run db:migrate      # Apply pending migrations
@@ -286,11 +286,11 @@ bun run db:seed         # Seed sample data
 bun run db:flush        # Flush all data (development only)
 ```
 
-After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `drizzle/meta/_journal.json` to match.
+After generating a migration, always rename the SQL file to a descriptive name and update the `tag` field in `backend/drizzle/meta/_journal.json` to match.
 
 ### Queue monitoring
 
-When the protocol server is running, Bull Board is available at:
+When the backend server is running, Bull Board is available at:
 
 ```
 http://localhost:3001/dev/queues/
@@ -368,7 +368,7 @@ Write the PR description as a changelog with categories: New Features, Bug Fixes
 
 ### "invalid_origin" auth error
 
-The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `protocol/.env`:
+The app's origin is not in the allowed list. Set `TRUSTED_ORIGINS` in `backend/.env`:
 
 ```bash
 TRUSTED_ORIGINS=http://localhost:3000
@@ -392,7 +392,7 @@ On some managed PostgreSQL services, pgvector may need to be enabled through the
 If you see `ECONNREFUSED` errors related to Redis:
 
 1. Verify Redis is running: `redis-cli ping` should return `PONG`.
-2. If Redis is on a non-default host/port, set `REDIS_URL` in `protocol/.env`.
+2. If Redis is on a non-default host/port, set `REDIS_URL` in `backend/.env`.
 3. The protocol server will start without Redis, but job queues and caching will not function.
 
 ### Migrations out of sync
@@ -422,8 +422,8 @@ lsof -i :3001
 kill -9 <PID>
 ```
 
-Or change the protocol port via the `PORT` variable in `protocol/.env`.
+Or change the backend port via the `PORT` variable in `backend/.env`.
 
 ### Frontend proxy not reaching protocol
 
-Make sure the protocol server is running on port 3001 before starting the frontend. The Vite dev server proxies `/api/*` to `http://localhost:3001`. If you changed the protocol port, update `frontend/vite.config.ts` accordingly.
+Make sure the protocol server is running on port 3001 before starting the frontend. The Vite dev server proxies `/api/*` to `http://localhost:3001`. If you changed the backend port, update `frontend/vite.config.ts` accordingly.

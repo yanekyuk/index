@@ -20,7 +20,7 @@ The repository is organized as a Bun-managed monorepo with two primary workspace
 
 ```
 index/
-  protocol/          Backend API and Agent Engine (Bun, Express, TypeScript)
+  backend/           Backend API and Agent Engine (Bun, Express, TypeScript)
   packages/
     protocol/        @indexnetwork/protocol NPM package (graphs, agents, tools, interfaces)
   frontend/          Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
@@ -432,7 +432,7 @@ Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol
 
 ### Schema Organization
 
-The canonical schema lives in `protocol/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
+The canonical schema lives in `backend/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
 
 ### Core Tables
 
