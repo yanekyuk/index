@@ -6,6 +6,8 @@ created: 2026-04-05
 updated: 2026-04-05
 ---
 
+> **Status:** Aspirational — the webhook infrastructure described here has not yet been implemented. No `webhooks` table, controller, or queue exists in the current codebase.
+
 ## Purpose
 
 Allow external systems (agents, CRMs, custom bots) to receive signed HTTP callbacks when protocol events occur. The infrastructure is **domain-agnostic**: new event types are registered in code and emitted at the right lifecycle points without schema or queue changes.

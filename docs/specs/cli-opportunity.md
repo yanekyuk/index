@@ -3,12 +3,12 @@ title: "CLI opportunity command"
 type: spec
 tags: [cli, opportunities, valency]
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-04-06
 ---
 
 ## Behavior
 
-The `index opportunity` command exposes four subcommands for managing opportunities from the terminal. The CLI is a pure HTTP client — no protocol internals are imported.
+The `index opportunity` command exposes subcommands for managing opportunities from the terminal. The CLI is a pure HTTP client — no protocol internals are imported.
 
 ### `index opportunity list`
 
@@ -39,6 +39,16 @@ The `index opportunity` command exposes four subcommands for managing opportunit
 1. Reads credentials. Exits with error if not logged in.
 2. Calls `PATCH /api/opportunities/:id/status` with `{ status: "rejected" }`.
 3. Prints confirmation message.
+
+### `index opportunity discover <query>`
+
+1. Reads credentials. Exits with error if not logged in.
+2. Calls `create_opportunities` tool via Tool HTTP API with `{ query }`.
+3. Renders a table of discovered opportunities.
+
+Supports optional flags:
+- `--target <uid>` — Discover opportunities for a specific user (on behalf of)
+- `--introduce <userA> <userB>` — Discover an introduction opportunity between two users
 
 ## Constraints
 

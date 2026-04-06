@@ -3,12 +3,12 @@ title: "CLI v1 — login and conversation"
 type: spec
 tags: [cli, auth, conversation, h2a, h2h, sse, streaming]
 created: 2026-03-30
-updated: 2026-03-31
+updated: 2026-04-06
 ---
 
 ## Behavior
 
-The `index` CLI (v0.7.0) is a standalone Bun-based binary in a `cli/` workspace at the monorepo root. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
+The `index` CLI (v0.9.2) is a standalone Bun-based binary in a `cli/` workspace at the monorepo root. It communicates with the Index Network protocol server over HTTP/SSE. Distribution is via npm using platform-specific prebuilt binaries (see `cli-npm-publish.md` for details).
 
 ### `index login`
 

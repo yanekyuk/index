@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-06
 ---
 
 # Protocol API Reference
@@ -45,9 +45,8 @@ Most endpoints require the `AuthGuard`, which verifies JWT tokens statelessly vi
 - **Errors**:
   - `401` — `Access token required` (no token provided)
   - `401` — `Invalid or expired access token` (verification failed)
-  - `403` — `User not found` or `Account deactivated` (valid token but user issue)
 
-The guard returns an `AuthenticatedUser` object with `id`, `email`, and `name` fields, which is passed to the handler as the second argument.
+The guard returns an `AuthenticatedUser` object with `id`, `email` (nullable), and `name` fields, which is passed to the handler as the second argument. Individual controllers may return additional 403/404 errors for user-level access checks.
 
 ### DebugGuard
 
@@ -976,6 +975,26 @@ Accept an invitation to join an index using the invitation code.
 - `code` — Invitation code
 
 **Response**: JSON with accepted index details.
+
+### PUT /api/indexes/:id/key
+
+Update an index's human-readable key. Owner only.
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `id` — Index ID
+
+**Request body**:
+```json
+{
+  "key": "string (required)"
+}
+```
+
+Key must match `/^[a-z0-9][a-z0-9-]*[a-z0-9]$/`, be 3–64 characters, and not collide with an existing key.
+
+**Response**: JSON with updated index or `400`/`409` validation errors.
 
 ### GET /api/indexes/:id
 
@@ -1950,6 +1969,55 @@ List past negotiations for a user. When the viewer differs from the profile owne
   ]
 }
 ```
+
+### PUT /api/users/me/key
+
+Update the authenticated user's human-readable key.
+
+**Auth**: AuthGuard
+
+**Request body**:
+```json
+{
+  "key": "string (required)"
+}
+```
+
+Key must match `/^[a-z0-9][a-z0-9-]*[a-z0-9]$/`, be 3–64 characters, and not collide with an existing key. Reserved words (`me`, `new`, `edit`, `delete`, `settings`, `admin`) are rejected.
+
+**Response**: JSON with updated user or `400`/`409` validation errors.
+
+### GET /api/users/:userId/negotiations/insights
+
+Generate an aggregated AI insight summary of the user's negotiations. Self-only: only the authenticated user can view their own insights.
+
+**Auth**: AuthGuard
+
+**Path params**:
+- `userId` — User ID (must equal the authenticated user's ID)
+
+**Response**:
+```json
+{
+  "insights": {
+    "summary": "...",
+    "stats": {
+      "totalCount": 10,
+      "opportunityCount": 6,
+      "noOpportunityCount": 3,
+      "inProgressCount": 1,
+      "avgScore": 0.72,
+      "roleDistribution": { "Helper": 3, "Seeker": 2, "Peer": 1 },
+      "topCounterparties": [{ "id": "...", "name": "...", "avatar": "...", "count": 2 }]
+    }
+  }
+}
+```
+
+Returns `{ "insights": null }` when no negotiations exist.
+
+**Errors**:
+- `403` — Viewer is not the profile owner
 
 ### GET /api/users/:userId
 
