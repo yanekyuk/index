@@ -64,7 +64,7 @@ bun run lint                                # Run ESLint
 ### CLI
 
 ```bash
-cd cli
+cd packages/cli
 bun src/main.ts conversation                # Run CLI directly with Bun (no build)
 bun run build                               # Build native binaries for all platforms
 bun test                                    # Run CLI tests
@@ -86,16 +86,16 @@ git push upstream protocol-vX.Y.Z
 
 ### Plugin (subtree)
 
-The `plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
+The `packages/claude-plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
 
-**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `plugin/` in this repo and push normally.
+**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `packages/claude-plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `packages/claude-plugin/` in this repo and push normally.
 
 ```bash
 # Manual push if the hook failed
-git subtree push --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
 
 # Pull if claude-plugin was edited directly (avoid this — always edit via this repo)
-git subtree pull --squash --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
 ```
 
 ### Root
@@ -119,10 +119,10 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
 ├── packages/
-│   └── protocol/      # @indexnetwork/protocol NPM package (agent graphs, interfaces)
+│   ├── protocol/      # @indexnetwork/protocol NPM package (agent graphs, interfaces)
+│   ├── cli/           # @indexnetwork/cli — Bun, TypeScript
+│   └── claude-plugin/ # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
-├── cli/               # CLI client (@indexnetwork/cli) — Bun, TypeScript
-├── plugin/            # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
