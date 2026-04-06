@@ -30,7 +30,7 @@
     "test": "NODE_ENV=test bun test"
   },
   "dependencies": {
-    "@indexnetwork/protocol": "file:../packages/protocol",
+    "@indexnetwork/protocol": "0.1.0",
     "@aws-sdk/client-s3": "^3.939.0",
     "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@better-auth/api-key": "^1.5.6",

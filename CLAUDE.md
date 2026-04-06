@@ -70,6 +70,20 @@ bun run build                               # Build native binaries for all plat
 bun test                                    # Run CLI tests
 ```
 
+### @indexnetwork/protocol Package
+
+```bash
+cd packages/protocol
+
+bun run build                               # Compile TypeScript to dist/
+bun run dev                                 # Watch mode
+npm publish --access public                 # Publish (requires NPM login + OTP, or use CI)
+
+# Publishing via CI (preferred):
+git tag protocol-vX.Y.Z
+git push upstream protocol-vX.Y.Z
+```
+
 ### Plugin (subtree)
 
 The `plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
@@ -104,6 +118,8 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 ```
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
+├── packages/
+│   └── protocol/      # @indexnetwork/protocol NPM package (agent graphs, interfaces)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── cli/               # CLI client (@indexnetwork/cli) — Bun, TypeScript
 ├── plugin/            # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
@@ -127,10 +143,10 @@ index/
 - `src/adapters/` - Infrastructure implementations (database, embedder, cache, queue, scraper, storage)
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards
-- `src/lib/protocol/` - Protocol layer: `graphs/`, `agents/`, `states/`, `streamers/`, `support/`, `tools/`, `interfaces/`
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters (intent events, index membership events)
 - `src/cli/` - CLI and maintenance scripts
+- `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `protocol/` imports it as a versioned NPM dependency.
 
 **Entry point**: `protocol/src/main.ts` -- Bun native server on port 3001, controllers registered via `RouteRegistry`.
 
@@ -153,8 +169,8 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 1. **Controllers** import **services** (or protocol graph factories). Must not import adapters.
 2. **Services** import **adapters** for data access. Must not import other services -- use events, queues, or shared lib for cross-service orchestration.
-3. **Protocol layer** (`lib/protocol/`) is fully self-contained — zero imports from parent directories. Receives adapters via **constructor injection** through interfaces in `src/lib/protocol/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
-4. **Adapters** must not import from `src/lib/protocol/interfaces/` -- they define their own aligned types.
+3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
+4. **Adapters** must not import from `@indexnetwork/protocol` interfaces — they define their own aligned types.
 
 ### Template Files
 
@@ -163,7 +179,7 @@ Consult before adding or changing code in each layer:
 - `protocol/src/controllers/controller.template.md`
 - `protocol/src/services/service.template.md`
 - `protocol/src/queues/queue.template.md`
-- `protocol/src/lib/protocol/agents/agent.template.md`
+- `packages/protocol/src/agents/agent.template.md` (if exists)
 
 ## Important Patterns
 
@@ -201,7 +217,7 @@ Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `in
 
 ### OpenRouter Configuration
 
-Model settings centralized in `protocol/src/lib/protocol/agents/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental).
+Model settings centralized in `packages/protocol/src/agents/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
 
 ## Environment Setup
 
