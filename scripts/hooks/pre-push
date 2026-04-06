@@ -16,7 +16,7 @@ sync_subtree() {
   fi
 
   echo "[pre-push] $prefix/ changed — syncing to $remote..."
-  if git subtree push --prefix="$prefix" "$remote" main 2>&1; then
+  if git subtree push --prefix="$prefix" "$remote" main; then
     echo "[pre-push] ✓ synced to $remote"
   else
     echo "[pre-push] ✗ sync failed — run manually: git subtree push --prefix=$prefix $remote main" >&2

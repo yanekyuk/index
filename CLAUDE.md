@@ -70,6 +70,8 @@ bun run build                               # Build native binaries for all plat
 bun test                                    # Run CLI tests
 ```
 
+> **Subtree:** `packages/cli/` mirrors `indexnetwork/cli`. Edit via this monorepo; see `### Subtrees` for sync commands.
+
 ### @indexnetwork/protocol Package
 
 ```bash
@@ -83,6 +85,8 @@ npm publish --access public                 # Publish (requires NPM login + OTP,
 git tag protocol-vX.Y.Z
 git push upstream protocol-vX.Y.Z
 ```
+
+> **Subtree:** `packages/protocol/` mirrors `indexnetwork/protocol`. Edit via this monorepo; see `### Subtrees` for sync commands.
 
 ### Subtrees
 
@@ -145,8 +149,8 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 index/
 ├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
 ├── packages/
-│   ├── protocol/      # @indexnetwork/protocol NPM package (agent graphs, interfaces)
-│   ├── cli/           # @indexnetwork/cli — Bun, TypeScript
+│   ├── protocol/      # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
+│   ├── cli/           # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
 │   └── claude-plugin/ # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
