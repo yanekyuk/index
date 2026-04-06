@@ -149,7 +149,7 @@ index opportunity accept <id>
 | `index scrape <url>` | Scrape content from a URL |
 | `index sync` | Sync context to ~/.index/context.json |
 
-For the full command reference and rendered output examples, see [cli/cli-output-reference.html](cli/cli-output-reference.html).
+For the full command reference and rendered output examples, see [packages/cli/cli-output-reference.html](packages/cli/cli-output-reference.html).
 
 ## Getting Started
 
@@ -276,7 +276,7 @@ Detailed documentation lives in the `docs/` directory:
 ### Specs
 
 - **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
-- **[CLI Reference](cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
+- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
 - **[CLI v1 Spec](docs/specs/cli-v1.md)** -- Login and conversation command specification
 - **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
