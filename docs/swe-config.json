@@ -24,10 +24,10 @@
       "Agents receive Database and Embedder via constructor injection — never import db or adapters directly",
       "Graph factories accept dependencies (database, embedder, agents) via constructor — no hardcoded infrastructure dependencies",
       "Graph factories must use Pick<Database, ...> for narrow interface contracts — never depend on full Database interface",
-      "Adapters must not import from src/lib/protocol/interfaces/ — define their own types that align with protocol interfaces, named by concept not technology",
+      "Adapters must not import from @indexnetwork/protocol interfaces — define their own types that align with protocol interfaces, named by concept not technology",
       "Queues orchestrate by calling services, graphs, or adapters — no business logic in queue handlers",
       "Controller tests must use services only for setup, teardown, and assertions — never adapters, db, or schema",
-      "Protocol layer (lib/protocol/) must not depend on adapters or infrastructure — dependencies are injected via interfaces",
+      "Protocol layer (@indexnetwork/protocol) must not depend on adapters or infrastructure — dependencies are injected via interfaces",
       "Dependencies point inward: Controllers → Services → Adapters → Infrastructure; Protocol layer receives dependencies via injection",
       "Events and queues are the only mechanism for cross-service communication"
     ]
