@@ -180,10 +180,10 @@ bun install
 3. **Set up environment variables**
 
 ```bash
-cp protocol/.env.example protocol/.env
+cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 
-# Edit protocol/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
+# Edit backend/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
 ```
 
 4. **Initialize the database**
@@ -214,7 +214,7 @@ Visit `http://localhost:3000` to see the application.
 
 ```
 index/
-├── protocol/          # Backend API and agent engine (Bun, Express, TypeScript)
+├── backend/           # Backend API and agent engine (Bun, Express, TypeScript)
 ├── frontend/          # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
 ├── docs/              # Project documentation (see Documentation section)
 └── scripts/           # Worktree helpers, hooks, dev launcher
@@ -222,7 +222,7 @@ index/
 
 ## Protocol Implementation
 
-The `protocol/` directory contains the core agent infrastructure:
+The `backend/` directory contains the core agent infrastructure:
 
 ### Key Components
 

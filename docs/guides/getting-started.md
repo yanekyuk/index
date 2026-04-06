@@ -400,7 +400,7 @@ If you see `ECONNREFUSED` errors related to Redis:
 If migrations fail or the database is in an inconsistent state:
 
 ```bash
-cd protocol
+cd backend
 
 # Nuclear option: reset and regenerate (development only)
 bun run maintenance:fix-migrations

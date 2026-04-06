@@ -16,7 +16,7 @@ Allow external systems (agents, CRMs, custom bots) to receive signed HTTP callba
 
 ### Event registry
 
-Supported event names are defined in `protocol/src/lib/webhook-events.ts` as `WEBHOOK_EVENTS`. The API validates subscription lists against this registry.
+Supported event names are defined in `backend/src/lib/webhook-events.ts` as `WEBHOOK_EVENTS`. The API validates subscription lists against this registry.
 
 **v1:**
 
@@ -30,7 +30,7 @@ Supported event names are defined in `protocol/src/lib/webhook-events.ts` as `WE
 
 ### Data model
 
-Table `webhooks` (see `protocol/src/schemas/database.schema.ts`):
+Table `webhooks` (see `backend/src/schemas/database.schema.ts`):
 
 | Column | Description |
 |--------|-------------|
