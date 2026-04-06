@@ -1,0 +1,15 @@
+{
+  "name": "index-network",
+  "description": "Index Network — find the right people and let them find you. Manages intents, discovers opportunities, and connects communities via MCP.",
+  "version": "0.4.1",
+  "author": {
+    "name": "Index Network",
+    "url": "https://index.network"
+  },
+  "mcpServers": {
+    "index-network": {
+      "type": "http",
+      "url": "https://protocol.index.network/mcp"
+    }
+  }
+}
