@@ -2,6 +2,7 @@
   "name": "index-monorepo",
   "private": true,
   "packageManager": "bun@1.2.20",
+  "workspaces": ["packages/*"],
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:evaluator": "cd evaluator && bun run dev",
