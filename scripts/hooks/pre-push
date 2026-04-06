@@ -1,8 +1,28 @@
 #!/usr/bin/env bash
-# Syncs packages/claude-plugin/ subtree to indexnetwork/claude-plugin when pushing dev to upstream.
+# Syncs subtrees to their upstream repos when pushing dev to upstream.
 # Runs automatically — no manual subtree push needed.
 
 PLUGIN_REMOTE="https://github.com/indexnetwork/claude-plugin.git"
+PROTOCOL_REMOTE="https://github.com/indexnetwork/protocol.git"
+CLI_REMOTE="https://github.com/indexnetwork/cli.git"
+
+sync_subtree() {
+  local prefix="$1"
+  local remote="$2"
+  local range="$3"
+
+  if ! git log --oneline "$range" -- "$prefix/" 2>/dev/null | grep -q .; then
+    return
+  fi
+
+  echo "[pre-push] $prefix/ changed — syncing to $remote..."
+  if git subtree push --prefix="$prefix" "$remote" main 2>&1; then
+    echo "[pre-push] ✓ synced to $remote"
+  else
+    echo "[pre-push] ✗ sync failed — run manually: git subtree push --prefix=$prefix $remote main" >&2
+    # Warn but don't block the main push
+  fi
+}
 
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
   # Only sync on upstream pushes to dev
@@ -16,18 +36,9 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     range="${remote_sha}..${local_sha}"
   fi
 
-  # Skip if no commits in range touch packages/claude-plugin/
-  if ! git log --oneline "$range" -- packages/claude-plugin/ 2>/dev/null | grep -q .; then
-    continue
-  fi
-
-  echo "[pre-push] packages/claude-plugin/ changed — syncing to indexnetwork/claude-plugin..."
-  if git subtree push --prefix=packages/claude-plugin "$PLUGIN_REMOTE" main 2>&1; then
-    echo "[pre-push] ✓ synced to indexnetwork/claude-plugin"
-  else
-    echo "[pre-push] ✗ plugin sync failed — run manually: git subtree push --prefix=packages/claude-plugin $PLUGIN_REMOTE main" >&2
-    # Warn but don't block the main push
-  fi
+  sync_subtree "packages/claude-plugin" "$PLUGIN_REMOTE" "$range"
+  sync_subtree "packages/protocol" "$PROTOCOL_REMOTE" "$range"
+  sync_subtree "packages/cli" "$CLI_REMOTE" "$range"
 done
 
 exit 0
