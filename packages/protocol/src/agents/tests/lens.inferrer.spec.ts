@@ -1,5 +1,3 @@
-// protocol/src/lib/protocol/agents/tests/lens.inferrer.spec.ts
-
 /** Config */
 import { config } from "dotenv";
 config({ path: '.env.test' });

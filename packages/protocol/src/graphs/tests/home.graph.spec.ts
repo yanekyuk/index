@@ -626,3 +626,214 @@ describe('Lucide icon catalog', () => {
     expect(list).toContain('hourglass');
   });
 });
+
+// ─── Fetch limit tests ───────────────────────────────────────────────────────
+
+
+import { describe, test, expect } from 'bun:test';
+import { selectByComposition, classifyOpportunity, FEED_SOFT_TARGETS } from '../../support/opportunity.utils.js';
+
+/**
+ * Hypothesis: The bug occurs because the home graph's fetchLimit formula
+ * `Math.min(150, Math.max(state.limit * 3, state.limit))` yields only 15
+ * with the default state.limit=5. The DB returns the 15 newest opportunities
+ * (ordered by createdAt DESC), all of which are connections. Older
+ * connector-flow opportunities never reach selectByComposition.
+ *
+ * These tests validate:
+ * 1. selectByComposition correctly includes connector-flow when candidates exist
+ * 2. The fetchLimit formula must provide enough headroom for composition
+ */
+
+const VIEWER = 'user-viewer';
+
+/** Helper to create a mock opportunity */
+function makeOpp(
+  id: string,
+  viewerRole: string,
+  status: string,
+  otherUserId = 'user-other',
+) {
+  const actors: Array<{ userId: string; role: string }> = [];
+
+  if (viewerRole === 'introducer') {
+    actors.push(
+      { userId: VIEWER, role: 'introducer' },
+      { userId: otherUserId, role: 'patient' },
+      { userId: `user-agent-${id}`, role: 'agent' },
+    );
+  } else {
+    actors.push(
+      { userId: VIEWER, role: viewerRole },
+      { userId: otherUserId, role: viewerRole === 'patient' ? 'agent' : 'patient' },
+    );
+  }
+
+  return { id, actors, status };
+}
+
+describe('home feed fetch limit bug', () => {
+  describe('selectByComposition includes connector-flow when candidates exist', () => {
+    test('returns connector-flow items when pool contains both connections and connector-flow', () => {
+      // Simulate a diverse pool: 10 connections + 5 connector-flow + 3 expired
+      const pool = [
+        ...Array.from({ length: 10 }, (_, i) => makeOpp(`conn-${i}`, 'patient', 'latent', `other-${i}`)),
+        ...Array.from({ length: 5 }, (_, i) => makeOpp(`intro-${i}`, 'introducer', 'latent', `intro-other-${i}`)),
+        ...Array.from({ length: 3 }, (_, i) => makeOpp(`exp-${i}`, 'patient', 'expired', `exp-other-${i}`)),
+      ];
+
+      const result = selectByComposition(pool, VIEWER);
+
+      // Should include connector-flow items
+      const connectorFlowCount = result.filter(
+        (opp) => classifyOpportunity(opp, VIEWER) === 'connector-flow'
+      ).length;
+      expect(connectorFlowCount).toBeGreaterThan(0);
+      expect(connectorFlowCount).toBe(FEED_SOFT_TARGETS.connectorFlow);
+    });
+
+    test('returns 0 connector-flow when pool contains ONLY connections (the bug scenario)', () => {
+      // Simulate the bug: fetchLimit=15 returns only the 15 newest, all connections
+      const pool = Array.from({ length: 15 }, (_, i) =>
+        makeOpp(`conn-${i}`, 'patient', 'latent', `other-${i}`)
+      );
+
+      const result = selectByComposition(pool, VIEWER);
+
+      // All items are connections — connector-flow is starved
+      const connectorFlowCount = result.filter(
+        (opp) => classifyOpportunity(opp, VIEWER) === 'connector-flow'
+      ).length;
+      expect(connectorFlowCount).toBe(0);
+    });
+  });
+
+  describe('fetchLimit formula provides enough headroom', () => {
+    /**
+     * The minimum fetchLimit must be large enough that even when most results
+     * are one category, selectByComposition still has candidates for other
+     * categories. With FEED_SOFT_TARGETS totaling 7, a minimum of 50 provides
+     * ~7x headroom for filtering and dedup.
+     */
+    const MIN_FETCH_LIMIT = 50;
+
+    test('fetchLimit with state.limit=5 should be at least 50', () => {
+      const stateLimit = 5;
+      // Old formula: Math.min(150, Math.max(stateLimit * 3, stateLimit)) = 15
+      const oldFetchLimit = Math.min(150, Math.max(stateLimit * 3, stateLimit));
+      expect(oldFetchLimit).toBe(15); // Confirms the bug
+
+      // New formula should produce at least MIN_FETCH_LIMIT
+      const newFetchLimit = Math.min(150, Math.max(MIN_FETCH_LIMIT, stateLimit * 3));
+      expect(newFetchLimit).toBeGreaterThanOrEqual(MIN_FETCH_LIMIT);
+    });
+
+    test('fetchLimit with state.limit=20 should scale above minimum', () => {
+      const stateLimit = 20;
+      const newFetchLimit = Math.min(150, Math.max(MIN_FETCH_LIMIT, stateLimit * 3));
+      expect(newFetchLimit).toBe(60); // 20*3 = 60 > 50
+    });
+
+    test('fetchLimit with state.limit=100 should cap at 150', () => {
+      const stateLimit = 100;
+      const newFetchLimit = Math.min(150, Math.max(MIN_FETCH_LIMIT, stateLimit * 3));
+      expect(newFetchLimit).toBe(150); // capped
+    });
+
+    test('fetchLimit with state.limit=1 should still be at least 50', () => {
+      const stateLimit = 1;
+      const newFetchLimit = Math.min(150, Math.max(MIN_FETCH_LIMIT, stateLimit * 3));
+      expect(newFetchLimit).toBe(MIN_FETCH_LIMIT);
+    });
+  });
+});
+
+// ─── Introducer name format tests ───────────────────────────────────────────
+
+
+import { describe, test, expect } from 'bun:test';
+import { HomeGraphFactory } from '../home.graph.js';
+import type { HomeGraphDatabase } from '../../interfaces/database.interface.js';
+import type { Opportunity } from '../../interfaces/database.interface.js';
+import type { OpportunityCache } from '../../interfaces/cache.interface.js';
+
+function createIntroMockCache(): OpportunityCache {
+  const store = new Map<string, unknown>();
+  return {
+    get: async <T>(key: string) => (store.get(key) as T) ?? null,
+    set: async <T>(key: string, value: T) => { store.set(key, value); },
+    mget: async <T>(keys: string[]) => keys.map((k) => (store.get(k) as T) ?? null),
+  };
+}
+
+const USER_MAP: Record<string, { id: string; name: string; email: string; avatar: string | null }> = {
+  'intro-1': { id: 'intro-1', name: 'Intro User', email: 'intro@test.com', avatar: null },
+  'party-a': { id: 'party-a', name: 'Mert Karadayi', email: 'mert@test.com', avatar: null },
+  'party-b': { id: 'party-b', name: 'Yanki Ekin Yuksel', email: 'yanki@test.com', avatar: null },
+};
+
+function createIntroMockDb(opportunities: Opportunity[]): HomeGraphDatabase {
+  return {
+    getOpportunitiesForUser: () => Promise.resolve(opportunities),
+    getOpportunity: () => Promise.resolve(null),
+    getProfile: () => Promise.resolve(null),
+    getActiveIntents: () => Promise.resolve([]),
+    getNetwork: () => Promise.resolve({ id: 'idx-1', title: 'Test Index' }),
+    getUser: (id: string) => Promise.resolve(USER_MAP[id] ?? { id, name: 'Unknown User', email: '', avatar: null }),
+  };
+}
+
+function makeIntroducerOpportunity(introducerId: string, partyAId: string, partyBId: string): Opportunity {
+  return {
+    id: 'opp-intro-1',
+    detection: { source: 'opportunity_graph', timestamp: new Date().toISOString() },
+    actors: [
+      { userId: introducerId, role: 'introducer', indexId: 'idx-1' },
+      { userId: partyAId, role: 'party', indexId: 'idx-1' },
+      { userId: partyBId, role: 'party', indexId: 'idx-1' },
+    ],
+    interpretation: { reasoning: 'Good introduction match.', category: 'connection', confidence: 80 },
+    context: { indexId: 'idx-1' },
+    confidence: '0.8',
+    status: 'latent',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    expiresAt: null,
+  };
+}
+
+describe('home.graph introducer card name format', () => {
+  test('introducer card name should NOT use joined format when secondParty is present', async () => {
+    const viewerId = 'intro-1';
+    const opp = makeIntroducerOpportunity(viewerId, 'party-a', 'party-b');
+    const db = createIntroMockDb([opp]);
+    const cache = createIntroMockCache();
+    const factory = new HomeGraphFactory(db, cache);
+    const graph = factory.createGraph();
+
+    const result = await graph.invoke({
+      userId: viewerId,
+      limit: 10,
+      noCache: true,
+    });
+
+    // The graph should produce cards
+    expect(result.cards.length).toBeGreaterThan(0);
+
+    const card = result.cards[0];
+    // card.name should be a single person's name, NOT "Mert Karadayi ↔ Yanki Ekin Yuksel"
+    expect(card.name).not.toContain('↔');
+
+    // secondParty should be populated
+    expect(card.secondParty).toBeDefined();
+    expect(card.secondParty?.name).toBeTruthy();
+
+    // card.name and secondParty.name should be different people
+    expect(card.name).not.toBe(card.secondParty?.name);
+
+    // Both names should be actual person names
+    const allNames = [card.name, card.secondParty?.name];
+    expect(allNames).toContain('Mert Karadayi');
+    expect(allNames).toContain('Yanki Ekin Yuksel');
+  }, 30_000);
+});

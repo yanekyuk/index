@@ -5,10 +5,10 @@
 import { config } from "dotenv";
 config({ path: '.env.test' });
 
-import { mock } from "bun:test";
-mock.module("../../../../queues/notification.queue", () => ({
+import { mock, afterAll } from "bun:test";
+mock.module("../../../../../backend/queues/notification.queue", () => ({
   queueOpportunityNotification: async () =>
-    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../queues/notification.queue").queueOpportunityNotification>>),
+    ({ id: "mock-job" } as unknown as Awaited<ReturnType<typeof import("../../../../../backend/queues/notification.queue").queueOpportunityNotification>>),
 }));
 mock.module("../../graphs/intent.graph", () => ({
   IntentGraphFactory: class {
@@ -169,7 +169,7 @@ mock.module("../../support/opportunity.discover", () => ({
 }));
 
 import { describe, test, expect, beforeAll } from "bun:test";
-import { createChatTools, type ToolContext } from "..";
+import { createChatTools, type ToolContext } from "../index";
 import type { ChatGraphCompositeDatabase, Opportunity, SystemDatabase } from "../../interfaces/database.interface.js";
 import type { ActiveIntent, IndexMemberDetails, IndexedIntentDetails } from "../../interfaces/database.interface.js";
 import type { Embedder } from "../../interfaces/embedder.interface.js";
@@ -1866,7 +1866,7 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     // by temporarily adding getOpportunitiesForUser and using createChatTools' underlying factory.
     // Instead, we import createOpportunityTools and wire a minimal defineTool.
     const { tool: lcTool } = await import("@langchain/core/tools");
-    const { createOpportunityTools } = await import("../opportunity.tools");
+    const { createOpportunityTools } = await import("../opportunity.tools.js");
     const { z } = await import("zod");
 
     const resolvedContext = {
@@ -1929,3 +1929,5 @@ describe("list_opportunities tool (CHAT_DISPLAY_LIMIT cap)", () => {
     expect(parsed.data.count).toBe(3);
   });
 });
+
+afterAll(() => mock.restore());
