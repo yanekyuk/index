@@ -35,7 +35,7 @@
   "versioning": [
     "Bump protocol/package.json version for changes under protocol/",
     "Bump frontend/package.json version for changes under frontend/",
-    "Bump cli/package.json version for changes under cli/"
+    "Bump packages/cli/package.json version for changes under packages/cli/"
   ],
   "directives": {
     "implementation": [
@@ -60,7 +60,7 @@
     "delivery": [
       "Conventional commits (feat/fix/refactor/test/docs/chore) and conventional branch names (type/short-description)",
       "Two remotes: origin (fork) and upstream (main repo). Push worktree branches to origin, create PRs from origin into upstream/dev. After merging a PR into upstream/dev, pull from upstream and push to origin to keep both in sync.",
-      "When cli/ changes are included in a PR, create a cli-v* tag after merge to trigger the npm publish workflow"
+      "When packages/cli/ changes are included in a PR, create a cli-v* tag after merge to trigger the npm publish workflow"
     ],
     "triage": [
       "Always use worktrees for feature and fix branches — keep dev stable",
