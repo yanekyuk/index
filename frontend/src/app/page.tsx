@@ -678,22 +678,22 @@ function LandingPage() {
               <h2 className="text-[32px] md:text-[36px] font-garamond font-normal text-black leading-tight">
                 From the Letters
               </h2>
-              <a
-                href="/blog"
+              <Link
+                to="/blog"
                 className="hidden sm:inline text-[13px] text-[#999] hover:text-black transition-colors no-underline pb-1 border-b border-[#E5E5E5] hover:border-black"
                 style={{ fontFamily: "'Public Sans', system-ui, sans-serif" }}
               >
                 All letters →
-              </a>
+              </Link>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-[#E5E5E5]">
               {/* The Magic Factory */}
-              <a
-                href="/blog/the-magic-factory"
+              <Link
+                to="/blog/the-magic-factory"
                 className="group no-underline bg-white flex flex-col"
               >
-                <div className="w-full aspect-[4/3] overflow-hidden bg-[#f5f5f5]">
+                <div className="w-full aspect-[16/9] overflow-hidden bg-[#f5f5f5]">
                   <video
                     src="/blog/the-magic-factory/magic-factory-white.mp4"
                     className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-700 ease-out"
@@ -718,14 +718,14 @@ function LandingPage() {
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
                 </div>
-              </a>
+              </Link>
 
               {/* Intent is the New Search */}
-              <a
-                href="/blog/intent-is-the-new-search"
+              <Link
+                to="/blog/intent-is-the-new-search"
                 className="group no-underline bg-white flex flex-col"
               >
-                <div className="w-full aspect-[4/3] overflow-hidden bg-[#f5f5f5]">
+                <div className="w-full aspect-[16/9] overflow-hidden bg-[#f5f5f5]">
                   <img
                     src="/blog/intent-is-the-new-search/search.jpg"
                     alt="Intent is the New Search"
@@ -747,7 +747,7 @@ function LandingPage() {
                     <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
                 </div>
-              </a>
+              </Link>
             </div>
           </div>
         </section>
