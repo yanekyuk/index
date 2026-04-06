@@ -34,7 +34,7 @@ index/
 
 **CLI** is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
 
-**Plugin** is a Claude Code / Claude Desktop plugin (MCP server) that exposes Index Network tools, resources, and skills to Claude. It wraps the CLI and is maintained as a git subtree at `indexnetwork/claude-plugin`.
+**Plugin** is the Claude Code / Claude Desktop plugin — a git subtree synced to `indexnetwork/claude-plugin`. It contains only markdown skill files with no code or build step.
 
 Both protocol and frontend workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
 

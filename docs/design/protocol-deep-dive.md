@@ -547,7 +547,7 @@ When enabled, high-scoring candidates enter bilateral negotiation via the Negoti
 
 ### Persistence
 
-Surviving opportunities are persisted with status `latent`. They become visible to users but require explicit action ("send") to promote to `pending` status. The full status lifecycle is: `latent -> pending -> viewed -> accepted | rejected | expired`.
+Surviving opportunities are persisted with status `latent`. They become visible to users but require explicit action ("send") to promote to `pending` status. The full status lifecycle is: `latent -> draft -> pending -> accepted | rejected | expired`.
 
 ## 8. Intent Lifecycle
 

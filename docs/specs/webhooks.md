@@ -116,7 +116,6 @@ Subscription point: `OpportunityService` lifecycle / `main.ts` composition root 
 ## Related documentation
 
 - [api-reference.md](./api-reference.md) — add a **Webhooks** section when endpoints ship.
-- [ARCHITECTURE.md](../../protocol/ARCHITECTURE.md) — A2A / push notification direction.
 
 ## Tracking
 

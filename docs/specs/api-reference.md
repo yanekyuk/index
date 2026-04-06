@@ -1535,7 +1535,7 @@ List opportunities for the authenticated user.
 **Auth**: AuthGuard
 
 **Query params**:
-- `status` — Filter by status: `pending`, `viewed`, `accepted`, `rejected`, `expired` (optional)
+- `status` — Filter by status: `latent`, `draft`, `pending`, `accepted`, `rejected`, `expired` (optional)
 - `indexId` — Filter by index (optional)
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
@@ -1620,7 +1620,7 @@ Update opportunity status.
 **Request body**:
 ```json
 {
-  "status": "latent | draft | pending | viewed | accepted | rejected | expired"
+  "status": "latent | draft | pending | accepted | rejected | expired"
 }
 ```
 
