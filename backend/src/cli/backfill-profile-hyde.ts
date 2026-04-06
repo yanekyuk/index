@@ -33,7 +33,7 @@ function parseLimit(): number {
 /**
  * Users who are index members, have a user profile, and lack a profile HyDE document.
  */
-async function getIndexMembersMissingProfileHyde(limit: number): Promise<{ userId: string }[]> {
+async function getNetworkMembersMissingProfileHyde(limit: number): Promise<{ userId: string }[]> {
   const rows = await db
     .selectDistinct({ userId: userProfiles.userId })
     .from(networkMembers)
@@ -49,7 +49,7 @@ async function getIndexMembersMissingProfileHyde(limit: number): Promise<{ userI
 
 async function main(): Promise<void> {
   const limit = parseLimit();
-  const users = await getIndexMembersMissingProfileHyde(limit);
+  const users = await getNetworkMembersMissingProfileHyde(limit);
 
   if (users.length === 0) {
     console.log('No index members missing profile HyDE.');

@@ -137,7 +137,7 @@ function createMockDb(): ChatDatabaseAdapter {
     getUserIndexIds: mock(() => Promise.resolve([])),
     getOwnedIndexes: mock(() => Promise.resolve([])),
     getNetworkMembership: mock(() => Promise.resolve(null)),
-    getIndexMemberContext: mock(() => Promise.resolve(null)),
+    getNetworkMemberContext: mock(() => Promise.resolve(null)),
 
     // Network CRUD
     createNetwork: mock(() => Promise.resolve({ id: 'idx-1', title: 'Test', prompt: null, imageUrl: null, permissions: {} })),
@@ -405,9 +405,9 @@ describe('createUserDatabase', () => {
       expect(mockDb.getNetworkMembership).toHaveBeenCalledWith('idx-a', AUTH_USER);
     });
 
-    it('getIndexMemberContext delegates with indexId and authUserId', async () => {
-      await userDb.getIndexMemberContext('idx-a');
-      expect(mockDb.getIndexMemberContext).toHaveBeenCalledWith('idx-a', AUTH_USER);
+    it('getNetworkMemberContext delegates with indexId and authUserId', async () => {
+      await userDb.getNetworkMemberContext('idx-a');
+      expect(mockDb.getNetworkMemberContext).toHaveBeenCalledWith('idx-a', AUTH_USER);
     });
   });
 

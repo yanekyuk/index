@@ -28,7 +28,7 @@ export type IntentJobPayload = IntentJobData | IntentDeleteData;
 /** Minimal database interface for intent queue (used when deps provided in tests). */
 export type IntentQueueDatabase = Pick<
   ChatDatabaseAdapter,
-  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getIndexMemberContext' | 'getProfile' | 'getActiveIntents'
+  'getIntentForIndexing' | 'getUserIndexIds' | 'assignIntentToNetwork' | 'deleteHydeDocumentsForSource' | 'getNetworkMemberContext' | 'getProfile' | 'getActiveIntents'
 >;
 
 /**
@@ -195,7 +195,7 @@ export class IntentQueue implements IntentGraphQueue {
       // Fetch prompts for each index to determine which need scoring
       const indexContexts = await Promise.all(
         userIndexIds.map(async (networkId) => {
-          const ctx = await db.getIndexMemberContext(networkId, userId);
+          const ctx = await db.getNetworkMemberContext(networkId, userId);
           return { networkId, ctx };
         })
       );

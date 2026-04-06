@@ -55,7 +55,7 @@ const mockAdapter: IntegrationAdapter = {
 
 const mockDb = {
   deleteIndexIntegrationsByConnectedAccount: async () => {},
-  getIndexIntegrations: async (networkId: string) =>
+  getNetworkIntegrations: async (networkId: string) =>
     linkedIntegrations.filter(l => l.networkId === networkId),
   insertIndexIntegration: async (networkId: string, toolkit: string, connectedAccountId: string) => {
     linkedIntegrations.push({ networkId, toolkit, connectedAccountId });

@@ -158,7 +158,7 @@ export class IntegrationService {
    */
   async getLinkedIntegrations(userId: string, networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string }>> {
     await this.assertNetworkOwner(networkId, userId);
-    return this.db.getIndexIntegrations(networkId);
+    return this.db.getNetworkIntegrations(networkId);
   }
 
   /**

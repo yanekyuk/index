@@ -263,7 +263,7 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index member context for member with autoAssign', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.networkId, fixture.userBId);
+    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
     expect(ctx!.networkId).toBe(fixture.networkId);
     expect(ctx!.memberPrompt).toBe('Member prompt');
@@ -313,28 +313,28 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index members for member', async () => {
-    const members = await adapter.getIndexMembersForMember(fixture.networkId, fixture.userBId);
+    const members = await adapter.getNetworkMembersForMember(fixture.networkId, fixture.userBId);
     expect(members.length).toBeGreaterThanOrEqual(1);
     expect(members.some((m) => m.userId === fixture.userAId || m.userId === fixture.userBId)).toBe(true);
   });
 
   it('should get index members for owner', async () => {
-    const members = await adapter.getIndexMembersForOwner(fixture.networkId, fixture.userAId);
+    const members = await adapter.getNetworkMembersForOwner(fixture.networkId, fixture.userAId);
     expect(members.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('should throw when getIndexMembersForOwner as non-owner', async () => {
-    await expect(adapter.getIndexMembersForOwner(fixture.networkId, fixture.userBId)).rejects.toThrow('Access denied');
+  it('should throw when getNetworkMembersForOwner as non-owner', async () => {
+    await expect(adapter.getNetworkMembersForOwner(fixture.networkId, fixture.userBId)).rejects.toThrow('Access denied');
   });
 
   it('should get index intents for owner', async () => {
-    const list = await adapter.getIndexIntentsForOwner(fixture.networkId, fixture.userAId);
+    const list = await adapter.getNetworkIntentsForOwner(fixture.networkId, fixture.userAId);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
   });
 
   it('should get index intents for member', async () => {
-    const list = await adapter.getIndexIntentsForMember(fixture.networkId, fixture.userBId);
+    const list = await adapter.getNetworkIntentsForMember(fixture.networkId, fixture.userBId);
     expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -828,14 +828,14 @@ describe('NetworkGraphDatabaseAdapter', () => {
   });
 
   it('should get index member context', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.networkId, fixture.userBId);
+    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
     expect(ctx!.networkId).toBe(fixture.networkId);
     expect(ctx!.memberPrompt).toBe('Member prompt');
   });
 
   it('should return null for non-member', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.networkId, uuidv4());
+    const ctx = await adapter.getNetworkMemberContext(fixture.networkId, uuidv4());
     expect(ctx).toBeNull();
   });
 

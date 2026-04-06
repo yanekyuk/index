@@ -43,7 +43,7 @@ function createMockDb(): ChatDatabaseAdapter {
 
     // Intents
     getIntent: mock(() => Promise.resolve(null)),
-    getIndexIntentsForMember: mock(() => Promise.resolve([])),
+    getNetworkIntentsForMember: mock(() => Promise.resolve([])),
     getIntentsInIndexForMember: mock(() => Promise.resolve([])),
 
     // Network membership
@@ -51,15 +51,15 @@ function createMockDb(): ChatDatabaseAdapter {
     getNetworkMembership: mock(() => Promise.resolve(null)),
     isNetworkMember: mock(() => Promise.resolve(false)),
     isIndexOwner: mock(() => Promise.resolve(false)),
-    getIndexMembersForMember: mock(() => Promise.resolve([])),
+    getNetworkMembersForMember: mock(() => Promise.resolve([])),
     getMembersFromUserIndexes: mock(() => Promise.resolve([])),
     addMemberToNetwork: mock(() => Promise.resolve({ success: true })),
     removeMemberFromIndex: mock(() => Promise.resolve({ success: true })),
 
     // Index operations
     getNetwork: mock(() => Promise.resolve(null)),
-    getIndexWithPermissions: mock(() => Promise.resolve(null)),
-    getIndexMemberCount: mock(() => Promise.resolve(0)),
+    getNetworkWithPermissions: mock(() => Promise.resolve(null)),
+    getNetworkMemberCount: mock(() => Promise.resolve(0)),
 
     // Opportunities
     createOpportunity: mock(() => Promise.resolve({})),
@@ -114,7 +114,7 @@ describe('createSystemDatabase', () => {
   describe('verifyScope — index operations', () => {
     it('getIntentsInIndex allows scoped index', async () => {
       await sysDb.getIntentsInIndex(SCOPED_INDEX);
-      expect(mockDb.getIndexIntentsForMember).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER, undefined);
+      expect(mockDb.getNetworkIntentsForMember).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER, undefined);
     });
 
     it('getIntentsInIndex throws for out-of-scope index', async () => {
@@ -130,13 +130,13 @@ describe('createSystemDatabase', () => {
       await expect(sysDb.getUserIntentsInIndex(OTHER_USER, OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
-    it('getIndexMembers allows scoped index', async () => {
-      await sysDb.getIndexMembers(SCOPED_INDEX);
-      expect(mockDb.getIndexMembersForMember).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
+    it('getNetworkMembers allows scoped index', async () => {
+      await sysDb.getNetworkMembers(SCOPED_INDEX);
+      expect(mockDb.getNetworkMembersForMember).toHaveBeenCalledWith(SCOPED_INDEX, AUTH_USER);
     });
 
-    it('getIndexMembers throws for out-of-scope index', async () => {
-      await expect(sysDb.getIndexMembers(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getNetworkMembers throws for out-of-scope index', async () => {
+      await expect(sysDb.getNetworkMembers(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
     it('getNetwork allows scoped index', async () => {
@@ -148,22 +148,22 @@ describe('createSystemDatabase', () => {
       await expect(sysDb.getNetwork(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
-    it('getIndexWithPermissions allows scoped index', async () => {
-      await sysDb.getIndexWithPermissions(SCOPED_INDEX);
-      expect(mockDb.getIndexWithPermissions).toHaveBeenCalledWith(SCOPED_INDEX);
+    it('getNetworkWithPermissions allows scoped index', async () => {
+      await sysDb.getNetworkWithPermissions(SCOPED_INDEX);
+      expect(mockDb.getNetworkWithPermissions).toHaveBeenCalledWith(SCOPED_INDEX);
     });
 
-    it('getIndexWithPermissions throws for out-of-scope index', async () => {
-      await expect(sysDb.getIndexWithPermissions(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getNetworkWithPermissions throws for out-of-scope index', async () => {
+      await expect(sysDb.getNetworkWithPermissions(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
 
-    it('getIndexMemberCount allows scoped index', async () => {
-      await sysDb.getIndexMemberCount(SCOPED_INDEX);
-      expect(mockDb.getIndexMemberCount).toHaveBeenCalledWith(SCOPED_INDEX);
+    it('getNetworkMemberCount allows scoped index', async () => {
+      await sysDb.getNetworkMemberCount(SCOPED_INDEX);
+      expect(mockDb.getNetworkMemberCount).toHaveBeenCalledWith(SCOPED_INDEX);
     });
 
-    it('getIndexMemberCount throws for out-of-scope index', async () => {
-      await expect(sysDb.getIndexMemberCount(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
+    it('getNetworkMemberCount throws for out-of-scope index', async () => {
+      await expect(sysDb.getNetworkMemberCount(OUT_OF_SCOPE_INDEX)).rejects.toThrow('not in scope');
     });
   });
 

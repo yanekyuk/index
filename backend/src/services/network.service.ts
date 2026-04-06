@@ -121,7 +121,7 @@ export class NetworkService {
    */
   async getMembersForOwner(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting members for owner', { networkId, userId });
-    const raw = await this.adapter.getIndexMembersForOwner(networkId, userId);
+    const raw = await this.adapter.getNetworkMembersForOwner(networkId, userId);
     return raw.map(m => ({
       id: m.userId,
       name: m.name,
@@ -225,7 +225,7 @@ export class NetworkService {
    */
   async getMyIntentsInNetwork(networkId: string, userId: string) {
     logger.verbose('[NetworkService] Getting my intents in index', { networkId, userId });
-    return this.adapter.getIndexIntentsForMember(networkId, userId);
+    return this.adapter.getNetworkIntentsForMember(networkId, userId);
   }
 
   /**

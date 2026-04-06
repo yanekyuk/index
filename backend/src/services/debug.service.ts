@@ -36,7 +36,7 @@ export interface DiscoveryResult {
   discoverySource: string | null;
   resolvedTriggerIntentId: string | null;
   resolvedIntentInIndex: boolean;
-  targetIndexes: unknown[];
+  targetNetworks: unknown[];
   candidatesFound: number;
   candidates: Array<{
     userId: string;
@@ -216,7 +216,7 @@ export class DebugService {
       discoverySource: result.discoverySource ?? null,
       resolvedTriggerIntentId: result.resolvedTriggerIntentId ?? null,
       resolvedIntentInIndex: result.resolvedIntentInIndex ?? false,
-      targetIndexes: result.targetIndexes ?? [],
+      targetNetworks: result.targetNetworks ?? [],
       candidatesFound: candidates.length,
       candidates: candidates.slice(0, 20).map((c) => ({
         userId: c.candidateUserId,

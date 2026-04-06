@@ -628,7 +628,7 @@ export class IntentDatabaseAdapter {
     return result.length > 0;
   }
 
-  async getIndexIntentsForMember(
+  async getNetworkIntentsForMember(
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
@@ -1125,7 +1125,7 @@ export class ChatDatabaseAdapter {
     return rows[0]?.isPersonal === true;
   }
 
-  async getIndexWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
+  async getNetworkWithPermissions(networkId: string): Promise<{ id: string; title: string; permissions: { joinPolicy: 'anyone' | 'invite_only' } } | null> {
     const rows = await db
       .select({ id: networks.id, title: networks.title, permissions: networks.permissions })
       .from(networks)
@@ -1448,7 +1448,7 @@ export class ChatDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getIndexMemberContext(networkId: string, userId: string) {
+  async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
         networkId: networks.id,
@@ -1617,7 +1617,7 @@ export class ChatDatabaseAdapter {
     return result;
   }
 
-  async getIndexMembersForMember(networkId: string, requestingUserId: string) {
+  async getNetworkMembersForMember(networkId: string, requestingUserId: string) {
     const isMember = await this.isNetworkMember(networkId, requestingUserId);
     if (!isMember) {
       throw new Error('Access denied: Not a member of this index');
@@ -1682,7 +1682,7 @@ export class ChatDatabaseAdapter {
     return rows.length > 0;
   }
 
-  async getIndexMembersForOwner(networkId: string, requestingUserId: string) {
+  async getNetworkMembersForOwner(networkId: string, requestingUserId: string) {
     const isOwner = await this.isIndexOwner(networkId, requestingUserId);
     if (!isOwner) {
       throw new Error('Access denied: Not an owner of this index');
@@ -1768,7 +1768,7 @@ export class ChatDatabaseAdapter {
     return Array.from(byId.values());
   }
 
-  async getIndexIntentsForOwner(
+  async getNetworkIntentsForOwner(
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
@@ -1848,7 +1848,7 @@ export class ChatDatabaseAdapter {
     return { permissions, isOwner };
   }
 
-  async getIndexIntentsForMember(
+  async getNetworkIntentsForMember(
     networkId: string,
     requestingUserId: string,
     options?: { limit?: number; offset?: number }
@@ -2081,7 +2081,7 @@ export class ChatDatabaseAdapter {
     };
   }
 
-  async getIndexMemberCount(networkId: string): Promise<number> {
+  async getNetworkMemberCount(networkId: string): Promise<number> {
     const [r] = await db.select({ count: count() }).from(networkMembers).where(eq(networkMembers.networkId, networkId));
     return Number(r?.count ?? 0);
   }
@@ -2212,7 +2212,7 @@ export class ChatDatabaseAdapter {
     const perms = row.permissions as { joinPolicy?: string } | null;
     if (perms?.joinPolicy !== 'anyone') return null;
 
-    const memberCount = await this.getIndexMemberCount(networkId);
+    const memberCount = await this.getNetworkMemberCount(networkId);
 
     return {
       id: row.id,
@@ -2267,7 +2267,7 @@ export class ChatDatabaseAdapter {
     const row = rows[0];
     if (!row) return null;
 
-    const memberCount = await this.getIndexMemberCount(row.id);
+    const memberCount = await this.getNetworkMemberCount(row.id);
 
     const perms = row.permissions as { joinPolicy?: string } | null;
 
@@ -2364,7 +2364,7 @@ export class ChatDatabaseAdapter {
       throw new Error('Access denied: Not a member of this index');
     }
 
-    const memberCount = await this.getIndexMemberCount(networkId);
+    const memberCount = await this.getNetworkMemberCount(networkId);
 
     return {
       id: row.id,
@@ -3062,7 +3062,7 @@ export class ChatDatabaseAdapter {
    * @param networkId - The index to query
    * @returns Array of linked integration records
    */
-  async getIndexIntegrations(networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
+  async getNetworkIntegrations(networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string; createdAt: Date }>> {
     return db.select({
       toolkit: schema.networkIntegrations.toolkit,
       connectedAccountId: schema.networkIntegrations.connectedAccountId,
@@ -3903,7 +3903,7 @@ export class NetworkGraphDatabaseAdapter {
     return rows[0] ?? null;
   }
 
-  async getIndexMemberContext(networkId: string, userId: string) {
+  async getNetworkMemberContext(networkId: string, userId: string) {
     const rows = await db
       .select({
         networkId: networks.id,
@@ -4889,7 +4889,7 @@ export function createUserDatabase(db: ChatDatabaseAdapter, authUserId: string) 
     getUserIndexIds: () => db.getUserIndexIds(authUserId),
     getOwnedIndexes: () => db.getOwnedIndexes(authUserId),
     getNetworkMembership: (networkId: string) => db.getNetworkMembership(networkId, authUserId),
-    getIndexMemberContext: (networkId: string) => db.getIndexMemberContext(networkId, authUserId),
+    getNetworkMemberContext: (networkId: string) => db.getNetworkMemberContext(networkId, authUserId),
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Index CRUD Operations
@@ -5018,7 +5018,7 @@ export function createSystemDatabase(
     // ─────────────────────────────────────────────────────────────────────────────
     getIntentsInIndex: async (networkId: string, options?: { limit?: number; offset?: number }) => {
       verifyScope(networkId);
-      return db.getIndexIntentsForMember(networkId, authUserId, options);
+      return db.getNetworkIntentsForMember(networkId, authUserId, options);
     },
     getUserIntentsInIndex: async (userId: string, networkId: string) => {
       verifyScope(networkId);
@@ -5073,9 +5073,9 @@ export function createSystemDatabase(
      * ownership for any user (e.g. permission checks during graph execution).
      */
     isIndexOwner: (networkId: string, userId: string) => db.isIndexOwner(networkId, userId),
-    getIndexMembers: async (networkId: string) => {
+    getNetworkMembers: async (networkId: string) => {
       verifyScope(networkId);
-      return db.getIndexMembersForMember(networkId, authUserId);
+      return db.getNetworkMembersForMember(networkId, authUserId);
     },
     getMembersFromScope: () => db.getMembersFromUserIndexes(authUserId as Id<'users'>),
     /**
@@ -5098,13 +5098,13 @@ export function createSystemDatabase(
       verifyScope(networkId);
       return db.getNetwork(networkId);
     },
-    getIndexWithPermissions: async (networkId: string) => {
+    getNetworkWithPermissions: async (networkId: string) => {
       verifyScope(networkId);
-      return db.getIndexWithPermissions(networkId);
+      return db.getNetworkWithPermissions(networkId);
     },
-    getIndexMemberCount: async (networkId: string) => {
+    getNetworkMemberCount: async (networkId: string) => {
       verifyScope(networkId);
-      return db.getIndexMemberCount(networkId);
+      return db.getNetworkMemberCount(networkId);
     },
 
     // ─────────────────────────────────────────────────────────────────────────────
