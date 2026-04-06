@@ -1,5 +1,6 @@
 # Publish @indexnetwork/cli to npm on every push to main.
-# Reads version from package.json — skips silently if already published.
+# Builds native binaries for all platforms, then publishes.
+# Skips if the version in package.json is already on npm.
 #
 # Requires: GitHub repo secret INDEX_REPO_TOKEN (npm automation token).
 name: Publish
@@ -14,9 +15,84 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # ── Check version ─────────────────────────────────────────────────────
+  check:
     runs-on: ubuntu-latest
-    name: Build and publish to npm
+    name: Check if version needs publishing
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if version already published
+        id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if npm view "${NAME}@${VERSION}" version &>/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Version ${VERSION} already published — skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Build platform binaries ───────────────────────────────────────────
+  build:
+    needs: check
+    if: needs.check.outputs.skip == 'false'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            npm-dir: linux-x64
+            binary-name: index-linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            npm-dir: linux-arm64
+            binary-name: index-linux-arm64
+          - os: macos-latest
+            target: bun-darwin-x64
+            npm-dir: darwin-x64
+            binary-name: index-darwin-x64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            npm-dir: darwin-arm64
+            binary-name: index-darwin-arm64
+
+    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.npm-dir }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Compile binary
+        run: |
+          mkdir -p dist
+          bun build src/main.ts --compile --target=${{ matrix.target }} --outfile dist/${{ matrix.binary-name }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.npm-dir }}
+          path: dist/${{ matrix.binary-name }}
+          retention-days: 1
+
+  # ── Publish all packages to npm ───────────────────────────────────────
+  publish:
+    needs: [check, build]
+    if: needs.check.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    name: Publish to npm
 
     steps:
       - uses: actions/checkout@v4
@@ -33,23 +109,37 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build
-        run: bun run build
-
-      - name: Check if version already published
-        id: check
+      - name: Build JS fallback bundle
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          NAME=$(node -p "require('./package.json').name")
-          if npm view "${NAME}@${VERSION}" version &>/dev/null; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Version ${VERSION} already published — skipping."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          mkdir -p dist
+          bun build src/main.ts --outdir dist --target node --format esm --entry-naming index.js
 
-      - name: Publish
-        if: steps.check.outputs.skip == 'false'
-        run: npm publish --access public
+      - name: Download all platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Place binaries into platform packages
+        run: |
+          for dir in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            mkdir -p "npm/$dir/bin"
+            cp "artifacts/$dir/index-$dir" "npm/$dir/bin/index"
+            chmod +x "npm/$dir/bin/index"
+          done
+
+      - name: Publish platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          for dir in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+            jq --arg v "$VERSION" '.version = $v' "npm/$dir/package.json" > "npm/$dir/package.json.tmp" \
+              && mv "npm/$dir/package.json.tmp" "npm/$dir/package.json"
+            echo "Publishing @indexnetwork/cli-$dir..."
+            npm publish --access public "./npm/$dir"
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.INDEX_REPO_TOKEN }}
+        run: npm publish --access public
