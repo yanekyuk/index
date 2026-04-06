@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from "../../guards/auth.guard";
 import type { IntegrationAdapter, IntegrationConnection, IntegrationSession } from '@indexnetwork/protocol';
 import { IntegrationService } from "../../services/integration.service";
 import type { ChatDatabaseAdapter } from "../../adapters/database.adapter";
+import type { ContactImporter, ImportResult, ResolveResult } from "../../types/integrations.types";
 
 const USER_A: AuthenticatedUser = { id: "user-a", email: "a@test.com", name: "User A" };
 const USER_B: AuthenticatedUser = { id: "user-b", email: "b@test.com", name: "User B" };
@@ -72,9 +73,18 @@ const mockDb = {
   },
 } as unknown as ChatDatabaseAdapter;
 
+const mockContactImporter: ContactImporter = {
+  async importContacts(): Promise<ImportResult> {
+    return { imported: 0, skipped: 0, newContacts: 0, existingContacts: 0, details: [] };
+  },
+  async resolveUsers(): Promise<ResolveResult> {
+    return { userIds: [], newGhostIds: [], skipped: 0, details: [] };
+  },
+};
+
 describe("IntegrationController", () => {
-  const service = new IntegrationService(mockAdapter, mockDb);
-  const controller = new IntegrationController(mockAdapter, service);
+  const service = new IntegrationService(mockAdapter, mockContactImporter, mockDb);
+  const controller = new IntegrationController(service);
 
   beforeEach(() => {
     disconnected.length = 0;
