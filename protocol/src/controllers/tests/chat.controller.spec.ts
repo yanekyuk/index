@@ -4,7 +4,7 @@ config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { ChatController } from "../chat.controller";
-import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, IndexGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { ChatDatabaseAdapter, UserDatabaseAdapter, ProfileDatabaseAdapter, IntentDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import { chatSessionService } from "../../services/chat.service";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
@@ -23,7 +23,7 @@ describe("ChatController Integration", () => {
   const userAdapter = new UserDatabaseAdapter();
   const profileAdapter = new ProfileDatabaseAdapter();
   const intentAdapter = new IntentDatabaseAdapter();
-  const indexAdapter = new IndexGraphDatabaseAdapter();
+  const indexAdapter = new NetworkGraphDatabaseAdapter();
   let testUserId: string;
   /** Index IDs created for getIntentsInIndexForMember tests; cleaned in afterAll */
   let testIndexId: string | null = null;
@@ -71,8 +71,8 @@ describe("ChatController Integration", () => {
   });
 
   afterAll(async () => {
-    for (const indexId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
-      if (indexId) await indexAdapter.deleteIndexAndMembers(indexId);
+    for (const networkId of [testIndexId, testIndexIdOther, unauthorizedStreamIndexId]) {
+      if (networkId) await indexAdapter.deleteNetworkAndMembers(networkId);
     }
     if (testUserId) {
       await intentAdapter.deleteByUserId(testUserId);
@@ -188,7 +188,7 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return intents when queried by index name", async () => {
-      const index = await adapter.createIndex({
+      const index = await adapter.createNetwork({
         title: "Commons",
         prompt: "Test index for chat adapter",
       });
@@ -206,7 +206,7 @@ describe("ChatController Integration", () => {
         activeIntents = await adapter.getActiveIntents(testUserId);
       }
       expect(activeIntents.length).toBeGreaterThan(0);
-      await adapter.assignIntentToIndex(activeIntents[0].id, testIndexId);
+      await adapter.assignIntentToNetwork(activeIntents[0].id, testIndexId);
 
       const intents = await adapter.getIntentsInIndexForMember(testUserId, "Commons");
       expect(intents).toBeArray();
@@ -226,7 +226,7 @@ describe("ChatController Integration", () => {
     });
 
     test("getIntentsInIndexForMember should return empty when user is not a member of the index", async () => {
-      const index = await adapter.createIndex({
+      const index = await adapter.createNetwork({
         title: "Other Index User Not In",
         prompt: "Index without test user",
       });
@@ -412,7 +412,7 @@ describe("ChatController Integration", () => {
     });
 
     test("messageStream should return 403 when scoped index is not a member index", async () => {
-      const index = await chatAdapter.createIndex({
+      const index = await chatAdapter.createNetwork({
         title: "Unauthorized Stream Index",
         prompt: "Index created for access validation",
       });
@@ -423,7 +423,7 @@ describe("ChatController Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "hello",
-          indexId: unauthorizedStreamIndexId,
+          networkId: unauthorizedStreamIndexId,
           useCheckpointer: false,
         }),
       });

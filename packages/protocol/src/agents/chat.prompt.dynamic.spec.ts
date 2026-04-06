@@ -35,7 +35,7 @@ import {
   createMockProtocolDeps,
 } from "../graphs/tests/chat.graph.mocks.js";
 import type { ChatSessionReader } from "../interfaces/chat-session.interface.js";
-import type { IndexMembership } from "../interfaces/database.interface.js";
+import type { NetworkMembership } from "../interfaces/database.interface.js";
 
 /**
  * Checks if any AIMessage in the output messages array made a tool call with the given name.
@@ -107,11 +107,11 @@ function completedUser(userId: string, nameOverride?: string) {
 const SHARED_INDEX_ID = "idx-shared-ai-builders";
 const SHARED_INDEX = { id: SHARED_INDEX_ID, title: "AI Builders" };
 
-/** Build an IndexMembership for a user in the shared index. */
-function sharedMembership(extra?: Partial<IndexMembership>): IndexMembership {
+/** Build an NetworkMembership for a user in the shared index. */
+function sharedMembership(extra?: Partial<NetworkMembership>): NetworkMembership {
   return {
-    indexId: SHARED_INDEX_ID,
-    indexTitle: "AI Builders",
+    networkId: SHARED_INDEX_ID,
+    networkTitle: "AI Builders",
     indexPrompt: "AI enthusiasts and builders",
     permissions: ["member"],
     memberPrompt: null,
@@ -372,16 +372,16 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
           return completedUser(userId);
         },
         profile: mockProfile({ userId: testUserId, name: "Test User" }),
-        indexMemberships: (userId: string) => {
+        networkMemberships: (userId: string) => {
           if (userId === testUserId || userId === "user-alice")
             return [sharedMembership()];
           return [];
         },
-        isIndexMember: (indexId: string, userId: string) =>
-          indexId === SHARED_INDEX_ID &&
+        isNetworkMember: (networkId: string, userId: string) =>
+          networkId === SHARED_INDEX_ID &&
           (userId === testUserId || userId === "user-alice"),
-        getIndex: (indexId: string) =>
-          indexId === SHARED_INDEX_ID ? SHARED_INDEX : null,
+        getIndex: (networkId: string) =>
+          networkId === SHARED_INDEX_ID ? SHARED_INDEX : null,
       });
       const mentionFactory = new ChatGraphFactory(
         mentionDb,
@@ -488,13 +488,13 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
       const communityDb = createChatGraphMockDb({
         getUser: (userId: string) => completedUser(userId),
         profile: mockProfile({ userId: testUserId, name: "Test User" }),
-        indexMemberships: (userId: string) => {
+        networkMemberships: (userId: string) => {
           if (userId === testUserId)
             return [
               sharedMembership(),
               {
-                indexId: "idx-personal",
-                indexTitle: "My Network",
+                networkId: "idx-personal",
+                networkTitle: "My Network",
                 indexPrompt: null,
                 permissions: ["owner"],
                 memberPrompt: null,
@@ -505,15 +505,15 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
             ];
           return [];
         },
-        getIndex: (indexId: string) => {
-          if (indexId === SHARED_INDEX_ID) return SHARED_INDEX;
-          if (indexId === "idx-personal")
+        getIndex: (networkId: string) => {
+          if (networkId === SHARED_INDEX_ID) return SHARED_INDEX;
+          if (networkId === "idx-personal")
             return { id: "idx-personal", title: "My Network" };
           return null;
         },
-        isIndexMember: (indexId: string, userId: string) =>
+        isNetworkMember: (networkId: string, userId: string) =>
           userId === testUserId &&
-          (indexId === SHARED_INDEX_ID || indexId === "idx-personal"),
+          (networkId === SHARED_INDEX_ID || networkId === "idx-personal"),
       });
       const communityFactory = new ChatGraphFactory(
         communityDb,
@@ -566,7 +566,7 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
           return completedUser(userId);
         },
         profile: mockProfile({ userId: testUserId, name: "Test User" }),
-        indexMemberships: (userId: string) => {
+        networkMemberships: (userId: string) => {
           if (
             userId === testUserId ||
             userId === "user-alice" ||
@@ -575,11 +575,11 @@ describe("Chat Prompt Dynamic Modules (Smartest)", () => {
             return [sharedMembership()];
           return [];
         },
-        isIndexMember: (indexId: string, userId: string) =>
-          indexId === SHARED_INDEX_ID &&
+        isNetworkMember: (networkId: string, userId: string) =>
+          networkId === SHARED_INDEX_ID &&
           [testUserId, "user-alice", "user-bob"].includes(userId),
-        getIndex: (indexId: string) =>
-          indexId === SHARED_INDEX_ID ? SHARED_INDEX : null,
+        getIndex: (networkId: string) =>
+          networkId === SHARED_INDEX_ID ? SHARED_INDEX : null,
         activeIntents: (userId: string) => {
           if (userId === "user-alice")
             return [

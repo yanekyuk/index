@@ -117,7 +117,7 @@ export class OpportunityService {
    */
   async getHomeView(
     userId: string,
-    options?: { indexId?: string; limit?: number; noCache?: boolean }
+    options?: { networkId?: string; limit?: number; noCache?: boolean }
   ): Promise<{ sections: Array<{ id: string; title: string; subtitle?: string; iconName: string; items: unknown[] }>; meta: { totalOpportunities: number; totalSections: number; maintenanceTriggered: boolean } } | { error: string }> {
     logger.verbose('[OpportunityService] Getting home view', { userId, options });
     if (!this.homeGraph) {
@@ -126,7 +126,7 @@ export class OpportunityService {
     try {
       const result = await this.homeGraph.invoke({
         userId,
-        indexId: options?.indexId,
+        networkId: options?.networkId,
         limit: options?.limit ?? 50,
         noCache: options?.noCache,
       });
@@ -140,7 +140,7 @@ export class OpportunityService {
       };
 
       // Fire-and-forget maintenance: health-scored check replaces empty-feed-only trigger
-      if (this.maintenanceGraph && !options?.indexId) {
+      if (this.maintenanceGraph && !options?.networkId) {
         meta.maintenanceTriggered = true;
         logger.info('[OpportunityService] Triggering maintenance via health scoring', { userId, source: 'home-view' });
         this.maintenanceGraph.invoke({ userId }).catch((err) =>
@@ -176,14 +176,14 @@ export class OpportunityService {
    * Get opportunities for a user with optional filters.
    *
    * @param userId - The user ID
-   * @param options - Filter options (status, indexId, limit, offset)
+   * @param options - Filter options (status, networkId, limit, offset)
    * @returns List of opportunities
    */
   async getOpportunitiesForUser(
     userId: string,
     options?: {
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
-      indexId?: string;
+      networkId?: string;
       limit?: number;
       offset?: number;
     }
@@ -252,11 +252,11 @@ export class OpportunityService {
     const nonIntroducerActors = opp.actors.filter((a) => a.role !== 'introducer' && a.userId !== viewerId);
     const otherPartyIds = nonIntroducerActors.map((a) => a.userId);
 
-    const contextIndexId = opp.context?.indexId;
-    const actorIndexId = opp.actors[0]?.indexId;
-    const indexIdForDisplay = contextIndexId ?? actorIndexId;
+    const contextNetworkId = opp.context?.networkId;
+    const actorNetworkId = nonIntroducerActors[0]?.networkId ?? myActor?.networkId;
+    const networkIdForDisplay = contextNetworkId ?? actorNetworkId;
     const [indexRecord, ...userRecords] = await Promise.all([
-      indexIdForDisplay ? this.db.getIndex(indexIdForDisplay) : Promise.resolve(null),
+      networkIdForDisplay ? this.db.getIndex(networkIdForDisplay) : Promise.resolve(null),
       ...otherPartyIds.map((uid) => this.db.getUser(uid)),
     ]);
     const introducerRecord = introducerId ? await this.db.getUser(introducerId) : null;
@@ -292,7 +292,7 @@ export class OpportunityService {
       introducedBy: introducerInfo ?? undefined,
       category: opp.interpretation.category,
       confidence: confidenceNum,
-      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (indexIdForDisplay ? { id: indexIdForDisplay, title: '' } : { id: '', title: '' }),
+      index: indexRecord ? { id: indexRecord.id, title: indexRecord.title } : (networkIdForDisplay ? { id: networkIdForDisplay, title: '' } : { id: '', title: '' }),
       status: opp.status,
       isGhost: isCounterpartGhost,
       primaryActionLabel: getPrimaryActionLabel(myActor.role),
@@ -367,8 +367,8 @@ export class OpportunityService {
       return { error: 'Discovery not available; graph dependencies not configured', status: 503 };
     }
 
-    const memberships = await this.db.getIndexMemberships(userId);
-    const indexScope = memberships.map((m) => m.indexId);
+    const memberships = await this.db.getNetworkMemberships(userId);
+    const indexScope = memberships.map((m) => m.networkId);
 
     if (indexScope.length === 0) {
       return {
@@ -391,13 +391,13 @@ export class OpportunityService {
   /**
    * Get opportunities for a specific index.
    * 
-   * @param indexId - The index ID
+   * @param networkId - The index ID
    * @param userId - User requesting (for authorization)
    * @param options - Filter options
    * @returns List of opportunities or error
    */
-  async getOpportunitiesForIndex(
-    indexId: string,
+  async getOpportunitiesForNetwork(
+    networkId: string,
     userId: string,
     options?: {
       status?: 'pending' | 'accepted' | 'rejected' | 'expired';
@@ -405,28 +405,28 @@ export class OpportunityService {
       offset?: number;
     }
   ) {
-    logger.verbose('[OpportunityService] Getting opportunities for index', { indexId, userId, options });
+    logger.verbose('[OpportunityService] Getting opportunities for index', { networkId, userId, options });
 
-    const isOwner = await this.db.isIndexOwner(indexId, userId);
-    const isMember = await this.db.isIndexMember(indexId, userId);
+    const isOwner = await this.db.isIndexOwner(networkId, userId);
+    const isMember = await this.db.isNetworkMember(networkId, userId);
     
     if (!isOwner && !isMember) {
-      return { error: 'Not a member of this index', status: 403 };
+      return { error: 'Not a member of this network', status: 403 };
     }
 
-    return this.db.getOpportunitiesForIndex(indexId, options);
+    return this.db.getOpportunitiesForNetwork(networkId, options);
   }
 
   /**
    * Create a manual opportunity (curator feature).
    * 
-   * @param indexId - The index ID
+   * @param networkId - The index ID
    * @param creatorId - User creating the opportunity
    * @param data - Opportunity creation data
    * @returns Created opportunity or error
    */
   async createManualOpportunity(
-    indexId: string,
+    networkId: string,
     creatorId: string,
     data: {
       parties: Array<{ userId: string; intentId?: string }>;
@@ -435,29 +435,29 @@ export class OpportunityService {
       confidence?: number;
     }
   ) {
-    logger.verbose('[OpportunityService] Creating manual opportunity', { indexId, creatorId });
+    logger.verbose('[OpportunityService] Creating manual opportunity', { networkId, creatorId });
 
     // Check permission
-    const permission = await this.checkCreatePermission(creatorId, data.parties, indexId);
+    const permission = await this.checkCreatePermission(creatorId, data.parties, networkId);
     if (!permission.allowed) {
-      return { error: 'Not authorized to create opportunities in this index', status: 403 };
+      return { error: 'Not authorized to create opportunities in this network', status: 403 };
     }
 
     // Check for duplicates
     const partyIds = data.parties.map((p) => p.userId);
-    const exists = await this.db.opportunityExistsBetweenActors(partyIds, indexId);
+    const exists = await this.db.opportunityExistsBetweenActors(partyIds, networkId);
     if (exists) {
       return { error: 'Opportunity already exists between these parties', status: 409 };
     }
 
-    // Build actors (manual opportunities are single-index; all actors share indexId)
+    // Build actors (manual opportunities are single-index; all actors share networkId)
     const actors: OpportunityActor[] = data.parties.map((p) => ({
-      indexId,
+      networkId,
       userId: p.userId,
       role: 'party',
       ...(p.intentId ? { intent: p.intentId } : {}),
     }));
-    actors.push({ indexId, userId: creatorId, role: 'introducer' });
+    actors.push({ networkId, userId: creatorId, role: 'introducer' });
 
     try {
       validateOpportunityActors(actors);
@@ -480,7 +480,7 @@ export class OpportunityService {
         confidence: conf,
         signals: [{ type: 'curator_judgment', weight: 1, detail: 'Manual match by curator' }],
       },
-      context: { indexId },
+      context: { networkId },
       confidence: String(conf),
       status: 'pending',
     };
@@ -496,7 +496,7 @@ export class OpportunityService {
       if (!created?.length) {
         const message =
           errors?.length ? (errors[0].error instanceof Error ? errors[0].error.message : String(errors[0].error)) : 'Failed to persist opportunity';
-        logger.warn('[OpportunityService] createManualOpportunity persistence failed', { errors, creatorId, indexId });
+        logger.warn('[OpportunityService] createManualOpportunity persistence failed', { errors, creatorId, networkId });
         return { error: message, status: 500 };
       }
 
@@ -507,7 +507,7 @@ export class OpportunityService {
       return created[0];
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to persist opportunity';
-      logger.warn('[OpportunityService] createManualOpportunity persistence failed', { error: err, creatorId, indexId });
+      logger.warn('[OpportunityService] createManualOpportunity persistence failed', { error: err, creatorId, networkId });
       return { error: message, status: 500 };
     }
   }
@@ -691,20 +691,20 @@ export class OpportunityService {
    *
    * @param creatorId - User creating the opportunity
    * @param parties - Parties involved
-   * @param indexId - The index ID
+   * @param networkId - The index ID
    * @returns Permission result
    */
   private async checkCreatePermission(
     creatorId: string,
     parties: Array<{ userId: string }>,
-    indexId: string
+    networkId: string
   ): Promise<{ allowed: boolean }> {
-    const isOwner = await this.db.isIndexOwner(indexId, creatorId);
+    const isOwner = await this.db.isIndexOwner(networkId, creatorId);
     const isSelfIncluded = parties.some((p) => p.userId === creatorId);
     
     if (isOwner) return { allowed: true };
     
-    const isMember = await this.db.isIndexMember(indexId, creatorId);
+    const isMember = await this.db.isNetworkMember(networkId, creatorId);
     if (!isMember) return { allowed: false };
     if (isSelfIncluded) return { allowed: true };
     

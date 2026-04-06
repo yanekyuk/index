@@ -45,7 +45,7 @@ mock.module("../../tools/tool.helpers", () => ({
     userId: ctx.userId ?? "test-user",
     userName: "Test User",
     userEmail: "test@example.com",
-    indexId: ctx.indexId,
+    networkId: ctx.networkId,
     indexName: undefined,
     sessionId: ctx.sessionId ?? "test-session",
     isOwner: false,
@@ -53,7 +53,7 @@ mock.module("../../tools/tool.helpers", () => ({
     hasName: true,
     user: { id: ctx.userId ?? "test-user", name: "Test User", email: "test@example.com" },
     userProfile: { name: "Test User", bio: "Test bio", signals: [] },
-    userIndexes: [],
+    userNetworks: [],
   }),
 }));
 

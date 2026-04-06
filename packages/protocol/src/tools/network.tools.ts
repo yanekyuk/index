@@ -5,11 +5,11 @@ import { requestContext } from "../support/request-context.js";
 import type { DefineTool, ToolDeps } from "./tool.helpers.js";
 import { success, error, UUID_REGEX } from "./tool.helpers.js";
 
-export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
+export function createNetworkTools(defineTool: DefineTool, deps: ToolDeps) {
   const { graphs, userDb, systemDb } = deps;
 
   const readIndexes = defineTool({
-    name: "read_indexes",
+    name: "read_networks",
     description: "Lists indexes the user is a member of and indexes they own. Optional userId (omit for current user). When chat is index-scoped, returns only that index.",
     querySchema: z.object({
       userId: z.string().optional().describe("Omit for current user."),
@@ -24,7 +24,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       _readIndexTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        indexId: context.indexId || undefined,
+        networkId: context.networkId || undefined,
         operationMode: 'read' as const,
         showAll: false, // Never allow bypass - strict scope enforcement
       });
@@ -36,12 +36,12 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       }
       if (result.readResult) {
         // When scoped, add clear metadata so model knows results are limited
-        if (context.indexId) {
+        if (context.networkId) {
           return success({
             ...result.readResult,
             _scopeRestriction: {
               isScoped: true,
-              scopedToIndex: context.indexName ?? context.indexId,
+              scopedToIndex: context.indexName ?? context.networkId,
               message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
             },
             _graphTimings: [{ name: 'index', durationMs: _readIndexGraphMs, agents: result.agentTimings ?? [] }],
@@ -54,25 +54,25 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
   });
 
   const readIndexMemberships = defineTool({
-    name: "read_index_memberships",
+    name: "read_network_memberships",
     description:
-      "Reads index membership data. Two modes: (1) Pass indexId to list all members of that index (returns userId, name, avatar, permissions, intentCount, joinedAt). (2) Pass userId (or omit for current user) to list all indexes that user belongs to (returns indexId, indexTitle, permissions, joinedAt). Pass both to check whether a specific user is in a specific index. When chat is index-scoped, only that index can be queried.",
+      "Reads index membership data. Two modes: (1) Pass networkId to list all members of that index (returns userId, name, avatar, permissions, intentCount, joinedAt). (2) Pass userId (or omit for current user) to list all indexes that user belongs to (returns networkId, networkTitle, permissions, joinedAt). Pass both to check whether a specific user is in a specific index. When chat is index-scoped, only that index can be queried.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID — when provided, lists members of this index."),
+      networkId: z.string().optional().describe("Index UUID — when provided, lists members of this index."),
       userId: z.string().optional().describe("User ID — when provided, lists that user's index memberships. Omit to default to current user."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim() || undefined;
+      const networkId = query.networkId?.trim() || undefined;
       const userId = query.userId?.trim() || undefined;
 
-      if (indexId && !UUID_REGEX.test(indexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+      if (networkId && !UUID_REGEX.test(networkId)) {
+        return error("Invalid index ID format. Use the exact UUID from read_networks.");
       }
 
       // Mode 1: list members of an index
-      if (indexId && !userId) {
+      if (networkId && !userId) {
         // Enforce strict scope: when chat is index-scoped, only allow querying that index
-        if (context.indexId && indexId !== context.indexId) {
+        if (context.networkId && networkId !== context.networkId) {
           return error(
             `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query members of this index.`
           );
@@ -80,20 +80,20 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
         const _readMembersGraphStart = Date.now();
         const _readMembersTraceEmitter = requestContext.getStore()?.traceEmitter;
-        _readMembersTraceEmitter?.({ type: "graph_start", name: "index_membership" });
-        const result = await graphs.indexMembership.invoke({
+        _readMembersTraceEmitter?.({ type: "graph_start", name: "network_membership" });
+        const result = await graphs.networkMembership.invoke({
           userId: context.userId,
-          indexId,
+          networkId,
           operationMode: 'read' as const,
         });
         const _readMembersGraphMs = Date.now() - _readMembersGraphStart;
-        _readMembersTraceEmitter?.({ type: "graph_end", name: "index_membership", durationMs: _readMembersGraphMs });
+        _readMembersTraceEmitter?.({ type: "graph_end", name: "network_membership", durationMs: _readMembersGraphMs });
 
         if (result.error) {
           return error(result.error);
         }
         if (result.readResult) {
-          return success({ ...result.readResult, _graphTimings: [{ name: 'index_membership', durationMs: _readMembersGraphMs, agents: result.agentTimings ?? [] }] });
+          return success({ ...result.readResult, _graphTimings: [{ name: 'network_membership', durationMs: _readMembersGraphMs, agents: result.agentTimings ?? [] }] });
         }
         return error("Failed to fetch index members.");
       }
@@ -102,42 +102,42 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
       const targetUserId = userId || context.userId;
 
       // Use userDb for own memberships, but systemDb access is implicit through shared index scope
-      let memberships: Awaited<ReturnType<typeof userDb.getIndexMemberships>>;
+      let memberships: Awaited<ReturnType<typeof userDb.getNetworkMemberships>>;
       if (targetUserId !== context.userId) {
         // Cross-user access: systemDb will validate shared index membership
-        const callerMemberships = await userDb.getIndexMemberships();
-        if (indexId) {
+        const callerMemberships = await userDb.getNetworkMemberships();
+        if (networkId) {
           // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-          if (context.indexId && indexId !== context.indexId) {
+          if (context.networkId && networkId !== context.networkId) {
             return error(
               `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
             );
           }
 
-          const callerInIndex = callerMemberships.some((m) => m.indexId === indexId);
+          const callerInIndex = callerMemberships.some((m) => m.networkId === networkId);
           if (!callerInIndex) {
             return error(
               "Unauthorized: you can only view another user's membership in an index you belong to. Provide your own userId or omit userId for your memberships.",
             );
           }
           // Check if target user is in the index (systemDb validates scope)
-          const isMember = await systemDb.isIndexMember(indexId, targetUserId);
+          const isMember = await systemDb.isNetworkMember(networkId, targetUserId);
           if (isMember) {
-            return success({ isMember: true, userId: targetUserId, indexId });
+            return success({ isMember: true, userId: targetUserId, networkId });
           }
-          return success({ isMember: false, userId: targetUserId, indexId, message: "User is not a member of this index." });
+          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this index." });
         } else {
           // Strict scope enforcement: when chat is index-scoped, only check the scoped index
-          if (context.indexId) {
-            const isMember = await systemDb.isIndexMember(context.indexId, targetUserId);
+          if (context.networkId) {
+            const isMember = await systemDb.isNetworkMember(context.networkId, targetUserId);
             if (isMember) {
               return success({
                 isMember: true,
                 userId: targetUserId,
-                indexId: context.indexId,
+                networkId: context.networkId,
                 _scopeRestriction: {
                   isScoped: true,
-                  scopedToIndex: context.indexName ?? context.indexId,
+                  scopedToIndex: context.indexName ?? context.networkId,
                   message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community is shown.`,
                 },
               });
@@ -145,11 +145,11 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
             return success({
               isMember: false,
               userId: targetUserId,
-              indexId: context.indexId,
+              networkId: context.networkId,
               message: "User is not a member of this community.",
               _scopeRestriction: {
                 isScoped: true,
-                scopedToIndex: context.indexName ?? context.indexId,
+                scopedToIndex: context.indexName ?? context.networkId,
                 message: `This chat is scoped to "${context.indexName ?? 'this index'}". Only membership in this community was checked.`,
               },
             });
@@ -158,7 +158,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           // Unscoped chat: show overlap with shared indexes (intersection of caller and target memberships)
           const sharedIndexes: typeof callerMemberships = [];
           for (const m of callerMemberships) {
-            if (await systemDb.isIndexMember(m.indexId, targetUserId)) {
+            if (await systemDb.isNetworkMember(m.networkId, targetUserId)) {
               sharedIndexes.push(m);
             }
           }
@@ -172,68 +172,68 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
             userId: targetUserId,
             count: sharedIndexes.length,
             memberships: sharedIndexes.map((m) => ({
-              indexId: m.indexId,
-              indexTitle: m.indexTitle,
+              networkId: m.networkId,
+              networkTitle: m.networkTitle,
             })),
             note: "Only showing shared indexes.",
           });
         }
       } else {
         // Own memberships - use userDb
-        memberships = await userDb.getIndexMemberships();
+        memberships = await userDb.getNetworkMemberships();
 
         // Strict scope enforcement: when chat is index-scoped, only return the scoped index membership
-        if (context.indexId && !indexId) {
-          memberships = memberships.filter((m) => m.indexId === context.indexId);
+        if (context.networkId && !networkId) {
+          memberships = memberships.filter((m) => m.networkId === context.networkId);
         }
       }
 
-      // If both indexId and userId: filter to that specific membership
-      if (indexId) {
+      // If both networkId and userId: filter to that specific membership
+      if (networkId) {
         // Strict scope enforcement: when chat is index-scoped, only allow querying that index
-        if (context.indexId && indexId !== context.indexId) {
+        if (context.networkId && networkId !== context.networkId) {
           return error(
             `This chat is scoped to ${context.indexName ?? 'this index'}. You can only query membership in this community.`
           );
         }
 
-        const callerMemberships = await userDb.getIndexMemberships();
+        const callerMemberships = await userDb.getNetworkMemberships();
         const callerInIndex =
           targetUserId === context.userId ||
-          callerMemberships.some((m) => m.indexId === indexId);
+          callerMemberships.some((m) => m.networkId === networkId);
         if (!callerInIndex) {
           return error(
             "Unauthorized: you can only view membership in an index you belong to.",
           );
         }
-        const match = memberships.find((m) => m.indexId === indexId);
+        const match = memberships.find((m) => m.networkId === networkId);
         if (!match) {
-          return success({ isMember: false, userId: targetUserId, indexId, message: "User is not a member of this index." });
+          return success({ isMember: false, userId: targetUserId, networkId, message: "User is not a member of this index." });
         }
         return success({
           isMember: true,
           userId: targetUserId,
-          indexId,
-          indexTitle: match.indexTitle,
+          networkId,
+          networkTitle: match.networkTitle,
           permissions: match.permissions,
           joinedAt: match.joinedAt,
         });
       }
 
       // When scoped, add clear metadata so model knows results are limited
-      if (context.indexId && targetUserId === context.userId) {
+      if (context.networkId && targetUserId === context.userId) {
         return success({
           userId: targetUserId,
           count: memberships.length,
           memberships: memberships.map((m) => ({
-            indexId: m.indexId,
-            indexTitle: m.indexTitle,
+            networkId: m.networkId,
+            networkTitle: m.networkTitle,
             permissions: m.permissions,
             joinedAt: m.joinedAt,
           })),
           _scopeRestriction: {
             isScoped: true,
-            scopedToIndex: context.indexName ?? context.indexId,
+            scopedToIndex: context.indexName ?? context.networkId,
             message: `Results are limited to "${context.indexName ?? 'this index'}" because this chat is scoped to that community. The user may belong to other communities not shown here.`,
           },
         });
@@ -243,8 +243,8 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         userId: targetUserId,
         count: memberships.length,
         memberships: memberships.map((m) => ({
-          indexId: m.indexId,
-          indexTitle: m.indexTitle,
+          networkId: m.networkId,
+          networkTitle: m.networkTitle,
           permissions: m.permissions,
           joinedAt: m.joinedAt,
         })),
@@ -252,7 +252,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const updateIndexSettingsSchema = z.object({
+  const updateNetworkSettingsSchema = z.object({
     title: z.string().optional(),
     prompt: z.string().nullable().optional(),
     imageUrl: z.string().url().nullable().optional(),
@@ -260,47 +260,47 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     allowGuestVibeCheck: z.boolean().optional(),
   }).strict();
 
-  const updateIndex = defineTool({
-    name: "update_index",
-    description: "Updates an index (owner only). Pass indexId or omit when index-scoped.",
+  const updateNetwork = defineTool({
+    name: "update_network",
+    description: "Updates an index (owner only). Pass networkId or omit when index-scoped.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID; defaults to current index when scoped."),
-      settings: updateIndexSettingsSchema.describe("Fields to update: title?, prompt?, imageUrl?, joinPolicy?, allowGuestVibeCheck?"),
+      networkId: z.string().optional().describe("Index UUID; defaults to current index when scoped."),
+      settings: updateNetworkSettingsSchema.describe("Fields to update: title?, prompt?, imageUrl?, joinPolicy?, allowGuestVibeCheck?"),
     }),
     handler: async ({ context, query }) => {
-      const effectiveIndexId = (query.indexId?.trim() || context.indexId) ?? null;
+      const effectiveIndexId = (query.networkId?.trim() || context.networkId) ?? null;
       if (!effectiveIndexId || !UUID_REGEX.test(effectiveIndexId)) {
-        return error("Valid indexId required.");
+        return error("Valid networkId required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow updating that index
-      if (context.indexId && effectiveIndexId !== context.indexId) {
+      if (context.networkId && effectiveIndexId !== context.networkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only update this community's settings.`
         );
       }
 
-      const _updateIndexGraphStart = Date.now();
-      const _updateIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _updateIndexTraceEmitter?.({ type: "graph_start", name: "index" });
+      const _updateNetworkGraphStart = Date.now();
+      const _updateNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
+      _updateNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        indexId: effectiveIndexId,
+        networkId: effectiveIndexId,
         operationMode: 'update' as const,
         updateInput: query.settings,
       });
-      const _updateIndexGraphMs = Date.now() - _updateIndexGraphStart;
-      _updateIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _updateIndexGraphMs });
+      const _updateNetworkGraphMs = Date.now() - _updateNetworkGraphStart;
+      _updateNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _updateNetworkGraphMs });
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to update index.");
       }
-      return success({ message: "Index updated.", settings: Object.keys(query.settings), _graphTimings: [{ name: 'index', durationMs: _updateIndexGraphMs, agents: result.agentTimings ?? [] }] });
+      return success({ message: "Index updated.", settings: Object.keys(query.settings), _graphTimings: [{ name: 'index', durationMs: _updateNetworkGraphMs, agents: result.agentTimings ?? [] }] });
     },
   });
 
-  const createIndex = defineTool({
-    name: "create_index",
+  const createNetwork = defineTool({
+    name: "create_network",
     description: "Creates a new index (community). You become the owner. Pass title; optional prompt, imageUrl, and joinPolicy ('anyone' | 'invite_only').",
     querySchema: z.object({
       title: z.string().describe("Display name of the index"),
@@ -313,9 +313,9 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
         return error("Title is required.");
       }
 
-      const _createIndexGraphStart = Date.now();
-      const _createIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _createIndexTraceEmitter?.({ type: "graph_start", name: "index" });
+      const _createNetworkGraphStart = Date.now();
+      const _createNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
+      _createNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
         operationMode: 'create' as const,
@@ -326,17 +326,17 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           joinPolicy: query.joinPolicy,
         },
       });
-      const _createIndexGraphMs = Date.now() - _createIndexGraphStart;
-      _createIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _createIndexGraphMs });
+      const _createNetworkGraphMs = Date.now() - _createNetworkGraphStart;
+      _createNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _createNetworkGraphMs });
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
           return success({
             created: true,
-            indexId: result.mutationResult.indexId,
+            networkId: result.mutationResult.networkId,
             title: result.mutationResult.title,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'index', durationMs: _createIndexGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'index', durationMs: _createNetworkGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to create index.");
@@ -345,59 +345,59 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const deleteIndex = defineTool({
-    name: "delete_index",
+  const deleteNetwork = defineTool({
+    name: "delete_network",
     description: "Deletes an index (owner only, must be sole member). When chat is index-scoped, can only delete that index.",
     querySchema: z.object({
-      indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
+      networkId: z.string().optional().describe("Index UUID from read_networks. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim() || context.indexId;
-      if (!indexId || !UUID_REGEX.test(indexId)) {
-        return error("Valid indexId required.");
+      const networkId = query.networkId?.trim() || context.networkId;
+      if (!networkId || !UUID_REGEX.test(networkId)) {
+        return error("Valid networkId required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow deleting that index
-      if (context.indexId && indexId !== context.indexId) {
+      if (context.networkId && networkId !== context.networkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only delete this community.`
         );
       }
 
-      const _deleteIndexGraphStart = Date.now();
-      const _deleteIndexTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _deleteIndexTraceEmitter?.({ type: "graph_start", name: "index" });
+      const _deleteNetworkGraphStart = Date.now();
+      const _deleteNetworkTraceEmitter = requestContext.getStore()?.traceEmitter;
+      _deleteNetworkTraceEmitter?.({ type: "graph_start", name: "index" });
       const result = await graphs.index.invoke({
         userId: context.userId,
-        indexId,
+        networkId,
         operationMode: 'delete' as const,
       });
-      const _deleteIndexGraphMs = Date.now() - _deleteIndexGraphStart;
-      _deleteIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _deleteIndexGraphMs });
+      const _deleteNetworkGraphMs = Date.now() - _deleteNetworkGraphStart;
+      _deleteNetworkTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _deleteNetworkGraphMs });
 
       if (result.mutationResult && !result.mutationResult.success) {
         return error(result.mutationResult.error || "Failed to delete index.");
       }
-      return success({ message: "Index deleted.", _graphTimings: [{ name: 'index', durationMs: _deleteIndexGraphMs, agents: result.agentTimings ?? [] }] });
+      return success({ message: "Index deleted.", _graphTimings: [{ name: 'index', durationMs: _deleteNetworkGraphMs, agents: result.agentTimings ?? [] }] });
     },
   });
 
-  const createIndexMembership = defineTool({
-    name: "create_index_membership",
+  const createNetworkMembership = defineTool({
+    name: "create_network_membership",
     description: "Adds a user as a member of an index. Omit userId to join the index yourself (self-join works only for public indexes with joinPolicy 'anyone'). For invite_only indexes only the owner can add members.",
     querySchema: z.object({
       userId: z.string().optional().describe("User ID to add as a member. Omit to join the index yourself."),
-      indexId: z.string().optional().describe("Index UUID from read_indexes. Defaults to current index when scoped."),
+      networkId: z.string().optional().describe("Index UUID from read_networks. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim() || context.indexId;
+      const networkId = query.networkId?.trim() || context.networkId;
       const targetUserId = query.userId?.trim() || context.userId;
-      if (!indexId || !UUID_REGEX.test(indexId)) {
-        return error("Invalid index ID format. Use the exact UUID from read_indexes.");
+      if (!networkId || !UUID_REGEX.test(networkId)) {
+        return error("Invalid index ID format. Use the exact UUID from read_networks.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow adding to that index
-      if (context.indexId && indexId !== context.indexId) {
+      if (context.networkId && networkId !== context.networkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only add members to this community.`
         );
@@ -405,15 +405,15 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const _createMembershipGraphStart = Date.now();
       const _createMembershipTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _createMembershipTraceEmitter?.({ type: "graph_start", name: "index_membership" });
-      const result = await graphs.indexMembership.invoke({
+      _createMembershipTraceEmitter?.({ type: "graph_start", name: "network_membership" });
+      const result = await graphs.networkMembership.invoke({
         userId: context.userId,
-        indexId,
+        networkId,
         targetUserId,
         operationMode: 'create' as const,
       });
       const _createMembershipGraphMs = Date.now() - _createMembershipGraphStart;
-      _createMembershipTraceEmitter?.({ type: "graph_end", name: "index_membership", durationMs: _createMembershipGraphMs });
+      _createMembershipTraceEmitter?.({ type: "graph_end", name: "network_membership", durationMs: _createMembershipGraphMs });
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
@@ -421,7 +421,7 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
           return success({
             created: !alreadyMember,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'index_membership', durationMs: _createMembershipGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'network_membership', durationMs: _createMembershipGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to add member.");
@@ -430,26 +430,26 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  const deleteIndexMembership = defineTool({
-    name: "delete_index_membership",
+  const deleteNetworkMembership = defineTool({
+    name: "delete_network_membership",
     description: "Removes a user from an index. Only the index owner can remove members. Cannot remove the owner themselves.",
     querySchema: z.object({
       userId: z.string().describe("User ID to remove from the index"),
-      indexId: z.string().optional().describe("Index UUID. Defaults to current index when scoped."),
+      networkId: z.string().optional().describe("Index UUID. Defaults to current index when scoped."),
     }),
     handler: async ({ context, query }) => {
-      const indexId = query.indexId?.trim() || context.indexId;
+      const networkId = query.networkId?.trim() || context.networkId;
       const targetUserId = query.userId?.trim();
 
-      if (!indexId || !UUID_REGEX.test(indexId)) {
-        return error("Valid indexId required. Use the exact UUID from read_indexes.");
+      if (!networkId || !UUID_REGEX.test(networkId)) {
+        return error("Valid networkId required. Use the exact UUID from read_networks.");
       }
       if (!targetUserId) {
         return error("userId is required.");
       }
 
       // Strict scope enforcement: when chat is index-scoped, only allow that index
-      if (context.indexId && indexId !== context.indexId) {
+      if (context.networkId && networkId !== context.networkId) {
         return error(
           `This chat is scoped to ${context.indexName ?? 'this index'}. You can only manage members of this community.`
         );
@@ -457,22 +457,22 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
 
       const _deleteMembershipGraphStart = Date.now();
       const _deleteMembershipTraceEmitter = requestContext.getStore()?.traceEmitter;
-      _deleteMembershipTraceEmitter?.({ type: "graph_start", name: "index_membership" });
-      const result = await graphs.indexMembership.invoke({
+      _deleteMembershipTraceEmitter?.({ type: "graph_start", name: "network_membership" });
+      const result = await graphs.networkMembership.invoke({
         userId: context.userId,
-        indexId,
+        networkId,
         targetUserId,
         operationMode: 'delete' as const,
       });
       const _deleteMembershipGraphMs = Date.now() - _deleteMembershipGraphStart;
-      _deleteMembershipTraceEmitter?.({ type: "graph_end", name: "index_membership", durationMs: _deleteMembershipGraphMs });
+      _deleteMembershipTraceEmitter?.({ type: "graph_end", name: "network_membership", durationMs: _deleteMembershipGraphMs });
 
       if (result.mutationResult) {
         if (result.mutationResult.success) {
           return success({
             removed: true,
             message: result.mutationResult.message,
-            _graphTimings: [{ name: 'index_membership', durationMs: _deleteMembershipGraphMs, agents: result.agentTimings ?? [] }],
+            _graphTimings: [{ name: 'network_membership', durationMs: _deleteMembershipGraphMs, agents: result.agentTimings ?? [] }],
           });
         }
         return error(result.mutationResult.error || "Failed to remove member.");
@@ -481,5 +481,5 @@ export function createIndexTools(defineTool: DefineTool, deps: ToolDeps) {
     },
   });
 
-  return [readIndexes, readIndexMemberships, updateIndex, createIndex, deleteIndex, createIndexMembership, deleteIndexMembership] as const;
+  return [readIndexes, readIndexMemberships, updateNetwork, createNetwork, deleteNetwork, createNetworkMembership, deleteNetworkMembership] as const;
 }

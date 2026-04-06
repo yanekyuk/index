@@ -13,10 +13,10 @@ import db from '../../lib/drizzle/drizzle';
 import {
   users,
   userProfiles,
-  indexes,
-  indexMembers,
+  networks,
+  networkMembers,
   intents,
-  intentIndexes,
+  intentNetworks,
   opportunities,
   hydeDocuments,
 } from '../../schemas/database.schema';
@@ -25,7 +25,7 @@ import {
   ChatDatabaseAdapter,
   ProfileDatabaseAdapter,
   OpportunityDatabaseAdapter,
-  IndexGraphDatabaseAdapter,
+  NetworkGraphDatabaseAdapter,
   HydeDatabaseAdapter,
 } from '../database.adapter';
 import { AuthDatabaseAdapter } from '../auth.adapter';
@@ -35,7 +35,7 @@ const TEST_PREFIX = 'db_adapter_spec_' + Date.now() + '_';
 interface TestFixture {
   userAId: string;
   userBId: string;
-  indexId: string;
+  networkId: string;
   intent1Id: string;
   intent2Id: string | null;
   /** Extra intent ids created during tests (e.g. Chat createIntent) for cleanup */
@@ -47,7 +47,7 @@ let intent2Id: string | null = null;
 beforeAll(async () => {
   const userAId = uuidv4();
   const userBId = uuidv4();
-  const indexId = uuidv4();
+  const networkId = uuidv4();
   const intent1Id = uuidv4();
   await db.insert(users).values([
     {
@@ -67,14 +67,14 @@ beforeAll(async () => {
     narrative: { context: 'Context A' },
     attributes: { interests: [], skills: [] },
   });
-  await db.insert(indexes).values({
-    id: indexId,
+  await db.insert(networks).values({
+    id: networkId,
     title: TEST_PREFIX + 'Test Index',
     prompt: 'Test index prompt',
   });
-  await db.insert(indexMembers).values([
-    { indexId, userId: userAId, permissions: ['owner'], autoAssign: false },
-    { indexId, userId: userBId, permissions: [], prompt: 'Member prompt', autoAssign: true },
+  await db.insert(networkMembers).values([
+    { networkId, userId: userAId, permissions: ['owner'], autoAssign: false },
+    { networkId, userId: userBId, permissions: [], prompt: 'Member prompt', autoAssign: true },
   ]);
   await db.insert(intents).values({
     id: intent1Id,
@@ -84,8 +84,8 @@ beforeAll(async () => {
     sourceType: 'discovery_form',
     sourceId: userAId,
   });
-  await db.insert(intentIndexes).values({ intentId: intent1Id, indexId });
-  fixture = { userAId, userBId, indexId, intent1Id, intent2Id: null, extraIntentIds: [] };
+  await db.insert(intentNetworks).values({ intentId: intent1Id, networkId });
+  fixture = { userAId, userBId, networkId, intent1Id, intent2Id: null, extraIntentIds: [] };
 });
 
 afterAll(async () => {
@@ -95,13 +95,13 @@ afterAll(async () => {
     ...fixture.extraIntentIds,
   ].filter(Boolean) as string[];
   if (intentIds.length > 0) {
-    await db.delete(intentIndexes).where(inArray(intentIndexes.intentId, intentIds));
+    await db.delete(intentNetworks).where(inArray(intentNetworks.intentId, intentIds));
     await db.delete(intents).where(inArray(intents.id, intentIds));
   }
-  await db.delete(opportunities).where(sql`${opportunities.context}->>'indexId' = ${fixture.indexId}`);
-  await db.delete(indexMembers).where(eq(indexMembers.indexId, fixture.indexId));
+  await db.delete(opportunities).where(sql`${opportunities.context}->>'networkId' = ${fixture.networkId}`);
+  await db.delete(networkMembers).where(eq(networkMembers.networkId, fixture.networkId));
   await db.delete(userProfiles).where(inArray(userProfiles.userId, [fixture.userAId, fixture.userBId]));
-  await db.delete(indexes).where(eq(indexes.id, fixture.indexId));
+  await db.delete(networks).where(eq(networks.id, fixture.networkId));
   await db.delete(users).where(inArray(users.id, [fixture.userAId, fixture.userBId]));
 });
 
@@ -199,7 +199,7 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get intents in index for member by index id', async () => {
-    const list = await adapter.getIntentsInIndexForMember(fixture.userAId, fixture.indexId);
+    const list = await adapter.getIntentsInIndexForMember(fixture.userAId, fixture.networkId);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
   });
@@ -243,16 +243,16 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index memberships for user', async () => {
-    const memberships = await adapter.getIndexMemberships(fixture.userAId);
+    const memberships = await adapter.getNetworkMemberships(fixture.userAId);
     expect(memberships.length).toBeGreaterThanOrEqual(1);
-    const m = memberships.find((x) => x.indexId === fixture.indexId);
+    const m = memberships.find((x) => x.networkId === fixture.networkId);
     expect(m).toBeDefined();
-    expect(m!.indexTitle).toContain('Test Index');
+    expect(m!.networkTitle).toContain('Test Index');
   });
 
   it('should get user index ids for auto-assign member', async () => {
     const indexIds = await adapter.getUserIndexIds(fixture.userBId);
-    expect(indexIds).toContain(fixture.indexId);
+    expect(indexIds).toContain(fixture.networkId);
   });
 
   it('should get intent for indexing', async () => {
@@ -263,20 +263,20 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should get index member context for member with autoAssign', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.indexId, fixture.userBId);
+    const ctx = await adapter.getIndexMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
-    expect(ctx!.indexId).toBe(fixture.indexId);
+    expect(ctx!.networkId).toBe(fixture.networkId);
     expect(ctx!.memberPrompt).toBe('Member prompt');
   });
 
   it('should report intent assigned to index', async () => {
-    const assigned = await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.indexId);
+    const assigned = await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId);
     expect(assigned).toBe(true);
   });
 
   it('should get index ids for intent', async () => {
     const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.indexId]);
+    expect(indexIds).toEqual([fixture.networkId]);
     const empty = await adapter.getIndexIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });
@@ -290,58 +290,58 @@ describe('ChatDatabaseAdapter', () => {
       sourceType: 'discovery_form',
       sourceId: fixture.userBId,
     });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
-    await adapter.assignIntentToIndex(newIntentId, fixture.indexId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.indexId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
+    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
     await db.delete(intents).where(eq(intents.id, newIntentId));
   });
 
   it('should get owned indexes for owner', async () => {
     const owned = await adapter.getOwnedIndexes(fixture.userAId);
     expect(owned.length).toBeGreaterThanOrEqual(1);
-    const o = owned.find((x) => x.id === fixture.indexId);
+    const o = owned.find((x) => x.id === fixture.networkId);
     expect(o).toBeDefined();
     expect(o!.memberCount).toBeGreaterThanOrEqual(1);
     expect(o!.intentCount).toBeGreaterThanOrEqual(1);
   });
 
   it('should report index owner', async () => {
-    expect(await adapter.isIndexOwner(fixture.indexId, fixture.userAId)).toBe(true);
-    expect(await adapter.isIndexOwner(fixture.indexId, fixture.userBId)).toBe(false);
+    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isIndexOwner(fixture.networkId, fixture.userBId)).toBe(false);
   });
 
   it('should get index members for member', async () => {
-    const members = await adapter.getIndexMembersForMember(fixture.indexId, fixture.userBId);
+    const members = await adapter.getIndexMembersForMember(fixture.networkId, fixture.userBId);
     expect(members.length).toBeGreaterThanOrEqual(1);
     expect(members.some((m) => m.userId === fixture.userAId || m.userId === fixture.userBId)).toBe(true);
   });
 
   it('should get index members for owner', async () => {
-    const members = await adapter.getIndexMembersForOwner(fixture.indexId, fixture.userAId);
+    const members = await adapter.getIndexMembersForOwner(fixture.networkId, fixture.userAId);
     expect(members.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should throw when getIndexMembersForOwner as non-owner', async () => {
-    await expect(adapter.getIndexMembersForOwner(fixture.indexId, fixture.userBId)).rejects.toThrow('Access denied');
+    await expect(adapter.getIndexMembersForOwner(fixture.networkId, fixture.userBId)).rejects.toThrow('Access denied');
   });
 
   it('should get index intents for owner', async () => {
-    const list = await adapter.getIndexIntentsForOwner(fixture.indexId, fixture.userAId);
+    const list = await adapter.getIndexIntentsForOwner(fixture.networkId, fixture.userAId);
     expect(list.length).toBeGreaterThanOrEqual(1);
     expect(list.some((i) => i.id === fixture.intent1Id)).toBe(true);
   });
 
   it('should get index intents for member', async () => {
-    const list = await adapter.getIndexIntentsForMember(fixture.indexId, fixture.userBId);
+    const list = await adapter.getIndexIntentsForMember(fixture.networkId, fixture.userBId);
     expect(list.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should report index membership', async () => {
-    expect(await adapter.isIndexMember(fixture.indexId, fixture.userAId)).toBe(true);
-    expect(await adapter.isIndexMember(fixture.indexId, fixture.userBId)).toBe(true);
-    expect(await adapter.isIndexMember(fixture.indexId, uuidv4())).toBe(false);
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userAId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, fixture.userBId)).toBe(true);
+    expect(await adapter.isNetworkMember(fixture.networkId, uuidv4())).toBe(false);
   });
 
   describe('getUserByEmail (IND-166)', () => {
@@ -401,18 +401,18 @@ describe('ChatDatabaseAdapter', () => {
   });
 
   it('should update index settings as owner', async () => {
-    const updated = await adapter.updateIndexSettings(fixture.indexId, fixture.userAId, {
+    const updated = await adapter.updateIndexSettings(fixture.networkId, fixture.userAId, {
       title: TEST_PREFIX + 'Updated Title',
     });
     expect(updated.title).toContain('Updated Title');
     const again = await adapter.getOwnedIndexes(fixture.userAId);
-    const idx = again.find((x) => x.id === fixture.indexId);
+    const idx = again.find((x) => x.id === fixture.networkId);
     expect(idx!.title).toContain('Updated Title');
   });
 
   it('should throw when updateIndexSettings as non-owner', async () => {
     await expect(
-      adapter.updateIndexSettings(fixture.indexId, fixture.userBId, { title: 'Hacked' })
+      adapter.updateIndexSettings(fixture.networkId, fixture.userBId, { title: 'Hacked' })
     ).rejects.toThrow('Access denied');
   });
 });
@@ -497,22 +497,22 @@ describe('OpportunityDatabaseAdapter', () => {
         timestamp: new Date().toISOString(),
       },
       actors: [
-        { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-        { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+        { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+        { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
       ],
       interpretation: {
         category: 'collaboration',
         reasoning: 'Test opportunity',
         confidence: 0.85,
       },
-      context: { indexId: fixture.indexId },
+      context: { networkId: fixture.networkId },
       confidence: '0.85',
     });
     expect(created.id).toBeDefined();
     expect(created.actors).toHaveLength(2);
     expect(created.status).toBe('pending');
 
-    const forUserA = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+    const forUserA = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
     expect(forUserA.some((o) => o.id === created.id)).toBe(true);
     const forUserB = await adapter.getOpportunitiesForUser(fixture.userBId);
     expect(forUserB.some((o) => o.id === created.id)).toBe(true);
@@ -524,16 +524,16 @@ describe('OpportunityDatabaseAdapter', () => {
 
   it('should report deduplication (opportunityExistsBetweenActors)', async () => {
     const actorIds = [fixture.userAId, fixture.userBId];
-    const exists = await adapter.opportunityExistsBetweenActors(actorIds, fixture.indexId);
+    const exists = await adapter.opportunityExistsBetweenActors(actorIds, fixture.networkId);
     expect(exists).toBe(true);
 
     const otherUserId = uuidv4();
-    const notExists = await adapter.opportunityExistsBetweenActors([fixture.userAId, otherUserId], fixture.indexId);
+    const notExists = await adapter.opportunityExistsBetweenActors([fixture.userAId, otherUserId], fixture.networkId);
     expect(notExists).toBe(false);
   });
 
   it('should update opportunity status and persist', async () => {
-    const list = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, limit: 1 });
+    const list = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, limit: 1 });
     expect(list.length).toBeGreaterThanOrEqual(1);
     const opp = list[0];
     const updated = await adapter.updateOpportunityStatus(opp.id, 'accepted');
@@ -550,16 +550,16 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'patient' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'latent',
       });
-      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
       expect(forPatient.some((o) => o.id === created.id)).toBe(true);
       expect(forAgent.some((o) => o.id === created.id)).toBe(false);
     });
@@ -568,17 +568,17 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
-          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'latent',
       });
-      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
       expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
       expect(forPatient.some((o) => o.id === created.id)).toBe(false);
     });
@@ -587,16 +587,16 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'patient' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'agent' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'pending',
       });
-      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
       expect(forPatient.some((o) => o.id === created.id)).toBe(true);
       expect(forAgent.some((o) => o.id === created.id)).toBe(true);
     });
@@ -605,18 +605,18 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
-          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'pending',
       });
-      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
-      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { indexId: fixture.indexId });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { networkId: fixture.networkId });
       expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
       expect(forPatient.some((o) => o.id === created.id)).toBe(true);
       expect(forAgent.some((o) => o.id === created.id)).toBe(false);
@@ -626,18 +626,18 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'manual', createdBy: fixture.userAId, timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'introducer' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
-          { indexId: fixture.indexId, userId: thirdUserId, role: 'agent' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'introducer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: thirdUserId, role: 'agent' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'accepted',
       });
-      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
-      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { indexId: fixture.indexId });
+      const forIntroducer = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPatient = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
+      const forAgent = await adapter.getOpportunitiesForUser(thirdUserId, { networkId: fixture.networkId });
       expect(forIntroducer.some((o) => o.id === created.id)).toBe(true);
       expect(forPatient.some((o) => o.id === created.id)).toBe(true);
       expect(forAgent.some((o) => o.id === created.id)).toBe(true);
@@ -647,16 +647,16 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent-opportunity-finder', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'peer' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'peer' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'peer' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'peer' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         status: 'latent',
       });
-      const forPeerA = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
-      const forPeerB = await adapter.getOpportunitiesForUser(fixture.userBId, { indexId: fixture.indexId });
+      const forPeerA = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
+      const forPeerB = await adapter.getOpportunitiesForUser(fixture.userBId, { networkId: fixture.networkId });
       expect(forPeerA.some((o) => o.id === created.id)).toBe(true);
       expect(forPeerB.some((o) => o.id === created.id)).toBe(true);
     });
@@ -667,15 +667,15 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Test', confidence: 0.8 },
-        context: { indexId: fixture.indexId, conversationId: 'chat-session-1' },
+        context: { networkId: fixture.networkId, conversationId: 'chat-session-1' },
         confidence: '0.8',
         status: 'draft',
       });
-      const list = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId });
+      const list = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId });
       expect(list.some((o) => o.id === created.id)).toBe(false);
     });
 
@@ -685,27 +685,27 @@ describe('OpportunityDatabaseAdapter', () => {
       const draft1 = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Draft 1', confidence: 0.8 },
-        context: { indexId: fixture.indexId, conversationId: conv1 },
+        context: { networkId: fixture.networkId, conversationId: conv1 },
         confidence: '0.8',
         status: 'draft',
       });
       const draft2 = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'agent', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'party' },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'party' },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'party' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Draft 2', confidence: 0.8 },
-        context: { indexId: fixture.indexId, conversationId: conv2 },
+        context: { networkId: fixture.networkId, conversationId: conv2 },
         confidence: '0.8',
         status: 'draft',
       });
-      const forConv1 = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, conversationId: conv1 });
-      const forConv2 = await adapter.getOpportunitiesForUser(fixture.userAId, { indexId: fixture.indexId, conversationId: conv2 });
+      const forConv1 = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, conversationId: conv1 });
+      const forConv2 = await adapter.getOpportunitiesForUser(fixture.userAId, { networkId: fixture.networkId, conversationId: conv2 });
       expect(forConv1.some((o) => o.id === draft1.id)).toBe(true);
       expect(forConv1.some((o) => o.id === draft2.id)).toBe(false);
       expect(forConv2.some((o) => o.id === draft2.id)).toBe(true);
@@ -719,11 +719,11 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Stale opp', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         expiresAt: past,
       });
@@ -741,11 +741,11 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Future opp', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
         expiresAt: future,
       });
@@ -760,11 +760,11 @@ describe('OpportunityDatabaseAdapter', () => {
       const accepted = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Accepted opp', confidence: 0.9 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.9',
         status: 'accepted',
         expiresAt: past,
@@ -772,11 +772,11 @@ describe('OpportunityDatabaseAdapter', () => {
       const rejected = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'Rejected opp', confidence: 0.7 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.7',
         status: 'rejected',
         expiresAt: past,
@@ -794,11 +794,11 @@ describe('OpportunityDatabaseAdapter', () => {
       const created = await adapter.createOpportunity({
         detection: { source: 'opportunity_graph', createdBy: 'test', timestamp: new Date().toISOString() },
         actors: [
-          { indexId: fixture.indexId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
-          { indexId: fixture.indexId, userId: fixture.userBId, role: 'patient' },
+          { networkId: fixture.networkId, userId: fixture.userAId, role: 'agent', intent: fixture.intent1Id },
+          { networkId: fixture.networkId, userId: fixture.userBId, role: 'patient' },
         ],
         interpretation: { category: 'collaboration', reasoning: 'No expiry opp', confidence: 0.8 },
-        context: { indexId: fixture.indexId },
+        context: { networkId: fixture.networkId },
         confidence: '0.8',
       });
 
@@ -810,10 +810,10 @@ describe('OpportunityDatabaseAdapter', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// IndexGraphDatabaseAdapter
+// NetworkGraphDatabaseAdapter
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('IndexGraphDatabaseAdapter', () => {
-  const adapter = new IndexGraphDatabaseAdapter();
+describe('NetworkGraphDatabaseAdapter', () => {
+  const adapter = new NetworkGraphDatabaseAdapter();
 
   it('should get intent for indexing', async () => {
     const row = await adapter.getIntentForIndexing(fixture.intent1Id);
@@ -828,24 +828,24 @@ describe('IndexGraphDatabaseAdapter', () => {
   });
 
   it('should get index member context', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.indexId, fixture.userBId);
+    const ctx = await adapter.getIndexMemberContext(fixture.networkId, fixture.userBId);
     expect(ctx).not.toBeNull();
-    expect(ctx!.indexId).toBe(fixture.indexId);
+    expect(ctx!.networkId).toBe(fixture.networkId);
     expect(ctx!.memberPrompt).toBe('Member prompt');
   });
 
   it('should return null for non-member', async () => {
-    const ctx = await adapter.getIndexMemberContext(fixture.indexId, uuidv4());
+    const ctx = await adapter.getIndexMemberContext(fixture.networkId, uuidv4());
     expect(ctx).toBeNull();
   });
 
   it('should report intent assigned to index', async () => {
-    expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.indexId)).toBe(true);
+    expect(await adapter.isIntentAssignedToIndex(fixture.intent1Id, fixture.networkId)).toBe(true);
   });
 
   it('should get index ids for intent', async () => {
     const indexIds = await adapter.getIndexIdsForIntent(fixture.intent1Id);
-    expect(indexIds).toEqual([fixture.indexId]);
+    expect(indexIds).toEqual([fixture.networkId]);
     const empty = await adapter.getIndexIdsForIntent(uuidv4());
     expect(empty).toEqual([]);
   });
@@ -859,12 +859,12 @@ describe('IndexGraphDatabaseAdapter', () => {
       sourceType: 'discovery_form',
       sourceId: fixture.userBId,
     });
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
-    await adapter.assignIntentToIndex(newIntentId, fixture.indexId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(true);
-    await adapter.unassignIntentFromIndex(newIntentId, fixture.indexId);
-    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.indexId)).toBe(false);
-    await db.delete(intentIndexes).where(eq(intentIndexes.intentId, newIntentId));
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    await adapter.assignIntentToNetwork(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(true);
+    await adapter.unassignIntentFromIndex(newIntentId, fixture.networkId);
+    expect(await adapter.isIntentAssignedToIndex(newIntentId, fixture.networkId)).toBe(false);
+    await db.delete(intentNetworks).where(eq(intentNetworks.intentId, newIntentId));
     await db.delete(intents).where(eq(intents.id, newIntentId));
   });
 });

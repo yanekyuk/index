@@ -3,9 +3,9 @@ import { eq, and, sql, ne, isNull, isNotNull, count } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import {
   intents,
-  intentIndexes,
-  indexes,
-  indexMembers,
+  intentNetworks,
+  networks,
+  networkMembers,
   userProfiles,
 } from '../schemas/database.schema';
 import { ChatDatabaseAdapter } from '../adapters/database.adapter';
@@ -21,9 +21,9 @@ export interface DiscoveryPreflight {
     text: string;
     hasEmbedding: boolean;
     isArchived: boolean;
-    assignedToIndexes: Array<{ indexId: string; title: string | null }>;
+    assignedToIndexes: Array<{ networkId: string; title: string | null }>;
   };
-  userIndexes: Array<{ indexId: string; title: string | null }>;
+  userNetworks: Array<{ networkId: string; title: string | null }>;
   candidatePool: {
     otherMembersInIndexes: number;
     otherMembersWithProfiles: number;
@@ -41,7 +41,7 @@ export interface DiscoveryResult {
   candidates: Array<{
     userId: string;
     intentId: string | null;
-    indexId: string;
+    networkId: string;
     similarity: number | null;
     lens: string;
     discoverySource: string | undefined;
@@ -104,18 +104,18 @@ export class DebugService {
     if (!intent) return null;
 
     const intentIndexRows = await db
-      .select({ indexId: intentIndexes.indexId, title: indexes.title })
-      .from(intentIndexes)
-      .innerJoin(indexes, eq(intentIndexes.indexId, indexes.id))
-      .where(eq(intentIndexes.intentId, intentId));
+      .select({ networkId: intentNetworks.networkId, title: networks.title })
+      .from(intentNetworks)
+      .innerJoin(networks, eq(intentNetworks.networkId, networks.id))
+      .where(and(eq(intentNetworks.intentId, intentId), isNull(networks.deletedAt)));
 
     const userIndexRows = await db
-      .select({ indexId: indexMembers.indexId, title: indexes.title })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
-      .where(eq(indexMembers.userId, userId));
+      .select({ networkId: networkMembers.networkId, title: networks.title })
+      .from(networkMembers)
+      .innerJoin(networks, eq(networkMembers.networkId, networks.id))
+      .where(and(eq(networkMembers.userId, userId), isNull(networks.deletedAt)));
 
-    const userIndexIds = userIndexRows.map((r) => r.indexId);
+    const userIndexIds = userIndexRows.map((r) => r.networkId);
     let otherMembersInIndexes = 0;
     let otherMembersWithProfiles = 0;
     let otherIntentsInIndexes = 0;
@@ -123,11 +123,11 @@ export class DebugService {
     if (userIndexIds.length > 0) {
       const [memberCount] = await db
         .select({ count: count().as('count') })
-        .from(indexMembers)
+        .from(networkMembers)
         .where(
           and(
-            sql`${indexMembers.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
-            ne(indexMembers.userId, userId),
+            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            ne(networkMembers.userId, userId),
           ),
         );
       otherMembersInIndexes = memberCount?.count ?? 0;
@@ -135,10 +135,10 @@ export class DebugService {
       const [profileCount] = await db
         .select({ count: count().as('count') })
         .from(userProfiles)
-        .innerJoin(indexMembers, eq(userProfiles.userId, indexMembers.userId))
+        .innerJoin(networkMembers, eq(userProfiles.userId, networkMembers.userId))
         .where(
           and(
-            sql`${indexMembers.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${networkMembers.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(userProfiles.userId, userId),
             isNotNull(userProfiles.embedding),
           ),
@@ -148,10 +148,10 @@ export class DebugService {
       const [intentCount] = await db
         .select({ count: count().as('count') })
         .from(intents)
-        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .innerJoin(intentNetworks, eq(intents.id, intentNetworks.intentId))
         .where(
           and(
-            sql`${intentIndexes.indexId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
+            sql`${intentNetworks.networkId} IN (${sql.join(userIndexIds.map((id) => sql`${id}`), sql`, `)})`,
             ne(intents.userId, userId),
             isNull(intents.archivedAt),
             isNotNull(intents.embedding),
@@ -167,9 +167,9 @@ export class DebugService {
           text: intent.payload?.slice(0, 120),
           hasEmbedding: intent.hasEmbedding,
           isArchived: !!intent.archivedAt,
-          assignedToIndexes: intentIndexRows.map((r) => ({ indexId: r.indexId, title: r.title })),
+          assignedToIndexes: intentIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         },
-        userIndexes: userIndexRows.map((r) => ({ indexId: r.indexId, title: r.title })),
+        userNetworks: userIndexRows.map((r) => ({ networkId: r.networkId, title: r.title })),
         candidatePool: {
           otherMembersInIndexes,
           otherMembersWithProfiles,
@@ -221,7 +221,7 @@ export class DebugService {
       candidates: candidates.slice(0, 20).map((c) => ({
         userId: c.candidateUserId,
         intentId: c.candidateIntentId ?? null,
-        indexId: c.indexId,
+        networkId: c.networkId,
         similarity: typeof c.similarity === 'number' ? Math.round(c.similarity * 1000) / 1000 : null,
         lens: c.lens,
         discoverySource: c.discoverySource,

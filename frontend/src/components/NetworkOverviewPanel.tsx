@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { LogOut } from 'lucide-react';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import IntentList from '@/components/IntentList';
 import { useIndexesState } from '@/contexts/IndexesContext';
@@ -10,7 +10,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { useIndexes } from '@/contexts/APIContext';
 
 interface NetworkOverviewPanelProps {
-  index: Index;
+  index: Network;
   isOwner: boolean;
   onLeft?: () => void;
   onLeaveRequest?: boolean;
@@ -55,7 +55,7 @@ export default function NetworkOverviewPanel({ index, isOwner, onLeft, onLeaveRe
   const handleLeaveNetwork = async () => {
     try {
       setIsLeaving(true);
-      await api.post(`/indexes/${index.id}/leave`, {});
+      await api.post(`/networks/${index.id}/leave`, {});
       removeIndex(index.id);
       success(`Left ${index.title}`);
       setShowLeaveConfirmation(false);

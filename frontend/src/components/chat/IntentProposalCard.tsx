@@ -7,14 +7,14 @@ import { cn } from "@/lib/utils";
 export interface IntentProposalData {
   proposalId: string;
   description: string;
-  indexId?: string;
+  networkId?: string;
   confidence?: number | null;
   speechActType?: string | null;
 }
 
 interface IntentProposalCardProps {
   card: IntentProposalData;
-  onApprove?: (proposalId: string, description: string, indexId?: string) => void | Promise<void>;
+  onApprove?: (proposalId: string, description: string, networkId?: string) => void | Promise<void>;
   onReject?: (proposalId: string) => void | Promise<void>;
   onUndo?: (proposalId: string) => void | Promise<void>;
   currentStatus?: "pending" | "created" | "rejected";
@@ -89,7 +89,7 @@ export default function IntentProposalCard({
 
     (async () => {
       try {
-        await onApprove(card.proposalId, card.description, card.indexId);
+        await onApprove(card.proposalId, card.description, card.networkId);
         setActionTaken("created");
       } catch {
         setActionError(true);
@@ -99,7 +99,7 @@ export default function IntentProposalCard({
         setSavingFor(null);
       }
     })();
-  }, [countdown, card.proposalId, card.description, card.indexId, onApprove]);
+  }, [countdown, card.proposalId, card.description, card.networkId, onApprove]);
 
   const handleSkip = useCallback(async () => {
     if (!onReject || isSaving) return;
@@ -130,7 +130,7 @@ export default function IntentProposalCard({
     setIsSaving(true);
     setSavingFor("approve");
     try {
-      await onApprove(card.proposalId, card.description, card.indexId);
+      await onApprove(card.proposalId, card.description, card.networkId);
       setActionTaken("created");
     } catch {
       setActionError(true);
@@ -138,7 +138,7 @@ export default function IntentProposalCard({
       setIsSaving(false);
       setSavingFor(null);
     }
-  }, [onApprove, card.proposalId, card.description, card.indexId, isSaving]);
+  }, [onApprove, card.proposalId, card.description, card.networkId, isSaving]);
 
   const handleUndo = useCallback(async () => {
     if (!onUndo || isUndoing) return;

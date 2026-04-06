@@ -5,10 +5,10 @@ import { DebugController } from './controllers/debug.controller';
 import { ToolController } from './controllers/tool.controller';
 import { ToolService } from './services/tool.service';
 import { S3StorageAdapter } from './adapters/storage.adapter';
-import { IndexController } from './controllers/index.controller';
+import { NetworkController } from './controllers/network.controller';
 import { IntentController } from './controllers/intent.controller';
 import { LinkController } from './controllers/link.controller';
-import { OpportunityController, IndexOpportunityController } from './controllers/opportunity.controller';
+import { OpportunityController, NetworkOpportunityController } from './controllers/opportunity.controller';
 import { AuthController } from './controllers/auth.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UserController } from './controllers/user.controller';
@@ -40,7 +40,7 @@ import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
-import { IndexMembershipEvents } from './events/index_membership.event';
+import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { opportunityService } from './services/opportunity.service';
 
@@ -52,9 +52,9 @@ profileQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 
-IndexMembershipEvents.onMemberAdded = (userId: string) => {
+NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
-    log.job.from('IndexMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
+    log.job.from('NetworkMembership').error('Failed to enqueue ensure_profile_hyde', { userId, error: err });
   });
 };
 
@@ -133,11 +133,11 @@ const controllerInstances = new Map();
 controllerInstances.set(AuthController, new AuthController());
 controllerInstances.set(ProfileController, new ProfileController());
 controllerInstances.set(ChatController, new ChatController());
-controllerInstances.set(IndexController, new IndexController());
+controllerInstances.set(NetworkController, new NetworkController());
 controllerInstances.set(IntentController, new IntentController());
 controllerInstances.set(LinkController, new LinkController());
 controllerInstances.set(OpportunityController, new OpportunityController());
-controllerInstances.set(IndexOpportunityController, new IndexOpportunityController());
+controllerInstances.set(NetworkOpportunityController, new NetworkOpportunityController());
 controllerInstances.set(UserController, new UserController());
 controllerInstances.set(StorageController, new StorageController(new StorageService(storageAdapter)));
 controllerInstances.set(SubscribeController, new SubscribeController());

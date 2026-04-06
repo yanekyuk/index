@@ -2,17 +2,17 @@ import { ISODateString, UUID } from './common.types';
 import { UserSummary } from './users.types';
 import { FileRecord } from './files.types';
 
-export type IndexJoinPolicy = 'anyone' | 'invite_only';
+export type NetworkJoinPolicy = 'anyone' | 'invite_only';
 
-export interface IndexPermissions {
-  joinPolicy: IndexJoinPolicy;
+export interface NetworkPermissions {
+  joinPolicy: NetworkJoinPolicy;
   allowGuestVibeCheck?: boolean;
   invitationLink?: {
     code: string;
   } | null;
 }
 
-export interface IndexMember {
+export interface NetworkMember {
   id: UUID; // This is the userId
   name: string;
   email?: string; // Made optional as protocol doesn't always return it
@@ -24,13 +24,13 @@ export interface IndexMember {
   autoAssign?: boolean;
 }
 
-export interface Index {
+export interface Network {
   id: UUID;
   title: string;
   prompt?: string | null;
   imageUrl?: string | null;
   isPersonal?: boolean;
-  permissions?: IndexPermissions | null;
+  permissions?: NetworkPermissions | null;
   createdAt: ISODateString;
   updatedAt: ISODateString;
   deletedAt?: ISODateString | null;
@@ -41,28 +41,28 @@ export interface Index {
     intents?: number;
   };
   files?: FileRecord[];
-  members?: IndexMember[];
+  members?: NetworkMember[];
   isMember?: boolean; // Computed field for discovery
 }
 
-export interface CreateIndexRequest {
+export interface CreateNetworkRequest {
   title: string;
   prompt?: string;
   imageUrl?: string | null;
-  joinPolicy?: IndexJoinPolicy;
+  joinPolicy?: NetworkJoinPolicy;
 }
 
-export interface UpdateIndexRequest {
+export interface UpdateNetworkRequest {
   title?: string;
   prompt?: string | null;
   imageUrl?: string | null;
   permissions?: {
-    joinPolicy?: IndexJoinPolicy;
+    joinPolicy?: NetworkJoinPolicy;
     allowGuestVibeCheck?: boolean;
   };
 }
 
-export interface IndexSummary<TIntent = unknown> {
+export interface NetworkSummary<TIntent = unknown> {
   totalIntents: number;
   exampleIntents: TIntent[];
   members: UserSummary[];

@@ -91,32 +91,32 @@ describe("extractRecentToolCalls", () => {
         tool_calls: [
           { id: "tc1", name: "read_user_profiles", args: { userId: "alice" }, type: "tool_call" },
           { id: "tc2", name: "read_user_profiles", args: { userId: "bob" }, type: "tool_call" },
-          { id: "tc3", name: "read_index_memberships", args: { userId: "alice" }, type: "tool_call" },
+          { id: "tc3", name: "read_network_memberships", args: { userId: "alice" }, type: "tool_call" },
         ],
       }),
       new ToolMessage({ tool_call_id: "tc1", content: "alice profile", name: "read_user_profiles" }),
       new ToolMessage({ tool_call_id: "tc2", content: "bob profile", name: "read_user_profiles" }),
-      new ToolMessage({ tool_call_id: "tc3", content: "alice memberships", name: "read_index_memberships" }),
+      new ToolMessage({ tool_call_id: "tc3", content: "alice memberships", name: "read_network_memberships" }),
     ];
     const result = extractRecentToolCalls(messages);
     expect(result).toHaveLength(3);
     expect(result[0]).toEqual({ name: "read_user_profiles", args: { userId: "alice" } });
-    expect(result[2]).toEqual({ name: "read_index_memberships", args: { userId: "alice" } });
+    expect(result[2]).toEqual({ name: "read_network_memberships", args: { userId: "alice" } });
   });
 });
 
 // Minimal mock for ResolvedToolContext — only fields needed by resolution logic
-function mockCtx(overrides: Partial<{ indexId: string; isOwner: boolean; isOnboarding: boolean }> = {}): IterationContext["ctx"] {
+function mockCtx(overrides: Partial<{ networkId: string; isOwner: boolean; isOnboarding: boolean }> = {}): IterationContext["ctx"] {
   return {
     userId: "test-user",
     userEmail: "test@example.com",
     userName: "Test User",
     user: {},
     userProfile: {},
-    userIndexes: [],
+    userNetworks: [],
     scopedIndex: null,
     scopedMembershipRole: null,
-    indexId: overrides.indexId ?? null,
+    networkId: overrides.networkId ?? null,
     indexName: null,
     isOwner: overrides.isOwner ?? false,
     isOnboarding: overrides.isOnboarding ?? false,
@@ -225,9 +225,9 @@ describe("resolveModules", () => {
     expect(result).toContain("### 3. User includes a URL");
   });
 
-  test("activates community module on read_indexes trigger", () => {
+  test("activates community module on read_networks trigger", () => {
     const iterCtx: IterationContext = {
-      recentTools: [{ name: "read_indexes", args: {} }],
+      recentTools: [{ name: "read_networks", args: {} }],
       ctx: mockCtx(),
     };
     const result = resolveModules(iterCtx);
@@ -245,9 +245,9 @@ describe("resolveModules", () => {
     expect(result).toContain("### 10. Add or manage contacts manually");
   });
 
-  test("activates shared-context module on read_index_memberships trigger", () => {
+  test("activates shared-context module on read_network_memberships trigger", () => {
     const iterCtx: IterationContext = {
-      recentTools: [{ name: "read_index_memberships", args: {} }],
+      recentTools: [{ name: "read_network_memberships", args: {} }],
       ctx: mockCtx(),
     };
     const result = resolveModules(iterCtx);
@@ -336,10 +336,10 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
       skills: ["typescript"],
       interests: ["AI"],
     } as unknown as ResolvedToolContext["userProfile"],
-    userIndexes: [
+    userNetworks: [
       {
-        indexId: "idx-personal",
-        indexTitle: "My Network",
+        networkId: "idx-personal",
+        networkTitle: "My Network",
         indexPrompt: null,
         permissions: ["owner"],
         memberPrompt: null,
@@ -348,8 +348,8 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
         joinedAt: "2024-01-01T00:00:00Z",
       },
       {
-        indexId: "idx-community",
-        indexTitle: "AI Builders",
+        networkId: "idx-community",
+        networkTitle: "AI Builders",
         indexPrompt: "AI enthusiasts",
         permissions: ["member"],
         memberPrompt: null,
@@ -357,7 +357,7 @@ function makeCtx(overrides: Partial<ResolvedToolContext> = {}): ResolvedToolCont
         isPersonal: false,
         joinedAt: "2024-02-01T00:00:00Z",
       },
-    ] as unknown as ResolvedToolContext["userIndexes"],
+    ] as unknown as ResolvedToolContext["userNetworks"],
     isOnboarding: false,
     hasName: true,
     ...overrides,
@@ -408,7 +408,7 @@ describe("buildSystemContent snapshot identity", () => {
 
   test("scoped chat (index scope, owner) produces stable output", () => {
     const ctx = makeCtx({
-      indexId: "idx-community",
+      networkId: "idx-community",
       indexName: "AI Builders",
       isOwner: true,
       scopedIndex: { id: "idx-community", title: "AI Builders", prompt: "AI enthusiasts" },
@@ -467,9 +467,9 @@ describe("buildSystemContent snapshot identity", () => {
         { name: "update_intent", args: {} },                          // intent-management
         { name: "read_user_profiles", args: {} },                     // person-lookup
         { name: "scrape_url", args: {} },                             // url-scraping
-        { name: "read_indexes", args: {} },                           // community
+        { name: "read_networks", args: {} },                           // community
         { name: "add_contact", args: {} },                            // contacts
-        { name: "read_index_memberships", args: {} },                 // shared-context
+        { name: "read_network_memberships", args: {} },                 // shared-context
       ],
       currentMessage: "check @[Alice](user-1) and https://example.com", // mentions + url regex
       ctx,

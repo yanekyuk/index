@@ -1,15 +1,15 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Crown, Plus, Users, X } from 'lucide-react';
 import IndexAvatar from '@/components/IndexAvatar';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 import { useIndexesState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface IndexSelectorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOpenOwnerModal: (index: Index) => void;
-  onOpenMemberModal: (index: Index) => void;
+  onOpenOwnerModal: (network: Network) => void;
+  onOpenMemberModal: (network: Network) => void;
   onCreateIndex?: () => void;
 }
 

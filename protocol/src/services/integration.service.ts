@@ -46,8 +46,8 @@ export class IntegrationService {
    * Verify the user is an owner of the given index.
    * @throws If the user is not an owner
    */
-  private async assertIndexOwner(indexId: string, userId: string): Promise<void> {
-    const isOwner = await this.db.isIndexOwner(indexId, userId);
+  private async assertNetworkOwner(networkId: string, userId: string): Promise<void> {
+    const isOwner = await this.db.isIndexOwner(networkId, userId);
     if (!isOwner) {
       throw new Error('Access denied: you must be an owner of this index');
     }
@@ -60,18 +60,14 @@ export class IntegrationService {
    *
    * @param userId - Authenticated user ID
    * @param toolkit - Which provider to import from
-   * @param indexId - Target index (uses personal index when omitted)
+   * @param networkId - Target index (uses personal index when omitted)
    * @returns Bulk import statistics
    */
-  async importContacts(userId: string, toolkit: Toolkit, indexId?: string): Promise<ImportResult> {
-    const isPersonal = !indexId || await this.db.isPersonalIndex(indexId);
-
-    if (!isPersonal) {
-      if (!indexId) {
-        throw new Error('indexId is required for non-personal import');
-      }
-      await this.assertIndexOwner(indexId, userId);
+  async importContacts(userId: string, toolkit: Toolkit, networkId?: string): Promise<ImportResult> {
+    if (networkId) {
+      await this.assertNetworkOwner(networkId, userId);
     }
+    const isPersonal = !networkId || await this.db.isPersonalNetwork(networkId);
 
     const contacts = toolkit === 'gmail'
       ? await this.fetchGmailContacts(userId)
@@ -98,7 +94,7 @@ export class IntegrationService {
 
     if (dedupResult.removed.length > 0) {
       logger.info('[IntegrationService] Dedup removed contacts', {
-        indexId,
+        networkId,
         removed: dedupResult.removed.map(r => ({
           email: r.email,
           matchedWith: r.matchedWith,
@@ -108,7 +104,7 @@ export class IntegrationService {
       });
     }
 
-    await this.db.addMembersBulkToIndex(indexId, dedupedUserIds);
+    await this.db.addMembersBulkToIndex(networkId, dedupedUserIds);
 
     const newCount = dedupResult.kept.filter(d => d.isNew).length;
     return {
@@ -126,18 +122,18 @@ export class IntegrationService {
    *
    * @param userId - User whose Composio account to look up
    * @param toolkit - Toolkit slug (e.g. 'gmail', 'slack')
-   * @param indexId - Index to link to
+   * @param networkId - Index to link to
    * @throws If the user has no Composio connection for the toolkit
    */
-  async linkToIndex(userId: string, toolkit: string, indexId: string): Promise<void> {
-    await this.assertIndexOwner(indexId, userId);
+  async linkToIndex(userId: string, toolkit: string, networkId: string): Promise<void> {
+    await this.assertNetworkOwner(networkId, userId);
     const connections = await this.adapter.listConnections(userId);
     const conn = connections.find(c => c.toolkit === toolkit);
     if (!conn) {
       throw new Error(`No ${toolkit} connection found for user`);
     }
-    await this.db.insertIndexIntegration(indexId, toolkit, conn.id);
-    logger.info('Linked integration to index', { userId, toolkit, indexId, connectedAccountId: conn.id });
+    await this.db.insertIndexIntegration(networkId, toolkit, conn.id);
+    logger.info('Linked integration to index', { userId, toolkit, networkId, connectedAccountId: conn.id });
   }
 
   /**
@@ -145,24 +141,24 @@ export class IntegrationService {
    * Does NOT revoke the Composio OAuth connection.
    *
    * @param toolkit - Toolkit slug
-   * @param indexId - Index to unlink from
+   * @param networkId - Index to unlink from
    */
-  async unlinkFromIndex(userId: string, toolkit: string, indexId: string): Promise<void> {
-    await this.assertIndexOwner(indexId, userId);
-    await this.db.deleteIndexIntegration(indexId, toolkit);
-    logger.info('Unlinked integration from index', { toolkit, indexId });
+  async unlinkFromIndex(userId: string, toolkit: string, networkId: string): Promise<void> {
+    await this.assertNetworkOwner(networkId, userId);
+    await this.db.deleteIndexIntegration(networkId, toolkit);
+    logger.info('Unlinked integration from index', { toolkit, networkId });
   }
 
   /**
    * List all linked integrations for an index.
    *
    * @param userId - Authenticated user ID (must be index owner)
-   * @param indexId - The index to query
+   * @param networkId - The index to query
    * @returns Array of toolkit/connectedAccountId pairs
    */
-  async getLinkedIntegrations(userId: string, indexId: string): Promise<Array<{ toolkit: string; connectedAccountId: string }>> {
-    await this.assertIndexOwner(indexId, userId);
-    return this.db.getIndexIntegrations(indexId);
+  async getLinkedIntegrations(userId: string, networkId: string): Promise<Array<{ toolkit: string; connectedAccountId: string }>> {
+    await this.assertNetworkOwner(networkId, userId);
+    return this.db.getIndexIntegrations(networkId);
   }
 
   /**

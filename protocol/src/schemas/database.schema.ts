@@ -13,8 +13,8 @@ export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'dr
 export interface OnboardingState {
   completedAt?: string;
   flow?: 1 | 2 | 3;
-  currentStep?: 'profile' | 'summary' | 'connections' | 'create_index' | 'invite_members' | 'join_indexes';
-  indexId?: string;
+  currentStep?: 'profile' | 'summary' | 'connections' | 'create_network' | 'invite_members' | 'join_networks';
+  networkId?: string;
   invitationCode?: string;
 }
 
@@ -219,7 +219,7 @@ export interface OpportunityDetection {
 }
 
 export interface OpportunityActor {
-  indexId: Id<'indexes'>;
+  networkId: Id<'networks'>;
   userId: Id<'users'>;
   intent?: Id<'intents'>;
   role: string;
@@ -239,7 +239,7 @@ export interface OpportunityInterpretation {
 }
 
 export interface OpportunityContext {
-  indexId?: Id<'indexes'>;
+  networkId?: Id<'networks'>;
   conversationId?: Id<'conversations'>;
 }
 
@@ -281,7 +281,7 @@ export const intents = pgTable('intents', {
   index('embeddingIndex').using('hnsw', table.embedding.op('vector_cosine_ops')),
 ]);
 
-export const indexes = pgTable('indexes', {
+export const networks = pgTable('networks', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: text('title').notNull(),
   key: text('key'),
@@ -304,8 +304,8 @@ export const indexes = pgTable('indexes', {
   indexesKeyUnique: uniqueIndex('indexes_key_unique').on(table.key),
 }));
 
-export const indexMembers = pgTable('index_members', {
-  indexId: text('index_id').notNull().references(() => indexes.id),
+export const networkMembers = pgTable('network_members', {
+  networkId: text('network_id').notNull().references(() => networks.id),
   userId: text('user_id').notNull().references(() => users.id),
   permissions: text('permissions').array().notNull().default([]),
   prompt: text('prompt'),
@@ -315,24 +315,24 @@ export const indexMembers = pgTable('index_members', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 }, (table) => ({
-  pk: primaryKey({ columns: [table.indexId, table.userId] }),
+  pk: primaryKey({ columns: [table.networkId, table.userId] }),
 }));
 
-export const personalIndexes = pgTable('personal_indexes', {
+export const personalNetworks = pgTable('personal_networks', {
   userId: text('user_id').notNull().references(() => users.id),
-  indexId: text('index_id').notNull().references(() => indexes.id),
+  networkId: text('network_id').notNull().references(() => networks.id),
 }, (t) => ({
   pk: primaryKey({ columns: [t.userId] }),
-  indexUnique: uniqueIndex('personal_indexes_index_id_unique').on(t.indexId),
+  networkUnique: uniqueIndex('personal_networks_network_id_unique').on(t.networkId),
 }));
 
-export const indexIntegrations = pgTable('index_integrations', {
-  indexId: text('index_id').notNull().references(() => indexes.id),
+export const networkIntegrations = pgTable('network_integrations', {
+  networkId: text('network_id').notNull().references(() => networks.id),
   toolkit: text('toolkit').notNull(),
   connectedAccountId: text('connected_account_id').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (table) => ({
-  pk: primaryKey({ columns: [table.indexId, table.toolkit] }),
+  pk: primaryKey({ columns: [table.networkId, table.toolkit] }),
 }));
 
 export const files = pgTable('files', {
@@ -346,14 +346,14 @@ export const files = pgTable('files', {
   deletedAt: timestamp('deleted_at'),
 });
 
-export const intentIndexes = pgTable('intent_indexes', {
+export const intentNetworks = pgTable('intent_networks', {
   intentId: text('intent_id').notNull().references(() => intents.id),
-  indexId: text('index_id').notNull().references(() => indexes.id),
+  networkId: text('network_id').notNull().references(() => networks.id),
   relevancyScore: numeric('relevancy_score'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 }, (t) => ({
-  pk: primaryKey({ columns: [t.intentId, t.indexId] }),
-  indexIdIdx: index('intent_indexes_index_id_idx').on(t.indexId),
+  pk: primaryKey({ columns: [t.intentId, t.networkId] }),
+  networkIdIdx: index('intent_networks_network_id_idx').on(t.networkId),
 }));
 
 
@@ -368,11 +368,10 @@ const linksTable = pgTable('links', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
-export const indexLinks = linksTable;
 export const links = linksTable;
 
-export type IndexLink = typeof linksTable.$inferSelect;
-export type NewIndexLink = typeof linksTable.$inferInsert;
+export type Link = typeof linksTable.$inferSelect;
+export type NewLink = typeof linksTable.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
@@ -380,8 +379,7 @@ export type NewIndexLink = typeof linksTable.$inferInsert;
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   intents: many(intents),
-  indexes: many(indexes),
-  memberOf: many(indexMembers),
+  memberOf: many(networkMembers),
   notificationSettings: one(userNotificationSettings, {
     fields: [users.id],
     references: [userNotificationSettings.userId],
@@ -411,62 +409,62 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
     fields: [intents.userId],
     references: [users.id],
   }),
-  indexes: many(intentIndexes),
+  networks: many(intentNetworks),
   file: one(files, {
     fields: [intents.sourceId],
     references: [files.id],
     relationName: 'intent_file',
   }),
-  link: one(indexLinks, {
+  link: one(links, {
     fields: [intents.sourceId],
-    references: [indexLinks.id],
+    references: [links.id],
     relationName: 'intent_link',
   }),
 }));
 
-export const indexesRelations = relations(indexes, ({ many }) => ({
-  members: many(indexMembers),
-  intents: many(intentIndexes),
-  integrations: many(indexIntegrations),
+export const networksRelations = relations(networks, ({ many }) => ({
+  members: many(networkMembers),
+  intents: many(intentNetworks),
+  integrations: many(networkIntegrations),
 }));
 
-export const indexMembersRelations = relations(indexMembers, ({ one }) => ({
-  index: one(indexes, {
-    fields: [indexMembers.indexId],
-    references: [indexes.id],
+export const networkMembersRelations = relations(networkMembers, ({ one }) => ({
+  network: one(networks, {
+    fields: [networkMembers.networkId],
+    references: [networks.id],
   }),
   user: one(users, {
-    fields: [indexMembers.userId],
+    fields: [networkMembers.userId],
     references: [users.id],
   }),
 }));
 
-export const personalIndexesRelations = relations(personalIndexes, ({ one }) => ({
+export const personalNetworksRelations = relations(personalNetworks, ({ one }) => ({
   user: one(users, {
-    fields: [personalIndexes.userId],
+    fields: [personalNetworks.userId],
     references: [users.id],
   }),
-  index: one(indexes, {
-    fields: [personalIndexes.indexId],
-    references: [indexes.id],
+  network: one(networks, {
+    fields: [personalNetworks.networkId],
+    references: [networks.id],
   }),
 }));
 
-export const indexIntegrationsRelations = relations(indexIntegrations, ({ one }) => ({
-  index: one(indexes, {
-    fields: [indexIntegrations.indexId],
-    references: [indexes.id],
+export const networkIntegrationsRelations = relations(networkIntegrations, ({ one }) => ({
+  network: one(networks, {
+    fields: [networkIntegrations.networkId],
+    references: [networks.id],
   }),
 }));
 
-export const intentIndexesRelations = relations(intentIndexes, ({ one }) => ({
+export const intentNetworksRelations = relations(intentNetworks, ({ one }) => ({
   intent: one(intents, {
-    fields: [intentIndexes.intentId],
+    fields: [intentNetworks.intentId],
     references: [intents.id],
   }),
-  index: one(indexes, {
-    fields: [intentIndexes.indexId],
-    references: [indexes.id],
+  network: one(networks, {
+    fields: [intentNetworks.networkId],
+    references: [networks.id],
   }),
 }));
 
@@ -480,10 +478,10 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type NewUserProfile = typeof userProfiles.$inferInsert;
 export type Intent = typeof intents.$inferSelect;
 export type NewIntent = typeof intents.$inferInsert;
-export type Index = typeof indexes.$inferSelect;
-export type NewIndex = typeof indexes.$inferInsert;
-export type IndexMember = typeof indexMembers.$inferSelect;
-export type NewIndexMember = typeof indexMembers.$inferInsert;
+export type Network = typeof networks.$inferSelect;
+export type NewNetwork = typeof networks.$inferInsert;
+export type NetworkMember = typeof networkMembers.$inferSelect;
+export type NewNetworkMember = typeof networkMembers.$inferInsert;
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
 export type UserNotificationSettings = typeof userNotificationSettings.$inferSelect;
@@ -492,9 +490,9 @@ export type HydeDocument = typeof hydeDocuments.$inferSelect;
 export type NewHydeDocument = typeof hydeDocuments.$inferInsert;
 export type Opportunity = typeof opportunities.$inferSelect;
 export type NewOpportunity = typeof opportunities.$inferInsert;
-export type PersonalIndex = typeof personalIndexes.$inferSelect;
-export type NewPersonalIndex = typeof personalIndexes.$inferInsert;
-export type IndexIntegration = typeof indexIntegrations.$inferSelect;
-export type NewIndexIntegration = typeof indexIntegrations.$inferInsert;
+export type PersonalNetwork = typeof personalNetworks.$inferSelect;
+export type NewPersonalNetwork = typeof personalNetworks.$inferInsert;
+export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
+export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 
 export * from './conversation.schema';

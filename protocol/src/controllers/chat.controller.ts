@@ -28,7 +28,9 @@ const streamBodySchema = z.object({
   sessionId: z.string().nullish(),
   useCheckpointer: z.boolean().optional(),
   fileIds: z.array(z.string()).optional(),
-  indexId: z.string().nullish(),
+  networkId: z.string().nullish(),
+  /** The recipient user ID for DM-style chats (used for ghost invite emails). */
+  recipientUserId: z.string().nullish(),
   prefillMessages: z.array(z.object({
     role: z.enum(["assistant", "user"]),
     content: z.string().max(10000),
@@ -112,7 +114,7 @@ export class ChatController {
         return Response.json(
           {
             error:
-              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], indexId?: string | null }",
+              "Invalid request body. Expected { message?: string | null, sessionId?: string | null, useCheckpointer?: boolean, fileIds?: string[], networkId?: string | null }",
           },
           { status: 400 },
         );
@@ -149,8 +151,8 @@ export class ChatController {
 
     // 2. Validate or create session
     const requestIndexId =
-      typeof body.indexId === "string" && body.indexId.trim()
-        ? body.indexId.trim()
+      typeof body.networkId === "string" && body.networkId.trim()
+        ? body.networkId.trim()
         : undefined;
     if (requestIndexId) {
       const requestScopeValidation =
@@ -194,7 +196,7 @@ export class ChatController {
     }
 
     // Effective index for this run: request body overrides; otherwise use session's persisted index
-    const effectiveIndexId = requestIndexId ?? session?.indexId ?? undefined;
+    const effectiveIndexId = requestIndexId ?? session?.networkId ?? undefined;
     if (effectiveIndexId) {
       const effectiveScopeValidation =
         await chatSessionService.validateIndexScope(user.id, effectiveIndexId);
@@ -259,7 +261,7 @@ export class ChatController {
               message: messageContent,
               sessionId,
               maxContextMessages: 20,
-              indexId: indexIdForStream,
+              networkId: indexIdForStream,
               prefillMessages: body.prefillMessages,
             },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -7,12 +7,12 @@ import {
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all intents with pagination
-  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, indexIds?: string[], sourceType?: string): Promise<PaginatedResponse<Intent>> => {
+  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false, networkIds?: string[], sourceType?: string): Promise<PaginatedResponse<Intent>> => {
     const requestBody = {
       page,
       limit,
       archived,
-      ...(indexIds && indexIds.length > 0 && { indexIds }),
+      ...(networkIds && networkIds.length > 0 && { networkIds }),
       ...(sourceType && { sourceType })
     };
     
@@ -50,7 +50,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   },
 
   // Suggest tags based on user intents and prompt
-  suggestTags: async (prompt: string, indexId?: string, maxSuggestions?: number): Promise<{
+  suggestTags: async (prompt: string, networkId?: string, maxSuggestions?: number): Promise<{
     suggestions: Array<{
       value: string;
       score: number;
@@ -65,7 +65,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
       intentCount: number;
     }>('/intents/suggest-tags', {
       prompt,
-      indexId,
+      networkId,
       maxSuggestions
     });
     return response;

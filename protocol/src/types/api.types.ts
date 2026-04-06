@@ -4,8 +4,8 @@ import { UUID, PaginationInfo } from './common.types';
 export interface APIResponse<T> {
   data?: T;
   user?: T; // For auth endpoints
-  index?: T; // For single index
-  indexes?: T[]; // For list of indexes
+  network?: T; // For single network
+  networks?: T[]; // For list of networks
   intent?: T; // For single intent
   stakes?: T[]; // For intent stakes
   stakesByUser?: T;
@@ -29,7 +29,7 @@ export interface SynthesisRequest {
   targetUserId: UUID;
   initiatorId?: UUID;
   intentIds?: UUID[];
-  indexIds?: UUID[];
+  networkIds?: UUID[];
   options?: {
     characterLimit?: number;
     [key: string]: unknown;

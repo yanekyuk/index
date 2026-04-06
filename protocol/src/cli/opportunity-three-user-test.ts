@@ -84,7 +84,7 @@ async function main() {
     console.error('Failed to create intent');
     process.exit(1);
   }
-  await database.assignIntentToIndex(created.id, INDEX_ID);
+  await database.assignIntentToNetwork(created.id, INDEX_ID);
   console.log('Created intent for', userA.name, ':', created.id, '->', intentPayload);
 
   // Run HyDE for the intent (no queue; direct invoke)

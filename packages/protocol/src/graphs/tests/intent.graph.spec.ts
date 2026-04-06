@@ -42,7 +42,7 @@ const createMockDatabase = (): IntentGraphDatabase => {
     async getUser(_userId: string) {
       return { id: _userId, name: 'Test User', email: 'test@example.com' };
     },
-    async isIndexMember(_indexId: string, _userId: string): Promise<boolean> {
+    async isNetworkMember(_indexId: string, _userId: string): Promise<boolean> {
       return true;
     },
     async getIndexIntentsForMember(_indexId: string, _requestingUserId: string, _options?: { limit?: number; offset?: number }) {
@@ -90,10 +90,10 @@ const createMockDatabase = (): IntentGraphDatabase => {
         attributes: { skills: ['TypeScript'], interests: ['Web Dev'] },
       } as any;
     },
-    async assignIntentToIndex(_intentId: string, _indexId: string): Promise<void> {
+    async assignIntentToNetwork(_intentId: string, _indexId: string): Promise<void> {
       // no-op for tests
     },
-    async getPersonalIndexesForContact(_userId: string): Promise<{ indexId: string }[]> {
+    async getPersonalIndexesForContact(_userId: string): Promise<{ networkId: string }[]> {
       return [];
     }
   };
@@ -268,13 +268,13 @@ describe('IntentGraph - Prep always fetches from DB', () => {
     graphRunner = factory.createGraph();
   });
 
-  it('should always call getActiveIntents even when indexId is set', async () => {
+  it('should always call getActiveIntents even when networkId is set', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: JSON.stringify({ identity: { name: 'Test' } }),
       inputContent: 'I want to learn Rust',
       operationMode: 'create',
-      indexId: 'idx-yc-founders'
+      networkId: 'idx-yc-founders'
     });
 
     // Prep should always fetch from DB, regardless of index scope
@@ -283,7 +283,7 @@ describe('IntentGraph - Prep always fetches from DB', () => {
     expect(result.inferredIntents).toBeDefined();
   }, 60000);
 
-  it('should call getActiveIntents when no indexId is set', async () => {
+  it('should call getActiveIntents when no networkId is set', async () => {
     const result = await graphRunner.invoke({
       userId: 'test-user-1',
       userProfile: JSON.stringify({ identity: { name: 'Test' } }),

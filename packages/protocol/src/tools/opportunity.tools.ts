@@ -141,7 +141,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Creates opportunities (connections). NOT for looking up a specific person by name — use read_user_profiles(query=name) for that.\n\n" +
       "Four modes:\n" +
-      "1. **Discovery**: pass searchQuery and/or indexId. Finds matching people based on intent overlap.\n" +
+      "1. **Discovery**: pass searchQuery and/or networkId. Finds matching people based on intent overlap.\n" +
       "2. **Introduction**: pass partyUserIds (2+ user IDs) + entities (pre-gathered profiles and intents). " +
       "You MUST gather profiles and intents from shared indexes BEFORE calling this. " +
       "Optionally pass hint (the user's reason for the introduction).\n" +
@@ -160,7 +160,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         .string()
         .optional()
         .describe("Discovery mode: what to look for."),
-      indexId: z
+      networkId: z
         .string()
         .optional()
         .describe("Index UUID; optional when index-scoped. Pass the personal index ID (\"My Network\") to scope discovery to the user's contacts only."),
@@ -207,7 +207,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
                 }),
               )
               .optional(),
-            indexId: z
+            networkId: z
               .string()
               .describe("Shared index this entity's data comes from (required for intro mode)"),
           }),
@@ -226,9 +226,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
       if (
-        context.indexId &&
-        query.indexId?.trim() &&
-        query.indexId.trim() !== context.indexId
+        context.networkId &&
+        query.networkId?.trim() &&
+        query.networkId.trim() !== context.networkId
       ) {
         return error(
           `This chat is scoped to ${context.indexName ?? "this index"}. You can only create opportunities in this community.`,
@@ -236,7 +236,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const effectiveIndexId =
-        (context.indexId || query.indexId?.trim()) ?? undefined;
+        (context.networkId || query.networkId?.trim()) ?? undefined;
 
       // ── Continuation mode ── (must take strict precedence — it's a pagination token)
       if (query.continueFrom) {
@@ -249,7 +249,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           cache,
           userId: context.userId,
           discoveryId: query.continueFrom,
-          expectedIndexId: context.indexId,
+          expectedIndexId: context.networkId,
           limit: 20,
           minimalForChat: true,
           ...(context.sessionId ? { chatSessionId: context.sessionId } : {}),
@@ -327,14 +327,17 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         });
       }
 
+      // Normalize entity networkIds before any checks to avoid raw-vs-trimmed mismatches.
+      const normalizedEntities = query.entities?.map((e) => ({ ...e, networkId: e.networkId?.trim() }));
+
       // Derive partyUserIds from entities when agent passes entities but omits partyUserIds (intro mode).
-      // Only derive when all entities share the same indexId to prevent cross-index introductions.
+      // Only derive when all entities share the same networkId to prevent cross-network introductions.
       const partyUserIdsFromEntities =
-        query.entities &&
-        query.entities.length >= 2 &&
-        query.entities.every((e) => e.userId && e.indexId) &&
-        new Set(query.entities.map((e) => e.indexId)).size === 1
-          ? [...new Set(query.entities.map((e) => e.userId))]
+        normalizedEntities &&
+        normalizedEntities.length >= 2 &&
+        normalizedEntities.every((e) => e.userId && e.networkId) &&
+        new Set(normalizedEntities.map((e) => e.networkId)).size === 1
+          ? [...new Set(normalizedEntities.map((e) => e.userId))]
           : undefined;
       const effectivePartyUserIds =
         query.partyUserIds && query.partyUserIds.length >= 2
@@ -345,21 +348,27 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
 
       // ── Introduction mode ── (validation and persistence via opportunity graph)
       if (effectivePartyUserIds && effectivePartyUserIds.length >= 2) {
-        if (!query.entities || query.entities.length === 0) {
+        if (!normalizedEntities || normalizedEntities.length === 0) {
           return error(
             "Introduction requires pre-gathered entity data. " +
-              "First use read_index_memberships to find shared indexes, " +
+              "First use read_network_memberships to find shared networks, " +
               "then read_user_profiles and read_intents for each party, " +
               "then pass the results as entities.",
           );
         }
 
-        const primaryIndexId = query.entities[0]?.indexId;
-        if (!primaryIndexId) {
-          return error(
-            "Each entity must include an indexId (the shared index).",
-          );
+        const normalizedEntityNetworkIds = normalizedEntities
+          .map((e) => e.networkId)
+          .filter((id): id is string => Boolean(id));
+
+        if (
+          normalizedEntityNetworkIds.length !== normalizedEntities.length ||
+          new Set(normalizedEntityNetworkIds).size !== 1
+        ) {
+          return error("All entities must include the same shared networkId.");
         }
+
+        const [primaryNetworkId] = normalizedEntityNetworkIds;
 
         const introducedPartyUserIds = effectivePartyUserIds.filter(
           (uid) => uid !== context.userId,
@@ -370,12 +379,12 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
           );
         }
 
-        const evaluatorEntities: EvaluatorEntity[] = query.entities.map(
+        const evaluatorEntities: EvaluatorEntity[] = normalizedEntities.map(
           (e) => ({
             userId: e.userId,
             profile: e.profile ?? {},
             intents: e.intents,
-            indexId: e.indexId,
+            networkId: e.networkId,
           }),
         );
 
@@ -385,10 +394,10 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         const result = await graphs.opportunity.invoke({
           operationMode: "create_introduction",
           userId: context.userId,
-          indexId: primaryIndexId,
+          networkId: primaryNetworkId,
           introductionEntities: evaluatorEntities,
           introductionHint: query.hint,
-          requiredIndexId: context.indexId ?? undefined,
+          requiredNetworkId: context.networkId ?? undefined,
           options: {
             initialStatus: "draft" as const,
             ...(context.sessionId ? { conversationId: context.sessionId } : {}),
@@ -519,26 +528,26 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       const _scopeGraphTimings: Array<{ name: string; durationMs: number; agents: Array<{ name: string; durationMs: number }> }> = [];
       if (effectiveIndexId) {
         if (!UUID_REGEX.test(effectiveIndexId)) {
-          return error("Invalid index ID format.");
+          return error("Invalid network ID format.");
         }
         const _scopeGraphStart = Date.now();
         const _scopeIndexMembershipTraceEmitter = requestContext.getStore()?.traceEmitter;
-        _scopeIndexMembershipTraceEmitter?.({ type: "graph_start", name: "index_membership" });
-        const memberResult = await graphs.indexMembership.invoke({
+        _scopeIndexMembershipTraceEmitter?.({ type: "graph_start", name: "network_membership" });
+        const memberResult = await graphs.networkMembership.invoke({
           userId: context.userId,
-          indexId: effectiveIndexId,
+          networkId: effectiveIndexId,
           operationMode: "read" as const,
         });
         const _scopeIndexMembershipMs = Date.now() - _scopeGraphStart;
-        _scopeIndexMembershipTraceEmitter?.({ type: "graph_end", name: "index_membership", durationMs: _scopeIndexMembershipMs });
-        _scopeGraphTimings.push({ name: 'index_membership', durationMs: _scopeIndexMembershipMs, agents: [] });
+        _scopeIndexMembershipTraceEmitter?.({ type: "graph_end", name: "network_membership", durationMs: _scopeIndexMembershipMs });
+        _scopeGraphTimings.push({ name: 'network_membership', durationMs: _scopeIndexMembershipMs, agents: [] });
         if (memberResult.error) {
-          return error("Index not found or you are not a member.");
+          return error("Network not found or you are not a member.");
         }
         indexScope = [effectiveIndexId];
-      } else if (context.indexId) {
-        // When scoped but no explicit indexId, use the scoped index
-        indexScope = [context.indexId];
+      } else if (context.networkId) {
+        // When scoped but no explicit networkId, use the scoped index
+        indexScope = [context.networkId];
       } else {
         // No scope - use all indexes (only in unscoped chat)
         const _scopeGraphStart = Date.now();
@@ -553,7 +562,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
         _scopeIndexTraceEmitter?.({ type: "graph_end", name: "index", durationMs: _scopeIndexMs });
         _scopeGraphTimings.push({ name: 'index', durationMs: _scopeIndexMs, agents: [] });
         indexScope = (indexResult.readResult?.memberOf || []).map(
-          (m: { indexId: string }) => m.indexId,
+          (m: { networkId: string }) => m.networkId,
         );
       }
 
@@ -732,7 +741,7 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     description:
       "Lists the user's opportunities (suggested connections). Returns opportunity cards to display. When chat is index-scoped, only shows opportunities from that index.",
     querySchema: z.object({
-      indexId: z
+      networkId: z
         .string()
         .optional()
         .describe("Index UUID filter; defaults to current index when scoped."),
@@ -740,9 +749,9 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
     handler: async ({ context, query }) => {
       // Strict scope enforcement: when chat is index-scoped, only allow that index
       if (
-        context.indexId &&
-        query.indexId?.trim() &&
-        query.indexId.trim() !== context.indexId
+        context.networkId &&
+        query.networkId?.trim() &&
+        query.networkId.trim() !== context.networkId
       ) {
         return error(
           "This chat is scoped to " +
@@ -752,16 +761,16 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       const effectiveIndexId =
-        (context.indexId || query.indexId?.trim()) ?? undefined;
+        (context.networkId || query.networkId?.trim()) ?? undefined;
       if (effectiveIndexId && !UUID_REGEX.test(effectiveIndexId)) {
-        return error("Invalid index ID format.");
+        return error("Invalid network ID format.");
       }
 
       // Get opportunities; use minimal card data (no LLM presenter) for fast chat response
       const opportunities = await database.getOpportunitiesForUser(
         context.userId,
         {
-          indexId: effectiveIndexId,
+          networkId: effectiveIndexId,
           limit: CHAT_DISPLAY_LIMIT,
         },
       );
@@ -967,13 +976,14 @@ export function createOpportunityTools(defineTool: DefineTool, deps: ToolDeps) {
       }
 
       // Strict scope enforcement: when chat is index-scoped, verify opportunity is in that index
-      if (context.indexId) {
+      if (context.networkId) {
         const opportunity = await systemDb.getOpportunity(opportunityId);
         if (!opportunity) {
           return error("Opportunity not found.");
         }
-        const opportunityIndexId = opportunity.context?.indexId;
-        if (!opportunityIndexId || opportunityIndexId !== context.indexId) {
+        const opportunityIndexId = opportunity.context?.networkId
+          ?? opportunity.actors?.find((a) => a.networkId === context.networkId)?.networkId;
+        if (!opportunityIndexId || opportunityIndexId !== context.networkId) {
           return error("Opportunity not found.");
         }
       }

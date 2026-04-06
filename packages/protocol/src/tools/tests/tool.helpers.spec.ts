@@ -10,7 +10,7 @@ import {
 } from "../tool.helpers.js";
 
 const userId = "00000000-0000-4000-8000-000000000111";
-const indexId = "00000000-0000-4000-8000-000000000222";
+const networkId = "00000000-0000-4000-8000-000000000222";
 
 function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) {
   const base = {
@@ -28,10 +28,10 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
       attributes: { skills: ["TypeScript"], interests: ["AI"] },
       embedding: null,
     }),
-    getIndexMemberships: async () => ([
+    getNetworkMemberships: async () => ([
       {
-        indexId,
-        indexTitle: "AI Builders",
+        networkId,
+        networkTitle: "AI Builders",
         indexPrompt: "People building practical AI tools",
         permissions: ["member"],
         memberPrompt: null,
@@ -41,11 +41,11 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
       },
     ]),
     getIndex: async (id: string) => ({ id, title: "AI Builders" }),
-    getIndexMembership: async (idxId: string, uid: string) =>
-      idxId === indexId && uid === userId
+    getNetworkMembership: async (idxId: string, uid: string) =>
+      idxId === networkId && uid === userId
         ? {
-            indexId,
-            indexTitle: "AI Builders",
+            networkId,
+            networkTitle: "AI Builders",
             indexPrompt: "People building practical AI tools",
             permissions: ["member"],
             memberPrompt: null,
@@ -54,13 +54,13 @@ function createContextDatabase(overrides?: Partial<ChatGraphCompositeDatabase>) 
             joinedAt: new Date("2026-01-01"),
           }
         : null,
-    isIndexMember: async () => true,
+    isNetworkMember: async () => true,
     isIndexOwner: async () => false,
   };
 
   return { ...base, ...overrides } as Pick<
     ChatGraphCompositeDatabase,
-    "getUser" | "getProfile" | "getIndexMemberships" | "getIndexMembership" | "getIndex" | "isIndexMember" | "isIndexOwner"
+    "getUser" | "getProfile" | "getNetworkMemberships" | "getNetworkMembership" | "getIndex" | "isNetworkMember" | "isIndexOwner"
   >;
 }
 
@@ -71,8 +71,8 @@ describe("resolveChatContext", () => {
 
     expect(ctx.user.id).toBe(userId);
     expect(ctx.userProfile).not.toBeNull();
-    expect(ctx.userIndexes.length).toBe(1);
-    expect(ctx.userIndexes[0].indexTitle).toBe("AI Builders");
+    expect(ctx.userNetworks.length).toBe(1);
+    expect(ctx.userNetworks[0].networkTitle).toBe("AI Builders");
     expect(ctx.userName).toBe("Test User");
     expect(ctx.userEmail).toBe("test@example.com");
   });
@@ -80,10 +80,10 @@ describe("resolveChatContext", () => {
   test("maps scoped membership role to member", async () => {
     const db = createContextDatabase({
       isIndexOwner: async () => false,
-      isIndexMember: async () => true,
+      isNetworkMember: async () => true,
     });
 
-    const ctx = await resolveChatContext({ database: db, userId, indexId });
+    const ctx = await resolveChatContext({ database: db, userId, networkId });
     expect(ctx.scopedMembershipRole).toBe("member");
     expect(ctx.isOwner).toBe(false);
     expect(ctx.scopedIndex?.title).toBe("AI Builders");
@@ -92,20 +92,20 @@ describe("resolveChatContext", () => {
   test("maps scoped membership role to owner", async () => {
     const db = createContextDatabase({
       isIndexOwner: async () => true,
-      isIndexMember: async () => true,
+      isNetworkMember: async () => true,
     });
 
-    const ctx = await resolveChatContext({ database: db, userId, indexId });
+    const ctx = await resolveChatContext({ database: db, userId, networkId });
     expect(ctx.scopedMembershipRole).toBe("owner");
     expect(ctx.isOwner).toBe(true);
   });
 
   test("throws when scoped index is provided for non-member", async () => {
     const db = createContextDatabase({
-      isIndexMember: async () => false,
+      isNetworkMember: async () => false,
     });
 
-    const err = await resolveChatContext({ database: db, userId, indexId }).catch((e: unknown) => e);
+    const err = await resolveChatContext({ database: db, userId, networkId }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatContextAccessError);
     expect((err as ChatContextAccessError).statusCode).toBe(403);
     expect((err as ChatContextAccessError).code).toBe("INDEX_MEMBERSHIP_REQUIRED");
@@ -122,26 +122,26 @@ describe("resolveChatContext", () => {
     expect((err as ChatContextAccessError).code).toBe("USER_NOT_FOUND");
   });
 
-  test("throws ChatContextAccessError with 404 INDEX_NOT_FOUND when indexId provided and getIndex returns null", async () => {
+  test("throws ChatContextAccessError with 404 INDEX_NOT_FOUND when networkId provided and getIndex returns null", async () => {
     const db = createContextDatabase({
       getIndex: async () => null,
     });
 
-    const err = await resolveChatContext({ database: db, userId, indexId }).catch((e: unknown) => e);
+    const err = await resolveChatContext({ database: db, userId, networkId }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ChatContextAccessError);
     expect((err as ChatContextAccessError).statusCode).toBe(404);
     expect((err as ChatContextAccessError).code).toBe("INDEX_NOT_FOUND");
   });
 
-  test("uses getIndexMembership when membership missing from userIndexes (prompt not lost)", async () => {
+  test("uses getNetworkMembership when membership missing from userNetworks (prompt not lost)", async () => {
     const customPrompt = "Custom index purpose for fallback test";
     const db = createContextDatabase({
-      getIndexMemberships: async () => [], // list empty but user is still member
-      getIndexMembership: async (idxId: string, uid: string) =>
-        idxId === indexId && uid === userId
+      getNetworkMemberships: async () => [], // list empty but user is still member
+      getNetworkMembership: async (idxId: string, uid: string) =>
+        idxId === networkId && uid === userId
           ? {
-              indexId,
-              indexTitle: "AI Builders",
+              networkId,
+              networkTitle: "AI Builders",
               indexPrompt: customPrompt,
               permissions: ["member"],
               memberPrompt: null,
@@ -152,7 +152,7 @@ describe("resolveChatContext", () => {
           : null,
     });
 
-    const ctx = await resolveChatContext({ database: db, userId, indexId });
+    const ctx = await resolveChatContext({ database: db, userId, networkId });
     expect(ctx.scopedIndex).not.toBeUndefined();
     expect(ctx.scopedIndex?.prompt).toBe(customPrompt);
   });

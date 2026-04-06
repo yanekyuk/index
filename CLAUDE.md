@@ -223,7 +223,7 @@ Intents have `confidence` (0-1) and `inferenceType` (`explicit|implicit`).
 
 ### Personal Indexes
 
-Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table. Ownership via `index_members` with `permissions: ['owner']`, not a denormalized column. Contacts are stored as `index_members` rows with `'contact'` permission on the owner's personal index -- no separate contacts table. `ContactService.addContact(email)` handles finding/creating users (including ghost users) and upserting membership. Personal indexes cannot be deleted, renamed, or listed publicly.
+Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_networks` mapping table. Ownership via `network_members` with `permissions: ['owner']`, not a denormalized column. Contacts are stored as `network_members` rows with `'contact'` permission on the owner's personal index -- no separate contacts table. `ContactService.addContact(email)` handles finding/creating users (including ghost users) and upserting membership. Personal indexes cannot be deleted, renamed, or listed publicly.
 
 ### Index Prompts & Auto-Assignment
 
@@ -231,7 +231,7 @@ Indexes and members have `prompt` fields used by LLM agents to evaluate intent m
 
 ### Relevancy Scoring
 
-`IntentIndexer` agent scores intent-index fit as `relevancyScore` (0.0-1.0) in `intent_indexes`. Used during opportunity discovery to break ties across shared indexes. Indexes without prompts default to 1.0.
+`IntentIndexer` agent scores intent-network fit as `relevancyScore` (0.0-1.0) in `intent_networks`. Used during opportunity discovery to break ties across shared networks. Indexes without prompts default to 1.0.
 
 ### Queue-Based Processing
 
@@ -239,7 +239,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `index_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Trace Event Instrumentation
 

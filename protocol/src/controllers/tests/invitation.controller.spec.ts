@@ -3,15 +3,14 @@ import { config } from "dotenv";
 config({ path: '.env.test' });
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { IndexController } from "../index.controller";
-import { UserDatabaseAdapter, ChatDatabaseAdapter, IndexGraphDatabaseAdapter } from "../../adapters/database.adapter";
+import { NetworkController } from "../network.controller";
+import { UserDatabaseAdapter, NetworkGraphDatabaseAdapter } from "../../adapters/database.adapter";
 import type { AuthenticatedUser } from "../../guards/auth.guard";
 
 describe("Invitation Endpoints Integration", () => {
-  const controller = new IndexController();
+  const controller = new NetworkController();
   const userAdapter = new UserDatabaseAdapter();
-  const chatAdapter = new ChatDatabaseAdapter();
-  const indexAdapter = new IndexGraphDatabaseAdapter();
+  const indexAdapter = new NetworkGraphDatabaseAdapter();
 
   let ownerUserId: string;
   let joinerUserId: string;
@@ -47,33 +46,33 @@ describe("Invitation Endpoints Integration", () => {
     joinerUserId = joiner.id;
 
     // Create an invite_only index as owner
-    const createReq = new Request("http://localhost/indexes", {
+    const createReq = new Request("http://localhost/networks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Invite Test Index", prompt: "Testing invitations", joinPolicy: "invite_only" }),
     });
     const createRes = await controller.create(createReq, mockOwner());
     expect(createRes.status).toBe(200);
-    const createData = (await createRes.json()) as { index?: { id: string; permissions?: Record<string, unknown> } };
-    expect(createData.index).not.toBeNull();
-    expect(createData.index!.id).toBeTruthy();
-    createdIndexId = createData.index!.id;
+    const createData = (await createRes.json()) as { network?: { id: string; permissions?: Record<string, unknown> } };
+    expect(createData.network).not.toBeNull();
+    expect(createData.network!.id).toBeTruthy();
+    createdIndexId = createData.network!.id;
 
     // Update permissions to generate invitation link code
-    const updateReq = new Request("http://localhost/indexes/" + createdIndexId + "/permissions", {
+    const updateReq = new Request("http://localhost/networks/" + createdIndexId + "/permissions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ joinPolicy: "invite_only" }),
     });
     const updateRes = await controller.updatePermissions(updateReq, mockOwner(), { id: createdIndexId });
     expect(updateRes.status).toBe(200);
-    const updateData = (await updateRes.json()) as { index?: { permissions?: { invitationLink?: { code: string } } } };
-    expect(updateData.index?.permissions?.invitationLink?.code).toBeTruthy();
-    invitationCode = updateData.index!.permissions!.invitationLink!.code;
+    const updateData = (await updateRes.json()) as { network?: { permissions?: { invitationLink?: { code: string } } } };
+    expect(updateData.network?.permissions?.invitationLink?.code).toBeTruthy();
+    invitationCode = updateData.network!.permissions!.invitationLink!.code;
   });
 
   afterAll(async () => {
-    if (createdIndexId) await indexAdapter.deleteIndexAndMembers(createdIndexId);
+    if (createdIndexId) await indexAdapter.deleteNetworkAndMembers(createdIndexId);
     if (ownerUserId) await userAdapter.deleteById(ownerUserId);
     if (joinerUserId) await userAdapter.deleteById(joinerUserId);
   });
@@ -92,19 +91,19 @@ describe("Invitation Endpoints Integration", () => {
 
   describe("GET /share/:code", () => {
     test("should return 200 with index data for valid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: { id: string; title: string } };
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
+      const data = (await res.json()) as { network?: { id: string; title: string } };
 
       expect(res.status).toBe(200);
-      expect(data.index).not.toBeNull();
-      expect(data.index!.id).toBe(createdIndexId);
-      expect(data.index!.title).toBe("Invite Test Index");
+      expect(data.network).not.toBeNull();
+      expect(data.network!.id).toBe(createdIndexId);
+      expect(data.network!.title).toBe("Invite Test Index");
     });
 
     test("should return 404 for invalid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/share/nonexistent-code");
-      const res = await controller.getIndexByShareCode(req, null, { code: "nonexistent-code" });
+      const req = new Request("http://localhost/networks/share/nonexistent-code");
+      const res = await controller.getNetworkByShareCode(req, null, { code: "nonexistent-code" });
       const data = (await res.json()) as { error?: string };
 
       expect(res.status).toBe(404);
@@ -112,29 +111,29 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should not expose internal permissions in public response", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: Record<string, unknown> };
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
+      const data = (await res.json()) as { network?: Record<string, unknown> };
 
       expect(res.status).toBe(200);
-      expect(data.index!.permissions).toBeUndefined();
+      expect(data.network!.permissions).toBeUndefined();
     });
 
     test("should include member count and owner info", async () => {
-      const req = new Request("http://localhost/indexes/share/" + invitationCode);
-      const res = await controller.getIndexByShareCode(req, null, { code: invitationCode });
-      const data = (await res.json()) as { index?: { user?: { id: string; name: string }; _count?: { members: number } } };
+      const req = new Request("http://localhost/networks/share/" + invitationCode);
+      const res = await controller.getNetworkByShareCode(req, null, { code: invitationCode });
+      const data = (await res.json()) as { network?: { user?: { id: string; name: string }; _count?: { members: number } } };
 
       expect(res.status).toBe(200);
-      expect(data.index!.user!.id).toBe(ownerUserId);
-      expect(data.index!.user!.name).toBe("Invite Owner");
-      expect(data.index!._count!.members).toBeGreaterThanOrEqual(1);
+      expect(data.network!.user!.id).toBe(ownerUserId);
+      expect(data.network!.user!.name).toBe("Invite Owner");
+      expect(data.network!._count!.members).toBeGreaterThanOrEqual(1);
     });
   });
 
   describe("POST /invitation/:code/accept", () => {
     test("should return 200 and add user as member for valid code", async () => {
-      const req = new Request("http://localhost/indexes/invitation/" + invitationCode + "/accept", {
+      const req = new Request("http://localhost/networks/invitation/" + invitationCode + "/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: invitationCode });
@@ -147,7 +146,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should return alreadyMember=true when user accepts again", async () => {
-      const req = new Request("http://localhost/indexes/invitation/" + invitationCode + "/accept", {
+      const req = new Request("http://localhost/networks/invitation/" + invitationCode + "/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: invitationCode });
@@ -158,7 +157,7 @@ describe("Invitation Endpoints Integration", () => {
     });
 
     test("should return 400 for invalid invitation code", async () => {
-      const req = new Request("http://localhost/indexes/invitation/bad-code/accept", {
+      const req = new Request("http://localhost/networks/invitation/bad-code/accept", {
         method: "POST",
       });
       const res = await controller.acceptInvitation(req, mockJoiner(), { code: "bad-code" });
