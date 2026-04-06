@@ -3,7 +3,7 @@ import { conversationDatabaseAdapter, ConversationDatabaseAdapter, ChatDatabaseA
 import { EmbedderAdapter } from '../adapters/embedder.adapter';
 import { ScraperAdapter } from '../adapters/scraper.adapter';
 import { ChatGraphFactory } from '../lib/protocol/graphs/chat.graph';
-import { getCheckpointer } from '../lib/protocol/support/chat.checkpointer';
+import { getCheckpointer } from '../adapters/checkpointer.adapter';
 import { ChatTitleGenerator } from '../lib/protocol/agents/chat.title.generator';
 import { HumanMessage } from '@langchain/core/messages';
 import type { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
@@ -53,6 +53,7 @@ export class ChatSessionService {
   private get factory(): ChatGraphFactory {
     if (!this._factory) {
       // Lazy import to avoid circular dependency (protocol-init imports this service).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { createDefaultProtocolDeps } = require('../protocol-init');
       const protocolDeps = createDefaultProtocolDeps();
       this._factory = new ChatGraphFactory(this.graphDb, this.embedder, this.scraper, this, protocolDeps);

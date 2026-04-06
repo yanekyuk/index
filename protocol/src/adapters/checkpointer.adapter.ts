@@ -1,5 +1,5 @@
 /**
- * PostgresSaver Checkpointer Utility
+ * PostgresSaver Checkpointer Adapter
  *
  * Provides singleton and factory methods for creating PostgresSaver checkpointer instances.
  * The checkpointer enables conversation persistence across requests using LangGraph's
@@ -16,9 +16,10 @@
  */
 
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { protocolLogger } from "./protocol.logger";
 
-const logger = protocolLogger("ChatCheckpointer");
+import { log } from "../lib/log";
+
+const logger = log.lib.from("checkpointer.adapter");
 
 let checkpointerInstance: PostgresSaver | null = null;
 let setupPromise: Promise<void> | null = null;

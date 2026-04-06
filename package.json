@@ -24,7 +24,7 @@
     "lint-staged": "^16.4.0"
   },
   "lint-staged": {
-    "protocol/src/**/*.ts": "eslint --no-warn-ignored",
-    "frontend/src/**/*.{ts,tsx}": "eslint --no-warn-ignored"
+    "protocol/src/**/*.ts": "bash -c 'cd protocol && bunx eslint --no-warn-ignored \"$@\"' --",
+    "frontend/src/**/*.{ts,tsx}": "bash -c 'cd frontend && bunx eslint --no-warn-ignored \"$@\"' --"
   }
 }
