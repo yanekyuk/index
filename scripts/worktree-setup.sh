@@ -3,7 +3,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKTREES_DIR="$REPO_ROOT/.worktrees"
-WORKSPACES=("backend" "frontend")
+INSTALL_WORKSPACES=("backend" "frontend")
+ENV_WORKSPACES=("backend" "frontend" "packages/protocol" "packages/cli")
 
 if [ -z "${1:-}" ]; then
   echo "Usage: bun run worktree:setup <worktree-name>"
@@ -26,7 +27,7 @@ fi
 echo "Setting up worktree: $1"
 echo ""
 
-for ws in "${WORKSPACES[@]}"; do
+for ws in "${ENV_WORKSPACES[@]}"; do
   ws_src="$REPO_ROOT/$ws"
   ws_dst="$WORKTREE/$ws"
 
@@ -35,12 +36,22 @@ for ws in "${WORKSPACES[@]}"; do
     continue
   fi
 
-  # Install node_modules (symlinks break Turbopack in Next.js projects)
-  if [ -d "$ws_dst/node_modules" ]; then
-    echo "  [$ws] node_modules already installed"
-  else
-    echo "  [$ws] node_modules -> installing..."
-    (cd "$ws_dst" && bun install --frozen-lockfile 2>&1 | tail -1)
+  should_install=false
+  for install_ws in "${INSTALL_WORKSPACES[@]}"; do
+    if [ "$ws" = "$install_ws" ]; then
+      should_install=true
+      break
+    fi
+  done
+
+  # Install node_modules only for app workspaces.
+  if [ "$should_install" = true ]; then
+    if [ -d "$ws_dst/node_modules" ]; then
+      echo "  [$ws] node_modules already installed"
+    else
+      echo "  [$ws] node_modules -> installing..."
+      (cd "$ws_dst" && bun install --frozen-lockfile 2>&1 | tail -1)
+    fi
   fi
 
   # Symlink .env* files (excluding .env.example)
