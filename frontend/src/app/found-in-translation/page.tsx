@@ -842,29 +842,6 @@ export default function FoundInTranslationPage() {
         </svg>
 
 
-        <div
-          style={{
-            position: 'absolute',
-            top: 88,
-            left: 'max(1rem, calc((100vw - 1280px) / 2 + 1rem))',
-            zIndex: 4,
-            maxWidth: 360,
-            fontFamily: "'IBM Plex Mono', monospace",
-            fontSize: '0.52rem',
-            lineHeight: 1.7,
-            letterSpacing: '0.04em',
-            color: 'rgba(255,255,255,0.92)',
-            textShadow: '0 1px 2px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.35)',
-            whiteSpace: 'pre-line',
-          }}
-        >
-          {`Find opportunities — Found 3 match(es). - 29.29s
-Index membership. - 3.04s
-Opportunity graph - 26.27s
-Inferring lenses — Inferred 3 lens(es) - 5.15s
-Generating HyDE (3) — no matches - 7.67s total
-Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
-        </div>
 
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.2)', height: 36, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', padding: '0 1.5rem', gap: '2rem', zIndex: 5 }}>
           <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: '0.48rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.45)' }}>NEW YORK 2026</span>
@@ -898,7 +875,7 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
       <div style={{ ...WRAP, padding: '1rem 2rem 0' }}>
         <p data-fade style={P}>You might sleep on your vague desires, wake up, and start searching for someone who might just share your flavor of weird.</p>
         <p data-fade style={P}>You would think it gets easier—that technology was meant to help the stars align and show us the idea at the tip of our tongue, or deliver us the role that doesn&apos;t exist yet, or the investor who gets it.</p>
-        <p data-fade style={P}>For most of computing history, there was no system elastic enough to hold that kind of ambiguity in our careers. It makes sense. The next opportunity ahead is often illegible to ourselves—until it arrives as the email we&apos;ve been waiting for.</p>
+        <p data-fade style={P}>For most of computing history, there was no system elastic enough to hold that kind of ambiguity in our personal and professional growth. Telepathy with computers was still out of reach.</p>
       </div>
 
       <div style={{ ...WRAP, padding: '4rem 2rem 1rem' }}>
@@ -908,10 +885,7 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
       </div>
 
       <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
-        <p data-fade style={P}>It starts with the center of how we make sense of things: the brain.</p>
-        <p data-fade style={P}>The brain runs two parallel systems: one habitual, one intentional.</p>
-        <p data-fade style={P}>The habitual is the reactive side. It&apos;s what hits snooze at 8:10, 8:19, and 8:28am.</p>
-        <p data-fade style={P}>The intentional is the planning side. It&apos;s how we model the world and shape how we react to it, like deciding whether this is the year you become a morning person. This is where all our long game thoughts live. They&apos;re context-sensitive and continuously recalibrating to our desired outcomes like moving to a new country, falling in love, or getting a job.</p>
+        <p data-fade style={P}>The thing is, computers are good at seeing what&apos;s already taken form. But human experience begins before inputs and outputs. As Edmund Husserl describes, consciousness is always oriented toward something, often before we know what the what is. It&apos;s like how the next opportunity ahead is often illegible to ourselves—until it arrives as the email we&apos;ve been waiting for.</p>
         <p data-fade style={P}>As anyone who&apos;s ever looked for a new job knows, having the intent to switch jobs is easy. Expressing it in a way that&apos;s legible to others and successful in actually getting it is a different story.</p>
         <p data-fade style={P}>Of course, we try. We build and inhabit semantic structures together to achieve our goals. Or, we use our words.</p>
       </div>
@@ -919,10 +893,10 @@ Evaluating opportunities — Evaluated 25 candidate(s) - 11.59s`}
         <p style={{ fontFamily: SANS, fontWeight: 700, fontSize: 'clamp(1rem,2vw,1.5rem)', color: '#1e1c19', lineHeight: 1.4, letterSpacing: '-0.01em', margin: '0 auto' }}>
           &ldquo;When we say that meanings materialize, we mean that sensemaking is, importantly, an issue of language, talk, and communication. Situations, organizations, and environments are talked into existence.&rdquo;
         </p>
-        <div style={{ fontFamily: "'Public Sans', system-ui, sans-serif", fontSize: '0.82rem', letterSpacing: '0.03em', color: '#888', margin: '0.75rem 0 0', lineHeight: 1.7, whiteSpace: 'nowrap' }}>Understanding Context: Environment, Language, and Information Architecture (2014) — Andrew Hinton</div>
+        <div style={{ fontFamily: "'Public Sans', system-ui, sans-serif", fontSize: '0.82rem', letterSpacing: '0.03em', color: '#888', margin: '0.75rem 0 0', lineHeight: 1.7, whiteSpace: 'nowrap' }}>Andrew Hinton, Understanding Context: Environment, Language, and Information Architecture (2014)</div>
       </div>
       <div style={{ ...WRAP, padding: '1rem 2rem 1rem' }}>
-        <p data-fade style={P}>Over time, tools expanded the scope of opportunity. From telegraphs to telephones, command line interfaces (CLI) to graphic user interfaces (GUI), oh my! Now language could travel. But there was always a caveat:</p>
+        <p data-fade style={P}>Over time, tools expanded the scope of opportunity. From telegraphs and telephones in the 1800s, to command line interfaces and graphic user interfaces in the 1900s, oh my! Now language could travel. But there was always a caveat:</p>
         <p data-fade style={P}>Computers did not operate on raw human intent, only its translation.</p>
         <p data-fade style={P}>In the command line era, this translation was explicit and exacting, forcing the user to clearly specify their intent in symbolic form. This is hard work that most of us don&apos;t have energy for.</p>
       </div>
