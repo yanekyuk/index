@@ -29,11 +29,11 @@ jobs:
       - name: Install dependencies
         run: |
           bun install
-          cd protocol && bun install
+          cd backend && bun install
 
       - name: Check architectural boundaries
         run: |
-          cd protocol
+          cd backend
           bunx eslint src/ --format json 2>/dev/null | bun -e '
             const results = JSON.parse(await Bun.stdin.text());
             const violations = results
