@@ -608,7 +608,7 @@ function LandingPage() {
                   Why we built this
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/40">
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                      <path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M1 5H9M9 5L6 2M9 5L6 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </span>
                 </span>
@@ -683,7 +683,7 @@ function LandingPage() {
                 className="hidden sm:inline text-[13px] text-[#999] hover:text-black transition-colors no-underline pb-1 border-b border-[#E5E5E5] hover:border-black"
                 style={{ fontFamily: "'Public Sans', system-ui, sans-serif" }}
               >
-                All letters →
+                <span className="flex items-center gap-2">All letters <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 5H9M9 5L6 2M9 5L6 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
               </Link>
             </div>
 
@@ -715,7 +715,7 @@ function LandingPage() {
                   </p>
                   <div className="flex items-center gap-2 text-[13px] text-black/40 group-hover:text-black transition-colors" style={{ fontFamily: "'Public Sans', system-ui, sans-serif" }}>
                     <span>Read</span>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 5H9M9 5L6 2M9 5L6 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
                 </div>
               </Link>
@@ -744,7 +744,7 @@ function LandingPage() {
                   </p>
                   <div className="flex items-center gap-2 text-[13px] text-black/40 group-hover:text-black transition-colors" style={{ fontFamily: "'Public Sans', system-ui, sans-serif" }}>
                     <span>Read</span>
-                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M2 8L8 2M8 2H3M8 2V7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 5H9M9 5L6 2M9 5L6 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
                 </div>
               </Link>
@@ -786,7 +786,7 @@ function LandingPage() {
                 rel="noopener noreferrer"
                 className="text-[#555] hover:text-black transition-colors font-sans text-[13px] uppercase tracking-wider"
               >
-                Contribute →
+                <span className="flex items-center gap-2">Contribute <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 5H9M9 5L6 2M9 5L6 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
               </a>
             </div>
           </div>
