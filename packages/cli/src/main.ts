@@ -26,7 +26,7 @@ import * as output from "./output";
 
 const DEFAULT_API_URL = "https://protocol.index.network";
 const DEFAULT_APP_URL = "https://index.network";
-const VERSION = "0.9.4";
+const VERSION = "0.9.5";
 
 const HELP_TEXT = `
 Index CLI v${VERSION}
