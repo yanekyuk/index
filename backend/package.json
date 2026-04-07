@@ -37,7 +37,7 @@
     "@bull-board/hono": "^6.15.0",
     "@composio/core": "^0.6.3",
     "@composio/langchain": "^0.6.3",
-    "@indexnetwork/protocol": "^0.3.2",
+    "@indexnetwork/protocol": "^0.3.3",
     "@langchain/core": "^1.1.17",
     "@langchain/langgraph": "^1.1.2",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
