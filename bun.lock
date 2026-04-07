@@ -14,7 +14,7 @@
     },
     "packages/cli": {
       "name": "@indexnetwork/cli",
-      "version": "0.9.4",
+      "version": "0.9.5",
       "bin": {
         "index": "bin/index.cjs",
       },
@@ -22,10 +22,10 @@
         "@types/bun": "latest",
       },
       "optionalDependencies": {
-        "@indexnetwork/cli-darwin-arm64": "0.9.4",
-        "@indexnetwork/cli-darwin-x64": "0.9.4",
-        "@indexnetwork/cli-linux-arm64": "0.9.4",
-        "@indexnetwork/cli-linux-x64": "0.9.4",
+        "@indexnetwork/cli-darwin-arm64": "0.9.5",
+        "@indexnetwork/cli-darwin-x64": "0.9.5",
+        "@indexnetwork/cli-linux-arm64": "0.9.5",
+        "@indexnetwork/cli-linux-x64": "0.9.5",
       },
     },
     "packages/protocol": {
@@ -51,13 +51,13 @@
 
     "@indexnetwork/cli": ["@indexnetwork/cli@workspace:packages/cli"],
 
-    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.9.4", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-YtZQmw12bBZ2RCXYmhFYC2vpnCctQwvHnnbOrUEum/X+24JYfvhiz/FDIoqxMhVOvqNp+rlgIddnvGA8nYXCzQ=="],
+    "@indexnetwork/cli-darwin-arm64": ["@indexnetwork/cli-darwin-arm64@0.9.5", "", { "os": "darwin", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-gDJY/TV+dAqHEXcLppice/gmnHC43NGaK8odQQcuavQlFti9GvIqDXJi0/u2pK/mFYnxWM3DYxrBZR03d0Sv3Q=="],
 
-    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.9.4", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-bnwMg0VewtnBh6u381JUhT+agTiiwdFYW7fgz94rWRphHvo00h+06+mNLyTfyPFWigUMl+8+ccW63GI3PitSrQ=="],
+    "@indexnetwork/cli-darwin-x64": ["@indexnetwork/cli-darwin-x64@0.9.5", "", { "os": "darwin", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-HkTnhjy91lLqrauULLRBTQyui0PMViazz0jbGslrHiDHB/elYSlq3E12qaJQwqp6MQEGrPfIXZ7mn/o+lpsAdw=="],
 
-    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.9.4", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-mVBEFKIlB7XIW340Yunu0RT7/DTTZm3T9Wj9Qhp0Q5BRujmWBHixSU/ECla3NM/0vPpgPAP5bvahcZD/LMCEyQ=="],
+    "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.9.5", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-7/j8BIXsPKd+uM3pC+Th8brmPICRQZKhZxduvwEJ6B9iQF060PjkFwCf85EWmybKajK+AZlPvz7sCiOza2kH6w=="],
 
-    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.9.4", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-p6V9hvdwCHsd9EnEMUc8R0QJdfIH7VEM59GVBplDhP5wYZ+Cf5f73sfa+AsdPVIeUVsAOmw5TeGDrYXKcewRQQ=="],
+    "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.9.5", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-cpj1aLqNMgmzHrH1IZ33oHx8bhRap10NXMdE5BecxmfLsmFjZ4La1JCd+QgFXPk+2euXVwFq31FGFaXOP+5jIQ=="],
 
     "@indexnetwork/protocol": ["@indexnetwork/protocol@workspace:packages/protocol"],
 
