@@ -159,7 +159,8 @@ export function wordWrap(text: string, maxWidth: number): string[] {
 
 /** Render a confidence percentage as a small bar. */
 export function confidenceBar(confidence: number): string {
-  const pct = Math.round(confidence);
+  const normalized = confidence <= 1 ? confidence * 100 : confidence;
+  const pct = Math.round(normalized);
   const filled = Math.round(pct / 10);
   const empty = 10 - filled;
   return `${GREEN}${"#".repeat(filled)}${GRAY}${"-".repeat(empty)}${RESET} ${GRAY}${pct}%`;

@@ -20,7 +20,7 @@ export async function handleScrape(
 ): Promise<void> {
   const url = positionals[0];
   if (!url) { output.error("Usage: index scrape <url> [--objective <text>]", 1); return; }
-  output.info(`Scraping ${url}...`);
+  if (!options.json) output.info(`Scraping ${url}...`);
   const result = await client.callTool("scrape_url", { url, objective: options.objective });
   if (options.json) { console.log(JSON.stringify(result)); return; }
   if (!result.success) { output.error(result.error ?? "Scrape failed", 1); return; }

@@ -105,4 +105,14 @@ describe("main package.json", () => {
     expect(files).toContain("bin/");
     expect(files).toContain("dist/");
   });
+
+  it("keeps the CLI runtime version in sync with package.json", async () => {
+    const pkgPath = join(CLI_ROOT, "package.json");
+    const mainTsPath = join(CLI_ROOT, "src", "main.ts");
+    const raw = await readFile(pkgPath, "utf-8");
+    const mainTs = await readFile(mainTsPath, "utf-8");
+    const pkg = JSON.parse(raw) as { version: string };
+
+    expect(mainTs).toContain(`const VERSION = "${pkg.version}"`);
+  });
 });

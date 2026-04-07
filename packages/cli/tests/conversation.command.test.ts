@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
 import { handleConversation, renderSSEStream } from "../src/conversation.command";
+import { createMockServer, createMockSSEServer } from "./helpers/mock-http";
 
 // ── Argument parsing tests ────────────────────────────────────────
 
@@ -62,47 +63,19 @@ describe("parseArgs — conversation command", () => {
   });
 });
 
-// ── Mock server helper ────────────────────────────────────────────
-
-function createMockServer() {
-  const handlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
-
-  const server = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url);
-      const key = `${req.method} ${url.pathname}`;
-      const handler = handlers[key];
-      if (handler) return handler(req);
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-
-  return {
-    server,
-    url: `http://localhost:${server.port}`,
-    on(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
-      handlers[`${method} ${path}`] = handler;
-    },
-    stop() {
-      server.stop(true);
-    },
-  };
-}
-
 // ── API client conversation methods ───────────────────────────────
 
 describe("ApiClient — conversation methods", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(() => {
-    mock = createMockServer();
+  beforeAll(async () => {
+    mock = await createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(() => {
-    mock.stop();
+  afterAll(async () => {
+    await mock.stop();
   });
 
   it("listConversations returns conversations array", async () => {
@@ -181,13 +154,13 @@ describe("handleConversation", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(() => {
-    mock = createMockServer();
+  beforeAll(async () => {
+    mock = await createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(() => {
-    mock.stop();
+  afterAll(async () => {
+    await mock.stop();
   });
 
   it("lists conversations", async () => {
@@ -258,40 +231,6 @@ describe("handleConversation", () => {
 
 // ── renderSSEStream tests ────────────────────────────────────────
 
-/**
- * Creates a mock SSE server that emits the given raw SSE event strings.
- * The server format matches the protocol's formatSSEEvent: `data: {JSON}\n\n`.
- */
-function createMockSSEServer(events: string[]) {
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      const url = new URL(req.url);
-      if (req.method === "POST" && url.pathname === "/api/chat/stream") {
-        const encoder = new TextEncoder();
-        const stream = new ReadableStream({
-          start(controller) {
-            for (const event of events) {
-              controller.enqueue(encoder.encode(event));
-            }
-            controller.close();
-          },
-        });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "X-Session-Id": "test-session-id",
-          },
-        });
-      }
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-
-  return server;
-}
-
 /** Helper to build a `data: {JSON}\n\n` SSE event string. */
 function sseEvent(payload: Record<string, unknown>): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
@@ -306,9 +245,9 @@ describe("renderSSEStream", () => {
       sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "Hello world!", title: "Test" }),
     ];
 
-    const server = createMockSSEServer(events);
+    const server = await createMockSSEServer(events);
     try {
-      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+      const response = await fetch(`${server.url}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "hi" }),
@@ -321,7 +260,7 @@ describe("renderSSEStream", () => {
       expect(result.sessionId).toBe("s1");
       expect(result.title).toBe("Test");
     } finally {
-      server.stop(true);
+      await server.stop();
     }
   });
 
@@ -330,9 +269,9 @@ describe("renderSSEStream", () => {
       sseEvent({ type: "done", sessionId: "abc-123", timestamp: "t", response: "Hi", title: "Chat" }),
     ];
 
-    const server = createMockSSEServer(events);
+    const server = await createMockSSEServer(events);
     try {
-      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+      const response = await fetch(`${server.url}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "hi" }),
@@ -341,7 +280,7 @@ describe("renderSSEStream", () => {
       const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.sessionId).toBe("abc-123");
     } finally {
-      server.stop(true);
+      await server.stop();
     }
   });
 
@@ -350,9 +289,9 @@ describe("renderSSEStream", () => {
       sseEvent({ type: "error", sessionId: "s1", timestamp: "t", message: "Something went wrong", code: "STREAM_ERROR" }),
     ];
 
-    const server = createMockSSEServer(events);
+    const server = await createMockSSEServer(events);
     try {
-      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+      const response = await fetch(`${server.url}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "hi" }),
@@ -361,7 +300,7 @@ describe("renderSSEStream", () => {
       const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.error).toBe("Something went wrong");
     } finally {
-      server.stop(true);
+      await server.stop();
     }
   });
 
@@ -373,9 +312,9 @@ describe("renderSSEStream", () => {
       sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "result" }),
     ];
 
-    const server = createMockSSEServer(events);
+    const server = await createMockSSEServer(events);
     try {
-      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+      const response = await fetch(`${server.url}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "hi" }),
@@ -395,7 +334,7 @@ describe("renderSSEStream", () => {
       expect(statuses.length).toBeGreaterThan(0);
       expect(statuses.some((s) => s.includes("Searching"))).toBe(true);
     } finally {
-      server.stop(true);
+      await server.stop();
     }
   });
 
@@ -407,9 +346,9 @@ describe("renderSSEStream", () => {
       sseEvent({ type: "done", sessionId: "s1", timestamp: "t", response: "correct answer" }),
     ];
 
-    const server = createMockSSEServer(events);
+    const server = await createMockSSEServer(events);
     try {
-      const response = await fetch(`http://localhost:${server.port}/api/chat/stream`, {
+      const response = await fetch(`${server.url}/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: "hi" }),
@@ -418,7 +357,7 @@ describe("renderSSEStream", () => {
       const result = await renderSSEStream(response, { onToken: () => {} });
       expect(result.response).toBe("correct answer");
     } finally {
-      server.stop(true);
+      await server.stop();
     }
   });
 });

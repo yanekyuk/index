@@ -1,45 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 
 import { ApiClient } from "../src/api.client";
-
-/** Minimal mock server for API client tests. */
-function createMockServer() {
-  const handlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
-
-  const server = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url);
-      const key = `${req.method} ${url.pathname}`;
-      const handler = handlers[key];
-      if (handler) return handler(req);
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-
-  return {
-    server,
-    url: `http://localhost:${server.port}`,
-    on(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
-      handlers[`${method} ${path}`] = handler;
-    },
-    stop() {
-      server.stop(true);
-    },
-  };
-}
+import { createMockServer } from "./helpers/mock-http";
 
 describe("ApiClient", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(() => {
-    mock = createMockServer();
+  beforeAll(async () => {
+    mock = await createMockServer();
     client = new ApiClient(mock.url, "test-token-123");
   });
 
-  afterAll(() => {
-    mock.stop();
+  afterAll(async () => {
+    await mock.stop();
   });
 
   describe("listSessions", () => {

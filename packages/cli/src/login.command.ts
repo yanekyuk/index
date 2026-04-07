@@ -14,6 +14,17 @@ export interface LoginOptions {
   signal?: AbortSignal;
   /** Timeout in milliseconds for the callback server. Defaults to 120_000 (2 min). */
   timeoutMs?: number;
+  /** Override the callback server factory for tests. */
+  serverFactory?: (handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>) => CallbackServer;
+  /** Host to bind the callback server to. Defaults to 127.0.0.1. */
+  callbackHost?: string;
+}
+
+interface CallbackServer {
+  listen(port: number, host: string, callback: () => void): void;
+  address(): ReturnType<Server["address"]>;
+  close(callback: (err?: Error | null) => void): void;
+  closeAllConnections(): void;
 }
 
 /** Return value from handleLogin — gives the caller the auth URL and a promise. */
@@ -31,7 +42,7 @@ export interface LoginHandle {
  *
  * @param server - The HTTP server to close.
  */
-function closeServer(server: Server): Promise<void> {
+function closeServer(server: CallbackServer): Promise<void> {
   return new Promise<void>((resolve) => {
     server.close(() => resolve());
     // Force-close any lingering keep-alive connections
@@ -63,6 +74,7 @@ export async function handleLogin(
   const timeoutMs = options.timeoutMs ?? 120_000;
   const baseUrl = apiUrl.replace(/\/$/, "");
   const baseAppUrl = appUrl.replace(/\/$/, "");
+  const callbackHost = options.callbackHost ?? "127.0.0.1";
 
   let resolveCallback: (result: LoginResult) => void;
   const callbackPromise = new Promise<LoginResult>((resolve) => {
@@ -70,7 +82,7 @@ export async function handleLogin(
   });
 
   // Start local callback server on ephemeral port using node:http
-  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  const server = (options.serverFactory ?? createServer)(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", `http://localhost`);
 
     if (url.pathname === "/callback") {
@@ -101,12 +113,12 @@ export async function handleLogin(
 
   // Listen on port 0 for ephemeral port assignment
   await new Promise<void>((resolve) => {
-    server.listen(0, () => resolve());
+    server.listen(0, callbackHost, () => resolve());
   });
 
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
-  const callbackUrl = `http://localhost:${port}/callback`;
+  const callbackUrl = `http://${callbackHost}:${port}/callback`;
 
   // Construct the auth URL
   // Default: session exchange page that converts existing browser session to CLI token

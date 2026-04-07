@@ -170,6 +170,24 @@ describe("intentCard", () => {
     expect(output).toContain("Startup Network");
     expect(output).toContain("0.92");
   });
+
+  it("normalizes 0-1 confidence values to percentages", () => {
+    const output = captureLogs(() => {
+      intentCard({
+        id: "i2",
+        payload: "Find design partners",
+        summary: "Partner search",
+        status: "ACTIVE",
+        confidence: 0.72,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-02T00:00:00Z",
+        archivedAt: null,
+      } as Intent);
+    });
+
+    expect(output).toContain("72%");
+    expect(output).not.toContain("1%");
+  });
 });
 
 // ── opportunityTable ────────────────────────────────────────────────
@@ -266,6 +284,25 @@ describe("opportunityCard", () => {
     expect(output).toContain("Bob");
     expect(output).toContain("Both are looking for cofounders");
     expect(output).toContain("You and Bob should connect!");
+  });
+
+  it("normalizes 0-1 confidence values to percentages", () => {
+    const output = captureLogs(() => {
+      opportunityCard({
+        id: "o2",
+        status: "pending",
+        counterpartName: "Bob",
+        interpretation: {
+          category: "collaboration",
+          confidence: 0.72,
+          reasoning: "Strong overlap",
+        },
+        createdAt: "2026-01-01T00:00:00Z",
+      } as Opportunity);
+    });
+
+    expect(output).toContain("72%");
+    expect(output).not.toContain("1%");
   });
 });
 

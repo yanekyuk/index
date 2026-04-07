@@ -18,6 +18,7 @@ import { handleNetwork } from "../src/network.command";
 import { handleContact } from "../src/contact.command";
 import { handleScrape } from "../src/scrape.command";
 import { handleSync } from "../src/sync.command";
+import { createMockServer as createBaseMockServer } from "./helpers/mock-http";
 
 // ── Mock server ──────────────────────────────────────────────────────
 
@@ -30,34 +31,16 @@ function createMockServer() {
   const toolCalls: ToolCall[] = [];
   const toolResponses: Record<string, Record<string, unknown>> = {};
   const restHandlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
-
-  const server = Bun.serve({
-    port: 0,
-    async fetch(req) {
-      const url = new URL(req.url);
-
-      // Tool HTTP API
-      const toolMatch = url.pathname.match(/^\/api\/tools\/(.+)$/);
-      if (toolMatch && req.method === "POST") {
-        const toolName = toolMatch[1];
-        const body = (await req.json()) as { query?: Record<string, unknown> };
-        toolCalls.push({ toolName, query: body.query ?? {} });
-        const response = toolResponses[toolName] ?? { success: true, data: {} };
-        return Response.json(response);
-      }
-
-      // REST endpoints
-      const key = `${req.method} ${url.pathname}`;
-      const handler = restHandlers[key];
-      if (handler) return handler(req);
-
-      return Response.json({ error: "Not Found" }, { status: 404 });
-    },
+  const server = createBaseMockServer();
+  server.onPattern("POST", /^\/api\/tools\/(.+)$/, async (req, match) => {
+    const toolName = match[1];
+    const parsedBody = (await req.json()) as { query?: Record<string, unknown> };
+    toolCalls.push({ toolName, query: parsedBody.query ?? {} });
+    return Response.json(toolResponses[toolName] ?? { success: true, data: {} });
   });
 
   return {
-    server,
-    url: `http://localhost:${server.port}`,
+    url: server.url,
     toolCalls,
     /** Set a canned response for a tool name. */
     setToolResponse(toolName: string, response: Record<string, unknown>) {
@@ -66,12 +49,13 @@ function createMockServer() {
     /** Register a REST handler for non-tool endpoints. */
     onRest(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
       restHandlers[`${method} ${path}`] = handler;
+      server.on(method, path, handler);
     },
     reset() {
       toolCalls.length = 0;
     },
     stop() {
-      server.stop(true);
+      server.stop();
     },
   };
 }
@@ -223,7 +207,7 @@ describe("CLI tool call contracts", () => {
       });
     });
 
-    it("link calls create_intent_index with intentId and indexId", async () => {
+    it("link calls create_intent_index with intentId and networkId", async () => {
       mock.setToolResponse("create_intent_index", { success: true, data: {} });
 
       await handleIntent(client, "link", {
@@ -236,11 +220,11 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].toolName).toBe("create_intent_index");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
-        indexId: "index-456",
+        networkId: "index-456",
       });
     });
 
-    it("unlink calls delete_intent_index with intentId and indexId", async () => {
+    it("unlink calls delete_intent_index with intentId and networkId", async () => {
       mock.setToolResponse("delete_intent_index", { success: true, data: {} });
 
       await handleIntent(client, "unlink", {
@@ -253,7 +237,7 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls[0].toolName).toBe("delete_intent_index");
       expect(mock.toolCalls[0].query).toEqual({
         intentId: "intent-123",
-        indexId: "index-456",
+        networkId: "index-456",
       });
     });
 
@@ -330,7 +314,7 @@ describe("CLI tool call contracts", () => {
       mock.setToolResponse("read_index_memberships", {
         success: true,
         data: {
-          memberships: [{ indexId: "shared-index-1", indexTitle: "AI Network" }],
+          memberships: [{ networkId: "shared-index-1", indexTitle: "AI Network" }],
         },
       });
       mock.setToolResponse("read_user_profiles", {
@@ -366,20 +350,20 @@ describe("CLI tool call contracts", () => {
       expect(createCall.query.entities).toBeArray();
       expect(createCall.query.hint).toBe("both working on privacy ML");
 
-      const entities = createCall.query.entities as Array<{ userId: string; indexId: string; profile?: unknown; intents?: unknown }>;
+      const entities = createCall.query.entities as Array<{ userId: string; networkId: string; profile?: unknown; intents?: unknown }>;
       expect(entities).toHaveLength(2);
       expect(entities[0].userId).toBe("user-a");
-      expect(entities[0].indexId).toBe("shared-index-1");
+      expect(entities[0].networkId).toBe("shared-index-1");
       expect(entities[0].profile).toBeDefined();
       expect(entities[0].intents).toBeArray();
       expect(entities[1].userId).toBe("user-b");
-      expect(entities[1].indexId).toBe("shared-index-1");
+      expect(entities[1].networkId).toBe("shared-index-1");
     });
 
     it("discover --introduce without hint omits hint field", async () => {
       mock.setToolResponse("read_index_memberships", {
         success: true,
-        data: { memberships: [{ indexId: "idx-1" }] },
+        data: { memberships: [{ networkId: "idx-1" }] },
       });
       mock.setToolResponse("read_user_profiles", { success: true, data: { profile: { name: "X" } } });
       mock.setToolResponse("read_intents", { success: true, data: { intents: [] } });
@@ -457,7 +441,7 @@ describe("CLI tool call contracts", () => {
   // ── Network ──────────────────────────────────────────────────────
 
   describe("network", () => {
-    it("update calls update_index with indexId and settings", async () => {
+    it("update calls update_index with networkId and settings", async () => {
       mock.setToolResponse("update_index", { success: true, data: {} });
 
       await handleNetwork(client, "update", ["index-123"], {
@@ -468,19 +452,19 @@ describe("CLI tool call contracts", () => {
       expect(mock.toolCalls).toHaveLength(1);
       expect(mock.toolCalls[0].toolName).toBe("update_index");
       expect(mock.toolCalls[0].query).toEqual({
-        indexId: "index-123",
+        networkId: "index-123",
         settings: { title: "New Name", prompt: "Updated description" },
       });
     });
 
-    it("delete calls delete_index with indexId", async () => {
+    it("delete calls delete_index with networkId", async () => {
       mock.setToolResponse("delete_index", { success: true, data: {} });
 
       await handleNetwork(client, "delete", ["index-456"], {});
 
       expect(mock.toolCalls).toHaveLength(1);
       expect(mock.toolCalls[0].toolName).toBe("delete_index");
-      expect(mock.toolCalls[0].query).toEqual({ indexId: "index-456" });
+      expect(mock.toolCalls[0].query).toEqual({ networkId: "index-456" });
     });
   });
 

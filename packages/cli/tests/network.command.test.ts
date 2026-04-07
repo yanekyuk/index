@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
 import { handleNetwork } from "../src/network.command";
+import { createMockServer } from "./helpers/mock-http";
 
 describe("parseArgs — network command", () => {
   it("parses 'network' with no subcommand as network-help", () => {
@@ -70,44 +71,17 @@ describe("parseArgs — network command", () => {
 
 // ── handleNetwork integration tests ────────────────────────────────
 
-/** Minimal mock server for network command tests. */
-function createMockServer() {
-  const handlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
-
-  const server = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url);
-      const key = `${req.method} ${url.pathname}`;
-      const handler = handlers[key];
-      if (handler) return handler(req);
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-
-  return {
-    server,
-    url: `http://localhost:${server.port}`,
-    on(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
-      handlers[`${method} ${path}`] = handler;
-    },
-    stop() {
-      server.stop(true);
-    },
-  };
-}
-
 describe("handleNetwork", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(() => {
-    mock = createMockServer();
+  beforeAll(async () => {
+    mock = await createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(() => {
-    mock.stop();
+  afterAll(async () => {
+    await mock.stop();
   });
 
   it("lists networks, filtering out personal indexes", async () => {

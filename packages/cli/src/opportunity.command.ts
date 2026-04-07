@@ -181,7 +181,7 @@ async function discoverIntroduction(
   hint?: string,
   json?: boolean,
 ): Promise<void> {
-  output.info("Gathering data for introduction...");
+  if (!json) output.info("Gathering data for introduction...");
 
   // Step 1: Find shared indexes between the two users
   const [membershipsA, membershipsB] = await Promise.all([
@@ -209,7 +209,7 @@ async function discoverIntroduction(
   }
 
   const sharedNetworkId = shared[0].networkId;
-  output.dim(`  Found shared network: ${sharedNetworkId}`);
+  if (!json) output.dim(`  Found shared network: ${sharedNetworkId}`);
 
   // Step 2: Gather profiles and intents in parallel
   const [profileA, profileB, intentsA, intentsB] = await Promise.all([
@@ -218,6 +218,19 @@ async function discoverIntroduction(
     client.callTool("read_intents", { userId: userA, networkId: sharedNetworkId }),
     client.callTool("read_intents", { userId: userB, networkId: sharedNetworkId }),
   ]);
+
+  const gatherError =
+    profileA.error ??
+    profileB.error ??
+    intentsA.error ??
+    intentsB.error;
+
+  if (!profileA.success || !profileB.success || !intentsA.success || !intentsB.success) {
+    const err = gatherError ?? "Failed to gather profiles and intents for introduction.";
+    if (json) { console.log(JSON.stringify({ success: false, error: err })); return; }
+    output.error(err, 1);
+    return;
+  }
 
   const extractProfile = (result: { success: boolean; data?: Record<string, unknown> }) => {
     if (!result.success || !result.data) return undefined;
@@ -241,7 +254,7 @@ async function discoverIntroduction(
     { userId: userB, profile: extractProfile(profileB), intents: extractIntents(intentsB), networkId: sharedNetworkId },
   ];
 
-  output.dim("  Profiles and intents gathered. Creating introduction...");
+  if (!json) output.dim("  Profiles and intents gathered. Creating introduction...");
 
   // Step 3: Call create_opportunities with full entity data
   const result = await client.callTool("create_opportunities", {

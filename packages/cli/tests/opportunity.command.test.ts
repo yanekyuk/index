@@ -2,8 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test"
 
 import { parseArgs } from "../src/args.parser";
 import { ApiClient } from "../src/api.client";
+import { handleOpportunity } from "../src/opportunity.command";
 import * as output from "../src/output";
 import type { Opportunity } from "../src/api.client";
+import { createMockServer } from "./helpers/mock-http";
 
 describe("opportunity argument parsing", () => {
   it("parses 'opportunity list' subcommand", () => {
@@ -78,45 +80,17 @@ describe("opportunity argument parsing", () => {
 
 // ── API client tests ──────────────────────────────────────────────
 
-/** Minimal mock server for opportunity API tests. */
-function createMockServer() {
-  const handlers: Record<string, (req: Request) => Response | Promise<Response>> = {};
-
-  const server = Bun.serve({
-    port: 0,
-    fetch(req) {
-      const url = new URL(req.url);
-      // Match method + pathname (strip query params for matching)
-      const key = `${req.method} ${url.pathname}`;
-      const handler = handlers[key];
-      if (handler) return handler(req);
-      return new Response("Not Found", { status: 404 });
-    },
-  });
-
-  return {
-    server,
-    url: `http://localhost:${server.port}`,
-    on(method: string, path: string, handler: (req: Request) => Response | Promise<Response>) {
-      handlers[`${method} ${path}`] = handler;
-    },
-    stop() {
-      server.stop(true);
-    },
-  };
-}
-
 describe("opportunity API client", () => {
   let mock: ReturnType<typeof createMockServer>;
   let client: ApiClient;
 
-  beforeAll(() => {
-    mock = createMockServer();
+  beforeAll(async () => {
+    mock = await createMockServer();
     client = new ApiClient(mock.url, "test-token");
   });
 
-  afterAll(() => {
-    mock.stop();
+  afterAll(async () => {
+    await mock.stop();
   });
 
   describe("listOpportunities", () => {
@@ -252,5 +226,152 @@ describe("opportunity output renderers", () => {
       output.opportunityCard(opportunity);
       expect(captured).toContain("Peer");
     });
+  });
+});
+
+describe("opportunity command behavior", () => {
+  it("fails fast when introduction profile or intent gathering fails", async () => {
+    const calls: string[] = [];
+    const client = {
+      async callTool(toolName: string) {
+        calls.push(toolName);
+
+        if (toolName === "read_index_memberships") {
+          return {
+            success: true,
+            data: { memberships: [{ networkId: "shared-network" }] },
+          };
+        }
+
+        if (toolName === "read_user_profiles") {
+          return {
+            success: false,
+            error: "profile lookup failed",
+          };
+        }
+
+        if (toolName === "read_intents") {
+          return {
+            success: true,
+            data: { intents: [] },
+          };
+        }
+
+        if (toolName === "create_opportunities") {
+          return {
+            success: true,
+            data: {},
+          };
+        }
+
+        return {
+          success: false,
+          error: `unexpected tool ${toolName}`,
+        };
+      },
+    } as unknown as ApiClient;
+
+    const logs: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await handleOpportunity(client, "discover", {
+        introduce: "user-a",
+        positionals: ["user-b"],
+        json: true,
+      });
+    } finally {
+      console.log = log;
+    }
+
+    expect(calls).not.toContain("create_opportunities");
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain("\"success\":false");
+    expect(logs[0]).toContain("profile lookup failed");
+  });
+
+  it("keeps --json output clean during introduction discovery", async () => {
+    const client = {
+      async callTool(toolName: string) {
+        if (toolName === "read_index_memberships") {
+          return {
+            success: true,
+            data: { memberships: [{ networkId: "shared-network" }] },
+          };
+        }
+
+        if (toolName === "read_user_profiles") {
+          return {
+            success: true,
+            data: { profile: { bio: "test" } },
+          };
+        }
+
+        if (toolName === "read_intents") {
+          return {
+            success: true,
+            data: { intents: [] },
+          };
+        }
+
+        return {
+          success: true,
+          data: { created: true },
+        };
+      },
+    } as unknown as ApiClient;
+
+    const logs: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await handleOpportunity(client, "discover", {
+        introduce: "user-a",
+        positionals: ["user-b"],
+        json: true,
+      });
+    } finally {
+      console.log = log;
+    }
+
+    expect(logs).toHaveLength(1);
+    expect(() => JSON.parse(logs[0])).not.toThrow();
+  });
+
+  it("keeps --json output clean for scrape", async () => {
+    const { handleScrape } = await import("../src/scrape.command");
+    const client = {
+      async callTool() {
+        return {
+          success: true,
+          data: {
+            url: "https://example.com",
+            contentLength: 4,
+            content: "test",
+          },
+        };
+      },
+    } as unknown as ApiClient;
+
+    const logs: string[] = [];
+    const log = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await handleScrape(client, ["https://example.com"], { json: true });
+    } finally {
+      console.log = log;
+    }
+
+    expect(logs).toHaveLength(1);
+    expect(() => JSON.parse(logs[0])).not.toThrow();
   });
 });
