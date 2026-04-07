@@ -6,6 +6,7 @@
 .claude/settings.local.json
 .codex
 .agent
+.claude/worktrees
 
 # ===================
 # Docker & Infrastructure
