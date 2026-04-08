@@ -1,5 +1,6 @@
-# Publish @indexnetwork/cli to npm on every push to main.
-# Builds native binaries for all platforms, then publishes.
+# Build @indexnetwork/cli on dev pushes.
+# Publish to npm only on pushes to main.
+# Builds native binaries for all platforms before publishing.
 # Skips if the version in package.json is already on npm.
 #
 # Requires: GitHub repo secret INDEX_REPO_TOKEN (npm automation token).
@@ -8,6 +9,7 @@ name: Publish
 on:
   push:
     branches:
+      - dev
       - main
 
 concurrency:
@@ -15,8 +17,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    if: github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    name: Build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
   # ── Check version ─────────────────────────────────────────────────────
   check:
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     name: Check if version needs publishing
     outputs:
@@ -40,7 +61,7 @@ jobs:
   # ── Build platform binaries ───────────────────────────────────────────
   build:
     needs: check
-    if: needs.check.outputs.skip == 'false'
+    if: github.ref_name == 'main' && needs.check.outputs.skip == 'false'
     strategy:
       fail-fast: true
       matrix:
@@ -90,7 +111,7 @@ jobs:
   # ── Publish all packages to npm ───────────────────────────────────────
   publish:
     needs: [check, build]
-    if: needs.check.outputs.skip == 'false'
+    if: github.ref_name == 'main' && needs.check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     name: Publish to npm
 

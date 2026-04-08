@@ -1,35 +1,57 @@
 #!/usr/bin/env bash
-# Syncs subtrees to their upstream repos when pushing dev to upstream.
+# Syncs subtrees to their upstream repos when pushing dev/main to indexnetwork/index.
 # Runs automatically — no manual subtree push needed.
 
 PLUGIN_REMOTE="https://github.com/indexnetwork/claude-plugin.git"
 PROTOCOL_REMOTE="https://github.com/indexnetwork/protocol.git"
 CLI_REMOTE="https://github.com/indexnetwork/cli.git"
 
+is_indexnetwork_remote() {
+  local remote_url="$1"
+
+  [[ "$remote_url" =~ ^git@github\.com:indexnetwork/index(\.git)?$ ]] ||
+    [[ "$remote_url" =~ ^https://github\.com/indexnetwork/index(\.git)?$ ]] ||
+    [[ "$remote_url" =~ ^ssh://git@github\.com/indexnetwork/index(\.git)?$ ]]
+}
+
 sync_subtree() {
   local prefix="$1"
   local remote="$2"
   local range="$3"
+  local target_branch="$4"
 
   # "$prefix/" (trailing slash) is intentional — git log treats it as a directory filter
   if ! git log --oneline "$range" -- "$prefix/" 2>/dev/null | grep -q .; then
     return
   fi
 
-  echo "[pre-push] $prefix/ changed — syncing to $remote..."
-  # Pushes to 'main' — all three subtree remotes use 'main' as their default branch
-  if git subtree push --prefix="$prefix" "$remote" main; then
+  echo "[pre-push] $prefix/ changed — syncing to $remote ($target_branch)..."
+  if git subtree push --prefix="$prefix" "$remote" "$target_branch"; then
     echo "[pre-push] ✓ synced to $remote"
   else
-    echo "[pre-push] ✗ sync failed — run manually: git subtree push --prefix=$prefix $remote main" >&2
+    echo "[pre-push] ✗ sync failed — run manually: git subtree push --prefix=$prefix $remote $target_branch" >&2
     # Warn but don't block the main push
   fi
 }
 
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
-  # Only sync on upstream pushes to dev
-  [[ "$1" != "upstream" ]] && continue
-  [[ "$remote_ref" != "refs/heads/dev" ]] && continue
+  remote_name="$1"
+  remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+
+  # Only sync when pushing to the canonical indexnetwork/index repository.
+  is_indexnetwork_remote "$remote_url" || continue
+
+  case "$remote_ref" in
+    refs/heads/dev)
+      target_branch="dev"
+      ;;
+    refs/heads/main)
+      target_branch="main"
+      ;;
+    *)
+      continue
+      ;;
+  esac
 
   # Determine commit range
   if [[ "$remote_sha" == "0000000000000000000000000000000000000000" ]]; then
@@ -38,9 +60,9 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
     range="${remote_sha}..${local_sha}"
   fi
 
-  sync_subtree "packages/claude-plugin" "$PLUGIN_REMOTE" "$range"
-  sync_subtree "packages/protocol" "$PROTOCOL_REMOTE" "$range"
-  sync_subtree "packages/cli" "$CLI_REMOTE" "$range"
+  sync_subtree "packages/claude-plugin" "$PLUGIN_REMOTE" "$range" "$target_branch"
+  sync_subtree "packages/protocol" "$PROTOCOL_REMOTE" "$range" "$target_branch"
+  sync_subtree "packages/cli" "$CLI_REMOTE" "$range" "$target_branch"
 done
 
 exit 0

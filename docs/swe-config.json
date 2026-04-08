@@ -60,7 +60,7 @@
     "delivery": [
       "Conventional commits (feat/fix/refactor/test/docs/chore) and conventional branch names (type/short-description)",
       "Two remotes: origin (fork) and upstream (main repo). Push worktree branches to origin, create PRs from origin into upstream/dev. After merging a PR into upstream/dev, pull from upstream and push to origin to keep both in sync.",
-      "When packages/cli/ changes are included in a PR, create a cli-v* tag after merge to trigger the npm publish workflow"
+      "For npm-published subtree packages (`packages/cli/`, `packages/protocol/`), bump the package version before promoting to main. Subtree dev pushes only validate builds; subtree main pushes publish when the version is not already on npm."
     ],
     "triage": [
       "Always use worktrees for feature and fix branches — keep dev stable",

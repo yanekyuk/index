@@ -67,6 +67,12 @@ A publish script (`packages/cli/scripts/publish.ts`) automates the release:
 
 Platform packages must be published first so they exist in the registry when users install the main package.
 
+CI behavior:
+
+1. Pushes to `dev` run a build-only validation.
+2. Pushes to `main` run the publish workflow.
+3. The publish job skips when the version in `package.json` is already on npm.
+
 ## Constraints
 
 - Zero runtime dependencies for end users. The binary is self-contained.

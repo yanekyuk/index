@@ -82,26 +82,29 @@ bun run dev                                 # Watch mode
 npm publish --access public                 # Publish (requires NPM login + OTP, or use CI)
 
 # Publishing via CI (preferred):
-git tag protocol-vX.Y.Z
-git push upstream protocol-vX.Y.Z
+# push dev for build validation only
+git push <indexnetwork-remote> dev
+
+# push main to publish if the version is new
+git push <indexnetwork-remote> main
 ```
 
 > **Subtree:** `packages/protocol/` mirrors `indexnetwork/protocol`. Edit via this monorepo; see `### Subtrees` for sync commands.
 
 ### Subtrees
 
-The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` to `upstream`.
+The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` or `main` to the canonical `indexnetwork/index` repo, regardless of whether that remote is named `origin`, `upstream`, or something else. Subtree branches stay aligned with the monorepo branch (`dev` -> `dev`, `main` -> `main`).
 
 #### packages/claude-plugin/ → indexnetwork/claude-plugin
 
 Contains **skills only** (markdown files) — no code, no build step. Checked in as regular files — no special init needed after cloning.
 
 ```bash
-# Manual push if the hook failed
-git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+# Manual push if the hook failed (use dev or main)
+git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 
 # Pull if upstream was edited directly (avoid — always edit via this repo)
-git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
 #### packages/protocol/ → indexnetwork/protocol
@@ -109,11 +112,11 @@ git subtree pull --squash --prefix=packages/claude-plugin https://github.com/ind
 The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
 
 ```bash
-# Manual push if the hook failed
-git subtree push --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+# Manual push if the hook failed (use dev or main)
+git subtree push --prefix=packages/protocol https://github.com/indexnetwork/protocol.git <branch>
 
 # Pull if external repo was edited directly
-git subtree pull --squash --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+git subtree pull --squash --prefix=packages/protocol https://github.com/indexnetwork/protocol.git <branch>
 ```
 
 #### packages/cli/ → indexnetwork/cli
@@ -121,11 +124,11 @@ git subtree pull --squash --prefix=packages/protocol https://github.com/indexnet
 The `@indexnetwork/cli` npm package (CLI binary). Two-way: edit here or in the external repo.
 
 ```bash
-# Manual push if the hook failed
-git subtree push --prefix=packages/cli https://github.com/indexnetwork/cli.git main
+# Manual push if the hook failed (use dev or main)
+git subtree push --prefix=packages/cli https://github.com/indexnetwork/cli.git <branch>
 
 # Pull if external repo was edited directly
-git subtree pull --squash --prefix=packages/cli https://github.com/indexnetwork/cli.git main
+git subtree pull --squash --prefix=packages/cli https://github.com/indexnetwork/cli.git <branch>
 ```
 
 ### Root
@@ -380,7 +383,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`
-6. If the CLI package (`packages/cli/`) was updated: create a git tag (`cli-vX.Y.Z`) with release notes so the NPM package gets published
+6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its version before promoting to `main`. Subtree pushes to `dev` only validate builds; subtree pushes to `main` publish to npm when the version is not already published.
 7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow

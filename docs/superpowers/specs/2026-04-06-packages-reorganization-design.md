@@ -62,11 +62,11 @@ git branch -d temp/plugin-split
 
 After this, `packages/claude-plugin/` is the live subtree. Future manual operations:
 ```bash
-# Push to indexnetwork/claude-plugin (normally automatic via pre-push hook)
-git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+# Push to indexnetwork/claude-plugin (normally automatic via pre-push hook; use dev or main)
+git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 
 # Pull if upstream was edited directly (avoid — always edit via this repo)
-git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git <branch>
 ```
 
 ---
@@ -94,6 +94,11 @@ All occurrences of `working-directory: cli` → `working-directory: packages/cli
 Two changes:
 - Path check: `plugin/` → `packages/claude-plugin/`
 - Subtree push prefix: `--prefix=plugin` → `--prefix=packages/claude-plugin`
+
+Current behavior:
+- Detect pushes to the canonical `indexnetwork/index` repo by remote URL, not remote name
+- Mirror monorepo `dev` → subtree `dev`
+- Mirror monorepo `main` → subtree `main`
 
 ### `CLAUDE.md`
 - Monorepo structure diagram: move `cli/` under `packages/`, rename `plugin/` to `claude-plugin/` under `packages/`
