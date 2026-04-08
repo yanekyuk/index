@@ -22,17 +22,17 @@ export interface CreateApiKeyResponse {
 export const createApiKeysService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   /** Create a new API key with the given display name. */
   create: async (name: string): Promise<CreateApiKeyResponse> => {
-    return api.post<CreateApiKeyResponse>('/auth/api-key', { name });
+    return api.post<CreateApiKeyResponse>('/auth/api-key/create', { name });
   },
 
   /** List all API keys for the current user. */
   list: async (): Promise<ApiKeyInfo[]> => {
-    const response = await api.get<ApiKeyInfo[]>('/auth/api-keys');
+    const response = await api.get<ApiKeyInfo[]>('/auth/api-key/list');
     return response;
   },
 
   /** Permanently revoke an API key by ID. */
   revoke: async (id: string): Promise<void> => {
-    await api.delete<{ success: boolean }>(`/auth/api-key/${id}`);
+    await api.post<{ success: boolean }>('/auth/api-key/delete', { keyId: id });
   },
 });

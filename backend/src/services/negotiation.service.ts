@@ -29,7 +29,7 @@ export class NegotiationService {
     ]);
 
     const graph = createDefaultNegotiationGraph({
-      database: conversationDatabaseAdapter,
+      database: conversationDatabaseAdapter as Parameters<typeof createDefaultNegotiationGraph>[0]['database'],
       proposer: new NegotiationProposer(),
       responder: new NegotiationResponder(),
     });

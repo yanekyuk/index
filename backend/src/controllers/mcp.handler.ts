@@ -171,6 +171,11 @@ function getOrCreateMcpServer(): McpServer {
     contactService: deps.contactService,
     integrationImporter: deps.integrationImporter,
     enricher: deps.enricher,
+    negotiationDatabase: deps.negotiationDatabase,
+    webhook: deps.webhook,
+    webhookLookup: deps.webhookLookup,
+    negotiationEvents: deps.negotiationEvents,
+    negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
     graphs,
   };
 

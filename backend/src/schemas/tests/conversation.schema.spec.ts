@@ -1,5 +1,4 @@
-// @ts-ignore — loadEnvFile may not exist in older Bun/Node versions
-try { (await import('node:process')).loadEnvFile?.('.env.test'); } catch {}
+try { (await import('node:process')).loadEnvFile?.('.env.test'); } catch { /* loadEnvFile unavailable */ }
 
 import { describe, it, expect } from 'bun:test';
 import {
@@ -21,7 +20,7 @@ describe('conversation schema', () => {
     expect(participantTypeEnum.enumValues).toEqual(['user', 'agent']);
     expect(messageRoleEnum.enumValues).toEqual(['user', 'agent']);
     expect(taskStateEnum.enumValues).toEqual([
-      'submitted', 'working', 'input_required', 'completed', 'failed', 'canceled', 'rejected', 'auth_required',
+      'submitted', 'working', 'input_required', 'completed', 'failed', 'canceled', 'rejected', 'auth_required', 'waiting_for_external',
     ]);
   });
 });

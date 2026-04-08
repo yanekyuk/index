@@ -350,7 +350,7 @@ export class IntentDatabaseAdapter {
 
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let networkId: string | null = null;
+    let networkId: string | null;
 
     if (uuidRegex.test(indexNameOrId.trim())) {
       const membership = await db
@@ -844,7 +844,7 @@ export class ChatDatabaseAdapter {
 
   async getIntentsInIndexForMember(userId: string, indexNameOrId: string): Promise<ActiveIntentRow[]> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let networkId: string | null = null;
+    let networkId: string | null;
 
     if (uuidRegex.test(indexNameOrId.trim())) {
       const membership = await db
@@ -5893,6 +5893,114 @@ export class ConversationDatabaseAdapter {
       .orderBy(schema.artifacts.createdAt);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // NegotiationDatabase query methods (used by negotiation MCP tools)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Lists negotiation tasks where the given user is source or candidate.
+   * Matches sourceUserId or candidateUserId in task metadata JSON.
+   * @param userId - The user ID to filter by
+   * @param options - Optional state filter
+   * @returns Array of task records with metadata
+   */
+  async getTasksForUser(userId: string, options?: { state?: string }): Promise<Array<{
+    id: string;
+    conversationId: string;
+    state: string;
+    metadata: Record<string, unknown> | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }>> {
+    const conditions = [
+      sql`${schema.tasks.metadata}->>'type' = 'negotiation'`,
+      or(
+        sql`${schema.tasks.metadata}->>'sourceUserId' = ${userId}`,
+        sql`${schema.tasks.metadata}->>'candidateUserId' = ${userId}`,
+      ),
+    ];
+
+    if (options?.state) {
+      conditions.push(eq(schema.tasks.state, options.state as typeof schema.taskStateEnum.enumValues[number]));
+    }
+
+    const rows = await db
+      .select()
+      .from(schema.tasks)
+      .where(and(...conditions))
+      .orderBy(desc(schema.tasks.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      conversationId: r.conversationId,
+      state: r.state as string,
+      metadata: (r.metadata as Record<string, unknown> | null) ?? null,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+  }
+
+  /**
+   * Gets all messages for a conversation, ordered by creation time (ascending).
+   * Used by negotiation tools to reconstruct turn history.
+   * @param conversationId - The conversation to fetch messages for
+   * @returns Array of message records
+   */
+  async getMessagesForConversation(conversationId: string): Promise<Array<{
+    id: string;
+    senderId: string;
+    role: 'user' | 'agent';
+    parts: unknown[];
+    createdAt: Date;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.messages.id,
+        senderId: schema.messages.senderId,
+        role: schema.messages.role,
+        parts: schema.messages.parts,
+        createdAt: schema.messages.createdAt,
+      })
+      .from(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId))
+      .orderBy(asc(schema.messages.createdAt));
+
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts as unknown[]) ?? [],
+    }));
+  }
+
+  /**
+   * Gets artifacts for a task (e.g. negotiation outcome).
+   * Alias for getArtifacts with the interface name expected by NegotiationDatabase.
+   * @param taskId - The task to fetch artifacts for
+   * @returns Array of artifact records
+   */
+  async getArtifactsForTask(taskId: string): Promise<Array<{
+    id: string;
+    name: string | null;
+    parts: unknown[];
+    metadata: Record<string, unknown> | null;
+  }>> {
+    const rows = await db
+      .select({
+        id: schema.artifacts.id,
+        name: schema.artifacts.name,
+        parts: schema.artifacts.parts,
+        metadata: schema.artifacts.metadata,
+      })
+      .from(schema.artifacts)
+      .where(eq(schema.artifacts.taskId, taskId))
+      .orderBy(schema.artifacts.createdAt);
+
+    return rows.map((r) => ({
+      ...r,
+      parts: (r.parts as unknown[]) ?? [],
+      metadata: (r.metadata as Record<string, unknown> | null) ?? null,
+    }));
+  }
+
   /**
    * Retrieves messages for multiple tasks in a single query.
    * @param taskIds - Task IDs to fetch messages for
@@ -6271,7 +6379,7 @@ export class ConversationDatabaseAdapter {
    * Get chat messages for a session, reconstructing the backward-compatible ChatMessage shape.
    */
   async getChatSessionMessages(sessionId: string, limit?: number): Promise<ChatMessage[]> {
-    let query = db.select()
+    const query = db.select()
       .from(schema.messages)
       .where(eq(schema.messages.conversationId, sessionId))
       .orderBy(asc(schema.messages.createdAt));

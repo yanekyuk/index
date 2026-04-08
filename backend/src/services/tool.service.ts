@@ -78,6 +78,7 @@ export class ToolService {
       contactService: this.contactService,
       integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
+      negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
       graphs,
     };
 
@@ -135,6 +136,7 @@ export class ToolService {
       contactService: this.contactService,
       integrationImporter: this.integrationImporter,
       enricher: { enrichUserProfile },
+      negotiationDatabase: conversationDatabaseAdapter as unknown as ToolDeps['negotiationDatabase'],
       graphs,
     };
 
@@ -171,7 +173,7 @@ export class ToolService {
       new HydeGenerator(),
     ).createGraph();
     const negotiationGraph = new NegotiationGraphFactory(
-      conversationDatabaseAdapter,
+      conversationDatabaseAdapter as unknown as ConstructorParameters<typeof NegotiationGraphFactory>[0],
       new NegotiationProposer(),
       new NegotiationResponder(),
       // webhookLookup, eventEmitter, timeoutQueue are not available in ToolService context

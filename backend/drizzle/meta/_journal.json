@@ -255,20 +255,25 @@
       "breakpoints": true
     },
     {
-      "idx": 35,
-      "version": "7",
-      "when": 1743724800000,
-      "tag": "0035_backfill_opportunity_jsonb",
-      "breakpoints": true
-    },
-    {
       "idx": 36,
       "version": "7",
       "when": 1744100000000,
       "tag": "0036_add_webhooks_table",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1744150000000,
+      "tag": "0037_add_waiting_for_external_task_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1744200000000,
+      "tag": "0038_add_apikey_table",
+      "breakpoints": true
     }
-  ]
-}
   ]
 }

@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, varchar, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
@@ -155,6 +155,25 @@ export const oauthConsents = pgTable('oauth_consent', {
 }, (table) => ({
   clientIdIdx: index('oauth_consent_client_id_idx').on(table.clientId),
   userIdIdx: index('oauth_consent_user_id_idx').on(table.userId),
+}));
+
+/**
+ * API keys for external agent authentication (Better Auth apiKey plugin).
+ * Keys are hashed before storage; the raw key is only returned on creation.
+ */
+export const apikeys = pgTable('apikey', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  key: text('key').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  referenceId: text('reference_id'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at'),
+  enabled: boolean('enabled').default(true).notNull(),
+  rateLimitEnabled: boolean('rate_limit_enabled').default(false).notNull(),
+  requestCount: integer('request_count').default(0).notNull(),
+}, (table) => ({
+  userIdIdx: index('apikey_user_id_idx').on(table.userId),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════

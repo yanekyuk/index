@@ -37,11 +37,13 @@ export class AuthDatabaseAdapter {
         oauthApplication: schema.oauthApplications,
         oauthAccessToken: schema.oauthAccessTokens,
         oauthConsent: schema.oauthConsents,
+        apikey: schema.apikeys,
       },
     });
 
     // The drizzle adapter is a factory function: (options) => adapterObject
     return (options: unknown) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
       const resolved = (baseAdapterFactory as Function)(options);
 
       return {
