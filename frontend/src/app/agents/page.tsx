@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
@@ -281,20 +281,20 @@ export default function AgentsPage() {
                 </div>
                 <div className="space-y-3">
                   {systemAgents.map((agent) => (
-                    <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white">
+                    <Link key={agent.id} to={`/agents/${agent.id}`} className="block border border-gray-200 rounded-sm p-4 bg-white hover:bg-gray-50 transition-colors cursor-pointer">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-gray-900">{agent.name}</h3>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">system</span>
                       </div>
                       {agent.description ? <p className="text-sm text-gray-500">{agent.description}</p> : null}
                       <div className="flex flex-wrap gap-1 mt-3">
-                        {agent.permissions.flatMap((permission) => permission.actions).map((action) => (
-                          <span key={`${agent.id}-${action}`} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
+                        {[...new Set(agent.permissions.flatMap((permission) => permission.actions))].map((action) => (
+                          <span key={action} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
                             {permissionLabel(action)}
                           </span>
                         ))}
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </section>
@@ -316,7 +316,7 @@ export default function AgentsPage() {
                       const createdKeyForAgent = newlyCreatedKey?.agentId === agent.id ? newlyCreatedKey.key : null;
 
                       return (
-                        <div key={agent.id} className="border border-gray-200 rounded-sm p-4 bg-white space-y-4">
+                        <Link key={agent.id} to={`/agents/${agent.id}`} className="block border border-gray-200 rounded-sm p-4 bg-white space-y-4 hover:bg-gray-50 transition-colors cursor-pointer">
                           <div className="flex items-start justify-between gap-4">
                             <div>
                               <div className="flex items-center gap-2">
@@ -329,7 +329,7 @@ export default function AgentsPage() {
                               </div>
                               {agent.description ? <p className="text-sm text-gray-500 mt-1">{agent.description}</p> : null}
                             </div>
-                            <Button variant="outline" onClick={() => handleDeleteAgent(agent)}>
+                            <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleDeleteAgent(agent); }}>
                               <Trash2 className="w-4 h-4 mr-1" />
                               Delete
                             </Button>
@@ -341,8 +341,8 @@ export default function AgentsPage() {
                               {agent.permissions.length === 0 ? (
                                 <span className="text-sm text-gray-400">No permissions granted.</span>
                               ) : (
-                                agent.permissions.flatMap((permission) => permission.actions).map((action) => (
-                                  <span key={`${agent.id}-${action}`} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
+                                [...new Set(agent.permissions.flatMap((permission) => permission.actions))].map((action) => (
+                                  <span key={action} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
                                     {permissionLabel(action)}
                                   </span>
                                 ))
@@ -355,7 +355,7 @@ export default function AgentsPage() {
                               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">API Keys</p>
                               <Button
                                 size="sm"
-                                onClick={() => handleGenerateKey(agent)}
+                                onClick={(e) => { e.stopPropagation(); handleGenerateKey(agent); }}
                                 disabled={generatingForAgentId === agent.id}
                               >
                                 {generatingForAgentId === agent.id ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
@@ -370,7 +370,7 @@ export default function AgentsPage() {
                                   <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
                                     {createdKeyForAgent}
                                   </code>
-                                  <Button variant="outline" size="sm" onClick={() => handleCopyKey(createdKeyForAgent)}>
+                                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleCopyKey(createdKeyForAgent); }}>
                                     {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                                   </Button>
                                 </div>
@@ -400,7 +400,7 @@ export default function AgentsPage() {
                                         <td className="px-4 py-2 text-gray-500">{formatDate(key.lastUsedAt)}</td>
                                         <td className="px-4 py-2 text-right">
                                           <button
-                                            onClick={() => handleRevokeKey(agent, key.id)}
+                                            onClick={(e) => { e.stopPropagation(); handleRevokeKey(agent, key.id); }}
                                             className="text-gray-400 hover:text-red-500 transition-colors p-1"
                                             title="Revoke key"
                                             aria-label="Revoke key"
@@ -415,7 +415,7 @@ export default function AgentsPage() {
                               </div>
                             )}
                           </div>
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
