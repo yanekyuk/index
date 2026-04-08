@@ -334,11 +334,14 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     const [row] = await db
       .select({ id: schema.agentPermissions.id })
       .from(schema.agentPermissions)
+      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
       .where(
         and(
           eq(schema.agentPermissions.agentId, agentId),
           eq(schema.agentPermissions.userId, userId),
           sql`${action} = ANY(${schema.agentPermissions.actions})`,
+          isNull(schema.agents.deletedAt),
+          eq(schema.agents.status, 'active'),
           scopeCondition,
         ),
       )
@@ -399,7 +402,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     const transportsByAgent = this.groupTransportsByAgent(transportRows);
     const activeTransportAgentIds = new Set(transportRows.map((row) => row.agentId));
 
-    return this.mapAgentsWithRelations(agentRows, transportRows, allPermissionRows).filter((agent) => {
+    return this.mapAgentsWithRelations(agentRows, transportRows, allPermissionRows, { redactSecret: false }).filter((agent) => {
       if (agent.type === 'system') {
         return true;
       }
@@ -430,8 +433,9 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     agentRows: Array<typeof schema.agents.$inferSelect>,
     transportRows: Array<typeof schema.agentTransports.$inferSelect>,
     permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
+    options?: { redactSecret?: boolean },
   ): AgentWithRelations[] {
-    const transportsByAgent = this.groupTransportsByAgent(transportRows);
+    const transportsByAgent = this.groupTransportsByAgent(transportRows, options);
     const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
 
     return agentRows
@@ -463,12 +467,13 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
 
   private groupTransportsByAgent(
     rows: Array<typeof schema.agentTransports.$inferSelect>,
+    options?: { redactSecret?: boolean },
   ): Map<string, AgentTransportRow[]> {
     const result = new Map<string, AgentTransportRow[]>();
 
     for (const row of rows) {
       const current = result.get(row.agentId) ?? [];
-      current.push(this.toTransportRow(row));
+      current.push(this.toTransportRow(row, options));
       result.set(row.agentId, current);
     }
 
@@ -503,14 +508,18 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
     };
   }
 
-  private toTransportRow(row: typeof schema.agentTransports.$inferSelect): AgentTransportRow {
+  private toTransportRow(
+    row: typeof schema.agentTransports.$inferSelect,
+    options?: { redactSecret?: boolean },
+  ): AgentTransportRow {
     const config = ((row.config ?? {}) as Record<string, unknown>);
+    const redact = options?.redactSecret ?? true;
 
     return {
       id: row.id,
       agentId: row.agentId,
       channel: row.channel,
-      config: row.channel === 'webhook'
+      config: redact && row.channel === 'webhook'
         ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'secret'))
         : config,
       priority: row.priority,

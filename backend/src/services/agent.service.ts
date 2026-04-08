@@ -196,7 +196,8 @@ export class AgentService {
       };
     }
 
-    return this.db.createTransport({ agentId, channel, config, priority });
+    const transport = await this.db.createTransport({ agentId, channel, config, priority });
+    return this.sanitizeTransport(transport);
   }
 
   async removeTransport(agentId: string, transportId: string, userId: string): Promise<void> {
@@ -399,17 +400,21 @@ export class AgentService {
     return agent;
   }
 
+  private sanitizeTransport(transport: AgentTransportRow): AgentTransportRow {
+    return {
+      ...transport,
+      config: transport.channel === 'webhook'
+        ? Object.fromEntries(Object.entries(transport.config).filter(([key]) => key !== 'secret'))
+        : transport.config,
+    };
+  }
+
   private sanitizeAgent(agent: AgentWithRelations, viewerId?: string): AgentWithRelations {
     const isOwner = viewerId === undefined || agent.ownerId === viewerId;
 
     return {
       ...agent,
-      transports: agent.transports.map((transport) => ({
-        ...transport,
-        config: transport.channel === 'webhook'
-          ? Object.fromEntries(Object.entries(transport.config).filter(([key]) => key !== 'secret'))
-          : transport.config,
-      })),
+      transports: agent.transports.map((transport) => this.sanitizeTransport(transport)),
       permissions: agent.type === 'system'
         ? agent.permissions.filter((permission) => permission.userId === viewerId)
         : isOwner
