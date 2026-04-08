@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 /**
  * Shared opportunity card data structure.
  * Compatible with both HomeViewCardItem and OpportunityCard from chat context.
- * Keep in sync with OpportunityCardPayload in protocol/src/types/chat-streaming.types.ts.
+ * Keep in sync with OpportunityCardPayload in backend/src/types/chat-streaming.types.ts.
  */
 export interface OpportunityCardData {
   opportunityId: string;

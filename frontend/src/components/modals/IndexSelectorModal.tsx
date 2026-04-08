@@ -1,27 +1,27 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Crown, Plus, Users, X } from 'lucide-react';
-import IndexAvatar from '@/components/IndexAvatar';
-import { Index } from '@/lib/types';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import NetworkAvatar from '@/components/IndexAvatar';
+import { Network } from '@/lib/types';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
-interface IndexSelectorModalProps {
+interface NetworkSelectorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOpenOwnerModal: (index: Index) => void;
-  onOpenMemberModal: (index: Index) => void;
+  onOpenOwnerModal: (network: Network) => void;
+  onOpenMemberModal: (network: Network) => void;
   onCreateIndex?: () => void;
 }
 
-export default function IndexSelectorModal({
+export default function NetworkSelectorModal({
   open,
   onOpenChange,
   onOpenOwnerModal,
   onOpenMemberModal,
   onCreateIndex,
-}: IndexSelectorModalProps) {
+}: NetworkSelectorModalProps) {
   const { user } = useAuthContext();
-  const { indexes: rawIndexes, loading: indexesLoading } = useIndexesState();
+  const { indexes: rawIndexes, loading: indexesLoading } = useNetworksState();
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -52,7 +52,7 @@ export default function IndexSelectorModal({
                     className="group flex items-center gap-3 justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
                   >
                     <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
-                      <IndexAvatar id={index.id} title={index.title} imageUrl={index.imageUrl} size={32} rounded="full" />
+                      <NetworkAvatar id={index.id} title={index.title} imageUrl={index.imageUrl} size={32} rounded="full" />
                     </div>
                     <span className="flex-1 text-sm font-ibm-plex-mono text-black truncate min-w-0">
                       {index.title}

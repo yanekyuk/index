@@ -1,6 +1,6 @@
 import { createContext, useContext, useRef, ReactNode } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
-import { createIndexesService } from '@/services/indexes';
+import { createIndexesService } from '@/services/networks';
 import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
@@ -75,7 +75,7 @@ export function useAPI() {
 }
 
 // Convenience hooks for direct service access
-export function useIndexes() {
+export function useNetworks() {
   const { indexesService } = useAPI();
   return indexesService;
 }

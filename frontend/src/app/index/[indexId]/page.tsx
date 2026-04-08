@@ -1,22 +1,22 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Index, User, APIResponse } from "@/lib/types";
+import { Network, User, APIResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
-import { useIndexes } from '@/contexts/APIContext';
-import { indexesService as publicIndexesService } from '@/services/indexes';
+import { useNetworks } from '@/contexts/APIContext';
+import { indexesService as publicIndexesService } from '@/services/networks';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Users, Loader2, Globe } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 type PageStep = 'loading' | 'auth-required' | 'ready-to-join' | 'joining' | 'error' | 'already-member';
 
 type PageState = {
   step: PageStep;
-  index: Index | null;
+  index: Network | null;
   user: User | null;
   error: string | null;
 };
@@ -32,10 +32,10 @@ export default function PublicJoinPage() {
 
   const { isAuthenticated, isReady, openLoginModal } = useAuthContext();
   const api = useAuthenticatedAPI();
-  const indexesService = useIndexes();
+  const indexesService = useNetworks();
   const navigate = useNavigate();
   const { success, error: notifyError } = useNotifications();
-  const { refreshIndexes } = useIndexesState();
+  const { refreshIndexes } = useNetworksState();
 
   // Load index and check user state
   useEffect(() => {
@@ -136,7 +136,7 @@ export default function PublicJoinPage() {
         success('You are already a member of this index');
         setState(prev => ({ ...prev, step: 'already-member' }));
       } else {
-        success(`Successfully joined ${result?.index?.title || state.index.title}!`);
+        success(`Successfully joined ${result?.network?.title || state.index.title}!`);
         // Refresh indexes context
         await refreshIndexes();
         // Redirect to root
@@ -156,7 +156,7 @@ export default function PublicJoinPage() {
   const handleLogin = () => {
     // Store index ID to auto-join after authentication
     if (typeof window !== 'undefined' && state.index?.id) {
-      localStorage.setItem('pending_index_join', state.index.id);
+      localStorage.setItem('pending_network_join', state.index.id);
     }
     openLoginModal();
   };

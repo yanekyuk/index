@@ -18,7 +18,7 @@ for wt in "$WORKTREES_DIR"/*/; do
 
   # Check setup status by looking for any node_modules directory
   setup="not set up"
-  for ws in protocol frontend evaluator; do
+  for ws in backend frontend evaluator; do
     if [ -d "$wt$ws/node_modules" ]; then
       setup="set up"
       break

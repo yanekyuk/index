@@ -8,7 +8,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 const MOCK_CARD: IntentProposalData = {
   proposalId: "test-proposal-123",
   description: "Meet friends who enjoy jazz music in Brooklyn",
-  indexId: undefined,
+  networkId: undefined,
 };
 
 export default function IntentProposalTestPage() {
@@ -18,10 +18,10 @@ export default function IntentProposalTestPage() {
   const handleApprove = async (
     proposalId: string,
     description: string,
-    indexId?: string
+    networkId?: string
   ) => {
     await new Promise((r) => setTimeout(r, 800));
-    console.log("Approve:", { proposalId, description, indexId });
+    console.log("Approve:", { proposalId, description, networkId });
     addNotification({
       type: "intent_broadcast",
       title: "Broadcasting Signal",

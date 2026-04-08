@@ -3,14 +3,14 @@ title: "Architecture Overview"
 type: design
 tags: [architecture, layering, agents, data-flow, protocol, langgraph]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-06
 ---
 
 # Architecture Overview
 
 This document provides a comprehensive overview of the Index Network architecture for new contributors, stakeholders, and anyone seeking to understand how the system is structured. It covers the monorepo layout, protocol layering, agent system, data flow, and supporting infrastructure.
 
-For domain-specific deep dives, see the design papers in `protocol/src/lib/protocol/docs/` and the protocol README at `protocol/src/lib/protocol/README.md`.
+For domain-specific deep dives, see the design papers in `packages/protocol/src/docs/` and the protocol README at `packages/protocol/src/README.md`.
 
 ---
 
@@ -20,10 +20,14 @@ The repository is organized as a Bun-managed monorepo with two primary workspace
 
 ```
 index/
-  protocol/          Backend API and Agent Engine (Bun, Express, TypeScript)
+  backend/           Backend API and Agent Engine (Bun, Express, TypeScript)
+  packages/
+    protocol/        @indexnetwork/protocol NPM package (graphs, agents, tools, interfaces)
   frontend/          Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
-  cli/               CLI client (@indexnetwork/cli, Bun, TypeScript)
-  plugin/            Claude plugin — MCP server (submodule → indexnetwork/claude-plugin)
+  packages/
+    cli/             CLI client (@indexnetwork/cli, Bun, TypeScript)
+    protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces)
+    claude-plugin/   Claude plugin — skills-only (git subtree → indexnetwork/claude-plugin)
 ```
 
 **Protocol** is the backend: an Express.js server running on the Bun runtime (port 3001). It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
@@ -32,7 +36,7 @@ index/
 
 **CLI** is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
 
-**Plugin** is a Claude Code / Claude Desktop plugin (MCP server) that exposes Index Network tools, resources, and skills to Claude. It wraps the CLI and is maintained as a git submodule at `indexnetwork/claude-plugin`.
+**Plugin** is a Claude Code / Claude Desktop plugin that exposes Index Network tools and skills to Claude. It is skills-only (no code, no build step) and is maintained as a git subtree at `indexnetwork/claude-plugin`, with syncing handled automatically by the `scripts/hooks/pre-push` hook.
 
 Both protocol and frontend workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
 
@@ -83,7 +87,7 @@ The protocol backend enforces strict layering to maintain separation of concerns
 +------------------------------------------------------------------+
 ```
 
-The **protocol layer** (`src/lib/protocol/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `src/lib/protocol/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters to these interfaces via `createDefaultProtocolDeps()`.
+The **protocol layer** (`packages/protocol/src/`) sits alongside services. It contains LangGraph graphs, AI agents, tools, state definitions, and interfaces. It is fully self-contained — zero imports from parent directories (adapters, services, queues, schemas). All infrastructure dependencies are received via constructor injection through interfaces defined in `packages/protocol/src/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters to these interfaces via `createDefaultProtocolDeps()`.
 
 ### Layer Responsibilities
 
@@ -108,11 +112,11 @@ Layering is enforced through strict import rules. Violations cause tight couplin
 - CANNOT import: adapters, database, schema, Drizzle operators
 
 **Services**
-- CAN import: adapters from `src/adapters/`, protocol graphs and agents from `src/lib/protocol/`
+- CAN import: adapters from `src/adapters/`, protocol graphs and agents from `@indexnetwork/protocol`
 - CANNOT import: other services (use events, queues, or shared lib for cross-service orchestration)
 
 **Adapters**
-- CAN import: infrastructure libraries (must not import from `src/lib/protocol/interfaces/` — define own aligned types)
+- CAN import: infrastructure libraries (must not import from `@indexnetwork/protocol` interfaces — define own aligned types)
 - CANNOT import: services, controllers
 
 **Protocol layer (graphs, agents, tools)**
@@ -177,11 +181,11 @@ The agent system is built on LangGraph (from the LangChain ecosystem) and follow
 ### Component Types
 
 ```
-protocol/src/lib/protocol/
+packages/protocol/src/
   graphs/           LangGraph state machines (*.graph.ts)
   states/           Graph state definitions (*.state.ts)
-  agents/           AI agents with Zod-validated I/O (*.agent.ts, *.generator.ts, etc.)
-  tools/            Chat tool definitions by domain (*.tools.ts)
+  agents/           AI agents with Zod-validated I/O
+  tools/            Chat tool definitions by domain
   streamers/        SSE streaming for chat responses
   support/          Infrastructure utilities
   interfaces/       Adapter contracts
@@ -428,7 +432,7 @@ Bull Board UI is served at `http://localhost:3001/dev/queues/` when the protocol
 
 ### Schema Organization
 
-The canonical schema lives in `protocol/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
+The canonical schema lives in `backend/src/schemas/database.schema.ts`. All table definitions, relations, and types are defined here. Drizzle generates TypeScript types from the schema, eliminating manual type maintenance.
 
 ### Core Tables
 
@@ -592,7 +596,6 @@ New opportunities (status: latent)
 
 ## Further Reading
 
-- **Protocol layer README**: `protocol/src/lib/protocol/README.md` -- detailed graph, agent, and tool documentation with sequence diagrams
-- **Architecture vision**: `protocol/ARCHITECTURE.md` -- federation, identity model, and multi-node protocol design
-- **Design papers**: `protocol/src/lib/protocol/docs/` -- deep dives on HyDE strategies, opportunity lifecycle, semantic governance, and more
-- **Template files**: `protocol/src/controllers/controller.template.md`, `protocol/src/services/service.template.md`, `protocol/src/queues/queue.template.md`, `protocol/src/lib/protocol/agents/agent.template.md` -- coding guidelines per layer
+- **Protocol package README**: `packages/protocol/src/README.md` — graph, agent, and tool documentation
+- **Design papers**: `packages/protocol/src/docs/` — deep dives on HyDE strategies, opportunity lifecycle, semantic governance, and more
+- **Template files**: `protocol/src/controllers/controller.template.md`, `protocol/src/services/service.template.md`, `protocol/src/queues/queue.template.md`, `packages/protocol/src/agents/agent.template.md`

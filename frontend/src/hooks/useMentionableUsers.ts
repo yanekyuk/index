@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useIndexesState } from '@/contexts/IndexesContext';
-import { useIndexService } from '@/services/indexes';
+import { useNetworksState } from '@/contexts/IndexesContext';
+import { useNetworkService } from '@/services/networks';
 
 export interface MentionableUser {
   id: string;
@@ -25,8 +25,8 @@ export function useMentionableUsers({
 }: UseMentionableUsersOptions = {}): UseMentionableUsersResult {
   const [users, setUsers] = useState<MentionableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const { indexes, loading: indexesLoading } = useIndexesState();
-  const indexService = useIndexService();
+  const { indexes, loading: indexesLoading } = useNetworksState();
+  const indexService = useNetworkService();
   const fetchedRef = useRef(false);
   const cacheRef = useRef<Map<string, MentionableUser>>(new Map());
 

@@ -77,6 +77,22 @@ const markdownComponents: Components = {
       );
     }
 
+    // Check if this is a video link: [video](file.mp4)
+    if (childText.toLowerCase() === 'video' && href) {
+      return (
+        <div className="my-6 w-full rounded-lg overflow-hidden">
+          <video
+            src={href}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="w-full h-auto rounded-lg"
+          />
+        </div>
+      );
+    }
+
     // Check if this is a YouTube link: [youtube](https://youtube.com/watch?v=...)
     if (childText.toLowerCase() === 'youtube' && href) {
       const videoId = getYouTubeVideoId(href);

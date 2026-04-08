@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "protocol",
+      "name": "backend",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["run", "dev:protocol"],
+      "runtimeArgs": ["run", "dev:backend"],
       "port": 3001
     },
     {

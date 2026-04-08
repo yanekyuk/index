@@ -5,16 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { validateFiles } from '@/lib/file-validation';
-import IndexAvatar from '@/components/IndexAvatar';
+import NetworkAvatar from '@/components/IndexAvatar';
 
-interface CreateIndexModalProps {
+interface CreateNetworkModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (index: { name: string; prompt?: string; imageUrl?: string | null; joinPolicy?: 'anyone' | 'invite_only' }) => Promise<void>;
   uploadIndexImage?: (file: File) => Promise<string>;
 }
 
-export default function CreateIndexModal({ open, onOpenChange, onSubmit, uploadIndexImage }: CreateIndexModalProps) {
+export default function CreateNetworkModal({ open, onOpenChange, onSubmit, uploadIndexImage }: CreateNetworkModalProps) {
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [joinPolicy, setJoinPolicy] = useState<'anyone' | 'invite_only'>('invite_only');
@@ -112,7 +112,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit, uploadI
                     {imagePreview ? (
                       <img src={imagePreview} alt="Preview" width={72} height={72} loading="lazy" className="w-full h-full object-cover" />
                     ) : (
-                      <IndexAvatar title={name || 'Network name'} size={72} rounded="full" />
+                      <NetworkAvatar title={name || 'Network name'} size={72} rounded="full" />
                     )}
                   </div>
                   <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useAIChat } from "@/contexts/AIChatContext";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { useOpportunities, useIndexes } from "@/contexts/APIContext";
-import { useIndexesState } from "@/contexts/IndexesContext";
+import { useOpportunities, useNetworks } from "@/contexts/APIContext";
+import { useNetworksState } from "@/contexts/IndexesContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api";
@@ -181,7 +181,7 @@ function AssistantMessageContent({
   onOpportunitySecondaryAction?: (id: string, userId: string, role?: string, name?: string) => void;
   opportunityLoadingMap?: Record<string, boolean>;
   currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
+  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
@@ -282,8 +282,8 @@ export default function OnboardingPage() {
   } = useAIChat();
 
   const opportunitiesService = useOpportunities();
-  const indexesService = useIndexes();
-  const { refreshIndexes } = useIndexesState();
+  const indexesService = useNetworks();
+  const { refreshIndexes } = useNetworksState();
   const { error: showError } = useNotifications();
 
   const [input, setInput] = useState("");
@@ -409,10 +409,10 @@ export default function OnboardingPage() {
   );
 
   const handleIntentProposalApprove = useCallback(
-    async (proposalId: string, description: string, indexId?: string) => {
+    async (proposalId: string, description: string, networkId?: string) => {
       setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "pending" }));
       try {
-        const result = await opportunitiesService.approveIntentProposal(proposalId, description, indexId);
+        const result = await opportunitiesService.approveIntentProposal(proposalId, description, networkId);
         setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
         if (result?.intentId) {
           setProposalIntentMap((prev) => ({ ...prev, [proposalId]: result.intentId }));

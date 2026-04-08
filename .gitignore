@@ -2,11 +2,11 @@
 # IDE & Editor
 # ===================
 .vscode/
-!.vscode/index.code-workspace
-!.vscode/index.code-workspace.default
-# .cursor
+.cursor/
 .claude/settings.local.json
+.codex
 .agent
+.claude/worktrees
 
 # ===================
 # Docker & Infrastructure
@@ -18,8 +18,8 @@ postgres/
 # ===================
 # Temporary Files & Uploads
 # ===================
-protocol/temp-uploads/
-protocol/.xmtp/
+backend/temp-uploads/
+backend/.xmtp/
 txt/
 
 # ===================
@@ -27,6 +27,11 @@ txt/
 # ===================
 AGENTS.md
 *.report.md
+
+# ===================
+# Dependencies
+# ===================
+node_modules/
 
 # ===================
 # Git & Version Control

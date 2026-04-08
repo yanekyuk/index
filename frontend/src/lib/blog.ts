@@ -75,6 +75,13 @@ function transformAssetPaths(content: string, slug: string): string {
     `[audio](/blog/${slug}/$1)`
   );
 
+  // Transform video links: [video](clip.mp4) -> [video](/blog/slug/clip.mp4)
+  // Only transform relative paths (not starting with / or http)
+  transformed = transformed.replace(
+    /\[video\]\((?!\/|https?:\/\/)([^)]+)\)/gi,
+    `[video](/blog/${slug}/$1)`
+  );
+
   return transformed;
 }
 

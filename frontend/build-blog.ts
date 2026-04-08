@@ -69,6 +69,7 @@ const posts: Array<{
 const mediaExtensions = new Set([
   ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".avif",
   ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac",
+  ".mp4", ".webm",
 ]);
 
 for (const slug of slugs) {

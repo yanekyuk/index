@@ -8,11 +8,11 @@ export const createConnectionsService = (api: ReturnType<typeof import('../lib/a
   // Get connections by user (aggregated)
   getConnectionsByUser: async (
     type: 'inbox' | 'pending' | 'history' = 'inbox',
-    indexIds?: string[]
+    networkIds?: string[]
   ): Promise<ConnectionsByUserResponse> => {
     const requestBody = {
       type,
-      ...(indexIds && indexIds.length > 0 && { indexIds })
+      ...(networkIds && networkIds.length > 0 && { networkIds })
     };
     const response = await api.post<ConnectionsByUserResponse>('/connections/by-user', requestBody);
     return response;

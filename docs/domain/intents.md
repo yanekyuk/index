@@ -3,7 +3,7 @@ title: "Intents"
 type: domain
 tags: [intents, speech-acts, felicity-conditions, semantic-entropy, reconciliation, lifecycle]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-06
 ---
 
 # Intents
@@ -152,7 +152,7 @@ Every intent tracks its origin through a polymorphic source system:
 | **discovery_form** | Created through the onboarding or discovery form flow |
 | **enrichment** | Added through intent enrichment (system-generated elaboration) |
 
-The `sourceId` field references the originating record in the corresponding table (files, user_integrations, links). This enables filtering intents by source and bulk re-processing when a source is updated or removed.
+The `sourceId` field references the originating record in the corresponding table (files, index_integrations, links). This enables filtering intents by source and bulk re-processing when a source is updated or removed.
 
 ---
 

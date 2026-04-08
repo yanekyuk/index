@@ -82,7 +82,7 @@ export default function Header({ showHeaderButtons = true, forcePublicView = fal
   ) : (
     <button
       onClick={() => {
-        if ((pathname === '/' && !isAuthenticated) || pathname?.startsWith('/blog')) {
+        if ((pathname === '/' && !isAuthenticated) || pathname?.startsWith('/blog') || pathname === '/found-in-translation') {
           window.dispatchEvent(new CustomEvent('openWaitlistModal'));
         } else {
           window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank");

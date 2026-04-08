@@ -19,7 +19,7 @@ bunx lint-staged || {
 }
 
 # ── Adapter naming check (only if adapter files are staged) ─────────
-changed_adapters=$(git diff --cached --name-only | grep -E '^protocol/src/adapters/.*\.ts$' || true)
+changed_adapters=$(git diff --cached --name-only | grep -E '^backend/src/adapters/.*\.ts$' || true)
 if [[ -n "${changed_adapters}" ]]; then
   echo "[pre-commit] Checking adapter naming conventions..."
   scripts/check-adapter-names.sh || exit 1

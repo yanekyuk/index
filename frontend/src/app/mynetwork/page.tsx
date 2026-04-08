@@ -2,13 +2,13 @@ import { Navigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import ClientLayout from '@/components/ClientLayout';
 import NetworkDetailPage from '@/app/networks/[id]/page';
 
 function MyNetworkPage() {
   const { isLoading: authLoading, isAuthenticated } = useAuthContext();
-  const { indexes, loading: indexesLoading } = useIndexesState();
+  const { indexes, loading: indexesLoading } = useNetworksState();
 
   const personalIndex = indexes?.find((i) => i.isPersonal);
 

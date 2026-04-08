@@ -3,12 +3,12 @@ title: "CLI network command"
 type: spec
 tags: [cli, network, indexes, commands]
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-04-06
 ---
 
 ## Behavior
 
-The `index network` command manages networks (the user-facing term for indexes) through six subcommands. All commands require authentication and communicate with the protocol API over HTTP.
+The `index network` command manages networks (the user-facing term for indexes) through eight subcommands. All commands require authentication and communicate with the protocol API over HTTP.
 
 ### `index network list`
 
@@ -29,6 +29,14 @@ Joins a public network. Calls `POST /api/indexes/:id/join`. Prints confirmation 
 ### `index network leave <id>`
 
 Leaves a network. Calls `POST /api/indexes/:id/leave`. Prints confirmation. Returns an error if the user is the owner (cannot leave own network).
+
+### `index network update <id> [--title <t>] [--prompt <p>]`
+
+Updates network settings. Calls `PUT /api/indexes/:id` with provided fields (`title`, `prompt`). Prints confirmation with the updated network title.
+
+### `index network delete <id>`
+
+Deletes a network. Calls `DELETE /api/indexes/:id`. Prints confirmation on success.
 
 ### `index network invite <id> <email>`
 
@@ -57,9 +65,11 @@ Prints confirmation or "User not found" if the search returns no results.
 6. `index network join <id>` on an invite-only network prints an appropriate error.
 7. `index network leave <id>` leaves a network and prints confirmation.
 8. `index network leave <id>` as owner prints an error.
-9. `index network invite <id> <email>` invites a found user and prints confirmation.
-10. `index network invite <id> <email>` with unknown email prints "User not found."
-11. `index network` with no subcommand prints network help text.
-12. Argument parser correctly routes "network" command with all subcommands and positional args.
-13. API client methods send correct HTTP requests with auth headers.
-14. Unit tests cover: argument parsing for all subcommands, API client methods, output formatting.
+9. `index network update <id> --title <t>` updates the network title and prints confirmation.
+10. `index network delete <id>` deletes a network and prints confirmation.
+11. `index network invite <id> <email>` invites a found user and prints confirmation.
+12. `index network invite <id> <email>` with unknown email prints "User not found."
+13. `index network` with no subcommand prints network help text.
+14. Argument parser correctly routes "network" command with all subcommands and positional args.
+15. API client methods send correct HTTP requests with auth headers.
+16. Unit tests cover: argument parsing for all subcommands, API client methods, output formatting.

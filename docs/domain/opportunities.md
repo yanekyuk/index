@@ -3,7 +3,7 @@ title: "Opportunities"
 type: domain
 tags: [opportunities, discovery, valency, scoring, lifecycle, deduplication, negotiation]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-06
 ---
 
 # Opportunities
@@ -100,7 +100,7 @@ When the discovery request mentions a specific location:
 
 ## Status Lifecycle
 
-Opportunities follow a seven-state lifecycle:
+Opportunities follow a six-state lifecycle:
 
 | Status | Meaning |
 |---|---|

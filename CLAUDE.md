@@ -16,7 +16,7 @@ Index Network is a private, intent-driven discovery protocol built on autonomous
 ### Protocol (Backend)
 
 ```bash
-cd protocol
+cd backend
 
 # Development
 bun run dev                                 # Start dev server with hot reload (Bun.serve, port 3001)
@@ -64,24 +64,68 @@ bun run lint                                # Run ESLint
 ### CLI
 
 ```bash
-cd cli
+cd packages/cli
 bun src/main.ts conversation                # Run CLI directly with Bun (no build)
 bun run build                               # Build native binaries for all platforms
 bun test                                    # Run CLI tests
 ```
 
-### Plugin (subtree)
+> **Subtree:** `packages/cli/` mirrors `indexnetwork/cli`. Edit via this monorepo; see `### Subtrees` for sync commands.
 
-The `plugin/` directory is a git subtree tracking `indexnetwork/claude-plugin` (`main` branch). It contains **skills only** (markdown files) — no code, no build step. It is checked in as regular files — no special init needed after cloning.
+### @indexnetwork/protocol Package
 
-**Syncing is automatic.** The `scripts/hooks/pre-push` hook detects commits touching `plugin/` and runs `git subtree push` to `indexnetwork/claude-plugin` whenever you push `dev` to `upstream`. No manual action needed — edit `plugin/` in this repo and push normally.
+```bash
+cd packages/protocol
+
+bun run build                               # Compile TypeScript to dist/
+bun run dev                                 # Watch mode
+npm publish --access public                 # Publish (requires NPM login + OTP, or use CI)
+
+# Publishing via CI (preferred):
+git tag protocol-vX.Y.Z
+git push upstream protocol-vX.Y.Z
+```
+
+> **Subtree:** `packages/protocol/` mirrors `indexnetwork/protocol`. Edit via this monorepo; see `### Subtrees` for sync commands.
+
+### Subtrees
+
+The following packages are git subtrees tracked to external repos. **Syncing is automatic** — the `scripts/hooks/pre-push` hook detects commits touching each prefix and runs `git subtree push` whenever you push `dev` to `upstream`.
+
+#### packages/claude-plugin/ → indexnetwork/claude-plugin
+
+Contains **skills only** (markdown files) — no code, no build step. Checked in as regular files — no special init needed after cloning.
 
 ```bash
 # Manual push if the hook failed
-git subtree push --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+git subtree push --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
 
-# Pull if claude-plugin was edited directly (avoid this — always edit via this repo)
-git subtree pull --squash --prefix=plugin https://github.com/indexnetwork/claude-plugin.git main
+# Pull if upstream was edited directly (avoid — always edit via this repo)
+git subtree pull --squash --prefix=packages/claude-plugin https://github.com/indexnetwork/claude-plugin.git main
+```
+
+#### packages/protocol/ → indexnetwork/protocol
+
+The `@indexnetwork/protocol` npm package (agent graphs, interfaces, tools). Two-way: edit here or in the external repo.
+
+```bash
+# Manual push if the hook failed
+git subtree push --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/protocol https://github.com/indexnetwork/protocol.git main
+```
+
+#### packages/cli/ → indexnetwork/cli
+
+The `@indexnetwork/cli` npm package (CLI binary). Two-way: edit here or in the external repo.
+
+```bash
+# Manual push if the hook failed
+git subtree push --prefix=packages/cli https://github.com/indexnetwork/cli.git main
+
+# Pull if external repo was edited directly
+git subtree pull --squash --prefix=packages/cli https://github.com/indexnetwork/cli.git main
 ```
 
 ### Root
@@ -103,10 +147,12 @@ For full architecture details see `docs/design/architecture-overview.md` and `do
 
 ```
 index/
-├── protocol/          # Backend API & Agent Engine (Bun, Express, TypeScript)
+├── backend/           # Backend API & Agent Engine (Bun, Express, TypeScript)
+├── packages/
+│   ├── protocol/      # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
+│   ├── cli/           # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
+│   └── claude-plugin/ # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── frontend/          # Vite + React Router v7 SPA with React 19
-├── cli/               # CLI client (@indexnetwork/cli) — Bun, TypeScript
-├── plugin/            # Claude plugin (skills-only, subtree → indexnetwork/claude-plugin)
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
 ```
@@ -127,12 +173,12 @@ index/
 - `src/adapters/` - Infrastructure implementations (database, embedder, cache, queue, scraper, storage)
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards
-- `src/lib/protocol/` - Protocol layer: `graphs/`, `agents/`, `states/`, `streamers/`, `support/`, `tools/`, `interfaces/`
 - `src/queues/` - BullMQ job queue definitions
 - `src/events/` - Event emitters (intent events, index membership events)
 - `src/cli/` - CLI and maintenance scripts
+- `packages/protocol/` - `@indexnetwork/protocol` NPM package — the agent graphs, interfaces, and tools layer. Published independently; `backend/` imports it as a versioned NPM dependency.
 
-**Entry point**: `protocol/src/main.ts` -- Bun native server on port 3001, controllers registered via `RouteRegistry`.
+**Entry point**: `backend/src/main.ts` -- Bun native server on port 3001, controllers registered via `RouteRegistry`.
 
 For full agent/graph/controller listings see `docs/design/protocol-deep-dive.md` and `docs/specs/api-reference.md`.
 
@@ -153,17 +199,17 @@ Strict layering: **Controllers -> Services -> Adapters**. Dependencies always po
 
 1. **Controllers** import **services** (or protocol graph factories). Must not import adapters.
 2. **Services** import **adapters** for data access. Must not import other services -- use events, queues, or shared lib for cross-service orchestration.
-3. **Protocol layer** (`lib/protocol/`) is fully self-contained — zero imports from parent directories. Receives adapters via **constructor injection** through interfaces in `src/lib/protocol/interfaces/`. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
-4. **Adapters** must not import from `src/lib/protocol/interfaces/` -- they define their own aligned types.
+3. **Protocol layer** (`@indexnetwork/protocol`) is fully self-contained — zero imports from the app. Receives adapters via **constructor injection** through interfaces. The **composition root** (`src/protocol-init.ts`) wires concrete adapters via `createDefaultProtocolDeps()`.
+4. **Adapters** must not import from `@indexnetwork/protocol` interfaces — they define their own aligned types.
 
 ### Template Files
 
 Consult before adding or changing code in each layer:
 
-- `protocol/src/controllers/controller.template.md`
-- `protocol/src/services/service.template.md`
-- `protocol/src/queues/queue.template.md`
-- `protocol/src/lib/protocol/agents/agent.template.md`
+- `backend/src/controllers/controller.template.md`
+- `backend/src/services/service.template.md`
+- `backend/src/queues/queue.template.md`
+
 
 ## Important Patterns
 
@@ -177,7 +223,7 @@ Intents have `confidence` (0-1) and `inferenceType` (`explicit|implicit`).
 
 ### Personal Indexes
 
-Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_indexes` mapping table. Ownership via `index_members` with `permissions: ['owner']`, not a denormalized column. Contacts are stored as `index_members` rows with `'contact'` permission on the owner's personal index -- no separate contacts table. `ContactService.addContact(email)` handles finding/creating users (including ghost users) and upserting membership. Personal indexes cannot be deleted, renamed, or listed publicly.
+Each user has a personal index (`isPersonal=true`) created on registration, tracked via the `personal_networks` mapping table. Ownership via `network_members` with `permissions: ['owner']`, not a denormalized column. Contacts are stored as `network_members` rows with `'contact'` permission on the owner's personal index -- no separate contacts table. `ContactService.addContact(email)` handles finding/creating users (including ghost users) and upserting membership. Personal indexes cannot be deleted, renamed, or listed publicly.
 
 ### Index Prompts & Auto-Assignment
 
@@ -185,7 +231,7 @@ Indexes and members have `prompt` fields used by LLM agents to evaluate intent m
 
 ### Relevancy Scoring
 
-`IntentIndexer` agent scores intent-index fit as `relevancyScore` (0.0-1.0) in `intent_indexes`. Used during opportunity discovery to break ties across shared indexes. Indexes without prompts default to 1.0.
+`IntentIndexer` agent scores intent-network fit as `relevancyScore` (0.0-1.0) in `intent_networks`. Used during opportunity discovery to break ties across shared networks. Indexes without prompts default to 1.0.
 
 ### Queue-Based Processing
 
@@ -193,7 +239,7 @@ Intent creation is synchronous; complex processing (indexing, generation) is asy
 
 ### Event-Driven Broker System
 
-Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `index_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
+Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `intentId`, `userId`, optional `payload`, `previousStatus`). Index membership events in `network_membership.event.ts`. Services emit events after DB transactions; other services/graphs react independently.
 
 ### Trace Event Instrumentation
 
@@ -201,7 +247,7 @@ Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `in
 
 ### OpenRouter Configuration
 
-Model settings centralized in `protocol/src/lib/protocol/agents/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental).
+Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
 
 ## Environment Setup
 
@@ -216,7 +262,7 @@ PORT=3001
 NODE_ENV=development
 ```
 
-### Optional (see `protocol/env.example` for full list)
+### Optional (see `backend/env.example` for full list)
 
 `REDIS_URL`, `RESEND_API_KEY`, `UNSTRUCTURED_API_URL`, `COMPOSIO_API_KEY`, `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`, `SENTRY_DSN`, `PARALLELS_API_KEY`, `APP_URL`
 
@@ -227,19 +273,19 @@ Frontend: see `frontend/.env.example`. **Auth origin (`invalid_origin`)**: ensur
 Always target specific test files rather than running the full suite. `bun test` in protocol is slow.
 
 ```bash
-cd protocol
+cd backend
 bun test path/to/test.ts                   # Run specific test (PREFERRED)
 bun test --watch                            # Watch mode
 bun test                                    # Run ALL tests (avoid unless necessary)
 ```
 
-**Test locations**: `protocol/tests/` (integration/E2E), `protocol/src/lib/*/tests/` (unit tests).
+**Test locations**: `backend/tests/` (integration/E2E), `backend/src/lib/*/tests/` (unit tests).
 
 **Standards**: Load env at top before imports. Import from `bun:test` (destructured). Use `describe` grouping. Set timeouts (agent: 30s, graph: 60s, LLM: 120s). Clean up in `afterAll`. Mock externals. Test success and error paths. Never commit without running affected tests.
 
 ## Database Workflow
 
-**Schema location**: `protocol/src/schemas/database.schema.ts`. Drizzle client: `protocol/src/lib/drizzle/drizzle.ts`.
+**Schema location**: `backend/src/schemas/database.schema.ts`. Drizzle client: `backend/src/lib/drizzle/drizzle.ts`.
 
 ### Migration Naming
 
@@ -251,7 +297,7 @@ Examples: `0000_initial_schema.sql`, `0001_add_chat_session_share_token.sql`, `0
 
 ### Schema Change Checklist
 
-1. Edit `protocol/src/schemas/database.schema.ts`
+1. Edit `backend/src/schemas/database.schema.ts`
 2. `bun run db:generate`
 3. Rename the `.sql` file and update `_journal.json` tag
 4. `bun run db:migrate`
@@ -334,7 +380,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`
-6. If the CLI package (`cli/`) was updated: create a git tag (`vX.Y.Z`) with release notes so the NPM package gets published
+6. If the CLI package (`packages/cli/`) was updated: create a git tag (`cli-vX.Y.Z`) with release notes so the NPM package gets published
 7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow

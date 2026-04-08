@@ -41,8 +41,8 @@ import { ContentContainer } from "@/components/layout";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useIndexFilter } from "@/contexts/IndexFilterContext";
-import { useIndexesState } from "@/contexts/IndexesContext";
+import { useNetworkFilter } from "@/contexts/IndexFilterContext";
+import { useNetworksState } from "@/contexts/IndexesContext";
 import { apiClient } from "@/lib/api";
 import { useSuggestions } from "@/hooks/useSuggestions";
 
@@ -236,7 +236,7 @@ function AssistantMessageContent({
   opportunityLoadingMap?: Record<string, boolean>;
   /** Map of opportunityId -> current status from server */
   currentStatusMap?: Record<string, string>;
-  onIntentProposalApprove?: (proposalId: string, description: string, indexId?: string) => void;
+  onIntentProposalApprove?: (proposalId: string, description: string, networkId?: string) => void;
   onIntentProposalReject?: (proposalId: string) => void;
   onIntentProposalUndo?: (proposalId: string) => void;
   intentProposalStatusMap?: Record<string, "pending" | "created" | "rejected">;
@@ -355,8 +355,8 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     sessionId,
     sessionTitle,
     suggestions: contextSuggestions,
-    setScopeIndexId,
-    sessionIndexId,
+    setScopeNetworkId,
+    sessionNetworkId,
     updateSessionTitle,
   } = useAIChat();
   const uploadServiceV2 = useUploadServiceV2();
@@ -540,34 +540,34 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }, [proposalIdsKey]);
 
   // Index filter
-  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
-  const { indexes } = useIndexesState();
+  const { selectedNetworkIds, setSelectedNetworkIds } = useNetworkFilter();
+  const { indexes } = useNetworksState();
   const selectedIndexId =
-    selectedIndexIds.length === 1 ? selectedIndexIds[0] : null;
+    selectedNetworkIds.length === 1 ? selectedNetworkIds[0] : null;
 
   // Suggestions: from context (done event) when we have messages, else static starters
   const { suggestions } = useSuggestions({
     contextSuggestions: contextSuggestions ?? null,
     hasMessages: messages.length > 0,
-    indexId: selectedIndexId,
+    networkId: selectedIndexId,
     enabled: messages.length > 0,
   });
 
   const handleIndexSelect = useCallback(
-    (indexId: string | null) => {
-      if (indexId === null) {
-        setSelectedIndexIds([]);
+    (networkId: string | null) => {
+      if (networkId === null) {
+        setSelectedNetworkIds([]);
       } else {
-        setSelectedIndexIds([indexId]);
+        setSelectedNetworkIds([networkId]);
       }
     },
-    [setSelectedIndexIds],
+    [setSelectedNetworkIds],
   );
 
-  // Sync index filter selection to chat scope so backend receives indexId when user has selected an index
+  // Sync network filter selection to chat scope so backend receives networkId when user has selected a network
   useEffect(() => {
-    setScopeIndexId(selectedIndexId);
-  }, [selectedIndexId, setScopeIndexId]);
+    setScopeNetworkId(selectedIndexId);
+  }, [selectedIndexId, setScopeNetworkId]);
 
   // Fetch home view when on home (no messages) and USE_HOME_API
   useEffect(() => {
@@ -580,7 +580,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const noCache = urlParams.get('noCache') === '1' || urlParams.get('noCache') === 'true';
     opportunitiesService
-      .getHomeView({ indexId: selectedIndexId ?? undefined, limit: 5, noCache })
+      .getHomeView({ networkId: selectedIndexId ?? undefined, limit: 5, noCache })
       .then((res) => {
         setHomeViewData(res);
         setHomeViewLoading(false);
@@ -625,7 +625,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
       navigatingToHomeRef.current = true;
       // Don't abort in-flight stream so the new session can finish and appear in the sidebar
       clearChat({ abortStream: false });
-      setSelectedIndexIds([]);
+      setSelectedNetworkIds([]);
       setSessionLoaded(true);
     }
   }, [sessionIdFromUrl, loadSession, clearChat]);
@@ -787,9 +787,9 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   );
 
   const handleIntentProposalApprove = useCallback(
-    async (proposalId: string, description: string, indexId?: string) => {
+    async (proposalId: string, description: string, networkId?: string) => {
       try {
-        const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, indexId });
+        const res = await apiClient.post<{ intentId: string }>("/intents/confirm", { proposalId, description, networkId });
         setIntentProposalStatusMap((prev) => ({ ...prev, [proposalId]: "created" }));
         setProposalIntentMap((prev) => ({ ...prev, [proposalId]: res.intentId }));
         addNotification({
@@ -1083,7 +1083,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   // HOME STATE - No messages yet
   if (messages.length === 0) {
     const personalIndex = indexes.find((i) => i.isPersonal);
-    const selectedIndex = indexes.find((i) => selectedIndexIds.includes(i.id));
+    const selectedIndex = indexes.find((i) => selectedNetworkIds.includes(i.id));
 
     const renderScopeDropdown = () => {
       if (indexes.length === 0) return null;
@@ -1132,7 +1132,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                   }}
                   className={cn(
                     "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                    selectedIndexIds.length === 0 &&
+                    selectedNetworkIds.length === 0 &&
                       "text-gray-900 font-medium",
                   )}
                 >
@@ -1147,7 +1147,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                     }}
                     className={cn(
                       "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                      selectedIndexIds.includes(personalIndex.id) &&
+                      selectedNetworkIds.includes(personalIndex.id) &&
                         "text-gray-900 font-medium",
                     )}
                   >
@@ -1177,7 +1177,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
                       }}
                       className={cn(
                         "w-full px-3 py-2 text-left text-sm text-[#3D3D3D] hover:bg-gray-50 flex items-center gap-2",
-                        selectedIndexIds.includes(index.id) &&
+                        selectedNetworkIds.includes(index.id) &&
                           "text-gray-900 font-medium",
                       )}
                     >
@@ -1496,7 +1496,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
   }
 
   // CONVERSATION MODE - Has messages
-  const boundIndexId = sessionIndexId ?? selectedIndexId;
+  const boundIndexId = sessionNetworkId ?? selectedIndexId;
   const boundIndex = indexes.find((i) => i.id === boundIndexId) ?? null;
 
   return (
@@ -1508,7 +1508,7 @@ export default function ChatContent({ sessionIdParam }: ChatContentProps) {
           type="button"
           onClick={() => {
             clearChat({ abortStream: false });
-            setSelectedIndexIds([]);
+            setSelectedNetworkIds([]);
             navigate("/");
           }}
           className="p-1 -ml-1 rounded-md hover:bg-gray-100 text-gray-600 hover:text-black transition-colors shrink-0"

@@ -7,7 +7,7 @@ image: "magic-factory.gif"
 
 ---
 
-![magic factory](magic-factory.gif)
+[video](magic-factory-white.mp4)
 **What if opportunity could be systematically detected, measured, and brokered?**
 
 Imagine you’re one of those superconnectors. The ringleader of the friend group. Maybe you run an accelerator, or any sort of group that’s dense with valuable ideas. You’re constantly trying to get the right people to sit next to each other at dinner, see what happens from that collision of ideas.

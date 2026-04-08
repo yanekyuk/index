@@ -149,7 +149,7 @@ index opportunity accept <id>
 | `index scrape <url>` | Scrape content from a URL |
 | `index sync` | Sync context to ~/.index/context.json |
 
-For the full command reference and rendered output examples, see [cli/cli-output-reference.html](cli/cli-output-reference.html).
+For the full command reference and rendered output examples, see [packages/cli/cli-output-reference.html](packages/cli/cli-output-reference.html).
 
 ## Getting Started
 
@@ -180,16 +180,16 @@ bun install
 3. **Set up environment variables**
 
 ```bash
-cp protocol/.env.example protocol/.env
+cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 
-# Edit protocol/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
+# Edit backend/.env: set DATABASE_URL, OPENROUTER_API_KEY, BETTER_AUTH_SECRET
 ```
 
 4. **Initialize the database**
 
 ```bash
-cd protocol
+cd backend
 bun run db:migrate
 bun run db:seed       # optional: populate sample data
 ```
@@ -197,11 +197,11 @@ bun run db:seed       # optional: populate sample data
 5. **Start the development servers**
 
 ```bash
-# Terminal 1: Protocol server (port 3001)
-cd protocol
+# Terminal 1: Backend server (port 3001)
+cd backend
 bun run dev
 
-# Terminal 2: Frontend dev server (port 3000, proxies /api to protocol)
+# Terminal 2: Frontend dev server (port 3000, proxies /api to backend)
 cd frontend
 bun run dev
 ```
@@ -214,7 +214,7 @@ Visit `http://localhost:3000` to see the application.
 
 ```
 index/
-├── protocol/          # Backend API and agent engine (Bun, Express, TypeScript)
+├── backend/           # Backend API and agent engine (Bun, Express, TypeScript)
 ├── frontend/          # Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
 ├── docs/              # Project documentation (see Documentation section)
 └── scripts/           # Worktree helpers, hooks, dev launcher
@@ -222,7 +222,7 @@ index/
 
 ## Protocol Implementation
 
-The `protocol/` directory contains the core agent infrastructure:
+The `backend/` directory contains the core agent infrastructure:
 
 ### Key Components
 
@@ -233,10 +233,10 @@ The `protocol/` directory contains the core agent infrastructure:
 
 ### Development Commands
 
-For the full list of protocol commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
+For the full list of backend commands (DB, workers, maintenance), see [CLAUDE.md](CLAUDE.md).
 
 ```bash
-cd protocol
+cd backend
 
 # Start development server (Bun.serve, port 3001)
 bun run dev
@@ -276,7 +276,7 @@ Detailed documentation lives in the `docs/` directory:
 ### Specs
 
 - **[API Reference](docs/specs/api-reference.md)** -- REST API endpoints, authentication, request/response formats
-- **[CLI Reference](cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
+- **[CLI Reference](packages/cli/cli-output-reference.html)** -- Full rendered output reference for every CLI command
 - **[CLI v1 Spec](docs/specs/cli-v1.md)** -- Login and conversation command specification
 - **[CLI npm Distribution](docs/specs/cli-npm-publish.md)** -- Platform-specific binary distribution via npm
 
@@ -306,7 +306,7 @@ bun run worktree:setup feat-your-feature
 bun run worktree:dev feat-your-feature
 
 # Make changes and test
-cd protocol && bun test path/to/affected.spec.ts
+cd backend && bun test path/to/affected.spec.ts
 
 # Submit PR targeting dev
 gh pr create --base dev --title "feat: your feature" --body "..."

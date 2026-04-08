@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Copy, Globe, Lock, Trash2, Plus, Check, ChevronRight, ChevronDown, ChevronLeft, Camera } from 'lucide-react';
-import { Index } from '@/lib/types';
+import { Network } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { useIndexes } from '@/contexts/APIContext';
-import { useIndexesState } from '@/contexts/IndexesContext';
+import { useNetworks } from '@/contexts/APIContext';
+import { useNetworksState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIntegrationsService, type ComposioConnection } from '@/services/integrations';
 import { createUsersService } from '@/services/users';
-import { Member } from '@/services/indexes';
+import { Member } from '@/services/networks';
 import { validateFiles } from '@/lib/file-validation';
 
 /** Toolkits available for connection. Add entries here when enabling new Composio integrations. */
@@ -19,21 +19,21 @@ const AVAILABLE_TOOLKITS = ['gmail', 'slack'] as const;
 
 const TOOLKIT_LABELS: Record<string, string> = { gmail: 'Gmail', slack: 'Slack' };
 const toolkitLabel = (t: string) => TOOLKIT_LABELS[t] ?? t;
-import IndexAvatar, { resolveIndexImageSrc } from '@/components/IndexAvatar';
+import NetworkAvatar, { resolveNetworkImageSrc } from '@/components/IndexAvatar';
 import UserAvatar from '@/components/UserAvatar';
 import GhostBadge from '@/components/GhostBadge';
 import { useNavigate } from 'react-router';
 
 interface NetworkSettingsPanelProps {
-  index: Index;
+  index: Network;
   onDeleted?: () => void;
   activeTab: 'settings' | 'access' | 'integrations';
 }
 
 export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: NetworkSettingsPanelProps) {
-  const indexesService = useIndexes();
+  const indexesService = useNetworks();
   const navigate = useNavigate();
-  const { indexes, updateIndex, removeIndex } = useIndexesState();
+  const { indexes, updateIndex, removeIndex } = useNetworksState();
   const { success, error, info } = useNotifications();
   const api = useAuthenticatedAPI();
 
@@ -202,7 +202,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       } else if (removeImageRequested) {
         finalImageUrl = null;
       }
-      const updatedIndex = await indexesService.updateIndex(index.id, {
+      const updatedIndex = await indexesService.updateNetwork(index.id, {
         title: title.trim(),
         prompt: prompt.trim() || null,
         imageUrl: finalImageUrl
@@ -227,7 +227,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
   const handleDeleteIndex = async () => {
     try {
       setIsDeletingIndex(true);
-      await indexesService.deleteIndex(index.id);
+      await indexesService.deleteNetwork(index.id);
       removeIndex(index.id);
       success('Network deleted');
       setShowDeleteConfirmation(false);
@@ -245,7 +245,7 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
       await indexesService.updatePermissions(index.id, {
         joinPolicy: joinPolicy ? 'anyone' : 'invite_only',
       });
-      const updatedIndex = await indexesService.getIndex(index.id);
+      const updatedIndex = await indexesService.getNetwork(index.id);
       updateIndex(updatedIndex);
       if (updatedIndex.permissions?.invitationLink?.code) {
         setInvitationLink({ code: updatedIndex.permissions.invitationLink.code });
@@ -454,9 +454,9 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
             >
               <div className="w-[72px] h-[72px] rounded-full overflow-hidden">
                 {displayImageUrl ? (
-                  <img src={resolveIndexImageSrc(displayImageUrl)} alt="Network" width={72} height={72} loading="lazy" className="w-full h-full object-cover" />
+                  <img src={resolveNetworkImageSrc(displayImageUrl)} alt="Network" width={72} height={72} loading="lazy" className="w-full h-full object-cover" />
                 ) : (
-                  <IndexAvatar id={index.id} title={title || index.title} size={72} rounded="full" />
+                  <NetworkAvatar id={index.id} title={title || index.title} size={72} rounded="full" />
                 )}
               </div>
               <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center justify-center">

@@ -3,7 +3,7 @@ title: "Feed and Maintenance"
 type: domain
 tags: [feed, home, maintenance, health-scoring, freshness, composition, rediscovery]
 created: 2026-03-26
-updated: 2026-03-26
+updated: 2026-04-06
 ---
 
 # Feed and Maintenance
@@ -109,17 +109,17 @@ An opportunity appears on the home feed only if it is **actionable** for the vie
 | Role | Actionable when |
 |---|---|
 | Introducer | Status is latent (they need to confirm the introduction) |
-| Patient / Party | Status is pending or viewed (they need to decide whether to reach out) |
+| Patient / Party | Status is pending (they need to decide whether to reach out) |
 | Agent | Status is accepted (the patient committed; now the agent decides) |
-| Peer | Status is latent, pending, or viewed |
+| Peer | Status is latent or pending |
 
 ### Without an introducer
 
 | Role | Actionable when |
 |---|---|
 | Patient / Party | Status is latent (first to act) |
-| Agent | Status is pending or viewed |
-| Peer | Status is latent, pending, or viewed |
+| Agent | Status is pending |
+| Peer | Status is latent or pending |
 
 Non-actionable opportunities (those the user has already acted on, or that are waiting for the other party) do not appear in the active feed.
 

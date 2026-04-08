@@ -8,7 +8,7 @@
     "format": null,
     "typecheck": "tsc"
   },
-  "sourceRoot": "protocol/src, frontend/src",
+  "sourceRoot": "backend/src, frontend/src",
   "integrations": {
     "coderabbit": true,
     "linear": true,
@@ -24,18 +24,18 @@
       "Agents receive Database and Embedder via constructor injection — never import db or adapters directly",
       "Graph factories accept dependencies (database, embedder, agents) via constructor — no hardcoded infrastructure dependencies",
       "Graph factories must use Pick<Database, ...> for narrow interface contracts — never depend on full Database interface",
-      "Adapters must not import from src/lib/protocol/interfaces/ — define their own types that align with protocol interfaces, named by concept not technology",
+      "Adapters must not import from @indexnetwork/protocol interfaces — define their own types that align with protocol interfaces, named by concept not technology",
       "Queues orchestrate by calling services, graphs, or adapters — no business logic in queue handlers",
       "Controller tests must use services only for setup, teardown, and assertions — never adapters, db, or schema",
-      "Protocol layer (lib/protocol/) must not depend on adapters or infrastructure — dependencies are injected via interfaces",
+      "Protocol layer (@indexnetwork/protocol) must not depend on adapters or infrastructure — dependencies are injected via interfaces",
       "Dependencies point inward: Controllers → Services → Adapters → Infrastructure; Protocol layer receives dependencies via injection",
       "Events and queues are the only mechanism for cross-service communication"
     ]
   },
   "versioning": [
-    "Bump protocol/package.json version for changes under protocol/",
+    "Bump backend/package.json version for changes under backend/",
     "Bump frontend/package.json version for changes under frontend/",
-    "Bump cli/package.json version for changes under cli/"
+    "Bump packages/cli/package.json version for changes under packages/cli/"
   ],
   "directives": {
     "implementation": [
@@ -60,7 +60,7 @@
     "delivery": [
       "Conventional commits (feat/fix/refactor/test/docs/chore) and conventional branch names (type/short-description)",
       "Two remotes: origin (fork) and upstream (main repo). Push worktree branches to origin, create PRs from origin into upstream/dev. After merging a PR into upstream/dev, pull from upstream and push to origin to keep both in sync.",
-      "When cli/ changes are included in a PR, create a cli-v* tag after merge to trigger the npm publish workflow"
+      "When packages/cli/ changes are included in a PR, create a cli-v* tag after merge to trigger the npm publish workflow"
     ],
     "triage": [
       "Always use worktrees for feature and fix branches — keep dev stable",
