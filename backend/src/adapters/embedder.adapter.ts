@@ -164,25 +164,29 @@ export class EmbedderAdapter {
 
     const filter = { indexScope, excludeUserId };
 
-    const searchPromises = lensEmbeddings.map(async (le) => {
+    // Always search BOTH profiles and intents for each lens.
+    // The corpus hint from the lens inferrer is used only for limit allocation:
+    // the preferred corpus gets the full limitPerStrategy while the other gets half.
+    const searchPromises = lensEmbeddings.flatMap((le) => {
       if (!le.embedding?.length) return [];
 
-      if (le.corpus === 'profiles') {
-        return this.searchProfilesForHyde(
+      const isProfilePreferred = le.corpus === 'profiles';
+      return [
+        this.searchProfilesForHyde(
           le.embedding,
           filter,
-          limitPerStrategy,
+          isProfilePreferred ? limitPerStrategy : Math.ceil(limitPerStrategy / 2),
           profileMinScore,
           le.lens
-        );
-      }
-      return this.searchIntentsForHyde(
-        le.embedding,
-        filter,
-        limitPerStrategy,
-        minScore,
-        le.lens
-      );
+        ),
+        this.searchIntentsForHyde(
+          le.embedding,
+          filter,
+          isProfilePreferred ? Math.ceil(limitPerStrategy / 2) : limitPerStrategy,
+          minScore,
+          le.lens
+        ),
+      ];
     });
 
     const allResults = await Promise.all(searchPromises);

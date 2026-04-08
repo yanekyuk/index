@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
@@ -14,7 +14,7 @@ import { profileService } from '../services/profile.service';
 import { profileQueue } from '../queues/profile.queue';
 import type { Id } from '../types/common.types';
 
-import { toKebabKey } from '../lib/keys';
+
 import { TESTER_PERSONAS, TESTER_PERSONAS_MAX } from './test-data';
 import type { SeedProfile } from './test-data';
 
@@ -180,7 +180,7 @@ async function createUser(account: SeedAccount): Promise<{ id: string }> {
         name: account.name,
         intro: `Test account for ${account.name}`,
         socials,
-        onboarding: {},
+        onboarding: { completedAt: new Date().toISOString() },
       })
       .returning({ id: users.id });
     return user!;
@@ -277,7 +277,7 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         });
         _indexesCreated++;
         if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — created`);
-      } catch (err) {
+      } catch {
         _indexesExisted++;
         if (!silent) console.log(`  Index ${i + 1}/${SEED_INDEXES.length}: ${idx.title} — already exists`);
       }
