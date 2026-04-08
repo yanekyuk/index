@@ -5,7 +5,7 @@ import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { log } from '../lib/log';
 
-const logger = log.controller.from('webhook');
+const _logger = log.controller.from('webhook');
 
 type RouteParams = Record<string, string>;
 
@@ -34,7 +34,15 @@ export class WebhookController {
   @Post('/')
   @UseGuards(AuthGuard)
   async create(req: Request, user: AuthenticatedUser) {
-    const body = await req.json() as { url?: string; events?: string[]; description?: string };
+    let body: { url?: string; events?: string[]; description?: string };
+    try {
+      body = await req.json() as { url?: string; events?: string[]; description?: string };
+    } catch {
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON body' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
 
     if (!body.url || !body.events || !Array.isArray(body.events)) {
       return new Response(

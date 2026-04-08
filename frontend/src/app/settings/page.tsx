@@ -14,7 +14,7 @@ export default function SettingsPage() {
     if (!authLoading && !isAuthenticated) navigate('/');
   }, [authLoading, isAuthenticated, navigate]);
 
-  if (authLoading) {
+  if (authLoading || !isAuthenticated) {
     return (
       <ClientLayout>
         <div className="flex items-center justify-center py-12">

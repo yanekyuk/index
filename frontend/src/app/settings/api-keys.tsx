@@ -26,11 +26,13 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
   const [expanded, setExpanded] = useState(false);
   const placeholder = apiKey || 'YOUR_API_KEY';
 
+  const mcpUrl = `${window.location.origin}/api/mcp`;
+
   const claudeConfig = JSON.stringify({
     "mcpServers": {
       "index-network": {
         "type": "http",
-        "url": "https://dev.index.network/api/mcp",
+        "url": mcpUrl,
         "headers": {
           "x-api-key": placeholder
         }
@@ -40,7 +42,7 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
 
   const hermesConfig = `mcp_servers:
   - name: index-network
-    url: https://dev.index.network/api/mcp
+    url: ${mcpUrl}
     headers:
       x-api-key: ${placeholder}`;
 
@@ -188,6 +190,7 @@ export default function ApiKeysSection() {
               variant="outline"
               onClick={() => handleCopy(createdKey)}
               className="flex-shrink-0"
+              aria-label="Copy API key"
             >
               {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
             </Button>
@@ -270,6 +273,7 @@ export default function ApiKeysSection() {
                       onClick={() => setDeleteTarget(key)}
                       className="text-gray-400 hover:text-red-500 transition-colors p-1"
                       title="Revoke key"
+                      aria-label="Revoke key"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

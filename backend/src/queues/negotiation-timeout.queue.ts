@@ -67,8 +67,9 @@ export class NegotiationTimeoutQueue {
     const job = await this.queue.add('negotiation_timeout', { negotiationId, turnNumber }, {
       jobId,
       delay: delayMs,
-      attempts: 1,
-      removeOnComplete: { age: 3600 },
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: { age: 24 * 3600 },
       removeOnFail: { age: 7 * 24 * 3600 },
     });
 
@@ -228,7 +229,8 @@ export class NegotiationTimeoutQueue {
     // Evaluate: accept/reject → finalize; counter at max → finalize; counter under max → continue
     if (aiTurn.action === 'accept' || aiTurn.action === 'reject' || newTurnCount >= maxTurns) {
       const fullHistory = [...history, aiTurn];
-      const outcome = this.buildOutcome(fullHistory, newTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, currentSpeaker);
+      const nextSpeaker = currentSpeaker === 'source' ? 'candidate' : 'source';
+      const outcome = this.buildOutcome(fullHistory, newTurnCount, aiTurn.action, meta.sourceUserId!, meta.candidateUserId!, nextSpeaker);
 
       await database.updateTaskState(task.id, 'completed');
       await database.createArtifact({
