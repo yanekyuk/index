@@ -6,7 +6,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "bun run build:blog && vite build",
     "build:blog": "bun run build-blog.ts",
-    "start": "bun server.ts",
+    "start": "vite preview",
     "lint": "eslint .",
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",
