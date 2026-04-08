@@ -395,7 +395,7 @@ describe('AgentService', () => {
     ]);
   });
 
-  it('preserves the full permission roster for owners', async () => {
+  it('preserves the full permission roster for personal-agent owners', async () => {
     const service = new AgentService(
       createStore({
         getAgentWithRelations: async () =>
@@ -411,6 +411,27 @@ describe('AgentService', () => {
     const result = await service.getById('agent-1', OWNER_ID);
 
     expect(result.permissions).toHaveLength(2);
+  });
+
+  it('filters system-agent permissions to the viewer even for the owner', async () => {
+    const service = new AgentService(
+      createStore({
+        getAgentWithRelations: async () =>
+          createAgentWithRelations({
+            type: 'system',
+            permissions: [
+              createPermissionRow({ id: 'permission-owner', userId: OWNER_ID }),
+              createPermissionRow({ id: 'permission-other', userId: OTHER_USER_ID }),
+            ],
+          }),
+      }),
+    );
+
+    const result = await service.getById('agent-1', OWNER_ID);
+
+    expect(result.permissions).toEqual([
+      expect.objectContaining({ id: 'permission-owner', userId: OWNER_ID }),
+    ]);
   });
 
   it('limits listed agent permissions to the current non-owner user', async () => {

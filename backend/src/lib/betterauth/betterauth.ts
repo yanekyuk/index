@@ -116,16 +116,17 @@ export function createAuth(deps: AuthDeps) {
       }),
       // Cast needed: @better-auth/core version mismatch between plugins (1.5.6) and
       // root lockfile (1.4.18) causes incompatible Plugin types. Runtime is fine.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       apiKey({
         enableSessionForAPIKeys: true,
-      }) as any,
+        enableMetadata: true,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      }) as any,
       mcp({
         loginPage: `${APP_URL}/login`,
         // No consentPage needed: the mcp() plugin skips consent automatically when the
         // authorization request does not include prompt=consent, which Claude Code never
         // sends. The flow goes: /mcp/authorize → session check → code → callback.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any,
     ],
     advanced: {
