@@ -1,0 +1,555 @@
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+
+import db from '../lib/drizzle/drizzle';
+import * as schema from '../schemas/database.schema';
+import { log } from '../lib/log';
+
+const logger = log.lib.from('agent.database.adapter');
+
+export type AgentType = 'personal' | 'system';
+export type AgentStatus = 'active' | 'inactive';
+export type TransportChannel = 'webhook' | 'mcp';
+export type PermissionScope = 'global' | 'node' | 'network';
+
+export interface AgentScope {
+  type: PermissionScope;
+  id?: string;
+}
+
+export interface AgentRow {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string | null;
+  type: AgentType;
+  status: AgentStatus;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AgentTransportRow {
+  id: string;
+  agentId: string;
+  channel: TransportChannel;
+  config: Record<string, unknown>;
+  priority: number;
+  active: boolean;
+  failureCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AgentPermissionRow {
+  id: string;
+  agentId: string;
+  userId: string;
+  scope: PermissionScope;
+  scopeId: string | null;
+  actions: string[];
+  createdAt: Date;
+}
+
+export interface AgentWithRelations extends AgentRow {
+  transports: AgentTransportRow[];
+  permissions: AgentPermissionRow[];
+}
+
+export interface CreateAgentInput {
+  id?: string;
+  ownerId: string;
+  name: string;
+  description?: string | null;
+  type?: AgentType;
+  status?: AgentStatus;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CreateTransportInput {
+  agentId: string;
+  channel: TransportChannel;
+  config?: Record<string, unknown>;
+  priority?: number;
+  active?: boolean;
+}
+
+export interface GrantPermissionInput {
+  agentId: string;
+  userId: string;
+  scope?: PermissionScope;
+  scopeId?: string | null;
+  actions: string[];
+}
+
+export interface AgentSystemIds {
+  chatOrchestrator: string;
+  negotiator: string;
+}
+
+export interface AgentRegistryStore {
+  createAgent(input: CreateAgentInput): Promise<AgentRow>;
+  getAgent(agentId: string): Promise<AgentRow | null>;
+  getAgentWithRelations(agentId: string): Promise<AgentWithRelations | null>;
+  updateAgent(
+    agentId: string,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+  ): Promise<AgentRow | null>;
+  deleteAgent(agentId: string): Promise<void>;
+  listAgentsForUser(userId: string): Promise<AgentWithRelations[]>;
+  createTransport(input: CreateTransportInput): Promise<AgentTransportRow>;
+  deleteTransport(transportId: string): Promise<void>;
+  recordTransportFailure(transportId: string): Promise<void>;
+  recordTransportSuccess(transportId: string): Promise<void>;
+  grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow>;
+  revokePermission(permissionId: string): Promise<void>;
+  hasPermission(agentId: string, userId: string, action: string, scope?: AgentScope): Promise<boolean>;
+  findAuthorizedAgents(userId: string, action: string, scope?: AgentScope): Promise<AgentWithRelations[]>;
+  getSystemAgentIds(): AgentSystemIds;
+}
+
+export const SYSTEM_AGENT_IDS: AgentSystemIds = {
+  chatOrchestrator: '00000000-0000-0000-0000-000000000001',
+  negotiator: '00000000-0000-0000-0000-000000000002',
+};
+
+/**
+ * AgentDatabaseAdapter
+ *
+ * Database adapter for agent registry CRUD, transport management, and
+ * permission queries.
+ */
+export class AgentDatabaseAdapter implements AgentRegistryStore {
+  async createAgent(input: CreateAgentInput): Promise<AgentRow> {
+    const [row] = await db
+      .insert(schema.agents)
+      .values({
+        id: input.id,
+        ownerId: input.ownerId,
+        name: input.name,
+        description: input.description ?? null,
+        type: input.type ?? 'personal',
+        status: input.status ?? 'active',
+        metadata: input.metadata ?? {},
+      })
+      .returning();
+
+    logger.info('Created agent', { agentId: row.id, ownerId: row.ownerId, type: row.type });
+    return this.toAgentRow(row);
+  }
+
+  async getAgent(agentId: string): Promise<AgentRow | null> {
+    const [row] = await db
+      .select()
+      .from(schema.agents)
+      .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)))
+      .limit(1);
+
+    return row ? this.toAgentRow(row) : null;
+  }
+
+  async getAgentWithRelations(agentId: string): Promise<AgentWithRelations | null> {
+    const agent = await this.getAgent(agentId);
+    if (!agent) {
+      return null;
+    }
+
+    const [transportRows, permissionRows] = await Promise.all([
+      db
+        .select()
+        .from(schema.agentTransports)
+        .where(eq(schema.agentTransports.agentId, agentId))
+        .orderBy(desc(schema.agentTransports.priority)),
+      db
+        .select()
+        .from(schema.agentPermissions)
+        .where(eq(schema.agentPermissions.agentId, agentId)),
+    ]);
+
+    return this.mapAgentWithRelations(agent, transportRows, permissionRows);
+  }
+
+  async updateAgent(
+    agentId: string,
+    updates: Partial<Pick<AgentRow, 'name' | 'description' | 'status' | 'metadata'>>,
+  ): Promise<AgentRow | null> {
+    const [row] = await db
+      .update(schema.agents)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)))
+      .returning();
+
+    if (!row) {
+      return null;
+    }
+
+    logger.info('Updated agent', { agentId });
+    return this.toAgentRow(row);
+  }
+
+  async deleteAgent(agentId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(schema.agents)
+        .set({
+          deletedAt: new Date(),
+          status: 'inactive',
+          updatedAt: new Date(),
+        })
+        .where(and(eq(schema.agents.id, agentId), isNull(schema.agents.deletedAt)));
+
+      await tx
+        .update(schema.agentTransports)
+        .set({ active: false, updatedAt: new Date() })
+        .where(eq(schema.agentTransports.agentId, agentId));
+
+      await tx.delete(schema.apikeys).where(
+        sql`${schema.apikeys.metadata} IS NOT NULL AND ${schema.apikeys.metadata}::jsonb->>'agentId' = ${agentId}`,
+      );
+    });
+
+    logger.info('Soft-deleted agent and revoked linked tokens', { agentId });
+  }
+
+  async listAgentsForUser(userId: string): Promise<AgentWithRelations[]> {
+    const [ownedRows, permittedRows] = await Promise.all([
+      db
+        .select({ id: schema.agents.id })
+        .from(schema.agents)
+        .where(and(eq(schema.agents.ownerId, userId), isNull(schema.agents.deletedAt))),
+      db
+        .select({ agentId: schema.agentPermissions.agentId })
+        .from(schema.agentPermissions)
+        .where(eq(schema.agentPermissions.userId, userId)),
+    ]);
+
+    const agentIds = [...new Set([...ownedRows.map((row) => row.id), ...permittedRows.map((row) => row.agentId)])];
+    if (agentIds.length === 0) {
+      return [];
+    }
+
+    const [agentRows, transportRows, permissionRows] = await Promise.all([
+      db
+        .select()
+        .from(schema.agents)
+        .where(and(inArray(schema.agents.id, agentIds), isNull(schema.agents.deletedAt))),
+      db
+        .select()
+        .from(schema.agentTransports)
+        .where(inArray(schema.agentTransports.agentId, agentIds))
+        .orderBy(desc(schema.agentTransports.priority)),
+      db
+        .select()
+        .from(schema.agentPermissions)
+        .where(inArray(schema.agentPermissions.agentId, agentIds)),
+    ]);
+
+    return this.mapAgentsWithRelations(agentRows, transportRows, permissionRows);
+  }
+
+  async createTransport(input: CreateTransportInput): Promise<AgentTransportRow> {
+    const [row] = await db
+      .insert(schema.agentTransports)
+      .values({
+        agentId: input.agentId,
+        channel: input.channel,
+        config: input.config ?? {},
+        priority: input.priority ?? 0,
+        active: input.active ?? true,
+      })
+      .returning();
+
+    logger.info('Created agent transport', { agentId: input.agentId, transportId: row.id, channel: row.channel });
+    return this.toTransportRow(row);
+  }
+
+  async deleteTransport(transportId: string): Promise<void> {
+    await db.delete(schema.agentTransports).where(eq(schema.agentTransports.id, transportId));
+    logger.info('Deleted agent transport', { transportId });
+  }
+
+  async recordTransportFailure(transportId: string): Promise<void> {
+    const [row] = await db
+      .update(schema.agentTransports)
+      .set({
+        failureCount: sql`${schema.agentTransports.failureCount} + 1`,
+        active: sql`CASE WHEN ${schema.agentTransports.failureCount} + 1 >= 10 THEN false ELSE ${schema.agentTransports.active} END`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.agentTransports.id, transportId))
+      .returning();
+
+    if (row && !row.active) {
+      logger.warn('Auto-deactivated transport after repeated failures', {
+        transportId,
+        failureCount: row.failureCount,
+      });
+    }
+  }
+
+  async recordTransportSuccess(transportId: string): Promise<void> {
+    await db
+      .update(schema.agentTransports)
+      .set({
+        failureCount: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.agentTransports.id, transportId));
+  }
+
+  async grantPermission(input: GrantPermissionInput): Promise<AgentPermissionRow> {
+    const [row] = await db
+      .insert(schema.agentPermissions)
+      .values({
+        agentId: input.agentId,
+        userId: input.userId,
+        scope: input.scope ?? 'global',
+        scopeId: input.scopeId ?? null,
+        actions: input.actions,
+      })
+      .returning();
+
+    logger.info('Granted agent permission', {
+      agentId: input.agentId,
+      permissionId: row.id,
+      userId: input.userId,
+    });
+    return this.toPermissionRow(row);
+  }
+
+  async revokePermission(permissionId: string): Promise<void> {
+    await db.delete(schema.agentPermissions).where(eq(schema.agentPermissions.id, permissionId));
+    logger.info('Revoked agent permission', { permissionId });
+  }
+
+  async hasPermission(
+    agentId: string,
+    userId: string,
+    action: string,
+    scope?: AgentScope,
+  ): Promise<boolean> {
+    const scopeCondition = this.buildScopeCondition(scope);
+    const [row] = await db
+      .select({ id: schema.agentPermissions.id })
+      .from(schema.agentPermissions)
+      .innerJoin(schema.agents, eq(schema.agents.id, schema.agentPermissions.agentId))
+      .where(
+        and(
+          eq(schema.agentPermissions.agentId, agentId),
+          eq(schema.agentPermissions.userId, userId),
+          sql`${action} = ANY(${schema.agentPermissions.actions})`,
+          isNull(schema.agents.deletedAt),
+          eq(schema.agents.status, 'active'),
+          scopeCondition,
+        ),
+      )
+      .limit(1);
+
+    return !!row;
+  }
+
+  async findAuthorizedAgents(
+    userId: string,
+    action: string,
+    scope?: AgentScope,
+  ): Promise<AgentWithRelations[]> {
+    const scopeCondition = this.buildScopeCondition(scope);
+    const permissionRows = await db
+      .select({ agentId: schema.agentPermissions.agentId })
+      .from(schema.agentPermissions)
+      .where(
+        and(
+          eq(schema.agentPermissions.userId, userId),
+          sql`${action} = ANY(${schema.agentPermissions.actions})`,
+          scopeCondition,
+        ),
+      );
+
+    const agentIds = [...new Set(permissionRows.map((row) => row.agentId))];
+    if (agentIds.length === 0) {
+      return [];
+    }
+
+    const [agentRows, transportRows, allPermissionRows] = await Promise.all([
+      db
+        .select()
+        .from(schema.agents)
+        .where(
+          and(
+            inArray(schema.agents.id, agentIds),
+            isNull(schema.agents.deletedAt),
+            eq(schema.agents.status, 'active'),
+          ),
+        ),
+      db
+        .select()
+        .from(schema.agentTransports)
+        .where(
+          and(
+            inArray(schema.agentTransports.agentId, agentIds),
+            eq(schema.agentTransports.active, true),
+          ),
+        )
+        .orderBy(desc(schema.agentTransports.priority)),
+      db
+        .select()
+        .from(schema.agentPermissions)
+        .where(inArray(schema.agentPermissions.agentId, agentIds)),
+    ]);
+
+    const transportsByAgent = this.groupTransportsByAgent(transportRows);
+    const activeTransportAgentIds = new Set(transportRows.map((row) => row.agentId));
+
+    return this.mapAgentsWithRelations(agentRows, transportRows, allPermissionRows, { redactSecret: false }).filter((agent) => {
+      if (agent.type === 'system') {
+        return true;
+      }
+
+      return activeTransportAgentIds.has(agent.id) || (transportsByAgent.get(agent.id)?.length ?? 0) > 0;
+    });
+  }
+
+  getSystemAgentIds(): AgentSystemIds {
+    return SYSTEM_AGENT_IDS;
+  }
+
+  private buildScopeCondition(scope?: AgentScope) {
+    if (!scope || scope.type === 'global') {
+      return eq(schema.agentPermissions.scope, 'global');
+    }
+
+    return or(
+      eq(schema.agentPermissions.scope, 'global'),
+      and(
+        eq(schema.agentPermissions.scope, scope.type),
+        eq(schema.agentPermissions.scopeId, scope.id ?? ''),
+      )!,
+    );
+  }
+
+  private mapAgentsWithRelations(
+    agentRows: Array<typeof schema.agents.$inferSelect>,
+    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
+    permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
+    options?: { redactSecret?: boolean },
+  ): AgentWithRelations[] {
+    const transportsByAgent = this.groupTransportsByAgent(transportRows, options);
+    const permissionsByAgent = this.groupPermissionsByAgent(permissionRows);
+
+    return agentRows
+      .map((row) => ({
+        ...this.toAgentRow(row),
+        transports: transportsByAgent.get(row.id) ?? [],
+        permissions: permissionsByAgent.get(row.id) ?? [],
+      }))
+      .sort((left, right) => {
+        if (left.type === right.type) {
+          return right.createdAt.getTime() - left.createdAt.getTime();
+        }
+
+        return left.type === 'personal' ? -1 : 1;
+      });
+  }
+
+  private mapAgentWithRelations(
+    agent: AgentRow,
+    transportRows: Array<typeof schema.agentTransports.$inferSelect>,
+    permissionRows: Array<typeof schema.agentPermissions.$inferSelect>,
+  ): AgentWithRelations {
+    return {
+      ...agent,
+      transports: transportRows.map((row) => this.toTransportRow(row)),
+      permissions: permissionRows.map((row) => this.toPermissionRow(row)),
+    };
+  }
+
+  private groupTransportsByAgent(
+    rows: Array<typeof schema.agentTransports.$inferSelect>,
+    options?: { redactSecret?: boolean },
+  ): Map<string, AgentTransportRow[]> {
+    const result = new Map<string, AgentTransportRow[]>();
+
+    for (const row of rows) {
+      const current = result.get(row.agentId) ?? [];
+      current.push(this.toTransportRow(row, options));
+      result.set(row.agentId, current);
+    }
+
+    return result;
+  }
+
+  private groupPermissionsByAgent(
+    rows: Array<typeof schema.agentPermissions.$inferSelect>,
+  ): Map<string, AgentPermissionRow[]> {
+    const result = new Map<string, AgentPermissionRow[]>();
+
+    for (const row of rows) {
+      const current = result.get(row.agentId) ?? [];
+      current.push(this.toPermissionRow(row));
+      result.set(row.agentId, current);
+    }
+
+    return result;
+  }
+
+  private toAgentRow(row: typeof schema.agents.$inferSelect): AgentRow {
+    return {
+      id: row.id,
+      ownerId: row.ownerId,
+      name: row.name,
+      description: row.description,
+      type: row.type,
+      status: row.status,
+      metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toTransportRow(
+    row: typeof schema.agentTransports.$inferSelect,
+    options?: { redactSecret?: boolean },
+  ): AgentTransportRow {
+    const config = ((row.config ?? {}) as Record<string, unknown>);
+    const redact = options?.redactSecret ?? true;
+
+    return {
+      id: row.id,
+      agentId: row.agentId,
+      channel: row.channel,
+      config: redact && row.channel === 'webhook'
+        ? Object.fromEntries(Object.entries(config).filter(([key]) => key !== 'secret'))
+        : config,
+      priority: row.priority,
+      active: row.active,
+      failureCount: row.failureCount,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toPermissionRow(row: typeof schema.agentPermissions.$inferSelect): AgentPermissionRow {
+    return {
+      id: row.id,
+      agentId: row.agentId,
+      userId: row.userId,
+      scope: row.scope,
+      scopeId: row.scopeId,
+      actions: row.actions ?? [],
+      createdAt: row.createdAt,
+    };
+  }
+
+  private transportSubscribesToEvent(transport: AgentTransportRow, event: string): boolean {
+    if (transport.channel !== 'webhook' || !transport.active) {
+      return false;
+    }
+
+    const events = transport.config?.events;
+    return Array.isArray(events) && events.includes(event);
+  }
+}
+
+export const agentDatabaseAdapter = new AgentDatabaseAdapter();

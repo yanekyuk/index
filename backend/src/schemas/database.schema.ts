@@ -9,6 +9,10 @@ export const intentModeEnum = pgEnum('intent_mode', ['REFERENTIAL', 'ATTRIBUTIVE
 export const speechActTypeEnum = pgEnum('speech_act_type', ['COMMISSIVE', 'DIRECTIVE']);
 export const intentStatusEnum = pgEnum('intent_status', ['ACTIVE', 'PAUSED', 'FULFILLED', 'EXPIRED']);
 export const opportunityStatusEnum = pgEnum('opportunity_status', ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired']);
+export const agentTypeEnum = pgEnum('agent_type', ['personal', 'system']);
+export const agentStatusEnum = pgEnum('agent_status', ['active', 'inactive']);
+export const transportChannelEnum = pgEnum('transport_channel', ['webhook', 'mcp']);
+export const permissionScopeEnum = pgEnum('permission_scope', ['global', 'node', 'network']);
 
 export interface OnboardingState {
   completedAt?: string;
@@ -419,6 +423,54 @@ export const webhooks = pgTable('webhooks', {
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Agents
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export const agents = pgTable('agents', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerId: text('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  type: agentTypeEnum('type').notNull().default('personal'),
+  status: agentStatusEnum('status').notNull().default('active'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (table) => ({
+  ownerIdIdx: index('agents_owner_id_idx').on(table.ownerId),
+  typeIdx: index('agents_type_idx').on(table.type),
+}));
+
+export const agentTransports = pgTable('agent_transports', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  channel: transportChannelEnum('channel').notNull(),
+  config: jsonb('config').$type<Record<string, unknown>>().default({}),
+  priority: integer('priority').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  failureCount: integer('failure_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  agentIdIdx: index('agent_transports_agent_id_idx').on(table.agentId),
+}));
+
+export const agentPermissions = pgTable('agent_permissions', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  scope: permissionScopeEnum('scope').notNull().default('global'),
+  scopeId: text('scope_id'),
+  actions: text('actions').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  agentIdIdx: index('agent_permissions_agent_id_idx').on(table.agentId),
+  userIdIdx: index('agent_permissions_user_id_idx').on(table.userId),
+  agentUserIdx: index('agent_permissions_agent_user_idx').on(table.agentId, table.userId),
+}));
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -513,6 +565,33 @@ export const intentNetworksRelations = relations(intentNetworks, ({ one }) => ({
   }),
 }));
 
+export const agentsRelations = relations(agents, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [agents.ownerId],
+    references: [users.id],
+  }),
+  transports: many(agentTransports),
+  permissions: many(agentPermissions),
+}));
+
+export const agentTransportsRelations = relations(agentTransports, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentTransports.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentPermissionsRelations = relations(agentPermissions, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentPermissions.agentId],
+    references: [agents.id],
+  }),
+  user: one(users, {
+    fields: [agentPermissions.userId],
+    references: [users.id],
+  }),
+}));
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Export types
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -541,5 +620,11 @@ export type NetworkIntegration = typeof networkIntegrations.$inferSelect;
 export type NewNetworkIntegration = typeof networkIntegrations.$inferInsert;
 export type Webhook = typeof webhooks.$inferSelect;
 export type NewWebhook = typeof webhooks.$inferInsert;
+export type Agent = typeof agents.$inferSelect;
+export type NewAgent = typeof agents.$inferInsert;
+export type AgentTransport = typeof agentTransports.$inferSelect;
+export type NewAgentTransport = typeof agentTransports.$inferInsert;
+export type AgentPermission = typeof agentPermissions.$inferSelect;
+export type NewAgentPermission = typeof agentPermissions.$inferInsert;
 
 export * from './conversation.schema';

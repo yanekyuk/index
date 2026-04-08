@@ -11,6 +11,7 @@
  */
 
 import { RedisCacheAdapter } from "./adapters/cache.adapter";
+import { agentDatabaseAdapter } from './adapters/agent.database.adapter';
 import { ComposioIntegrationAdapter } from "./adapters/integration.adapter";
 import {
   chatDatabaseAdapter,
@@ -23,6 +24,8 @@ import { EmbedderAdapter } from "./adapters/embedder.adapter";
 import { ScraperAdapter } from "./adapters/scraper.adapter";
 import { intentQueue } from "./queues/intent.queue";
 import { chatSessionService } from "./services/chat.service";
+import { agentService } from "./services/agent.service";
+import { AgentDeliveryService } from './services/agent-delivery.service';
 import { contactService } from "./services/contact.service";
 import { IntegrationService } from "./services/integration.service";
 import { enrichUserProfile } from "./lib/parallel/parallel";
@@ -40,6 +43,7 @@ import type { ProtocolDeps } from '@indexnetwork/protocol';
 export function createDefaultProtocolDeps(): ProtocolDeps {
   const integration = new ComposioIntegrationAdapter();
   const integrationService = new IntegrationService(integration, contactService);
+const agentDeliveryLookupService = new AgentDeliveryService(webhookService);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
 
@@ -69,11 +73,12 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
       listEvents: () => [...WEBHOOK_EVENTS],
     },
     webhookLookup: {
-      hasWebhookForEvent: async (userId: string, event: string) => {
-        const results = await webhookService.findByUserAndEvent(userId, event);
-        return results.length > 0;
-      },
+      hasWebhookForEvent: (userId: string, event: string) =>
+        agentDeliveryLookupService.hasWebhookForEvent(userId, event),
     },
+    agentDatabase: agentDatabaseAdapter as unknown as ProtocolDeps['agentDatabase'],
+    grantDefaultSystemPermissions: (userId: string) =>
+      agentService.grantDefaultSystemPermissions(userId),
     negotiationEvents: {
       emitTurnReceived: (data) => {
         NegotiationEvents.onTurnReceived?.(data);
