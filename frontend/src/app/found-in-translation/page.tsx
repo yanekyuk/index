@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { apiUrl } from '@/lib/api';
 
 // ── Found in Translation -1: Superstudio / Continuous Monument ──
 // Inspired by Superstudio's 1969 Continuous Monument: a white megastructure
@@ -772,6 +773,40 @@ export default function FoundInTranslationPage() {
   const progress = useScrollProgress();
   useFadeIn(pageRef as React.RefObject<HTMLElement>);
 
+  const [isWaitlistOpen, setIsWaitlistOpen] = useState(false);
+  const [waitlistForm, setWaitlistForm] = useState({ name: '', email: '', whatYouDo: '', whoToMeet: '' });
+  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isWaitlistOpen && waitlistStatus !== 'loading') setIsWaitlistOpen(false);
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isWaitlistOpen, waitlistStatus]);
+
+  useEffect(() => {
+    const open = () => setIsWaitlistOpen(true);
+    window.addEventListener('openWaitlistModal', open);
+    return () => window.removeEventListener('openWaitlistModal', open);
+  }, []);
+
+  const handleWaitlistSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!waitlistForm.email || !waitlistForm.name) return;
+    setWaitlistStatus('loading');
+    try {
+      const res = await fetch(apiUrl('/api/subscribe'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: waitlistForm.email, type: 'waitlist', name: waitlistForm.name, whatYouDo: waitlistForm.whatYouDo, whoToMeet: waitlistForm.whoToMeet }),
+      });
+      setWaitlistStatus(res.ok ? 'success' : 'error');
+    } catch {
+      setWaitlistStatus('error');
+    }
+  };
+
   useEffect(() => {
     const prevTitle = document.title;
     document.title = 'Found in Translation | Index Network';
@@ -811,6 +846,56 @@ export default function FoundInTranslationPage() {
   return (
     <div ref={pageRef} style={{ background: '#f5f3ef', color: '#000', minHeight: '100vh', overflowX: 'hidden', fontFamily: SANS }}>
       <style>{KF}</style>
+
+      {isWaitlistOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => waitlistStatus !== 'loading' && setIsWaitlistOpen(false)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+          <div className="relative bg-white w-full max-w-md p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setIsWaitlistOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black transition-colors" disabled={waitlistStatus === 'loading'}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            {waitlistStatus === 'success' ? (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 bg-[#4091BB] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h3 className="text-2xl font-garamond text-black mb-2">You&apos;re on the list!</h3>
+                <p className="text-gray-600 text-[15px]">Check your inbox for your welcome email.</p>
+                <button onClick={() => { setIsWaitlistOpen(false); setWaitlistStatus('idle'); setWaitlistForm({ name: '', email: '', whatYouDo: '', whoToMeet: '' }); }} className="mt-6 text-[#4091BB] hover:underline text-sm font-medium">Close</button>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-2xl font-garamond text-black mb-2">Join the waitlist</h3>
+                <p className="text-gray-600 text-[15px] mb-6">Tell us a bit about yourself! We&apos;ll let you know when we&apos;re live and keep you posted on updates.</p>
+                <form onSubmit={handleWaitlistSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="fit-waitlist-name" className="block text-sm font-medium text-black mb-1.5">Name <span className="text-red-500">*</span></label>
+                    <input type="text" id="fit-waitlist-name" value={waitlistForm.name} onChange={(e) => setWaitlistForm({ ...waitlistForm, name: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" required disabled={waitlistStatus === 'loading'} />
+                  </div>
+                  <div>
+                    <label htmlFor="fit-waitlist-email" className="block text-sm font-medium text-black mb-1.5">Email <span className="text-red-500">*</span></label>
+                    <input type="email" id="fit-waitlist-email" value={waitlistForm.email} onChange={(e) => setWaitlistForm({ ...waitlistForm, email: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" required disabled={waitlistStatus === 'loading'} />
+                  </div>
+                  <div>
+                    <label htmlFor="fit-waitlist-whatYouDo" className="block text-sm font-medium text-black mb-1.5">What do you do?</label>
+                    <p className="text-xs text-gray-500 mb-1.5">Just to understand you a bit better.</p>
+                    <input type="text" id="fit-waitlist-whatYouDo" value={waitlistForm.whatYouDo} onChange={(e) => setWaitlistForm({ ...waitlistForm, whatYouDo: e.target.value })} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm" disabled={waitlistStatus === 'loading'} />
+                  </div>
+                  <div>
+                    <label htmlFor="fit-waitlist-whoToMeet" className="block text-sm font-medium text-black mb-1.5">Who do you want to meet?</label>
+                    <p className="text-xs text-gray-500 mb-1.5">E.g., &quot;Founders building in climate tech,&quot; &quot;Someone who&apos;s scaled a consumer AI product&quot;</p>
+                    <textarea id="fit-waitlist-whoToMeet" value={waitlistForm.whoToMeet} onChange={(e) => setWaitlistForm({ ...waitlistForm, whoToMeet: e.target.value })} rows={3} className="w-full border border-gray-300 px-3 py-2.5 text-[15px] text-black focus:outline-none focus:border-[#4091BB] transition-colors rounded-sm resize-none" disabled={waitlistStatus === 'loading'} />
+                  </div>
+                  {waitlistStatus === 'error' && <p className="text-red-500 text-sm">Something went wrong. Please try again.</p>}
+                  <button type="submit" disabled={waitlistStatus === 'loading'} className="w-full bg-[#041729] text-white py-3 text-sm font-semibold uppercase tracking-wider hover:bg-[#0a2d4a] transition-colors disabled:opacity-50 rounded-sm">
+                    {waitlistStatus === 'loading' ? 'Submitting...' : 'Join the waitlist'}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 4, zIndex: 100, background: '#e0e0e0' }}>
         <div style={{ height: '100%', width: `${progress * 100}%`, background: '#000', transition: 'width 0.1s linear' }} />
