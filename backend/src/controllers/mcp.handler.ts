@@ -81,8 +81,21 @@ const JWKS = createRemoteJWKSet(
   new URL(`${BASE_URL}/api/auth/jwks`),
 );
 
+function parseApiKeyMetadata(raw: string | null | undefined): { agentId?: string } {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { agentId?: unknown };
+    return typeof parsed.agentId === 'string' ? { agentId: parsed.agentId } : {};
+  } catch {
+    return {};
+  }
+}
+
 const authResolver: McpAuthResolver = {
-  async resolveUserId(request: Request): Promise<string> {
+  async resolveIdentity(request: Request): Promise<{ userId: string; agentId?: string }> {
     const authHeader = request.headers.get('Authorization');
     const [scheme, token] = authHeader?.split(/\s+/, 2) ?? [];
 
@@ -93,8 +106,8 @@ const authResolver: McpAuthResolver = {
         // JWT path: verify with JWKS (issued by the jwt() plugin for CLI/API use)
         try {
           const { payload } = await jwtVerify(token, JWKS);
-          if (typeof payload.id === 'string') return payload.id;
-          if (typeof payload.sub === 'string') return payload.sub;
+          if (typeof payload.id === 'string') return { userId: payload.id };
+          if (typeof payload.sub === 'string') return { userId: payload.sub };
           throw new Error('JWT payload missing user ID');
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -112,7 +125,7 @@ const authResolver: McpAuthResolver = {
           });
           if (res.ok) {
             const data = await res.json() as { userId?: string } | null;
-            if (data?.userId) return data.userId;
+            if (data?.userId) return { userId: data.userId };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -124,8 +137,8 @@ const authResolver: McpAuthResolver = {
 
     const apiKey = request.headers.get('x-api-key');
     if (apiKey) {
-      // Better Auth apiKey plugin with enableSessionForAPIKeys resolves sessions
-      // from x-api-key headers via middleware. Forward the key to get-session.
+      let sessionUserId: string | undefined;
+
       try {
         const sessionRes = await fetch(`${BASE_URL}/api/auth/get-session`, {
           headers: { 'x-api-key': apiKey },
@@ -133,11 +146,12 @@ const authResolver: McpAuthResolver = {
         });
         if (sessionRes.ok) {
           const data = await sessionRes.json() as { user?: { id?: string } } | null;
-          if (data?.user?.id) return data.user.id;
+          if (data?.user?.id) {
+            sessionUserId = data.user.id;
+          }
         }
       } catch { /* session lookup failed, try direct DB */ }
 
-      // Fallback: hash the key (SHA-256 + base64url, matching Better Auth) and look up in DB
       try {
         const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(apiKey));
         const hashed = btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
@@ -145,13 +159,44 @@ const authResolver: McpAuthResolver = {
         const drizzle = await import('../lib/drizzle/drizzle');
         const { eq } = await import('drizzle-orm');
         const { apikeys } = await import('../schemas/database.schema');
-        const [row] = await drizzle.default.select({ referenceId: apikeys.referenceId })
+        const [row] = await drizzle.default.select({
+          referenceId: apikeys.referenceId,
+          userId: apikeys.userId,
+          enabled: apikeys.enabled,
+          expiresAt: apikeys.expiresAt,
+          metadata: apikeys.metadata,
+        })
           .from(apikeys)
           .where(eq(apikeys.key, hashed))
           .limit(1);
-        if (row?.referenceId) return row.referenceId;
+
+        if (row) {
+          if (!row.enabled) {
+            throw new Error('Invalid API key');
+          }
+
+          if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+            throw new Error('Invalid API key');
+          }
+
+          const userId = row.referenceId ?? row.userId ?? sessionUserId;
+          if (userId) {
+            const metadata = parseApiKeyMetadata(row.metadata);
+            return {
+              userId,
+              ...(metadata.agentId ? { agentId: metadata.agentId } : {}),
+            };
+          }
+        }
+
+        if (sessionUserId) {
+          return { userId: sessionUserId };
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'Invalid API key') {
+          throw err;
+        }
         throw new Error(`API key authentication failed: ${msg}`, { cause: err });
       }
 
@@ -159,6 +204,11 @@ const authResolver: McpAuthResolver = {
     }
 
     throw new Error('Authentication required: provide Bearer token or x-api-key header');
+  },
+
+  async resolveUserId(request: Request): Promise<string> {
+    const { userId } = await authResolver.resolveIdentity(request);
+    return userId;
   },
 };
 
@@ -193,6 +243,8 @@ function getOrCreateMcpServer(): McpServer {
     webhookLookup: deps.webhookLookup,
     negotiationEvents: deps.negotiationEvents,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
+    agentDatabase: deps.agentDatabase,
+    grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,
     graphs,
   };
 

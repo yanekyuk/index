@@ -18,6 +18,7 @@ import { SubscribeController } from './controllers/subscribe.controller';
 import { UnsubscribeController } from './controllers/unsubscribe.controller';
 import { fileService } from './services/file.service';
 import { ConversationController } from './controllers/conversation.controller';
+import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
@@ -26,12 +27,10 @@ import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
 import { RouteRegistry } from './lib/router/router.decorators';
 import { log } from './lib/log';
-import { createAuth } from './lib/betterauth/betterauth';
-import { AuthDatabaseAdapter } from './adapters/auth.adapter';
-import { getCorsHeaders, getTrustedOrigins } from './lib/cors';
-import { sendMagicLinkEmail } from './lib/email/magic-link.handler';
+import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler } from './controllers/mcp.handler';
+import { auth } from './lib/betterauth/auth.instance';
 import { getStats } from './lib/performance';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
@@ -46,6 +45,8 @@ import { WebhookController } from './controllers/webhook.controller';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
 import { NegotiationEvents } from './events/negotiation.event';
+import { AgentDeliveryService } from './services/agent-delivery.service';
+import { agentService } from './services/agent.service';
 import { opportunityService } from './services/opportunity.service';
 import { webhookService } from './services/webhook.service';
 
@@ -58,6 +59,8 @@ hydeQueue.startCrons();
 emailQueue.startWorker();
 webhookQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
+
+const agentDeliveryService = new AgentDeliveryService(webhookService, webhookQueue);
 
 NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
@@ -93,22 +96,19 @@ opportunityService.onOpportunityEvent('created', async ({ opportunity }) => {
 
   for (const userId of actorUserIds) {
     try {
-      const hooks = await webhookService.findByUserAndEvent(userId, 'opportunity.created');
-      for (const hook of hooks) {
-        await webhookQueue.addJob('deliver_webhook', {
-          webhookId: hook.id,
-          url: hook.url,
-          secret: hook.secret,
-          event: 'opportunity.created',
-          payload: {
-            opportunityId: opportunity.id,
-            status: opportunity.status,
-            actors: opportunity.actors,
-            createdAt: opportunity.createdAt,
-          },
-          timestamp: new Date().toISOString(),
-        }, { jobId: `webhook-opp-created-${hook.id}-${opportunity.id}` });
-      }
+      const authorizedAgents = await agentService.findAuthorizedAgents(userId, 'manage:intents', { type: 'global' });
+      await agentDeliveryService.enqueueDeliveries({
+        userId,
+        event: 'opportunity.created',
+        payload: {
+          opportunityId: opportunity.id,
+          status: opportunity.status,
+          actors: opportunity.actors,
+          createdAt: opportunity.createdAt,
+        },
+        getJobId: (target) => `webhook-opp-created-${target.id}-${opportunity.id}`,
+        authorizedAgents,
+      });
     } catch (err) {
       log.job.from('WebhookEvents').error('Failed to enqueue webhook for opportunity.created', {
         userId,
@@ -122,21 +122,18 @@ opportunityService.onOpportunityEvent('created', async ({ opportunity }) => {
 // Subscribe to negotiation events to deliver webhooks
 NegotiationEvents.onStarted = async (data) => {
   try {
-    const hooks = await webhookService.findByUserAndEvent(data.userId, 'negotiation.started');
-    for (const hook of hooks) {
-      await webhookQueue.addJob('deliver_webhook', {
-        webhookId: hook.id,
-        url: hook.url,
-        secret: hook.secret,
-        event: 'negotiation.started',
-        payload: {
-          negotiationId: data.negotiationId,
-          counterpartyId: data.counterpartyId,
-          counterpartyName: data.counterpartyName,
-        },
-        timestamp: new Date().toISOString(),
-      }, { jobId: `webhook-neg-started-${hook.id}-${data.negotiationId}` });
-    }
+    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
+    await agentDeliveryService.enqueueDeliveries({
+      userId: data.userId,
+      event: 'negotiation.started',
+      payload: {
+        negotiationId: data.negotiationId,
+        counterpartyId: data.counterpartyId,
+        counterpartyName: data.counterpartyName,
+      },
+      getJobId: (target) => `webhook-neg-started-${target.id}-${data.negotiationId}`,
+      authorizedAgents,
+    });
   } catch (err) {
     log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.started', {
       userId: data.userId,
@@ -148,23 +145,20 @@ NegotiationEvents.onStarted = async (data) => {
 
 NegotiationEvents.onTurnReceived = async (data) => {
   try {
-    const hooks = await webhookService.findByUserAndEvent(data.userId, 'negotiation.turn_received');
-    for (const hook of hooks) {
-      await webhookQueue.addJob('deliver_webhook', {
-        webhookId: hook.id,
-        url: hook.url,
-        secret: hook.secret,
-        event: 'negotiation.turn_received',
-        payload: {
-          negotiationId: data.negotiationId,
-          turnNumber: data.turnNumber,
-          counterpartyAction: data.counterpartyAction,
-          counterpartyMessage: data.counterpartyMessage,
-          deadline: data.deadline,
-        },
-        timestamp: new Date().toISOString(),
-      }, { jobId: `webhook-neg-turn-${hook.id}-${data.negotiationId}-${data.turnNumber}` });
-    }
+    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
+    await agentDeliveryService.enqueueDeliveries({
+      userId: data.userId,
+      event: 'negotiation.turn_received',
+      payload: {
+        negotiationId: data.negotiationId,
+        turnNumber: data.turnNumber,
+        counterpartyAction: data.counterpartyAction,
+        counterpartyMessage: data.counterpartyMessage,
+        deadline: data.deadline,
+      },
+      getJobId: (target) => `webhook-neg-turn-${target.id}-${data.negotiationId}-${data.turnNumber}`,
+      authorizedAgents,
+    });
   } catch (err) {
     log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.turn_received', {
       userId: data.userId,
@@ -176,22 +170,19 @@ NegotiationEvents.onTurnReceived = async (data) => {
 
 NegotiationEvents.onCompleted = async (data) => {
   try {
-    const hooks = await webhookService.findByUserAndEvent(data.userId, 'negotiation.completed');
-    for (const hook of hooks) {
-      await webhookQueue.addJob('deliver_webhook', {
-        webhookId: hook.id,
-        url: hook.url,
-        secret: hook.secret,
-        event: 'negotiation.completed',
-        payload: {
-          negotiationId: data.negotiationId,
-          outcome: data.outcome,
-          finalScore: data.finalScore,
-          turnCount: data.turnCount,
-        },
-        timestamp: new Date().toISOString(),
-      }, { jobId: `webhook-neg-completed-${hook.id}-${data.negotiationId}` });
-    }
+    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
+    await agentDeliveryService.enqueueDeliveries({
+      userId: data.userId,
+      event: 'negotiation.completed',
+      payload: {
+        negotiationId: data.negotiationId,
+        outcome: data.outcome,
+        finalScore: data.finalScore,
+        turnCount: data.turnCount,
+      },
+      getJobId: (target) => `webhook-neg-completed-${target.id}-${data.negotiationId}`,
+      authorizedAgents,
+    });
   } catch (err) {
     log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.completed', {
       userId: data.userId,
@@ -244,12 +235,6 @@ const storageAdapter = new S3StorageAdapter({
   bucket: process.env.S3_BUCKET,
 });
 
-const authDb = new AuthDatabaseAdapter();
-const auth = createAuth({
-  authDb,
-  getTrustedOrigins,
-  sendMagicLinkEmail,
-});
 // Set storage adapter on fileService for S3 file operations
 fileService.setStorageAdapter(storageAdapter);
 
@@ -267,6 +252,7 @@ controllerInstances.set(StorageController, new StorageController(new StorageServ
 controllerInstances.set(SubscribeController, new SubscribeController());
 controllerInstances.set(UnsubscribeController, new UnsubscribeController());
 controllerInstances.set(ConversationController, new ConversationController(new ConversationService(), new TaskService()));
+controllerInstances.set(AgentController, new AgentController());
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));

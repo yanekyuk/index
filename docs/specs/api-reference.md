@@ -3,7 +3,7 @@ title: "Protocol API Reference"
 type: spec
 tags: [api, controllers, endpoints, rest, protocol, authentication, sse]
 created: 2026-03-26
-updated: 2026-04-06
+updated: 2026-04-08
 ---
 
 # Protocol API Reference
@@ -15,6 +15,7 @@ Complete reference for all HTTP endpoints exposed by the protocol server. All ro
 - [Authentication Patterns](#authentication-patterns)
 - [Non-Controller Routes](#non-controller-routes)
 - [Auth](#auth)
+- [Agents](#agents)
 - [Chat](#chat)
 - [Conversation](#conversation)
 - [Debug](#debug)
@@ -124,8 +125,13 @@ The following paths are delegated to Better Auth and are not handled by controll
 - `/api/auth/update-user`
 - `/api/auth/token`
 - `/api/auth/jwks`
+- `/api/auth/api-key/create`
+- `/api/auth/api-key/list`
+- `/api/auth/api-key/delete`
 
 Refer to the [Better Auth documentation](https://www.better-auth.com/) for details on these endpoints.
+
+API keys created for personal agents include `metadata.agentId`. MCP auth resolves API keys into `{ userId, agentId? }` identities, so the same user can authorize multiple agents with separate keys.
 
 ### Performance Stats (Dev Only)
 
@@ -448,6 +454,197 @@ Get a shared chat session (read-only, public access).
   ]
 }
 ```
+
+---
+
+## Agents
+
+**Controller prefix**: `/agents`
+
+All agent routes use `AuthGuard`.
+
+### GET /api/agents
+
+List the agents the current user owns or has been authorized to use.
+
+**Response**:
+```json
+{
+  "agents": [
+    {
+      "id": "...",
+      "ownerId": "...",
+      "name": "...",
+      "description": "...",
+      "type": "personal",
+      "status": "active",
+      "metadata": {},
+      "transports": [],
+      "permissions": [],
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
+  ]
+}
+```
+
+### POST /api/agents
+
+Create a personal agent owned by the current user.
+
+**Request body**:
+```json
+{
+  "name": "My Claude Agent",
+  "description": "Handles partner negotiations"
+}
+```
+
+**Response**:
+```json
+{
+  "agent": {
+    "id": "...",
+    "name": "My Claude Agent",
+    "type": "personal",
+    "status": "active",
+    "transports": [],
+    "permissions": []
+  }
+}
+```
+
+### GET /api/agents/:id
+
+Fetch one agent by ID if the current user owns it or has a permission grant on it.
+
+### PATCH /api/agents/:id
+
+Update mutable fields on a personal agent.
+
+**Request body**:
+```json
+{
+  "name": "Updated Agent Name",
+  "description": "optional or null",
+  "status": "inactive"
+}
+```
+
+**Notes**:
+- System agents return `403` for mutation attempts.
+- Empty patch bodies return `400`.
+
+### DELETE /api/agents/:id
+
+Soft-delete a personal agent and deactivate its transports.
+
+**Response**: `204 No Content`
+
+### POST /api/agents/:id/transports
+
+Add a transport to an owned personal agent.
+
+**Request body**:
+```json
+{
+  "channel": "webhook",
+  "config": {
+    "url": "https://example.com/webhook",
+    "secret": "optional-secret"
+  },
+  "priority": 0
+}
+```
+
+**Response**:
+```json
+{
+  "transport": {
+    "id": "...",
+    "agentId": "...",
+    "channel": "webhook",
+    "active": true,
+    "failureCount": 0
+  }
+}
+```
+
+### DELETE /api/agents/:id/transports/:transportId
+
+Remove a transport from an owned personal agent.
+
+**Response**: `204 No Content`
+
+### POST /api/agents/:id/permissions
+
+Grant the current user a permission set on an agent.
+
+**Request body**:
+```json
+{
+  "actions": ["manage:intents", "manage:negotiations"],
+  "scope": "global",
+  "scopeId": "optional-for-node-or-network"
+}
+```
+
+**Response**:
+```json
+{
+  "permission": {
+    "id": "...",
+    "agentId": "...",
+    "userId": "...",
+    "scope": "global",
+    "scopeId": null,
+    "actions": ["manage:intents", "manage:negotiations"],
+    "createdAt": "..."
+  }
+}
+```
+
+### DELETE /api/agents/:id/permissions/:permissionId
+
+Revoke a permission from an agent.
+
+**Response**: `204 No Content`
+
+### POST /api/agents/:id/tokens
+
+Create an API key bound to an owned personal agent. The backend issues the key through Better Auth and stores `metadata.agentId` automatically.
+
+**Request body**:
+```json
+{
+  "name": "My Claude Agent API Key"
+}
+```
+
+**Response**:
+```json
+{
+  "token": {
+    "id": "...",
+    "key": "idx_live_...",
+    "name": "My Claude Agent API Key",
+    "createdAt": "..."
+  }
+}
+```
+
+**Notes**:
+- The raw `key` value is only returned once.
+- System agents return `403`.
+
+### DELETE /api/agents/:id/tokens/:tokenId
+
+Revoke an API key bound to an owned personal agent.
+
+**Response**: `204 No Content`
+
+**Errors**:
+- `404` if the token does not exist or is not bound to the route agent
 
 ---
 
