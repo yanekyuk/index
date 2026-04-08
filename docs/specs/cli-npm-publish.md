@@ -69,9 +69,9 @@ Platform packages must be published first so they exist in the registry when use
 
 CI behavior:
 
-1. Pushes to `dev` run a build-only validation.
-2. Pushes to `main` run the publish workflow.
-3. The publish job skips when the version in `package.json` is already on npm.
+1. Pushes to `dev` publish prerelease builds using a derived version like `0.9.5-rc.123.1` under npm's `rc` tag.
+2. Pushes to `main` publish the base version from `package.json` under the default `latest` tag.
+3. The publish job skips when the computed version is already on npm.
 
 ## Constraints
 

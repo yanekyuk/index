@@ -82,10 +82,10 @@ bun run dev                                 # Watch mode
 npm publish --access public                 # Publish (requires NPM login + OTP, or use CI)
 
 # Publishing via CI (preferred):
-# push dev for build validation only
+# push dev to publish an rc prerelease
 git push <indexnetwork-remote> dev
 
-# push main to publish if the version is new
+# push main to publish the stable release if the version is new
 git push <indexnetwork-remote> main
 ```
 
@@ -383,7 +383,7 @@ Use `gh` CLI to create PRs into `upstream/dev`. Description as changelog: New Fe
 3. Bump package versions following [Semantic Versioning 2.0.0](https://semver.org/) for all affected packages
 4. Merge into dev: `git checkout dev && git merge <branch-name>`
 5. Push both remotes: `git push upstream dev && git push origin dev`
-6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its version before promoting to `main`. Subtree pushes to `dev` only validate builds; subtree pushes to `main` publish to npm when the version is not already published.
+6. If an npm-published subtree package was updated (`packages/cli/` or `packages/protocol/`): bump its base version before promoting to `main`. Subtree pushes to `dev` publish `-rc` prereleases under the `rc` npm tag, and subtree pushes to `main` publish the stable version when it is not already on npm.
 7. Clean up: delete branch and remove worktree
 
 ## Superpowers Workflow
