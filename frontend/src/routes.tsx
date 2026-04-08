@@ -79,6 +79,10 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/agent/page"),
       },
       {
+        path: "/agents",
+        lazy: () => import("@/app/agents/page"),
+      },
+      {
         path: "/library/:tab?",
         lazy: () => import("@/app/library/page"),
       },

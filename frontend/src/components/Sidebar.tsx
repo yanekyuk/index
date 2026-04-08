@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { Link } from 'react-router';
-import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot, Settings } from 'lucide-react';
+import { Compass, MessagesSquare, ChevronDown, User as UserIcon, LogOut, Library, History, Network, Bot, Settings, KeyRound } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNetworkFilter } from '@/contexts/IndexFilterContext';
 import { useAIChatSessions } from '@/contexts/AIChatSessionsContext';
@@ -28,7 +28,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user, signOut } = useAuthContext();
-  const { isConnected } = useConversation();
+  useConversation();
   const totalUnreadCount = 0; // Unread tracking out of scope for now
   const { sessionsVersion } = useAIChatSessions();
   const { clearChat } = useAIChat();
@@ -51,10 +51,11 @@ export default function Sidebar() {
   const isNetworksView = pathname?.startsWith('/networks');
   const isHistoryView = pathname?.startsWith('/d/');
   const isProfileView = pathname?.startsWith('/profile');
-  const isAgentView = pathname?.startsWith('/agent');
+  const isAgentView = pathname === '/agent' || pathname?.startsWith('/agent/');
+  const isAgentsView = pathname?.startsWith('/agents');
   const isMyNetworkView = pathname?.startsWith('/mynetwork');
   const isSettingsView = pathname?.startsWith('/settings');
-  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentView && !isMyNetworkView && !isSettingsView;
+  const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentView && !isAgentsView && !isMyNetworkView && !isSettingsView;
 
   // Get current AI session ID from pathname (e.g., /d/abc123 -> abc123)
   const currentSessionId = pathname?.match(/^\/d\/([^/]+)/)?.[1] || null;
@@ -326,6 +327,15 @@ export default function Sidebar() {
                 >
                   <UserIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
                   Profile
+                </button>
+                <button
+                  className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
+                    isAgentsView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                  onClick={() => { setUserDropdownOpen(false); navigate('/agents'); }}
+                >
+                  <KeyRound className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  Agents
                 </button>
                 <button
                   className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${

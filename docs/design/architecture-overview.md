@@ -238,6 +238,18 @@ Tools are the capabilities exposed to the chat agent. They bridge the agent loop
 | `opportunity.tools.ts` | Discover and send opportunities |
 | `utility.tools.ts` | URL scraping, action confirmation/cancellation |
 
+### Agent Registry
+
+The protocol now includes an agent registry that sits beside the chat tool stack and negotiation system:
+
+- `agents` stores personal and system agent identities
+- `agent_transports` stores delivery channels such as `webhook` and `mcp`
+- `agent_permissions` stores the actions an agent may perform for a user, optionally scoped by network or node
+
+System agents are seeded with fixed UUIDs and granted default permissions during onboarding. Personal agents are user-owned records exposed through the `/api/agents` controller family. MCP requests resolve an authenticated `userId` and optional `agentId` from API key metadata, allowing downstream tools to reason about both the acting user and the concrete agent identity.
+
+The legacy `webhooks` table is still present for API compatibility. Runtime webhook delivery now prefers authorized agent-registry webhook transports, falling back to legacy `webhooks` only when no eligible agent transport exists. The `AgentDeliveryService` orchestrates this dual-path dispatch. Transport eligibility requires both the agent permission (e.g. `manage:negotiations`) and the transport's `config.events` subscription to match the target event — this "dual gate" model ensures only subscribed, authorized agents receive deliveries.
+
 ### How They Compose
 
 ```

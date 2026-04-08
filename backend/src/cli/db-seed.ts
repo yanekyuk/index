@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 const envFile = `.env.development`;
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 import db, { closeDb } from '../lib/drizzle/drizzle';
-import { networkMembers, networks, userProfiles, users } from '../schemas/database.schema';
+import { agentPermissions, agents, networkMembers, networks, userProfiles, users } from '../schemas/database.schema';
+import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { profileService } from '../services/profile.service';
@@ -27,6 +28,27 @@ interface SeedAccount {
   x?: string | null;
   website?: string | null;
 }
+
+const SYSTEM_ADMIN_ACCOUNTS: SeedAccount[] = [
+  { email: 'yanki@index.network', name: 'Yanki' },
+  { email: 'seref@index.network', name: 'Seref' },
+  { email: 'seren@index.network', name: 'Seren' },
+];
+
+const SYSTEM_AGENT_DEFS = [
+  {
+    id: SYSTEM_AGENT_IDS.chatOrchestrator,
+    name: 'Index Chat Orchestrator',
+    description: 'Built-in chat agent that manages profiles, intents, networks, contacts, and negotiations on behalf of users.',
+    actions: ['manage:profile', 'manage:intents', 'manage:networks', 'manage:contacts', 'manage:negotiations'],
+  },
+  {
+    id: SYSTEM_AGENT_IDS.negotiator,
+    name: 'Index Negotiator',
+    description: 'Built-in agent that handles negotiation turns when no external agent responds.',
+    actions: ['manage:negotiations'],
+  },
+] as const;
 
 // ── Index definitions ───────────────────────────────────────────────────────
 
@@ -246,6 +268,34 @@ async function upsertUserProfile(userId: string, profile: SeedProfile): Promise<
     });
 }
 
+async function ensureAgentPermission(agentId: string, userId: string, actions: string[]): Promise<void> {
+  const existing = await db
+    .select({ actions: agentPermissions.actions })
+    .from(agentPermissions)
+    .where(
+      and(
+        eq(agentPermissions.agentId, agentId),
+        eq(agentPermissions.userId, userId),
+        eq(agentPermissions.scope, 'global'),
+      ),
+    )
+    .limit(1);
+
+  const existingActions = new Set(existing.flatMap((row) => row.actions ?? []));
+  const missingActions = actions.filter((action) => !existingActions.has(action));
+
+  if (missingActions.length === 0) {
+    return;
+  }
+
+  await db.insert(agentPermissions).values({
+    agentId,
+    userId,
+    scope: 'global',
+    actions: missingActions,
+  });
+}
+
 // ── Seed logic ──────────────────────────────────────────────────────────────
 
 async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
@@ -284,6 +334,10 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
     }
 
     if (!silent) console.log(`  ${SEED_INDEXES.length} indexes ready`);
+
+    if (!silent) console.log('Ensuring system admin users...');
+    const adminUsers = await ensureUsersAndMemberships(SYSTEM_ADMIN_ACCOUNTS);
+    if (!silent) console.log(`  System admin users: ${adminUsers.length} ready`);
 
     if (!silent) console.log(`Creating synthetic persona users (1..${personasToSeed.length})...`);
     // Synthetic tester personas (first is owner of all indexes); count controlled by --personas
@@ -359,6 +413,30 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
         console.log(`  ${idx.title} [${idx.joinPolicy}] -- ${label}`);
       }
       console.log('\nNote: Seed does not run opportunity discovery (no matching between test users).');
+    }
+
+    const systemOwner = adminUsers[0];
+    const seededUsers = [...adminUsers, ...personaUsers];
+    if (systemOwner) {
+      for (const systemAgent of SYSTEM_AGENT_DEFS) {
+        await db.insert(agents).values({
+          id: systemAgent.id,
+          ownerId: systemOwner.id,
+          name: systemAgent.name,
+          description: systemAgent.description,
+          type: 'system',
+          status: 'active',
+          metadata: {},
+        }).onConflictDoNothing();
+
+        for (const user of seededUsers) {
+          await ensureAgentPermission(systemAgent.id, user.id, [...systemAgent.actions]);
+        }
+      }
+
+      if (!silent) {
+        console.log(`  ${SYSTEM_AGENT_DEFS.length} system agents ready`);
+      }
     }
 
     return { ok: true };
