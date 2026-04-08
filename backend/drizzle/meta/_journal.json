@@ -274,6 +274,13 @@
       "when": 1744200000000,
       "tag": "0038_add_apikey_table",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1775669091771,
+      "tag": "0039_add_agent_tables",
+      "breakpoints": true
     }
   ]
 }
