@@ -11,6 +11,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
 import InviteMessageModal from "@/components/InviteMessageModal";
 import NegotiationHistory from "@/components/NegotiationHistory";
+import ConnectorSection from "@/components/ConnectorSection";
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -213,64 +214,16 @@ export default function UserProfilePage() {
             </div>
           )}
 
-          {/* You're the connector — only shown when viewing someone else's profile */}
-          {false && user?.id !== id && (
-            <div>
-              <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-0.5">You&apos;re the connector</h3>
-              <p className="text-xs text-gray-400 mb-3">Intros you could make with {profileData?.name.split(' ')[0]}</p>
-              <div className="space-y-2">
-                {[
-                  {
-                    id: 'match-1',
-                    name: 'Riley Park',
-                    userId: 'mock-riley',
-                    avatar: null,
-                    reason: `Both ${profileData?.name.split(' ')[0]} and Riley are deep in agent infrastructure from different angles — they'd have a lot to stress-test together.`,
-                  },
-                  {
-                    id: 'match-2',
-                    name: 'Mia Chen',
-                    userId: 'mock-mia',
-                    avatar: null,
-                    reason: `Mia just relocated to the same city and is looking to plug into the local builder scene. ${profileData?.name.split(' ')[0]} would be a perfect first connection.`,
-                  },
-                ].map((match) => (
-                  <div key={match.id} className="bg-[#F8F8F8] rounded-md p-4">
-                    {/* Header: A <> B */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1.5">
-                            <UserAvatar id={profileData?.id ?? ''} name={profileData?.name ?? ''} avatar={profileData?.avatar ?? null} size={24} />
-                            <span className="text-sm font-bold text-gray-900">{profileData?.name.split(' ')[0]}</span>
-                          </div>
-                          <span className="text-gray-400 text-xs">&lt;&gt;</span>
-                          <div className="flex items-center gap-1.5">
-                            <UserAvatar id={match.userId} name={match.name} avatar={match.avatar} size={24} />
-                            <span className="text-sm font-bold text-gray-900">{match.name}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5 shrink-0">
-                        <button className="bg-[#041729] text-white px-3 py-1.5 rounded-sm text-xs font-medium leading-none hover:bg-[#0a2d4a] transition-colors">
-                          Good match
-                        </button>
-                        <button className="bg-transparent border border-gray-400 text-[#3D3D3D] px-3 py-1.5 rounded-sm text-xs font-medium leading-none hover:bg-gray-200 transition-colors">
-                          Pass
-                        </button>
-                      </div>
-                    </div>
-                    {/* Reason */}
-                    <p className="text-[14px] text-[#3D3D3D] leading-relaxed">{match.reason}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* You're the connector — only when viewing someone else's profile */}
+          {isOtherUser && (
+            <ConnectorSection
+              profileUserId={id!}
+              profileFirstName={profileData.name.split(" ")[0]}
+            />
           )}
 
-
-          {/* Affiliations */}
-          {false && <div>
+          {/* TODO: Affiliations section — hidden until backend data is available
+          <div>
             <h3 className="text-base font-bold text-gray-900 font-ibm-plex-mono mb-3">Affiliations</h3>
             <div className="space-y-3">
               {[
@@ -290,7 +243,8 @@ export default function UserProfilePage() {
                 </div>
               ))}
             </div>
-          </div>}
+          </div>
+          */}
 
         </ContentContainer>
       </div>
