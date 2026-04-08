@@ -410,7 +410,11 @@ export class AgentService {
           ? Object.fromEntries(Object.entries(transport.config).filter(([key]) => key !== 'secret'))
           : transport.config,
       })),
-      permissions: isOwner ? agent.permissions : agent.permissions.filter((permission) => permission.userId === viewerId),
+      permissions: agent.type === 'system'
+        ? agent.permissions.filter((permission) => permission.userId === viewerId)
+        : isOwner
+          ? agent.permissions
+          : agent.permissions.filter((permission) => permission.userId === viewerId),
     };
   }
 
