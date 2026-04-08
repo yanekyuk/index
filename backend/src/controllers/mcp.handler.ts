@@ -49,6 +49,9 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
     deps.negotiationDatabase,
     new NegotiationProposer(),
     new NegotiationResponder(),
+    deps.webhookLookup,
+    deps.negotiationEvents,
+    deps.negotiationTimeoutQueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,

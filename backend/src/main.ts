@@ -41,6 +41,7 @@ import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
 import { webhookQueue } from './queues/webhook.queue';
+import { negotiationTimeoutQueue } from './queues/negotiation-timeout.queue';
 import { WebhookController } from './controllers/webhook.controller';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
@@ -56,6 +57,7 @@ profileQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
 webhookQueue.startWorker();
+negotiationTimeoutQueue.startWorker();
 
 NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
@@ -462,6 +464,7 @@ const shutdown = async () => {
     notificationQueue.close(),
     emailQueue.close(),
     webhookQueue.close(),
+    negotiationTimeoutQueue.close(),
   ]);
   logger.info('Workers closed');
   process.exit(0);

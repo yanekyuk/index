@@ -174,6 +174,9 @@ export class ToolService {
       conversationDatabaseAdapter,
       new NegotiationProposer(),
       new NegotiationResponder(),
+      // webhookLookup, eventEmitter, timeoutQueue are not available in ToolService context
+      // (ToolService is used for non-chat tool invocations). External agent yield is handled
+      // via the ProtocolDeps flow in tool.factory.ts and mcp.handler.ts.
     ).createGraph();
     const opportunityGraph = new OpportunityGraphFactory(
       database,

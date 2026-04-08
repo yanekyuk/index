@@ -28,6 +28,8 @@ import { IntegrationService } from "./services/integration.service";
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { webhookService } from "./services/webhook.service";
 import { WEBHOOK_EVENTS } from "./lib/webhook-events";
+import { NegotiationEvents } from "./events/negotiation.event";
+import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import type { ProtocolDeps } from '@indexnetwork/protocol';
 
 /**
@@ -66,5 +68,20 @@ export function createDefaultProtocolDeps(): ProtocolDeps {
       test: (userId: string, webhookId: string) => webhookService.test(userId, webhookId),
       listEvents: () => [...WEBHOOK_EVENTS],
     },
+    webhookLookup: {
+      hasWebhookForEvent: async (userId: string, event: string) => {
+        const results = await webhookService.findByUserAndEvent(userId, event);
+        return results.length > 0;
+      },
+    },
+    negotiationEvents: {
+      emitTurnReceived: (data) => {
+        NegotiationEvents.onTurnReceived?.(data);
+      },
+      emitCompleted: (data) => {
+        NegotiationEvents.onCompleted?.(data);
+      },
+    },
+    negotiationTimeoutQueue,
   };
 }
