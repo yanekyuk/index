@@ -132,20 +132,20 @@ export class AgentService {
     return this.sanitizeAgent(refreshed);
   }
 
-  async delete(agentId: string, userId: string, headers: Headers): Promise<void> {
+  async delete(agentId: string, userId: string): Promise<void> {
     await this.requireMutableOwnedAgent(agentId, userId);
 
     try {
-      const tokens = await this.tokens.list(headers);
+      const tokens = await this.tokens.list(userId);
       const linkedTokenIds = tokens
         .filter((token) => token.metadata?.agentId === agentId)
         .map((token) => token.id);
 
       for (const tokenId of linkedTokenIds) {
-        await this.tokens.revoke(headers, tokenId);
+        await this.tokens.revoke(userId, tokenId);
       }
     } catch (err) {
-      logger.warn('Token revocation via auth handler failed; adapter cleanup will handle remaining tokens', {
+      logger.warn('Token revocation failed; adapter cleanup will handle remaining tokens', {
         agentId,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -275,22 +275,21 @@ export class AgentService {
   async createToken(
     agentId: string,
     userId: string,
-    headers: Headers,
     name?: string,
   ) {
     const agent = await this.requireMutableOwnedAgent(agentId, userId);
     const tokenName = name?.trim() || `${agent.name} API Key`;
 
-    return this.tokens.create(headers, {
+    return this.tokens.create(userId, {
       name: tokenName,
       agentId: agent.id,
     });
   }
 
-  async revokeToken(agentId: string, tokenId: string, userId: string, headers: Headers): Promise<void> {
+  async revokeToken(agentId: string, tokenId: string, userId: string): Promise<void> {
     await this.requireMutableOwnedAgent(agentId, userId);
 
-    const tokens = await this.tokens.list(headers);
+    const tokens = await this.tokens.list(userId);
     const token = tokens.find((item) => item.id === tokenId);
     if (!token) {
       throw new Error('Token not found');
@@ -300,7 +299,7 @@ export class AgentService {
       throw new Error('Token not found');
     }
 
-    await this.tokens.revoke(headers, tokenId);
+    await this.tokens.revoke(userId, tokenId);
   }
 
   async grantDefaultSystemPermissions(userId: string): Promise<void> {

@@ -173,14 +173,13 @@ export class AgentController {
   @Delete('/:id')
   @UseGuards(AuthGuard)
   async remove(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const req = _req;
     const agentId = params?.id;
     if (!agentId) {
       return jsonError('Agent ID is required', 400);
     }
 
     try {
-      await agentService.delete(agentId, user.id, req.headers);
+      await agentService.delete(agentId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -293,7 +292,7 @@ export class AgentController {
     }
 
     try {
-      const token = await agentService.createToken(agentId, user.id, req.headers, body.name);
+      const token = await agentService.createToken(agentId, user.id, body.name);
       return Response.json({ token }, { status: 201 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
@@ -310,7 +309,7 @@ export class AgentController {
     }
 
     try {
-      await agentService.revokeToken(agentId, tokenId, user.id, req.headers);
+      await agentService.revokeToken(agentId, tokenId, user.id);
       return new Response(null, { status: 204 });
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));

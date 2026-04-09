@@ -1,5 +1,8 @@
+import { and, eq } from 'drizzle-orm';
+
 import { auth } from '../lib/betterauth/auth.instance';
-import { BASE_URL } from '../lib/betterauth/betterauth';
+import db from '../lib/drizzle/drizzle';
+import * as schema from '../schemas/database.schema';
 
 export interface AgentTokenRecord {
   id: string;
@@ -16,17 +19,6 @@ export interface CreateAgentTokenResult {
   name: string | null;
   createdAt: string;
 }
-
-type CreateApiKeyResponse = {
-  id?: unknown;
-  key?: unknown;
-  name?: unknown;
-  createdAt?: unknown;
-};
-
-type ListApiKeyResponse = {
-  apiKeys?: unknown;
-};
 
 function parseMetadata(value: unknown): Record<string, unknown> | null {
   if (!value) {
@@ -53,82 +45,31 @@ function parseMetadata(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function asTokenRecord(value: unknown): AgentTokenRecord | null {
-  if (!value || typeof value !== 'object') {
-    return null;
-  }
-
-  const row = value as Record<string, unknown>;
-  if (typeof row.id !== 'string' || typeof row.createdAt !== 'string') {
-    return null;
-  }
-
-  return {
-    id: row.id,
-    name: typeof row.name === 'string' || row.name === null ? row.name : null,
-    start: typeof row.start === 'string' ? row.start : '',
-    createdAt: row.createdAt,
-    lastUsedAt: typeof row.lastUsedAt === 'string' || row.lastUsedAt === null ? row.lastUsedAt : null,
-    metadata: parseMetadata(row.metadata),
-  };
-}
-
 export interface AgentTokenStore {
-  create(headers: Headers, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult>;
-  list(headers: Headers): Promise<AgentTokenRecord[]>;
-  revoke(headers: Headers, tokenId: string): Promise<void>;
-}
-
-async function callAuthJson<T>(path: string, init: { method: 'GET' | 'POST'; headers: Headers; body?: unknown }): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (init.body !== undefined) {
-    headers.set('Content-Type', 'application/json');
-  }
-
-  const request = new Request(`${BASE_URL}/api/auth${path}`, {
-    method: init.method,
-    headers,
-    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
-
-  const response = await auth.handler(request);
-  if (!response.ok) {
-    let message = `Auth request failed with status ${response.status}`;
-    try {
-      const payload = await response.json() as { error?: unknown; message?: unknown };
-      if (typeof payload.error === 'string') {
-        message = payload.error;
-      } else if (typeof payload.message === 'string') {
-        message = payload.message;
-      }
-    } catch {
-      // Keep default message when the response body is empty or not JSON.
-    }
-
-    throw new Error(message);
-  }
-
-  return response.json() as Promise<T>;
+  create(userId: string, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult>;
+  list(userId: string): Promise<AgentTokenRecord[]>;
+  revoke(userId: string, tokenId: string): Promise<void>;
 }
 
 /**
  * AgentTokenAdapter
  *
- * Wraps Better Auth's API key programmatic APIs for agent-linked token
- * creation and revocation.
+ * Uses Better Auth's server-side API for key creation (no session required)
+ * and direct Drizzle queries for listing and revoking keys.
  */
 export class AgentTokenAdapter implements AgentTokenStore {
-  async create(headers: Headers, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult> {
-    const result = await callAuthJson<CreateApiKeyResponse>('/api-key/create', {
-      method: 'POST',
-      headers,
+  async create(userId: string, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createApiKey = (auth.api as any).createApiKey as (opts: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>;
+    const result = await createApiKey({
       body: {
+        userId,
         name: params.name,
         metadata: { agentId: params.agentId },
       },
     });
 
-    if (typeof result.id !== 'string' || typeof result.key !== 'string' || typeof result.createdAt !== 'string') {
+    if (typeof result.id !== 'string' || typeof result.key !== 'string') {
       throw new Error('Failed to create API key');
     }
 
@@ -136,31 +77,45 @@ export class AgentTokenAdapter implements AgentTokenStore {
       id: result.id,
       key: result.key,
       name: typeof result.name === 'string' || result.name === null ? result.name : null,
-      createdAt: result.createdAt,
+      createdAt: result.createdAt instanceof Date ? result.createdAt.toISOString() : String(result.createdAt),
     };
   }
 
-  async list(headers: Headers): Promise<AgentTokenRecord[]> {
-    const result = await callAuthJson<ListApiKeyResponse | unknown[]>('/api-key/list', {
-      method: 'GET',
-      headers,
-    });
+  async list(userId: string): Promise<AgentTokenRecord[]> {
+    const rows = await db
+      .select()
+      .from(schema.apikeys)
+      .where(
+        and(
+          eq(schema.apikeys.userId, userId),
+          eq(schema.apikeys.enabled, true),
+        ),
+      );
 
-    const rows = Array.isArray(result)
-      ? result
-      : result && typeof result === 'object' && Array.isArray((result as ListApiKeyResponse).apiKeys)
-        ? (result as ListApiKeyResponse).apiKeys as unknown[]
-        : [];
-
-    return rows.map(asTokenRecord).filter((row): row is AgentTokenRecord => row !== null);
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      start: row.start ?? '',
+      createdAt: row.createdAt.toISOString(),
+      lastUsedAt: row.lastRequest?.toISOString() ?? null,
+      metadata: parseMetadata(row.metadata),
+    }));
   }
 
-  async revoke(headers: Headers, tokenId: string): Promise<void> {
-    await callAuthJson('/api-key/delete', {
-      method: 'POST',
-      headers,
-      body: { keyId: tokenId },
-    });
+  async revoke(userId: string, tokenId: string): Promise<void> {
+    const result = await db
+      .delete(schema.apikeys)
+      .where(
+        and(
+          eq(schema.apikeys.id, tokenId),
+          eq(schema.apikeys.userId, userId),
+        ),
+      )
+      .returning({ id: schema.apikeys.id });
+
+    if (result.length === 0) {
+      throw new Error('Token not found');
+    }
   }
 }
 
