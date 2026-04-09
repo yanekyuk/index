@@ -202,7 +202,7 @@ export class NegotiationTimeoutQueue {
     const agent = new IndexNegotiator();
     const ownUserCtx: UserNegotiationContext = { id: activeUserId, intents: [], profile: {} };
     const otherUserCtx: UserNegotiationContext = { id: otherUserId, intents: [], profile: {} };
-    const seedAssessment: SeedAssessment = { score: 50, reasoning: 'Timeout fallback', valencyRole: 'peer' };
+    const seedAssessment: SeedAssessment = { reasoning: 'Timeout fallback', valencyRole: 'peer' };
 
     const aiTurn = await agent.invoke({
       ownUser: ownUserCtx,
