@@ -217,7 +217,7 @@ describe('MCP Server Factory', () => {
 
     expect(parseToolResult(result ?? '')).toEqual({
       success: false,
-      error: 'Invalid action: invalid:action. Valid actions: manage:profile, manage:intents, manage:networks, manage:contacts, manage:negotiations',
+      error: 'Invalid action: invalid:action. Valid actions: manage:profile, manage:intents, manage:networks, manage:contacts, manage:opportunities, manage:negotiations',
     });
     expect(createAgentCalls).toEqual([]);
   });

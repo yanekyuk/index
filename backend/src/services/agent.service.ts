@@ -23,6 +23,7 @@ export const AGENT_ACTIONS = [
   'manage:intents',
   'manage:networks',
   'manage:contacts',
+  'manage:opportunities',
   'manage:negotiations',
 ] as const;
 
@@ -34,6 +35,7 @@ const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
   'manage:intents',
   'manage:networks',
   'manage:contacts',
+  'manage:opportunities',
 ];
 
 export type AgentServiceStore = AgentRegistryStore;
@@ -355,7 +357,7 @@ export class AgentService {
       const missingNegotiatorActions = await this.findMissingGlobalActions(
         systemAgentIds.negotiator,
         userId,
-        ['manage:negotiations'],
+        ['manage:opportunities', 'manage:negotiations'],
       );
       if (missingNegotiatorActions.length > 0) {
         await this.db.grantPermission({

@@ -527,7 +527,7 @@ describe('AgentService', () => {
         agentId: SYSTEM_AGENT_IDS.chatOrchestrator,
         userId: OWNER_ID,
         scope: 'global',
-        actions: ['manage:intents', 'manage:networks', 'manage:contacts'],
+        actions: ['manage:intents', 'manage:networks', 'manage:contacts', 'manage:opportunities'],
       },
     ]);
   });
