@@ -34,6 +34,8 @@ function permissionLabel(action: string): string {
       return 'Networks';
     case 'manage:contacts':
       return 'Contacts';
+    case 'manage:opportunities':
+      return 'Opportunities';
     case 'manage:negotiations':
       return 'Negotiations';
     default:

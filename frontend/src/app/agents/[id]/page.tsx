@@ -42,6 +42,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "manage:intents": "Intents",
   "manage:networks": "Networks",
   "manage:contacts": "Contacts",
+  "manage:opportunities": "Opportunities",
   "manage:negotiations": "Negotiations",
 };
 
