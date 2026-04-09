@@ -251,11 +251,13 @@ export class NegotiationTimeoutQueue {
       return;
     }
 
-    // AI countered and under max turns — set back to working
-    // The next turn will be evaluated when the graph runs or another timeout fires.
-    await database.updateTaskState(task.id, 'working');
+    // AI countered and under max turns — the other party now needs to respond.
+    // Set to waiting_for_agent and arm a new timeout so the negotiation doesn't stall.
+    await database.updateTaskState(task.id, 'waiting_for_agent');
 
-    this.logger.info('[NegotiationTimeoutJob] AI agent countered, negotiation continues', {
+    await this.enqueueTimeout(negotiationId, newTurnCount, 24 * 60 * 60 * 1000);
+
+    this.logger.info('[NegotiationTimeoutJob] AI agent countered, armed timeout for next speaker', {
       negotiationId,
       action: aiTurn.action,
       turnCount: newTurnCount,
