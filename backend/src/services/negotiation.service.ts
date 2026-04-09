@@ -45,7 +45,7 @@ export class NegotiationService {
       sourceUser: sourceCtx,
       candidateUser: candidateCtx,
       indexContext: { networkId: '', prompt: '' },
-      seedAssessment: { score: 50, reasoning: 'Discovery negotiation', valencyRole: 'peer' },
+      seedAssessment: { reasoning: 'Discovery negotiation', valencyRole: 'peer' },
       maxTurns: 4,
     });
 
