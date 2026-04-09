@@ -51,3 +51,5 @@ dist/
 email-debug.md
 
 xmtp-dev*
+
+.seed-api-keys.json
