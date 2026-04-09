@@ -50,6 +50,11 @@ pub async fn handle(
     let prompt = build_prompt(&event);
     tracing::info!("forwarding event {} to openclaw", event.event);
 
+    // Spawn openclaw as a fire-and-forget subprocess. We return 200 before
+    // the process completes so Index Network does not retry the delivery.
+    // Errors are logged but not surfaced to the caller — if openclaw is
+    // unavailable, the relay will silently drop events. Monitor logs for
+    // "failed to spawn openclaw agent" errors in production.
     tokio::spawn(async move {
         match tokio::process::Command::new("openclaw")
             .args(["agent", "--message", &prompt])

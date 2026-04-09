@@ -12,12 +12,22 @@ impl SeenSet {
 
     /// Returns true if this signature was seen within TTL.
     /// Inserts the entry on first occurrence; does not refresh TTL on duplicate.
+    /// Evicts expired entries inline on access.
+    ///
+    /// Note: the dedup key is the HMAC signature (a function of the raw body),
+    /// not a logical event ID. Two distinct events with identical bodies would
+    /// be deduplicated as the same delivery. This is acceptable because the
+    /// webhook envelope includes a timestamp, making body collisions across
+    /// distinct events extremely unlikely in practice.
     pub fn check_and_insert(&self, sig: &str) -> bool {
         let now = Instant::now();
         if let Some(entry) = self.0.get(sig) {
             if now.duration_since(*entry) < TTL {
                 return true; // duplicate within TTL
             }
+            // expired: drop the read guard before removing
+            drop(entry);
+            self.0.remove(sig);
         }
         self.0.insert(sig.to_string(), now);
         false
