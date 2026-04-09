@@ -1,90 +1,86 @@
+/**
+ * Post-build script: generates per-route index.html files with correct
+ * OG / Twitter meta tags so social-media crawlers see the right previews.
+ *
+ * Covers marketing pages (hardcoded) and blog posts (from posts.json).
+ */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 
 const DIST_DIR = join(import.meta.dir, "dist");
-const POSTS_JSON = join(DIST_DIR, "blog", "posts.json");
 const TEMPLATE_HTML = join(DIST_DIR, "index.html");
+const POSTS_JSON = join(DIST_DIR, "blog", "posts.json");
 
-if (!existsSync(POSTS_JSON)) {
-  console.log("No posts.json found, skipping blog meta injection");
-  process.exit(0);
-}
-
-const posts: Array<{
-  slug: string;
-  title: string;
-  description?: string;
-  image?: string;
-}> = JSON.parse(readFileSync(POSTS_JSON, "utf-8"));
+const SITE_URL = "https://index.network";
+const DEFAULT_IMAGE = `${SITE_URL}/link-preview.png`;
 
 const template = readFileSync(TEMPLATE_HTML, "utf-8");
 
-const SITE_URL = "https://index.network";
-const DEFAULT_TITLE = "Index Network";
-const DEFAULT_DESCRIPTION =
-  "You know that moment when the right person unlocks your next move? Index makes that magic repeatable, and helps your others find you.";
-const DEFAULT_IMAGE = `${SITE_URL}/link-preview.png`;
-
-let injected = 0;
-
-for (const post of posts) {
-  const postTitle = `${post.title} — Index Network`;
-  const postDescription = post.description || DEFAULT_DESCRIPTION;
-  const postImage = post.image
-    ? `${SITE_URL}${post.image}`
-    : DEFAULT_IMAGE;
-  const postUrl = `${SITE_URL}/blog/${post.slug}`;
-
-  let html = template;
-
-  // Replace <title>
-  html = html.replace(
-    `<title>${DEFAULT_TITLE}</title>`,
-    `<title>${postTitle}</title>`,
-  );
-
-  // Replace og tags
-  html = html.replace(
-    `<meta property="og:title" content="${DEFAULT_TITLE}" />`,
-    `<meta property="og:title" content="${post.title}" />`,
-  );
-  html = html.replace(
-    `<meta property="og:description" content="${DEFAULT_DESCRIPTION}" />`,
-    `<meta property="og:description" content="${postDescription}" />`,
-  );
-  html = html.replace(
-    `<meta property="og:image" content="${DEFAULT_IMAGE}" />`,
-    `<meta property="og:image" content="${postImage}" />`,
-  );
-  html = html.replace(
-    `<meta property="og:url" content="${SITE_URL}/" />`,
-    `<meta property="og:url" content="${postUrl}" />`,
-  );
-
-  // Replace twitter tags
-  html = html.replace(
-    `<meta name="twitter:title" content="${DEFAULT_TITLE}" />`,
-    `<meta name="twitter:title" content="${post.title}" />`,
-  );
-  html = html.replace(
-    `<meta name="twitter:description" content="${DEFAULT_DESCRIPTION}" />`,
-    `<meta name="twitter:description" content="${postDescription}" />`,
-  );
-  html = html.replace(
-    `<meta name="twitter:image" content="${DEFAULT_IMAGE}" />`,
-    `<meta name="twitter:image" content="${postImage}" />`,
-  );
-
-  // Replace meta description
-  html = html.replace(
-    `<meta name="description" content="${DEFAULT_DESCRIPTION}" />`,
-    `<meta name="description" content="${postDescription}" />`,
-  );
-
-  const outDir = join(DIST_DIR, "blog", post.slug);
-  mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, "index.html"), html);
-  injected++;
+interface PageMeta {
+  path: string;
+  title: string;
+  description: string;
+  image: string;
+  type?: string;
 }
 
-console.log(`Injected meta tags for ${injected} blog posts`);
+// ── Marketing pages ─────────────────────────────────────────────
+const MARKETING_PAGES: PageMeta[] = [
+  {
+    path: "/found-in-translation",
+    title: "Found in Translation | Index Network",
+    description:
+      "Some things find you. Most don't. That is, until language became our new interface and agents became our calling cards.",
+    image: `${SITE_URL}/found-in-translation/found-in-translation-1-hero.png`,
+    type: "article",
+  },
+];
+
+// ── Blog posts ──────────────────────────────────────────────────
+function loadBlogPages(): PageMeta[] {
+  if (!existsSync(POSTS_JSON)) return [];
+
+  const posts: { slug: string; title: string; description?: string; image?: string }[] =
+    JSON.parse(readFileSync(POSTS_JSON, "utf-8"));
+
+  return posts.map((p) => ({
+    path: `/blog/${p.slug}`,
+    title: `${p.title} — Index Network`,
+    description: p.description || "",
+    image: p.image ? `${SITE_URL}${p.image}` : DEFAULT_IMAGE,
+    type: "article",
+  }));
+}
+
+// ── HTML rewriting ──────────────────────────────────────────────
+function replaceMeta(html: string, attr: string, key: string, value: string): string {
+  return html.replace(
+    new RegExp(`(<meta\\s+${attr}="${key}"\\s+content=")[^"]*(")`,"i"),
+    `$1${value}$2`,
+  );
+}
+
+function buildHtml(meta: PageMeta): string {
+  let html = template.replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`);
+  html = replaceMeta(html, "name", "description", meta.description);
+  html = replaceMeta(html, "property", "og:type", meta.type ?? "website");
+  html = replaceMeta(html, "property", "og:url", `${SITE_URL}${meta.path}`);
+  html = replaceMeta(html, "property", "og:title", meta.title);
+  html = replaceMeta(html, "property", "og:description", meta.description);
+  html = replaceMeta(html, "property", "og:image", meta.image);
+  html = replaceMeta(html, "name", "twitter:title", meta.title);
+  html = replaceMeta(html, "name", "twitter:description", meta.description);
+  html = replaceMeta(html, "name", "twitter:image", meta.image);
+  return html;
+}
+
+// ── Run ─────────────────────────────────────────────────────────
+const pages = [...MARKETING_PAGES, ...loadBlogPages()];
+
+for (const page of pages) {
+  const dir = join(DIST_DIR, page.path);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "index.html"), buildHtml(page));
+}
+
+console.log(`Injected meta tags for ${pages.length} pages`);
