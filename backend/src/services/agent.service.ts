@@ -17,6 +17,7 @@ import { log } from '../lib/log';
 
 const logger = log.service.from('AgentService');
 
+/** All valid agent actions. Used for input validation. */
 export const AGENT_ACTIONS = [
   'manage:profile',
   'manage:intents',
@@ -26,6 +27,14 @@ export const AGENT_ACTIONS = [
 ] as const;
 
 export type AgentAction = (typeof AGENT_ACTIONS)[number];
+
+/** Actions granted to the chat orchestrator by default (excludes negotiations). */
+const ORCHESTRATOR_ACTIONS: readonly AgentAction[] = [
+  'manage:profile',
+  'manage:intents',
+  'manage:networks',
+  'manage:contacts',
+];
 
 export type AgentServiceStore = AgentRegistryStore;
 
@@ -328,7 +337,7 @@ export class AgentService {
       const missingChatActions = await this.findMissingGlobalActions(
         systemAgentIds.chatOrchestrator,
         userId,
-        AGENT_ACTIONS,
+        ORCHESTRATOR_ACTIONS,
       );
       if (missingChatActions.length > 0) {
         await this.db.grantPermission({

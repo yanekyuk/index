@@ -316,6 +316,13 @@
       "when": 1775783400000,
       "tag": "0044_rename_waiting_for_external_to_waiting_for_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1775784000000,
+      "tag": "0045_remove_negotiations_from_orchestrator",
+      "breakpoints": true
     }
   ]
 }
