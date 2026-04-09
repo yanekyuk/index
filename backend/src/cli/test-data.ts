@@ -17,1152 +17,1052 @@ export interface TesterPersona {
   intents: string[];
 }
 
-/** Maximum number of tester personas that can be seeded in one run (0–78). */
-export const TESTER_PERSONAS_MAX = 78;
+/** Maximum number of tester personas that can be seeded in one run (0–50). */
+export const TESTER_PERSONAS_MAX = 50;
 
-/** 78 hand-crafted realistic tester personas for seed (deduplicated). Intents are created via intent graph. */
+/** 50 historical figure personas for seed. All deceased. */
 export const TESTER_PERSONAS: TesterPersona[] = [
+  // ── Warriors & Military Leaders ────────────────────────────────────────────
   {
-    name: 'Alex Chen',
+    name: 'Miyamoto Musashi',
     email: 'seed-tester-1@index-network.test',
-    linkedin: 'https://linkedin.com/in/alexchen-dev',
-    github: 'https://github.com/alexchen',
-    x: null,
-    website: null,
     profile: {
       identity: {
-        name: 'Alex Chen',
-        bio: 'Full-stack engineer focused on React and Node. Building developer tools.',
+        name: 'Miyamoto Musashi',
+        bio: 'Samurai, swordsman, and author of The Book of Five Rings. Undefeated in 61 duels.',
+        location: 'Kumamoto, Japan',
+      },
+      narrative: { context: 'Seeking fellow martial artists and strategists to exchange techniques and philosophy of combat.' },
+      attributes: {
+        interests: ['swordsmanship', 'strategy', 'ink painting', 'Zen Buddhism'],
+        skills: ['kenjutsu', 'dual-blade fighting', 'strategic thinking', 'calligraphy'],
+      },
+    },
+    intents: [
+      'Looking for martial arts practitioners to discuss combat philosophy and training methods.',
+      'Seeking calligraphers and ink painters for artistic collaboration.',
+    ],
+  },
+  {
+    name: 'Tomoe Gozen',
+    email: 'seed-tester-2@index-network.test',
+    profile: {
+      identity: {
+        name: 'Tomoe Gozen',
+        bio: 'Samurai warrior and onna-bugeisha. Known for bravery in the Genpei War and skill with the naginata.',
+        location: 'Shinano Province, Japan',
+      },
+      narrative: { context: 'Looking for warriors, horseback riders, and martial artists who value honor and discipline.' },
+      attributes: {
+        interests: ['horseback archery', 'naginata', 'bushido', 'warfare'],
+        skills: ['mounted combat', 'naginata mastery', 'archery', 'battlefield leadership'],
+      },
+    },
+    intents: [
+      'Seeking fellow warriors and martial artists to train and compete with.',
+      'Looking for equestrians who practice mounted combat or horseback archery.',
+    ],
+  },
+  {
+    name: 'Sun Tzu',
+    email: 'seed-tester-3@index-network.test',
+    profile: {
+      identity: {
+        name: 'Sun Tzu',
+        bio: 'Military strategist, general, and author of The Art of War. Advisor to the King of Wu.',
+        location: 'Wu, China',
+      },
+      narrative: { context: 'Interested in connecting with strategic thinkers, military historians, and leadership practitioners.' },
+      attributes: {
+        interests: ['military strategy', 'statecraft', 'philosophy', 'logistics'],
+        skills: ['strategic planning', 'military command', 'intelligence analysis', 'writing'],
+      },
+    },
+    intents: [
+      'Looking for strategists and leaders to discuss principles of conflict and competition.',
+      'Seeking historians and philosophers interested in the intersection of war and governance.',
+    ],
+  },
+  {
+    name: 'Joan of Arc',
+    email: 'seed-tester-4@index-network.test',
+    profile: {
+      identity: {
+        name: 'Joan of Arc',
+        bio: 'Military leader and patron saint of France. Led French forces to key victories in the Hundred Years\' War at age 17.',
+        location: 'Rouen, France',
+      },
+      narrative: { context: 'Seeking people of conviction — leaders, organizers, and advocates for causes they believe in.' },
+      attributes: {
+        interests: ['military leadership', 'faith', 'national liberation', 'courage'],
+        skills: ['battlefield command', 'inspirational leadership', 'siege warfare', 'horsemanship'],
+      },
+    },
+    intents: [
+      'Looking for community leaders and organizers who rally people around a shared mission.',
+      'Seeking people involved in civic advocacy and grassroots movements.',
+    ],
+  },
+
+  // ── Scientists & Inventors ─────────────────────────────────────────────────
+  {
+    name: 'Ada Lovelace',
+    email: 'seed-tester-5@index-network.test',
+    profile: {
+      identity: {
+        name: 'Ada Lovelace',
+        bio: 'Mathematician and writer. Created the first computer algorithm for Charles Babbage\'s Analytical Engine.',
+        location: 'London, England',
+      },
+      narrative: { context: 'Passionate about the intersection of mathematics and imagination. Seeking collaborators who think computationally.' },
+      attributes: {
+        interests: ['computing', 'mathematics', 'poetry', 'mechanical engineering'],
+        skills: ['algorithm design', 'mathematical analysis', 'technical writing', 'abstract reasoning'],
+      },
+    },
+    intents: [
+      'Looking for mathematicians and engineers to explore computational theory.',
+      'Seeking creative thinkers who see connections between art and science.',
+    ],
+  },
+  {
+    name: 'Nikola Tesla',
+    email: 'seed-tester-6@index-network.test',
+    profile: {
+      identity: {
+        name: 'Nikola Tesla',
+        bio: 'Inventor and electrical engineer. Pioneered alternating current, wireless transmission, and rotating magnetic fields.',
+        location: 'New York City, NY',
+      },
+      narrative: { context: 'Seeking engineers and inventors working on electricity, wireless technology, and energy systems.' },
+      attributes: {
+        interests: ['electrical engineering', 'wireless power', 'alternating current', 'physics'],
+        skills: ['electrical system design', 'invention', 'physics research', 'mechanical engineering'],
+      },
+    },
+    intents: [
+      'Looking for electrical engineers and physicists to discuss power transmission and energy.',
+      'Seeking inventors working on wireless technology or electromagnetic systems.',
+    ],
+  },
+  {
+    name: 'Marie Curie',
+    email: 'seed-tester-7@index-network.test',
+    profile: {
+      identity: {
+        name: 'Marie Curie',
+        bio: 'Physicist and chemist. Discovered polonium and radium. First person to win Nobel Prizes in two different sciences.',
+        location: 'Paris, France',
+      },
+      narrative: { context: 'Looking for researchers in physics and chemistry, especially those pushing boundaries in radioactivity and materials science.' },
+      attributes: {
+        interests: ['radioactivity', 'physics', 'chemistry', 'scientific research'],
+        skills: ['laboratory research', 'radiation measurement', 'chemical analysis', 'scientific writing'],
+      },
+    },
+    intents: [
+      'Seeking physicists and chemists for collaboration on materials research.',
+      'Looking for women in science to support and mentor.',
+    ],
+  },
+  {
+    name: 'Isaac Newton',
+    email: 'seed-tester-8@index-network.test',
+    profile: {
+      identity: {
+        name: 'Isaac Newton',
+        bio: 'Mathematician, physicist, and astronomer. Developed laws of motion, universal gravitation, and calculus.',
+        location: 'Cambridge, England',
+      },
+      narrative: { context: 'Interested in connecting with mathematicians, opticians, and natural philosophers.' },
+      attributes: {
+        interests: ['mathematics', 'physics', 'optics', 'alchemy'],
+        skills: ['calculus', 'theoretical physics', 'telescope design', 'mathematical proof'],
+      },
+    },
+    intents: [
+      'Looking for mathematicians to debate methods of calculus and infinite series.',
+      'Seeking opticians and lens-makers interested in light and color theory.',
+    ],
+  },
+  {
+    name: 'Charles Darwin',
+    email: 'seed-tester-9@index-network.test',
+    profile: {
+      identity: {
+        name: 'Charles Darwin',
+        bio: 'Naturalist and biologist. Developed the theory of evolution by natural selection.',
+        location: 'Down House, Kent, England',
+      },
+      narrative: { context: 'Seeking naturalists, breeders, and geologists to exchange observations on species variation.' },
+      attributes: {
+        interests: ['natural history', 'evolution', 'geology', 'taxonomy'],
+        skills: ['specimen collection', 'field observation', 'scientific writing', 'taxonomic classification'],
+      },
+    },
+    intents: [
+      'Looking for naturalists and biologists studying species adaptation and variation.',
+      'Seeking plant and animal breeders to discuss heredity and selection.',
+    ],
+  },
+  {
+    name: 'Galileo Galilei',
+    email: 'seed-tester-10@index-network.test',
+    profile: {
+      identity: {
+        name: 'Galileo Galilei',
+        bio: 'Astronomer, physicist, and engineer. Father of observational astronomy and modern physics.',
+        location: 'Florence, Italy',
+      },
+      narrative: { context: 'Seeking astronomers, mathematicians, and instrument makers to advance our understanding of the heavens.' },
+      attributes: {
+        interests: ['astronomy', 'physics', 'telescope design', 'mathematics'],
+        skills: ['astronomical observation', 'telescope construction', 'experimental physics', 'mathematical modeling'],
+      },
+    },
+    intents: [
+      'Looking for astronomers and telescope makers to improve celestial observation.',
+      'Seeking mathematicians interested in the physics of motion and mechanics.',
+    ],
+  },
+
+  // ── Artists & Architects ───────────────────────────────────────────────────
+  {
+    name: 'Leonardo da Vinci',
+    email: 'seed-tester-11@index-network.test',
+    profile: {
+      identity: {
+        name: 'Leonardo da Vinci',
+        bio: 'Painter, engineer, anatomist, and inventor. Created the Mona Lisa and Vitruvian Man. Polymath of the Renaissance.',
+        location: 'Florence, Italy',
+      },
+      narrative: { context: 'Seeking collaborators across art, engineering, anatomy, and invention — the boundaries between disciplines are illusions.' },
+      attributes: {
+        interests: ['painting', 'anatomy', 'engineering', 'flight', 'hydraulics'],
+        skills: ['oil painting', 'anatomical drawing', 'mechanical design', 'architectural drafting'],
+      },
+    },
+    intents: [
+      'Looking for engineers and artists working at the intersection of art and science.',
+      'Seeking anatomists and physicians to collaborate on studies of the human body.',
+    ],
+  },
+  {
+    name: 'Frida Kahlo',
+    email: 'seed-tester-12@index-network.test',
+    profile: {
+      identity: {
+        name: 'Frida Kahlo',
+        bio: 'Painter known for vivid self-portraits and works inspired by Mexican folk art. Icon of surrealism and feminist art.',
+        location: 'Mexico City, Mexico',
+      },
+      narrative: { context: 'Looking for artists who paint from lived experience — especially those exploring identity, pain, and culture.' },
+      attributes: {
+        interests: ['painting', 'Mexican folk art', 'surrealism', 'political activism'],
+        skills: ['oil painting', 'self-portraiture', 'color composition', 'mixed media'],
+      },
+    },
+    intents: [
+      'Seeking painters and visual artists exploring identity and cultural heritage in their work.',
+      'Looking for activists and organizers in the arts community.',
+    ],
+  },
+  {
+    name: 'Michelangelo Buonarroti',
+    email: 'seed-tester-13@index-network.test',
+    profile: {
+      identity: {
+        name: 'Michelangelo Buonarroti',
+        bio: 'Sculptor, painter, architect, and poet. Created the ceiling of the Sistine Chapel and the statue of David.',
+        location: 'Rome, Italy',
+      },
+      narrative: { context: 'Seeking sculptors, architects, and patrons who understand that art demands total commitment.' },
+      attributes: {
+        interests: ['sculpture', 'architecture', 'fresco painting', 'poetry'],
+        skills: ['marble carving', 'fresco technique', 'architectural design', 'figure drawing'],
+      },
+    },
+    intents: [
+      'Looking for sculptors and stone carvers to exchange techniques.',
+      'Seeking architects working on monumental public buildings or sacred spaces.',
+    ],
+  },
+  {
+    name: 'Zaha Hadid',
+    email: 'seed-tester-14@index-network.test',
+    profile: {
+      identity: {
+        name: 'Zaha Hadid',
+        bio: 'Architect known for radical deconstructivist designs. First woman to win the Pritzker Architecture Prize.',
+        location: 'London, England',
+      },
+      narrative: { context: 'Seeking architects, parametric designers, and structural engineers who push beyond conventional form.' },
+      attributes: {
+        interests: ['architecture', 'parametric design', 'urbanism', 'mathematics'],
+        skills: ['architectural design', 'parametric modeling', 'urban planning', 'conceptual drawing'],
+      },
+    },
+    intents: [
+      'Looking for architects and designers experimenting with fluid, non-rectilinear forms.',
+      'Seeking structural engineers willing to solve problems conventional engineers avoid.',
+    ],
+  },
+
+  // ── Musicians & Composers ──────────────────────────────────────────────────
+  {
+    name: 'Ludwig van Beethoven',
+    email: 'seed-tester-15@index-network.test',
+    profile: {
+      identity: {
+        name: 'Ludwig van Beethoven',
+        bio: 'Composer and pianist. Bridged Classical and Romantic eras. Continued composing masterworks after losing his hearing.',
+        location: 'Vienna, Austria',
+      },
+      narrative: { context: 'Seeking musicians, especially pianists and orchestral composers, to discuss form, expression, and the limits of music.' },
+      attributes: {
+        interests: ['composition', 'piano', 'symphonic music', 'music theory'],
+        skills: ['orchestral composition', 'piano performance', 'improvisation', 'counterpoint'],
+      },
+    },
+    intents: [
+      'Looking for composers and musicians to discuss symphonic form and emotional expression.',
+      'Seeking pianists interested in performing and interpreting complex works.',
+    ],
+  },
+  {
+    name: 'Umm Kulthum',
+    email: 'seed-tester-16@index-network.test',
+    profile: {
+      identity: {
+        name: 'Umm Kulthum',
+        bio: 'Egyptian singer, songwriter, and actress. The Star of the East — one of the greatest vocalists of the 20th century.',
+        location: 'Cairo, Egypt',
+      },
+      narrative: { context: 'Seeking vocalists, poets, and composers who understand that a single phrase can hold an entire world.' },
+      attributes: {
+        interests: ['vocal performance', 'Arabic music', 'poetry', 'classical maqam'],
+        skills: ['singing', 'maqam interpretation', 'audience connection', 'vocal improvisation'],
+      },
+    },
+    intents: [
+      'Looking for vocalists and musicians working in Arabic classical and folk traditions.',
+      'Seeking poets and lyricists for collaboration on sung poetry.',
+    ],
+  },
+  {
+    name: 'Johann Sebastian Bach',
+    email: 'seed-tester-17@index-network.test',
+    profile: {
+      identity: {
+        name: 'Johann Sebastian Bach',
+        bio: 'Composer and organist. Master of counterpoint, fugue, and sacred music. Prolific creator of cantatas and concertos.',
+        location: 'Leipzig, Germany',
+      },
+      narrative: { context: 'Seeking organists, choir directors, and composers interested in the architecture of polyphonic music.' },
+      attributes: {
+        interests: ['counterpoint', 'organ music', 'sacred music', 'music pedagogy'],
+        skills: ['fugue composition', 'organ performance', 'choral direction', 'music teaching'],
+      },
+    },
+    intents: [
+      'Looking for organists and keyboard players to exchange repertoire and technique.',
+      'Seeking choir directors and sacred music practitioners for collaboration.',
+    ],
+  },
+
+  // ── Philosophers & Writers ─────────────────────────────────────────────────
+  {
+    name: 'Hypatia of Alexandria',
+    email: 'seed-tester-18@index-network.test',
+    profile: {
+      identity: {
+        name: 'Hypatia of Alexandria',
+        bio: 'Philosopher, mathematician, and astronomer. Head of the Neoplatonic school in Alexandria. Renowned teacher and scholar.',
+        location: 'Alexandria, Egypt',
+      },
+      narrative: { context: 'Seeking scholars, mathematicians, and philosophers for intellectual exchange and teaching collaboration.' },
+      attributes: {
+        interests: ['philosophy', 'mathematics', 'astronomy', 'teaching'],
+        skills: ['philosophical reasoning', 'mathematical instruction', 'astronomical calculation', 'public lecturing'],
+      },
+    },
+    intents: [
+      'Looking for mathematicians and philosophers to discuss Neoplatonic thought and geometry.',
+      'Seeking educators and scholars committed to open intellectual inquiry.',
+    ],
+  },
+  {
+    name: 'William Shakespeare',
+    email: 'seed-tester-19@index-network.test',
+    profile: {
+      identity: {
+        name: 'William Shakespeare',
+        bio: 'Playwright, poet, and actor. Wrote 37 plays and 154 sonnets that defined English literature.',
+        location: 'London, England',
+      },
+      narrative: { context: 'Seeking actors, directors, and fellow playwrights — the stage is where words become flesh.' },
+      attributes: {
+        interests: ['theater', 'poetry', 'storytelling', 'English language'],
+        skills: ['playwriting', 'sonnet composition', 'dramatic structure', 'acting'],
+      },
+    },
+    intents: [
+      'Looking for actors and theater companies interested in performing new and classic works.',
+      'Seeking poets and writers to discuss dramatic form and the craft of language.',
+    ],
+  },
+  {
+    name: 'Rumi',
+    email: 'seed-tester-20@index-network.test',
+    profile: {
+      identity: {
+        name: 'Rumi',
+        bio: 'Persian poet, Sufi mystic, and scholar. Author of the Masnavi, one of the greatest works of mystical poetry.',
+        location: 'Konya, Turkey',
+      },
+      narrative: { context: 'Seeking poets, musicians, and spiritual seekers — those who understand that love is the only language.' },
+      attributes: {
+        interests: ['poetry', 'Sufism', 'music', 'spiritual philosophy'],
+        skills: ['mystical poetry', 'philosophical writing', 'spiritual teaching', 'whirling meditation'],
+      },
+    },
+    intents: [
+      'Looking for poets and writers exploring spiritual and mystical themes.',
+      'Seeking musicians, especially reed flute and percussion players, for Sufi gatherings.',
+    ],
+  },
+  {
+    name: 'Murasaki Shikibu',
+    email: 'seed-tester-21@index-network.test',
+    profile: {
+      identity: {
+        name: 'Murasaki Shikibu',
+        bio: 'Novelist, poet, and lady-in-waiting at the Japanese imperial court. Author of The Tale of Genji, the world\'s first novel.',
+        location: 'Kyoto, Japan',
+      },
+      narrative: { context: 'Seeking writers, poets, and observers of human nature who find meaning in the details of daily life.' },
+      attributes: {
+        interests: ['novel writing', 'poetry', 'court culture', 'human psychology'],
+        skills: ['narrative prose', 'character development', 'waka poetry', 'observational writing'],
+      },
+    },
+    intents: [
+      'Looking for novelists and fiction writers to discuss narrative technique and character.',
+      'Seeking poets working in short-form verse traditions.',
+    ],
+  },
+  {
+    name: 'Marcus Aurelius',
+    email: 'seed-tester-22@index-network.test',
+    profile: {
+      identity: {
+        name: 'Marcus Aurelius',
+        bio: 'Roman Emperor and Stoic philosopher. Author of Meditations, a foundational text of Stoic thought.',
+        location: 'Rome, Italy',
+      },
+      narrative: { context: 'Seeking leaders, philosophers, and anyone who struggles to act justly under pressure.' },
+      attributes: {
+        interests: ['Stoic philosophy', 'governance', 'ethics', 'self-discipline'],
+        skills: ['philosophical writing', 'statecraft', 'leadership', 'ethical reasoning'],
+      },
+    },
+    intents: [
+      'Looking for philosophers and ethicists to discuss virtue, duty, and Stoic practice.',
+      'Seeking leaders dealing with difficult decisions who value reflective practice.',
+    ],
+  },
+
+  // ── Financiers & Merchants ─────────────────────────────────────────────────
+  {
+    name: 'J.P. Morgan',
+    email: 'seed-tester-23@index-network.test',
+    profile: {
+      identity: {
+        name: 'J.P. Morgan',
+        bio: 'Financier and banker. Founded J.P. Morgan & Co. Organized the financing of major railroads and U.S. Steel.',
+        location: 'New York City, NY',
+      },
+      narrative: { context: 'Seeking industrialists, entrepreneurs, and financiers building enterprises that require serious capital.' },
+      attributes: {
+        interests: ['finance', 'banking', 'industrial consolidation', 'art collecting'],
+        skills: ['corporate finance', 'deal structuring', 'risk assessment', 'capital allocation'],
+      },
+    },
+    intents: [
+      'Looking for entrepreneurs and industrialists who need investment capital for large ventures.',
+      'Seeking financiers and bankers to discuss syndication and deal structure.',
+    ],
+  },
+  {
+    name: 'Mansa Musa',
+    email: 'seed-tester-24@index-network.test',
+    profile: {
+      identity: {
+        name: 'Mansa Musa',
+        bio: 'Emperor of the Mali Empire and the wealthiest person in recorded history. Patron of trade, education, and architecture.',
+        location: 'Timbuktu, Mali',
+      },
+      narrative: { context: 'Seeking traders, scholars, and architects — wealth means nothing if it does not build civilization.' },
+      attributes: {
+        interests: ['trade', 'education', 'architecture', 'Islamic scholarship'],
+        skills: ['empire administration', 'trade route management', 'patronage', 'diplomatic negotiation'],
+      },
+    },
+    intents: [
+      'Looking for traders and merchants operating across international routes.',
+      'Seeking architects and educators to build universities and libraries.',
+    ],
+  },
+  {
+    name: 'Cosimo de\' Medici',
+    email: 'seed-tester-25@index-network.test',
+    profile: {
+      identity: {
+        name: 'Cosimo de\' Medici',
+        bio: 'Banker, patron of the arts, and founder of the Medici political dynasty. Financed the Italian Renaissance.',
+        location: 'Florence, Italy',
+      },
+      narrative: { context: 'Seeking artists, architects, and scholars who need patronage — and bankers who understand that culture is wealth.' },
+      attributes: {
+        interests: ['banking', 'art patronage', 'architecture', 'classical scholarship'],
+        skills: ['banking operations', 'political strategy', 'arts patronage', 'diplomatic negotiation'],
+      },
+    },
+    intents: [
+      'Looking for artists and architects seeking patronage for ambitious projects.',
+      'Seeking bankers and financiers interested in cultural investment.',
+    ],
+  },
+
+  // ── Explorers & Navigators ─────────────────────────────────────────────────
+  {
+    name: 'Ibn Battuta',
+    email: 'seed-tester-26@index-network.test',
+    profile: {
+      identity: {
+        name: 'Ibn Battuta',
+        bio: 'Explorer and scholar. Traveled over 70,000 miles across Africa, Asia, and Europe over 30 years.',
+        location: 'Tangier, Morocco',
+      },
+      narrative: { context: 'Seeking travelers, geographers, and cultural observers who believe the world is best understood by walking through it.' },
+      attributes: {
+        interests: ['travel', 'geography', 'Islamic law', 'cultural observation'],
+        skills: ['navigation', 'travel writing', 'language learning', 'cross-cultural diplomacy'],
+      },
+    },
+    intents: [
+      'Looking for travelers and geographers to compare notes on distant lands.',
+      'Seeking translators and linguists for multi-language collaboration.',
+    ],
+  },
+  {
+    name: 'Amelia Earhart',
+    email: 'seed-tester-27@index-network.test',
+    profile: {
+      identity: {
+        name: 'Amelia Earhart',
+        bio: 'Aviator and author. First woman to fly solo across the Atlantic Ocean. Advocate for women in aviation.',
+        location: 'Atchison, Kansas',
+      },
+      narrative: { context: 'Seeking pilots, engineers, and adventurers who refuse to accept limits others set for them.' },
+      attributes: {
+        interests: ['aviation', 'navigation', 'women\'s rights', 'adventure'],
+        skills: ['piloting', 'celestial navigation', 'mechanical repair', 'public speaking'],
+      },
+    },
+    intents: [
+      'Looking for aviators and aerospace engineers to discuss long-distance flight.',
+      'Seeking women in technical fields for mutual support and collaboration.',
+    ],
+  },
+
+  // ── Political Leaders & Activists ──────────────────────────────────────────
+  {
+    name: 'Mahatma Gandhi',
+    email: 'seed-tester-28@index-network.test',
+    profile: {
+      identity: {
+        name: 'Mahatma Gandhi',
+        bio: 'Lawyer, anti-colonial activist, and leader of Indian independence. Pioneer of nonviolent civil disobedience.',
+        location: 'Ahmedabad, India',
+      },
+      narrative: { context: 'Seeking organizers, lawyers, and activists committed to justice through nonviolent means.' },
+      attributes: {
+        interests: ['nonviolence', 'civil rights', 'self-governance', 'communal living'],
+        skills: ['community organizing', 'nonviolent protest', 'legal advocacy', 'public speaking'],
+      },
+    },
+    intents: [
+      'Looking for community organizers and activists practicing nonviolent resistance.',
+      'Seeking lawyers and advocates working on civil rights and social justice.',
+    ],
+  },
+  {
+    name: 'Cleopatra VII',
+    email: 'seed-tester-29@index-network.test',
+    profile: {
+      identity: {
+        name: 'Cleopatra VII',
+        bio: 'Pharaoh of Egypt, diplomat, and naval commander. Ruled Egypt for 21 years through political acumen and strategic alliances.',
+        location: 'Alexandria, Egypt',
+      },
+      narrative: { context: 'Seeking diplomats, strategists, and leaders who understand that power requires both intelligence and alliance.' },
+      attributes: {
+        interests: ['diplomacy', 'naval strategy', 'languages', 'trade policy'],
+        skills: ['multilingual diplomacy', 'political negotiation', 'fleet command', 'statecraft'],
+      },
+    },
+    intents: [
+      'Looking for diplomats and negotiators skilled in multi-party alliance building.',
+      'Seeking linguists and translators — I speak nine languages and value polyglots.',
+    ],
+  },
+  {
+    name: 'Nelson Mandela',
+    email: 'seed-tester-30@index-network.test',
+    profile: {
+      identity: {
+        name: 'Nelson Mandela',
+        bio: 'Anti-apartheid activist, political prisoner for 27 years, and first Black president of South Africa.',
+        location: 'Johannesburg, South Africa',
+      },
+      narrative: { context: 'Seeking leaders, educators, and peacebuilders committed to reconciliation and justice.' },
+      attributes: {
+        interests: ['reconciliation', 'education', 'human rights', 'constitutional law'],
+        skills: ['negotiation', 'public speaking', 'constitutional drafting', 'coalition building'],
+      },
+    },
+    intents: [
+      'Looking for peacebuilders and mediators working on post-conflict reconciliation.',
+      'Seeking educators building programs for civic engagement and democracy.',
+    ],
+  },
+
+  // ── Mathematicians ─────────────────────────────────────────────────────────
+  {
+    name: 'Srinivasa Ramanujan',
+    email: 'seed-tester-31@index-network.test',
+    profile: {
+      identity: {
+        name: 'Srinivasa Ramanujan',
+        bio: 'Mathematician who made extraordinary contributions to number theory, infinite series, and continued fractions with almost no formal training.',
+        location: 'Kumbakonam, India',
+      },
+      narrative: { context: 'Seeking mathematicians — I have notebooks full of theorems that need proof and colleagues who need ideas.' },
+      attributes: {
+        interests: ['number theory', 'infinite series', 'continued fractions', 'mathematical analysis'],
+        skills: ['mathematical intuition', 'series summation', 'partition theory', 'modular forms'],
+      },
+    },
+    intents: [
+      'Looking for mathematicians working on number theory and analytic functions.',
+      'Seeking academic mentors and collaborators to formalize unproven results.',
+    ],
+  },
+  {
+    name: 'Emmy Noether',
+    email: 'seed-tester-32@index-network.test',
+    profile: {
+      identity: {
+        name: 'Emmy Noether',
+        bio: 'Mathematician who revolutionized abstract algebra and proved the fundamental theorem linking symmetry and conservation laws.',
+        location: 'Gottingen, Germany',
+      },
+      narrative: { context: 'Seeking algebraists, physicists, and anyone who understands that the deepest truths are structural.' },
+      attributes: {
+        interests: ['abstract algebra', 'ring theory', 'physics', 'mathematical pedagogy'],
+        skills: ['algebraic theory', 'mathematical proof', 'teaching', 'theoretical physics collaboration'],
+      },
+    },
+    intents: [
+      'Looking for algebraists and ring theorists for research collaboration.',
+      'Seeking physicists interested in the mathematical foundations of conservation laws.',
+    ],
+  },
+
+  // ── Physicians & Healers ───────────────────────────────────────────────────
+  {
+    name: 'Ibn Sina',
+    email: 'seed-tester-33@index-network.test',
+    profile: {
+      identity: {
+        name: 'Ibn Sina',
+        bio: 'Physician, philosopher, and polymath. Author of The Canon of Medicine, the standard medical text for 600 years.',
+        location: 'Isfahan, Persia',
+      },
+      narrative: { context: 'Seeking physicians, pharmacists, and philosophers — medicine is philosophy applied to the body.' },
+      attributes: {
+        interests: ['medicine', 'philosophy', 'pharmacology', 'astronomy'],
+        skills: ['clinical diagnosis', 'pharmaceutical preparation', 'philosophical writing', 'medical education'],
+      },
+    },
+    intents: [
+      'Looking for physicians and medical researchers to discuss clinical methods.',
+      'Seeking pharmacists and herbalists for exchange on medicinal compounds.',
+    ],
+  },
+  {
+    name: 'Florence Nightingale',
+    email: 'seed-tester-34@index-network.test',
+    profile: {
+      identity: {
+        name: 'Florence Nightingale',
+        bio: 'Nurse, statistician, and social reformer. Founded modern nursing and pioneered the use of data visualization in healthcare.',
+        location: 'London, England',
+      },
+      narrative: { context: 'Seeking nurses, statisticians, and public health advocates — sanitation saves more lives than surgery.' },
+      attributes: {
+        interests: ['nursing', 'statistics', 'public health', 'hospital reform'],
+        skills: ['nursing practice', 'statistical analysis', 'data visualization', 'institutional reform'],
+      },
+    },
+    intents: [
+      'Looking for nurses and healthcare workers interested in improving patient care standards.',
+      'Seeking statisticians who can apply data analysis to public health problems.',
+    ],
+  },
+
+  // ── Athletes & Coaches ─────────────────────────────────────────────────────
+  {
+    name: 'Jesse Owens',
+    email: 'seed-tester-35@index-network.test',
+    profile: {
+      identity: {
+        name: 'Jesse Owens',
+        bio: 'Track and field athlete. Won four gold medals at the 1936 Berlin Olympics, defying Nazi ideology.',
+        location: 'Cleveland, Ohio',
+      },
+      narrative: { context: 'Seeking athletes, coaches, and anyone who believes that excellence is the best answer to prejudice.' },
+      attributes: {
+        interests: ['track and field', 'sprinting', 'long jump', 'youth athletics'],
+        skills: ['sprinting', 'long jump', 'athletic training', 'motivational speaking'],
+      },
+    },
+    intents: [
+      'Looking for track and field athletes and coaches to train and compete with.',
+      'Seeking youth sports programs that use athletics to build character.',
+    ],
+  },
+  {
+    name: 'Jigoro Kano',
+    email: 'seed-tester-36@index-network.test',
+    profile: {
+      identity: {
+        name: 'Jigoro Kano',
+        bio: 'Martial artist and educator. Founder of judo and pioneer of modern martial arts pedagogy.',
+        location: 'Tokyo, Japan',
+      },
+      narrative: { context: 'Seeking martial artists and educators — the goal of judo is mutual welfare and benefit, not mere victory.' },
+      attributes: {
+        interests: ['judo', 'martial arts education', 'physical education', 'Olympic movement'],
+        skills: ['judo instruction', 'curriculum design', 'martial arts philosophy', 'sports governance'],
+      },
+    },
+    intents: [
+      'Looking for martial arts instructors to discuss pedagogy and training methods.',
+      'Seeking educators interested in physical education reform.',
+    ],
+  },
+
+  // ── Makers & Craftspeople ──────────────────────────────────────────────────
+  {
+    name: 'Benvenuto Cellini',
+    email: 'seed-tester-37@index-network.test',
+    profile: {
+      identity: {
+        name: 'Benvenuto Cellini',
+        bio: 'Goldsmith, sculptor, and author. Created the Perseus with the Head of Medusa and the Cellini Salt Cellar.',
+        location: 'Florence, Italy',
+      },
+      narrative: { context: 'Seeking goldsmiths, sculptors, and craftspeople who believe that the hands know things the mind cannot.' },
+      attributes: {
+        interests: ['goldsmithing', 'bronze casting', 'sculpture', 'jewelry'],
+        skills: ['metalworking', 'lost-wax casting', 'engraving', 'jewelry design'],
+      },
+    },
+    intents: [
+      'Looking for goldsmiths and metalworkers to exchange casting and engraving techniques.',
+      'Seeking sculptors working in bronze who understand monumental commissions.',
+    ],
+  },
+  {
+    name: 'Hokusai',
+    email: 'seed-tester-38@index-network.test',
+    profile: {
+      identity: {
+        name: 'Katsushika Hokusai',
+        bio: 'Ukiyo-e painter and printmaker. Created The Great Wave off Kanagawa. Produced over 30,000 works in 70 years.',
+        location: 'Edo (Tokyo), Japan',
+      },
+      narrative: { context: 'Seeking printmakers, painters, and anyone obsessed with mastering their craft over a lifetime.' },
+      attributes: {
+        interests: ['woodblock printing', 'painting', 'manga', 'nature studies'],
+        skills: ['ukiyo-e printmaking', 'brush painting', 'landscape composition', 'book illustration'],
+      },
+    },
+    intents: [
+      'Looking for printmakers and woodblock artists to discuss technique and composition.',
+      'Seeking painters who share a lifelong obsession with depicting nature.',
+    ],
+  },
+
+  // ── Educators & Knowledge Workers ──────────────────────────────────────────
+  {
+    name: 'Confucius',
+    email: 'seed-tester-39@index-network.test',
+    profile: {
+      identity: {
+        name: 'Confucius',
+        bio: 'Philosopher, teacher, and political advisor. Founded Confucianism and established principles of ethics, family, and governance.',
+        location: 'Qufu, China',
+      },
+      narrative: { context: 'Seeking teachers, civic leaders, and anyone who believes that a just society begins with self-cultivation.' },
+      attributes: {
+        interests: ['ethics', 'education', 'governance', 'ritual propriety'],
+        skills: ['philosophical teaching', 'ethical reasoning', 'classical scholarship', 'political advising'],
+      },
+    },
+    intents: [
+      'Looking for educators and teachers committed to moral and civic education.',
+      'Seeking government officials and leaders interested in ethical governance.',
+    ],
+  },
+  {
+    name: 'Maria Montessori',
+    email: 'seed-tester-40@index-network.test',
+    profile: {
+      identity: {
+        name: 'Maria Montessori',
+        bio: 'Physician and educator. Developed the Montessori method of child-centered education used worldwide.',
+        location: 'Rome, Italy',
+      },
+      narrative: { context: 'Seeking educators, child psychologists, and school founders who trust children to lead their own learning.' },
+      attributes: {
+        interests: ['education', 'child development', 'psychology', 'school design'],
+        skills: ['educational methodology', 'classroom design', 'child observation', 'teacher training'],
+      },
+    },
+    intents: [
+      'Looking for educators starting or running schools based on child-centered methods.',
+      'Seeking child psychologists researching developmental learning.',
+    ],
+  },
+
+  // ── Engineers & Builders ───────────────────────────────────────────────────
+  {
+    name: 'Isambard Kingdom Brunel',
+    email: 'seed-tester-41@index-network.test',
+    profile: {
+      identity: {
+        name: 'Isambard Kingdom Brunel',
+        bio: 'Civil and mechanical engineer. Designed the Great Western Railway, the SS Great Britain, and the Clifton Suspension Bridge.',
+        location: 'Bristol, England',
+      },
+      narrative: { context: 'Seeking engineers, shipbuilders, and anyone who thinks in iron and steam.' },
+      attributes: {
+        interests: ['civil engineering', 'railways', 'shipbuilding', 'bridge design'],
+        skills: ['structural engineering', 'railway design', 'ship construction', 'tunnel boring'],
+      },
+    },
+    intents: [
+      'Looking for civil engineers and structural designers working on bridges and tunnels.',
+      'Seeking shipbuilders and naval architects to discuss iron-hulled vessel design.',
+    ],
+  },
+  {
+    name: 'Imhotep',
+    email: 'seed-tester-42@index-network.test',
+    profile: {
+      identity: {
+        name: 'Imhotep',
+        bio: 'Architect, physician, and vizier. Designed the Step Pyramid of Djoser — the first monumental stone building in history.',
+        location: 'Memphis, Egypt',
+      },
+      narrative: { context: 'Seeking architects, physicians, and builders who understand that to build for eternity requires mastery of many arts.' },
+      attributes: {
+        interests: ['architecture', 'medicine', 'astronomy', 'stone masonry'],
+        skills: ['architectural design', 'stone construction', 'medical practice', 'administrative leadership'],
+      },
+    },
+    intents: [
+      'Looking for architects and builders working on monumental construction projects.',
+      'Seeking physicians and healers to exchange medical knowledge.',
+    ],
+  },
+
+  // ── Chefs & Food Culture ───────────────────────────────────────────────────
+  {
+    name: 'Auguste Escoffier',
+    email: 'seed-tester-43@index-network.test',
+    profile: {
+      identity: {
+        name: 'Auguste Escoffier',
+        bio: 'Chef, restaurateur, and culinary writer. Modernized French cuisine and codified the brigade kitchen system.',
+        location: 'Paris, France',
+      },
+      narrative: { context: 'Seeking chefs, restaurateurs, and food writers who treat cooking as both art and discipline.' },
+      attributes: {
+        interests: ['French cuisine', 'kitchen management', 'culinary writing', 'hospitality'],
+        skills: ['classical cooking technique', 'menu design', 'kitchen brigade management', 'recipe development'],
+      },
+    },
+    intents: [
+      'Looking for chefs and cooks to discuss technique, menu design, and kitchen organization.',
+      'Seeking restaurateurs and hospitality professionals building dining experiences.',
+    ],
+  },
+
+  // ── Photographers & Documentarians ─────────────────────────────────────────
+  {
+    name: 'Dorothea Lange',
+    email: 'seed-tester-44@index-network.test',
+    profile: {
+      identity: {
+        name: 'Dorothea Lange',
+        bio: 'Documentary photographer. Her images of Depression-era America, especially Migrant Mother, defined an era.',
         location: 'San Francisco, CA',
       },
-      narrative: { context: 'Previously at a YC startup. Now exploring co-founder opportunities.' },
+      narrative: { context: 'Seeking photographers, journalists, and social workers who believe images can move people to action.' },
       attributes: {
-        interests: ['startups', 'developer tools', 'open source'],
-        skills: ['TypeScript', 'React', 'Node.js', 'PostgreSQL'],
+        interests: ['documentary photography', 'social justice', 'photojournalism', 'portraiture'],
+        skills: ['portrait photography', 'documentary storytelling', 'darkroom printing', 'field reporting'],
       },
     },
     intents: [
-      'Looking for a technical co-founder with React and backend experience for a B2B SaaS.',
-      'I want to find someone to build an open-source developer tool with.',
+      'Looking for photographers and photojournalists documenting social conditions.',
+      'Seeking social workers and advocates who need visual documentation of their work.',
     ],
   },
+
+  // ── Game Designers & Strategists ───────────────────────────────────────────
   {
-    name: 'Jordan Lee',
-    email: 'seed-tester-2@index-network.test',
-    linkedin: 'https://linkedin.com/in/jordanlee-design',
-    github: null,
-    x: 'https://x.com/jordanleedesign',
-    website: null,
-    profile: {
-      identity: {
-        name: 'Jordan Lee',
-        bio: 'Product designer with 8 years in fintech and health tech.',
-        location: 'New York, NY',
-      },
-      narrative: { context: 'Design lead looking for a technical co-founder to ship a new product.' },
-      attributes: {
-        interests: ['fintech', 'health tech', 'design systems'],
-        skills: ['Figma', 'UX research', 'prototyping', 'design systems'],
-      },
-    },
-    intents: [
-      'Seeking a technical co-founder to build a fintech app; I handle product and design.',
-      'Looking for a developer interested in health tech and accessibility.',
-    ],
-  },
-  {
-    name: 'Sam Rivera',
-    email: 'seed-tester-3@index-network.test',
-    linkedin: 'https://linkedin.com/in/samrivera-ml',
-    github: 'https://github.com/samrivera',
-    x: null,
-    website: null,
-    profile: {
-      identity: {
-        name: 'Sam Rivera',
-        bio: 'ML engineer. Previously worked on recommendation systems and NLP.',
-        location: 'Austin, TX',
-      },
-      narrative: { context: 'Exploring AI/ML startup ideas and looking for co-founders or early team.' },
-      attributes: {
-        interests: ['machine learning', 'LLMs', 'recommendation systems'],
-        skills: ['Python', 'PyTorch', 'vector search', 'LangChain'],
-      },
-    },
-    intents: [
-      'Looking for a co-founder with ML or data engineering background for an AI product.',
-      'I want to find a product-minded founder to pair with on an LLM-based B2B tool.',
-    ],
-  },
-  {
-    name: 'Morgan Taylor',
-    email: 'seed-tester-4@index-network.test',
-    linkedin: null,
-    github: 'https://github.com/morgantaylor',
-    x: 'https://x.com/morgantaylor',
-    website: 'https://morgantaylor.dev',
-    profile: {
-      identity: {
-        name: 'Morgan Taylor',
-        bio: 'Indie hacker and solo founder. Shipping small SaaS and writing about it.',
-        location: 'Remote',
-      },
-      narrative: { context: 'Bootstrapping a second product. Open to partnerships or acquirer conversations.' },
-      attributes: {
-        interests: ['indie hacking', 'SaaS', 'content creation'],
-        skills: ['Next.js', 'Stripe', 'SEO', 'writing'],
-      },
-    },
-    intents: [
-      'Seeking a marketing or growth co-founder for my existing SaaS.',
-      'Open to talking with potential acquirers or strategic partners for my product.',
-    ],
-  },
-  {
-    name: 'Riley Kim',
-    email: 'seed-tester-5@index-network.test',
-    linkedin: 'https://linkedin.com/in/rileykim',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: {
-        name: 'Riley Kim',
-        bio: 'Product manager with background in edtech and marketplaces.',
-        location: 'Seattle, WA',
-      },
-      narrative: { context: 'Exploring a new edtech idea and need technical and design partners.' },
-      attributes: {
-        interests: ['edtech', 'marketplaces', 'community'],
-        skills: ['product strategy', 'roadmapping', 'user research', 'SQL'],
-      },
-    },
-    intents: [
-      'Looking for a technical co-founder for an edtech startup focused on adult learning.',
-      'I want to find a designer and a developer to form a founding team for a marketplace idea.',
-    ],
-  },
-  {
-    name: 'Sarah Hoople Shere',
-    email: 'seed-tester-6@index-network.test',
-    linkedin: 'https://linkedin.com/in/sarahhoopleshere',
-    github: null,
-    x: 'https://x.com/sarahshere',
-    website: null,
-    profile: {
-      identity: { name: 'Sarah Hoople Shere', bio: 'Angel investor and former CTO. Writing checks for pre-seed and seed developer tools and infrastructure startups.', location: 'San Francisco, CA' },
-      narrative: { context: 'Active angel investing $25-100K checks in developer-focused startups. Especially interested in devtools, APIs, and open-source business models. Previously CTO at a YC-backed company.' },
-      attributes: { interests: ['angel investing', 'developer tools', 'open source', 'infrastructure'], skills: ['due diligence', 'technical evaluation', 'startup advising', 'fundraising strategy'] },
-    },
-    intents: ['Looking for pre-seed and seed-stage founders building developer tools or infrastructure products.', 'Want to connect with technical founders who have deep domain expertise and are building for developers.'],
-  },
-  {
-    name: 'Michael Tan',
-    email: 'seed-tester-7@index-network.test',
-    linkedin: 'https://linkedin.com/in/michaeltan-vc',
-    github: null,
-    x: 'https://x.com/michaeltanvc',
-    website: 'https://horizonventures.fund',
-    profile: {
-      identity: { name: 'Michael Tan', bio: 'Partner at Horizon Ventures. Seed and Series A investor focused on AI/ML, data infrastructure, and vertical SaaS.', location: 'New York, NY' },
-      narrative: { context: 'Leading investments at a $120M fund. Portfolio includes 30+ companies in AI, data, and vertical SaaS. Board observer at 8 companies.' },
-      attributes: { interests: ['venture capital', 'AI/ML', 'data infrastructure', 'vertical SaaS'], skills: ['deal sourcing', 'portfolio support', 'board governance', 'market analysis'] },
-    },
-    intents: ['Actively looking for seed and Series A founders building AI-native products or data infrastructure.', 'Seeking founders with unique domain insights building vertical SaaS for underserved industries.'],
-  },
-  {
-    name: 'Anika Desai',
-    email: 'seed-tester-8@index-network.test',
-    linkedin: 'https://linkedin.com/in/anikadesai-angels',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Anika Desai', bio: 'Angel investor and startup advisor. Former VP Product at a fintech unicorn. Investing in fintech, edtech, and health tech.', location: 'London, UK' },
-      narrative: { context: 'Angel investing $50-150K in early-stage startups. Advising 5 portfolio companies on product strategy and go-to-market. Particularly interested in founders from underrepresented backgrounds.' },
-      attributes: { interests: ['angel investing', 'fintech', 'edtech', 'health tech', 'diversity in tech'], skills: ['product strategy', 'investor relations', 'market sizing', 'mentoring'] },
-    },
-    intents: ['Looking for early-stage founders in fintech, edtech, or health tech who need both capital and product guidance.', 'Want to meet diverse founders building mission-driven products with strong unit economics.'],
-  },
-  {
-    name: 'James Whitfield',
-    email: 'seed-tester-9@index-network.test',
-    linkedin: 'https://linkedin.com/in/jameswhitfield-accelerator',
-    github: null,
-    x: 'https://x.com/jameswhitfield',
-    website: 'https://launchpadaccelerator.com',
-    profile: {
-      identity: { name: 'James Whitfield', bio: 'Managing Director at Launchpad Accelerator. Running cohort-based programs for pre-seed startups in B2B SaaS and marketplace models.', location: 'Austin, TX' },
-      narrative: { context: 'Operating a top-20 accelerator with $150K standard investment per company. Alumni have raised $500M+ in follow-on funding. Looking for the next cohort of exceptional founders.' },
-      attributes: { interests: ['accelerators', 'B2B SaaS', 'marketplaces', 'founder development'], skills: ['program design', 'mentor matching', 'demo day prep', 'investor network'] },
-    },
-    intents: ['Seeking exceptional pre-seed founders building B2B SaaS or marketplace products for our next cohort.', 'Looking for mentors and investors to join our accelerator network and support portfolio companies.'],
-  },
-  {
-    name: 'Rachel Ono',
-    email: 'seed-tester-10@index-network.test',
-    linkedin: 'https://linkedin.com/in/rachelono-ventures',
-    github: null,
-    x: 'https://x.com/rachelono',
-    website: null,
-    profile: {
-      identity: { name: 'Rachel Ono', bio: 'Venture Partner at Ember Capital. Early-stage investor in consumer social, creator economy, and community-driven products.', location: 'Los Angeles, CA' },
-      narrative: { context: 'Investing from a $80M early-stage fund. Thesis: community-first products with organic growth. Previously founded and sold a social app. Deep network in consumer tech.' },
-      attributes: { interests: ['venture capital', 'consumer social', 'creator economy', 'community products'], skills: ['consumer product evaluation', 'growth strategy', 'founder coaching', 'network building'] },
-    },
-    intents: ['Looking for founders building consumer social or community-driven products with early traction and organic growth.', 'Want to connect with creators and community builders exploring venture-scale product ideas.'],
-  },
-  {
-    name: 'Marcus Johnson',
-    email: 'seed-tester-11@index-network.test',
-    linkedin: 'https://linkedin.com/in/marcusjohnson-security',
-    github: 'https://github.com/marcusj',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Marcus Johnson', bio: 'Security engineer focused on cloud security and compliance automation.', location: 'Atlanta, GA' },
-      narrative: { context: 'Helping early startups become enterprise-ready without slowing product velocity.' },
-      attributes: { interests: ['security automation', 'compliance', 'cloud infrastructure'], skills: ['AWS', 'threat modeling', 'SOC2', 'policy as code'] },
-    },
-    intents: ['Looking for B2B SaaS founders preparing for enterprise sales who need security guidance.', 'Seeking collaborators building tools that automate security and compliance workflows.'],
-  },
-  {
-    name: 'Mei Lin',
-    email: 'seed-tester-12@index-network.test',
-    linkedin: 'https://linkedin.com/in/meilin-mobile',
-    github: 'https://github.com/meilin',
-    x: null,
-    website: 'https://meilin.app',
-    profile: {
-      identity: { name: 'Mei Lin', bio: 'Mobile engineer building high-quality iOS and Android experiences.', location: 'Los Angeles, CA' },
-      narrative: { context: 'Exploring consumer health and habit products with strong retention loops.' },
-      attributes: { interests: ['consumer mobile', 'health tech', 'behavior design'], skills: ['Swift', 'Kotlin', 'React Native', 'mobile analytics'] },
-    },
-    intents: ['Seeking a product founder to build a habit-forming mobile health app with measurable outcomes.', 'Looking for designers experienced in consumer onboarding and retention for a mobile product.'],
-  },
-  {
-    name: 'Arjun Patel',
-    email: 'seed-tester-13@index-network.test',
-    linkedin: 'https://linkedin.com/in/arjunpatel-finance',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Arjun Patel', bio: 'Finance operator supporting startup fundraising and planning.', location: 'New York, NY' },
-      narrative: { context: 'Partnering with technical teams that need help with pricing, forecasts, and fundraising prep.' },
-      attributes: { interests: ['fundraising', 'business models', 'unit economics'], skills: ['financial modeling', 'pricing strategy', 'investor relations', 'FP&A'] },
-    },
-    intents: ['Looking for startup founders who need a finance partner to prepare for seed fundraising.', 'Open to advising teams on pricing and unit economics for B2B SaaS launches.'],
-  },
-  {
-    name: 'Sofia Martinez',
-    email: 'seed-tester-14@index-network.test',
-    linkedin: 'https://linkedin.com/in/sofiamartinez-product',
-    github: null,
-    x: 'https://x.com/sofiaproduct',
-    website: null,
-    profile: {
-      identity: { name: 'Sofia Martinez', bio: 'Product leader with marketplace and trust-and-safety experience.', location: 'Mexico City, MX' },
-      narrative: { context: 'Designing a creator marketplace and searching for technical co-founders.' },
-      attributes: { interests: ['creator economy', 'marketplaces', 'trust and safety'], skills: ['product discovery', 'roadmapping', 'experimentation', 'operations'] },
-    },
-    intents: ['Seeking a backend engineer to co-found a creator marketplace with built-in trust and safety.', 'Looking for growth-minded operators interested in two-sided marketplace dynamics.'],
-  },
-  {
-    name: "Liam O'Connor",
-    email: 'seed-tester-15@index-network.test',
-    linkedin: 'https://linkedin.com/in/liamoconnor-ops',
-    github: 'https://github.com/liamops',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: "Liam O'Connor", bio: 'Platform engineer who scales infrastructure for high-growth products.', location: 'Dublin, IE' },
-      narrative: { context: 'Interested in joining infrastructure-heavy startups as an early engineering leader.' },
-      attributes: { interests: ['platform engineering', 'observability', 'reliability'], skills: ['Kubernetes', 'Terraform', 'Go', 'SRE'] },
-    },
-    intents: ['Looking for teams building developer or infrastructure products that need an early platform engineer.', 'Open to partnering with founders on reliability architecture before scale bottlenecks appear.'],
-  },
-  {
-    name: 'Chloe Bennett',
-    email: 'seed-tester-16@index-network.test',
-    linkedin: 'https://linkedin.com/in/chloebennett-ux',
-    github: null,
-    x: null,
-    website: 'https://chloebennett.design',
-    profile: {
-      identity: { name: 'Chloe Bennett', bio: 'UX researcher and service designer for public-sector digital products.', location: 'London, UK' },
-      narrative: { context: 'Working on civic tech ideas that improve access to local services.' },
-      attributes: { interests: ['civic tech', 'user research', 'accessibility'], skills: ['qualitative research', 'journey mapping', 'prototyping', 'service design'] },
-    },
-    intents: ['Seeking a technical collaborator to build civic tech tools for local government services.', 'Looking for teams who prioritize inclusive UX and accessibility from day one.'],
-  },
-  {
-    name: 'Omar Haddad',
-    email: 'seed-tester-17@index-network.test',
-    linkedin: 'https://linkedin.com/in/omarhaddad-mlops',
-    github: 'https://github.com/omarhaddad',
-    x: 'https://x.com/omarmlops',
-    website: null,
-    profile: {
-      identity: { name: 'Omar Haddad', bio: 'MLOps engineer productionizing model training and inference systems.', location: 'Berlin, DE' },
-      narrative: { context: 'Seeking high-velocity AI teams that need reliable deployment and monitoring pipelines.' },
-      attributes: { interests: ['MLOps', 'model serving', 'observability'], skills: ['Docker', 'Kubernetes', 'PyTorch', 'CI/CD'] },
-    },
-    intents: ['Looking for AI startups that need a founding MLOps engineer to ship models safely to production.', 'Open to collaborating with ML researchers who want robust evaluation and deployment infrastructure.'],
-  },
-  {
-    name: 'Amina Yusuf',
-    email: 'seed-tester-18@index-network.test',
-    linkedin: 'https://linkedin.com/in/aminayusuf-community',
-    github: null,
-    x: 'https://x.com/aminacommunity',
-    website: null,
-    profile: {
-      identity: { name: 'Amina Yusuf', bio: 'Community strategist helping mission-driven products build engaged user bases.', location: 'Lagos, NG' },
-      narrative: { context: 'Building a network-focused startup and seeking technical and product collaborators.' },
-      attributes: { interests: ['community growth', 'creator tools', 'social products'], skills: ['community operations', 'event design', 'content strategy', 'partnerships'] },
-    },
-    intents: ['Seeking a technical co-founder for a community platform focused on creator collaboration.', 'Looking for product builders who understand network effects and social product design.'],
-  },
-  {
-    name: 'Ethan Park',
-    email: 'seed-tester-19@index-network.test',
-    linkedin: 'https://linkedin.com/in/ethanpark-bio',
-    github: 'https://github.com/ethanparkbio',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Ethan Park', bio: 'Bioinformatics engineer turning clinical data into decision support tools.', location: 'San Diego, CA' },
-      narrative: { context: 'Exploring healthcare data products and looking for regulatory-aware co-founders.' },
-      attributes: { interests: ['digital health', 'clinical data', 'AI in healthcare'], skills: ['Python', 'biostatistics', 'ETL', 'healthcare data standards'] },
-    },
-    intents: ['Looking for a clinician-founder interested in building practical decision-support software.', 'Seeking engineers and operators experienced with healthcare compliance and privacy constraints.'],
-  },
-  {
-    name: 'Grace Howard',
-    email: 'seed-tester-20@index-network.test',
-    linkedin: 'https://linkedin.com/in/gracehoward-enterprise',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Grace Howard', bio: 'Enterprise sales lead scaling B2B SaaS from first deal to repeatable pipeline.', location: 'Toronto, CA' },
-      narrative: { context: 'Partnering with technical founders who need customer discovery and enterprise GTM support.' },
-      attributes: { interests: ['enterprise SaaS', 'sales enablement', 'customer discovery'], skills: ['B2B sales', 'pipeline building', 'buyer research', 'GTM strategy'] },
-    },
-    intents: ['Seeking early-stage SaaS founders who want a partner for enterprise customer discovery and pilot deals.', 'Open to joining a startup where sales strategy and founder-led GTM are top priorities.'],
-  },
-  {
-    name: 'Marco Velez',
-    email: 'seed-tester-21@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/marcopaints',
-    website: 'https://marcovelez.art',
-    profile: {
-      identity: { name: 'Marco Velez', bio: 'Oil painter and muralist. Focus on street art and public installations.', location: 'Mexico City, MX' },
-      narrative: { context: 'Looking for collaborators on community mural projects and gallery shows.' },
-      attributes: { interests: ['street art', 'muralism', 'public art', 'Latin American art'], skills: ['oil painting', 'spray paint', 'sketching', 'project coordination'] },
-    },
-    intents: ['Want to find other artists to do a joint mural project in my neighborhood.', 'Looking for a curator or gallery contact interested in showing my recent series.'],
-  },
-  {
-    name: 'Jade Williams',
-    email: 'seed-tester-22@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/jadeplays',
-    website: null,
-    profile: {
-      identity: { name: 'Jade Williams', bio: 'Casual gamer and Twitch viewer. Love RPGs, cozy games, and speedruns.', location: 'Columbus, OH' },
-      narrative: { context: 'Want to find a crew for regular game nights and maybe start streaming.' },
-      attributes: { interests: ['RPGs', 'cozy games', 'speedruns', 'streaming'], skills: ['game discussion', 'community', 'Discord', 'stream setup'] },
-    },
-    intents: ['Looking for people to play co-op RPGs and indie games with on weekends.', 'Want to connect with other aspiring streamers to share tips and collab.'],
-  },
-  {
-    name: 'Rosa Gutierrez',
-    email: 'seed-tester-23@index-network.test',
-    linkedin: 'https://linkedin.com/in/rosagutierrez-edu',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Rosa Gutierrez', bio: 'High school math teacher. Passionate about making algebra and geometry accessible.', location: 'Houston, TX' },
-      narrative: { context: 'Looking for other educators to swap curricula and for volunteer tutoring opportunities.' },
-      attributes: { interests: ['math education', 'bilingual ed', 'after-school programs'], skills: ['teaching', 'curriculum design', 'tutoring', 'parent communication'] },
-    },
-    intents: ['Want to find other math teachers to share lesson plans and problem sets.', 'Looking for volunteers or partners for a free weekend tutoring program.'],
-  },
-  {
-    name: 'Derek Park',
-    email: 'seed-tester-24@index-network.test',
-    linkedin: null,
-    github: 'https://github.com/derekpark',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Derek Park', bio: 'Computer science undergrad. Interested in systems and open source.', location: 'Ann Arbor, MI' },
-      narrative: { context: 'Looking for summer internship leads and study groups for algorithms.' },
-      attributes: { interests: ['algorithms', 'open source', 'hackathons'], skills: ['Python', 'C++', 'Linux', 'Git'] },
-    },
-    intents: ['Want to find a study group for competitive programming and interview prep.', 'Looking for internship or research opportunities in systems or infra.'],
-  },
-  {
-    name: 'Yuki Tanaka',
-    email: 'seed-tester-25@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: 'https://yukitanaka.design',
-    profile: {
-      identity: { name: 'Yuki Tanaka', bio: 'Visual artist and illustrator. Digital and traditional, focus on character design.', location: 'Tokyo, JP' },
-      narrative: { context: 'Looking for clients and other artists for zine and convention projects.' },
-      attributes: { interests: ['illustration', 'character design', 'zines', 'conventions'], skills: ['Procreate', 'Photoshop', 'ink', 'watercolor'] },
-    },
-    intents: ['Want to find artists to collaborate on a small zine or art book.', 'Looking for indie game devs who need character art or concept work.'],
-  },
-  {
-    name: 'Marcus Johnson',
-    email: 'seed-tester-26@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/marcus_runs',
-    website: null,
-    profile: {
-      identity: { name: 'Marcus Johnson', bio: 'Recreational runner and marathoner. Coach for a local youth track club.', location: 'Atlanta, GA' },
-      narrative: { context: 'Looking for running buddies and people interested in youth coaching.' },
-      attributes: { interests: ['long-distance running', 'marathons', 'youth sports', 'trail running'], skills: ['running', 'coaching', 'race planning', 'injury prevention'] },
-    },
-    intents: ['Want to find training partners for weekend long runs and race prep.', 'Looking for volunteers or co-coaches for our youth track program.'],
-  },
-  {
-    name: 'Fatima Hassan',
-    email: 'seed-tester-27@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Fatima Hassan', bio: 'PhD student in comparative literature. Research focus on diaspora and translation.', location: 'New York, NY' },
-      narrative: { context: 'Looking for writing groups and academic collaboration; open to literary translation projects.' },
-      attributes: { interests: ['comparative literature', 'translation', 'diaspora', 'publishing'], skills: ['research', 'writing', 'Arabic', 'French'] },
-    },
-    intents: ['Want to find a writing accountability group or thesis support circle.', 'Looking for editors or translators interested in diaspora literature.'],
-  },
-  {
-    name: 'Leo Torres',
-    email: 'seed-tester-28@index-network.test',
-    linkedin: null,
-    github: 'https://github.com/leotorres',
-    x: 'https://x.com/leogames',
-    website: null,
-    profile: {
-      identity: { name: 'Leo Torres', bio: 'Aspiring game developer. Making small games in Unity; love narrative and puzzle games.', location: 'Austin, TX' },
-      narrative: { context: 'Looking for other indie devs for game jams and feedback; want to ship my first game.' },
-      attributes: { interests: ['game dev', 'Unity', 'narrative games', 'game jams'], skills: ['Unity', 'C#', 'pixel art', 'game design'] },
-    },
-    intents: ['Want to find a team for the next Global Game Jam or Ludum Dare.', 'Looking for playtesters and other indie devs to swap feedback with.'],
-  },
-  {
-    name: 'Claire Dubois',
-    email: 'seed-tester-29@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: 'https://clairedubois-music.com',
-    profile: {
-      identity: { name: 'Claire Dubois', bio: 'Singer-songwriter and guitarist. Playing folk and indie; recording first EP.', location: 'Paris, FR' },
-      narrative: { context: 'Looking for a producer, session musicians, and venues for small gigs.' },
-      attributes: { interests: ['folk', 'indie', 'songwriting', 'live performance'], skills: ['guitar', 'vocals', 'songwriting', 'home recording'] },
-    },
-    intents: ['Want to find a producer or engineer to help finish my EP.', 'Looking for other musicians to form a small band or do duo shows.'],
-  },
-  {
-    name: 'Lucy Chen',
-    email: 'seed-tester-30@index-network.test',
-    linkedin: 'https://linkedin.com/in/lucychen-operations',
-    github: null,
-    x: 'https://x.com/lucyops',
-    website: null,
-    profile: {
-      identity: { name: 'Lucy Chen', bio: 'Operations and launch lead for marketplaces and two-sided platforms.', location: 'Singapore, SG' },
-      narrative: { context: 'Exploring a marketplace idea in APAC and need product and engineering partners.' },
-      attributes: { interests: ['marketplaces', 'supply-demand', 'launch strategy'], skills: ['operations', 'partnerships', 'analytics', 'experimentation'] },
-    },
-    intents: ['Seeking technical and product co-founders for a niche marketplace in APAC.', 'Looking for operators with marketplace or platform experience.'],
-  },
-  {
-    name: 'David Kim',
-    email: 'seed-tester-31@index-network.test',
-    linkedin: 'https://linkedin.com/in/davidkim-ai',
-    github: 'https://github.com/davidkimai',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'David Kim', bio: 'AI/ML researcher turned builder; focused on LLM applications.', location: 'Seattle, WA' },
-      narrative: { context: 'Building an LLM-powered workflow product and looking for a design or GTM co-founder.' },
-      attributes: { interests: ['LLMs', 'agents', 'productivity'], skills: ['Python', 'LangChain', 'prompt engineering', 'evaluation'] },
-    },
-    intents: ['Looking for a design or product co-founder for an LLM-based productivity tool.', 'Seeking GTM or sales co-founder for an AI-native B2B product.'],
-  },
-  {
-    name: 'Fatima Al-Hassan',
-    email: 'seed-tester-32@index-network.test',
-    linkedin: 'https://linkedin.com/in/fatimaalhassan',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Fatima Al-Hassan', bio: 'Legal and compliance lead for fintech and regulated products.', location: 'Dubai, AE' },
-      narrative: { context: 'Interested in joining a fintech or regulated startup as first legal/compliance hire.' },
-      attributes: { interests: ['fintech regulation', 'compliance', 'licensing'], skills: ['regulatory strategy', 'contracts', 'KYC/AML', 'policy'] },
-    },
-    intents: ['Seeking fintech founders who need a compliance and legal co-founder or early hire.', 'Open to advising or joining teams preparing for regulated markets.'],
-  },
-  {
-    name: 'Tomáš Novák',
-    email: 'seed-tester-33@index-network.test',
-    linkedin: 'https://linkedin.com/in/tomasnovak-backend',
-    github: 'https://github.com/tnovak',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Tomáš Novák', bio: 'Backend engineer with real-time and gaming infrastructure experience.', location: 'Prague, CZ' },
-      narrative: { context: 'Exploring real-time collaboration or gaming infrastructure ideas.' },
-      attributes: { interests: ['real-time systems', 'WebSockets', 'game backends'], skills: ['Go', 'Redis', 'WebRTC', 'scaling'] },
-    },
-    intents: ['Looking for a co-founder to build a real-time collaboration or multiplayer product.', 'Seeking product or game designers for a real-time infrastructure tool.'],
-  },
-  {
-    name: 'Maya Okonkwo',
-    email: 'seed-tester-34@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Maya Okonkwo', bio: 'Yoga instructor and mindfulness coach. Teaching at studios and online.', location: 'Austin, TX' },
-      narrative: { context: 'Want to find other instructors for retreats and a possible small wellness collective.' },
-      attributes: { interests: ['yoga', 'meditation', 'wellness', 'retreats'], skills: ['vinyasa', 'yin', 'breathwork', 'workshop facilitation'] },
-    },
-    intents: ['Looking for other yoga or wellness teachers to organize a weekend retreat.', 'Want to connect with people interested in starting a small mindfulness collective.'],
-  },
-  {
-    name: 'Kenji Yamamoto',
-    email: 'seed-tester-35@index-network.test',
-    linkedin: 'https://linkedin.com/in/kenjiyamamoto',
-    github: 'https://github.com/kenjiy',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Kenji Yamamoto', bio: 'iOS and Apple platform engineer with 10+ years experience.', location: 'Osaka, JP' },
-      narrative: { context: 'Exploring consumer or productivity apps on Apple platforms.' },
-      attributes: { interests: ['iOS', 'SwiftUI', 'Apple ecosystem'], skills: ['Swift', 'SwiftUI', 'Combine', 'App Store'] },
-    },
-    intents: ['Looking for a product or design co-founder for a native iOS app.', 'Seeking founders building premium or subscription iOS products.'],
-  },
-  {
-    name: 'Layla Hassan',
-    email: 'seed-tester-36@index-network.test',
-    linkedin: 'https://linkedin.com/in/laylahassan-product',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Layla Hassan', bio: 'Product manager with deep experience in e-commerce and conversion.', location: 'Cairo, EG' },
-      narrative: { context: 'Validating an e-commerce or conversion tool idea for emerging markets.' },
-      attributes: { interests: ['e-commerce', 'conversion', 'checkout'], skills: ['A/B testing', 'funnels', 'analytics', 'roadmapping'] },
-    },
-    intents: ['Seeking technical co-founder for an e-commerce or conversion optimization product.', 'Looking for growth or marketing partners with e-commerce experience.'],
-  },
-  {
-    name: 'Oscar Lindqvist',
-    email: 'seed-tester-37@index-network.test',
-    linkedin: 'https://linkedin.com/in/oscarlindqvist',
-    github: 'https://github.com/oscarl',
-    x: null,
-    website: 'https://oscarlindqvist.se',
-    profile: {
-      identity: { name: 'Oscar Lindqvist', bio: 'Full-stack engineer with focus on developer experience and tooling.', location: 'Stockholm, SE' },
-      narrative: { context: 'Building a devtool and looking for a growth or community co-founder.' },
-      attributes: { interests: ['developer tools', 'DX', 'documentation'], skills: ['TypeScript', 'Node', 'React', 'technical writing'] },
-    },
-    intents: ['Looking for a DevRel or growth co-founder for a developer-focused product.', 'Seeking technical writers or community builders for a devtool.'],
-  },
-  {
-    name: 'Rebecca Foster',
-    email: 'seed-tester-38@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: 'https://rebeccafoster.art',
-    profile: {
-      identity: { name: 'Rebecca Foster', bio: 'Fiction writer and essayist. Working on a first novel and short stories.', location: 'Boston, MA' },
-      narrative: { context: 'Looking for a critique group and potential beta readers; interested in literary journals.' },
-      attributes: { interests: ['literary fiction', 'essays', 'publishing', 'writing groups'], skills: ['fiction', 'editing', 'feedback', 'submissions'] },
-    },
-    intents: ['Want to find a small critique group for literary fiction and essays.', 'Looking for beta readers or editors for my novel draft.'],
-  },
-  {
-    name: 'Hassan Ali',
-    email: 'seed-tester-39@index-network.test',
-    linkedin: 'https://linkedin.com/in/hassanali-data',
-    github: 'https://github.com/hassanali',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Hassan Ali', bio: 'Data scientist building predictive models and experimentation platforms.', location: 'Karachi, PK' },
-      narrative: { context: 'Looking for a startup that needs a founding data scientist for product and growth.' },
-      attributes: { interests: ['experimentation', 'causal inference', 'predictive modeling'], skills: ['Python', 'statistics', 'A/B testing', 'SQL'] },
-    },
-    intents: ['Seeking product or growth co-founder for a data-heavy or experimentation product.', 'Looking for startups that want to invest in data science from day one.'],
-  },
-  {
-    name: 'Isabella Romano',
-    email: 'seed-tester-40@index-network.test',
-    linkedin: 'https://linkedin.com/in/isabellaromano',
-    github: null,
-    x: 'https://x.com/isabellaromano',
-    website: null,
-    profile: {
-      identity: { name: 'Isabella Romano', bio: 'Partnerships and biz dev lead for SaaS and platforms.', location: 'Milan, IT' },
-      narrative: { context: 'Interested in joining a B2B or platform company as first partnerships hire.' },
-      attributes: { interests: ['partnerships', 'integrations', 'channel'], skills: ['negotiation', 'pipeline', 'alliances', 'GTM'] },
-    },
-    intents: ['Seeking B2B or platform founders who need a partnerships and biz dev co-founder.', 'Open to joining early to build partnership strategy and first deals.'],
-  },
-  {
-    name: 'Nathan Brooks',
-    email: 'seed-tester-41@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Nathan Brooks', bio: 'Volunteer coordinator for a community food bank. Organizing drives and delivery.', location: 'Washington, DC' },
-      narrative: { context: 'Looking for more volunteers and partnerships with local businesses and schools.' },
-      attributes: { interests: ['food security', 'community organizing', 'volunteering'], skills: ['coordination', 'scheduling', 'outreach', 'logistics'] },
-    },
-    intents: ['Want to find more volunteers for weekend food distribution and packing.', 'Looking for local businesses or groups to partner on donation drives.'],
-  },
-  {
-    name: 'Sana Jamil',
-    email: 'seed-tester-42@index-network.test',
-    linkedin: 'https://linkedin.com/in/sanajamil',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Sana Jamil', bio: 'Recruiting and talent lead for engineering and product teams.', location: 'Toronto, CA' },
-      narrative: { context: 'Want to join an early-stage startup as first recruiting hire or talent co-founder.' },
-      attributes: { interests: ['technical recruiting', 'employer brand', 'hiring processes'], skills: ['sourcing', 'interviews', 'offer negotiation', 'DEI'] },
-    },
-    intents: ['Seeking founders who want to build a strong engineering culture and hiring process.', 'Open to talent or people ops co-founder roles at early-stage.'],
-  },
-  {
-    name: 'Lars Eriksen',
-    email: 'seed-tester-43@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: 'https://larseriksen-pottery.com',
-    profile: {
-      identity: { name: 'Lars Eriksen', bio: 'Potter and ceramicist. Making functional stoneware and teaching weekend workshops.', location: 'Copenhagen, DK' },
-      narrative: { context: 'Looking for gallery or shop consignment and other potters to share kiln space.' },
-      attributes: { interests: ['ceramics', 'pottery', 'workshops', 'craft fairs'], skills: ['wheel throwing', 'glazing', 'kiln firing', 'teaching'] },
-    },
-    intents: ['Want to find other potters to share studio or kiln space and materials.', 'Looking for shops or galleries interested in consignment or wholesale.'],
-  },
-  {
-    name: 'Yolanda Mendez',
-    email: 'seed-tester-44@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/yolandamendez',
-    website: null,
-    profile: {
-      identity: { name: 'Yolanda Mendez', bio: 'High school senior. Into photography, yearbook, and maybe studying design or media.', location: 'Barcelona, ES' },
-      narrative: { context: 'Looking for portfolio feedback and advice on art or design programs.' },
-      attributes: { interests: ['photography', 'design', 'yearbook', 'college apps'], skills: ['photo editing', 'layout', 'social media', 'writing'] },
-    },
-    intents: ['Want to find other students or mentors to get feedback on my portfolio.', 'Looking for advice on design schools or media programs in Europe.'],
-  },
-  {
-    name: 'Dmitri Volkov',
+    name: 'Alexander Alekhine',
     email: 'seed-tester-45@index-network.test',
-    linkedin: 'https://linkedin.com/in/dmitrivolkov',
-    github: 'https://github.com/dvolkov',
-    x: null,
-    website: null,
     profile: {
-      identity: { name: 'Dmitri Volkov', bio: 'Backend engineer with distributed systems and database experience.', location: 'Amsterdam, NL' },
-      narrative: { context: 'Interested in database, caching, or data infrastructure startups.' },
-      attributes: { interests: ['databases', 'distributed systems', 'performance'], skills: ['PostgreSQL', 'Rust', 'Kafka', 'scaling'] },
+      identity: {
+        name: 'Alexander Alekhine',
+        bio: 'Chess grandmaster and World Chess Champion. Known for aggressive, combinational play and deep preparation.',
+        location: 'Paris, France',
+      },
+      narrative: { context: 'Seeking chess players, game theorists, and strategic thinkers who enjoy deep combinational analysis.' },
+      attributes: {
+        interests: ['chess', 'game theory', 'combinatorics', 'competitive strategy'],
+        skills: ['chess mastery', 'opening preparation', 'tactical calculation', 'tournament play'],
+      },
     },
-    intents: ['Looking for a co-founder to build a database or data infrastructure product.', 'Seeking product-minded engineers in data or infra.'],
+    intents: [
+      'Looking for chess players for competitive matches and analysis sessions.',
+      'Seeking game theorists and strategists interested in decision-making under uncertainty.',
+    ],
   },
+
+  // ── Community Builders & Social Reformers ──────────────────────────────────
   {
-    name: 'Aisha Okeke',
+    name: 'Jane Addams',
     email: 'seed-tester-46@index-network.test',
-    linkedin: 'https://linkedin.com/in/aishaokeke',
-    github: null,
-    x: null,
-    website: null,
     profile: {
-      identity: { name: 'Aisha Okeke', bio: 'Primary school teacher. Focus on reading and literacy programs.', location: 'Nairobi, KE' },
-      narrative: { context: 'Looking for other teachers to share resources and for NGO or library partnerships.' },
-      attributes: { interests: ['literacy', 'K-12', 'reading programs', 'community'], skills: ['teaching', 'lesson plans', 'parent engagement', 'workshops'] },
+      identity: {
+        name: 'Jane Addams',
+        bio: 'Social reformer, settlement house founder, and Nobel Peace Prize laureate. Founded Hull House in Chicago.',
+        location: 'Chicago, Illinois',
+      },
+      narrative: { context: 'Seeking community organizers, social workers, and educators building institutions that serve their neighborhoods.' },
+      attributes: {
+        interests: ['settlement houses', 'social work', 'women\'s suffrage', 'peace activism'],
+        skills: ['community organizing', 'program design', 'fundraising', 'public advocacy'],
+      },
     },
-    intents: ['Want to find other teachers or NGOs to collaborate on a reading challenge.', 'Looking for book donors or library partners for our school.'],
+    intents: [
+      'Looking for community organizers building neighborhood institutions and mutual aid programs.',
+      'Seeking social workers and educators focused on immigrant and working-class communities.',
+    ],
   },
+
+  // ── Naturalists & Environmentalists ────────────────────────────────────────
   {
-    name: 'Brandon Wu',
+    name: 'Alexander von Humboldt',
     email: 'seed-tester-47@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/brandonlifts',
-    website: null,
     profile: {
-      identity: { name: 'Brandon Wu', bio: 'Powerlifter and strength coach. Competing locally and coaching beginners.', location: 'Vancouver, CA' },
-      narrative: { context: 'Looking for training partners and people interested in starting a small strength club.' },
-      attributes: { interests: ['powerlifting', 'strength training', 'nutrition', 'competition'], skills: ['programming', 'coaching', 'form check', 'recovery'] },
+      identity: {
+        name: 'Alexander von Humboldt',
+        bio: 'Naturalist, explorer, and geographer. Pioneered biogeography and ecological thinking. Explored South America for five years.',
+        location: 'Berlin, Germany',
+      },
+      narrative: { context: 'Seeking naturalists, botanists, and geographers — everything in nature is connected, and we must map those connections.' },
+      attributes: {
+        interests: ['biogeography', 'botany', 'climatology', 'exploration'],
+        skills: ['field research', 'scientific illustration', 'geographic mapping', 'ecological analysis'],
+      },
     },
-    intents: ['Want to find a training partner or small group for consistent lifting.', 'Looking for others interested in forming an informal strength or powerlifting club.'],
+    intents: [
+      'Looking for naturalists and botanists for collaborative field expeditions.',
+      'Seeking geographers and climate scientists to map ecological relationships.',
+    ],
   },
+
+  // ── Textile & Fashion ──────────────────────────────────────────────────────
   {
-    name: 'Eva Schmidt',
+    name: 'Coco Chanel',
     email: 'seed-tester-48@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/evastreams',
-    website: null,
     profile: {
-      identity: { name: 'Eva Schmidt', bio: 'Twitch streamer and content creator. Variety streamer, mostly FPS and horror.', location: 'Berlin, DE' },
-      narrative: { context: 'Want to find other streamers for collabs and grow a small community.' },
-      attributes: { interests: ['streaming', 'FPS', 'horror games', 'content creation'], skills: ['OBS', 'Discord', 'community mod', 'scheduling'] },
+      identity: {
+        name: 'Coco Chanel',
+        bio: 'Fashion designer who revolutionized women\'s fashion. Created Chanel No. 5, the little black dress, and the Chanel suit.',
+        location: 'Paris, France',
+      },
+      narrative: { context: 'Seeking designers, textile artisans, and anyone who understands that elegance is refusal.' },
+      attributes: {
+        interests: ['fashion design', 'textile innovation', 'perfumery', 'brand building'],
+        skills: ['garment design', 'textile selection', 'brand identity', 'trend forecasting'],
+      },
     },
-    intents: ['Looking for other streamers to do co-streams or collab events.', 'Want to connect with viewers or mods interested in building the community.'],
+    intents: [
+      'Looking for fashion designers and textile artisans for collaboration on collections.',
+      'Seeking perfumers and fragrance chemists interested in scent design.',
+    ],
   },
+
+  // ── Astronomers ────────────────────────────────────────────────────────────
   {
-    name: 'Carlos Mendoza',
+    name: 'Nicolaus Copernicus',
     email: 'seed-tester-49@index-network.test',
-    linkedin: 'https://linkedin.com/in/carlosmendoza',
-    github: 'https://github.com/cmendoza',
-    x: 'https://x.com/carlosmendoza',
-    website: null,
     profile: {
-      identity: { name: 'Carlos Mendoza', bio: 'Full-stack engineer with e-commerce and checkout experience.', location: 'Madrid, ES' },
-      narrative: { context: 'Building a checkout or payments product and need design and GTM partners.' },
-      attributes: { interests: ['e-commerce', 'payments', 'conversion'], skills: ['Node.js', 'React', 'Stripe', 'optimization'] },
+      identity: {
+        name: 'Nicolaus Copernicus',
+        bio: 'Astronomer and mathematician. Formulated the heliocentric model of the solar system, placing the Sun at the center.',
+        location: 'Frombork, Poland',
+      },
+      narrative: { context: 'Seeking astronomers, mathematicians, and anyone willing to question what everyone else takes for granted.' },
+      attributes: {
+        interests: ['astronomy', 'mathematics', 'cosmology', 'optics'],
+        skills: ['astronomical observation', 'mathematical modeling', 'cosmological theory', 'canon law'],
+      },
     },
-    intents: ['Seeking design and GTM co-founders for a checkout or payments product.', 'Looking for e-commerce or fintech founders to collaborate with.'],
+    intents: [
+      'Looking for astronomers and mathematicians to discuss planetary motion models.',
+      'Seeking instrument makers who can build better observational tools.',
+    ],
   },
+
+  // ── Ceramicists & Potters ──────────────────────────────────────────────────
   {
-    name: 'Jasmine Liu',
+    name: 'Bernard Leach',
     email: 'seed-tester-50@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
     profile: {
-      identity: { name: 'Jasmine Liu', bio: 'Grad student in environmental policy. Research on climate adaptation and local gov.', location: 'Sydney, AU' },
-      narrative: { context: 'Looking for research collaborators and NGOs or agencies for internship or fieldwork.' },
-      attributes: { interests: ['climate policy', 'adaptation', 'local government', 'NGOs'], skills: ['research', 'policy analysis', 'writing', 'data'] },
+      identity: {
+        name: 'Bernard Leach',
+        bio: 'Potter and art educator. Father of British studio pottery. Bridged Eastern and Western ceramic traditions.',
+        location: 'St Ives, Cornwall, England',
+      },
+      narrative: { context: 'Seeking potters, ceramicists, and craft practitioners who believe in the beauty of functional objects.' },
+      attributes: {
+        interests: ['ceramics', 'pottery', 'Japanese aesthetics', 'craft philosophy'],
+        skills: ['wheel throwing', 'glaze chemistry', 'kiln building', 'ceramic teaching'],
+      },
     },
-    intents: ['Want to find other grad students or researchers working on adaptation policy.', 'Looking for NGOs or government contacts for fieldwork or internships.'],
-  },
-  {
-    name: "Ryan O'Brien",
-    email: 'seed-tester-51@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: "Ryan O'Brien", bio: 'Retired history teacher. Tutoring part-time and volunteering at a local museum.', location: 'Philadelphia, PA' },
-      narrative: { context: 'Looking for other retirees or volunteers for history education and museum outreach.' },
-      attributes: { interests: ['history', 'tutoring', 'museums', 'volunteering'], skills: ['teaching', 'research', 'presentation', 'mentoring'] },
-    },
-    intents: ['Want to find other volunteers for the museum education program.', 'Looking for tutoring or mentoring opportunities with high school students.'],
-  },
-  {
-    name: 'Nadia Petrov',
-    email: 'seed-tester-52@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Nadia Petrov', bio: 'Chef and recipe developer. Running a small supper club and writing a cookbook.', location: 'Kyiv, UA' },
-      narrative: { context: 'Looking for collaborators for pop-up dinners and a possible food blog or newsletter.' },
-      attributes: { interests: ['cooking', 'supper clubs', 'cookbook', 'local ingredients'], skills: ['recipe development', 'menu planning', 'catering', 'food styling'] },
-    },
-    intents: ['Want to find other chefs or hosts for a joint pop-up or supper club series.', 'Looking for a photographer or writer to collaborate on the cookbook.'],
-  },
-  {
-    name: 'Kwame Asante',
-    email: 'seed-tester-53@index-network.test',
-    linkedin: 'https://linkedin.com/in/kwameasante',
-    github: null,
-    x: 'https://x.com/kwameasante',
-    website: null,
-    profile: {
-      identity: { name: 'Kwame Asante', bio: 'Sales development and outbound lead for B2B SaaS.', location: 'Accra, GH' },
-      narrative: { context: 'Want to join an early-stage B2B company to build outbound and SDR motion.' },
-      attributes: { interests: ['outbound', 'SDR', 'pipeline'], skills: ['outreach', 'CRM', 'qualification', 'pipeline management'] },
-    },
-    intents: ['Seeking B2B founders who need a sales development co-founder or first hire.', 'Looking for teams ready to scale outbound and pipeline.'],
-  },
-  {
-    name: 'Ingrid Bergstrom',
-    email: 'seed-tester-54@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Ingrid Bergstrom', bio: 'Poet and spoken word artist. Performing at open mics and submitting to journals.', location: 'Oslo, NO' },
-      narrative: { context: 'Looking for a writing group and venues or festivals for performance.' },
-      attributes: { interests: ['poetry', 'spoken word', 'performance', 'publishing'], skills: ['writing', 'performance', 'editing', 'workshop facilitation'] },
-    },
-    intents: ['Want to find a poetry critique group or open mic community.', 'Looking for venues or festivals interested in spoken word or poetry events.'],
-  },
-  {
-    name: 'Vlad Petrescu',
-    email: 'seed-tester-55@index-network.test',
-    linkedin: 'https://linkedin.com/in/vladpetrescu',
-    github: 'https://github.com/vpetrescu',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Vlad Petrescu', bio: 'Frontend architect with focus on performance and accessibility.', location: 'Bucharest, RO' },
-      narrative: { context: 'Interested in products where frontend quality drives conversion and retention.' },
-      attributes: { interests: ['performance', 'accessibility', 'frontend architecture'], skills: ['React', 'performance', 'a11y', 'Core Web Vitals'] },
-    },
-    intents: ['Looking for a backend or product co-founder for a frontend-heavy product.', 'Seeking teams that prioritize performance and accessibility.'],
-  },
-  {
-    name: 'Marta Kowalczyk',
-    email: 'seed-tester-56@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Marta Kowalczyk', bio: 'Family caregiver. Supporting an aging parent; interested in respite and support groups.', location: 'Krakow, PL' },
-      narrative: { context: 'Looking for local caregiver support and resources; open to part-time remote work later.' },
-      attributes: { interests: ['caregiving', 'elder care', 'support groups', 'wellness'], skills: ['advocacy', 'scheduling', 'health coordination', 'communication'] },
-    },
-    intents: ['Want to find a local caregiver support group or respite options.', 'Looking for others in similar situations to share resources and advice.'],
-  },
-  {
-    name: 'Jake Morrison',
-    email: 'seed-tester-57@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Jake Morrison', bio: 'Tabletop RPG player and DM. Running D&D and other systems; love worldbuilding.', location: 'Nashville, TN' },
-      narrative: { context: 'Looking for a steady group and maybe co-DMs for one-shots or campaigns.' },
-      attributes: { interests: ['D&D', 'TTRPGs', 'worldbuilding', 'board games'], skills: ['DMing', 'storytelling', 'rules', 'scheduling'] },
-    },
-    intents: ['Want to find players for a new campaign or one-shots.', 'Looking for other DMs to swap ideas and maybe co-run events.'],
-  },
-  {
-    name: 'Leila Abbas',
-    email: 'seed-tester-58@index-network.test',
-    linkedin: 'https://linkedin.com/in/leilaabbas',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Leila Abbas', bio: 'Product designer with focus on onboarding and activation.', location: 'Amman, JO' },
-      narrative: { context: 'Exploring a product idea where onboarding is the key differentiator.' },
-      attributes: { interests: ['onboarding', 'activation', 'product-led growth'], skills: ['Figma', 'user flows', 'experimentation', 'analytics'] },
-    },
-    intents: ['Seeking technical co-founder for a product where onboarding and activation are core.', 'Looking for growth or engineering partners who care about first-time UX.'],
-  },
-  {
-    name: 'Tyler Reed',
-    email: 'seed-tester-59@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/tylerrides',
-    website: null,
-    profile: {
-      identity: { name: 'Tyler Reed', bio: 'Cyclist and bike advocate. Group rides, commuting, and local advocacy.', location: 'Phoenix, AZ' },
-      narrative: { context: 'Looking for ride buddies and people interested in bike advocacy or events.' },
-      attributes: { interests: ['cycling', 'group rides', 'bike advocacy', 'commuting'], skills: ['route planning', 'mechanical basics', 'organizing', 'advocacy'] },
-    },
-    intents: ['Want to find a regular group for weekend rides or commuting.', 'Looking for others interested in local bike advocacy or event organizing.'],
-  },
-  {
-    name: 'Sara Nilsson',
-    email: 'seed-tester-60@index-network.test',
-    linkedin: 'https://linkedin.com/in/saranilsson',
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Sara Nilsson', bio: 'Product operations and tooling lead for product teams.', location: 'Gothenburg, SE' },
-      narrative: { context: 'Building product ops tooling and looking for technical and design partners.' },
-      attributes: { interests: ['product ops', 'roadmapping', 'tooling'], skills: ['Jira', 'Notion', 'analytics', 'process design'] },
-    },
-    intents: ['Seeking engineering co-founder for a product ops or roadmapping tool.', 'Looking for PMs or designers interested in product operations.'],
-  },
-  // Personas 61–78: mixed artists, gamers, educators, students, athletes, and professionals
-  {
-    name: 'Zara Khan',
-    email: 'seed-tester-61@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: 'https://zarakhan.art',
-    profile: {
-      identity: { name: 'Zara Khan', bio: 'Digital artist and animator. Character design and short loops for social.', location: 'London, UK' },
-      narrative: { context: 'Looking for clients and other artists for collabs and zines.' },
-      attributes: { interests: ['digital art', 'animation', 'character design', 'social media'], skills: ['Procreate', 'After Effects', 'illustration', 'storyboarding'] },
-    },
-    intents: ['Want to find artists for a collaborative zine or animation project.', 'Looking for clients who need character design or short-form animation.'],
-  },
-  {
-    name: 'Andre Santos',
-    email: 'seed-tester-62@index-network.test',
-    linkedin: 'https://linkedin.com/in/andresantos-sre',
-    github: 'https://github.com/andresantos',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Andre Santos', bio: 'SRE and DevOps engineer with multi-cloud experience.', location: 'São Paulo, BR' },
-      narrative: { context: 'Interested in joining an early-stage infra or platform company.' },
-      attributes: { interests: ['reliability', 'cost optimization', 'observability'], skills: ['Kubernetes', 'Terraform', 'GCP', 'Datadog'] },
-    },
-    intents: ['Looking for a startup that needs a founding SRE to build reliability from day one.', 'Open to platform or infra startups with strong technical founders.'],
-  },
-  {
-    name: 'Priya Nair',
-    email: 'seed-tester-63@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Priya Nair', bio: 'Graduate student in neuroscience. Research on memory and aging.', location: 'Boston, MA' },
-      narrative: { context: 'Looking for lab collaborations and postdoc or industry options.' },
-      attributes: { interests: ['neuroscience', 'memory', 'aging', 'research'], skills: ['data analysis', 'Python', 'writing', 'presentations'] },
-    },
-    intents: ['Want to find other grad students or postdocs for journal clubs and collaboration.', 'Looking for industry or postdoc opportunities in neuro or biotech.'],
-  },
-  {
-    name: 'Felix Weber',
-    email: 'seed-tester-64@index-network.test',
-    linkedin: 'https://linkedin.com/in/felixweber-dev',
-    github: 'https://github.com/felixweber',
-    x: null,
-    website: 'https://felixweber.dev',
-    profile: {
-      identity: { name: 'Felix Weber', bio: 'Software engineer with focus on Rust and systems programming.', location: 'Munich, DE' },
-      narrative: { context: 'Exploring performance-critical or systems-level product ideas.' },
-      attributes: { interests: ['systems programming', 'performance', 'open source'], skills: ['Rust', 'C++', 'Linux', 'benchmarking'] },
-    },
-    intents: ['Looking for a co-founder to build a devtool or infrastructure product in Rust.', 'Seeking product-minded engineers interested in systems and performance.'],
-  },
-  {
-    name: 'Nina Kowalski',
-    email: 'seed-tester-65@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Nina Kowalski', bio: 'Soccer coach for youth teams. Former semi-pro player; now coaching and refereeing.', location: 'Warsaw, PL' },
-      narrative: { context: 'Looking for assistant coaches and tournament or league connections.' },
-      attributes: { interests: ['soccer', 'youth sports', 'coaching', 'refereeing'], skills: ['coaching', 'tactics', 'fitness', 'parent communication'] },
-    },
-    intents: ['Want to find an assistant coach or volunteers for our youth team.', 'Looking for other coaches to share drills and tournament info.'],
-  },
-  {
-    name: 'Raj Mehta',
-    email: 'seed-tester-66@index-network.test',
-    linkedin: 'https://linkedin.com/in/rajmehta-ml',
-    github: 'https://github.com/rajmehta',
-    x: 'https://x.com/rajml',
-    website: null,
-    profile: {
-      identity: { name: 'Raj Mehta', bio: 'ML engineer focused on computer vision and edge deployment.', location: 'Hyderabad, IN' },
-      narrative: { context: 'Exploring vertical AI applications in retail and logistics.' },
-      attributes: { interests: ['computer vision', 'edge ML', 'retail tech'], skills: ['Python', 'PyTorch', 'ONNX', 'TensorFlow Lite'] },
-    },
-    intents: ['Seeking a domain expert co-founder in retail or logistics for an AI product.', 'Looking for engineers with embedded or mobile ML experience.'],
-  },
-  {
-    name: 'Vikram Sharma',
-    email: 'seed-tester-67@index-network.test',
-    linkedin: 'https://linkedin.com/in/vikramsharma-backend',
-    github: 'https://github.com/vsharma',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Vikram Sharma', bio: 'Backend engineer building scalable APIs and event-driven systems.', location: 'Bangalore, IN' },
-      narrative: { context: 'Looking for a product-focused co-founder to build developer-facing infrastructure.' },
-      attributes: { interests: ['distributed systems', 'API design', 'event sourcing'], skills: ['Go', 'PostgreSQL', 'Kafka', 'gRPC'] },
-    },
-    intents: ['Seeking a technical co-founder with frontend or product background for an API-first startup.', 'Want to meet founders building in devtools or infrastructure.'],
-  },
-  {
-    name: 'Elena Petrova',
-    email: 'seed-tester-68@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Elena Petrova', bio: 'Classical pianist and piano teacher. Performing locally and teaching kids and adults.', location: 'Boston, MA' },
-      narrative: { context: 'Looking for duet partners, accompanists, and more students.' },
-      attributes: { interests: ['classical piano', 'teaching', 'performance', 'chamber music'], skills: ['piano', 'sight-reading', 'pedagogy', 'accompanying'] },
-    },
-    intents: ['Want to find a duet partner or accompanist for recitals.', 'Looking for referrals or partnerships with schools for piano students.'],
-  },
-  {
-    name: 'Noah Williams',
-    email: 'seed-tester-69@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/noahclimbs',
-    website: null,
-    profile: {
-      identity: { name: 'Noah Williams', bio: 'Rock climber and boulderer. Indoor and outdoor; interested in trip planning.', location: 'Denver, CO' },
-      narrative: { context: 'Looking for climbing partners and groups for weekend outdoor trips.' },
-      attributes: { interests: ['rock climbing', 'bouldering', 'outdoor', 'gym climbing'], skills: ['belaying', 'route reading', 'trip planning', 'safety'] },
-    },
-    intents: ['Want to find regular climbing partners for gym and outdoor days.', 'Looking for a group to plan a weekend climbing trip.'],
-  },
-  {
-    name: 'Sofia Martinez',
-    email: 'seed-tester-70@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Sofia Martinez', bio: 'Dance teacher and choreographer. Ballet and contemporary; teaching kids and adults.', location: 'Mexico City, MX' },
-      narrative: { context: 'Looking for guest teachers and performance or competition opportunities.' },
-      attributes: { interests: ['ballet', 'contemporary', 'choreography', 'teaching'], skills: ['choreography', 'teaching', 'staging', 'costuming'] },
-    },
-    intents: ['Want to find guest teachers or collaborators for a summer intensive.', 'Looking for performance or competition opportunities for my students.'],
-  },
-  {
-    name: 'Kai Nakamura',
-    email: 'seed-tester-71@index-network.test',
-    linkedin: null,
-    github: null,
-    x: 'https://x.com/kaigaming',
-    website: null,
-    profile: {
-      identity: { name: 'Kai Nakamura', bio: 'Competitive esports player. Competing in fighting games and FPS at regional level.', location: 'Tokyo, JP' },
-      narrative: { context: 'Looking for a team or training partners and potential sponsors.' },
-      attributes: { interests: ['esports', 'fighting games', 'FPS', 'tournaments'], skills: ['competition', 'VOD review', 'practice routines', 'mental game'] },
-    },
-    intents: ['Want to find a team or regular training partners for competitive play.', 'Looking for sponsors or orgs interested in fighting game or FPS players.'],
-  },
-  {
-    name: 'Zoe Turner',
-    email: 'seed-tester-72@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Zoe Turner', bio: 'Librarian and literacy advocate. Running programs for kids and adults.', location: 'Minneapolis, MN' },
-      narrative: { context: 'Looking for partners for reading programs and grant or volunteer support.' },
-      attributes: { interests: ['literacy', 'libraries', 'reading programs', 'community'], skills: ['program design', 'outreach', 'grant writing', 'event planning'] },
-    },
-    intents: ['Want to find partners for a summer reading challenge or author visit series.', 'Looking for volunteers or grant writers to expand our programs.'],
-  },
-  {
-    name: 'Ravi Singh',
-    email: 'seed-tester-73@index-network.test',
-    linkedin: 'https://linkedin.com/in/ravisingh',
-    github: 'https://github.com/ravisingh',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Ravi Singh', bio: 'Backend engineer with focus on real-time and messaging systems.', location: 'Bangalore, IN' },
-      narrative: { context: 'Interested in chat, collaboration, or real-time product ideas.' },
-      attributes: { interests: ['real-time', 'messaging', 'WebSockets', 'scaling'], skills: ['Go', 'Redis', 'PostgreSQL', 'event-driven'] },
-    },
-    intents: ['Looking for a product or frontend co-founder for a real-time or messaging product.', 'Seeking teams building collaboration or communication tools.'],
-  },
-  {
-    name: 'Simon Wright',
-    email: 'seed-tester-74@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Simon Wright', bio: 'Wildlife photographer. Focus on birds and conservation; selling prints and leading tours.', location: 'Cape Town, ZA' },
-      narrative: { context: 'Looking for tour partners and galleries or shops for prints.' },
-      attributes: { interests: ['wildlife', 'birds', 'conservation', 'tours'], skills: ['photography', 'editing', 'tour leading', 'print sales'] },
-    },
-    intents: ['Want to find a partner to co-lead birding or wildlife tours.', 'Looking for galleries or shops interested in prints or licensing.'],
-  },
-  {
-    name: 'Nadia Petrov',
-    email: 'seed-tester-75@index-network.test',
-    linkedin: 'https://linkedin.com/in/nadiapetrov',
-    github: 'https://github.com/npetrov',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Nadia Petrov', bio: 'QA and test automation engineer for web and mobile products.', location: 'Kyiv, UA' },
-      narrative: { context: 'Interested in joining a product team that values quality and automation.' },
-      attributes: { interests: ['test automation', 'quality', 'CI/CD'], skills: ['Playwright', 'Jest', 'Selenium', 'test strategy'] },
-    },
-    intents: ['Seeking early-stage teams that want a founding QA or quality engineer.', 'Looking for devtool startups building testing or quality products.'],
-  },
-  {
-    name: 'Luna Chen',
-    email: 'seed-tester-76@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Luna Chen', bio: 'High school junior. Into robotics club, coding, and science fairs.', location: 'San Jose, CA' },
-      narrative: { context: 'Looking for mentors and teammates for robotics or hackathons.' },
-      attributes: { interests: ['robotics', 'coding', 'science fair', 'STEM'], skills: ['Python', 'Arduino', 'teamwork', 'presentations'] },
-    },
-    intents: ['Want to find teammates for robotics competitions or hackathons.', 'Looking for mentors in engineering or computer science.'],
-  },
-  {
-    name: 'James Okonkwo',
-    email: 'seed-tester-77@index-network.test',
-    linkedin: 'https://linkedin.com/in/jamesokonkwo',
-    github: 'https://github.com/jokonkwo',
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'James Okonkwo', bio: 'Full-stack engineer with fintech and payments experience.', location: 'Lagos, NG' },
-      narrative: { context: 'Building a payments product for African markets; need compliance and growth partners.' },
-      attributes: { interests: ['fintech', 'payments', 'emerging markets'], skills: ['Node.js', 'Stripe', 'React', 'PostgreSQL'] },
-    },
-    intents: ['Seeking a compliance or legal co-founder for a payments startup in West Africa.', 'Looking for growth or marketing co-founders with local market knowledge.'],
-  },
-  {
-    name: 'Emma Foster',
-    email: 'seed-tester-78@index-network.test',
-    linkedin: null,
-    github: null,
-    x: null,
-    website: null,
-    profile: {
-      identity: { name: 'Emma Foster', bio: 'Swimming coach and former collegiate swimmer. Coaching age group and masters.', location: 'Seattle, WA' },
-      narrative: { context: 'Looking for assistant coaches and pool or club partnerships.' },
-      attributes: { interests: ['swimming', 'coaching', 'masters swimming', 'age group'], skills: ['stroke technique', 'workout design', 'meet management', 'parent communication'] },
-    },
-    intents: ['Want to find an assistant coach or volunteers for our swim team.', 'Looking for pool or club partnerships for clinics or camps.'],
+    intents: [
+      'Looking for potters and ceramicists to share techniques across Eastern and Western traditions.',
+      'Seeking craft practitioners interested in the philosophy of handmade objects.',
+    ],
   },
 ];
