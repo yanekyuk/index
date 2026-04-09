@@ -309,6 +309,13 @@
       "when": 1775782800000,
       "tag": "0043_add_negotiating_opportunity_status",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1775783400000,
+      "tag": "0044_rename_waiting_for_external_to_waiting_for_agent",
+      "breakpoints": true
     }
   ]
 }
