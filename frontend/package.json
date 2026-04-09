@@ -4,9 +4,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "bun run build:blog && vite build && bun run inject-blog-meta.ts",
+    "build": "bun run build:blog && vite build",
     "build:blog": "bun run build-blog.ts",
-    "start": "vite preview",
+    "start": "bun server.ts",
     "lint": "eslint .",
     "test": "bun --bun vitest run",
     "test:watch": "bun --bun vitest",

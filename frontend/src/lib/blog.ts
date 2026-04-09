@@ -101,6 +101,9 @@ export async function getPostBySlug(slug: string): Promise<BlogPost | null> {
     const response = await fetch(`/blog/${slug}/index.md`);
     if (!response.ok) return null;
 
+    const ct = response.headers.get("content-type") || "";
+    if (ct.includes("text/html")) return null;
+
     const fileContents = await response.text();
     const { data, content } = parseFrontmatter(fileContents);
 
