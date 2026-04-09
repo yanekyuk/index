@@ -202,8 +202,8 @@ export class OpportunityController {
       });
     }
     
-    const status = body.status as 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired' | undefined;
-    const allowed = ['latent', 'draft', 'pending', 'accepted', 'rejected', 'expired'];
+    const status = body.status as 'latent' | 'draft' | 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'expired' | undefined;
+    const allowed = ['latent', 'draft', 'pending', 'negotiating', 'accepted', 'rejected', 'expired'];
     if (!status || !allowed.includes(status)) {
       return new Response(JSON.stringify({ error: 'Invalid status; use one of: ' + allowed.join(', ') }), {
         status: 400,

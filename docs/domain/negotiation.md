@@ -142,8 +142,8 @@ The dispatcher distinguishes two timeout tiers:
 
 | Tier | Timeout | Behavior |
 |---|---|---|
-| **Short** (chat context) | ≤ 30 seconds | Blocks synchronously; response is awaited inline |
-| **Long** (background context) | > 30 seconds | Sends a notification to the agent, then suspends the graph; graph resumes when the agent responds via MCP tool |
+| **Short** (chat context) | ≤ 60 seconds | Blocks synchronously; response is awaited inline |
+| **Long** (background context) | > 60 seconds | Sends a notification to the agent, then suspends the graph; graph resumes when the agent responds via MCP tool |
 
 This means personal agents in a background negotiation cause the graph to suspend and wait for an out-of-band response, while system agents and fast personal agents complete synchronously within the turn.
 

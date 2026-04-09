@@ -33,6 +33,7 @@ import { enrichUserProfile } from "./lib/parallel/parallel";
 import { webhookService } from "./services/webhook.service";
 import { WEBHOOK_EVENTS } from "./lib/webhook-events";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
+import { webhookQueue } from "./queues/webhook.queue";
 import type { ProtocolDeps } from '@indexnetwork/protocol';
 
 /**
@@ -43,7 +44,7 @@ import type { ProtocolDeps } from '@indexnetwork/protocol';
 export function createDefaultProtocolDeps(): ProtocolDeps {
   const integration = new ComposioIntegrationAdapter();
   const integrationService = new IntegrationService(integration, contactService);
-  const agentDeliveryService = new AgentDeliveryService(webhookService);
+  const agentDeliveryService = new AgentDeliveryService(webhookService, webhookQueue);
   const agentDispatcher = new AgentDispatcherImpl(agentService, agentDeliveryService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
