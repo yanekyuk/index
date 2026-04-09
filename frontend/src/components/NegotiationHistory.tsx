@@ -56,7 +56,6 @@ function TurnMessage({ turn, isLast }: { turn: NegotiationTurnSummary; isLast: b
             <Bot className="w-3 h-3 text-gray-400" />
           </span>
           <span className={`text-xs font-medium ${actionInfo.color}`}>{actionInfo.label}</span>
-          <span className="text-xs text-gray-400 ml-auto">{turn.fitScore}/100</span>
         </div>
         <p className="text-sm text-gray-600 leading-relaxed">{turn.reasoning}</p>
       </div>
@@ -221,9 +220,6 @@ export default function NegotiationHistory({ userId, onTriggerNegotiation, isTri
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                  {neg.outcome?.hasOpportunity && neg.outcome.finalScore > 0 && (
-                    <span>Score: {neg.outcome.finalScore}</span>
-                  )}
                   {neg.outcome?.role && (
                     <span>{ROLE_LABELS[neg.outcome.role] ?? neg.outcome.role}</span>
                   )}

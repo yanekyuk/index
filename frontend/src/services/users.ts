@@ -8,7 +8,6 @@ interface BatchUsersResponse {
 export interface NegotiationTurnSummary {
   speaker: { id: string; name: string; avatar: string | null };
   action: string;
-  fitScore: number;
   reasoning: string;
   suggestedRoles: { ownUser?: string; otherUser?: string } | null;
   createdAt: string;
@@ -19,7 +18,6 @@ export interface NegotiationSummary {
   counterparty: { id: string; name: string; avatar: string | null };
   outcome: {
     hasOpportunity: boolean;
-    finalScore: number;
     role: string | null;
     turnCount: number;
     reason?: string;
@@ -35,7 +33,6 @@ export interface NegotiationInsights {
     opportunityCount: number;
     noOpportunityCount: number;
     inProgressCount: number;
-    avgScore: number | null;
     roleDistribution: Record<string, number>;
     topCounterparties: Array<{ id: string; name: string; avatar: string | null; count: number }>;
   };
