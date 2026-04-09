@@ -210,6 +210,7 @@ export class NegotiationTimeoutQueue {
       indexContext: { networkId: '', prompt: '' },
       seedAssessment,
       history,
+      isDiscoverer: isSource,
     });
 
     // Persist the AI turn
