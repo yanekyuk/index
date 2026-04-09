@@ -78,7 +78,6 @@ describe('AgentDeliveryService', () => {
       payload: {
         negotiationId: 'neg-1',
         outcome: 'accepted',
-        finalScore: 0.92,
         turnCount: 3,
       },
       getJobId: (hook) => `webhook-neg-completed-${hook.id}-neg-1`,
@@ -96,7 +95,6 @@ describe('AgentDeliveryService', () => {
         payload: {
           negotiationId: 'neg-1',
           outcome: 'accepted',
-          finalScore: 0.92,
           turnCount: 3,
         },
         timestamp: '2026-04-08T12:00:00.000Z',
@@ -114,7 +112,6 @@ describe('AgentDeliveryService', () => {
         payload: {
           negotiationId: 'neg-1',
           outcome: 'accepted',
-          finalScore: 0.92,
           turnCount: 3,
         },
         timestamp: '2026-04-08T12:00:00.000Z',

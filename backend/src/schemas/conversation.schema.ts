@@ -27,7 +27,7 @@ export const taskStateEnum = pgEnum('task_state', [
   'canceled',
   'rejected',
   'auth_required',
-  'waiting_for_external',
+  'waiting_for_agent',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -23,7 +23,6 @@ export const NegotiationEvents = {
     negotiationId: string;
     userId: string;
     outcome: string;
-    finalScore?: number;
     turnCount: number;
   }) => void) | null,
 };

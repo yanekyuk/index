@@ -2,7 +2,7 @@ import { Job } from 'bullmq';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { NegotiationProposer, NegotiationResponder } from '@indexnetwork/protocol';
+import { IndexNegotiator } from '@indexnetwork/protocol';
 import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase, NegotiationEventEmitter } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for negotiation timeout jobs. */
@@ -154,8 +154,8 @@ export class NegotiationTimeoutQueue {
       return;
     }
 
-    // Only process if still waiting_for_external and turn matches
-    if (task.state !== 'waiting_for_external') {
+    // Only process if still waiting_for_agent and turn matches
+    if (task.state !== 'waiting_for_agent') {
       this.logger.info('[NegotiationTimeoutJob] Task no longer waiting, skipping (stale job)', {
         negotiationId,
         currentState: task.state,
@@ -201,7 +201,7 @@ export class NegotiationTimeoutQueue {
     }).filter(Boolean);
 
     // Run AI agent for the timed-out turn
-    const agent = isSource ? new NegotiationProposer() : new NegotiationResponder();
+    const agent = new IndexNegotiator();
     const ownUserCtx: UserNegotiationContext = { id: activeUserId, intents: [], profile: {} };
     const otherUserCtx: UserNegotiationContext = { id: otherUserId, intents: [], profile: {} };
     const seedAssessment: SeedAssessment = { score: 50, reasoning: 'Timeout fallback', valencyRole: 'peer' };
@@ -249,14 +249,12 @@ export class NegotiationTimeoutQueue {
           negotiationId: task.id,
           userId: meta.sourceUserId!,
           outcome: outcomeStr,
-          finalScore: outcome.finalScore,
           turnCount: newTurnCount,
         });
         eventEmitter.emitCompleted({
           negotiationId: task.id,
           userId: meta.candidateUserId!,
           outcome: outcomeStr,
-          finalScore: outcome.finalScore,
           turnCount: newTurnCount,
         });
       }
@@ -292,9 +290,6 @@ export class NegotiationTimeoutQueue {
     const hasOpportunity = lastAction === 'accept';
     const atCap = lastAction === 'counter';
 
-    const scores = history.map(t => t.assessment.fitScore);
-    const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-
     let agreedRoles: NegotiationOutcome['agreedRoles'] = [];
     if (hasOpportunity && history.length >= 2) {
       const acceptTurn = history[history.length - 1];
@@ -311,7 +306,6 @@ export class NegotiationTimeoutQueue {
 
     return {
       hasOpportunity,
-      finalScore: hasOpportunity ? avgScore : 0,
       agreedRoles,
       reasoning: history[history.length - 1]?.assessment.reasoning ?? '',
       turnCount,

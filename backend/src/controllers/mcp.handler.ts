@@ -11,7 +11,7 @@ import {
 
 import { createDefaultProtocolDeps } from '../protocol-init';
 
-import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, NegotiationProposer, NegotiationResponder, IntentIndexer, createMcpServer } from '@indexnetwork/protocol';
+import { IntentGraphFactory, ProfileGraphFactory, OpportunityGraphFactory, HydeGraphFactory, NetworkGraphFactory, NetworkMembershipGraphFactory, IntentNetworkGraphFactory, NegotiationGraphFactory, HydeGenerator, LensInferrer, IntentIndexer, createMcpServer } from '@indexnetwork/protocol';
 import type { HydeGraphDatabase, ToolDeps, McpAuthResolver, ScopedDepsFactory } from '@indexnetwork/protocol';
 
  
@@ -47,10 +47,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
   ).createGraph();
   const negotiationGraph = new NegotiationGraphFactory(
     deps.negotiationDatabase,
-    new NegotiationProposer(),
-    new NegotiationResponder(),
-    deps.webhookLookup,
-    deps.negotiationEvents,
+    deps.agentDispatcher,
     deps.negotiationTimeoutQueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(
@@ -240,8 +237,7 @@ function getOrCreateMcpServer(): McpServer {
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
     webhook: deps.webhook,
-    webhookLookup: deps.webhookLookup,
-    negotiationEvents: deps.negotiationEvents,
+    agentDispatcher: deps.agentDispatcher,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
     agentDatabase: deps.agentDatabase,
     grantDefaultSystemPermissions: deps.grantDefaultSystemPermissions,

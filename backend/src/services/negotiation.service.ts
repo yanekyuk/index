@@ -1,8 +1,8 @@
 import { log } from '../lib/log';
 import { IntentDatabaseAdapter, intentDatabaseAdapter } from '../adapters/database.adapter';
 import { ChatDatabaseAdapter, conversationDatabaseAdapter } from '../adapters/database.adapter';
-import { createDefaultNegotiationGraph, NegotiationProposer, NegotiationResponder } from '@indexnetwork/protocol';
-import type { UserNegotiationContext } from '@indexnetwork/protocol';
+import { NegotiationGraphFactory } from '@indexnetwork/protocol';
+import type { UserNegotiationContext, AgentDispatcher } from '@indexnetwork/protocol';
 
 const logger = log.service.from('NegotiationService');
 
@@ -28,11 +28,16 @@ export class NegotiationService {
       this.buildUserContext(candidateUserId),
     ]);
 
-    const graph = createDefaultNegotiationGraph({
-      database: conversationDatabaseAdapter as Parameters<typeof createDefaultNegotiationGraph>[0]['database'],
-      proposer: new NegotiationProposer(),
-      responder: new NegotiationResponder(),
-    });
+    // No-op dispatcher: NegotiationService triggers synchronous discovery negotiations
+    // without routing turns to personal agents.
+    const noOpDispatcher: AgentDispatcher = {
+      dispatch: async () => ({ handled: false, reason: 'no_agent' as const }),
+      hasPersonalAgent: async () => false,
+    };
+    const graph = new NegotiationGraphFactory(
+      conversationDatabaseAdapter as ConstructorParameters<typeof NegotiationGraphFactory>[0],
+      noOpDispatcher,
+    ).createGraph();
 
     logger.info('Starting discovery negotiation', { sourceUserId, candidateUserId });
 

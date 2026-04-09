@@ -128,8 +128,8 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      type TurnData = { action?: string; assessment?: { fitScore?: number; reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+      type TurnData = { action?: string; assessment?: { reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
       const counterpartyId = meta?.sourceUserId === viewer.id ? meta?.candidateUserId : meta?.sourceUserId;
       const counterparty = counterpartyId ? userMap.get(counterpartyId) : null;
@@ -149,7 +149,6 @@ export class UserController {
             ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
             : { id: agentUserId, name: 'Unknown', avatar: null },
           action: turn?.action ?? 'unknown',
-          fitScore: turn?.assessment?.fitScore ?? 0,
           reasoning: turn?.assessment?.reasoning ?? '',
           suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
           createdAt: msg.createdAt.toISOString(),
@@ -164,7 +163,6 @@ export class UserController {
         outcome: outcomeData
           ? {
               hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
-              finalScore: outcomeData.finalScore ?? 0,
               role: viewerRole,
               turnCount: outcomeData.turnCount ?? 0,
               reason: outcomeData.reason,
@@ -221,8 +219,8 @@ export class UserController {
         : [];
       const userMap = new Map(participantUsers.map((u) => [u.id, u]));
 
-      type TurnData = { action?: string; assessment?: { fitScore?: number; reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
-      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
+      type TurnData = { action?: string; assessment?: { reasoning?: string; suggestedRoles?: { ownUser?: string; otherUser?: string } } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }>; turnCount?: number; reason?: string } };
 
       const negotiations = rows.map((row) => {
         const meta = row.metadata as { sourceUserId?: string; candidateUserId?: string } | null;
@@ -245,7 +243,6 @@ export class UserController {
               ? { id: speakerUser.id, name: speakerUser.name, avatar: speakerUser.avatar }
               : { id: agentUserId, name: 'Unknown', avatar: null },
             action: turn?.action ?? 'unknown',
-            fitScore: turn?.assessment?.fitScore ?? 0,
             reasoning: turn?.assessment?.reasoning ?? '',
             suggestedRoles: turn?.assessment?.suggestedRoles ?? null,
             createdAt: msg.createdAt.toISOString(),
@@ -260,7 +257,6 @@ export class UserController {
           outcome: outcomeData
             ? {
                 hasOpportunity: outcomeData.hasOpportunity ?? outcomeData.consensus ?? false,
-                finalScore: outcomeData.finalScore ?? 0,
                 role: viewerRole,
                 turnCount: outcomeData.turnCount ?? 0,
                 reason: outcomeData.reason,
@@ -311,7 +307,7 @@ export class UserController {
       const taskIds = rows.map((r) => r.id);
       const messagesMap = await this.taskService.getMessagesByTaskIds(taskIds);
 
-      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; finalScore?: number; agreedRoles?: Array<{ userId: string; role: string }> } };
+      type OutcomePart = { kind?: string; data?: { hasOpportunity?: boolean; consensus?: boolean; agreedRoles?: Array<{ userId: string; role: string }> } };
       type TurnData = { assessment?: { reasoning?: string } };
 
       let opportunityCount = 0;
@@ -319,7 +315,6 @@ export class UserController {
       let inProgressCount = 0;
       const roleCounts: Record<string, number> = {};
       const reasoningExcerpts: string[] = [];
-      const scoreSum: number[] = [];
       const counterpartyCounts = new Map<string, { id: string; name: string; avatar: string | null; count: number }>();
 
       for (const row of rows) {
@@ -344,7 +339,6 @@ export class UserController {
           inProgressCount++;
         } else if (outcomeData.hasOpportunity ?? outcomeData.consensus) {
           opportunityCount++;
-          if (outcomeData.finalScore != null) scoreSum.push(outcomeData.finalScore);
           const viewerRole = outcomeData.agreedRoles?.find((r) => r.userId === params.userId)?.role;
           if (viewerRole) {
             const label = viewerRole === 'agent' ? 'Helper' : viewerRole === 'patient' ? 'Seeker' : 'Peer';
@@ -365,7 +359,6 @@ export class UserController {
         }
       }
 
-      const avgScore = scoreSum.length > 0 ? Math.round(scoreSum.reduce((a, b) => a + b, 0) / scoreSum.length) : null;
       const topCounterparties = [...counterpartyCounts.values()]
         .sort((a, b) => b.count - a.count)
         .slice(0, 5);
@@ -391,7 +384,6 @@ export class UserController {
             opportunityCount,
             noOpportunityCount,
             inProgressCount,
-            avgScore,
             roleDistribution: roleCounts,
             topCounterparties,
           },

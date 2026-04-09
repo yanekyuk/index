@@ -26,12 +26,12 @@ import { intentQueue } from "./queues/intent.queue";
 import { chatSessionService } from "./services/chat.service";
 import { agentService } from "./services/agent.service";
 import { AgentDeliveryService } from './services/agent-delivery.service';
+import { AgentDispatcherImpl } from './services/agent-dispatcher.service';
 import { contactService } from "./services/contact.service";
 import { IntegrationService } from "./services/integration.service";
 import { enrichUserProfile } from "./lib/parallel/parallel";
 import { webhookService } from "./services/webhook.service";
 import { WEBHOOK_EVENTS } from "./lib/webhook-events";
-import { NegotiationEvents } from "./events/negotiation.event";
 import { negotiationTimeoutQueue } from "./queues/negotiation-timeout.queue";
 import type { ProtocolDeps } from '@indexnetwork/protocol';
 
@@ -43,7 +43,8 @@ import type { ProtocolDeps } from '@indexnetwork/protocol';
 export function createDefaultProtocolDeps(): ProtocolDeps {
   const integration = new ComposioIntegrationAdapter();
   const integrationService = new IntegrationService(integration, contactService);
-const agentDeliveryLookupService = new AgentDeliveryService(webhookService);
+  const agentDeliveryService = new AgentDeliveryService(webhookService);
+  const agentDispatcher = new AgentDispatcherImpl(agentService, agentDeliveryService, negotiationTimeoutQueue);
   const embedder = new EmbedderAdapter();
   const scraper = new ScraperAdapter();
 
@@ -72,21 +73,10 @@ const agentDeliveryLookupService = new AgentDeliveryService(webhookService);
       test: (userId: string, webhookId: string) => webhookService.test(userId, webhookId),
       listEvents: () => [...WEBHOOK_EVENTS],
     },
-    webhookLookup: {
-      hasWebhookForEvent: (userId: string, event: string) =>
-        agentDeliveryLookupService.hasWebhookForEvent(userId, event),
-    },
     agentDatabase: agentDatabaseAdapter as unknown as ProtocolDeps['agentDatabase'],
     grantDefaultSystemPermissions: (userId: string) =>
       agentService.grantDefaultSystemPermissions(userId),
-    negotiationEvents: {
-      emitTurnReceived: (data) => {
-        NegotiationEvents.onTurnReceived?.(data);
-      },
-      emitCompleted: (data) => {
-        NegotiationEvents.onCompleted?.(data);
-      },
-    },
+    agentDispatcher,
     negotiationTimeoutQueue,
   };
 }

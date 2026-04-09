@@ -5,6 +5,8 @@ import type {
 } from '@indexnetwork/protocol';
 import type { NegotiationTimeoutQueue } from '@indexnetwork/protocol';
 
+import type { AgentWithRelations } from '../adapters/agent.database.adapter';
+
 import { log } from '../lib/log';
 
 const logger = log.service.from('AgentDispatcherImpl');
@@ -15,14 +17,14 @@ interface AgentLookup {
     userId: string,
     action: string,
     scope: { type: 'global' | 'node' | 'network'; id?: string },
-  ): Promise<Array<{ id: string; type: string; [k: string]: unknown }>>;
+  ): Promise<AgentWithRelations[]>;
 }
 
 /** Subset of AgentDeliveryService needed by the dispatcher. */
 interface AgentDelivery {
   enqueueDeliveries(opts: {
     userId: string;
-    authorizedAgents: Array<{ id: string; [k: string]: unknown }>;
+    authorizedAgents: AgentWithRelations[];
     event: string;
     payload: Record<string, unknown>;
     getJobId: (target: { id: string }) => string;

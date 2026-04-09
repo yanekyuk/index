@@ -177,7 +177,6 @@ NegotiationEvents.onCompleted = async (data) => {
       payload: {
         negotiationId: data.negotiationId,
         outcome: data.outcome,
-        finalScore: data.finalScore,
         turnCount: data.turnCount,
       },
       getJobId: (target) => `webhook-neg-completed-${target.id}-${data.negotiationId}`,
