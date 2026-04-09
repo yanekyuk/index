@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { authClient } from '@/lib/auth-client';
 import { X, ArrowLeft } from 'lucide-react';
 
-const API_BASE = '/api';
+const PROTOCOL_BASE = import.meta.env.VITE_PROTOCOL_URL || '';
+const API_BASE = `${PROTOCOL_BASE}/api`;
 
 interface AuthModalProps {
   isOpen: boolean;
