@@ -5361,19 +5361,16 @@ export class ConversationDatabaseAdapter {
       }
     }
 
-    // Resolve agent names for agent: participants
-    const agentMap = new Map<string, string>();
-    if (agentOwnerIds.length > 0) {
-      const agentRows = await db
-        .select({ ownerId: schema.agents.ownerId, name: schema.agents.name })
-        .from(schema.agents)
-        .where(and(
-          inArray(schema.agents.ownerId, agentOwnerIds),
-          eq(schema.agents.type, 'personal'),
-        ));
-      for (const a of agentRows) {
-        agentMap.set(a.ownerId, a.name);
-      }
+    // Resolve the system negotiator agent name (used for all A2A conversation participants).
+    // Well-known UUID from agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
+    let systemNegotiatorName = 'Index Negotiator';
+    const negotiatorRow = await db
+      .select({ name: schema.agents.name })
+      .from(schema.agents)
+      .where(eq(schema.agents.id, '00000000-0000-0000-0000-000000000002'))
+      .limit(1);
+    if (negotiatorRow.length > 0) {
+      systemNegotiatorName = negotiatorRow[0].name;
     }
 
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
@@ -5382,11 +5379,10 @@ export class ConversationDatabaseAdapter {
       if (p.participantType === 'agent' && p.participantId.startsWith('agent:')) {
         const ownerId = p.participantId.slice('agent:'.length);
         const ownerInfo = userMap.get(ownerId);
-        const agentName = agentMap.get(ownerId);
         list.push({
           participantId: p.participantId,
           participantType: p.participantType,
-          name: agentName ?? 'Agent',
+          name: systemNegotiatorName,
           avatar: ownerInfo?.avatar ?? null,
           ownerName: ownerInfo?.name ?? null,
         });
