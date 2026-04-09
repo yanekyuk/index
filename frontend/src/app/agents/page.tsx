@@ -329,7 +329,7 @@ export default function AgentsPage() {
                               </div>
                               {agent.description ? <p className="text-sm text-gray-500 mt-1">{agent.description}</p> : null}
                             </div>
-                            <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleDeleteAgent(agent); }}>
+                            <Button variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteAgent(agent); }}>
                               <Trash2 className="w-4 h-4 mr-1" />
                               Delete
                             </Button>
@@ -355,7 +355,7 @@ export default function AgentsPage() {
                               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">API Keys</p>
                               <Button
                                 size="sm"
-                                onClick={(e) => { e.stopPropagation(); handleGenerateKey(agent); }}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleGenerateKey(agent); }}
                                 disabled={generatingForAgentId === agent.id}
                               >
                                 {generatingForAgentId === agent.id ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
@@ -370,7 +370,7 @@ export default function AgentsPage() {
                                   <code className="flex-1 bg-white border border-amber-200 rounded-sm px-3 py-2 text-sm font-mono text-gray-900 break-all select-all">
                                     {createdKeyForAgent}
                                   </code>
-                                  <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleCopyKey(createdKeyForAgent); }}>
+                                  <Button variant="outline" size="sm" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCopyKey(createdKeyForAgent); }}>
                                     {copiedKey ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                                   </Button>
                                 </div>
@@ -400,7 +400,7 @@ export default function AgentsPage() {
                                         <td className="px-4 py-2 text-gray-500">{formatDate(key.lastUsedAt)}</td>
                                         <td className="px-4 py-2 text-right">
                                           <button
-                                            onClick={(e) => { e.stopPropagation(); handleRevokeKey(agent, key.id); }}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRevokeKey(agent, key.id); }}
                                             className="text-gray-400 hover:text-red-500 transition-colors p-1"
                                             title="Revoke key"
                                             aria-label="Revoke key"
