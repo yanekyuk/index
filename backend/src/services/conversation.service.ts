@@ -43,7 +43,8 @@ export class ConversationService {
    * @throws Error if the user is not a participant
    */
   async verifyParticipant(userId: string, conversationId: string): Promise<void> {
-    const ok = await this.db.isParticipant(conversationId, userId);
+    const ok = await this.db.isParticipant(conversationId, userId)
+      || await this.db.isParticipant(conversationId, `agent:${userId}`);
     if (!ok) throw new Error('Forbidden: not a participant in this conversation');
   }
 
@@ -72,6 +73,14 @@ export class ConversationService {
    */
   async getConversations(userId: string) {
     return this.db.getConversationsForUser(userId);
+  }
+
+  /**
+   * Lists A2A conversations where `agent:{userId}` is a participant.
+   * Used to surface negotiation conversations to the user whose agent participated.
+   */
+  async getAgentConversations(userId: string) {
+    return this.db.getConversationsForUser(`agent:${userId}`);
   }
 
   /**

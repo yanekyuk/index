@@ -16,11 +16,13 @@ const SSE_URL = `${PROTOCOL_BASE}/api/conversations/stream`;
 
 interface ConversationContextType {
   conversations: ConversationSummary[];
+  negotiations: ConversationSummary[];
   messages: Map<string, ConversationMessage[]>;
   isConnected: boolean;
   loadMessages: (conversationId: string, opts?: { limit?: number; before?: string }) => Promise<void>;
   sendMessage: (conversationId: string, parts: unknown[]) => Promise<ConversationMessage | null>;
   refreshConversations: () => Promise<void>;
+  refreshNegotiations: () => Promise<void>;
   hideConversation: (conversationId: string) => Promise<void>;
   getOrCreateDM: (peerUserId: string) => Promise<ConversationSummary>;
 }
@@ -33,12 +35,14 @@ const ConversationContext = createContext<ConversationContextType | null>(null);
 export function ConversationProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthContext();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [negotiations, setNegotiations] = useState<ConversationSummary[]>([]);
   const [messages, setMessages] = useState<Map<string, ConversationMessage[]>>(new Map());
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const sseGenerationRef = useRef(0);
+  const connectSSERef = useRef<() => void>(() => {});
   const refreshConversationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   // --- REST helpers (use apiClient directly, same pattern as AIChatContext) ---
@@ -51,7 +55,16 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       console.error('[ConversationContext] Failed to fetch conversations:', err);
     }
   }, []);
-  refreshConversationsRef.current = refreshConversations;
+  useEffect(() => { refreshConversationsRef.current = refreshConversations; }, [refreshConversations]);
+
+  const refreshNegotiations = useCallback(async () => {
+    try {
+      const data = await apiClient.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
+      setNegotiations(data.conversations);
+    } catch (err) {
+      console.error('[ConversationContext] Failed to fetch negotiations:', err);
+    }
+  }, []);
 
   const loadMessages = useCallback(async (conversationId: string, opts?: { limit?: number; before?: string }) => {
     try {
@@ -259,7 +272,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         retryCountRef.current += 1;
         if (retryCountRef.current <= 10) {
           const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);
-          retryTimeoutRef.current = setTimeout(() => { connectSSE(); }, delay);
+          retryTimeoutRef.current = setTimeout(() => { connectSSERef.current(); }, delay);
         } else {
           console.error('[ConversationContext] SSE max retries reached, giving up');
         }
@@ -269,10 +282,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       retryCountRef.current += 1;
       if (retryCountRef.current <= 10) {
         const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 60000);
-        retryTimeoutRef.current = setTimeout(() => { connectSSE(); }, delay);
+        retryTimeoutRef.current = setTimeout(() => { connectSSERef.current(); }, delay);
       }
     }
   }, []);
+  useEffect(() => { connectSSERef.current = connectSSE; }, [connectSSE]);
 
   // Connect SSE and load conversations when authenticated
   useEffect(() => {
@@ -287,13 +301,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
       }
+      // Intentional synchronous reset on logout — not a cascading render issue
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsConnected(false);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConversations([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages(new Map());
       return;
     }
 
     refreshConversations();
+    refreshNegotiations();
     connectSSE();
 
     return () => {
@@ -313,11 +332,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     <ConversationContext.Provider
       value={{
         conversations,
+        negotiations,
         messages,
         isConnected,
         loadMessages,
         sendMessage,
         refreshConversations,
+        refreshNegotiations,
         hideConversation,
         getOrCreateDM,
       }}

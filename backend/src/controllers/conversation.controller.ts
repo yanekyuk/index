@@ -40,6 +40,22 @@ export class ConversationController {
   }
 
   /**
+   * GET /conversations/negotiations — list A2A negotiation conversations for the authenticated user.
+   */
+  @Get('/negotiations')
+  @UseGuards(AuthGuard)
+  async listNegotiations(_req: Request, user: AuthenticatedUser) {
+    try {
+      const conversations = await this.conversationService.getAgentConversations(user.id);
+      return Response.json({ conversations });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('[listNegotiations] Error', { userId: user.id, error: message });
+      return Response.json({ error: message }, { status: 500 });
+    }
+  }
+
+  /**
    * POST /conversations — create a new conversation with participants.
    *
    * @param req - Must include `participants` array in JSON body

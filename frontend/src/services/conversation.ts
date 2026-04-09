@@ -27,6 +27,12 @@ export const createConversationService = (api: ReturnType<typeof import('../lib/
     return response.conversations;
   },
 
+  /** List A2A negotiation conversations for the authenticated user. */
+  getNegotiations: async (): Promise<ConversationSummary[]> => {
+    const response = await api.get<{ conversations: ConversationSummary[] }>('/conversations/negotiations');
+    return response.conversations;
+  },
+
   /** Create a new conversation. */
   createConversation: async (participants: { participantId: string; participantType: 'user' | 'agent' }[], metadata?: Record<string, unknown>): Promise<ConversationSummary> => {
     const response = await api.post<{ conversation: ConversationSummary }>('/conversations', { participants, metadata });

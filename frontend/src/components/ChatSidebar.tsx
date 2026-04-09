@@ -40,24 +40,43 @@ export default function ChatSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user } = useAuthContext();
-  const { conversations, refreshConversations, hideConversation } = useConversation();
+  const { conversations, negotiations, refreshConversations, refreshNegotiations, hideConversation } = useConversation();
 
   const [loading, setLoading] = useState(true);
   const [chatMenuOpen, setChatMenuOpen] = useState<string | null>(null);
+  const [mode, setMode] = useState<'h2h' | 'a2a'>('h2h');
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user?.id) return;
-    setLoading(true);
-    refreshConversations().finally(() => setLoading(false));
-  }, [user?.id, refreshConversations]);
+    let cancelled = false;
+    Promise.all([refreshConversations(), refreshNegotiations()]).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, refreshConversations, refreshNegotiations]);
 
-  // Only show human-to-human DMs (no agent participants); agent chats appear in History sidebar
-  const dmConversations = conversations.filter((conv) => {
-    const participants = conv.participants ?? [];
-    return participants.length === 2 && participants.every((p) => p.participantType === 'user');
-  });
-  const recentChats: RecentChat[] = dmConversations.map((conv) => {
+  const filteredConversations = mode === 'h2h'
+    ? conversations.filter((conv) => {
+        const participants = conv.participants ?? [];
+        return participants.length === 2 && participants.every((p) => p.participantType === 'user');
+      })
+    : negotiations;
+  const recentChats: RecentChat[] = filteredConversations.map((conv) => {
+    if (mode === 'a2a') {
+      const agentNames = (conv.participants ?? []).map((p) => p.name ?? p.participantId.replace('agent:', '')).join(' vs ');
+      const lastText = (conv.lastMessage?.parts as { kind?: string; data?: { action?: string; assessment?: { reasoning?: string } } }[] | undefined)
+        ?.find(p => p.kind === 'data')?.data;
+      const preview = lastText ? `${lastText.action ?? ''}: ${lastText.assessment?.reasoning?.slice(0, 80) ?? ''}` : '';
+      return {
+        groupId: conv.id,
+        peerUserId: null,
+        peerAvatar: null,
+        name: conv.metadata?.title ?? agentNames,
+        lastMessage: preview,
+        sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
+      };
+    }
     const peer = (conv.participants ?? []).find((p) => p.participantId !== user?.id && p.participantType === 'user');
     const lastText = (conv.lastMessage?.parts as { text?: string }[] | undefined)?.find(p => p.text)?.text ?? '';
     return {
@@ -87,9 +106,20 @@ export default function ChatSidebar() {
         <h2 className="text-lg font-bold text-black font-ibm-plex-mono">Conversations</h2>
       </div>
       <div className="flex-1 overflow-y-auto px-4 pt-4 lg:pt-4">
-        <h3 className="hidden lg:block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 font-ibm-plex-mono">
-          Conversations
-        </h3>
+        <div className="flex items-center gap-1 mb-3 bg-gray-100 rounded-md p-0.5">
+          <button
+            onClick={() => setMode('h2h')}
+            className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'h2h' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Messages
+          </button>
+          <button
+            onClick={() => setMode('a2a')}
+            className={`flex-1 text-xs font-semibold py-1.5 rounded transition-colors font-ibm-plex-mono ${mode === 'a2a' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Negotiations
+          </button>
+        </div>
         {loading ? (
           <div className="text-sm text-gray-400">Loading...</div>
         ) : recentChats.length === 0 ? (
@@ -102,7 +132,7 @@ export default function ChatSidebar() {
                 className="relative group flex items-center py-2 px-2 -mx-2 rounded-md transition-colors hover:bg-gray-50"
               >
                 <button
-                  onClick={() => navigate(chat.peerUserId ? `/u/${chat.peerUserId}/chat` : `/chat`)}
+                  onClick={() => navigate(mode === 'a2a' ? `/chat/${chat.groupId}` : chat.peerUserId ? `/u/${chat.peerUserId}/chat` : `/chat`)}
                   className="flex-1 flex items-center gap-3 text-sm text-left pr-10 min-w-0 text-gray-700 hover:text-black"
                 >
                   <UserAvatar avatar={chat.peerAvatar} id={chat.peerUserId ?? chat.groupId} name={chat.name} size={28} className="flex-shrink-0" />
