@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Bot,
   Handshake,
-  Sparkles,
   TrendingUp,
   Clock,
   KeyRound,
@@ -193,8 +192,7 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <SkeletonCard />
+        <div className="grid grid-cols-3 gap-3">
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -234,7 +232,7 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <StatCard
           label="Total"
           value={stats.totalCount}
@@ -246,12 +244,6 @@ function NegotiationInsightsTab({ userId }: { userId: string }) {
           value={`${opportunityRate}%`}
           icon={<TrendingUp className="w-4 h-4 text-gray-400" />}
           sublabel={`${stats.noOpportunityCount} no opportunity`}
-        />
-        <StatCard
-          label="Avg score"
-          value={stats.avgScore ?? "\u2014"}
-          icon={<Sparkles className="w-4 h-4 text-gray-400" />}
-          sublabel="Successful negotiations"
         />
         <StatCard
           label="In progress"
