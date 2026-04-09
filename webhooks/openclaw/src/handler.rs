@@ -55,7 +55,10 @@ pub async fn handle(
             .args(["agent", "--message", &prompt])
             .spawn()
         {
-            Ok(_) => tracing::info!("openclaw agent spawned"),
+            Ok(mut child) => {
+                tracing::info!("openclaw agent spawned");
+                let _ = child.wait().await;
+            }
             Err(err) => tracing::error!("failed to spawn openclaw agent: {err}"),
         }
     });
