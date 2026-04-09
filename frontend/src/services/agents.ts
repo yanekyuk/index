@@ -34,6 +34,15 @@ export interface Agent {
   updatedAt: string;
 }
 
+export interface AgentTokenInfo {
+  id: string;
+  name: string | null;
+  start: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface AgentTokenCreateResponse {
   id: string;
   key: string;
@@ -107,6 +116,11 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   revokePermission: async (agentId: string, permissionId: string): Promise<void> => {
     await api.delete<void>(`/agents/${agentId}/permissions/${permissionId}`);
+  },
+
+  listTokens: async (agentId: string): Promise<AgentTokenInfo[]> => {
+    const response = await api.get<{ tokens: AgentTokenInfo[] }>(`/agents/${agentId}/tokens`);
+    return response.tokens;
   },
 
   createToken: async (agentId: string, name?: string): Promise<AgentTokenCreateResponse> => {

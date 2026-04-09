@@ -20,7 +20,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { useAgents, useApiKeys, useUsers } from "@/contexts/APIContext";
+import { useAgents, useUsers } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import ClientLayout from "@/components/ClientLayout";
 import { ContentContainer } from "@/components/layout";
@@ -28,9 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import UserAvatar from "@/components/UserAvatar";
 import NegotiationHistory from "@/components/NegotiationHistory";
-import type { Agent } from "@/services/agents";
+import type { Agent, AgentTokenInfo } from "@/services/agents";
 import type { NegotiationInsights } from "@/services/users";
-import type { ApiKeyInfo } from "@/services/api-keys";
 
 const SYSTEM_AGENT_IDS = {
   chatOrchestrator: "00000000-0000-0000-0000-000000000001",
@@ -406,34 +405,30 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
 
 function ApiKeysTab({ agent }: { agent: Agent }) {
   const agentsService = useAgents();
-  const apiKeysService = useApiKeys();
   const { success, error } = useNotifications();
 
-  const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
+  const [keys, setKeys] = useState<AgentTokenInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<ApiKeyInfo | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AgentTokenInfo | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const isSystem = agent.type === "system";
 
   const fetchKeys = useCallback(async () => {
     try {
-      const allKeys = await apiKeysService.list();
-      const agentKeys = allKeys.filter(
-        (key) => key.metadata?.agentId === agent.id,
-      );
+      const agentKeys = await agentsService.listTokens(agent.id);
       setKeys(agentKeys);
     } catch {
       error("Failed to load API keys");
     } finally {
       setLoading(false);
     }
-  }, [apiKeysService, agent.id, error]);
+  }, [agentsService, agent.id, error]);
 
   useEffect(() => {
     fetchKeys();

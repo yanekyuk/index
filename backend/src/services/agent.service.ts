@@ -272,6 +272,13 @@ export class AgentService {
     await this.db.revokePermission(permissionId);
   }
 
+  async listTokens(agentId: string, userId: string) {
+    await this.requireOwnedAgent(agentId, userId);
+
+    const tokens = await this.tokens.list(userId);
+    return tokens.filter((token) => token.metadata?.agentId === agentId);
+  }
+
   async createToken(
     agentId: string,
     userId: string,

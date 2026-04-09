@@ -1,8 +1,12 @@
 import { and, eq } from 'drizzle-orm';
 
-import { auth } from '../lib/betterauth/auth.instance';
 import db from '../lib/drizzle/drizzle';
 import * as schema from '../schemas/database.schema';
+
+/** Key length matching Better Auth's default (64 chars, a-zA-Z). */
+const KEY_LENGTH = 64;
+/** Number of starting characters to store for display. */
+const START_CHARS = 6;
 
 export interface AgentTokenRecord {
   id: string;
@@ -18,6 +22,29 @@ export interface CreateAgentTokenResult {
   key: string;
   name: string | null;
   createdAt: string;
+}
+
+/**
+ * Hash a plaintext API key using SHA-256 + base64url (no padding).
+ * Matches Better Auth's `defaultKeyHasher` so keys created here
+ * are verified correctly by the Better Auth middleware.
+ */
+async function hashKey(key: string): Promise<string> {
+  const encoded = new TextEncoder().encode(key);
+  const hash = await crypto.subtle.digest('SHA-256', encoded);
+  // base64url without padding, matching Better Auth's encoding
+  return Buffer.from(hash).toString('base64url');
+}
+
+/** Generate a random key string (a-zA-Z) matching Better Auth's format. */
+function generateKey(length: number): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
 }
 
 function parseMetadata(value: unknown): Record<string, unknown> | null {
@@ -54,30 +81,36 @@ export interface AgentTokenStore {
 /**
  * AgentTokenAdapter
  *
- * Uses Better Auth's server-side API for key creation (no session required)
- * and direct Drizzle queries for listing and revoking keys.
+ * Manages API keys for agents via direct Drizzle queries against
+ * Better Auth's `apikey` table, using compatible key generation
+ * and hashing so keys are verified by Better Auth's middleware.
  */
 export class AgentTokenAdapter implements AgentTokenStore {
   async create(userId: string, params: { name: string; agentId: string }): Promise<CreateAgentTokenResult> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const createApiKey = (auth.api as any).createApiKey as (opts: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>;
-    const result = await createApiKey({
-      body: {
-        userId,
-        name: params.name,
-        metadata: { agentId: params.agentId },
-      },
-    });
+    const plainKey = generateKey(KEY_LENGTH);
+    const hashedKey = await hashKey(plainKey);
+    const now = new Date();
 
-    if (typeof result.id !== 'string' || typeof result.key !== 'string') {
-      throw new Error('Failed to create API key');
-    }
+    const [row] = await db
+      .insert(schema.apikeys)
+      .values({
+        key: hashedKey,
+        userId,
+        referenceId: userId,
+        name: params.name,
+        start: plainKey.substring(0, START_CHARS),
+        metadata: JSON.stringify({ agentId: params.agentId }),
+        createdAt: now,
+        updatedAt: now,
+        enabled: true,
+      })
+      .returning({ id: schema.apikeys.id, createdAt: schema.apikeys.createdAt });
 
     return {
-      id: result.id,
-      key: result.key,
-      name: typeof result.name === 'string' || result.name === null ? result.name : null,
-      createdAt: result.createdAt instanceof Date ? result.createdAt.toISOString() : String(result.createdAt),
+      id: row.id,
+      key: plainKey,
+      name: params.name,
+      createdAt: row.createdAt.toISOString(),
     };
   }
 

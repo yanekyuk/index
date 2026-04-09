@@ -278,6 +278,22 @@ export class AgentController {
     }
   }
 
+  @Get('/:id/tokens')
+  @UseGuards(AuthGuard)
+  async listTokens(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      const tokens = await agentService.listTokens(agentId, user.id);
+      return Response.json({ tokens });
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
   @Post('/:id/tokens')
   @UseGuards(AuthGuard)
   async createToken(req: Request, user: AuthenticatedUser, params?: RouteParams) {

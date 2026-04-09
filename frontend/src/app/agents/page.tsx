@@ -6,10 +6,10 @@ import ClientLayout from '@/components/ClientLayout';
 import { ContentContainer } from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAgents, useApiKeys } from '@/contexts/APIContext';
+import { useAgents } from '@/contexts/APIContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useNotifications } from '@/contexts/NotificationContext';
-import type { Agent } from '@/services/agents';
+import type { Agent, AgentTokenInfo } from '@/services/agents';
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return 'Never';
@@ -45,7 +45,6 @@ export default function AgentsPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuthContext();
   const agentsService = useAgents();
-  const apiKeysService = useApiKeys();
   const { success, error } = useNotifications();
 
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -95,37 +94,33 @@ export default function AgentsPage() {
     };
   }, [agentsService, error, isAuthenticated]);
 
-  const keyListQuery = apiKeysService.list;
-  const [keysByAgent, setKeysByAgent] = useState<Record<string, Awaited<ReturnType<typeof apiKeysService.list>>>>({});
+  const [keysByAgent, setKeysByAgent] = useState<Record<string, AgentTokenInfo[]>>({});
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || agents.length === 0) {
       return;
     }
 
     let cancelled = false;
-    keyListQuery()
-      .then((keys) => {
-        if (cancelled) return;
-        const grouped = keys.reduce<Record<string, typeof keys>>((acc, key) => {
-          const agentId = typeof key.metadata?.agentId === 'string' ? key.metadata.agentId : null;
-          if (!agentId) return acc;
-          acc[agentId] ??= [];
-          acc[agentId].push(key);
-          return acc;
-        }, {});
-        setKeysByAgent(grouped);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setKeysByAgent({});
-        }
-      });
+    const personalIds = agents.filter((a) => a.type === 'personal').map((a) => a.id);
+
+    Promise.all(
+      personalIds.map((id) =>
+        agentsService.listTokens(id).then((tokens) => [id, tokens] as const).catch(() => [id, [] as AgentTokenInfo[]] as const),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const grouped: Record<string, AgentTokenInfo[]> = {};
+      for (const [id, tokens] of results) {
+        if (tokens.length > 0) grouped[id] = tokens;
+      }
+      setKeysByAgent(grouped);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [apiKeysService, isAuthenticated, keyListQuery, keysVersion, newlyCreatedKey]);
+  }, [agentsService, agents, isAuthenticated, keysVersion, newlyCreatedKey]);
   
 
   const personalAgents = useMemo(
