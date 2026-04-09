@@ -2577,7 +2577,7 @@ export class ChatDatabaseAdapter {
   }
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     return this.opportunityAdapter.updateOpportunityStatus(id, status);
   }
@@ -2587,12 +2587,12 @@ export class ChatDatabaseAdapter {
   async getOpportunityBetweenActors(
     actorIds: string[],
     networkId: string
-  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired' } | null> {
+  ): Promise<{ id: Id<'opportunities'>; status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired' } | null> {
     return this.opportunityAdapter.getOpportunityBetweenActors(actorIds, networkId);
   }
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     return this.opportunityAdapter.findOverlappingOpportunities(actorUserIds, options);
   }
@@ -3492,7 +3492,7 @@ interface OpportunityRow {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date | null;
@@ -3505,7 +3505,7 @@ interface CreateOpportunityInput {
   interpretation: schema.OpportunityInterpretation;
   context: schema.OpportunityContext;
   confidence: string;
-  status?: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired';
+  status?: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired';
   expiresAt?: Date;
 }
 
@@ -3665,7 +3665,7 @@ export class OpportunityDatabaseAdapter {
 
   async updateOpportunityStatus(
     id: string,
-    status: 'latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired'
+    status: 'latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired'
   ): Promise<OpportunityRow | null> {
     const [row] = await db
       .update(opportunities)
@@ -3807,12 +3807,12 @@ export class OpportunityDatabaseAdapter {
 
   async findOverlappingOpportunities(
     actorUserIds: Id<'users'>[],
-    options?: { excludeStatuses?: ('latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
+    options?: { excludeStatuses?: ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[] }
   ): Promise<OpportunityRow[]> {
     if (actorUserIds.length === 0) return [];
     const mergedExcludeStatuses = [
       ...new Set([...(options?.excludeStatuses ?? [])]),
-    ] as ('latent' | 'draft' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
+    ] as ('latent' | 'draft' | 'negotiating' | 'pending' | 'accepted' | 'rejected' | 'expired')[];
     const statusCondition =
       mergedExcludeStatuses.length > 0
         ? notInArray(opportunities.status, mergedExcludeStatuses)

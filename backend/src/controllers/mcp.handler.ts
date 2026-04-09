@@ -47,7 +47,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
   ).createGraph();
   const negotiationGraph = new NegotiationGraphFactory(
     deps.negotiationDatabase,
-    deps.agentDispatcher,
+    deps.agentDispatcher!,
     deps.negotiationTimeoutQueue,
   ).createGraph();
   const opportunityGraph = new OpportunityGraphFactory(

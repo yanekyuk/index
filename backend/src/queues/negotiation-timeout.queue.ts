@@ -3,7 +3,7 @@ import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
 import { IndexNegotiator } from '@indexnetwork/protocol';
-import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase, NegotiationEventEmitter } from '@indexnetwork/protocol';
+import type { NegotiationTurn, NegotiationOutcome, UserNegotiationContext, SeedAssessment, NegotiationDatabase } from '@indexnetwork/protocol';
 
 /** BullMQ queue name for negotiation timeout jobs. */
 export const QUEUE_NAME = 'negotiation-timeout';
@@ -17,7 +17,6 @@ export interface NegotiationTimeoutJobData {
 /** Optional deps for testing. */
 export interface NegotiationTimeoutQueueDeps {
   database?: NegotiationDatabase;
-  eventEmitter?: NegotiationEventEmitter;
 }
 
 /**
@@ -145,7 +144,6 @@ export class NegotiationTimeoutQueue {
   private async handleTimeout(data: NegotiationTimeoutJobData): Promise<void> {
     const { negotiationId, turnNumber } = data;
     const database = this.deps?.database ?? conversationDatabaseAdapter;
-    const eventEmitter = this.deps?.eventEmitter;
 
     // Load the negotiation task
     const task = await database.getTask(negotiationId);
@@ -243,21 +241,6 @@ export class NegotiationTimeoutQueue {
       const outcomeStr = aiTurn.action === 'accept' ? 'accepted'
         : aiTurn.action === 'reject' ? 'rejected'
         : 'turn_cap';
-
-      if (eventEmitter) {
-        eventEmitter.emitCompleted({
-          negotiationId: task.id,
-          userId: meta.sourceUserId!,
-          outcome: outcomeStr,
-          turnCount: newTurnCount,
-        });
-        eventEmitter.emitCompleted({
-          negotiationId: task.id,
-          userId: meta.candidateUserId!,
-          outcome: outcomeStr,
-          turnCount: newTurnCount,
-        });
-      }
 
       this.logger.info('[NegotiationTimeoutJob] Negotiation finalized after timeout', {
         negotiationId,
