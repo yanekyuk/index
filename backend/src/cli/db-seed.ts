@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import dotenv from 'dotenv';
 import path from 'path';
+import { writeFile } from 'node:fs/promises';
 import { and, eq, sql } from 'drizzle-orm';
 
 const envFile = `.env.development`;
@@ -9,6 +10,7 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import db, { closeDb } from '../lib/drizzle/drizzle';
 import { agentPermissions, agents, networkMembers, networks, userProfiles, users } from '../schemas/database.schema';
 import { SYSTEM_AGENT_IDS } from '../adapters/agent.database.adapter';
+import { agentTokenAdapter } from '../adapters/agent-token.adapter';
 import { setLevel } from '../lib/log';
 import { intentService } from '../services/intent.service';
 import { profileService } from '../services/profile.service';
@@ -49,6 +51,22 @@ const SYSTEM_AGENT_DEFS = [
     actions: ['manage:opportunities', 'manage:negotiations'],
   },
 ] as const;
+
+const PERSONAL_AGENT_ACTIONS = [
+  'manage:profile',
+  'manage:intents',
+  'manage:networks',
+  'manage:contacts',
+  'manage:negotiations',
+] as const;
+
+interface SeedApiKeyRecord {
+  name: string;
+  email: string;
+  userId: string;
+  agentId: string;
+  apiKey: string;
+}
 
 // ── Index definitions ───────────────────────────────────────────────────────
 
@@ -437,6 +455,55 @@ async function seedDatabase(): Promise<{ ok: boolean; error?: string }> {
       if (!silent) {
         console.log(`  ${SYSTEM_AGENT_DEFS.length} system agents ready`);
       }
+    }
+
+    // ── Personal agents + API keys for persona users ──────────────────────────
+    if (!silent) console.log('Creating personal agents and API keys for persona users...');
+    const apiKeyRecords: SeedApiKeyRecord[] = [];
+
+    for (let i = 0; i < personaUsers.length && i < personasToSeed.length; i++) {
+      const user = personaUsers[i];
+      const persona = personasToSeed[i];
+
+      // Create personal agent
+      const agentId = crypto.randomUUID();
+      await db.insert(agents).values({
+        id: agentId,
+        ownerId: user.id,
+        name: `${persona.name}'s Agent`,
+        description: `Personal agent for ${persona.name}`,
+        type: 'personal',
+        status: 'active',
+        metadata: {},
+      }).onConflictDoNothing();
+
+      // Grant full permissions
+      await ensureAgentPermission(agentId, user.id, [...PERSONAL_AGENT_ACTIONS]);
+
+      // Create API key (plaintext returned only here)
+      const tokenResult = await agentTokenAdapter.create(user.id, {
+        name: `${persona.name}'s API Key`,
+        agentId,
+      });
+
+      apiKeyRecords.push({
+        name: persona.name,
+        email: persona.email,
+        userId: user.id,
+        agentId,
+        apiKey: tokenResult.key,
+      });
+
+      if (!silent) console.log(`  Agent ${i + 1}/${personaUsers.length}: ${persona.name}`);
+    }
+
+    // Write API keys to file
+    const keyFilePath = path.resolve(process.cwd(), '.seed-api-keys.json');
+    await writeFile(keyFilePath, JSON.stringify(apiKeyRecords, null, 2), 'utf-8');
+
+    if (!silent) {
+      console.log(`  ${apiKeyRecords.length} personal agents created with API keys`);
+      console.log(`  API keys written to: ${keyFilePath}`);
     }
 
     return { ok: true };
