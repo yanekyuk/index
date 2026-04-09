@@ -5193,6 +5193,8 @@ export interface ResolvedParticipant {
   participantType: 'user' | 'agent';
   name: string | null;
   avatar: string | null;
+  /** For agent participants, the display name of the user the agent acts on behalf of. */
+  ownerName?: string | null;
 }
 
 /** Summary returned by getConversationsForUser. */
@@ -5341,27 +5343,62 @@ export class ConversationDatabaseAdapter {
 
     // Resolve user names/avatars for participants
     const userIds = [...new Set(allParticipants.filter(p => p.participantType === 'user').map(p => p.participantId))];
+    // Also resolve owner users behind agent: participants
+    const agentOwnerIds = [...new Set(
+      allParticipants
+        .filter(p => p.participantType === 'agent' && p.participantId.startsWith('agent:'))
+        .map(p => p.participantId.slice('agent:'.length)),
+    )];
+    const allUserIds = [...new Set([...userIds, ...agentOwnerIds])];
     const userMap = new Map<string, { name: string; avatar: string | null }>();
-    if (userIds.length > 0) {
+    if (allUserIds.length > 0) {
       const users = await db
         .select({ id: schema.users.id, name: schema.users.name, avatar: schema.users.avatar })
         .from(schema.users)
-        .where(inArray(schema.users.id, userIds));
+        .where(inArray(schema.users.id, allUserIds));
       for (const u of users) {
         userMap.set(u.id, { name: u.name, avatar: u.avatar });
+      }
+    }
+
+    // Resolve agent names for agent: participants
+    const agentMap = new Map<string, string>();
+    if (agentOwnerIds.length > 0) {
+      const agentRows = await db
+        .select({ ownerId: schema.agents.ownerId, name: schema.agents.name })
+        .from(schema.agents)
+        .where(and(
+          inArray(schema.agents.ownerId, agentOwnerIds),
+          eq(schema.agents.type, 'personal'),
+        ));
+      for (const a of agentRows) {
+        agentMap.set(a.ownerId, a.name);
       }
     }
 
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
     for (const p of allParticipants) {
       const list = participantsByConv.get(p.conversationId) ?? [];
-      const userInfo = userMap.get(p.participantId);
-      list.push({
-        participantId: p.participantId,
-        participantType: p.participantType,
-        name: userInfo?.name ?? (p.participantType === 'agent' ? 'Agent' : null),
-        avatar: userInfo?.avatar ?? null,
-      });
+      if (p.participantType === 'agent' && p.participantId.startsWith('agent:')) {
+        const ownerId = p.participantId.slice('agent:'.length);
+        const ownerInfo = userMap.get(ownerId);
+        const agentName = agentMap.get(ownerId);
+        list.push({
+          participantId: p.participantId,
+          participantType: p.participantType,
+          name: agentName ?? 'Agent',
+          avatar: ownerInfo?.avatar ?? null,
+          ownerName: ownerInfo?.name ?? null,
+        });
+      } else {
+        const userInfo = userMap.get(p.participantId);
+        list.push({
+          participantId: p.participantId,
+          participantType: p.participantType,
+          name: userInfo?.name ?? null,
+          avatar: userInfo?.avatar ?? null,
+        });
+      }
       participantsByConv.set(p.conversationId, list);
     }
 

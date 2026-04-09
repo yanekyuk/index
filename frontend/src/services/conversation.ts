@@ -4,7 +4,7 @@
 
 export interface ConversationSummary {
   id: string;
-  participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null }[];
+  participants: { participantId: string; participantType: 'user' | 'agent'; name: string | null; avatar: string | null; ownerName?: string | null }[];
   lastMessage: { parts: unknown[]; senderId: string; createdAt: string } | null;
   metadata: { title?: string; shareToken?: string } | null;
   lastMessageAt: string | null;

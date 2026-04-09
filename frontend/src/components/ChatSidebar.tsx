@@ -64,15 +64,16 @@ export default function ChatSidebar() {
     : negotiations;
   const recentChats: RecentChat[] = filteredConversations.map((conv) => {
     if (mode === 'a2a') {
-      const agentNames = (conv.participants ?? []).map((p) => p.name ?? p.participantId.replace('agent:', '')).join(' vs ');
-      const lastText = (conv.lastMessage?.parts as { kind?: string; data?: { action?: string; assessment?: { reasoning?: string } } }[] | undefined)
-        ?.find(p => p.kind === 'data')?.data;
-      const preview = lastText ? `${lastText.action ?? ''}: ${lastText.assessment?.reasoning?.slice(0, 80) ?? ''}` : '';
+      const participantLabels = (conv.participants ?? []).map((p) => p.ownerName ?? p.name ?? p.participantId.replace('agent:', ''));
+      const lastParts = conv.lastMessage?.parts as { kind?: string; text?: string; data?: { message?: string } }[] | undefined;
+      const dataPart = lastParts?.find(p => p.kind === 'data');
+      const textPart = lastParts?.find(p => p.text);
+      const preview = dataPart?.data?.message ?? textPart?.text ?? '';
       return {
         groupId: conv.id,
         peerUserId: null,
-        peerAvatar: null,
-        name: conv.metadata?.title ?? agentNames,
+        peerAvatar: (conv.participants ?? []).find(p => p.participantId !== `agent:${user?.id}`)?.avatar ?? null,
+        name: conv.metadata?.title ?? participantLabels.join(' vs '),
         lastMessage: preview,
         sortTimestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt).getTime() : 0,
       };

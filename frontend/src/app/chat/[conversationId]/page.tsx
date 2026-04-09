@@ -1,32 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { cn } from '@/lib/utils';
+import { ContentContainer } from '@/components/layout';
+import UserAvatar from '@/components/UserAvatar';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useConversation } from '@/contexts/ConversationContext';
-
-interface NegotiationTurn {
-  action: string;
-  message?: string;
-  assessment: {
-    reasoning: string;
-    suggestedRoles: { ownUser: string; otherUser: string };
-  };
-}
-
-const ACTION_COLORS: Record<string, string> = {
-  propose: 'bg-blue-100 text-blue-800',
-  accept: 'bg-green-100 text-green-800',
-  reject: 'bg-red-100 text-red-800',
-  counter: 'bg-amber-100 text-amber-800',
-};
 
 export default function NegotiationDetailPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuthContext();
   const { negotiations, messages, loadMessages } = useConversation();
   const [loading, setLoading] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conversation = negotiations.find((c) => c.id === conversationId);
-  const conversationMessages = messages.get(conversationId!) ?? [];
+  const conversationMessages = useMemo(() => messages.get(conversationId!) ?? [], [messages, conversationId]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -37,72 +29,130 @@ export default function NegotiationDetailPage() {
     return () => { cancelled = true; };
   }, [conversationId, loadMessages]);
 
-  const participants = conversation?.participants ?? [];
-  const participantNames = new Map(
-    participants.map((p) => [p.participantId, p.name ?? p.participantId.replace('agent:', '')])
-  );
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversationMessages]);
 
-  const turns: { senderId: string; senderName: string; turn: NegotiationTurn; createdAt: string }[] = conversationMessages
-    .map((msg) => {
-      const dataPart = (msg.parts as { kind?: string; data?: NegotiationTurn }[])?.find((p) => p.kind === 'data');
-      if (!dataPart?.data) return null;
-      return {
-        senderId: msg.senderId,
-        senderName: participantNames.get(msg.senderId) ?? msg.senderId,
-        turn: dataPart.data,
-        createdAt: msg.createdAt,
-      };
-    })
-    .filter(Boolean) as { senderId: string; senderName: string; turn: NegotiationTurn; createdAt: string }[];
+  const participants = useMemo(() => conversation?.participants ?? [], [conversation]);
+
+  // Build lookup: participantId -> { name (agent), ownerName (user), avatar }
+  const participantInfo = useMemo(() => {
+    const map = new Map<string, { agentName: string; ownerName: string; avatar: string | null }>();
+    for (const p of participants) {
+      map.set(p.participantId, {
+        agentName: p.name ?? 'Agent',
+        ownerName: p.ownerName ?? p.participantId.replace('agent:', ''),
+        avatar: p.avatar,
+      });
+    }
+    return map;
+  }, [participants]);
+
+  // Determine which participant represents "our" side (the current user's agent)
+  const ownAgentId = user?.id ? `agent:${user.id}` : null;
+
+  const formatTime = (createdAt: string) => {
+    if (!createdAt) return '';
+    return new Date(createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
-        <button onClick={() => navigate('/chat')} className="text-gray-500 hover:text-black transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+    <>
+      {/* Header */}
+      <div className="sticky top-0 bg-white z-10 px-4 py-3 flex items-center gap-3 min-h-[68px]">
+        <button onClick={() => navigate('/chat')} className="text-[#3D3D3D] hover:text-black transition-colors text-xl mr-2">&larr;</button>
         <div>
-          <h2 className="text-sm font-bold text-black font-ibm-plex-mono">Negotiation</h2>
-          <p className="text-xs text-gray-500">
-            {participants.map((p) => p.name ?? p.participantId.replace('agent:', '')).join(' vs ')}
+          <h2 className="font-ibm-plex-mono font-bold text-lg text-black">Negotiation</h2>
+          <p className="text-xs text-gray-400">
+            {participants.map((p) => {
+              const info = participantInfo.get(p.participantId);
+              return info ? `${info.agentName} (${info.ownerName})` : p.participantId;
+            }).join(' vs ')}
           </p>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-          </div>
-        ) : turns.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-10">No turns recorded</p>
-        ) : (
-          turns.map((entry, i) => (
-            <div key={i} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-black">{entry.senderName}</span>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACTION_COLORS[entry.turn.action] ?? 'bg-gray-100 text-gray-700'}`}>
-                    {entry.turn.action}
-                  </span>
+      {/* Messages */}
+      <div className="px-6 lg:px-8 pb-32 flex-1">
+        <ContentContainer>
+          <div className="space-y-4">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : conversationMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-[#3D3D3D]">
+                <p className="text-sm">No messages in this negotiation</p>
+              </div>
+            ) : null}
+
+            {conversationMessages.map((message, index) => {
+              const isOwn = message.senderId === ownAgentId;
+              const info = participantInfo.get(message.senderId);
+
+              // Extract text content from message parts — use `message` field from data part, or text part
+              const parts = message.parts as { kind?: string; text?: string; data?: { message?: string } }[];
+              const dataPart = parts?.find((p) => p.kind === 'data');
+              const textPart = parts?.find((p) => p.text);
+              const content = dataPart?.data?.message ?? textPart?.text ?? '';
+              if (!content.trim()) return null;
+
+              const prevMessage = conversationMessages[index - 1];
+              const showTimestamp = index === 0 || (prevMessage && new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() > 300_000);
+
+              return (
+                <div key={message.id}>
+                  {showTimestamp && message.createdAt && (
+                    <div className="text-center text-xs text-gray-400 uppercase tracking-wider my-4">
+                      {(() => {
+                        const d = new Date(message.createdAt);
+                        const now = new Date();
+                        const isToday = d.toDateString() === now.toDateString();
+                        const yesterday = new Date(now);
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        const isYesterday = d.toDateString() === yesterday.toDateString();
+                        const label = isToday ? 'Today' : isYesterday ? 'Yesterday' : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        return `${label}, ${formatTime(message.createdAt)}`;
+                      })()}
+                    </div>
+                  )}
+                  <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
+                    {!isOwn && info && (
+                      <div className="flex-shrink-0">
+                        <UserAvatar avatar={info.avatar} id={message.senderId} name={info.ownerName} size={32} />
+                      </div>
+                    )}
+                    <div className="max-w-[70%]">
+                      {!isOwn && info && (
+                        <p className="text-xs text-gray-400 mb-1 ml-1">
+                          {info.agentName} <span className="text-gray-300">for</span> {info.ownerName}
+                        </p>
+                      )}
+                      <div className={cn('rounded-2xl px-4 py-2', isOwn ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900')}>
+                        <article className={cn('text-sm', isOwn && 'text-white')}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                        </article>
+                      </div>
+                      {isOwn && info && (
+                        <p className="text-xs text-gray-400 mt-1 mr-1 text-right">
+                          {info.agentName} <span className="text-gray-300">for</span> {info.ownerName}
+                        </p>
+                      )}
+                    </div>
+                    {isOwn && info && (
+                      <div className="flex-shrink-0">
+                        <UserAvatar avatar={info.avatar} id={message.senderId} name={info.ownerName} size={32} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs text-gray-400">
-                  {new Date(entry.createdAt).toLocaleTimeString()}
-                </span>
-              </div>
-              <p className="text-sm text-gray-700 leading-relaxed">{entry.turn.assessment.reasoning}</p>
-              {entry.turn.message && (
-                <p className="text-sm text-gray-500 mt-2 italic">"{entry.turn.message}"</p>
-              )}
-              <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                <span>Own: {entry.turn.assessment.suggestedRoles.ownUser}</span>
-                <span>Other: {entry.turn.assessment.suggestedRoles.otherUser}</span>
-              </div>
-            </div>
-          ))
-        )}
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+        </ContentContainer>
       </div>
-    </div>
+    </>
   );
 }
 
