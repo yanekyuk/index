@@ -144,12 +144,8 @@ export const router = createBrowserRouter([
         lazy: () => import("@/app/dev/intent-proposal/page"),
       },
       {
-        path: "/agent",
-        element: <Navigate to="/agents" replace />,
-      },
-      {
         path: "/agent/:tab?",
-        element: <Navigate to="/agents" replace />,
+        lazy: () => import("@/app/agent/page"),
       },
       {
         path: "/settings",

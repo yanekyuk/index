@@ -51,7 +51,7 @@ export default function Sidebar() {
   const isNetworksView = pathname?.startsWith('/networks');
   const isHistoryView = pathname?.startsWith('/d/');
   const isProfileView = pathname?.startsWith('/profile');
-  const isAgentsView = pathname?.startsWith('/agents');
+  const isAgentsView = pathname?.startsWith('/agents') || pathname?.startsWith('/agent');
   const isMyNetworkView = pathname?.startsWith('/mynetwork');
   const isHomeView = !isMessagesView && !isLibraryView && !isNetworksView && !isHistoryView && !isProfileView && !isAgentsView && !isMyNetworkView;
 
@@ -321,10 +321,10 @@ export default function Sidebar() {
                   className={`w-full px-4 py-2 text-left flex items-center gap-2.5 text-sm transition-colors ${
                     isAgentsView ? 'text-black font-medium bg-gray-50' : 'text-gray-700 hover:bg-gray-50'
                   }`}
-                  onClick={() => { setUserDropdownOpen(false); navigate('/agents'); }}
+                  onClick={() => { setUserDropdownOpen(false); navigate('/agent'); }}
                 >
                   <Bot className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  Agents
+                  Agent
                 </button>
               </div>
 
