@@ -11,7 +11,7 @@ impl SeenSet {
     }
 
     /// Returns true if this signature was seen within TTL.
-    /// Always inserts/refreshes the entry.
+    /// Inserts the entry on first occurrence; does not refresh TTL on duplicate.
     pub fn check_and_insert(&self, sig: &str) -> bool {
         let now = Instant::now();
         if let Some(entry) = self.0.get(sig) {
@@ -21,6 +21,12 @@ impl SeenSet {
         }
         self.0.insert(sig.to_string(), now);
         false
+    }
+}
+
+impl Default for SeenSet {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
