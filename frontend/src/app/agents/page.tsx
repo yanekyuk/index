@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Bot, Check, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Bot, Check, ChevronDown, ChevronRight, Copy, KeyRound, Loader2, Plus, Trash2 } from 'lucide-react';
 
 import ClientLayout from '@/components/ClientLayout';
 import { ContentContainer } from '@/components/layout';
@@ -39,6 +39,68 @@ function permissionLabel(action: string): string {
     default:
       return action;
   }
+}
+
+function SetupInstructions({ apiKey }: { apiKey?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const placeholder = apiKey || 'YOUR_API_KEY';
+
+  const mcpUrl = `${window.location.origin}/api/mcp`;
+
+  const claudeConfig = JSON.stringify(
+    {
+      mcpServers: {
+        'index-network': {
+          type: 'http',
+          url: mcpUrl,
+          headers: {
+            'x-api-key': placeholder,
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+
+  const hermesConfig = `mcp_servers:
+  - name: index-network
+    url: ${mcpUrl}
+    headers:
+      x-api-key: ${placeholder}`;
+
+  return (
+    <div className="border border-gray-200 rounded-sm">
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setExpanded(!expanded); }}
+        className="w-full flex items-center gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+      >
+        {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        Setup Instructions
+      </button>
+      {expanded && (
+        <div className="px-4 pb-4 space-y-4 border-t border-gray-100">
+          <div className="pt-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Claude Code / OpenCode
+            </p>
+            <pre className="bg-gray-50 border border-gray-200 rounded-sm p-3 text-xs text-gray-700 overflow-x-auto font-mono">
+              {claudeConfig}
+            </pre>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              Hermes Agent
+            </p>
+            <pre className="bg-gray-50 border border-gray-200 rounded-sm p-3 text-xs text-gray-700 overflow-x-auto font-mono">
+              {hermesConfig}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AgentsPage() {
@@ -331,21 +393,6 @@ export default function AgentsPage() {
                           </div>
 
                           <div>
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Permissions</p>
-                            <div className="flex flex-wrap gap-1">
-                              {agent.permissions.length === 0 ? (
-                                <span className="text-sm text-gray-400">No permissions granted.</span>
-                              ) : (
-                                [...new Set(agent.permissions.flatMap((permission) => permission.actions))].map((action) => (
-                                  <span key={action} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600">
-                                    {permissionLabel(action)}
-                                  </span>
-                                ))
-                              )}
-                            </div>
-                          </div>
-
-                          <div>
                             <div className="flex items-center justify-between gap-4 mb-2">
                               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">API Keys</p>
                               <Button
@@ -372,9 +419,9 @@ export default function AgentsPage() {
                               </div>
                             ) : null}
 
-                            {agentKeys.length === 0 ? (
+                            {agentKeys.length === 0 && !createdKeyForAgent ? (
                               <p className="text-sm text-gray-400">No agent-linked API keys yet.</p>
-                            ) : (
+                            ) : agentKeys.length === 0 ? null : (
                               <div className="border border-gray-200 rounded-sm overflow-hidden">
                                 <table className="w-full text-sm">
                                   <thead>
@@ -409,6 +456,8 @@ export default function AgentsPage() {
                                 </table>
                               </div>
                             )}
+
+                            <SetupInstructions apiKey={createdKeyForAgent ?? undefined} />
                           </div>
                         </Link>
                       );

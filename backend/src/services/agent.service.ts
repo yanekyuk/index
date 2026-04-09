@@ -54,11 +54,18 @@ export class AgentService {
       type: 'personal',
     });
 
-    logger.info('Created personal agent', { agentId: agent.id, ownerId });
+    const permission = await this.db.grantPermission({
+      agentId: agent.id,
+      userId: ownerId,
+      scope: 'global',
+      actions: [...AGENT_ACTIONS],
+    });
+
+    logger.info('Created personal agent with default permissions', { agentId: agent.id, ownerId });
     return this.sanitizeAgent({
       ...agent,
       transports: [],
-      permissions: [],
+      permissions: [permission],
     });
   }
 

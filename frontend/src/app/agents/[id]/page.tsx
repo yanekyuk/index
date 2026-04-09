@@ -789,12 +789,14 @@ export default function AgentDetailPage() {
               >
                 API Keys
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="permissions"
-                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-              >
-                Permissions
-              </Tabs.Trigger>
+              {agent.type === 'system' && (
+                <Tabs.Trigger
+                  value="permissions"
+                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+                >
+                  Permissions
+                </Tabs.Trigger>
+              )}
             </Tabs.List>
 
             <Tabs.Content value="overview" className="w-full">
