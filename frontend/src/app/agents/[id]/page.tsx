@@ -33,6 +33,7 @@ import type { NegotiationInsights } from "@/services/users";
 
 const SYSTEM_AGENT_IDS = {
   chatOrchestrator: "00000000-0000-0000-0000-000000000001",
+  negotiator: "00000000-0000-0000-0000-000000000002",
 } as const;
 
 type TabValue = "overview" | "api-keys" | "permissions";
@@ -111,9 +112,9 @@ function OverviewTab({
   agent: Agent;
   userId: string;
 }) {
-  const isChatOrchestrator = agent.id === SYSTEM_AGENT_IDS.chatOrchestrator;
+  const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
-  if (isChatOrchestrator) {
+  if (isNegotiator) {
     return <NegotiationInsightsTab userId={userId} />;
   }
 
@@ -746,7 +747,7 @@ export default function AgentDetailPage() {
     );
   }
 
-  const isChatOrchestrator = agent.id === SYSTEM_AGENT_IDS.chatOrchestrator;
+  const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
 
   return (
     <ClientLayout>
@@ -815,7 +816,7 @@ export default function AgentDetailPage() {
         </ContentContainer>
       </div>
 
-      {isChatOrchestrator && activeTab === "overview" && (
+      {isNegotiator && activeTab === "overview" && (
         <div className="sticky bottom-0 z-20">
           <div className="px-6 lg:px-8">
             <ContentContainer>
