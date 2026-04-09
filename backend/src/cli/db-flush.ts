@@ -62,7 +62,11 @@ async function flushDatabase(): Promise<{ ok: boolean; error?: string }> {
     ];
 
     for (const table of tables) {
-      await db.execute(sql.raw(`TRUNCATE TABLE ${table} CASCADE`));
+      try {
+        await db.execute(sql.raw(`TRUNCATE TABLE ${table} CASCADE`));
+      } catch {
+        // Table may not exist in this database — skip silently
+      }
     }
 
     return { ok: true };
