@@ -47,3 +47,8 @@ evaluator/.env
 # Project Configuration (Zed Agent Rules)
 # ===================
 .rules
+
+# ===================
+# Generated skills (local workspace dev output)
+# ===================
+/skills/**/SKILL.md

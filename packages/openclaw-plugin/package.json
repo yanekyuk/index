@@ -1,0 +1,25 @@
+{
+  "name": "@indexnetwork/openclaw-plugin",
+  "version": "0.1.0",
+  "description": "Index Network — OpenClaw plugin. Registers the Index Network MCP server and hands off to its guidance.",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": [
+    "openclaw.plugin.json",
+    "src",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "openclaw": {
+    "extensions": ["./src/index.ts"],
+    "compat": {
+      "openclaw": ">=0.1.0"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "index-monorepo",
@@ -121,10 +122,6 @@
         "vitest": "^4.0.18",
       },
     },
-    "packages/claude-plugin": {
-      "name": "claude-plugin",
-      "version": "1.0.0",
-    },
     "packages/cli": {
       "name": "@indexnetwork/cli",
       "version": "0.9.5",
@@ -141,9 +138,13 @@
         "@indexnetwork/cli-linux-x64": "0.9.5",
       },
     },
+    "packages/openclaw-plugin": {
+      "name": "@indexnetwork/openclaw-plugin",
+      "version": "0.1.0",
+    },
     "packages/protocol": {
       "name": "@indexnetwork/protocol",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "@langchain/core": "^1.1.17",
         "@langchain/langgraph": "^1.1.2",
@@ -457,6 +458,8 @@
     "@indexnetwork/cli-linux-arm64": ["@indexnetwork/cli-linux-arm64@0.9.5", "", { "os": "linux", "cpu": "arm64", "bin": { "index": "bin/index" } }, "sha512-7/j8BIXsPKd+uM3pC+Th8brmPICRQZKhZxduvwEJ6B9iQF060PjkFwCf85EWmybKajK+AZlPvz7sCiOza2kH6w=="],
 
     "@indexnetwork/cli-linux-x64": ["@indexnetwork/cli-linux-x64@0.9.5", "", { "os": "linux", "cpu": "x64", "bin": { "index": "bin/index" } }, "sha512-cpj1aLqNMgmzHrH1IZ33oHx8bhRap10NXMdE5BecxmfLsmFjZ4La1JCd+QgFXPk+2euXVwFq31FGFaXOP+5jIQ=="],
+
+    "@indexnetwork/openclaw-plugin": ["@indexnetwork/openclaw-plugin@workspace:packages/openclaw-plugin"],
 
     "@indexnetwork/protocol": ["@indexnetwork/protocol@workspace:packages/protocol"],
 
@@ -1161,8 +1164,6 @@
     "class-variance-authority": ["class-variance-authority@0.7.1", "", { "dependencies": { "clsx": "^2.1.1" } }, "sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg=="],
 
     "classnames": ["classnames@2.5.1", "", {}, "sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow=="],
-
-    "claude-plugin": ["claude-plugin@workspace:packages/claude-plugin"],
 
     "cli-cursor": ["cli-cursor@5.0.0", "", { "dependencies": { "restore-cursor": "^5.0.0" } }, "sha512-aCj4O5wKyszjMmDT4tZj93kxyydN/K5zPWSCe6/0AV/AA1pqe5ZBIw0a2ZfPQV7lL5/yb5HsUreJ6UFAF1tEQw=="],
 

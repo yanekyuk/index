@@ -21,13 +21,11 @@ The repository is organized as a Bun-managed monorepo with two primary workspace
 ```
 index/
   backend/           Backend API and Agent Engine (Bun, Express, TypeScript)
-  packages/
-    protocol/        @indexnetwork/protocol NPM package (graphs, agents, tools, interfaces)
   frontend/          Vite + React Router v7 SPA (React 19, Tailwind CSS 4)
   packages/
+    protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces, tools)
     cli/             CLI client (@indexnetwork/cli, Bun, TypeScript)
-    protocol/        @indexnetwork/protocol NPM package (agent graphs, interfaces)
-    claude-plugin/   Claude plugin — skills-only (git subtree → indexnetwork/claude-plugin)
+    openclaw-plugin/ @indexnetwork/openclaw-plugin (bootstrap skill for OpenClaw hosts)
 ```
 
 **Protocol** is the backend: an Express.js server running on the Bun runtime (port 3001). It hosts the API, LangGraph-based agent system, database layer, job queues, and event infrastructure.
@@ -35,8 +33,6 @@ index/
 **Frontend** is a single-page application built with Vite and React Router v7. In development, Vite proxies `/api/*` requests to the protocol backend. In production, a reverse proxy handles routing.
 
 **CLI** is a standalone command-line client (`@indexnetwork/cli`) that wraps the Tool HTTP API. It provides authentication, command parsing, formatted terminal output, and `--json` mode for machine-readable output. Published to npm with platform-specific native binaries.
-
-**Plugin** is a Claude Code / Claude Desktop plugin that exposes Index Network tools and skills to Claude. It is skills-only (no code, no build step) and is maintained as a git subtree at `indexnetwork/claude-plugin`, with syncing handled automatically by the `scripts/hooks/pre-push` hook.
 
 Both protocol and frontend workspaces share the same repository and are installed together via `bun install` at the root. Development uses git worktrees (`.worktrees/`) to isolate feature and fix branches from the stable `dev` branch.
 
