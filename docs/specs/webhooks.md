@@ -3,7 +3,7 @@ title: "Event webhooks"
 type: spec
 tags: [api, webhooks, notifications, opportunities, integrations]
 created: 2026-04-05
-updated: 2026-04-08
+updated: 2026-04-10
 ---
 
 > **Status:** Transitional. Legacy webhook storage and controller routes still exist for API compatibility. Runtime fanout now prefers eligible agent-registry webhook transports and falls back to legacy `webhooks` only when no eligible agent transport exists.
@@ -99,11 +99,53 @@ Every delivery uses the same JSON shape:
 - `payload` is event-specific; consumers branch on `event`.
 - Body is serialized as a stable string for signing (same bytes as the request body).
 
+### Event payload shapes
+
+The `payload` field inside the envelope is event-specific. The canonical TypeScript shapes live in `backend/src/lib/webhook-payloads.ts`. Summary per event:
+
+**`opportunity.created`**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `opportunity_id` | `string` | Stable opportunity ID |
+| `status` | `string` | Lifecycle status (`draft`, `negotiating`, etc.) |
+| `url` | `string` | Deep link to the opportunity in the app |
+| `category` | `string` | Interpretation category (`collaboration`, `intro`, etc.) |
+| `reasoning` | `string` | Why the opportunity was detected (LLM-generated) |
+| `confidence` | `number` | 0.0–1.0 confidence score |
+| `signals` | `unknown[]` | Ordered list of match signals |
+| `actors` | `Array<{ user_id?, network_id?, role? }>` | Participants |
+| `source` | `string` | Detection source (e.g. `intent_match`) |
+| `created_at` | `string` (ISO 8601) | Opportunity creation timestamp |
+| `expires_at` | `string \| null` (ISO 8601) | Optional expiry |
+
+**`negotiation.turn_received`** (only fires during long-timeout personal-agent dispatch)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `negotiation_id` | `string` | Stable negotiation ID |
+| `url` | `string` | Deep link |
+| `turn_number` | `number` | 1-indexed turn counter for the new turn |
+| `deadline` | `string` (ISO 8601) | When the counterparty expects a response by |
+| `counterparty_action` | `"propose" \| "accept" \| "reject" \| "counter" \| "question" \| null` | The action type of the most recent turn |
+| `counterparty_message` | `string \| null` | Verbatim counterparty text (counterparty-controlled — treat as untrusted) |
+| `counterparty_reasoning` | `string \| null` | Internal assessment reasoning attached to the last turn |
+| `sender` | `{ user_id, name?, role }` | Counterparty identity |
+| `own_user` | `{ user_id, name?, role }` | Recipient identity |
+| `objective` | `string` | Seed assessment reasoning (the "why this negotiation exists") |
+| `index_context` | `{ network_id, prompt? }` | Network the negotiation is scoped to |
+| `discovery_query` | `string \| undefined` | Explicit discovery query that triggered this negotiation (if any) |
+| `recent_turns` | `Array<{ turn_index, action, message, reasoning }>` | Last 3 turns verbatim |
+| `history_digest` | `{ total_turns, actions_so_far, own_intents, other_intents }` | Deterministic summary of the full turn history |
+
+**Other events (`opportunity.accepted`, `opportunity.rejected`, `negotiation.started`, `negotiation.completed`)** are registered in `WEBHOOK_EVENTS` but are not currently wired into runtime delivery. See `docs/superpowers/specs/` for the plan to wire them.
+
 ### Signing
 
 - Headers:
   - `X-Index-Signature`: `sha256=<hex digest>`
   - `X-Index-Event`: exact event name
+  - `X-Request-ID`: stable delivery identifier, reused across retries of the same logical delivery. Consumers should dedupe on this header to tolerate retry storms. Format: implementation-defined opaque string (currently sourced from the BullMQ job ID).
 - Algorithm: HMAC-SHA256 over the **raw request body** using the webhook `secret`.
 - Receivers should compute HMAC on the raw body and compare in constant time.
 
@@ -113,6 +155,7 @@ Every delivery uses the same JSON shape:
 - Lookup: for each user, `AgentDeliveryService.enqueueDeliveries()` first finds authorized agents with an eligible webhook transport (active, subscribed to the event via `config.events`, and holding the required permission such as `manage:negotiations`). If eligible transports exist, deliveries are enqueued for those transports; otherwise, it falls back to legacy webhook lookup.
 - POST timeout: ~5 seconds.
 - Retries: BullMQ job retries with exponential backoff (aligned with other queues).
+- `X-Request-ID` is emitted on every delivery and is stable across retries of the same logical event. Consumers SHOULD dedupe on this header. The Index side emits this value from the BullMQ job ID (e.g. `webhook-opp-created-<webhook-id>-<opportunity-id>`).
 - Success (2xx): reset failure tracking as specified in implementation.
 - After repeated failures: increment `failure_count`; auto-disable when count reaches threshold (e.g. 10 consecutive failures).
 - Runtime fanout is orchestrated through `AgentDeliveryService`, which prefers agent-registry webhook transports (dual-gate: permission + subscribed event) and falls back to legacy webhook lookup when no eligible transport exists.
@@ -148,6 +191,7 @@ Current runtime wiring:
 
 - [api-reference.md](./api-reference.md) — documents both legacy webhook routes and newer agent transport routes.
 - [../design/architecture-overview.md](../design/architecture-overview.md) — agent registry and transitional runtime notes.
+- [../guides/hermes-integration.md](../guides/hermes-integration.md) — end-to-end setup guide for routing webhooks into Hermes Agent.
 
 ## Tracking
 
