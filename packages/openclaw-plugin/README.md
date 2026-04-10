@@ -17,7 +17,7 @@ openclaw plugins install indexnetwork-openclaw-plugin \
 
 On first activation the bootstrap skill detects whether the Index Network MCP server is already registered in your OpenClaw config. If it isn't, it runs:
 
-```
+```bash
 openclaw mcp set index-network '{"url":"https://protocol.index.network/mcp","transport":"streamable-http"}'
 ```
 
