@@ -31,7 +31,9 @@ import { getCorsHeaders } from './lib/cors';
 import { adminQueuesApp } from './controllers/queues.controller';
 import { mcpHandler } from './controllers/mcp.handler';
 import { auth } from './lib/betterauth/auth.instance';
+import { APP_URL } from './lib/betterauth/betterauth';
 import { getStats } from './lib/performance';
+import { buildOpportunityCreatedPayload } from './lib/webhook-payloads';
 // Bootstrap queue workers and HyDE crons (only in this process, not in CLI e.g. db:seed)
 import { intentQueue } from './queues/intent.queue';
 import { opportunityQueue } from './queues/opportunity.queue';
@@ -100,12 +102,7 @@ opportunityService.onOpportunityEvent('created', async ({ opportunity }) => {
       await agentDeliveryService.enqueueDeliveries({
         userId,
         event: 'opportunity.created',
-        payload: {
-          opportunityId: opportunity.id,
-          status: opportunity.status,
-          actors: opportunity.actors,
-          createdAt: opportunity.createdAt,
-        },
+        payload: buildOpportunityCreatedPayload({ opportunity, appUrl: APP_URL }) as unknown as Record<string, unknown>,
         getJobId: (target) => `webhook-opp-created-${target.id}-${opportunity.id}`,
         authorizedAgents,
       });
