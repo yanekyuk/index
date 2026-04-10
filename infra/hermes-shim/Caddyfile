@@ -1,0 +1,44 @@
+# Hermes webhook shim
+#
+# Terminates TLS, then reverse-proxies to the local Hermes webhook adapter at :8644,
+# renaming Index Network signature/event headers to Hermes's GitHub-compatible names.
+#
+# Because the request body and shared secret are unchanged, simply renaming the
+# header preserves HMAC-SHA256 validity — Hermes's GitHub validator reads
+# `sha256=<hex>` from X-Hub-Signature-256 and recomputes the digest over the raw
+# body using the configured secret.
+#
+# Replace `hermes.example.com` below with your actual public hostname.
+
+hermes.example.com {
+	# Automatic TLS via Let's Encrypt (remove `tls internal` in production)
+	# tls internal
+
+	handle /webhooks/index-network {
+		# Rename signature header: X-Index-Signature -> X-Hub-Signature-256
+		request_header X-Hub-Signature-256 {http.request.header.X-Index-Signature}
+		request_header -X-Index-Signature
+
+		# Rename event header: X-Index-Event -> X-GitHub-Event
+		request_header X-GitHub-Event {http.request.header.X-Index-Event}
+		request_header -X-Index-Event
+
+		# Everything else (body, X-Request-ID, Content-Type) passes through untouched.
+		reverse_proxy localhost:8644
+	}
+
+	# Health probe for Index Network liveness checks.
+	handle /health {
+		reverse_proxy localhost:8644
+	}
+
+	# Any other path: 404. Index only sends to /webhooks/index-network.
+	handle {
+		respond 404
+	}
+
+	log {
+		output file /var/log/caddy/hermes-shim.log
+		format json
+	}
+}
