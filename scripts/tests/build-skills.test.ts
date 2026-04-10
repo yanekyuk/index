@@ -17,7 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { resolveTargetEnv, substituteTokens, build, TOKENS } from './build-skills.js';
+import { resolveTargetEnv, substituteTokens, build, TOKENS } from '../build-skills.js';
 
 describe('resolveTargetEnv', () => {
   test('defaults to main when no CLI flag or env var', () => {
