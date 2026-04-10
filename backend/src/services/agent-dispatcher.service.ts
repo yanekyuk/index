@@ -7,7 +7,9 @@ import type { NegotiationTimeoutQueue } from '@indexnetwork/protocol';
 
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 
+import { APP_URL } from '../lib/betterauth/betterauth';
 import { log } from '../lib/log';
+import { buildNegotiationTurnReceivedPayload } from '../lib/webhook-payloads';
 
 const logger = log.service.from('AgentDispatcherImpl');
 
@@ -83,19 +85,21 @@ export class AgentDispatcherImpl implements AgentDispatcher {
     if (isLongTimeout) {
       try {
         const turnNumber = payload.history.length + 1;
-        const lastTurn = payload.history[payload.history.length - 1];
+        const deadlineIso = new Date(Date.now() + options.timeoutMs).toISOString();
+
+        const enrichedPayload = buildNegotiationTurnReceivedPayload({
+          turnPayload: payload,
+          userId,
+          turnNumber,
+          deadlineIso,
+          appUrl: APP_URL,
+        });
 
         await this.deliveryService.enqueueDeliveries({
           userId,
           authorizedAgents: personalAgents,
           event: 'negotiation.turn_received',
-          payload: {
-            negotiationId: payload.negotiationId,
-            userId,
-            turnNumber,
-            counterpartyAction: lastTurn?.action ?? 'propose',
-            deadline: new Date(Date.now() + options.timeoutMs).toISOString(),
-          },
+          payload: enrichedPayload as unknown as Record<string, unknown>,
           getJobId: (target) => `negotiation-turn:${payload.negotiationId}:${turnNumber}:${target.id}`,
         });
 
