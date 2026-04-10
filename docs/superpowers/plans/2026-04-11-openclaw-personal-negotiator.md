@@ -4,7 +4,7 @@
 
 **Goal:** Upgrade `@indexnetwork/openclaw-plugin` from a bootstrap-only skill into an end-to-end personal negotiator that catches Index Network negotiation webhooks, runs silent background subagents via OpenClaw's SDK, and only posts a user-facing message when a negotiation is accepted.
 
-**Architecture:** The plugin registers two `api.registerHttpRoute` handlers with `auth: "plugin"` on the OpenClaw gateway. The turn route verifies HMAC, then launches a silent subagent (`deliver: false`) with a prompt that tells the subagent to call `get_negotiation` + `respond_to_negotiation` via MCP. The event route surfaces only `outcome.hasOpportunity === true` completions as one short message via a `deliver: true` subagent. Zero protocol-side changes — the negotiation graph, AgentDispatcher, AgentDeliveryService, and webhook worker are already wired.
+**Architecture:** The plugin registers a single `api.registerHttpRoute` handler at `/index-network/webhook` with `auth: "plugin"` on the OpenClaw gateway. The handler reads the `X-Index-Event` header and dispatches: `negotiation.turn_received` verifies HMAC and launches a silent subagent (`deliver: false`) that calls `get_negotiation` + `respond_to_negotiation` via MCP; `negotiation.completed` verifies HMAC and surfaces only `outcome.hasOpportunity === true` completions as one short message via a `deliver: true` subagent. A single-route design is required because Index Network's `register_agent` MCP tool creates one agent with exactly one webhook transport (see Task 0 research note). Zero protocol-side changes — the negotiation graph, AgentDispatcher, AgentDeliveryService, and webhook worker are already wired.
 
 **Tech Stack:** TypeScript (Node 22+), OpenClaw plugin SDK, Bun test runner, node:crypto for HMAC, Node HTTP IncomingMessage semantics in the route handlers. The design spec is at `docs/superpowers/specs/2026-04-11-openclaw-personal-negotiator-design.md` — read it before starting.
 
@@ -34,6 +34,7 @@
 
 ### Modified files
 - `packages/openclaw-plugin/package.json` — Add scripts + dev deps.
+- `packages/openclaw-plugin/openclaw.plugin.json` — Add `gatewayUrl`, `webhookSecret`, and `negotiationMode` to `configSchema.properties` so OpenClaw validates and exposes them via `api.pluginConfig`.
 - `packages/openclaw-plugin/tsconfig.json` — Include tests directory.
 - `packages/openclaw-plugin/src/index.ts` — Full rewrite from stub to real plugin entry point.
 - `packages/openclaw-plugin/README.md` — Add negotiation subagent section.
@@ -43,6 +44,10 @@
 - `skills/openclaw/SKILL.md` — Regenerated from template (gitignored; regenerated for local dev).
 - `scripts/build-skills.ts` — Add any new tokens to `TokenSet` interface + `TOKENS` map if the template introduces them.
 - `scripts/tests/build-skills.test.ts` — Adjust tests if `TokenSet` shape changes.
+
+### Architectural note — post Task 0 correction
+
+Task 0's SDK discovery surfaced a constraint: Index Network's `register_agent` MCP tool creates **one agent with at most one webhook transport**. There is no `add_transport` tool, and `webhook_events` is a single array. This means the user's personal OpenClaw agent registers **one** transport with **both** events (`negotiation.turn_received` and `negotiation.completed`) pointing at **one** plugin URL. The plugin therefore exposes a **single HTTP route** — `/index-network/webhook` — and dispatches internally by reading the `X-Index-Event` header before running HMAC verification with the matching expected event. Tasks 8, 9, and 11 below reflect this single-route design; the HMAC verifier from Tasks 2–3 is unchanged.
 
 ---
 
@@ -203,8 +208,12 @@ export interface SubagentRunOptions {
   deliver?: boolean;
 }
 
+export interface SubagentRunResult {
+  runId: string;
+}
+
 export interface SubagentRuntime {
-  run(options: SubagentRunOptions): Promise<void>;
+  run(options: SubagentRunOptions): Promise<SubagentRunResult>;
 }
 
 export interface PluginRuntime {
@@ -244,11 +253,48 @@ cd packages/openclaw-plugin && bunx tsc --noEmit
 
 Expected: no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Update `openclaw.plugin.json` configSchema**
+
+Open `packages/openclaw-plugin/openclaw.plugin.json`. Replace the empty `configSchema` with:
+
+```json
+{
+  "id": "indexnetwork-openclaw-plugin",
+  "name": "Index Network",
+  "description": "Index Network — find the right people and let them find you. Registers the Index Network MCP server on first use and hands off to its guidance.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "gatewayUrl": {
+        "type": "string",
+        "format": "uri",
+        "description": "Public URL of your OpenClaw gateway (e.g. your ngrok URL). Used as the base URL for webhook transports registered on your Index Network personal agent."
+      },
+      "webhookSecret": {
+        "type": "string",
+        "description": "Shared HMAC secret between Index Network and this plugin. Generated by the bootstrap skill when enabling automatic negotiations."
+      },
+      "negotiationMode": {
+        "type": "string",
+        "enum": ["enabled", "disabled"],
+        "default": "enabled",
+        "description": "When set to \"disabled\", turn webhooks are acknowledged without running a subagent — Index Network falls back to its system Index Negotiator. Accepted-notification messages still fire."
+      }
+    },
+    "additionalProperties": false
+  },
+  "skills": ["./skills"]
+}
+```
+
+Rationale: OpenClaw validates `plugins.entries.<id>.config` against `configSchema` before exposing it as `api.pluginConfig`. Without these entries, users can set the values but OpenClaw may strip them or refuse to load the plugin.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/openclaw-plugin/package.json packages/openclaw-plugin/src/plugin-api.ts
-git commit -m "chore(openclaw-plugin): scaffold test script and plugin api types"
+git add packages/openclaw-plugin/package.json packages/openclaw-plugin/openclaw.plugin.json packages/openclaw-plugin/src/plugin-api.ts
+git commit -m "chore(openclaw-plugin): scaffold test script, plugin api types, and negotiator config schema"
 ```
 
 ---
@@ -934,6 +980,14 @@ async function callHandler(handler: RouteHandler, req: ReturnType<typeof signedR
   return res;
 }
 
+const WEBHOOK_PATH = '/index-network/webhook';
+
+function getHandler(fake: FakeApi): RouteHandler {
+  const route = fake.registered.get(WEBHOOK_PATH);
+  if (!route) throw new Error(`route ${WEBHOOK_PATH} not registered`);
+  return route.handler;
+}
+
 describe('register(api)', () => {
   let fake: FakeApi;
 
@@ -942,22 +996,20 @@ describe('register(api)', () => {
     register(fake.api);
   });
 
-  test('registers two HTTP routes', () => {
-    expect(fake.registered.size).toBe(2);
-    expect(fake.registered.has('/index-network/turn')).toBe(true);
-    expect(fake.registered.has('/index-network/event')).toBe(true);
+  test('registers exactly one HTTP route at /index-network/webhook', () => {
+    expect(fake.registered.size).toBe(1);
+    expect(fake.registered.has(WEBHOOK_PATH)).toBe(true);
   });
 
-  test('registered routes declare auth: plugin and match: exact', () => {
-    for (const opts of fake.registered.values()) {
-      expect(opts.auth).toBe('plugin');
-      expect(opts.match).toBe('exact');
-    }
+  test('registered route declares auth: plugin and match: exact', () => {
+    const opts = fake.registered.get(WEBHOOK_PATH)!;
+    expect(opts.auth).toBe('plugin');
+    expect(opts.match).toBe('exact');
   });
 
-  describe('/index-network/turn', () => {
+  describe('negotiation.turn_received dispatch', () => {
     test('launches silent subagent on valid turn_received delivery', async () => {
-      const handler = fake.registered.get('/index-network/turn')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.turn_received',
         {
@@ -980,7 +1032,7 @@ describe('register(api)', () => {
     });
 
     test('returns 401 on bad signature and does not run subagent', async () => {
-      const handler = fake.registered.get('/index-network/turn')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.turn_received',
         { negotiationId: 'neg-1', turnNumber: 1, counterpartyAction: 'propose', deadline: '' },
@@ -992,25 +1044,11 @@ describe('register(api)', () => {
       expect(res._status).toBe(401);
       expect(fake.subagentCalls).toHaveLength(0);
     });
-
-    test('returns 401 when event header is negotiation.completed', async () => {
-      const handler = fake.registered.get('/index-network/turn')!.handler;
-      const req = signedRequest(
-        'negotiation.completed',
-        { negotiationId: 'neg-1', outcome: { hasOpportunity: true }, turnCount: 3 },
-        SECRET,
-      );
-
-      const res = await callHandler(handler, req);
-
-      expect(res._status).toBe(401);
-      expect(fake.subagentCalls).toHaveLength(0);
-    });
   });
 
-  describe('/index-network/event', () => {
+  describe('negotiation.completed dispatch', () => {
     test('runs delivered subagent when outcome.hasOpportunity is true', async () => {
-      const handler = fake.registered.get('/index-network/event')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.completed',
         {
@@ -1031,7 +1069,7 @@ describe('register(api)', () => {
     });
 
     test('does NOT run subagent when outcome.hasOpportunity is false', async () => {
-      const handler = fake.registered.get('/index-network/event')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.completed',
         {
@@ -1049,7 +1087,7 @@ describe('register(api)', () => {
     });
 
     test('does NOT run subagent when outcome is missing', async () => {
-      const handler = fake.registered.get('/index-network/event')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.completed',
         { negotiationId: 'neg-1', turnCount: 5 },
@@ -1063,7 +1101,7 @@ describe('register(api)', () => {
     });
 
     test('returns 401 on bad signature', async () => {
-      const handler = fake.registered.get('/index-network/event')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.completed',
         { negotiationId: 'neg-1', outcome: { hasOpportunity: true }, turnCount: 1 },
@@ -1077,6 +1115,38 @@ describe('register(api)', () => {
     });
   });
 
+  describe('unknown event header', () => {
+    test('returns 400 without invoking the subagent', async () => {
+      const handler = getHandler(fake);
+      const req = signedRequest('negotiation.unknown', { negotiationId: 'neg-1' }, SECRET);
+
+      const res = await callHandler(handler, req);
+
+      expect(res._status).toBe(400);
+      expect(fake.subagentCalls).toHaveLength(0);
+    });
+
+    test('returns 400 when X-Index-Event header is missing', async () => {
+      const handler = getHandler(fake);
+      const body = JSON.stringify({
+        event: 'negotiation.turn_received',
+        payload: {},
+        timestamp: '',
+      });
+      const req = mockRequest({
+        headers: {
+          'x-index-signature': 'sha256=' + crypto.createHmac('sha256', SECRET).update(body).digest('hex'),
+        },
+        body,
+      });
+
+      const res = await callHandler(handler, req);
+
+      expect(res._status).toBe(400);
+      expect(fake.subagentCalls).toHaveLength(0);
+    });
+  });
+
   describe('with missing webhookSecret', () => {
     test('logs a warning and rejects all requests', async () => {
       fake = buildFakeApi({});
@@ -1084,7 +1154,7 @@ describe('register(api)', () => {
 
       expect(fake.logger.warn).toHaveBeenCalled();
 
-      const handler = fake.registered.get('/index-network/turn')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.turn_received',
         { negotiationId: 'neg-1', turnNumber: 1, counterpartyAction: 'propose', deadline: '' },
@@ -1099,11 +1169,11 @@ describe('register(api)', () => {
   });
 
   describe('with negotiationMode: disabled', () => {
-    test('turn route returns 202 without running subagent', async () => {
+    test('turn webhook returns 202 without running subagent', async () => {
       fake = buildFakeApi({ webhookSecret: SECRET, negotiationMode: 'disabled' });
       register(fake.api);
 
-      const handler = fake.registered.get('/index-network/turn')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.turn_received',
         {
@@ -1122,11 +1192,11 @@ describe('register(api)', () => {
       expect(fake.subagentCalls).toHaveLength(0);
     });
 
-    test('event route still posts accepted notification', async () => {
+    test('completed webhook still posts accepted notification', async () => {
       fake = buildFakeApi({ webhookSecret: SECRET, negotiationMode: 'disabled' });
       register(fake.api);
 
-      const handler = fake.registered.get('/index-network/event')!.handler;
+      const handler = getHandler(fake);
       const req = signedRequest(
         'negotiation.completed',
         {
@@ -1169,21 +1239,31 @@ Replace the entire contents of `packages/openclaw-plugin/src/index.ts` with:
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Registers two plugin-authed HTTP routes on the OpenClaw gateway:
- *   POST /index-network/turn   — receives negotiation.turn_received webhooks
- *                                 from Index Network and launches a silent
- *                                 background subagent to handle the turn.
- *   POST /index-network/event  — receives negotiation.completed webhooks and,
- *                                 when the outcome is an accepted opportunity,
- *                                 launches a subagent that posts ONE message
- *                                 to the user's last channel.
+ * Registers a single plugin-authed HTTP route on the OpenClaw gateway:
  *
- * Both routes verify HMAC signatures against the shared webhook secret that
- * the bootstrap skill stored in `plugins.entries.indexnetwork-openclaw-plugin
- * .config.webhookSecret`.
+ *   POST /index-network/webhook
  *
- * The subagent inherits the parent OpenClaw instance's MCP connection to the
- * Index Network MCP server, so it can call `get_negotiation`,
+ * Index Network's agent registry creates one agent with at most one webhook
+ * transport that subscribes to multiple event types. The plugin therefore
+ * exposes one URL and dispatches internally by reading the `X-Index-Event`
+ * header:
+ *
+ *   - negotiation.turn_received  → silent subagent (deliver: false) runs the
+ *                                  turn handler prompt. The subagent calls
+ *                                  `get_negotiation` + `respond_to_negotiation`
+ *                                  on the parent's Index Network MCP pool.
+ *   - negotiation.completed      → if outcome.hasOpportunity is true, a
+ *                                  delivered subagent (deliver: true) posts
+ *                                  one short message to the user's last
+ *                                  active channel. Non-accepted outcomes are
+ *                                  ACKed silently.
+ *
+ * HMAC verification uses the shared secret from
+ * `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret`,
+ * stored by the bootstrap skill.
+ *
+ * The subagent inherits the parent OpenClaw instance's MCP connection to
+ * the Index Network MCP server, so it can call `get_negotiation`,
  * `read_user_profiles`, `read_intents`, and `respond_to_negotiation` on
  * behalf of the user without re-authenticating.
  */
@@ -1199,8 +1279,9 @@ import type {
 } from './webhook/types.js';
 import { verifyAndParse } from './webhook/verify.js';
 
-const TURN_PATH = '/index-network/turn';
-const EVENT_PATH = '/index-network/event';
+const WEBHOOK_PATH = '/index-network/webhook';
+const TURN_EVENT = 'negotiation.turn_received';
+const COMPLETED_EVENT = 'negotiation.completed';
 
 export default function register(api: OpenClawPluginApi): void {
   const secret = typeof api.pluginConfig.webhookSecret === 'string'
@@ -1219,76 +1300,98 @@ export default function register(api: OpenClawPluginApi): void {
     : 'enabled';
 
   api.registerHttpRoute({
-    path: TURN_PATH,
+    path: WEBHOOK_PATH,
     auth: 'plugin',
     match: 'exact',
     handler: async (req, res) => {
-      const payload = await verifyAndParse<NegotiationTurnReceivedPayload>(
-        req,
-        secret,
-        'negotiation.turn_received',
-      );
+      const eventHeader = readHeader(req.headers['x-index-event']);
 
-      if (!payload) return reject(res);
-
-      if (negotiationMode === 'disabled') {
-        return accept(res);
+      if (eventHeader === TURN_EVENT) {
+        return handleTurn(api, req, res, secret, negotiationMode);
       }
-
-      try {
-        await api.runtime.subagent.run({
-          sessionKey: `index:negotiation:${payload.negotiationId}`,
-          message: turnPrompt(payload),
-          deliver: false,
-        });
-      } catch (err) {
-        api.logger.error('Failed to launch turn subagent', {
-          plugin: api.id,
-          negotiationId: payload.negotiationId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return fail(res);
+      if (eventHeader === COMPLETED_EVENT) {
+        return handleCompleted(api, req, res, secret);
       }
-
-      return accept(res);
+      return badRequest(res);
     },
   });
+}
 
-  api.registerHttpRoute({
-    path: EVENT_PATH,
-    auth: 'plugin',
-    match: 'exact',
-    handler: async (req, res) => {
-      const payload = await verifyAndParse<NegotiationCompletedPayload>(
-        req,
-        secret,
-        'negotiation.completed',
-      );
+async function handleTurn(
+  api: OpenClawPluginApi,
+  req: IncomingMessage,
+  res: ServerResponse,
+  secret: string,
+  negotiationMode: string,
+): Promise<boolean> {
+  const payload = await verifyAndParse<NegotiationTurnReceivedPayload>(
+    req,
+    secret,
+    TURN_EVENT,
+  );
+  if (!payload) return reject(res);
 
-      if (!payload) return reject(res);
+  if (negotiationMode === 'disabled') {
+    return accept(res);
+  }
 
-      if (payload.outcome?.hasOpportunity !== true) {
-        return accept(res);
-      }
+  try {
+    await api.runtime.subagent.run({
+      sessionKey: `index:negotiation:${payload.negotiationId}`,
+      message: turnPrompt(payload),
+      deliver: false,
+    });
+  } catch (err) {
+    api.logger.error('Failed to launch turn subagent', {
+      plugin: api.id,
+      negotiationId: payload.negotiationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return fail(res);
+  }
 
-      try {
-        await api.runtime.subagent.run({
-          sessionKey: `index:event:${payload.negotiationId}`,
-          message: acceptedPrompt(payload),
-          deliver: true,
-        });
-      } catch (err) {
-        api.logger.error('Failed to launch accepted subagent', {
-          plugin: api.id,
-          negotiationId: payload.negotiationId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return fail(res);
-      }
+  return accept(res);
+}
 
-      return accept(res);
-    },
-  });
+async function handleCompleted(
+  api: OpenClawPluginApi,
+  req: IncomingMessage,
+  res: ServerResponse,
+  secret: string,
+): Promise<boolean> {
+  const payload = await verifyAndParse<NegotiationCompletedPayload>(
+    req,
+    secret,
+    COMPLETED_EVENT,
+  );
+  if (!payload) return reject(res);
+
+  if (payload.outcome?.hasOpportunity !== true) {
+    return accept(res);
+  }
+
+  try {
+    await api.runtime.subagent.run({
+      sessionKey: `index:event:${payload.negotiationId}`,
+      message: acceptedPrompt(payload),
+      deliver: true,
+    });
+  } catch (err) {
+    api.logger.error('Failed to launch accepted subagent', {
+      plugin: api.id,
+      negotiationId: payload.negotiationId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return fail(res);
+  }
+
+  return accept(res);
+}
+
+function readHeader(raw: string | string[] | undefined): string | null {
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw) && raw.length > 0) return raw[0] ?? null;
+  return null;
 }
 
 function accept(res: ServerResponse): boolean {
@@ -1303,14 +1406,17 @@ function reject(res: ServerResponse): boolean {
   return true;
 }
 
+function badRequest(res: ServerResponse): boolean {
+  res.statusCode = 400;
+  res.end('unknown or missing x-index-event header');
+  return true;
+}
+
 function fail(res: ServerResponse): boolean {
   res.statusCode = 500;
   res.end('internal error');
   return true;
 }
-
-// Unused export to silence TS if the SDK imports types but not the default.
-export type { IncomingMessage };
 ```
 
 - [ ] **Step 2: Run tests to verify they pass**
@@ -1405,7 +1511,9 @@ git commit -m "feat(protocol/mcp): add negotiation turn mode instructions for su
 
 ## Task 11: Bootstrap Skill Template — Webhook Transport Registration Block
 
-**Goal:** Extend the OpenClaw bootstrap skill to register two webhook transports on the user's personal agent after API key setup. The user's OpenClaw instance must expose the gateway public URL before the skill can complete this step; if auto-detection fails, the skill prompts the user.
+**Goal:** Extend the OpenClaw bootstrap skill to register a single personal agent with both negotiation webhook events after API key setup. The user's OpenClaw instance must expose the gateway public URL before the skill can complete this step; if auto-detection fails, the skill prompts the user.
+
+**Architectural note (post Task 0 correction):** Per Task 0 research findings, the Index Network `register_agent` MCP tool creates **one agent with at most one webhook transport**. The plugin therefore exposes a single route `/index-network/webhook` and the bootstrap skill registers a single agent with `webhook_events: ["negotiation.turn_received", "negotiation.completed"]` plus `permissions: ["manage:negotiations"]` inline in the same `register_agent` call. Do NOT attempt to register two transports.
 
 **Files:**
 - Modify: `packages/protocol/skills/openclaw/SKILL.md.template`
@@ -1459,37 +1567,28 @@ openclaw config set 'plugins.entries.indexnetwork-openclaw-plugin.config.webhook
 
 Never display `WEBHOOK_SECRET` back to the user.
 
-### 3. Register the webhook transports on the personal agent
+### 3. Register the personal agent with both negotiation events
 
-Call the `register_agent` MCP tool. Exact fields depend on the `register_agent` schema — it accepts a list of transports, each with `channel: "webhook"`, a URL, a secret, and an events list.
+Call the `register_agent` MCP tool **once**. The tool creates one agent, optionally attaches a single webhook transport, and grants initial permissions in the same call. Pass these fields:
 
-Register two transports:
+- `name`: `"OpenClaw Personal Negotiator"` (or a name the user picks)
+- `description`: `"Handles negotiation turns and accepted notifications for the user."`
+- `webhook_url`: `<GATEWAY_URL>/index-network/webhook`
+- `webhook_secret`: `<WEBHOOK_SECRET>`
+- `webhook_events`: `["negotiation.turn_received", "negotiation.completed"]`
+- `permissions`: `["manage:negotiations"]`
 
-Transport 1 — turn dispatcher:
-- `channel`: webhook
-- `config.url`: `<GATEWAY_URL>/index-network/turn`
-- `config.secret`: `<WEBHOOK_SECRET>`
-- `config.events`: `["negotiation.turn_received"]`
+Both events land on the same route. The plugin dispatches internally based on the `X-Index-Event` header. Do **not** attempt to register a second agent or a second transport — `register_agent` creates exactly one transport, and the plugin only exposes one route.
 
-Transport 2 — completion notifier:
-- `channel`: webhook
-- `config.url`: `<GATEWAY_URL>/index-network/event`
-- `config.secret`: `<WEBHOOK_SECRET>`
-- `config.events`: `["negotiation.completed"]`
+If `register_agent` fails because an agent with the same name already exists, list existing agents with `list_agents` and either reuse the existing one (tell the user) or pick a new name.
 
-If `register_agent` accepts transports only at creation time, use it for the first transport and `grant_agent_permission` or an equivalent "add transport" tool for the second. Refer to the MCP tool list — do not invent tool names.
-
-### 4. Grant the `manage:negotiations` permission
-
-Grant the personal agent `manage:negotiations` at the scope the user wants (global by default). Use the `grant_agent_permission` tool if exposed.
-
-### 5. Confirm to the user
+### 4. Confirm to the user
 
 > Automatic negotiations are on. I'll run them silently and only interrupt you when a match is accepted. You can turn this off any time by setting `plugins.entries.indexnetwork-openclaw-plugin.config.negotiationMode` to `disabled`.
 
 ### Troubleshooting
 
-- **Negotiations never fire**: confirm the gateway tunnel is up and the plugin is enabled. Check OpenClaw logs for 401 responses on `/index-network/turn` — that indicates a HMAC secret mismatch.
+- **Negotiations never fire**: confirm the gateway tunnel is up and the plugin is enabled. Check OpenClaw logs for `401` responses on `/index-network/webhook` — that indicates a HMAC secret mismatch. Check the `list_agents` output to confirm the webhook URL matches `<GATEWAY_URL>/index-network/webhook`.
 - **`register_agent` fails**: re-check the personal agent key; the user may need to regenerate it at {{FRONTEND_URL}}/agents.
 - **Turn responses arrive past deadline**: the user's gateway or tunnel provider is slow. Recommend upgrading the tunnel or self-hosting with a stable reverse proxy.
 ```
@@ -1627,7 +1726,7 @@ with:
 
 **`openclaw mcp set` fails with "command not found"** — make sure you have OpenClaw CLI ≥0.1.0 installed.
 
-**Automatic negotiations never fire** — confirm your gateway tunnel is up, the plugin is enabled, and both webhook transports are registered on your personal agent at https://index.network/agents. Check OpenClaw gateway logs for `401` responses on `/index-network/turn` — that indicates a HMAC secret mismatch.
+**Automatic negotiations never fire** — confirm your gateway tunnel is up, the plugin is enabled, and your personal agent is registered with both `negotiation.turn_received` and `negotiation.completed` events at https://index.network/agents. Check OpenClaw gateway logs for `401` responses on `/index-network/webhook` — that indicates a HMAC secret mismatch.
 
 **Plugin logs "webhook secret is not configured"** — re-run the bootstrap skill's "Enable automatic negotiations" block, or set `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret` manually.
 ```
@@ -1726,9 +1825,9 @@ Expected: a linear history matching the commit messages from Tasks 0–12. No fi
 - HMAC verifier → Task 3
 - Turn prompt → Task 5
 - Accepted prompt → Task 7
-- Plugin entry point (two routes, auth: plugin, match: exact, silent-by-default, only-accepted notification, missing-secret warning, negotiationMode disable flag) → Task 9
+- Plugin entry point (single `/index-network/webhook` route dispatched by `X-Index-Event` header, auth: plugin, match: exact, silent-by-default, only-accepted notification, missing-secret warning, negotiationMode disable flag) → Task 9
 - MCP instructions update → Task 10
-- Bootstrap skill update (resolve gateway URL, generate secret, register two transports, grant permission, troubleshooting) → Task 11
+- Bootstrap skill update (resolve gateway URL, generate secret, register one agent with both events + `manage:negotiations` permission inline, troubleshooting) → Task 11
 - README update (automatic negotiations, config keys, model pinning, privacy note, troubleshooting) → Task 12
 - Spec "Testing strategy" unit tests → Tasks 2, 4, 6, 8
 - Spec "Open questions to resolve during implementation" → Task 0
@@ -1743,7 +1842,7 @@ Expected: a linear history matching the commit messages from Tasks 0–12. No fi
 - `verifyAndParse` signature defined in Task 3, called in Task 9 with the exact same generic + arguments.
 - `turnPrompt` / `acceptedPrompt` signatures defined in Tasks 5 / 7, called in Task 9 with matching payload shapes.
 - Session key prefixes `index:negotiation:` / `index:event:` used consistently in Tasks 8, 9, and spec.
-- Route paths `/index-network/turn` / `/index-network/event` used consistently across Tasks 8, 9, 11, 12, and spec.
+- Single route path `/index-network/webhook` used consistently across Tasks 8, 9, 11, 12 (the spec's two-route design was superseded post Task 0 — see the architectural note at line ~48).
 
 **Scope:** single implementation plan, single PR. No decomposition needed.
 
