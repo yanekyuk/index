@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import type { AgentWithRelations } from '../adapters/agent.database.adapter';
 
 type LegacyWebhook = {
@@ -20,6 +22,7 @@ type LegacyWebhookQueue = {
       event: string;
       payload: Record<string, unknown>;
       timestamp: string;
+      deliveryId: string;
     },
     options?: { jobId?: string },
   ): Promise<unknown>;
@@ -78,6 +81,7 @@ export class AgentDeliveryService {
     const hooks = await this.webhooks.findByUserAndEvent(userId, event);
 
     for (const hook of hooks) {
+      const jobId = getJobId ? getJobId(hook) : crypto.randomUUID();
       await this.queue.addJob(
         'deliver_webhook',
         {
@@ -87,8 +91,9 @@ export class AgentDeliveryService {
           event,
           payload,
           timestamp: this.now().toISOString(),
+          deliveryId: jobId,
         },
-        getJobId ? { jobId: getJobId(hook) } : undefined,
+        { jobId },
       );
     }
   }
@@ -120,6 +125,7 @@ export class AgentDeliveryService {
       }
 
       for (const transport of eligibleTransports) {
+        const jobId = getJobId ? getJobId(transport) : crypto.randomUUID();
         await this.queue.addJob(
           'deliver_webhook',
           {
@@ -129,8 +135,9 @@ export class AgentDeliveryService {
             event,
             payload,
             timestamp: this.now().toISOString(),
+            deliveryId: jobId,
           },
-          getJobId ? { jobId: getJobId(transport) } : undefined,
+          { jobId },
         );
       }
 

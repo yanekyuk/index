@@ -98,6 +98,7 @@ describe('AgentDeliveryService', () => {
           turnCount: 3,
         },
         timestamp: '2026-04-08T12:00:00.000Z',
+        deliveryId: 'webhook-neg-completed-hook-a-neg-1',
       },
       { jobId: 'webhook-neg-completed-hook-a-neg-1' },
     );
@@ -115,6 +116,7 @@ describe('AgentDeliveryService', () => {
           turnCount: 3,
         },
         timestamp: '2026-04-08T12:00:00.000Z',
+        deliveryId: 'webhook-neg-completed-hook-b-neg-1',
       },
       { jobId: 'webhook-neg-completed-hook-b-neg-1' },
     );
@@ -173,6 +175,7 @@ describe('AgentDeliveryService', () => {
         url: 'https://agent.example.com',
         secret: 'agent-secret',
         event: 'negotiation.turn_received',
+        deliveryId: 'job-transport-1',
       }),
       { jobId: 'job-transport-1' },
     );
@@ -197,7 +200,7 @@ describe('AgentDeliveryService', () => {
     expect(addJob).toHaveBeenCalledTimes(1);
     expect(addJob).toHaveBeenCalledWith(
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'legacy-hook' }),
+      expect.objectContaining({ webhookId: 'legacy-hook', deliveryId: 'job-legacy-hook' }),
       { jobId: 'job-legacy-hook' },
     );
   });
@@ -232,7 +235,7 @@ describe('AgentDeliveryService', () => {
     expect(addJob).toHaveBeenCalledTimes(1);
     expect(addJob).toHaveBeenCalledWith(
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'legacy-hook' }),
+      expect.objectContaining({ webhookId: 'legacy-hook', deliveryId: 'job-legacy-hook' }),
       { jobId: 'job-legacy-hook' },
     );
   });
@@ -268,7 +271,7 @@ describe('AgentDeliveryService', () => {
     expect(addJob).toHaveBeenCalledTimes(1);
     expect(addJob).toHaveBeenCalledWith(
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'legacy-hook' }),
+      expect.objectContaining({ webhookId: 'legacy-hook', deliveryId: 'job-legacy-hook' }),
       { jobId: 'job-legacy-hook' },
     );
   });
@@ -304,7 +307,7 @@ describe('AgentDeliveryService', () => {
     expect(addJob).toHaveBeenCalledTimes(1);
     expect(addJob).toHaveBeenCalledWith(
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'legacy-hook' }),
+      expect.objectContaining({ webhookId: 'legacy-hook', deliveryId: 'job-legacy-hook' }),
       { jobId: 'job-legacy-hook' },
     );
   });
@@ -347,13 +350,13 @@ describe('AgentDeliveryService', () => {
     expect(addJob).toHaveBeenNthCalledWith(
       1,
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'transport-high' }),
+      expect.objectContaining({ webhookId: 'transport-high', deliveryId: 'job-transport-high' }),
       { jobId: 'job-transport-high' },
     );
     expect(addJob).toHaveBeenNthCalledWith(
       2,
       'deliver_webhook',
-      expect.objectContaining({ webhookId: 'transport-low' }),
+      expect.objectContaining({ webhookId: 'transport-low', deliveryId: 'job-transport-low' }),
       { jobId: 'job-transport-low' },
     );
   });

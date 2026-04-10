@@ -212,6 +212,7 @@ export class WebhookService {
         timestamp: new Date().toISOString(),
       },
       timestamp: new Date().toISOString(),
+      deliveryId: crypto.randomUUID(),
     });
 
     logger.info('[WebhookService] Test delivery enqueued', { webhookId, userId });

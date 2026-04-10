@@ -15,6 +15,28 @@ export interface WebhookJobData {
   event: string;
   payload: Record<string, unknown>;
   timestamp: string;
+  /** Stable delivery ID, reused across retries. Emitted as X-Request-ID for consumer dedupe. */
+  deliveryId: string;
+}
+
+/**
+ * Build the outbound header set for a webhook POST. Pure function, testable in isolation.
+ *
+ * @param opts.signatureHex - Raw HMAC-SHA256 hex digest (no prefix).
+ * @param opts.event - Event name (e.g. `opportunity.created`).
+ * @param opts.deliveryId - Stable delivery ID, reused across retries.
+ */
+export function buildWebhookRequestHeaders(opts: {
+  signatureHex: string;
+  event: string;
+  deliveryId: string;
+}): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-Index-Signature': `sha256=${opts.signatureHex}`,
+    'X-Index-Event': opts.event,
+    'X-Request-ID': opts.deliveryId,
+  };
 }
 
 /**
@@ -135,10 +157,10 @@ export class WebhookQueue {
    * Deliver a webhook: POST the payload with HMAC-SHA256 signature.
    */
   private async handleDelivery(data: WebhookJobData): Promise<void> {
-    const { webhookId, url, secret, event, payload, timestamp } = data;
+    const { webhookId, url, secret, event, payload, timestamp, deliveryId } = data;
 
     const body = JSON.stringify({ event, payload, timestamp });
-    const signature = crypto.createHmac('sha256', secret).update(body).digest('hex');
+    const signatureHex = crypto.createHmac('sha256', secret).update(body).digest('hex');
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -146,11 +168,7 @@ export class WebhookQueue {
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Index-Signature': `sha256=${signature}`,
-          'X-Index-Event': event,
-        },
+        headers: buildWebhookRequestHeaders({ signatureHex, event, deliveryId }),
         body,
         signal: controller.signal,
       });
@@ -164,7 +182,7 @@ export class WebhookQueue {
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`Webhook delivery timed out after 5s: ${url}`);
+        throw new Error(`Webhook delivery timed out after 5s: ${url}`, { cause: err });
       }
       throw err;
     } finally {
