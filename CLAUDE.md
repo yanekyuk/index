@@ -256,6 +256,10 @@ All agents are first-class database entities backed by `agents`, `agent_transpor
 
 Model settings centralized in `packages/protocol/src/shared/agent/model.config.ts`. Key env vars: `OPENROUTER_API_KEY` (required), `CHAT_MODEL` (override), `CHAT_REASONING_EFFORT` (`minimal|low|medium|high|xhigh`), `RUN_OPPORTUNITY_EVAL_IN_PARALLEL` (experimental). Use `configureProtocol({ apiKey, chatModel, ... })` to inject config programmatically.
 
+### Hermes Webhook Integration
+
+Index delivers event webhooks to [Hermes Agent](https://hermes-agent.nousresearch.com/) (NousResearch's personal agent gateway) via a Caddy header-rewrite shim. Live paths: `opportunity.created` (from `opportunity.service.ts`) and `negotiation.turn_received` (from `agent-dispatcher.service.ts` on long-timeout dispatches). Payload shapes are defined in `backend/src/lib/webhook-payloads.ts`. Setup: see `docs/guides/hermes-integration.md` and `infra/hermes-shim/`.
+
 ## Environment Setup
 
 See `docs/guides/getting-started.md` for full setup guide.
