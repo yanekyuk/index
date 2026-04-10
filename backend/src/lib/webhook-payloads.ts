@@ -6,17 +6,22 @@
  * everything the builder needs. Unit tests live in `./tests/webhook-payloads.spec.ts`.
  */
 
-import type { Opportunity } from '@indexnetwork/protocol';
-import type { NegotiationTurnPayload } from '@indexnetwork/protocol';
+/**
+ * Convention: optional wire fields use `| null`, never `| undefined`.
+ * JSON.stringify omits `undefined` fields but emits `null`, so using `| null`
+ * guarantees the field is always present in the wire payload for consumers.
+ */
+
+import type { NegotiationTurnPayload, Opportunity, OpportunitySignal } from '@indexnetwork/protocol';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // opportunity.created
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface OpportunityCreatedActor {
-  user_id: string | undefined;
-  network_id: string | undefined;
-  role: string | undefined;
+  user_id: string;
+  network_id: string;
+  role: string;
 }
 
 export interface OpportunityCreatedPayload {
@@ -26,7 +31,7 @@ export interface OpportunityCreatedPayload {
   category: string;
   reasoning: string;
   confidence: number;
-  signals: unknown[];
+  signals: OpportunitySignal[];
   actors: OpportunityCreatedActor[];
   source: string;
   created_at: string;
@@ -38,6 +43,7 @@ export interface OpportunityCreatedPayload {
  *
  * @param opts.opportunity - The full Opportunity object from the event bus.
  * @param opts.appUrl - Base URL for building deep links (e.g. `https://index.network`).
+ * @returns A Hermes-friendly opportunity.created payload.
  */
 export function buildOpportunityCreatedPayload(opts: {
   opportunity: Opportunity;
@@ -51,15 +57,15 @@ export function buildOpportunityCreatedPayload(opts: {
     category: opportunity.interpretation.category,
     reasoning: opportunity.interpretation.reasoning,
     confidence: opportunity.interpretation.confidence,
-    signals: (opportunity.interpretation.signals as unknown[] | undefined) ?? [],
-    actors: (opportunity.actors ?? []).map((a) => ({
-      user_id: (a as { userId?: string }).userId,
-      network_id: (a as { networkId?: string }).networkId,
-      role: (a as { role?: string }).role,
+    signals: opportunity.interpretation.signals ?? [],
+    actors: opportunity.actors.map((a) => ({
+      user_id: a.userId,
+      network_id: a.networkId,
+      role: a.role,
     })),
     source: opportunity.detection.source,
-    created_at: new Date(opportunity.createdAt).toISOString(),
-    expires_at: opportunity.expiresAt ? new Date(opportunity.expiresAt).toISOString() : null,
+    created_at: opportunity.createdAt.toISOString(),
+    expires_at: opportunity.expiresAt ? opportunity.expiresAt.toISOString() : null,
   };
 }
 
@@ -72,7 +78,7 @@ export const RECENT_TURNS_WINDOW = 3;
 
 export interface NegotiationParticipant {
   user_id: string;
-  name: string | undefined;
+  name: string | null;
   /** Valency role from the seed assessment — typically 'agent' | 'patient' | 'peer', but widened to string to match the protocol's `SeedAssessment.valencyRole`. */
   role: string;
 }
@@ -87,8 +93,8 @@ export interface NegotiationRecentTurn {
 export interface NegotiationHistoryDigest {
   total_turns: number;
   actions_so_far: Array<'propose' | 'accept' | 'reject' | 'counter' | 'question'>;
-  own_intents: Array<{ id: string; title: string; description: string | undefined }>;
-  other_intents: Array<{ id: string; title: string; description: string | undefined }>;
+  own_intents: Array<{ id: string; title: string; description: string }>;
+  other_intents: Array<{ id: string; title: string; description: string }>;
 }
 
 export interface NegotiationTurnReceivedPayload {
@@ -102,8 +108,8 @@ export interface NegotiationTurnReceivedPayload {
   sender: NegotiationParticipant;
   own_user: NegotiationParticipant;
   objective: string;
-  index_context: { network_id: string; prompt: string | undefined };
-  discovery_query: string | undefined;
+  index_context: { network_id: string; prompt: string | null };
+  discovery_query: string | null;
   recent_turns: NegotiationRecentTurn[];
   history_digest: NegotiationHistoryDigest;
 }
@@ -113,6 +119,13 @@ export interface NegotiationTurnReceivedPayload {
  *
  * All data is already in scope at the agent-dispatcher emit site — this
  * function does no DB access and is trivially unit-testable.
+ *
+ * @param opts.turnPayload - The in-memory negotiation turn payload from the dispatcher.
+ * @param opts.userId - The recipient user id (owner of the webhook).
+ * @param opts.turnNumber - 1-based index of the current turn being delivered.
+ * @param opts.deadlineIso - ISO timestamp by which the recipient must respond.
+ * @param opts.appUrl - Base URL for building deep links (e.g. `https://index.network`).
+ * @returns A Hermes-friendly negotiation.turn_received payload with digest and recent-turn window.
  */
 export function buildNegotiationTurnReceivedPayload(opts: {
   turnPayload: NegotiationTurnPayload;
@@ -138,17 +151,17 @@ export function buildNegotiationTurnReceivedPayload(opts: {
     counterparty_reasoning: lastTurn?.assessment.reasoning ?? null,
     sender: {
       user_id: otherUser.id,
-      name: otherUser.profile?.name,
+      name: otherUser.profile?.name ?? null,
       role: seedAssessment.valencyRole,
     },
     own_user: {
       user_id: userId,
-      name: ownUser.profile?.name,
+      name: ownUser.profile?.name ?? null,
       role: seedAssessment.valencyRole,
     },
     objective: seedAssessment.reasoning,
-    index_context: { network_id: indexContext.networkId, prompt: indexContext.prompt },
-    discovery_query: discoveryQuery,
+    index_context: { network_id: indexContext.networkId, prompt: indexContext.prompt ?? null },
+    discovery_query: discoveryQuery ?? null,
     recent_turns: recentSlice.map((turn, i) => ({
       turn_index: recentBaseIndex + i + 1,
       action: turn.action,

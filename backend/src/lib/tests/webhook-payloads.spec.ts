@@ -2,6 +2,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test' });
 
 import { describe, expect, it } from 'bun:test';
+import type { NegotiationTurn } from '@indexnetwork/protocol';
 import {
   buildOpportunityCreatedPayload,
   buildNegotiationTurnReceivedPayload,
@@ -68,22 +69,18 @@ describe('buildOpportunityCreatedPayload', () => {
     expect(payload.signals).toEqual([]);
     expect(payload.expires_at).toBeNull();
   });
-
-  it('parses confidence string via interpretation.confidence (already numeric)', () => {
-    const payload = buildOpportunityCreatedPayload({
-      opportunity: { ...baseOpportunity, interpretation: { ...baseOpportunity.interpretation, confidence: 0.42 } },
-      appUrl: 'https://index.network',
-    });
-    expect(payload.confidence).toBe(0.42);
-  });
 });
 
 describe('buildNegotiationTurnReceivedPayload', () => {
-  const sampleTurn = (action: string, message: string | null, reasoning: string) => ({
-    action: action as 'propose' | 'accept' | 'reject' | 'counter' | 'question',
+  const sampleTurn = (
+    action: NegotiationTurn['action'],
+    message: string | null,
+    reasoning: string,
+  ): NegotiationTurn => ({
+    action,
     assessment: {
       reasoning,
-      suggestedRoles: { ownUser: 'peer' as const, otherUser: 'peer' as const },
+      suggestedRoles: { ownUser: 'peer', otherUser: 'peer' },
     },
     message,
   });
