@@ -13,6 +13,14 @@
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "test": "bun test src/tests",
+    "test:watch": "bun test --watch src/tests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
   "openclaw": {
     "extensions": ["./src/index.ts"],
     "compat": {
