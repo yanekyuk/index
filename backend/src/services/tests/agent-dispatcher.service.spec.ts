@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
+import type { NegotiationTimeoutQueue, NegotiationTurnPayload } from '@indexnetwork/protocol';
+
 import { AgentDispatcherImpl } from '../agent-dispatcher.service';
 import type { AgentWithRelations } from '../../adapters/agent.database.adapter';
 
@@ -33,29 +35,38 @@ function makeWebhookTransport(events: string[], active = true) {
   };
 }
 
-const payload = {
+const payload: NegotiationTurnPayload = {
   negotiationId: 'n-1',
+  ownUser: { id: 'user-1', intents: [], profile: {} },
+  otherUser: { id: 'user-2', intents: [], profile: {} },
+  indexContext: { networkId: 'net-1' },
+  seedAssessment: { reasoning: '', valencyRole: '' },
   history: [],
-  seedAssessment: { verdict: 'pending' },
-  users: { a: {}, b: {} },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as any;
+  isFinalTurn: false,
+  isDiscoverer: true,
+};
 
 const scope = { action: 'manage:negotiations', scopeType: 'negotiation' as const };
 
 describe('AgentDispatcherImpl.dispatch', () => {
   let enqueuedCalls: number;
+  let enqueuedArgs: { authorizedAgents: AgentWithRelations[] } | null;
   let agents: AgentWithRelations[];
   let dispatcher: AgentDispatcherImpl;
 
   beforeEach(() => {
     enqueuedCalls = 0;
+    enqueuedArgs = null;
     agents = [];
     dispatcher = new AgentDispatcherImpl(
       { findAuthorizedAgents: async () => agents },
-      { enqueueDeliveries: async () => { enqueuedCalls++; } },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { enqueueTimeout: async () => {} } as any,
+      {
+        enqueueDeliveries: async (opts: { authorizedAgents: AgentWithRelations[] }) => {
+          enqueuedCalls++;
+          enqueuedArgs = { authorizedAgents: opts.authorizedAgents };
+        },
+      },
+      { enqueueTimeout: async () => {} } as unknown as NegotiationTimeoutQueue,
     );
   });
 
@@ -85,6 +96,30 @@ describe('AgentDispatcherImpl.dispatch', () => {
     const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
     expect(res.reason).toBe('waiting');
     expect(enqueuedCalls).toBe(1);
+    expect(enqueuedArgs?.authorizedAgents).toHaveLength(1);
+    expect(enqueuedArgs?.authorizedAgents[0]?.id).toBe('agent-1');
+  });
+
+  it('forwards only personal agents with matching webhook transports', async () => {
+    agents = [
+      makeAgent({ id: 'agent-match', transports: [makeWebhookTransport(['negotiation.turn_received'])] }),
+      makeAgent({ id: 'agent-no-transport', transports: [] }),
+      makeAgent({ id: 'agent-wrong-event', transports: [makeWebhookTransport(['opportunity.created'])] }),
+      makeAgent({ id: 'agent-inactive', transports: [makeWebhookTransport(['negotiation.turn_received'], false)] }),
+    ];
+    const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
+    expect(res.reason).toBe('waiting');
+    expect(enqueuedArgs?.authorizedAgents.map((a) => a.id)).toEqual(['agent-match']);
+  });
+
+  it('accepts agent when one of its transports matches', async () => {
+    agents = [makeAgent({ transports: [
+      makeWebhookTransport(['opportunity.created']),
+      makeWebhookTransport(['negotiation.turn_received']),
+    ]})];
+    const res = await dispatcher.dispatch('user-1', scope, payload, { timeoutMs: 300_000 });
+    expect(res.reason).toBe('waiting');
+    expect(enqueuedArgs?.authorizedAgents).toHaveLength(1);
   });
 
   it('returns timeout for short-timeout calls regardless of transport state (chat path, unchanged)', async () => {

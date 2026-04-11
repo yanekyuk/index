@@ -89,12 +89,11 @@ export class AgentDispatcherImpl implements AgentDispatcher {
     );
 
     if (agentsWithTransport.length === 0) {
-      if (personalAgents.length > 0) {
-        logger.warn('Personal agent(s) exist but none have an active negotiation.turn_received webhook transport', {
-          userId,
-          agentCount: personalAgents.length,
-        });
-      }
+      logger.warn('Personal agent(s) exist but none have an active negotiation.turn_received webhook transport', {
+        userId,
+        agentCount: personalAgents.length,
+        agentIds: personalAgents.map((a) => a.id),
+      });
       return { handled: false, reason: 'no_agent' };
     }
 
