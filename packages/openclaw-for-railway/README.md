@@ -2,9 +2,7 @@
 
 One-click deploy template for a fully-featured [OpenClaw](https://openclaw.ai) gateway on [Railway](https://railway.com). All OpenClaw capabilities enabled by default — Control UI, webhooks, plugins, tools, memory/semantic search — with Railway-generated secrets and a single user-supplied LLM provider key.
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/REPLACE_TEMPLATE_ID?utm_medium=integration&utm_source=button&utm_campaign=openclaw-for-railway)
-
-> **Note:** The button above links to `REPLACE_TEMPLATE_ID` until the template is published in the Railway dashboard. Replace that ID after publishing.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/L0lOaq?referralCode=VXmbZG&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 ## What this deploys
 
