@@ -44,7 +44,7 @@ if [ -n "${OPENCLAW_PROVIDER:-}" ] && { [ ! -f "$MARKER" ] || [ "${OPENCLAW_REON
         --auth-choice openai-api-key \
         --openai-api-key "$OPENAI_API_KEY" \
         --gateway-port "$PORT" \
-        --gateway-bind custom
+        --gateway-bind lan
       ;;
     gemini)
       : "${GEMINI_API_KEY:?GEMINI_API_KEY required when OPENCLAW_PROVIDER=gemini}"
@@ -52,7 +52,7 @@ if [ -n "${OPENCLAW_PROVIDER:-}" ] && { [ ! -f "$MARKER" ] || [ "${OPENCLAW_REON
         --auth-choice gemini-api-key \
         --gemini-api-key "$GEMINI_API_KEY" \
         --gateway-port "$PORT" \
-        --gateway-bind custom
+        --gateway-bind lan
       ;;
     *)
       echo "OPENCLAW_PROVIDER must be 'openai' or 'gemini' (got: '$OPENCLAW_PROVIDER'). Skipping onboarding." >&2
@@ -63,4 +63,4 @@ fi
 
 envsubst < "$OPENCLAW_RAILWAY_TEMPLATE_DIR/config.json5.template" > "$XDG_CONFIG_HOME/config.json5"
 
-exec node dist/index.js gateway --bind custom --port "$PORT" --allow-unconfigured
+exec node dist/index.js gateway --bind lan --port "$PORT" --allow-unconfigured

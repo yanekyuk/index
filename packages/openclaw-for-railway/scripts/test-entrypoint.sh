@@ -81,7 +81,7 @@ grep -q 'test-gateway-token' "$XDG_CONFIG_HOME/config.json5" || { echo "FAIL: ga
 test -f "$XDG_CONFIG_HOME/.railway-onboarded" || { echo "FAIL: marker file not created"; exit 1; }
 
 # Assertion 4: node was invoked for the gateway
-grep -q 'gateway --bind custom --port 18789' "$NODE_CALL_LOG" || { echo "FAIL: gateway not execed"; cat "$NODE_CALL_LOG"; exit 1; }
+grep -q 'gateway --bind lan --port 18789' "$NODE_CALL_LOG" || { echo "FAIL: gateway not execed"; cat "$NODE_CALL_LOG"; exit 1; }
 
 # --- second run: marker should suppress onboarding ---
 : > "$MOCK_CALL_LOG"
