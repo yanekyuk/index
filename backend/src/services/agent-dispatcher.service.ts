@@ -11,6 +11,8 @@ import { log } from '../lib/log';
 
 const logger = log.service.from('AgentDispatcherImpl');
 
+const TARGET_EVENT = 'negotiation.turn_received';
+
 /** Subset of AgentService needed by the dispatcher. */
 interface AgentLookup {
   findAuthorizedAgents(
@@ -78,6 +80,23 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       return { handled: false, reason: 'no_agent' };
     }
 
+    const agentsWithTransport = personalAgents.filter((agent) =>
+      agent.transports.some((transport) => {
+        if (transport.channel !== 'webhook' || !transport.active) return false;
+        const events = (transport.config as { events?: unknown })?.events;
+        return Array.isArray(events) && events.includes(TARGET_EVENT);
+      }),
+    );
+
+    if (agentsWithTransport.length === 0) {
+      logger.warn('Personal agent(s) exist but none have an active negotiation.turn_received webhook transport', {
+        userId,
+        agentCount: personalAgents.length,
+        agentIds: personalAgents.map((a) => a.id),
+      });
+      return { handled: false, reason: 'no_agent' };
+    }
+
     const isLongTimeout = options.timeoutMs > 60_000;
 
     if (isLongTimeout) {
@@ -87,7 +106,7 @@ export class AgentDispatcherImpl implements AgentDispatcher {
 
         await this.deliveryService.enqueueDeliveries({
           userId,
-          authorizedAgents: personalAgents,
+          authorizedAgents: agentsWithTransport,
           event: 'negotiation.turn_received',
           payload: {
             negotiationId: payload.negotiationId,
