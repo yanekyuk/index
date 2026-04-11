@@ -242,6 +242,22 @@ export class AgentController {
     }
   }
 
+  @Post('/:id/test-webhooks')
+  @UseGuards(AuthGuard)
+  async testWebhooks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      const result = await agentService.testWebhooks(agentId, user.id);
+      return Response.json(result);
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
   @Post('/:id/permissions')
   @UseGuards(AuthGuard)
   async grantPermission(req: Request, user: AuthenticatedUser, params?: RouteParams) {
