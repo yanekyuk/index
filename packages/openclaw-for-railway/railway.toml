@@ -1,0 +1,16 @@
+# Railway config-as-code for openclaw-for-railway
+# Schema: https://railway.com/railway.schema.json
+# Note: Template variable functions like ${{secret(n)}} and user-prompted
+# variables (OPENCLAW_PROVIDER, OPENAI_API_KEY, GEMINI_API_KEY) are declared
+# in the Railway template dashboard form when publishing this repo as a
+# template. They are NOT declared here.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
+# No healthcheckPath — Railway uses TCP/process-alive check. Avoids coupling
+# the healthcheck to the gateway auth token.
