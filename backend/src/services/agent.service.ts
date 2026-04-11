@@ -247,6 +247,7 @@ export class AgentService {
       throw new Error('Agent not found');
     }
 
+    // Import here to avoid circular dependency at module load
     const { webhookQueue } = await import('../queues/webhook.queue');
 
     const activeWebhookTransports = agent.transports.filter(
@@ -273,7 +274,7 @@ export class AgentService {
       delivered++;
     }
 
-    logger.info('Test webhook deliveries enqueued', {
+    logger.info('[AgentService] Test webhook deliveries enqueued', {
       agentId,
       userId,
       delivered,
