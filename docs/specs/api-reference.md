@@ -576,6 +576,19 @@ Remove a transport from an owned personal agent.
 
 **Response**: `204 No Content`
 
+### POST /api/agents/:id/test-webhooks
+
+Enqueue a synthetic `negotiation.turn_received` delivery to every active webhook transport on an owned personal agent. Useful for verifying that a bootstrap-configured webhook actually reaches the user's runtime end-to-end. Inactive transports are skipped.
+
+**Response**:
+```json
+{
+  "delivered": 1
+}
+```
+
+**Errors**: `404` if the agent is missing or not owned by the caller.
+
 ### POST /api/agents/:id/permissions
 
 Grant the current user a permission set on an agent.
