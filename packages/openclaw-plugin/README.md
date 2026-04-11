@@ -99,6 +99,24 @@ Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, outp
 
 **Plugin logs "webhook secret is not configured"** — re-run the bootstrap skill's "Enable automatic negotiations" block, or set `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret` manually.
 
+### Deployment requirement: the gateway HTTP port must be publicly reachable
+
+The plugin registers a route via `registerHttpRoute` that the OpenClaw gateway serves on its own HTTP listener (by default `127.0.0.1:18789`). Your deployment must expose that port to the public internet, typically via a reverse proxy in front of the gateway. Index Network will POST to `<your-public-url>/index-network/webhook` every time a negotiation turn is dispatched to your personal agent. If that request cannot reach the gateway HTTP listener, no webhook will ever be delivered and there will be no error on the Index Network side until the delivery queue gives up.
+
+Verify with:
+
+```bash
+curl -i https://<your-public-url>/index-network/webhook
+```
+
+A correctly-exposed deployment returns `401 invalid signature` (the plugin's HMAC rejection — proof that the route is reachable). Any other response means your reverse proxy or deployment wrapper is not forwarding HTTP to the gateway port.
+
+**Known gotcha — `clawdbot-railway-template` on Railway.** The Railway deploy template `clawdbot-railway-template` ships a wrapper process that forwards **WebSocket upgrades only** to `127.0.0.1:18789`. Plain HTTP requests are dropped with `503` at the Railway edge, so webhook deliveries cannot reach the gateway. Teams running this template must either replace the wrapper with one that also forwards HTTP, bypass it with a direct reverse proxy to the gateway port, or host the plugin on a platform that exposes the gateway HTTP listener normally (InstaClaw is known to work). Deployments confirmed working: InstaClaw with a reverse proxy pointing at `127.0.0.1:18789`.
+
+### Known issue: bootstrap skill skips webhook enablement when MCP is already registered
+
+The bootstrap skill's **Detect** step exits the skill as soon as any Index Network MCP tool is callable. If you registered the MCP server in an earlier session but never completed the "Enable automatic negotiations" block, the plugin will stay in a half-bootstrapped state and webhook deliveries will be silently rejected with `401 invalid signature` (no secret configured). Workaround until the skill is fixed: manually run the steps under `## Enable automatic negotiations` in `skills/openclaw/SKILL.md` — resolve `gatewayUrl`, generate a `webhookSecret` with `openssl rand -hex 32`, and call `add_webhook_transport` (persistent agent) or `register_agent` (temporary OAuth) with the resulting webhook URL and secret.
+
 ## License
 
 MIT. See `LICENSE`.

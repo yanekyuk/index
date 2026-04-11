@@ -3,7 +3,7 @@ title: "Event webhooks"
 type: spec
 tags: [api, webhooks, notifications, opportunities, integrations]
 created: 2026-04-05
-updated: 2026-04-08
+updated: 2026-04-11
 ---
 
 > **Status:** Transitional. Legacy webhook storage and controller routes still exist for API compatibility. Runtime fanout now prefers eligible agent-registry webhook transports and falls back to legacy `webhooks` only when no eligible agent transport exists.
@@ -143,6 +143,16 @@ Current runtime wiring:
 5. Runtime delivery prefers agent-registry webhook transports when eligible (dual gate: permission + event subscription), falling back to legacy `webhooks` when no eligible transport exists.
 6. `opportunity.accepted` and `opportunity.rejected` are registered for subscription validation but are not yet wired into runtime delivery in this branch.
 7. Agent-registry transports (`webhook`, `mcp`) coexist with legacy webhooks during the transition.
+
+## Known limitations
+
+### Delivery failures are under-logged
+
+`backend/src/queues/webhook.queue.ts#handleDelivery` throws on any non-2xx response from the target URL (`Webhook delivery failed: HTTP <status> - <body>`) and relies on BullMQ's retry/backoff to surface the failure. There is no per-attempt structured log entry for the delivery URL, response status, or response body — only the final "all retries exhausted" line once BullMQ has given up.
+
+Practical impact: when a subscriber's URL is unreachable or its reverse proxy returns `503` for every request, the protocol side has no visible signal during the retry window. Debugging requires reading BullMQ's raw job state rather than service logs.
+
+Fix direction: log at the point of failure inside `handleDelivery` with fields `{ deliveryId, userId, agentId, url, status, responseBody (truncated), attemptsMade }` before re-throwing so BullMQ still sees the failure. Keep the throw — BullMQ still needs it for retry accounting.
 
 ## Related documentation
 
