@@ -63,12 +63,23 @@ fi
 
 envsubst < "$OPENCLAW_RAILWAY_TEMPLATE_DIR/config.json5.template" > "$XDG_CONFIG_HOME/config.json5"
 
-# Patch openclaw.json on every boot to allow the Railway public domain as
-# a Control UI origin. `openclaw onboard` writes a default config that
-# leaves gateway.controlUi.allowedOrigins unset, so the Control UI rejects
-# the browser's origin with "origin not allowed". Running this every boot
-# means changing RAILWAY_PUBLIC_DOMAIN + redeploy is the only knob — no
-# drift, no manual dashboard edits.
+# Patch openclaw.json on every boot with the Railway-specific Control UI
+# settings. `openclaw onboard` writes a default config tuned for local
+# personal-device use, so several fields are either missing or set to
+# personal-device defaults that fight a Railway public deployment:
+#
+#   1. gateway.controlUi.allowedOrigins — unset by default, causing
+#      "origin not allowed" rejection of the browser's WebSocket.
+#   2. gateway.controlUi.dangerouslyDisableDeviceAuth — OpenClaw's default
+#      is to require a second-factor device-pairing handshake on every
+#      connection, on the assumption the gateway runs on a trusted local
+#      device. On Railway, the 64-char OPENCLAW_GATEWAY_TOKEN IS the auth
+#      boundary; pairing adds no value and breaks the "log in from any
+#      browser with the token" UX the template exists to provide.
+#
+# Running this on every boot (not gated by the onboarding marker) means
+# changing RAILWAY_PUBLIC_DOMAIN + redeploy is the only knob — no drift,
+# no manual dashboard edits.
 if [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ] && [ -f "$HOME/.openclaw/openclaw.json" ]; then
   node -e '
     const fs = require("fs");
@@ -78,8 +89,9 @@ if [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ] && [ -f "$HOME/.openclaw/openclaw.json" ]
     config.gateway.controlUi = config.gateway.controlUi || {};
     config.gateway.controlUi.enabled = true;
     config.gateway.controlUi.allowedOrigins = ["https://" + process.env.RAILWAY_PUBLIC_DOMAIN];
+    config.gateway.controlUi.dangerouslyDisableDeviceAuth = true;
     fs.writeFileSync(p, JSON.stringify(config, null, 2));
-    console.log("[openclaw-for-railway] patched controlUi.allowedOrigins for https://" + process.env.RAILWAY_PUBLIC_DOMAIN);
+    console.log("[openclaw-for-railway] patched controlUi for https://" + process.env.RAILWAY_PUBLIC_DOMAIN + " (allowedOrigins + dangerouslyDisableDeviceAuth)");
   '
 fi
 
