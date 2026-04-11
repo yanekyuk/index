@@ -100,6 +100,10 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
     await api.delete<void>(`/agents/${agentId}/transports/${transportId}`);
   },
 
+  testWebhooks: async (agentId: string): Promise<{ delivered: number }> => {
+    return api.post<{ delivered: number }>(`/agents/${agentId}/test-webhooks`);
+  },
+
   grantPermission: async (
     agentId: string,
     actions: string[],
