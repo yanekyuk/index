@@ -84,6 +84,8 @@ Legacy webhook routes:
 
 Agent-registry transport routes also exist separately for personal agents, including `webhook` and `mcp` channels under `/api/agents/:id/transports`. They coexist with `/api/webhooks` for compatibility; agent transports are now the primary source of truth for runtime delivery.
 
+The `list_webhooks` MCP tool returns a **unified view** of both storage layers. Each returned row carries a `source` discriminator (`"legacy"` or `"agent-registry"`). Agent-registry rows also include `agentId`. Consumers that want only legacy rows can filter by `source === "legacy"`; consumers that want only the primary delivery path can filter by `source === "agent-registry"`. Secrets are never returned from either layer.
+
 ### Payload envelope
 
 Every delivery uses the same JSON shape:
@@ -144,15 +146,24 @@ Current runtime wiring:
 6. `opportunity.accepted` and `opportunity.rejected` are registered for subscription validation but are not yet wired into runtime delivery in this branch.
 7. Agent-registry transports (`webhook`, `mcp`) coexist with legacy webhooks during the transition.
 
-## Known limitations
+## Observability
 
-### Delivery failures are under-logged
+### Per-attempt delivery logging
 
-`backend/src/queues/webhook.queue.ts#handleDelivery` throws on any non-2xx response from the target URL (`Webhook delivery failed: HTTP <status> - <body>`) and relies on BullMQ's retry/backoff to surface the failure. There is no per-attempt structured log entry for the delivery URL, response status, or response body — only the final "all retries exhausted" line once BullMQ has given up.
+`backend/src/queues/webhook.queue.ts#handleDelivery` emits a structured `[WebhookJob] Delivery attempt failed` warning before re-throwing so BullMQ still sees the failure and schedules retries. Each attempt records:
 
-Practical impact: when a subscriber's URL is unreachable or its reverse proxy returns `503` for every request, the protocol side has no visible signal during the retry window. Debugging requires reading BullMQ's raw job state rather than service logs.
+- `webhookId` — the transport or legacy row the delivery targets.
+- `event` — event name being delivered.
+- `url` — destination URL.
+- `attemptsMade` — BullMQ retry counter (1 on first attempt).
+- On HTTP errors: `status` and truncated `responseBody` (≤500 bytes).
+- On network errors: `errorCode` (`"timeout"` or the thrown error's `code` field) and `errorMessage`.
 
-Fix direction: log at the point of failure inside `handleDelivery` with fields `{ deliveryId, userId, agentId, url, status, responseBody (truncated), attemptsMade }` before re-throwing so BullMQ still sees the failure. Keep the throw — BullMQ still needs it for retry accounting.
+The `[WebhookJob] All retries exhausted, recorded failure` log emitted from the queue-events listener still marks the final failure and still increments the webhook's consecutive failure counter.
+
+### Secrets are redacted from tool invocation logs
+
+`ToolRegistry` logs each tool call via `logger.verbose('Tool: <name>', { context, query })`. Query payloads pass through `redactSensitiveFields` in `packages/protocol/src/shared/agent/tool.helpers.ts` before logging, so known-sensitive field names (`secret`, `webhookSecret`, `apiKey`, `token`, `accessToken`, `refreshToken`, `password`, `privateKey`, `authToken`, `bearerToken`, `clientSecret` — matched case-insensitively and ignoring underscores) are replaced with `"[redacted]"`. This applies to `add_webhook_transport`, `register_agent`, and any other tool that accepts a secret.
 
 ## Related documentation
 
