@@ -1,5 +1,5 @@
 [build]
-watchPatterns = ["/frontend/**"]
+watchPatterns = ["/frontend/**", "/bun.lock", "/package.json"]
 buildCommand = "bun run build:frontend"
 
 [deploy]

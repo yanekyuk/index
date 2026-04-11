@@ -1,5 +1,5 @@
 [build]
-watchPatterns = ["/backend/**", "/packages/protocol/**"]
+watchPatterns = ["/backend/**", "/packages/protocol/**", "/bun.lock", "/package.json"]
 buildCommand = "bun run build:package:protocol && bun run build:backend"
 
 [deploy]
