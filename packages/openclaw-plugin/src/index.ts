@@ -49,36 +49,35 @@ const COMPLETED_EVENT = 'negotiation.completed';
  * OpenClaw plugin entry point. Registers a single plugin-authed HTTP route
  * (`POST /index-network/webhook`) that dispatches inbound Index Network
  * events to the turn or completed handler based on the `x-index-event`
- * header. Reads `webhookSecret` and `negotiationMode` from
- * `api.pluginConfig`; logs a warning at registration time if the secret is
- * missing so operators notice before live traffic arrives.
+ * header. Reads `webhookSecret` and `negotiationMode` from `api.pluginConfig`
+ * on every request so that rotating the secret via
+ * `openclaw config set` takes effect without a plugin reload. Logs a warning
+ * at registration time if the secret is missing so operators notice before
+ * live traffic arrives; inbound webhooks are still rejected until one is set.
  *
  * @param api - The OpenClaw plugin API provided by the host. `pluginConfig`,
  *   `logger`, `runtime.subagent.run`, and `registerHttpRoute` are used.
  * @returns Nothing. The side effect is the registered HTTP route.
  */
 export default function register(api: OpenClawPluginApi): void {
-  const secret = typeof api.pluginConfig.webhookSecret === 'string'
-    ? api.pluginConfig.webhookSecret
-    : '';
-
-  if (!secret) {
+  if (!readSecret(api)) {
     api.logger.warn(
       'Index Network webhook secret is not configured — all inbound webhooks will be rejected until bootstrap completes.',
       { plugin: api.id },
     );
   }
 
-  const negotiationMode = typeof api.pluginConfig.negotiationMode === 'string'
-    ? api.pluginConfig.negotiationMode
-    : 'enabled';
-
   api.registerHttpRoute({
     path: WEBHOOK_PATH,
     auth: 'plugin',
     match: 'exact',
+    // Read secret and negotiationMode on every request so that rotating
+    // webhookSecret via `openclaw config set` takes effect without a
+    // plugin reload. Caching at register time silently breaks rotation.
     handler: async (req, res) => {
       const eventHeader = readHeader(req.headers['x-index-event']);
+      const secret = readSecret(api);
+      const negotiationMode = readNegotiationMode(api);
 
       if (eventHeader === TURN_EVENT) {
         return handleTurn(api, req, res, secret, negotiationMode);
@@ -89,6 +88,18 @@ export default function register(api: OpenClawPluginApi): void {
       return badRequest(res);
     },
   });
+}
+
+function readSecret(api: OpenClawPluginApi): string {
+  return typeof api.pluginConfig.webhookSecret === 'string'
+    ? api.pluginConfig.webhookSecret
+    : '';
+}
+
+function readNegotiationMode(api: OpenClawPluginApi): string {
+  return typeof api.pluginConfig.negotiationMode === 'string'
+    ? api.pluginConfig.negotiationMode
+    : 'enabled';
 }
 
 async function handleTurn(

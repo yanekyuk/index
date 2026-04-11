@@ -273,6 +273,120 @@ describe('register(api)', () => {
       expect(res._status).toBe(401);
       expect(fake.subagentCalls).toHaveLength(0);
     });
+
+    test('accepts requests after webhookSecret is set post-registration', async () => {
+      fake = buildFakeApi({});
+      register(fake.api);
+
+      (fake.api.pluginConfig as Record<string, unknown>).webhookSecret = SECRET;
+
+      const handler = getHandler(fake);
+      const req = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-1',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        SECRET,
+      );
+
+      const res = await callHandler(handler, req);
+
+      expect(res._status).toBe(202);
+      expect(fake.subagentCalls).toHaveLength(1);
+    });
+  });
+
+  describe('webhookSecret rotation without reload', () => {
+    test('handler picks up the rotated secret on the next request', async () => {
+      fake = buildFakeApi({ webhookSecret: 'first-secret-aaaaaaaaaaaaaaaa' });
+      register(fake.api);
+      const handler = getHandler(fake);
+
+      const firstReq = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-1',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        'first-secret-aaaaaaaaaaaaaaaa',
+      );
+      expect((await callHandler(handler, firstReq))._status).toBe(202);
+
+      (fake.api.pluginConfig as Record<string, unknown>).webhookSecret =
+        'second-secret-bbbbbbbbbbbbbbbb';
+
+      const rotatedReq = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-2',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        'second-secret-bbbbbbbbbbbbbbbb',
+      );
+      expect((await callHandler(handler, rotatedReq))._status).toBe(202);
+
+      const staleReq = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-3',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        'first-secret-aaaaaaaaaaaaaaaa',
+      );
+      expect((await callHandler(handler, staleReq))._status).toBe(401);
+    });
+
+    test('negotiationMode rotation without reload is honored on next request', async () => {
+      fake = buildFakeApi({
+        webhookSecret: SECRET,
+        negotiationMode: 'enabled',
+      });
+      register(fake.api);
+      const handler = getHandler(fake);
+
+      const enabledReq = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-1',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        SECRET,
+      );
+      expect((await callHandler(handler, enabledReq))._status).toBe(202);
+      expect(fake.subagentCalls).toHaveLength(1);
+
+      (fake.api.pluginConfig as Record<string, unknown>).negotiationMode = 'disabled';
+
+      const disabledReq = signedRequest(
+        'negotiation.turn_received',
+        {
+          negotiationId: 'neg-2',
+          turnNumber: 1,
+          counterpartyAction: 'propose',
+          counterpartyMessage: null,
+          deadline: '2026-04-12T00:00:00.000Z',
+        },
+        SECRET,
+      );
+      expect((await callHandler(handler, disabledReq))._status).toBe(202);
+      expect(fake.subagentCalls).toHaveLength(1);
+    });
   });
 
   describe('with negotiationMode: disabled', () => {
