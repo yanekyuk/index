@@ -1,0 +1,40 @@
+{
+  "folders": [
+    { "name": "🏠 root", "path": ".." },
+    { "name": "⚙️ backend", "path": "../backend" },
+    { "name": "🎨 frontend", "path": "../frontend" },
+    { "name": "📡 protocol", "path": "../packages/protocol" },
+    { "name": "⌨️ cli", "path": "../packages/cli" },
+    { "name": "🔌 openclaw-plugin", "path": "../packages/openclaw-plugin" },
+    { "name": "📚 docs", "path": "../docs" }
+  ],
+  "settings": {
+    "js/ts.tsdk.path": "node_modules/typescript/lib",
+    "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+    "eslint.workingDirectories": [
+      { "pattern": "backend" },
+      { "pattern": "frontend" },
+      { "pattern": "packages/*" }
+    ],
+    "files.exclude": {
+      "**/.DS_Store": true,
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.worktrees": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/bun.lock": true,
+      "**/.worktrees": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "oven.bun-vscode"
+    ]
+  }
+}

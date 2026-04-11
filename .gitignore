@@ -1,7 +1,8 @@
 # ===================
 # IDE & Editor
 # ===================
-.vscode/
+.vscode/*
+!.vscode/index.code-workspace
 .cursor/
 .claude/settings.local.json
 .codex
