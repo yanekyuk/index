@@ -60,6 +60,10 @@ export OPENCLAW_GATEWAY_TOKEN="test-gateway-token"
 export OPENCLAW_HOOKS_TOKEN="test-hooks-token"
 export RAILWAY_PUBLIC_DOMAIN="example.up.railway.app"
 
+# Rebind HOME to a tmp dir so the entrypoint's `export HOME=/data` doesn't try
+# to mkdir /data on the test host (which would fail without root).
+export OPENCLAW_HOME_DIR="$TMPROOT/home"
+
 # Rebind the template install path via env var so the entrypoint reads the tmp copy.
 export OPENCLAW_RAILWAY_TEMPLATE_DIR="$TMPROOT/opt/openclaw-railway"
 

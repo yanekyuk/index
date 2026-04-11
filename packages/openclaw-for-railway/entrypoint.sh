@@ -21,18 +21,26 @@ set -e
 : "${XDG_CONFIG_HOME:=/data/.openclaw}"
 : "${OPENCLAW_RAILWAY_TEMPLATE_DIR:=/opt/openclaw-railway}"
 
-mkdir -p "$XDG_CONFIG_HOME"
+# OpenClaw stores its runtime config (openclaw.json, keyring, sessions,
+# workspace) under $HOME/.openclaw regardless of $XDG_CONFIG_HOME. Point
+# $HOME at the persistent Railway volume so restarts preserve state.
+# OPENCLAW_HOME_DIR is an override hook for unit tests.
+: "${OPENCLAW_HOME_DIR:=/data}"
+export HOME="$OPENCLAW_HOME_DIR"
+
+mkdir -p "$XDG_CONFIG_HOME" "$HOME/.openclaw"
 
 MARKER="$XDG_CONFIG_HOME/.railway-onboarded"
 if [ -n "${OPENCLAW_PROVIDER:-}" ] && { [ ! -f "$MARKER" ] || [ "${OPENCLAW_REONBOARD:-}" = "1" ]; }; then
   case "$OPENCLAW_PROVIDER" in
     openai)
       : "${OPENAI_API_KEY:?OPENAI_API_KEY required when OPENCLAW_PROVIDER=openai}"
-      # --accept-risk is required by openclaw onboard --non-interactive whenever
-      # the gateway binds to a non-loopback address. On Railway we bind to
-      # 0.0.0.0 so public ingress works; the real auth boundary is the
-      # 64-char OPENCLAW_GATEWAY_TOKEN, not the bind mode.
-      openclaw onboard --non-interactive --mode local --accept-risk \
+      # --accept-risk: required when binding non-loopback for Railway public ingress.
+      # --skip-health: `openclaw onboard` probes for a running gateway after
+      #                writing config and exits non-zero if none is reachable.
+      #                We start the gateway AFTER onboarding, so the probe must
+      #                be skipped or the entrypoint dies on its own chicken-and-egg.
+      openclaw onboard --non-interactive --mode local --accept-risk --skip-health \
         --auth-choice openai-api-key \
         --openai-api-key "$OPENAI_API_KEY" \
         --gateway-port "$PORT" \
@@ -40,7 +48,7 @@ if [ -n "${OPENCLAW_PROVIDER:-}" ] && { [ ! -f "$MARKER" ] || [ "${OPENCLAW_REON
       ;;
     gemini)
       : "${GEMINI_API_KEY:?GEMINI_API_KEY required when OPENCLAW_PROVIDER=gemini}"
-      openclaw onboard --non-interactive --mode local --accept-risk \
+      openclaw onboard --non-interactive --mode local --accept-risk --skip-health \
         --auth-choice gemini-api-key \
         --gemini-api-key "$GEMINI_API_KEY" \
         --gateway-port "$PORT" \
