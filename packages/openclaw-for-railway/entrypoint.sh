@@ -63,8 +63,44 @@ fi
 
 envsubst < "$OPENCLAW_RAILWAY_TEMPLATE_DIR/config.json5.template" > "$XDG_CONFIG_HOME/config.json5"
 
+# Pre-install the Index Network plugin from the marketplace repo.
+#
+# `openclaw plugins install <id> --marketplace <repo>` normally does this,
+# but the CLI routes through a gateway scope-upgrade handshake that blocks
+# on device pairing on first boot — unusable from a subagent in a fresh
+# Railway deploy. The plugin loader already scans plugins.load.paths (see
+# config.json5.template), so dropping an extracted tarball in place is
+# functionally equivalent. The plugin ships TypeScript source and has no
+# runtime npm deps, so no build step is required.
+if [ -n "${INDEX_NETWORK_MCP_URL:-}" ]; then
+  : "${INDEX_NETWORK_PLUGIN_REPO:=https://github.com/indexnetwork/openclaw-plugin}"
+  : "${INDEX_NETWORK_PLUGIN_REF:=main}"
+  PLUGINS_ROOT="$XDG_CONFIG_HOME/plugins"
+  PLUGIN_DIR="$PLUGINS_ROOT/indexnetwork-openclaw-plugin"
+
+  if [ ! -f "$PLUGIN_DIR/openclaw.plugin.json" ] || [ "${INDEX_NETWORK_PLUGIN_REFRESH:-}" = "1" ]; then
+    mkdir -p "$PLUGINS_ROOT"
+    TARBALL_URL="${INDEX_NETWORK_PLUGIN_REPO%.git}/archive/refs/heads/${INDEX_NETWORK_PLUGIN_REF}.tar.gz"
+    PLUGIN_STAGE="${PLUGIN_DIR}.new"
+    rm -rf "$PLUGIN_STAGE"
+    mkdir -p "$PLUGIN_STAGE"
+    # Scoped pipefail so curl failures (404, truncated stream, DNS error) fail
+    # the branch instead of being masked by tar's exit status on partial input.
+    # `set -e` alone does not catch mid-pipeline failures.
+    if (set -o pipefail; curl -fsSL "$TARBALL_URL" | tar -xz -C "$PLUGIN_STAGE" --strip-components=1); then
+      rm -rf "$PLUGIN_DIR"
+      mv "$PLUGIN_STAGE" "$PLUGIN_DIR"
+      echo "[openclaw-for-railway] installed Index Network plugin from ${INDEX_NETWORK_PLUGIN_REPO}@${INDEX_NETWORK_PLUGIN_REF} -> $PLUGIN_DIR"
+    else
+      rm -rf "$PLUGIN_STAGE"
+      echo "[openclaw-for-railway] WARN: failed to download $TARBALL_URL; index-network plugin not installed" >&2
+    fi
+  fi
+fi
+
 # Patch openclaw.json on every boot with the Railway-specific Control UI
-# settings. `openclaw onboard` writes a default config tuned for local
+# settings and — if INDEX_NETWORK_MCP_URL is set — the Index Network MCP
+# server entry. `openclaw onboard` writes a default config tuned for local
 # personal-device use, so several fields are either missing or set to
 # personal-device defaults that fight a Railway public deployment:
 #
@@ -76,22 +112,55 @@ envsubst < "$OPENCLAW_RAILWAY_TEMPLATE_DIR/config.json5.template" > "$XDG_CONFIG
 #      device. On Railway, the 64-char OPENCLAW_GATEWAY_TOKEN IS the auth
 #      boundary; pairing adds no value and breaks the "log in from any
 #      browser with the token" UX the template exists to provide.
+#   3. mcp["index-network"] — normally written by `openclaw mcp set`, but
+#      that CLI command hits the same scope-upgrade device-pairing wall as
+#      `openclaw plugins install`. File-patching bypasses it.
 #
 # Running this on every boot (not gated by the onboarding marker) means
-# changing RAILWAY_PUBLIC_DOMAIN + redeploy is the only knob — no drift,
-# no manual dashboard edits.
-if [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ] && [ -f "$HOME/.openclaw/openclaw.json" ]; then
+# changing RAILWAY_PUBLIC_DOMAIN / INDEX_NETWORK_MCP_URL / INDEX_NETWORK_API_KEY
+# + redeploy is the only knob — no drift, no manual dashboard edits.
+if [ -f "$HOME/.openclaw/openclaw.json" ] && { [ -n "${RAILWAY_PUBLIC_DOMAIN:-}" ] || [ -n "${INDEX_NETWORK_MCP_URL:-}" ]; }; then
+  INDEX_NETWORK_MCP_URL="${INDEX_NETWORK_MCP_URL:-}" \
+  INDEX_NETWORK_API_KEY="${INDEX_NETWORK_API_KEY:-}" \
   node -e '
     const fs = require("fs");
     const p = process.env.HOME + "/.openclaw/openclaw.json";
-    const config = JSON.parse(fs.readFileSync(p, "utf8"));
-    config.gateway = config.gateway || {};
-    config.gateway.controlUi = config.gateway.controlUi || {};
-    config.gateway.controlUi.enabled = true;
-    config.gateway.controlUi.allowedOrigins = ["https://" + process.env.RAILWAY_PUBLIC_DOMAIN];
-    config.gateway.controlUi.dangerouslyDisableDeviceAuth = true;
-    fs.writeFileSync(p, JSON.stringify(config, null, 2));
-    console.log("[openclaw-for-railway] patched controlUi for https://" + process.env.RAILWAY_PUBLIC_DOMAIN + " (allowedOrigins + dangerouslyDisableDeviceAuth)");
+    const before = fs.readFileSync(p, "utf8");
+    const config = JSON.parse(before);
+    const touched = [];
+
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      config.gateway = config.gateway || {};
+      config.gateway.controlUi = config.gateway.controlUi || {};
+      config.gateway.controlUi.enabled = true;
+      config.gateway.controlUi.allowedOrigins = ["https://" + process.env.RAILWAY_PUBLIC_DOMAIN];
+      config.gateway.controlUi.dangerouslyDisableDeviceAuth = true;
+      touched.push("controlUi(allowedOrigins+dangerouslyDisableDeviceAuth) for https://" + process.env.RAILWAY_PUBLIC_DOMAIN);
+    }
+
+    if (process.env.INDEX_NETWORK_MCP_URL) {
+      config.mcp = config.mcp || {};
+      const entry = {
+        url: process.env.INDEX_NETWORK_MCP_URL,
+        transport: "streamable-http",
+      };
+      if (process.env.INDEX_NETWORK_API_KEY) {
+        entry.headers = { "x-api-key": process.env.INDEX_NETWORK_API_KEY };
+      }
+      config.mcp["index-network"] = entry;
+      touched.push("mcp.index-network -> " + process.env.INDEX_NETWORK_MCP_URL + (process.env.INDEX_NETWORK_API_KEY ? " (with x-api-key)" : " (no headers)"));
+    }
+
+    // Compare against a normalized round-trip of the original to avoid
+    // rewriting when only whitespace differs. A no-op write bumps mtime,
+    // which can trip OpenClaw config reload watchers and trigger the
+    // SIGUSR1 gateway-restart loop we just fixed elsewhere in this file.
+    const next = JSON.stringify(config, null, 2);
+    const beforeNormalized = JSON.stringify(JSON.parse(before), null, 2);
+    if (touched.length > 0 && next !== beforeNormalized) {
+      fs.writeFileSync(p, next);
+      console.log("[openclaw-for-railway] patched openclaw.json: " + touched.join("; "));
+    }
   '
 fi
 

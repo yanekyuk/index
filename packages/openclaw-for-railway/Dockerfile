@@ -7,11 +7,19 @@ FROM ghcr.io/openclaw/openclaw:latest
 
 USER root
 
-# envsubst ships with gettext-base. Install only if missing so rebuilds are
-# cheap when the base image already includes it.
-RUN if ! command -v envsubst >/dev/null 2>&1; then \
+# envsubst ships with gettext-base. curl is used by entrypoint.sh to
+# pre-install marketplace plugins (e.g. Index Network). Install only the
+# ones that are missing so rebuilds stay cheap when the base image
+# already includes them. `$needs` is intentionally word-split into the
+# apt-get argv (no arrays in /bin/sh); suppressed below.
+# hadolint ignore=SC2086
+RUN set -eux; \
+    needs=""; \
+    command -v envsubst >/dev/null 2>&1 || needs="$needs gettext-base"; \
+    command -v curl >/dev/null 2>&1 || needs="$needs curl"; \
+    if [ -n "$needs" ]; then \
       apt-get update \
-      && apt-get install -y --no-install-recommends gettext-base \
+      && apt-get install -y --no-install-recommends $needs \
       && rm -rf /var/lib/apt/lists/*; \
     fi
 
