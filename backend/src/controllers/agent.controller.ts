@@ -88,11 +88,6 @@ function errorStatus(err: unknown, fallback = 400): number {
   return fallback;
 }
 
-function hasWebhookEvents(config?: Record<string, unknown>): boolean {
-  const events = config?.events;
-  return Array.isArray(events) && events.some((event) => typeof event === 'string' && event.trim());
-}
-
 async function parseBody<T>(req: Request, schema: z.ZodSchema<T>): Promise<T | Response> {
   let raw: unknown;
   try {
@@ -226,10 +221,6 @@ export class AgentController {
       return body;
     }
 
-    if (body.channel === 'webhook' && !hasWebhookEvents(body.config)) {
-      return jsonError('Webhook events are required', 400);
-    }
-
     try {
       const transport = await agentService.addTransport(
         agentId,
@@ -256,22 +247,6 @@ export class AgentController {
     try {
       await agentService.removeTransport(agentId, transportId, user.id);
       return new Response(null, { status: 204 });
-    } catch (err) {
-      return jsonError(parseErrorMessage(err), errorStatus(err));
-    }
-  }
-
-  @Post('/:id/test-webhooks')
-  @UseGuards(AuthGuard)
-  async testWebhooks(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
-    const agentId = params?.id;
-    if (!agentId) {
-      return jsonError('Agent ID is required', 400);
-    }
-
-    try {
-      const result = await agentService.testWebhooks(agentId, user.id);
-      return Response.json(result);
     } catch (err) {
       return jsonError(parseErrorMessage(err), errorStatus(err));
     }
