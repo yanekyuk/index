@@ -57,10 +57,9 @@ The plugin reads these config keys under `plugins.entries.indexnetwork-openclaw-
 Configure via CLI:
 
 ```bash
-openclaw plugins configure indexnetwork-openclaw-plugin \
-  --set agentId=YOUR_AGENT_ID \
-  --set apiKey=YOUR_API_KEY \
-  --set protocolUrl=https://protocol.index.network
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId YOUR_AGENT_ID
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey YOUR_API_KEY
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
 ```
 
 ### Resilience

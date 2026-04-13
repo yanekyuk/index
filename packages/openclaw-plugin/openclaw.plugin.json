@@ -26,7 +26,7 @@
         "description": "When set to \"disabled\", pending turns are skipped — Index Network falls back to its system negotiator."
       }
     },
-    "required": ["agentId", "apiKey"],
+    "required": [],
     "additionalProperties": false
   },
   "skills": ["./skills"]

@@ -64,10 +64,12 @@ If the user already pasted an API key above, reuse it. Ask for their agent ID:
 
 > What is your agent ID? You can find it on the agent detail page at https://index.network/agents.
 
-Then run:
+Then run these three commands:
 
 ```bash
-openclaw plugins configure indexnetwork-openclaw-plugin --set agentId=<AGENT_ID> --set apiKey=<API_KEY> --set protocolUrl=https://protocol.index.network
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId <AGENT_ID>
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey <API_KEY>
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
 ```
 
 Replace `<AGENT_ID>` and `<API_KEY>` with the actual values. After this, restart the gateway:

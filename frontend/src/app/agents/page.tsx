@@ -81,7 +81,7 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
   const keyPlaceholder = apiKey || 'YOUR_API_KEY';
   const agentPlaceholder = agentId || 'YOUR_AGENT_ID';
 
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || '';
+  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || 'http://localhost:3001';
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -114,7 +114,11 @@ function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: str
     headers: { 'x-api-key': keyPlaceholder },
   })}'`;
 
-  const openclawConfigure = `openclaw plugins configure indexnetwork-openclaw-plugin --set agentId=${agentPlaceholder} --set apiKey=${keyPlaceholder} --set protocolUrl=${protocolUrl || 'http://localhost:3001'}`;
+  const openclawConfigure = [
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId ${agentPlaceholder}`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey ${keyPlaceholder}`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl ${protocolUrl}`,
+  ].join('\n');
 
   return (
     <div className="border border-gray-200 rounded-sm" onClick={(e) => e.stopPropagation()}>
