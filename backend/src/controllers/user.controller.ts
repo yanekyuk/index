@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { Controller, Get, Post, Put, UseGuards } from '../lib/router/router.decorators';
+import { Controller, Delete, Get, Post, Put, UseGuards } from '../lib/router/router.decorators';
 import { AuthGuard } from '../guards/auth.guard';
 import type { AuthenticatedUser } from '../guards/auth.guard';
 import { userService } from '../services/user.service';
@@ -73,6 +73,28 @@ export class UserController {
     logger.verbose('Add contact requested', { userId: user.id });
     const result = await contactService.addContact(user.id, parsed.data.email, { name: parsed.data.name });
     return Response.json({ result });
+  }
+
+  /**
+   * DELETE /users/contacts/:contactId — remove a contact from the authenticated user's personal network.
+   * @param _req - Request (unused)
+   * @param user - Authenticated user from AuthGuard
+   * @param params - Route params containing contactId (the contact's userId)
+   * @returns JSON `{ success: true }` or 404 if not found
+   */
+  @Delete('/contacts/:contactId')
+  @UseGuards(AuthGuard)
+  async removeContact(_req: Request, user: AuthenticatedUser, params: Record<string, string>) {
+    try {
+      await contactService.removeContact(user.id, params.contactId);
+      return Response.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not found') || msg.includes('Not found')) {
+        return Response.json({ error: 'Contact not found' }, { status: 404 });
+      }
+      throw err;
+    }
   }
 
   /**

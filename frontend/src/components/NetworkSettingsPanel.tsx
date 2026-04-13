@@ -285,7 +285,11 @@ export default function NetworkSettingsPanel({ index, onDeleted, activeTab }: Ne
 
   const handleRemoveMember = async (memberId: string) => {
     try {
-      await indexesService.removeMember(index.id, memberId);
+      if (index.isPersonal) {
+        await usersService.removeContact(memberId);
+      } else {
+        await indexesService.removeMember(index.id, memberId);
+      }
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (err) {
       console.error('Error removing member:', err);
