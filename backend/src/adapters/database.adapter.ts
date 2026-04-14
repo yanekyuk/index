@@ -4558,7 +4558,7 @@ export class UserDatabaseAdapter {
       .where(eq(userNotificationSettings.userId, userId))
       .limit(1);
     if (!existing[0]) return;
-    const { telegram: _removed, ...rest } = (existing[0].preferences as NotificationPreferences) ?? {};
+    const { telegram: _removed, ...rest } = (existing[0].preferences as NotificationPreferences | null) ?? {};
     await db
       .update(userNotificationSettings)
       .set({ preferences: rest as NotificationPreferences, updatedAt: new Date() })
