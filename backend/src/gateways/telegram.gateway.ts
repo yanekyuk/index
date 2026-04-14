@@ -14,7 +14,7 @@ export interface GatewayDeps {
   updateTelegramPrefs(userId: string, prefs: TelegramPrefs): Promise<void>;
   findByTelegramChatId(chatId: string): Promise<{ userId: string; sessionId?: string } | null>;
   createChatSession(data: { id: string; userId: string; title?: string }): Promise<void>;
-  createChatMessage(data: { id: string; sessionId: string; role: string; content: string }): Promise<void>;
+  createChatMessage(data: { id: string; sessionId: string; role: 'user' | 'assistant' | 'system'; content: string }): Promise<void>;
   processMessage(userId: string, text: string): Promise<{ responseText: string; error?: string }>;
   sendTelegramMessage(chatId: string, text: string, keyboard?: Array<Array<{ text: string; url: string }>>): Promise<void>;
 }
