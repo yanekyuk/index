@@ -22,6 +22,7 @@ import { AgentController } from './controllers/agent.controller';
 import { ConversationService } from './services/conversation.service';
 import { TaskService } from './services/task.service';
 import { IntegrationController } from './controllers/integration.controller';
+import { WebhooksController } from './controllers/webhooks.controller';
 import { ComposioIntegrationAdapter } from './adapters/integration.adapter';
 import { IntegrationService } from './services/integration.service';
 import { contactService } from './services/contact.service';
@@ -43,6 +44,9 @@ import { negotiationTimeoutQueue } from './queues/negotiation-timeout.queue';
 import { negotiationClaimTimeoutQueue } from './queues/negotiation-claim-timeout.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
+import { NegotiationEvents } from './events/negotiation.event';
+import { init as initTelegramGateway } from './gateways/telegram.gateway';
+import { setWebhook } from './lib/telegram/bot-api';
 import { opportunityService } from './services/opportunity.service';
 
 intentQueue.startWorker();
@@ -85,6 +89,29 @@ const GLOBAL_PREFIX = '/api';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const logger = log.server.from("main");
+
+// ── NegotiationEvents → Telegram notifications ──────────────────────────────
+NegotiationEvents.onTurnReceived = (data) => {
+  notificationQueue.queueNegotiationNotification(
+    data.negotiationId,
+    data.userId,
+    data.turnNumber,
+    data.counterpartyAction,
+  ).catch((err) => {
+    logger.error('Failed to enqueue negotiation notification', { negotiationId: data.negotiationId, error: err });
+  });
+};
+
+// ── Telegram bot startup ────────────────────────────────────────────────────
+if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET) {
+  const webhookBase = process.env.BASE_URL ?? process.env.APP_URL ?? '';
+  const webhookUrl = `${webhookBase.replace(/\/$/, '')}/api/webhooks/telegram`;
+  setWebhook(webhookUrl, process.env.TELEGRAM_WEBHOOK_SECRET).catch((err) => {
+    logger.error('Failed to register Telegram webhook on startup', { error: err });
+  });
+  initTelegramGateway();
+  logger.info('Telegram bot gateway initialised', { webhookUrl });
+}
 
 /** Match pathname against a route pattern with :param placeholders; returns params or null. */
 function matchPath(pattern: string, pathname: string): Record<string, string> | null {
@@ -144,6 +171,7 @@ controllerInstances.set(AgentController, new AgentController());
 const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
+controllerInstances.set(WebhooksController, new WebhooksController());
 controllerInstances.set(DebugController, new DebugController());
 const toolService = new ToolService(contactService, integrationService, integrationAdapter);
 controllerInstances.set(ToolController, new ToolController(toolService));
