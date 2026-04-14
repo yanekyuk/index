@@ -33,6 +33,7 @@
     "typescript-lsp@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "claude-code-setup@claude-plugins-official": true,
-    "swe@arcana": false
+    "swe@arcana": false,
+    "index-network@indexnetwork-claude-plugin": true
   }
 }
