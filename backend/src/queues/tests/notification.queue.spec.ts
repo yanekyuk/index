@@ -68,7 +68,7 @@ import {
   type NotificationQueueDatabase,
   queueOpportunityNotification,
 } from '../notification.queue';
-import { emitTelegramNotification, onTelegramNotification } from '../../lib/notification-events';
+import { onTelegramNotification } from '../../lib/notification-events';
 
 const asNotifDb = (db: { getOpportunity: (id: string) => Promise<unknown> }): NotificationQueueDatabase => ({
   getOpportunity: db.getOpportunity as NotificationQueueDatabase['getOpportunity'],
