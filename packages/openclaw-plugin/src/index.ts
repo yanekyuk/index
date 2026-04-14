@@ -19,6 +19,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { dispatchDelivery } from './delivery.dispatcher.js';
+import { opportunityDeliveryBody } from './prompts/opportunity-delivery.prompt.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
 
 /** Base polling interval: 30 seconds. */
@@ -140,6 +141,8 @@ async function poll(
     if (negotiationResult === 'network_error') return; // already bumped backoff
   }
 
+  await handleOpportunityPickup(api, baseUrl, agentId, apiKey);
+
   await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
 }
 
@@ -228,6 +231,75 @@ async function handleNegotiationPickup(
   }
 
   return 'handled';
+}
+
+/**
+ * Handles one opportunity pickup cycle. Picks up a pending opportunity,
+ * dispatches it via `dispatchDelivery`, then confirms delivery.
+ *
+ * @returns `true` if an opportunity was dispatched, `false` otherwise.
+ * @internal
+ */
+export async function handleOpportunityPickup(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+): Promise<boolean> {
+  const pickupUrl = `${baseUrl}/api/agents/${agentId}/opportunities/pickup`;
+
+  const res = await fetch(pickupUrl, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (res.status === 204) {
+    return false;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    api.logger.warn(`Opportunity pickup failed: ${res.status} ${text}`);
+    return false;
+  }
+
+  const payload = (await res.json()) as {
+    opportunityId: string;
+    reservationToken: string;
+    reservationExpiresAt: string;
+    rendered: {
+      headline: string;
+      personalizedSummary: string;
+      suggestedAction: string;
+      narratorRemark: string;
+    };
+  };
+
+  await dispatchDelivery(api, {
+    rendered: {
+      headline: payload.rendered.headline,
+      body: opportunityDeliveryBody(payload.rendered),
+    },
+    sessionKey: `index:delivery:opportunity:${payload.opportunityId}`,
+    idempotencyKey: `index:delivery:opportunity:${payload.opportunityId}:${payload.reservationToken}`,
+  });
+
+  // Confirm delivery — failures are warnings only, dispatch already happened
+  const confirmUrl = `${baseUrl}/api/agents/${agentId}/opportunities/${payload.opportunityId}/delivered`;
+  const confirmRes = await fetch(confirmUrl, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ reservationToken: payload.reservationToken }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!confirmRes.ok) {
+    const text = await confirmRes.text().catch(() => '');
+    api.logger.warn(`Opportunity confirm failed for ${payload.opportunityId}: ${confirmRes.status} ${text}`);
+  }
+
+  return true;
 }
 
 /**
