@@ -11,8 +11,10 @@ import {
   ConflictError,
   UnauthorizedError,
 } from '../services/negotiation-polling.service';
+import { OpportunityDeliveryService } from '../services/opportunity-delivery.service';
 
 const agentTestMessageService = new AgentTestMessageService();
+const opportunityDeliveryService = new OpportunityDeliveryService();
 
 const logger = log.controller.from('agent');
 
@@ -54,6 +56,10 @@ const enqueueTestMessageSchema = z.object({
 });
 
 const confirmTestMessageDeliveredSchema = z.object({
+  reservationToken: z.string().min(1, 'reservationToken is required'),
+});
+
+const confirmOpportunityDeliveredSchema = z.object({
   reservationToken: z.string().min(1, 'reservationToken is required'),
 });
 
@@ -471,6 +477,55 @@ export class AgentController {
 
     try {
       await agentTestMessageService.confirmDelivered(messageId, body.reservationToken);
+      return Response.json({ ok: true });
+    } catch (err) {
+      const msg = parseErrorMessage(err);
+      if (msg === 'invalid_reservation_token_or_already_delivered') {
+        return jsonError('Invalid or expired reservation token', 404);
+      }
+      return jsonError(msg, errorStatus(err));
+    }
+  }
+
+  @Post('/:id/opportunities/pickup')
+  @UseGuards(AuthOrApiKeyGuard)
+  async pickupOpportunity(_req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    if (!agentId) {
+      return jsonError('Agent ID is required', 400);
+    }
+
+    try {
+      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
+      await agentService.getById(agentId, user.id);
+      const result = await opportunityDeliveryService.pickupPending(agentId);
+      if (!result) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(result);
+    } catch (err) {
+      return jsonError(parseErrorMessage(err), errorStatus(err));
+    }
+  }
+
+  @Post('/:id/opportunities/:opportunityId/delivered')
+  @UseGuards(AuthOrApiKeyGuard)
+  async confirmOpportunityDelivered(req: Request, user: AuthenticatedUser, params?: RouteParams) {
+    const agentId = params?.id;
+    const opportunityId = params?.opportunityId;
+    if (!agentId || !opportunityId) {
+      return jsonError('Agent ID and opportunity ID are required', 400);
+    }
+
+    const body = await parseBody(req, confirmOpportunityDeliveredSchema);
+    if (body instanceof Response) {
+      return body;
+    }
+
+    try {
+      // Verify the authenticated user owns the agent (throws 'Agent not found' or 'Not authorized' if not)
+      await agentService.getById(agentId, user.id);
+      await opportunityDeliveryService.confirmDelivered(opportunityId, user.id, body.reservationToken);
       return Response.json({ ok: true });
     } catch (err) {
       const msg = parseErrorMessage(err);
