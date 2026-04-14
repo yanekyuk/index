@@ -22,6 +22,14 @@ export interface NotificationJobData {
   priority: NotificationPriority;
 }
 
+/** Payload for a single negotiation notification job. */
+export interface NegotiationNotificationJobData {
+  negotiationId: string;
+  recipientId: string;
+  turnNumber: number;
+  counterpartyAction: string;
+}
+
 /** Minimal database interface for notification queue (used when deps provided in tests). */
 export type NotificationQueueDatabase = Pick<ChatDatabaseAdapter, 'getOpportunity'> & {
   getTelegramPrefs(userId: string): Promise<import('../schemas/database.schema').TelegramPrefs | null>;
@@ -105,14 +113,42 @@ export class NotificationQueue {
   }
 
   /**
+   * Enqueue a negotiation turn notification for delivery.
+   * @param negotiationId - The negotiation ID
+   * @param recipientId - The user who should receive the notification
+   * @param turnNumber - Current turn number
+   * @param counterpartyAction - The action taken by the counterparty
+   */
+  async queueNegotiationNotification(
+    negotiationId: string,
+    recipientId: string,
+    turnNumber: number,
+    counterpartyAction: string,
+  ): Promise<void> {
+    await this.queue.add(
+      'process_negotiation_notification',
+      { negotiationId, recipientId, turnNumber, counterpartyAction },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: { age: 24 * 60 * 60 },
+        removeOnFail: { age: 7 * 24 * 60 * 60 },
+      },
+    );
+  }
+
+  /**
    * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`process_opportunity_notification`)
+   * @param name - Job name (`process_opportunity_notification` | `process_negotiation_notification`)
    * @param data - Job payload
    */
   async processJob(name: string, data: NotificationJobData): Promise<void> {
     switch (name) {
       case 'process_opportunity_notification':
         await this.processOpportunityNotification(data);
+        break;
+      case 'process_negotiation_notification':
+        await this.processNegotiationNotification(data as unknown as NegotiationNotificationJobData);
         break;
       default:
         this.queueLogger.warn(`[NotificationProcessor] Unknown job name: ${name}`);
@@ -196,6 +232,25 @@ export class NotificationQueue {
         recipientId,
       });
     }
+  }
+
+  private async processNegotiationNotification(data: NegotiationNotificationJobData): Promise<void> {
+    const { negotiationId, recipientId, counterpartyAction } = data;
+
+    const telegramPrefs = await this.database.getTelegramPrefs(recipientId);
+    if (!telegramPrefs?.notifications.negotiationTurn) return;
+
+    const appUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+    emitTelegramNotification({
+      userId: recipientId,
+      message: `You have a new negotiation turn. ${counterpartyAction === 'propose' ? 'A proposal is waiting for your response.' : `Your counterpart sent: ${counterpartyAction}.`}`,
+      inlineButtons: [{ text: 'View negotiation', url: `${appUrl}/conversations` }],
+    });
+
+    this.logger.info('[NotificationJob] Emitted Telegram negotiation notification', {
+      negotiationId,
+      recipientId,
+    });
   }
 
   private async sendHighPriorityEmail(

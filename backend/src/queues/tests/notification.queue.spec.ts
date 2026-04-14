@@ -64,6 +64,7 @@ import {
   NotificationQueue,
   QUEUE_NAME,
   type NotificationJobData,
+  type NegotiationNotificationJobData,
   type NotificationPriority,
   type NotificationQueueDatabase,
   queueOpportunityNotification,
@@ -457,6 +458,49 @@ describe('processOpportunityNotification — Telegram delivery', () => {
       recipientId: 'user-3',
       priority: 'high',
     });
+
+    unsub();
+    expect(received).toHaveLength(0);
+  });
+});
+
+describe('processJob — process_negotiation_notification', () => {
+  it('emits Telegram notification when negotiationTurn=true', async () => {
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity('opp-x', 'user-x', 'ignored'),
+      telegramPrefs: { opportunityAccepted: false, negotiationTurn: true },
+    });
+    const queue = new NotificationQueue({ database: db });
+    await queue.processJob('process_negotiation_notification', {
+      negotiationId: 'neg-1',
+      recipientId: 'user-x',
+      turnNumber: 2,
+      counterpartyAction: 'propose',
+    } as NegotiationNotificationJobData);
+
+    unsub();
+    expect(received).toHaveLength(1);
+    expect((received[0] as { userId: string }).userId).toBe('user-x');
+  });
+
+  it('does NOT emit when negotiationTurn=false', async () => {
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity('opp-y', 'user-y', 'ignored'),
+      telegramPrefs: { opportunityAccepted: false, negotiationTurn: false },
+    });
+    const queue = new NotificationQueue({ database: db });
+    await queue.processJob('process_negotiation_notification', {
+      negotiationId: 'neg-2',
+      recipientId: 'user-y',
+      turnNumber: 1,
+      counterpartyAction: 'question',
+    } as NegotiationNotificationJobData);
 
     unsub();
     expect(received).toHaveLength(0);
