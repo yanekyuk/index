@@ -4,7 +4,7 @@ import { AuthGuard, type AuthenticatedUser } from '../guards/auth.guard';
 import { Controller, Delete, Get, Post, UseGuards } from '../lib/router/router.decorators';
 
 /** Server-side allowlist of supported Composio toolkits. */
-const ALLOWED_TOOLKITS = ['gmail', 'slack'] as const;
+const ALLOWED_TOOLKITS = ['gmail', 'slack', 'telegram'] as const;
 
 type AllowedToolkit = typeof ALLOWED_TOOLKITS[number];
 
@@ -56,6 +56,9 @@ export class IntegrationController {
   async connect(_req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
+    }
+    if (params.toolkit === 'telegram') {
+      return this.integrationService.connectTelegram(user.id);
     }
     const baseUrl = (process.env.FRONTEND_URL || process.env.APP_URL || '').replace(/\/$/, '');
     const callbackUrl = `${baseUrl}/oauth/callback`;
@@ -141,6 +144,10 @@ export class IntegrationController {
   @Delete('/:id')
   @UseGuards(AuthGuard)
   async disconnect(_req: Request, user: AuthenticatedUser, params: { id: string }) {
+    if (params.id.startsWith('telegram:')) {
+      await this.integrationService.disconnectTelegram(user.id);
+      return { success: true };
+    }
     const connections = await this.integrationService.listConnections(user.id);
     const conn = connections.find((c) => c.id === params.id);
     if (!conn) {
