@@ -78,6 +78,9 @@ export class IntegrationController {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
     }
+    if (params.toolkit === 'telegram') {
+      return new Response(JSON.stringify({ error: 'Not supported for Telegram' }), { status: 400 });
+    }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const networkId = typeof body.networkId === 'string' ? body.networkId.trim() || undefined : undefined;
     if (!networkId) {
@@ -100,6 +103,9 @@ export class IntegrationController {
   async unlink(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
+    }
+    if (params.toolkit === 'telegram') {
+      return new Response(JSON.stringify({ error: 'Not supported for Telegram' }), { status: 400 });
     }
     const url = new URL(req.url);
     const networkId = url.searchParams.get('networkId')?.trim() || undefined;
@@ -125,6 +131,9 @@ export class IntegrationController {
   async importContacts(req: Request, user: AuthenticatedUser, params: { toolkit: string }) {
     if (!isAllowedToolkit(params.toolkit)) {
       return new Response(JSON.stringify({ error: 'Unsupported toolkit' }), { status: 400 });
+    }
+    if (params.toolkit === 'telegram') {
+      return new Response(JSON.stringify({ error: 'Not supported for Telegram' }), { status: 400 });
     }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const networkId = typeof body.networkId === 'string' ? body.networkId.trim() || undefined : undefined;
