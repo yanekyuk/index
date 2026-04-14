@@ -18,6 +18,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { OpenClawPluginApi } from './plugin-api.js';
+import { dispatchDelivery } from './delivery.dispatcher.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
 
 /** Base polling interval: 30 seconds. */
@@ -134,8 +135,26 @@ async function poll(
   apiKey: string,
 ): Promise<void> {
   const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
-  if (negotiationMode === 'disabled') return;
+  if (negotiationMode !== 'disabled') {
+    const negotiationResult = await handleNegotiationPickup(api, baseUrl, agentId, apiKey);
+    if (negotiationResult === 'network_error') return; // already bumped backoff
+  }
 
+  await handleTestMessagePickup(api, baseUrl, agentId, apiKey);
+}
+
+/**
+ * Handles one negotiation pickup cycle.
+ *
+ * @returns `'handled'` if a turn was dispatched, `'idle'` if nothing was pending,
+ *   or `'network_error'` if the request failed (backoff already bumped).
+ */
+async function handleNegotiationPickup(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+): Promise<'handled' | 'idle' | 'network_error'> {
   const pickupUrl = `${baseUrl}/api/agents/${agentId}/negotiations/pickup`;
 
   const res = await fetch(pickupUrl, {
@@ -147,14 +166,14 @@ async function poll(
   if (res.status === 204) {
     // Nothing pending — reset backoff on successful communication
     backoffMultiplier = 1;
-    return;
+    return 'idle';
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     api.logger.warn(`Pickup request failed: ${res.status} ${body}`);
     increaseBackoff(api);
-    return;
+    return 'network_error';
   }
 
   // Successful pickup — reset backoff
@@ -176,7 +195,7 @@ async function poll(
   const inflightKey = `${turn.taskId}:${turn.turn.number}`;
   if (inflight.has(inflightKey)) {
     api.logger.debug(`Turn ${inflightKey} already in-flight, skipping.`);
-    return;
+    return 'idle';
   }
   inflight.add(inflightKey);
 
@@ -207,6 +226,67 @@ async function poll(
     increaseBackoff(api);
     throw err;
   }
+
+  return 'handled';
+}
+
+/**
+ * Handles one test-message pickup cycle. Picks up a pending test message,
+ * dispatches it via `dispatchDelivery`, then confirms delivery.
+ *
+ * @returns `true` if a test message was dispatched, `false` otherwise.
+ * @internal
+ */
+export async function handleTestMessagePickup(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+): Promise<boolean> {
+  const pickupUrl = `${baseUrl}/api/agents/${agentId}/test-messages/pickup`;
+
+  const res = await fetch(pickupUrl, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (res.status === 204) {
+    return false;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    api.logger.warn(`Test-message pickup failed: ${res.status} ${text}`);
+    return false;
+  }
+
+  const body = (await res.json()) as {
+    id: string;
+    content: string;
+    reservationToken: string;
+  };
+
+  await dispatchDelivery(api, {
+    rendered: { headline: 'Test message', body: body.content },
+    sessionKey: `index:delivery:test:${body.id}`,
+    idempotencyKey: `index:delivery:test:${body.id}:${body.reservationToken}`,
+  });
+
+  // Confirm delivery — failures are warnings only, dispatch already happened
+  const confirmUrl = `${baseUrl}/api/agents/${agentId}/test-messages/${body.id}/delivered`;
+  await fetch(confirmUrl, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
+    body: JSON.stringify({ reservationToken: body.reservationToken }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch((err) => {
+    api.logger.warn(
+      `Test-message confirm failed for ${body.id}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+
+  return true;
 }
 
 function increaseBackoff(api: OpenClawPluginApi): void {
