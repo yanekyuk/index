@@ -39,16 +39,11 @@ import { notificationQueue } from './queues/notification.queue';
 import { hydeQueue } from './queues/hyde.queue';
 import { emailQueue } from './queues/email.queue';
 import { profileQueue } from './queues/profile.queue';
-import { webhookQueue } from './queues/webhook.queue';
 import { negotiationTimeoutQueue } from './queues/negotiation-timeout.queue';
-import { WebhookController } from './controllers/webhook.controller';
+import { negotiationClaimTimeoutQueue } from './queues/negotiation-claim-timeout.queue';
 import { NetworkMembershipEvents } from './events/network_membership.event';
 import { IntentEvents } from './events/intent.event';
-import { NegotiationEvents } from './events/negotiation.event';
-import { AgentDeliveryService } from './services/agent-delivery.service';
-import { agentService } from './services/agent.service';
 import { opportunityService } from './services/opportunity.service';
-import { webhookService } from './services/webhook.service';
 
 intentQueue.startWorker();
 opportunityQueue.startWorker();
@@ -57,10 +52,8 @@ notificationQueue.startWorker();
 profileQueue.startWorker();
 hydeQueue.startCrons();
 emailQueue.startWorker();
-webhookQueue.startWorker();
 negotiationTimeoutQueue.startWorker();
-
-const agentDeliveryService = new AgentDeliveryService(webhookService, webhookQueue);
+negotiationClaimTimeoutQueue.startWorker();
 
 NetworkMembershipEvents.onMemberAdded = (userId: string) => {
   profileQueue.addEnsureProfileHydeJob({ userId }).catch((err) => {
@@ -85,110 +78,6 @@ IntentEvents.onUpdated = (intentId: string, userId: string) => {
 IntentEvents.onArchived = (intentId: string, userId: string) => {
   log.job.from('IntentEvents').verbose('Intent archived, triggering maintenance', { intentId, userId });
   opportunityService.triggerMaintenance(userId, 'intent-archived');
-};
-
-// Subscribe to opportunity events to deliver webhooks
-opportunityService.onOpportunityEvent('created', async ({ opportunity }) => {
-  const actorUserIds = new Set<string>();
-  for (const actor of (opportunity.actors ?? []) as Array<{ userId?: string }>) {
-    if (actor.userId) actorUserIds.add(actor.userId);
-  }
-
-  for (const userId of actorUserIds) {
-    try {
-      const authorizedAgents = await agentService.findAuthorizedAgents(userId, 'manage:intents', { type: 'global' });
-      await agentDeliveryService.enqueueDeliveries({
-        userId,
-        event: 'opportunity.created',
-        payload: {
-          opportunityId: opportunity.id,
-          status: opportunity.status,
-          actors: opportunity.actors,
-          createdAt: opportunity.createdAt,
-        },
-        getJobId: (target) => `webhook-opp-created-${target.id}-${opportunity.id}`,
-        authorizedAgents,
-      });
-    } catch (err) {
-      log.job.from('WebhookEvents').error('Failed to enqueue webhook for opportunity.created', {
-        userId,
-        opportunityId: opportunity.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-});
-
-// Subscribe to negotiation events to deliver webhooks
-NegotiationEvents.onStarted = async (data) => {
-  try {
-    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
-    await agentDeliveryService.enqueueDeliveries({
-      userId: data.userId,
-      event: 'negotiation.started',
-      payload: {
-        negotiationId: data.negotiationId,
-        counterpartyId: data.counterpartyId,
-        counterpartyName: data.counterpartyName,
-      },
-      getJobId: (target) => `webhook-neg-started-${target.id}-${data.negotiationId}`,
-      authorizedAgents,
-    });
-  } catch (err) {
-    log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.started', {
-      userId: data.userId,
-      negotiationId: data.negotiationId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-};
-
-NegotiationEvents.onTurnReceived = async (data) => {
-  try {
-    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
-    await agentDeliveryService.enqueueDeliveries({
-      userId: data.userId,
-      event: 'negotiation.turn_received',
-      payload: {
-        negotiationId: data.negotiationId,
-        turnNumber: data.turnNumber,
-        counterpartyAction: data.counterpartyAction,
-        counterpartyMessage: data.counterpartyMessage,
-        deadline: data.deadline,
-      },
-      getJobId: (target) => `webhook-neg-turn-${target.id}-${data.negotiationId}-${data.turnNumber}`,
-      authorizedAgents,
-    });
-  } catch (err) {
-    log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.turn_received', {
-      userId: data.userId,
-      negotiationId: data.negotiationId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-};
-
-NegotiationEvents.onCompleted = async (data) => {
-  try {
-    const authorizedAgents = await agentService.findAuthorizedAgents(data.userId, 'manage:negotiations', { type: 'global' });
-    await agentDeliveryService.enqueueDeliveries({
-      userId: data.userId,
-      event: 'negotiation.completed',
-      payload: {
-        negotiationId: data.negotiationId,
-        outcome: data.outcome,
-        turnCount: data.turnCount,
-      },
-      getJobId: (target) => `webhook-neg-completed-${target.id}-${data.negotiationId}`,
-      authorizedAgents,
-    });
-  } catch (err) {
-    log.job.from('WebhookEvents').error('Failed to enqueue webhook for negotiation.completed', {
-      userId: data.userId,
-      negotiationId: data.negotiationId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
 };
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -256,7 +145,6 @@ const integrationAdapter = new ComposioIntegrationAdapter();
 const integrationService = new IntegrationService(integrationAdapter, contactService);
 controllerInstances.set(IntegrationController, new IntegrationController(integrationService));
 controllerInstances.set(DebugController, new DebugController());
-controllerInstances.set(WebhookController, new WebhookController());
 const toolService = new ToolService(contactService, integrationService, integrationAdapter);
 controllerInstances.set(ToolController, new ToolController(toolService));
 
@@ -448,8 +336,8 @@ const shutdown = async () => {
     opportunityQueue.close(),
     notificationQueue.close(),
     emailQueue.close(),
-    webhookQueue.close(),
     negotiationTimeoutQueue.close(),
+    negotiationClaimTimeoutQueue.close(),
   ]);
   logger.info('Workers closed');
   process.exit(0);

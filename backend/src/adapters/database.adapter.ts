@@ -5361,8 +5361,9 @@ export class ConversationDatabaseAdapter {
       }
     }
 
-    // Resolve the system negotiator agent name (used for all A2A conversation participants).
-    // Well-known UUID from agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
+    // Resolve the system negotiator agent name (used as the fallback label when no
+    // personal agent drove any turn on a user's side). Well-known UUID from
+    // agent.database.adapter.ts SYSTEM_AGENT_IDS.negotiator.
     let systemNegotiatorName = 'Index Negotiator';
     const negotiatorRow = await db
       .select({ name: schema.agents.name })
@@ -5373,16 +5374,56 @@ export class ConversationDatabaseAdapter {
       systemNegotiatorName = negotiatorRow[0].name;
     }
 
+    // Resolve the *actual* agent that drove each user's side. For polling-backed turns,
+    // tasks.claimed_by_agent_id is set to the personal agent that picked the turn up.
+    // Fall back to the system negotiator when no claim exists (sync system-driven turns).
+    // Map: conversationId → (ownerUserId → agent { id, name, avatar })
+    const claimedAgentByConv = new Map<string, Map<string, { name: string; avatar: string | null }>>();
+    if (ids.length > 0) {
+      const claimRows = await db
+        .select({
+          conversationId: schema.tasks.conversationId,
+          agentId: schema.tasks.claimedByAgentId,
+          agentName: schema.agents.name,
+          agentType: schema.agents.type,
+          ownerId: schema.agents.ownerId,
+          avatar: schema.users.avatar,
+        })
+        .from(schema.tasks)
+        .innerJoin(schema.agents, eq(schema.agents.id, schema.tasks.claimedByAgentId))
+        .leftJoin(schema.users, eq(schema.users.id, schema.agents.ownerId))
+        .where(
+          and(
+            inArray(schema.tasks.conversationId, ids),
+            eq(schema.agents.type, 'personal'),
+          ),
+        )
+        // Deterministic ordering so that if a conversation ever has claims
+        // from multiple personal agents for the same owner, the displayed
+        // agent name is stable across requests. Most recent claim wins.
+        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
+      for (const r of claimRows) {
+        if (!r.ownerId) continue;
+        const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
+        // First row wins after deterministic ordering — most recent claim per owner.
+        if (!convMap.has(r.ownerId)) {
+          convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
+        }
+        claimedAgentByConv.set(r.conversationId, convMap);
+      }
+    }
+
     const participantsByConv = new Map<string, ResolvedParticipant[]>();
     for (const p of allParticipants) {
       const list = participantsByConv.get(p.conversationId) ?? [];
       if (p.participantType === 'agent' && p.participantId.startsWith('agent:')) {
         const ownerId = p.participantId.slice('agent:'.length);
         const ownerInfo = userMap.get(ownerId);
+        const claimedAgent = claimedAgentByConv.get(p.conversationId)?.get(ownerId);
         list.push({
           participantId: p.participantId,
           participantType: p.participantType,
-          name: systemNegotiatorName,
+          name: claimedAgent?.name ?? systemNegotiatorName,
           avatar: ownerInfo?.avatar ?? null,
           ownerName: ownerInfo?.name ?? null,
         });
@@ -5853,6 +5894,25 @@ export class ConversationDatabaseAdapter {
 
     if (!task) throw new Error(`Task ${taskId} not found`);
     return task;
+  }
+
+  /**
+   * Merges a `turnContext` object into the task's metadata JSONB under the
+   * `turnContext` key, preserving other metadata keys. Used when a negotiation
+   * turn is parked for polling so the claiming agent sees the same context the
+   * system agent would have run with.
+   *
+   * @param taskId - Task to update
+   * @param turnContext - Absolute source/candidate view of negotiation context
+   */
+  async setTaskTurnContext(taskId: string, turnContext: Record<string, unknown>): Promise<void> {
+    await db
+      .update(schema.tasks)
+      .set({
+        metadata: sql`COALESCE(${schema.tasks.metadata}, '{}'::jsonb) || jsonb_build_object('turnContext', ${JSON.stringify(turnContext)}::jsonb)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.tasks.id, taskId));
   }
 
   /**

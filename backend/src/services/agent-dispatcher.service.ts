@@ -11,8 +11,6 @@ import { log } from '../lib/log';
 
 const logger = log.service.from('AgentDispatcherImpl');
 
-const TARGET_EVENT = 'negotiation.turn_received';
-
 /** Subset of AgentService needed by the dispatcher. */
 interface AgentLookup {
   findAuthorizedAgents(
@@ -22,35 +20,22 @@ interface AgentLookup {
   ): Promise<AgentWithRelations[]>;
 }
 
-/** Subset of AgentDeliveryService needed by the dispatcher. */
-interface AgentDelivery {
-  enqueueDeliveries(opts: {
-    userId: string;
-    authorizedAgents: AgentWithRelations[];
-    event: string;
-    payload: Record<string, unknown>;
-    getJobId: (target: { id: string }) => string;
-  }): Promise<unknown>;
-}
-
 /**
  * Concrete AgentDispatcher that bridges the agent registry to the negotiation graph.
- * Tries personal agents via transports, falls back to system agent.
+ * Checks for personal agents and parks the turn for polling pickup.
  */
 export class AgentDispatcherImpl implements AgentDispatcher {
   constructor(
     private agentService: AgentLookup,
-    private deliveryService: AgentDelivery,
     private timeoutQueue: NegotiationTimeoutQueue | undefined,
   ) {}
 
   /**
    * Attempt to dispatch a negotiation turn to a personal agent.
    *
-   * For long-timeout calls (>60 s), enqueues a webhook delivery and a timeout job,
-   * then returns `waiting` so the negotiation graph can yield.
-   * For short-timeout calls (chat), personal-agent transports are not synchronous yet,
-   * so the method returns `timeout` and lets the graph fall back to the system agent.
+   * For long-timeout calls (>60 s), parks the turn in waiting_for_agent and
+   * enqueues a 24h timeout. The agent picks up via the polling endpoint.
+   * For short-timeout calls (chat), returns timeout so the graph uses the system agent.
    *
    * @param userId - The user whose agent should handle this turn
    * @param scope - Permission scope for agent resolution
@@ -80,44 +65,11 @@ export class AgentDispatcherImpl implements AgentDispatcher {
       return { handled: false, reason: 'no_agent' };
     }
 
-    const agentsWithTransport = personalAgents.filter((agent) =>
-      agent.transports.some((transport) => {
-        if (transport.channel !== 'webhook' || !transport.active) return false;
-        const events = (transport.config as { events?: unknown })?.events;
-        return Array.isArray(events) && events.includes(TARGET_EVENT);
-      }),
-    );
-
-    if (agentsWithTransport.length === 0) {
-      logger.warn('Personal agent(s) exist but none have an active negotiation.turn_received webhook transport', {
-        userId,
-        agentCount: personalAgents.length,
-        agentIds: personalAgents.map((a) => a.id),
-      });
-      return { handled: false, reason: 'no_agent' };
-    }
-
     const isLongTimeout = options.timeoutMs > 60_000;
 
     if (isLongTimeout) {
       try {
-        const turnNumber = payload.history.length + 1;
-        const lastTurn = payload.history[payload.history.length - 1];
-
-        await this.deliveryService.enqueueDeliveries({
-          userId,
-          authorizedAgents: agentsWithTransport,
-          event: 'negotiation.turn_received',
-          payload: {
-            negotiationId: payload.negotiationId,
-            userId,
-            turnNumber,
-            counterpartyAction: lastTurn?.action ?? 'propose',
-            deadline: new Date(Date.now() + options.timeoutMs).toISOString(),
-          },
-          getJobId: (target) => `negotiation-turn:${payload.negotiationId}:${turnNumber}:${target.id}`,
-        });
-
+        // Enqueue 24h timeout — agent has 24h to pick up before system agent takes over
         if (this.timeoutQueue) {
           await this.timeoutQueue
             .enqueueTimeout(payload.negotiationId, payload.history.length, options.timeoutMs)
@@ -129,9 +81,15 @@ export class AgentDispatcherImpl implements AgentDispatcher {
             );
         }
 
+        logger.info('Turn parked for polling pickup', {
+          userId,
+          negotiationId: payload.negotiationId,
+          agentCount: personalAgents.length,
+        });
+
         return { handled: false, reason: 'waiting', resumeToken: payload.negotiationId };
       } catch (err) {
-        logger.error('Failed to dispatch to personal agent (long timeout)', {
+        logger.error('Failed to park turn for polling', {
           userId,
           negotiationId: payload.negotiationId,
           error: err,

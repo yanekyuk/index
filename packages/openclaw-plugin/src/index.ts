@@ -1,204 +1,266 @@
 /**
  * Index Network — OpenClaw plugin entry point.
  *
- * Registers a single plugin-authed HTTP route on the OpenClaw gateway:
+ * Polls the Index Network backend for pending negotiation turns via:
  *
- *   POST /index-network/webhook
+ *   POST /agents/:agentId/negotiations/pickup
  *
- * Index Network's agent registry creates one agent with at most one webhook
- * transport that subscribes to multiple event types. The plugin therefore
- * exposes one URL and dispatches internally by reading the `X-Index-Event`
- * header:
+ * Because `api.runtime.subagent.run()` is request-scoped in OpenClaw (only
+ * available inside an HTTP route handler), the plugin registers a route at
+ * `POST /index-network/poll` and the background interval triggers it via a
+ * local fetch. This gives each poll cycle a proper request scope.
  *
- *   - negotiation.turn_received  → silent subagent (deliver: false) runs the
- *                                  turn handler prompt. The subagent calls
- *                                  `get_negotiation` + `respond_to_negotiation`
- *                                  on the parent's Index Network MCP pool.
- *   - negotiation.completed      → if outcome.hasOpportunity is true, a
- *                                  delivered subagent (deliver: true) posts
- *                                  one short message to the user's last
- *                                  active channel. Non-accepted outcomes are
- *                                  ACKed silently.
- *
- * HMAC verification uses the shared secret from
- * `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret`,
- * stored by the bootstrap skill.
- *
- * The subagent inherits the parent OpenClaw instance's MCP connection to
- * the Index Network MCP server, so it can call `get_negotiation`,
- * `read_user_profiles`, `read_intents`, and `respond_to_negotiation` on
- * behalf of the user without re-authenticating.
+ * When a turn is found, dispatches a silent subagent that calls
+ * `get_negotiation` + `respond_to_negotiation` on the parent's Index Network
+ * MCP pool to decide and submit the response.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { OpenClawPluginApi } from './plugin-api.js';
 import { turnPrompt } from './prompts/turn.prompt.js';
-import { acceptedPrompt } from './prompts/accepted.prompt.js';
-import type {
-  NegotiationCompletedPayload,
-  NegotiationTurnReceivedPayload,
-} from './webhook/types.js';
-import { verifyAndParse } from './webhook/verify.js';
 
-const WEBHOOK_PATH = '/index-network/webhook';
-const TURN_EVENT = 'negotiation.turn_received';
-const COMPLETED_EVENT = 'negotiation.completed';
+/** Base polling interval: 30 seconds. */
+const POLL_INTERVAL_MS = 30_000;
+
+/** Max backoff multiplier (caps at ~8 minutes). */
+const MAX_BACKOFF_MULTIPLIER = 16;
+
+const POLL_PATH = '/index-network/poll';
+
+/** Tracks in-flight turns so we don't re-launch subagents for already-claimed work. */
+const inflight = new Set<string>();
+
+/** Prevents double-registration when OpenClaw calls register() more than once. */
+let registered = false;
+
+/** Current backoff multiplier — increases on consecutive failures, resets on success. */
+let backoffMultiplier = 1;
+
+/** Handle returned by setInterval, stored so tests can inspect or clear it. */
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * OpenClaw plugin entry point. Registers a single plugin-authed HTTP route
- * (`POST /index-network/webhook`) that dispatches inbound Index Network
- * events to the turn or completed handler based on the `x-index-event`
- * header. Reads `webhookSecret` and `negotiationMode` from `api.pluginConfig`
- * on every request so that rotating the secret via
- * `openclaw config set` takes effect without a plugin reload. Logs a warning
- * at registration time if the secret is missing so operators notice before
- * live traffic arrives; inbound webhooks are still rejected until one is set.
+ * OpenClaw plugin entry point. Registers an internal HTTP route for polling
+ * and starts a background interval that triggers it.
  *
- * @param api - The OpenClaw plugin API provided by the host. `pluginConfig`,
- *   `logger`, `runtime.subagent.run`, and `registerHttpRoute` are used.
- * @returns Nothing. The side effect is the registered HTTP route.
+ * @param api - The OpenClaw plugin API provided by the host.
  */
 export default function register(api: OpenClawPluginApi): void {
-  if (!readSecret(api)) {
+  if (registered) {
+    api.logger.debug('Index Network plugin already registered, skipping duplicate call.');
+    return;
+  }
+  registered = true;
+
+  const agentId = readConfig(api, 'agentId');
+  const apiKey = readConfig(api, 'apiKey');
+
+  if (!agentId || !apiKey) {
     api.logger.warn(
-      'Index Network webhook secret is not configured — all inbound webhooks will be rejected until bootstrap completes.',
-      { plugin: api.id },
+      'Index Network polling requires agentId and apiKey in plugin config. Polling will not start.',
     );
+    return;
   }
 
-  api.registerHttpRoute({
-    path: WEBHOOK_PATH,
-    auth: 'plugin',
-    match: 'exact',
-    // Read secret and negotiationMode on every request so that rotating
-    // webhookSecret via `openclaw config set` takes effect without a
-    // plugin reload. Caching at register time silently breaks rotation.
-    handler: async (req, res) => {
-      const eventHeader = readHeader(req.headers['x-index-event']);
-      const secret = readSecret(api);
-      const negotiationMode = readNegotiationMode(api);
+  const baseUrl = readConfig(api, 'protocolUrl') || 'http://localhost:3001';
+  const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT || '18789';
+  const gatewayToken = readGatewayToken();
 
-      if (eventHeader === TURN_EVENT) {
-        return handleTurn(api, req, res, secret, negotiationMode);
+  // Route MUST use auth: 'gateway' (not 'plugin') — subagent.run() requires
+  // operator.write scope, which only gateway-authed routes receive.
+  api.registerHttpRoute({
+    path: POLL_PATH,
+    auth: 'gateway',
+    match: 'exact',
+    handler: async (req, res) => {
+      try {
+        await poll(api, baseUrl, agentId, apiKey);
+        res.statusCode = 200;
+        res.end('ok');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        api.logger.error(`Poll handler error: ${msg}`);
+        res.statusCode = 500;
+        res.end(msg);
       }
-      if (eventHeader === COMPLETED_EVENT) {
-        return handleCompleted(api, req, res, secret);
-      }
-      return badRequest(res);
+      return true;
     },
+  });
+
+  api.logger.info('Index Network polling started', {
+    plugin: api.id,
+    agentId,
+    intervalMs: POLL_INTERVAL_MS,
+  });
+
+  // Trigger polling via self-POST to the registered route
+  const triggerPoll = () => {
+    const url = `http://127.0.0.1:${gatewayPort}${POLL_PATH}`;
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${gatewayToken}`,
+      },
+      signal: AbortSignal.timeout(30_000),
+    }).catch((err) => {
+      api.logger.error(`Poll trigger failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  };
+
+  // Schedule polling with dynamic backoff
+  const scheduleNext = () => {
+    const delay = POLL_INTERVAL_MS * backoffMultiplier;
+    pollTimer = setTimeout(() => {
+      triggerPoll();
+      scheduleNext();
+    }, delay);
+  };
+
+  scheduleNext();
+
+  // First poll after a short delay to let the gateway fully start.
+  // This initial poll also runs a reachability check on the backend.
+  setTimeout(() => {
+    checkBackendReachability(api, baseUrl);
+    triggerPoll();
+  }, 5_000);
+}
+
+async function poll(
+  api: OpenClawPluginApi,
+  baseUrl: string,
+  agentId: string,
+  apiKey: string,
+): Promise<void> {
+  const negotiationMode = readConfig(api, 'negotiationMode') || 'enabled';
+  if (negotiationMode === 'disabled') return;
+
+  const pickupUrl = `${baseUrl}/api/agents/${agentId}/negotiations/pickup`;
+
+  const res = await fetch(pickupUrl, {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (res.status === 204) {
+    // Nothing pending — reset backoff on successful communication
+    backoffMultiplier = 1;
+    return;
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    api.logger.warn(`Pickup request failed: ${res.status} ${body}`);
+    increaseBackoff(api);
+    return;
+  }
+
+  // Successful pickup — reset backoff
+  backoffMultiplier = 1;
+
+  const turn = (await res.json()) as {
+    negotiationId: string;
+    taskId: string;
+    opportunity: { id: string; reasoning: string } | null;
+    turn: {
+      number: number;
+      deadline: string;
+      history: Array<{ turnNumber: number; agent: string; action: string; message?: string | null }>;
+      counterpartyAction: string;
+    };
+    context: import('./prompts/turn.prompt.js').TurnContext | null;
+  };
+
+  const inflightKey = `${turn.taskId}:${turn.turn.number}`;
+  if (inflight.has(inflightKey)) {
+    api.logger.debug(`Turn ${inflightKey} already in-flight, skipping.`);
+    return;
+  }
+  inflight.add(inflightKey);
+
+  api.logger.info(`Negotiation turn picked up: ${turn.taskId} turn ${turn.turn.number}`);
+
+  const lastEntry = turn.turn.history.length > 0
+    ? turn.turn.history[turn.turn.history.length - 1]
+    : null;
+
+  try {
+    await api.runtime.subagent.run({
+      sessionKey: `index:negotiation:${turn.negotiationId}`,
+      idempotencyKey: `index:turn:${turn.taskId}:${turn.turn.number}`,
+      message: turnPrompt({
+        negotiationId: turn.taskId,
+        turnNumber: turn.turn.number,
+        counterpartyAction: turn.turn.counterpartyAction,
+        counterpartyMessage: lastEntry?.message ?? null,
+        deadline: turn.turn.deadline,
+        context: turn.context,
+      }),
+      deliver: false,
+    });
+    api.logger.info(`Subagent launched for negotiation ${turn.taskId}`);
+  } catch (err) {
+    // Remove from in-flight so it can be retried on the next poll
+    inflight.delete(inflightKey);
+    increaseBackoff(api);
+    throw err;
+  }
+}
+
+function increaseBackoff(api: OpenClawPluginApi): void {
+  if (backoffMultiplier < MAX_BACKOFF_MULTIPLIER) {
+    backoffMultiplier = Math.min(backoffMultiplier * 2, MAX_BACKOFF_MULTIPLIER);
+    api.logger.info(
+      `Backing off — next poll in ${(POLL_INTERVAL_MS * backoffMultiplier / 1000).toFixed(0)}s`,
+    );
+  }
+}
+
+/**
+ * One-time startup check: verifies the backend is reachable. Logs an
+ * actionable warning if it isn't, so users catch misconfigurations early.
+ */
+function checkBackendReachability(api: OpenClawPluginApi, baseUrl: string): void {
+  fetch(`${baseUrl}/api/health`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => {
+    api.logger.warn(
+      `Cannot reach Index Network backend at ${baseUrl}. ` +
+      `Check that the backend is running and protocolUrl is correct in plugin config.`,
+    );
   });
 }
 
-function readSecret(api: OpenClawPluginApi): string {
-  return typeof api.pluginConfig.webhookSecret === 'string'
-    ? api.pluginConfig.webhookSecret
-    : '';
+function readConfig(api: OpenClawPluginApi, key: string): string {
+  const val = api.pluginConfig[key];
+  return typeof val === 'string' ? val : '';
 }
 
-function readNegotiationMode(api: OpenClawPluginApi): string {
-  return typeof api.pluginConfig.negotiationMode === 'string'
-    ? api.pluginConfig.negotiationMode
-    : 'enabled';
-}
-
-async function handleTurn(
-  api: OpenClawPluginApi,
-  req: IncomingMessage,
-  res: ServerResponse,
-  secret: string,
-  negotiationMode: string,
-): Promise<boolean> {
-  const payload = await verifyAndParse<NegotiationTurnReceivedPayload>(
-    req,
-    secret,
-    TURN_EVENT,
-  );
-  if (!payload) return reject(res);
-
-  if (negotiationMode === 'disabled') {
-    return accept(res);
-  }
-
+function readGatewayToken(): string {
   try {
-    await api.runtime.subagent.run({
-      sessionKey: `index:negotiation:${payload.negotiationId}`,
-      message: turnPrompt(payload),
-      deliver: false,
-    });
-  } catch (err) {
-    api.logger.error('Failed to launch turn subagent', {
-      plugin: api.id,
-      negotiationId: payload.negotiationId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return fail(res);
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const configPath = path.join(process.env.HOME || '', '.openclaw', 'openclaw.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return config?.gateway?.auth?.token ?? '';
+  } catch {
+    return '';
   }
-
-  return accept(res);
 }
 
-async function handleCompleted(
-  api: OpenClawPluginApi,
-  req: IncomingMessage,
-  res: ServerResponse,
-  secret: string,
-): Promise<boolean> {
-  const payload = await verifyAndParse<NegotiationCompletedPayload>(
-    req,
-    secret,
-    COMPLETED_EVENT,
-  );
-  if (!payload) return reject(res);
-
-  if (payload.outcome?.hasOpportunity !== true) {
-    return accept(res);
+/**
+ * Reset module-level state. Exposed for tests only — not part of public API.
+ * @internal
+ */
+export function _resetForTesting(): void {
+  registered = false;
+  backoffMultiplier = 1;
+  inflight.clear();
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
   }
-
-  try {
-    await api.runtime.subagent.run({
-      sessionKey: `index:event:${payload.negotiationId}`,
-      message: acceptedPrompt(payload),
-      deliver: true,
-    });
-  } catch (err) {
-    api.logger.error('Failed to launch accepted subagent', {
-      plugin: api.id,
-      negotiationId: payload.negotiationId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return fail(res);
-  }
-
-  return accept(res);
-}
-
-function readHeader(raw: string | string[] | undefined): string | null {
-  if (typeof raw === 'string') return raw;
-  if (Array.isArray(raw) && raw.length > 0) return raw[0] ?? null;
-  return null;
-}
-
-function accept(res: ServerResponse): boolean {
-  res.statusCode = 202;
-  res.end('accepted');
-  return true;
-}
-
-function reject(res: ServerResponse): boolean {
-  res.statusCode = 401;
-  res.end('invalid signature');
-  return true;
-}
-
-function badRequest(res: ServerResponse): boolean {
-  res.statusCode = 400;
-  res.end('unknown or missing x-index-event header');
-  return true;
-}
-
-function fail(res: ServerResponse): boolean {
-  res.statusCode = 500;
-  res.end('internal error');
-  return true;
 }

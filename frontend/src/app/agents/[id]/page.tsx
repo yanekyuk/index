@@ -366,11 +366,12 @@ function CodeBlock({ code, label }: { code: string; label: string }) {
   );
 }
 
-function SetupInstructions({ apiKey }: { apiKey?: string }) {
+function SetupInstructions({ apiKey, agentId }: { apiKey?: string; agentId?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const placeholder = apiKey || "YOUR_API_KEY";
+  const keyPlaceholder = apiKey || "YOUR_API_KEY";
+  const agentPlaceholder = agentId || "YOUR_AGENT_ID";
 
-  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "";
+  const protocolUrl = import.meta.env.VITE_PROTOCOL_URL || "http://localhost:3001";
   const mcpUrl = `${protocolUrl}/mcp`;
 
   const claudeConfig = JSON.stringify(
@@ -380,7 +381,7 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
           type: "http",
           url: mcpUrl,
           headers: {
-            "x-api-key": placeholder,
+            "x-api-key": keyPlaceholder,
           },
         },
       },
@@ -393,19 +394,21 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
   - name: index-network
     url: ${mcpUrl}
     headers:
-      x-api-key: ${placeholder}`;
+      x-api-key: ${keyPlaceholder}`;
 
   const openclawInstall = `openclaw plugins install indexnetwork-openclaw-plugin --marketplace https://github.com/indexnetwork/openclaw-plugin`;
 
   const openclawMcp = `openclaw mcp set index-network '${JSON.stringify({
     url: mcpUrl,
     transport: "streamable-http",
-    headers: { "x-api-key": placeholder },
+    headers: { "x-api-key": keyPlaceholder },
   })}'`;
 
-  const openclawGatewayUrl = `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.gatewayUrl https://<your-gateway-base-url>`;
-
-  const openclawWebhookSecret = `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret "$(openssl rand -hex 32)"`;
+  const openclawConfigure = [
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId ${agentPlaceholder}`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey ${keyPlaceholder}`,
+    `openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl ${protocolUrl}`,
+  ].join("\n");
 
   return (
     <div className="border border-gray-200 rounded-sm">
@@ -429,8 +432,7 @@ function SetupInstructions({ apiKey }: { apiKey?: string }) {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">OpenClaw</p>
             <CodeBlock code={openclawInstall} label="1. Install plugin" />
             <CodeBlock code={openclawMcp} label="2. Register MCP server" />
-            <CodeBlock code={openclawGatewayUrl} label="3. Set gateway URL (for webhooks)" />
-            <CodeBlock code={openclawWebhookSecret} label="4. Set webhook secret" />
+            <CodeBlock code={openclawConfigure} label="3. Configure plugin (enables negotiation polling)" />
           </div>
         </div>
       )}
@@ -556,7 +558,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
             </Button>
           </div>
           <div className="mt-3">
-            <SetupInstructions apiKey={createdKey} />
+            <SetupInstructions apiKey={createdKey} agentId={agent.id} />
           </div>
           <button
             onClick={() => { setCreatedKey(null); setCopied(false); }}
@@ -649,7 +651,7 @@ function ApiKeysTab({ agent }: { agent: Agent }) {
         </div>
       )}
 
-      {!createdKey && keys.length > 0 && <SetupInstructions />}
+      {!createdKey && keys.length > 0 && <SetupInstructions agentId={agent.id} />}
 
       <AlertDialog.Root open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialog.Portal>
@@ -824,14 +826,12 @@ export default function AgentDetailPage() {
               >
                 API Keys
               </Tabs.Trigger>
-              {agent.type === 'system' && (
-                <Tabs.Trigger
-                  value="permissions"
-                  className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
-                >
-                  Permissions
-                </Tabs.Trigger>
-              )}
+              <Tabs.Trigger
+                value="permissions"
+                className="px-4 py-2 text-sm text-gray-600 border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:text-black data-[state=active]:font-bold"
+              >
+                Permissions
+              </Tabs.Trigger>
             </Tabs.List>
 
             <Tabs.Content value="overview" className="w-full">

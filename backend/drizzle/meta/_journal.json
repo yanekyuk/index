@@ -323,6 +323,20 @@
       "when": 1775784000000,
       "tag": "0045_remove_negotiations_from_orchestrator",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1776097387659,
+      "tag": "0046_add_claimed_task_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1776098433763,
+      "tag": "0047_drop_webhooks_table",
+      "breakpoints": true
     }
   ]
 }

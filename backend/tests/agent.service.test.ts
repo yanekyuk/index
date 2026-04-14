@@ -249,54 +249,6 @@ describe('AgentService', () => {
     );
   });
 
-  it('validates webhook transport config before creating it', async () => {
-    const service = new AgentService(
-      createStore({
-        createTransport: async (input) => {
-          calls.createTransport.push(input);
-          return createTransportRow({
-            agentId: input.agentId,
-            channel: input.channel,
-            config: input.config ?? {},
-          });
-        },
-      }),
-    );
-
-    await expect(service.addTransport('agent-1', OWNER_ID, 'webhook', {})).rejects.toThrow(
-      'Webhook URL is required',
-    );
-    await expect(
-      service.addTransport('agent-1', OWNER_ID, 'webhook', {
-        url: 'https://example.com/hook',
-      }),
-    ).rejects.toThrow('Webhook events are required');
-    await expect(
-      service.addTransport('agent-1', OWNER_ID, 'webhook', {
-        url: 'https://example.com/hook',
-        events: [],
-      }),
-    ).rejects.toThrow('Webhook events are required');
-
-    const result = await service.addTransport('agent-1', OWNER_ID, 'webhook', {
-      url: 'https://example.com/hook',
-      events: [' intent.created ', 'intent.updated', 'intent.created', '  '],
-    });
-
-    expect(calls.createTransport).toEqual([
-      {
-        agentId: 'agent-1',
-        channel: 'webhook',
-        config: {
-          url: 'https://example.com/hook',
-          events: ['intent.created', 'intent.updated'],
-        },
-        priority: undefined,
-      },
-    ]);
-    expect(result.channel).toBe('webhook');
-  });
-
   it('verifies the transport belongs to the agent before removing it', async () => {
     const service = new AgentService(
       createStore({

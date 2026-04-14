@@ -3,7 +3,7 @@ import { useAuthenticatedAPI } from '../lib/api';
 export interface AgentTransport {
   id: string;
   agentId: string;
-  channel: 'webhook' | 'mcp';
+  channel: 'mcp' | 'webhook';
   config: Record<string, unknown>;
   priority: number;
   active: boolean;
@@ -84,7 +84,7 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   addTransport: async (
     agentId: string,
-    channel: 'webhook' | 'mcp',
+    channel: 'mcp' | 'webhook',
     config?: Record<string, unknown>,
     priority?: number,
   ): Promise<AgentTransport> => {
@@ -98,10 +98,6 @@ export const createAgentsService = (api: ReturnType<typeof useAuthenticatedAPI>)
 
   removeTransport: async (agentId: string, transportId: string): Promise<void> => {
     await api.delete<void>(`/agents/${agentId}/transports/${transportId}`);
-  },
-
-  testWebhooks: async (agentId: string): Promise<{ delivered: number }> => {
-    return api.post<{ delivered: number }>(`/agents/${agentId}/test-webhooks`);
   },
 
   grantPermission: async (

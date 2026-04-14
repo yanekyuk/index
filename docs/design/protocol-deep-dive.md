@@ -500,7 +500,7 @@ One section of `MCP_INSTRUCTIONS` ("Negotiation turn mode") switches the caller 
 - Read the user's profile and intents via `read_user_profiles` and `read_intents`.
 - Submit its response via `respond_to_negotiation` — never produce user-facing output, never ask clarifying questions, prefer conservative actions when ambiguous.
 
-This is how personal agents participate in bilateral negotiation. The openclaw-plugin webhook handler launches subagents with an `index:negotiation:`-prefixed session key, and the MCP_INSTRUCTIONS contract does the rest — the plugin itself has no negotiation-specific prompt of its own.
+This is how personal agents participate in bilateral negotiation. The openclaw-plugin's background poller pulls pending turns from `POST /api/agents/:id/negotiations/pickup` and launches subagents with an `index:negotiation:`-prefixed session key; the MCP_INSTRUCTIONS contract does the rest — the plugin itself has no negotiation-specific prompt of its own.
 
 The key negotiation-facing MCP tools are:
 
@@ -508,10 +508,9 @@ The key negotiation-facing MCP tools are:
 |------|---------|
 | `get_negotiation` | Returns the full turn history and assessment seed for a negotiation |
 | `list_negotiations` | Lists negotiations awaiting a response from this agent's user |
-| `respond_to_negotiation` | Submits a turn (propose / counter / accept / reject / question) with reasoning and suggested roles |
-| `add_webhook_transport` | Lets a bootstrap skill register the caller's own webhook URL, secret, and event subscriptions (`negotiation.turn_received`, `negotiation.completed`) on the acting personal agent, enabling automatic background negotiation handling |
+| `respond_to_negotiation` | Submits a turn (propose / counter / accept / reject / question) with reasoning and suggested roles. Wraps `POST /api/agents/:id/negotiations/:negotiationId/respond` |
 
-`add_webhook_transport` is how a runtime plugin (for example the openclaw-plugin bootstrap skill) turns itself into an event sink for the agent registry without the user manually visiting the web UI. It writes an `agent_transports` row with `channel: 'webhook'` under the acting `agentId` and is subject to the same dual-gate eligibility check as any other transport.
+Agents claim turns via the HTTP pickup endpoint rather than an MCP tool — the turn payload is too large and the CAS semantics are easier to express over HTTP than via the streaming MCP transport. Once a turn is claimed, the response path goes through `respond_to_negotiation` so the subagent can submit from inside its MCP session.
 
 ## 6. HyDE System
 

@@ -185,35 +185,6 @@ export class AgentService {
       throw new Error('System agents cannot be modified');
     }
 
-    if (channel === 'webhook') {
-      const url = config?.url;
-      if (typeof url !== 'string' || !url.trim()) {
-        throw new Error('Webhook URL is required');
-      }
-
-      const events = this.normalizeWebhookEvents(config?.events);
-      if (events.length === 0) {
-        throw new Error('Webhook events are required');
-      }
-
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        throw new Error('Invalid webhook URL');
-      }
-
-      if (process.env.NODE_ENV === 'production' && parsedUrl.protocol !== 'https:') {
-        throw new Error('Webhook URL must use HTTPS in production');
-      }
-
-      config = {
-        ...config,
-        url: parsedUrl.toString(),
-        events,
-      };
-    }
-
     const transport = await this.db.createTransport({ agentId, channel, config, priority });
     return this.sanitizeTransport(transport);
   }
@@ -230,57 +201,6 @@ export class AgentService {
     }
 
     await this.db.deleteTransport(transportId);
-  }
-
-  /**
-   * Enqueue a synthetic test delivery to every active webhook transport on an agent.
-   * Ownership is verified before dispatch. Inactive or non-webhook transports are skipped.
-   *
-   * @param agentId - Target agent
-   * @param userId - Owner making the request
-   * @returns Number of deliveries enqueued
-   * @throws If the agent does not exist or is not owned by the caller
-   */
-  async testWebhooks(agentId: string, userId: string): Promise<{ delivered: number }> {
-    const agent = await this.db.getAgentWithRelations(agentId);
-    if (!agent || agent.ownerId !== userId) {
-      throw new Error('Agent not found');
-    }
-
-    // Import here to avoid circular dependency at module load
-    const { webhookQueue } = await import('../queues/webhook.queue');
-
-    const activeWebhookTransports = agent.transports.filter(
-      (transport) => transport.channel === 'webhook' && transport.active,
-    );
-
-    let delivered = 0;
-    for (const transport of activeWebhookTransports) {
-      const config = transport.config as { url?: unknown; secret?: unknown };
-      if (typeof config.url !== 'string') continue;
-
-      await webhookQueue.addJob('deliver_webhook', {
-        webhookId: transport.id,
-        url: config.url,
-        secret: typeof config.secret === 'string' ? config.secret : '',
-        event: 'negotiation.turn_received',
-        payload: {
-          type: 'test',
-          message: 'Test delivery from Index Network agents page',
-          timestamp: new Date().toISOString(),
-        },
-        timestamp: new Date().toISOString(),
-      });
-      delivered++;
-    }
-
-    logger.info('[AgentService] Test webhook deliveries enqueued', {
-      agentId,
-      userId,
-      delivered,
-    });
-
-    return { delivered };
   }
 
   async grantPermission(
@@ -496,14 +416,6 @@ export class AgentService {
           ? agent.permissions
           : agent.permissions.filter((permission) => permission.userId === viewerId),
     };
-  }
-
-  private normalizeWebhookEvents(events: unknown): string[] {
-    if (!Array.isArray(events)) {
-      return [];
-    }
-
-    return [...new Set(events.filter((event): event is string => typeof event === 'string').map((event) => event.trim()).filter(Boolean))];
   }
 
   private async findMissingGlobalActions(

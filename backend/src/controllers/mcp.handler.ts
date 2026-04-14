@@ -53,6 +53,7 @@ function getOrCompileGraphs(deps: ReturnType<typeof createDefaultProtocolDeps>):
   const opportunityGraph = new OpportunityGraphFactory(
     database, embedder, compiledHydeGraph,
     undefined, undefined, negotiationGraph,
+    deps.agentDispatcher,
   ).createGraph();
   const indexGraph = new NetworkGraphFactory(database).createGraph();
   const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();
@@ -236,7 +237,6 @@ function getOrCreateMcpServer(): McpServer {
     integrationImporter: deps.integrationImporter,
     enricher: deps.enricher,
     negotiationDatabase: deps.negotiationDatabase,
-    webhook: deps.webhook,
     agentDispatcher: deps.agentDispatcher,
     negotiationTimeoutQueue: deps.negotiationTimeoutQueue,
     agentDatabase: deps.agentDatabase,

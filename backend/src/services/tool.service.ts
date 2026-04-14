@@ -190,6 +190,7 @@ export class ToolService {
       undefined,
       undefined,
       negotiationGraph,
+      noOpDispatcher,
     ).createGraph();
     const indexGraph = new NetworkGraphFactory(database).createGraph();
     const networkMembershipGraph = new NetworkMembershipGraphFactory(database).createGraph();

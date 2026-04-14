@@ -1,6 +1,6 @@
 /**
  * Hooks called on negotiation lifecycle events.
- * Set by main.ts to trigger webhook delivery for negotiation state changes.
+ * Currently unused — webhook delivery has been replaced by polling.
  */
 export const NegotiationEvents = {
   onStarted: null as ((data: {

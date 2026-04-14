@@ -27,7 +27,8 @@ function createMockDeps(proposerAction = "propose" as const, responderAction = "
     createTask: mock(() => Promise.resolve({ id: "task-1", conversationId: "conv-1", state: "submitted" })),
     updateTaskState: mock(() => Promise.resolve({ id: "task-1", conversationId: "conv-1", state: "working" })),
     createArtifact: mock(() => Promise.resolve({ id: "art-1" })),
-  };
+    setTaskTurnContext: mock(() => Promise.resolve()),
+  } as unknown as NegotiationDatabase;
   const proposer: ConstructorParameters<typeof NegotiationGraphFactory>[1] = {
     invoke: mock(() => Promise.resolve({
       action: proposerAction,

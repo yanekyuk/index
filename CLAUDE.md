@@ -97,7 +97,7 @@ The following packages are git subtrees tracked to external repos. **Syncing is 
 
 #### packages/openclaw-plugin/ → indexnetwork/openclaw-plugin
 
-The `indexnetwork-openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, and (b) hosts a plugin-authed HTTP webhook route (`POST /index-network/webhook`) that receives `negotiation.turn_received` and `negotiation.completed` events from Index Network and dispatches silent (or delivered) subagents via `api.runtime.subagent.run` to respond on the user's behalf. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
+The `indexnetwork-openclaw-plugin` package — an OpenClaw plugin that (a) registers the Index Network MCP server via a bootstrap skill, and (b) runs a background poller that pulls pending negotiation turns from `POST /agents/:id/negotiations/pickup` and dispatches silent subagents via `api.runtime.subagent.run` to respond via `POST /agents/:id/negotiations/:negotiationId/respond`. Behavioral guidance for the negotiation subagent lives in the MCP server's `MCP_INSTRUCTIONS`, not in the plugin. The `skills/index-network/SKILL.md` shipped inside the package is generated from `packages/protocol/skills/openclaw/SKILL.md.template` by `scripts/build-skills.ts` — edit the template, re-run the build, then commit both the template and the materialized output.
 
 ```bash
 # Manual push if the hook failed (use dev or main)
@@ -154,7 +154,7 @@ index/
 ├── packages/
 │   ├── protocol/        # @indexnetwork/protocol NPM package — subtree → indexnetwork/protocol
 │   ├── cli/             # @indexnetwork/cli — Bun, TypeScript — subtree → indexnetwork/cli
-│   └── openclaw-plugin/ # indexnetwork-openclaw-plugin — bootstrap + negotiation webhook, subtree → indexnetwork/openclaw-plugin
+│   └── openclaw-plugin/ # indexnetwork-openclaw-plugin — bootstrap + negotiation poller, subtree → indexnetwork/openclaw-plugin
 ├── frontend/          # Vite + React Router v7 SPA with React 19
 ├── docs/              # Project documentation (design/, domain/, guides/, specs/)
 └── scripts/           # Worktree helpers, hooks, dev launcher
@@ -246,7 +246,7 @@ Events in `src/events/`: `IntentEvents.onCreated/onUpdated/onArchived` (with `in
 
 ### Agent Registry
 
-All agents are first-class database entities backed by `agents`, `agent_transports`, and `agent_permissions`. System agents (`Index Chat Orchestrator`, `Index Negotiator`) are seeded with well-known UUIDs and receive default permissions during onboarding. MCP auth resolves to `userId + agentId` pairs when API keys include `metadata.agentId`. Personal agents currently connect through webhook transports while the legacy webhook runtime is being migrated behind the agent registry.
+All agents are first-class database entities backed by `agents`, `agent_transports`, and `agent_permissions`. System agents (`Index Chat Orchestrator`, `Index Negotiator`) are seeded with well-known UUIDs and receive default permissions during onboarding. MCP auth resolves to `userId + agentId` pairs when API keys include `metadata.agentId`. Personal agents connect by polling `/agents/:id/negotiations/pickup` with an API key; negotiation turns are parked in `tasks.state='waiting_for_agent'` until an agent claims and responds, with a 24h timeout fallback to the in-process system negotiator.
 
 ### Trace Event Instrumentation
 

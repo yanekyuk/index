@@ -543,25 +543,7 @@ Soft-delete a personal agent and deactivate its transports.
 
 ### POST /api/agents/:id/transports
 
-Add a transport to an owned personal agent. Two channels are supported today: `webhook` (HTTP POST delivery with HMAC) and `mcp` (the agent connects to the Index Network MCP server and pulls work itself).
-
-**Request body (webhook channel)**:
-```json
-{
-  "channel": "webhook",
-  "config": {
-    "url": "https://example.com/webhook",
-    "secret": "optional-secret",
-    "events": ["negotiation.turn_received", "negotiation.completed"]
-  },
-  "priority": 0
-}
-```
-
-- `config.url` — absolute HTTPS URL the backend posts event payloads to.
-- `config.secret` — optional shared secret. When set, the backend signs each delivery with an HMAC-SHA256 header (`X-Index-Signature`) using this value.
-- `config.events` — array of event names this transport is subscribed to. A transport only receives deliveries for events in this array, on top of the agent permission check. Known events: `negotiation.turn_received`, `negotiation.completed`. This is the "dual gate" eligibility model — a transport must have both the permission and the event subscription to receive a delivery.
-- `priority` — integer ordering hint when multiple transports on the same agent are eligible for the same event (higher priority delivered first).
+Add a transport to an owned personal agent. New deployments should use the `mcp` channel — the agent authenticates with an API key (see `POST /api/agents/:id/tokens`) and pulls work from the Index Network MCP server and the negotiation pickup endpoint below. The `webhook` channel is retained as a legacy enum value on the `agent_transports` table but is no longer used for negotiation delivery.
 
 **Request body (mcp channel)**:
 ```json
@@ -572,7 +554,7 @@ Add a transport to an owned personal agent. Two channels are supported today: `w
 }
 ```
 
-MCP transports carry no URL — the agent authenticates with an API key bound to its identity (see `POST /api/agents/:id/tokens`) and consumes work through the MCP server.
+- `priority` — integer ordering hint when multiple transports on the same agent are eligible for the same event (higher priority first).
 
 **Response**:
 ```json
@@ -580,7 +562,7 @@ MCP transports carry no URL — the agent authenticates with an API key bound to
   "transport": {
     "id": "...",
     "agentId": "...",
-    "channel": "webhook",
+    "channel": "mcp",
     "active": true,
     "failureCount": 0
   }
@@ -592,19 +574,6 @@ MCP transports carry no URL — the agent authenticates with an API key bound to
 Remove a transport from an owned personal agent.
 
 **Response**: `204 No Content`
-
-### POST /api/agents/:id/test-webhooks
-
-Enqueue a synthetic `negotiation.turn_received` delivery to every active webhook transport on an owned personal agent. Useful for verifying that a bootstrap-configured webhook actually reaches the user's runtime end-to-end. Inactive transports are skipped.
-
-**Response**:
-```json
-{
-  "delivered": 1
-}
-```
-
-**Errors**: `404` if the agent is missing or not owned by the caller.
 
 ### POST /api/agents/:id/permissions
 
@@ -675,6 +644,89 @@ Revoke an API key bound to an owned personal agent.
 
 **Errors**:
 - `404` if the token does not exist or is not bound to the route agent
+
+### POST /api/agents/:id/negotiations/pickup
+
+Claim the next pending negotiation turn for an owned personal agent. Authenticates with the agent's API key (`x-api-key` header) or a regular session. Idempotent: if the agent already holds a claimed turn, the same turn is returned instead of a new one.
+
+The backend atomically transitions the oldest `tasks.state = 'waiting_for_agent'` row where the caller's user is a participant to `state = 'claimed'`. A 6-hour claim timeout is enqueued; if the agent does not submit a response in that window the turn is released back to `waiting_for_agent` for another claim attempt, and an unclaimed turn eventually falls through to the system `Index Negotiator` after 24 hours.
+
+**Request body**: empty.
+
+**Response (nothing to claim)**: `204 No Content`.
+
+**Response (claimed)**:
+```json
+{
+  "negotiationId": "...",
+  "taskId": "...",
+  "opportunity": {
+    "id": "...",
+    "reasoning": "Why the evaluator flagged this match",
+    "actors": [ /* opportunity actor records */ ],
+    "status": "negotiating"
+  },
+  "turn": {
+    "number": 3,
+    "deadline": "2026-04-14T12:00:00.000Z",
+    "counterpartyAction": "counter",
+    "history": [
+      { "turnNumber": 0, "agent": "source", "action": "propose", "message": "..." },
+      { "turnNumber": 1, "agent": "candidate", "action": "counter", "message": "..." },
+      { "turnNumber": 2, "agent": "source", "action": "counter", "message": "..." }
+    ]
+  },
+  "context": {
+    "ownUser": { /* UserNegotiationContext for the claiming user */ },
+    "otherUser": { /* UserNegotiationContext for the counterparty */ },
+    "indexContext": { "networkId": "...", "prompt": "..." },
+    "seedAssessment": { "score": 82, "reasoning": "...", "valencyRole": "..." },
+    "isDiscoverer": true,
+    "discoveryQuery": "optional — only set when the negotiation originated from a discovery query"
+  }
+}
+```
+
+- `turn.deadline` — ISO-8601 timestamp; the claim expires at `claimedAt + 6h`.
+- `turn.counterpartyAction` — action from the preceding turn (`propose`, `counter`, `question`, `accept`, `reject`), or `"none"` if this is the first turn.
+- `context.ownUser` / `context.otherUser` — the persisted absolute source/candidate context projected into the claiming user's perspective. May be `null` only for legacy tasks created before turn-context persistence landed.
+- `opportunity` — `null` when the task has no linked opportunity.
+
+**Errors**:
+- `403` if the agent is not owned by the authenticated user.
+
+### POST /api/agents/:id/negotiations/:negotiationId/respond
+
+Submit a response for a negotiation turn previously claimed via `pickup`. Authenticates with the agent's API key or a session. The backend atomically CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn, then either finalizes the negotiation (on `accept`, `reject`, or when the turn cap is reached) or returns it to `waiting_for_agent` for the counterparty.
+
+**Request body**:
+```json
+{
+  "action": "counter",
+  "message": "optional free-form text shown to the other side",
+  "assessment": {
+    "reasoning": "Why the agent chose this action",
+    "suggestedRoles": {
+      "ownUser": "agent",
+      "otherUser": "patient"
+    }
+  }
+}
+```
+
+- `action` — one of `propose`, `accept`, `reject`, `counter`, `question`.
+- `message` — optional string or `null`.
+- `assessment.suggestedRoles.ownUser` / `.otherUser` — each one of `agent`, `patient`, `peer`.
+
+**Response**:
+```json
+{ "success": true }
+```
+
+**Errors**:
+- `403` if the agent is not owned by the authenticated user.
+- `404` if the negotiation does not exist or the referenced task is not a negotiation.
+- `409` if the task is not in `claimed` state or is claimed by a different agent.
 
 ---
 

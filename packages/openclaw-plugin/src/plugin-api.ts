@@ -16,6 +16,7 @@ export interface PluginLogger {
 
 export interface SubagentRunOptions {
   sessionKey: string;
+  idempotencyKey: string;
   message: string;
   provider?: string;
   model?: string;

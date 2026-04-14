@@ -9,16 +9,10 @@ You help the right people find the user, and help the user find them. Your very 
 
 ## Detect
 
-Bootstrap has two independent phases — MCP registration, and webhook enablement for automatic negotiations. Check both before deciding what to do next:
+Check whether any Index Network MCP tool is callable (for example `read_user_profiles`).
 
-1. Is any Index Network MCP tool callable (for example `read_user_profiles`)?
-2. Run `openclaw config get plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret`. Does it print a non-empty value?
-
-Route based on both answers:
-
-- **Both YES**: bootstrap is complete. Stop reading this file and follow the MCP server's own instructions.
-- **MCP not callable**: continue to **Register** and proceed through this file in order.
-- **MCP callable but `webhookSecret` is empty**: the plugin is half-bootstrapped from a prior session. Skip **Register** and **Choose an auth mode** and jump directly to **Enable automatic negotiations**.
+- **YES**: bootstrap is complete. Stop reading this file and follow the MCP server's own instructions.
+- **NO**: continue to **Register** below.
 
 ## Register
 
@@ -62,120 +56,31 @@ openclaw mcp set index-network '{"url":"https://protocol.index.network/mcp","tra
 
 Replace `<key>` with what the user pasted. Never log the key back to the user, and never store it anywhere outside the command.
 
-## Enable automatic negotiations
+## Configure automatic negotiations
 
-Automatic background negotiations require a webhook transport attached to the user's Index Network agent. Set it up unconditionally — do not ask the user whether they want it. If anything is missing, emit one clear, actionable message and stop.
+Once a persistent session is set up, configure the plugin to poll for negotiation turns automatically. The user needs their **agent ID** and **API key** from https://index.network/agents.
 
-### 1. Resolve the gateway public URL
+If the user already pasted an API key above, reuse it. Ask for their agent ID:
 
-First, check whether the URL is already set:
+> What is your agent ID? You can find it on the agent detail page at https://index.network/agents.
 
-```bash
-openclaw config get plugins.entries.indexnetwork-openclaw-plugin.config.gatewayUrl
-```
-
-If the command prints a non-empty URL, store it as `GATEWAY_URL` and continue.
-
-If empty, try to auto-detect from common host environment variables before asking the user:
+Then run these three commands — wrap the pasted values in single quotes so any shell-significant characters are preserved verbatim:
 
 ```bash
-GATEWAY_URL=""
-for var in OPENCLAW_PUBLIC_URL PUBLIC_URL RAILWAY_PUBLIC_DOMAIN RAILWAY_STATIC_URL FLY_APP_NAME; do
-  val="$(printenv "$var" 2>/dev/null)"
-  [ -z "$val" ] && continue
-  case "$val" in
-    https://*|http://*) GATEWAY_URL="$val" ;;
-    *.fly.dev|*.up.railway.app) GATEWAY_URL="https://$val" ;;
-    *) GATEWAY_URL="https://$val" ;;
-  esac
-  break
-done
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId '<AGENT_ID>'
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey '<API_KEY>'
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl 'https://protocol.index.network'
 ```
 
-If `GATEWAY_URL` is non-empty after the probe, persist it and continue:
+Replace `<AGENT_ID>` and `<API_KEY>` with the actual values (keeping the surrounding single quotes). After this, restart the gateway:
 
 ```bash
-openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.gatewayUrl "$GATEWAY_URL"
+openclaw gateway restart
 ```
 
-If no env var matched, the host does not expose its public URL through the workspace environment. Tell the user **exactly this** and stop — do not guess a URL, do not probe outbound IP, do not invent:
+Confirm to the user:
 
-> I could not auto-detect this workspace's public URL from any environment variable. To enable automatic negotiations, set it once yourself:
->
-> ```bash
-> openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.gatewayUrl https://<your-gateway-base-url>
-> ```
->
-> The URL must be the base URL of your OpenClaw gateway — the one that forwards to port 18789 externally. Do not include a path suffix or trailing slash. Then ask me to continue the Index Network setup.
-
-Do not proceed past this step until `GATEWAY_URL` is set.
-
-### 2. Resolve or generate the webhook secret
-
-Generate a fresh secret and write it to both the plugin config and a shell variable in one atomic step. This is the safest path for both fresh bootstraps and half-bootstrapped re-entries — rotation is cheap because `add_webhook_transport` replaces any existing webhook transport on the calling agent.
-
-```bash
-umask 077 && SECRET="$(openssl rand -hex 32)" && \
-  openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret "$SECRET" && \
-  WEBHOOK_SECRET="$SECRET"
-```
-
-After this command, `$WEBHOOK_SECRET` in your shell and `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret` on disk hold the same 64-character hex value. Continue to Step 3 with that value.
-
-**Secret handling — read carefully, this is where bootstrap most commonly fails.** The only restriction on the secret value is that it MUST NOT appear in any chat message you send to the user. Tool arguments, file writes, and shell commands are NOT chat messages — the real secret value MUST be passed verbatim to the `add_webhook_transport` MCP tool in Step 3.
-
-- **Allowed**: passing `$WEBHOOK_SECRET` as a tool argument, writing it to `/tmp/` for intermediate handoff, echoing it into `openclaw config set`, piping it into tools.
-- **Forbidden**: echoing or quoting the value in any chat-facing response, including confirmations, summaries, logs shown to the user, or error messages. If you need to confirm the secret exists, say "webhook secret is set" — never paste the value.
-
-**Do not substitute a placeholder string** (e.g. `"REDACTED"`, `"CONFIG_FROM_OPENCLAW_NOT_EXPOSED_HERE"`, `"__OPENCLAW_REDACTED__"`, or anything similar) for the `secret` parameter. The backend stores whatever you pass. If you pass a placeholder, the plugin will compute HMACs over the real secret while the backend signs with the placeholder, and every delivery will fail with 401 invalid signature. This has happened before; do not repeat it.
-
-### 3. Attach the webhook transport
-
-Strip any trailing `/` from `GATEWAY_URL`, then build:
-
-`WEBHOOK_URL = <GATEWAY_URL>/index-network/webhook`
-
-This avoids `https://host//index-network/webhook` double-slashes that some proxies do not normalize.
-
-Always try `add_webhook_transport` first, regardless of how the user authenticated. The fallback to `register_agent` below covers the temporary-OAuth case. This ordering works for both fresh bootstraps and re-entry from a half-bootstrapped state, so do not try to guess the auth mode yourself.
-
-Call the `add_webhook_transport` MCP tool with:
-
-- `url`: `<WEBHOOK_URL>`
-- `secret`: `<WEBHOOK_SECRET>`
-- `events`: `["negotiation.turn_received", "negotiation.completed"]`
-
-Pass `events` / `webhook_events` as an actual JSON array of strings, not a stringified array — the MCP tool validates with Zod and rejects stringified input.
-
-On success the tool replaces any existing webhook transport on the calling agent and grants `manage:negotiations` permission if missing. If this succeeds, skip to **Confirm to the user**.
-
-If `add_webhook_transport` fails with an error whose message contains `requires an authenticated agent`, the caller is on a temporary OAuth session and is not yet agent-bound. Fall back to `register_agent`:
-
-Call the `register_agent` MCP tool once with:
-
-- `name`: `"OpenClaw Personal Negotiator"` (or a name the user picks)
-- `description`: `"Handles negotiation turns and accepted notifications for the user."`
-- `webhook_url`: `<WEBHOOK_URL>`
-- `webhook_secret`: `<WEBHOOK_SECRET>`
-- `webhook_events`: `["negotiation.turn_received", "negotiation.completed"]`
-- `permissions`: `["manage:negotiations"]`
-
-If `register_agent` fails with a name/permission conflict, list existing agents with `list_agents` and report the conflict — do not silently pick a different name.
-
-If both tools fail, stop and tell the user exactly this:
-
-> I could not attach the webhook. Please visit https://index.network/agents, create a persistent agent, copy its API key, and re-run the MCP registration with `x-api-key` in the headers. Then ask me to continue.
-
-Do not improvise further retries.
-
-### 4. Confirm to the user
-
-> Automatic negotiations are on. I'll run them silently and only interrupt you when a match is accepted. You can turn this off any time by setting `plugins.entries.indexnetwork-openclaw-plugin.config.negotiationMode` to `disabled`.
-
-### Troubleshooting
-
-- **Negotiations never fire**: confirm the gateway tunnel is up and the plugin is enabled. Check OpenClaw logs for `401` responses on `/index-network/webhook` — that indicates a HMAC secret mismatch. Check the `list_agents` output and verify the webhook URL matches `<GATEWAY_URL>/index-network/webhook`.
-- **Turn responses arrive past deadline**: the user's gateway or tunnel provider is slow. Recommend upgrading the tunnel or self-hosting with a stable reverse proxy.
+> Automatic negotiations are on. I'll run them silently and only interrupt you when a match is accepted. You can turn this off any time by setting `negotiationMode` to `disabled` in the plugin config.
 
 ## Handoff
 

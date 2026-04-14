@@ -123,50 +123,29 @@ Both agents receive this seed assessment as context. They are instructed to use 
 
 ---
 
-## Agent Dispatch (AgentDispatcher)
+## Turn Delivery (Polling)
 
-The negotiation graph dispatches each turn to the appropriate agent via a unified **AgentDispatcher** abstraction. This replaces any direct webhook invocation with a registry-driven dispatch that handles both system and personal agents uniformly.
+When a negotiation graph reaches a turn the system cannot resolve synchronously — typically because the next speaker is a personal agent rather than an in-process system agent — the turn is **parked for polling** rather than pushed. The graph persists a `tasks` row in state `waiting_for_agent` with the full absolute turn context (source/candidate user context, index context, seed assessment, optional discovery query) in its metadata, then suspends.
 
-### Dispatch resolution
+### Parked-turn lifecycle
 
-For each participant, the dispatcher resolves the agent to invoke:
+1. The negotiation graph writes the turn into `tasks.state = 'waiting_for_agent'` and enqueues a 24-hour fallback timeout.
+2. The user's personal agent polls `POST /api/agents/:id/negotiations/pickup` (authenticating with its API key). The backend atomically CAS's the oldest pending task for the caller's user from `waiting_for_agent` to `claimed`, cancels the 24-hour fallback, and enqueues a 6-hour claim timeout. The agent receives the turn number, deadline, counterparty action, full turn history, and the projected own/other user context.
+3. The agent deliberates and submits its decision via `POST /api/agents/:id/negotiations/:negotiationId/respond` with `{ action, message?, assessment: { reasoning, suggestedRoles } }`. The backend CAS's the task from `claimed` (scoped to this `agentId`) to `working`, persists the turn as a message on the negotiation conversation, and cancels the claim timeout.
+4. If the action is `accept`, `reject`, or pushes the turn count over the cap, the task is completed and an outcome artifact is written. Otherwise the task returns to `waiting_for_agent` and a fresh 24-hour fallback is enqueued for the counterparty.
+5. If a pickup is not followed by a `respond` within 6 hours, the claim expires and the task returns to `waiting_for_agent` for another pickup attempt. If no agent claims within 24 hours of first parking, the in-process system `Index Negotiator` takes the turn instead.
 
-1. **Personal agent first**: If the user has a personal agent registered with an active transport, the dispatcher targets it.
-2. **System agent fallback**: If no personal agent is found (or it is unavailable), the dispatcher falls back to the system Index Negotiator.
+Agent resolution uses the agent registry — the claiming agent is identified by the API key's `metadata.agentId`, and `assertAgentOwnership` checks that the agent belongs to the polling user.
 
-Agent resolution uses the agent registry — not hardcoded webhook URLs.
+### Why polling
 
-### Two-phase dispatch
+Polling decouples turn delivery from the backend's request path. The graph does not hold any open connections waiting for an agent response, personal agents do not need to expose a public HTTPS endpoint, and there is no shared secret to manage. Agents work at their own cadence; the claim timeout bounds how long a claimed turn can block progress, and the 24-hour parked timeout guarantees the negotiation always terminates.
 
-The dispatcher distinguishes two timeout tiers:
+### Personal agent reference implementation
 
-| Tier | Timeout | Behavior |
-|---|---|---|
-| **Short** (chat context) | ≤ 60 seconds | Blocks synchronously; response is awaited inline |
-| **Long** (background context) | > 60 seconds | Sends a notification to the agent, then suspends the graph; graph resumes when the agent responds via MCP tool |
+The canonical personal-agent runtime is the [`indexnetwork-openclaw-plugin`](../../packages/openclaw-plugin/README.md), which runs inside an OpenClaw workspace. It runs a background poller on a fixed interval against `POST /api/agents/:id/negotiations/pickup`; on a successful pickup it dispatches a silent subagent via `api.runtime.subagent.run` (`deliver: false`) with a session key prefixed `index:negotiation:`. The subagent connects to the Index Network MCP server using the same personal-agent API key, detects the `index:negotiation:` prefix, and follows the **Negotiation turn mode** instructions baked into `MCP_INSTRUCTIONS`. It reads profile and intent context, then submits its response via `POST /api/agents/:id/negotiations/:negotiationId/respond` (exposed through the `respond_to_negotiation` MCP tool).
 
-This means personal agents in a background negotiation cause the graph to suspend and wait for an out-of-band response, while system agents and fast personal agents complete synchronously within the turn.
-
----
-
-## Personal Agent Turn Handling
-
-A personal agent with a webhook transport receives negotiation events at an HTTPS endpoint it owns. The canonical reference implementation is the [`indexnetwork-openclaw-plugin`](../../packages/openclaw-plugin/README.md), which runs inside an OpenClaw workspace and turns webhook deliveries into silent subagent runs.
-
-### Delivery path
-
-1. The `AgentDispatcher` selects the personal agent for a turn and hands off to `AgentDeliveryService`, which filters the agent's transports by (a) the `manage:negotiations` permission and (b) the event subscription in `config.events` — the "dual gate". An eligible webhook transport is picked by priority.
-2. The backend signs the payload with HMAC-SHA256 using the transport secret (`X-Index-Signature` header) and issues `POST {config.url}` with a 5-second delivery timeout.
-3. The openclaw-plugin verifies the HMAC signature on `POST /index-network/webhook` and rejects mismatches with `401`.
-4. On `negotiation.turn_received`, the plugin launches a silent subagent via `api.runtime.subagent.run` with `deliver: false` and a **session key prefixed `index:negotiation:`**. The task prompt tells the subagent to read the full negotiation, ground itself in the user's profile and intents, and respond.
-5. The plugin acknowledges the webhook with `202 accepted` within the 5-second window. The subagent runs asynchronously.
-6. The subagent connects to the Index Network MCP server using the personal agent's API key, detects the `index:negotiation:` session prefix, and follows the **Negotiation turn mode** instructions baked into `MCP_INSTRUCTIONS` on the MCP server. It calls `get_negotiation`, `read_user_profiles`, `read_intents`, and then submits a response via `respond_to_negotiation`.
-7. The response posts back through MCP, which resumes the suspended negotiation graph server-side with the new turn.
-8. On `negotiation.completed`, the plugin fires an **accepted-notification** subagent instead — a delivered subagent that surfaces a single short line to the user telling them who they're connected with and why.
-
-### Why subagents
-
-Running the turn as a silent subagent (rather than inline in the webhook handler) lets the personal agent use its full LLM loop and tool stack to deliberate — fetching negotiation history, reading profile and intent context, and applying the user's voice — without tying up the HTTP request. The 202-accept-now / respond-later shape matches the long-timeout tier of the two-phase dispatcher.
+Running the turn as a silent subagent (rather than inline in the poller) lets the personal agent use its full LLM loop and tool stack to deliberate — fetching negotiation history, reading profile and intent context, applying the user's voice — without tying up the polling HTTP request.
 
 ### Turn mode behavioral contract
 
@@ -180,10 +159,9 @@ Because this behavioral contract lives in `MCP_INSTRUCTIONS` on the protocol's M
 
 ### Configuration knobs
 
-The openclaw-plugin exposes two optional config keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
+The openclaw-plugin exposes one optional config key under `plugins.entries.indexnetwork-openclaw-plugin.config`:
 
-- `webhookSecret` — shared HMAC secret. Set by the bootstrap skill via `add_webhook_transport` when the user enables automatic negotiations.
-- `negotiationMode` — `"enabled"` (default) or `"disabled"`. When disabled, the plugin still returns `202` on turn webhooks but does not dispatch a subagent, and Index Network's server falls back to the system `Index Negotiator` after the short-tier timeout. Accepted-notification messages still fire.
+- `negotiationMode` — `"enabled"` (default) or `"disabled"`. When disabled, the plugin does not poll, so Index Network's server falls back to the system `Index Negotiator` after the 24-hour parked timeout.
 
 ---
 

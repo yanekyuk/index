@@ -2,7 +2,7 @@
 
 Index Network — find the right people and let them find you.
 
-This plugin wires the [Index Network](https://index.network) MCP server into your OpenClaw workspace. On first use it registers the MCP server and guides you through auth; after that, the MCP server's own instructions carry all the behavioral guidance.
+This plugin wires the [Index Network](https://index.network) MCP server into your OpenClaw workspace and polls for negotiation turns in the background. On first use the bootstrap skill registers the MCP server and guides you through auth; after that, the MCP server's own instructions carry all the behavioral guidance.
 
 ## Install
 
@@ -37,20 +37,37 @@ The skill then re-registers the MCP server with an `x-api-key` header so every t
 
 ## Automatic negotiations
 
-Once bootstrap is complete with a persistent session, the plugin can handle Index Network negotiation matches automatically in the background. When Index Network dispatches a negotiation turn to your personal agent, the plugin:
+Once the plugin is configured with an `agentId` and `apiKey`, it polls the Index Network backend every 30 seconds for pending negotiation turns assigned to your agent. When a turn is found, the plugin:
 
-1. Verifies the HMAC signature on the incoming webhook.
+1. Picks up the turn via `POST /agents/:agentId/negotiations/pickup`.
 2. Launches a silent subagent (`deliver: false`) with a task prompt that tells it to read the negotiation via `get_negotiation`, ground itself in your profile and intents, and submit a response via `respond_to_negotiation`.
-3. Acknowledges the webhook with `202 accepted` within the 5-second delivery window.
+3. Tracks in-flight turns to avoid duplicate subagent launches.
 
 You never see the turns. The subagent speaks on your behalf. The only user-facing message you receive is when a negotiation is **accepted** — a single short line telling you who you're now connected with and why.
 
 ### Configuration
 
-The plugin reads two optional config keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
+The plugin reads these config keys under `plugins.entries.indexnetwork-openclaw-plugin.config`:
 
-- `webhookSecret` (string, required for automatic negotiations) — shared HMAC secret between Index Network and the plugin. Set by the bootstrap skill; do not edit manually unless you are re-syncing.
-- `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, turn webhooks return `202` without running a subagent. Index Network's side falls back to its system `Index Negotiator` after the turn times out. Accepted-notification messages still fire.
+- `agentId` (string, required) — your Index Network agent ID. Find it at https://index.network/agents.
+- `apiKey` (string, required) — API key linked to your agent.
+- `protocolUrl` (string, optional) — backend base URL. Defaults to `http://localhost:3001`.
+- `negotiationMode` (`"enabled"` | `"disabled"`, default `"enabled"`) — when set to `"disabled"`, polling skips turn pickup. Index Network's side falls back to its system `Index Negotiator` after the turn times out.
+
+Configure via CLI:
+
+```bash
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.agentId YOUR_AGENT_ID
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.apiKey YOUR_API_KEY
+openclaw config set plugins.entries.indexnetwork-openclaw-plugin.config.protocolUrl https://protocol.index.network
+```
+
+### Resilience
+
+- **Duplicate registration guard** — if OpenClaw calls `register()` more than once per process, only the first call takes effect.
+- **In-flight deduplication** — turns already being handled are not re-launched on subsequent poll cycles.
+- **Exponential backoff** — on repeated failures (backend unreachable, subagent errors), the poll interval doubles up to ~8 minutes, then resets on the next successful communication.
+- **Startup diagnostics** — on first poll, the plugin checks backend reachability and logs an actionable warning if `protocolUrl` is misconfigured.
 
 ### Pinning the subagent model
 
@@ -80,8 +97,7 @@ Subagent runs are logged by OpenClaw's standard subagent logging. Users who want
 ## What it ships
 
 - `openclaw.plugin.json` — plugin manifest
-- `src/index.ts` — plugin entry point: registers HTTP routes for negotiation webhooks
-- `src/webhook/` — HMAC verifier and webhook payload types
+- `src/index.ts` — plugin entry point: registers poll route and background polling loop
 - `src/prompts/` — canonical prompts for the turn-handler and accepted-notifier subagents
 - `skills/index-network/SKILL.md` — bootstrap skill (generated from the monorepo template)
 
@@ -95,21 +111,21 @@ Behavioral guidance (voice, vocabulary, entity model, discovery-first rule, outp
 
 **`openclaw mcp set` fails with "command not found"** — make sure you have OpenClaw CLI ≥0.1.0 installed.
 
-**Automatic negotiations never fire** — confirm your gateway tunnel is up, the plugin is enabled, and your personal agent is registered with both `negotiation.turn_received` and `negotiation.completed` events at https://index.network/agents. Check OpenClaw gateway logs for `401` responses on `/index-network/webhook` — that indicates a HMAC secret mismatch.
+**Automatic negotiations never fire** — confirm the plugin has `agentId` and `apiKey` configured. Check OpenClaw gateway logs for poll errors. Verify your agent exists at https://index.network/agents.
 
-**Plugin logs "webhook secret is not configured"** — re-run the bootstrap skill's "Enable automatic negotiations" block, or set `plugins.entries.indexnetwork-openclaw-plugin.config.webhookSecret` manually.
+**Plugin logs "Cannot reach Index Network backend"** — check that `protocolUrl` is correct and the backend is running.
 
-### Deployment requirement: the gateway HTTP port must be publicly reachable
+**Plugin logs "Backing off"** — the backend or subagent is returning errors. Check gateway logs for details. The plugin will automatically recover once the issue is resolved.
 
-The plugin registers a route via `registerHttpRoute` that the OpenClaw gateway serves on its own HTTP listener (by default `127.0.0.1:18789`). Your deployment must expose that port to the public internet, typically via a reverse proxy in front of the gateway. Index Network will POST to `<your-public-url>/index-network/webhook` every time a negotiation turn is dispatched to your personal agent. If that request cannot reach the gateway HTTP listener, no webhook will ever be delivered and there will be no error on the Index Network side until the delivery queue gives up.
+## Technical notes
 
-Verify with:
+### Route auth: `gateway` not `plugin`
 
-```bash
-curl -i https://<your-public-url>/index-network/webhook
-```
+The poll route MUST use `auth: 'gateway'` because `api.runtime.subagent.run()` requires `operator.write` scope, which only gateway-authed routes receive. Using `auth: 'plugin'` will fail with `missing scope: operator.write`.
 
-A correctly-exposed deployment returns `401 invalid signature` (the plugin's HMAC rejection — proof that the route is reachable). Any other response means your reverse proxy or deployment wrapper is not forwarding HTTP to the gateway port.
+### No public endpoint required
+
+Unlike webhook-based architectures, polling does not require the gateway HTTP port to be publicly reachable. The plugin initiates all connections outbound to the Index Network backend.
 
 ## License
 

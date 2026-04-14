@@ -1,18 +1,20 @@
-import type { NegotiationCompletedPayload } from '../webhook/types.js';
+export interface NegotiationOutcome {
+  hasOpportunity: boolean;
+  agreedRoles?: { ownUser?: string; otherUser?: string };
+  reasoning?: string;
+}
+
+export interface NegotiationCompletedPayload {
+  negotiationId: string;
+  outcome: NegotiationOutcome;
+  turnCount: number;
+}
 
 /**
  * Builds the task prompt for the "we connected you with X" message that the
- * plugin posts to the user's channel when a negotiation is accepted. The
- * subagent receives this prompt and produces one short chat message.
+ * plugin posts to the user's channel when a negotiation is accepted.
  *
- * The `reasoning` field on the payload originates from an LLM (the Index
- * Network negotiator), so it is serialized as JSON inside a fenced code block
- * and explicitly labeled as data — never interpolated directly as control
- * text — to keep an adversarially shaped reasoning string from steering the
- * notifier subagent.
- *
- * @param payload - The `negotiation.completed` webhook payload. Only
- *   `negotiationId`, `outcome.reasoning`, and `turnCount` are read.
+ * @param payload - The negotiation completed payload.
  * @returns The task prompt string passed to `api.runtime.subagent.run`.
  */
 export function acceptedPrompt(payload: NegotiationCompletedPayload): string {

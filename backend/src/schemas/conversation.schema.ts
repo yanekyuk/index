@@ -28,6 +28,7 @@ export const taskStateEnum = pgEnum('task_state', [
   'rejected',
   'auth_required',
   'waiting_for_agent',
+  'claimed',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,6 +84,8 @@ export const tasks = pgTable(
     statusTimestamp: timestamp('status_timestamp', { withTimezone: true }),
     metadata: jsonb('metadata'),
     extensions: jsonb('extensions'),
+    claimedByAgentId: text('claimed_by_agent_id'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

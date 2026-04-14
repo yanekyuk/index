@@ -372,7 +372,7 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
       return [];
     }
 
-    const [agentRows, transportRows, allPermissionRows] = await Promise.all([
+    const [agentRows, transportRows, allPermissionRows, credentialedPersonalAgentIds] = await Promise.all([
       db
         .select()
         .from(schema.agents)
@@ -397,18 +397,39 @@ export class AgentDatabaseAdapter implements AgentRegistryStore {
         .select()
         .from(schema.agentPermissions)
         .where(inArray(schema.agentPermissions.agentId, agentIds)),
+      this.findPersonalAgentIdsWithValidCredentials(agentIds),
     ]);
 
-    const transportsByAgent = this.groupTransportsByAgent(transportRows);
-    const activeTransportAgentIds = new Set(transportRows.map((row) => row.agentId));
-
-    return this.mapAgentsWithRelations(agentRows, transportRows, allPermissionRows, { redactSecret: false }).filter((agent) => {
-      if (agent.type === 'system') {
-        return true;
-      }
-
-      return activeTransportAgentIds.has(agent.id) || (transportsByAgent.get(agent.id)?.length ?? 0) > 0;
+    // Polling model: personal agents authenticate to /agents/:id/pickup with their API
+    // key and do not require a DB-registered transport row. A personal agent is only
+    // dispatch-eligible if it has at least one enabled, unexpired API key — otherwise
+    // parking a turn for pickup would strand it until the 24h timeout. System agents
+    // are always eligible; they execute in-process and never poll.
+    const dispatchableAgentRows = agentRows.filter((row) => {
+      if (row.type !== 'personal') return true;
+      return credentialedPersonalAgentIds.has(row.id);
     });
+    return this.mapAgentsWithRelations(dispatchableAgentRows, transportRows, allPermissionRows, { redactSecret: false });
+  }
+
+  private async findPersonalAgentIdsWithValidCredentials(agentIds: string[]): Promise<Set<string>> {
+    if (agentIds.length === 0) {
+      return new Set();
+    }
+    const rows = await db
+      .select({ agentId: sql<string>`(${schema.apikeys.metadata}::jsonb ->> 'agentId')` })
+      .from(schema.apikeys)
+      .where(
+        and(
+          eq(schema.apikeys.enabled, true),
+          or(
+            isNull(schema.apikeys.expiresAt),
+            sql`${schema.apikeys.expiresAt} > now()`,
+          ),
+          sql`(${schema.apikeys.metadata}::jsonb ->> 'agentId') = ANY(${agentIds})`,
+        ),
+      );
+    return new Set(rows.map((r) => r.agentId).filter((id): id is string => !!id));
   }
 
   getSystemAgentIds(): AgentSystemIds {
