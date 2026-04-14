@@ -465,6 +465,35 @@ export const agentPermissions = pgTable('agent_permissions', {
   agentUserIdx: index('agent_permissions_agent_user_idx').on(table.agentId, table.userId),
 }));
 
+export const agentTestMessages = pgTable(
+  'agent_test_messages',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentId: text('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    requestedByUserId: text('requested_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    reservationToken: text('reservation_token'),
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    byAgent: index('idx_agent_test_messages_agent_pending').on(
+      t.agentId,
+      t.reservedAt,
+    ),
+  }),
+);
+
+export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
+export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
 // ═══════════════════════════════════════════════════════════════════════════════
