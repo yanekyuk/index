@@ -29,9 +29,20 @@ export interface UserSocials {
   websites?: string[];
 }
 
+export interface TelegramPrefs {
+  chatId: string;
+  sessionId?: string;       // lazily created on first outbound message
+  connectedAt: string;      // ISO timestamp
+  notifications: {
+    opportunityAccepted: boolean;
+    negotiationTurn: boolean;
+  };
+}
+
 export interface NotificationPreferences {
   connectionUpdates: boolean;
   weeklyNewsletter: boolean;
+  telegram?: TelegramPrefs;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
