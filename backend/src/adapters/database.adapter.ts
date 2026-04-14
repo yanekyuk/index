@@ -5397,11 +5397,15 @@ export class ConversationDatabaseAdapter {
             inArray(schema.tasks.conversationId, ids),
             eq(schema.agents.type, 'personal'),
           ),
-        );
+        )
+        // Deterministic ordering so that if a conversation ever has claims
+        // from multiple personal agents for the same owner, the displayed
+        // agent name is stable across requests. Most recent claim wins.
+        .orderBy(desc(schema.tasks.claimedAt), asc(schema.agents.id));
       for (const r of claimRows) {
         if (!r.ownerId) continue;
         const convMap = claimedAgentByConv.get(r.conversationId) ?? new Map();
-        // First claim wins (arbitrary but stable — a single personal agent per user is the norm)
+        // First row wins after deterministic ordering — most recent claim per owner.
         if (!convMap.has(r.ownerId)) {
           convMap.set(r.ownerId, { name: r.agentName, avatar: r.avatar });
         }
