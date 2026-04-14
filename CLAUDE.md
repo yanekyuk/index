@@ -187,6 +187,7 @@ index/
 - `src/controllers/` - API controllers with decorator-based routing (`@Controller`, `@Get`, `@Post`)
 - `src/services/` - Business logic layer
 - `src/adapters/` - Infrastructure implementations (database, embedder, cache, queue, scraper, storage)
+- `src/gateways/` - Single-point delivery bridges to external chat/notification channels (e.g. Telegram bot for inbound+outbound)
 - `src/schemas/` - Drizzle table definitions; primary schema is `schemas/database.schema.ts`
 - `src/guards/` - Auth/validation guards
 - `src/queues/` - BullMQ job queue definitions

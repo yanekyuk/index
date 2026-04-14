@@ -3,7 +3,7 @@ import { eq, and, sql, asc, isNull } from 'drizzle-orm';
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
 import * as dbSchema from '../schemas/database.schema';
-import { conversationDatabaseAdapter } from '../adapters/database.adapter';
+import { conversationDatabaseAdapter, ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { negotiationTimeoutQueue } from '../queues/negotiation-timeout.queue';
 import { negotiationClaimTimeoutQueue } from '../queues/negotiation-claim-timeout.queue';
 import { log } from '../lib/log';
@@ -353,6 +353,19 @@ export class NegotiationPollingService {
       const outcomeStr = input.action === 'accept' ? 'accepted'
         : input.action === 'reject' ? 'rejected'
         : 'turn_cap';
+
+      if (meta.opportunityId) {
+        const nextStatus = input.action === 'accept' ? 'pending'
+          : input.action === 'reject' ? 'rejected'
+          : 'stalled';
+        await new ChatDatabaseAdapter().updateOpportunityStatus(meta.opportunityId, nextStatus).catch((err) => {
+          logger.error('[NegotiationPollingService] Failed to update opportunity status on finalization', {
+            opportunityId: meta.opportunityId,
+            nextStatus,
+            error: err,
+          });
+        });
+      }
 
       logger.info('[NegotiationPollingService] Negotiation finalized', {
         negotiationId,

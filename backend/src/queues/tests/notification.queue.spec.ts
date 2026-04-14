@@ -5,6 +5,7 @@ import { config } from 'dotenv';
 config({ path: '.env.test' });
 
 import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { EventEmitter } from 'events';
 
 const mockAdd = mock(async () => ({ id: 'job-1', name: 'process_opportunity_notification', data: {} }));
 const mockCreateWorker = mock(() => ({}));
@@ -36,19 +37,29 @@ mock.module('../../services/user.service', () => ({
     getUserForNewsletter: (id: string) => mockGetUserForNewsletter(id),
   },
 }));
-mock.module('../../lib/redis', () => ({
+mock.module('../../adapters/cache.adapter', () => ({
   getRedisClient: () => ({
     set: mockRedisSet,
     rpush: mockRedisRpush,
     expire: mockRedisExpire,
   }),
 }));
-mock.module('../../lib/email/queue/email.queue', () => ({
-  addEmailJob: (payload: unknown, opts?: unknown) => (mockAddEmailJob as (a: unknown, b?: unknown) => Promise<unknown>)(payload, opts),
+mock.module('../email.queue', () => ({
+  emailQueue: {
+    addJob: (payload: unknown, opts?: unknown) => (mockAddEmailJob as (a: unknown, b?: unknown) => Promise<unknown>)(payload, opts),
+  },
 }));
+const _telegramEmitter = new EventEmitter();
+_telegramEmitter.setMaxListeners(100);
+
 mock.module('../../lib/notification-events', () => ({
   emitOpportunityNotification: (opts: { opportunityId: string; recipientId: string }) =>
     (mockEmitOpportunityNotification as (opts: unknown) => void)(opts),
+  emitTelegramNotification: (payload: unknown) => _telegramEmitter.emit('telegram', payload),
+  onTelegramNotification: (handler: (payload: unknown) => void) => {
+    _telegramEmitter.on('telegram', handler);
+    return () => _telegramEmitter.off('telegram', handler);
+  },
 }));
 
 import {
@@ -59,14 +70,31 @@ import {
   type NotificationQueueDatabase,
   queueOpportunityNotification,
 } from '../notification.queue';
+import { onTelegramNotification } from '../../lib/notification-events';
 
-const asNotifDb = (db: { getOpportunity: (id: string) => Promise<unknown> }): NotificationQueueDatabase =>
-  db as NotificationQueueDatabase;
-
-const makeOpportunity = (reasoning?: string) => ({
-  id: 'opp-1',
-  interpretation: { reasoning: reasoning ?? 'A match for you' },
+const asNotifDb = (db: { getOpportunity: (id: string) => Promise<unknown> }): NotificationQueueDatabase => ({
+  getOpportunity: db.getOpportunity as NotificationQueueDatabase['getOpportunity'],
+  getTelegramPrefs: async () => null,
 });
+
+const makeOpportunity = (idOrReasoning?: string, _recipientId?: string, reasoning?: string) => ({
+  id: reasoning !== undefined ? idOrReasoning ?? 'opp-1' : 'opp-1',
+  interpretation: { reasoning: reasoning ?? idOrReasoning ?? 'A match for you' },
+});
+
+function makeDb(opts: {
+  opportunity: ReturnType<typeof makeOpportunity>;
+  telegramPrefs?: { opportunityAccepted: boolean } | null;
+}) {
+  return {
+    getOpportunity: async (id: string) =>
+      id === opts.opportunity.id ? opts.opportunity : null,
+    getTelegramPrefs: async (_userId: string) =>
+      opts.telegramPrefs
+        ? { chatId: 'tg-chat', connectedAt: '2026-01-01T00:00:00Z', notifications: opts.telegramPrefs }
+        : null,
+  };
+}
 
 describe('NotificationQueue', () => {
   beforeEach(() => {
@@ -371,5 +399,90 @@ describe('NotificationQueue', () => {
     it('exported queueOpportunityNotification is a function (singleton path covered by class test)', () => {
       expect(typeof queueOpportunityNotification).toBe('function');
     });
+  });
+});
+
+describe('processOpportunityNotification — Telegram delivery', () => {
+  it('emits Telegram notification when user has telegram prefs with opportunityAccepted=true', async () => {
+    const opportunityId = 'opp-tg-1';
+    const recipientId = 'user-tg-1';
+
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity(opportunityId, recipientId, 'A great match'),
+      telegramPrefs: { opportunityAccepted: true },
+    });
+    const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
+    await queue.processJob('process_opportunity_notification', {
+      opportunityId,
+      recipientId,
+      priority: 'high',
+    });
+
+    unsub();
+    expect(received).toHaveLength(1);
+    expect((received[0] as { userId: string }).userId).toBe(recipientId);
+  });
+
+  it('does NOT emit Telegram notification when opportunityAccepted=false', async () => {
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity('opp-2', 'user-2', 'A match'),
+      telegramPrefs: { opportunityAccepted: false },
+    });
+    const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
+    await queue.processJob('process_opportunity_notification', {
+      opportunityId: 'opp-2',
+      recipientId: 'user-2',
+      priority: 'high',
+    });
+
+    unsub();
+    expect(received).toHaveLength(0);
+  });
+
+  it('does NOT emit Telegram notification when user has no telegram prefs', async () => {
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity('opp-3', 'user-3', 'A match'),
+      telegramPrefs: null,
+    });
+    const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
+    await queue.processJob('process_opportunity_notification', {
+      opportunityId: 'opp-3',
+      recipientId: 'user-3',
+      priority: 'high',
+    });
+
+    unsub();
+    expect(received).toHaveLength(0);
+  });
+});
+
+describe('processJob — process_negotiation_notification', () => {
+  it('handles the job type without emitting Telegram notifications', async () => {
+    const received: unknown[] = [];
+    const unsub = onTelegramNotification((p) => received.push(p));
+
+    const db = makeDb({
+      opportunity: makeOpportunity('opp-x', 'user-x', 'ignored'),
+      telegramPrefs: { opportunityAccepted: true },
+    });
+    const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
+    await queue.processJob('process_negotiation_notification', {
+      negotiationId: 'neg-1',
+      recipientId: 'user-x',
+      turnNumber: 2,
+      counterpartyAction: 'propose',
+    } as unknown as NotificationJobData);
+
+    unsub();
+    expect(received).toHaveLength(0);
   });
 });

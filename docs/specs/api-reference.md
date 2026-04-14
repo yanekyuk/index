@@ -1485,7 +1485,9 @@ Leave an index. Members (non-owners) can leave.
 
 **Controller prefix**: `/integrations`
 
-Supported toolkits: `gmail`, `slack`
+Supported toolkits: `gmail`, `slack`, `telegram`
+
+> **Telegram** is a bot-based orchestrator connection (not a Composio OAuth toolkit). It doesn't use `/link` or `/import`; connection is established via a deep link returned by `POST /connect/telegram`, and disconnection is via `DELETE /:id` with `id = telegram:<userId>`.
 
 ### GET /api/integrations
 
@@ -1510,9 +1512,11 @@ Start OAuth flow to connect a toolkit.
 **Auth**: AuthGuard
 
 **Path params**:
-- `toolkit` — `gmail` or `slack`
+- `toolkit` — `gmail`, `slack`, or `telegram`
 
-**Response**: OAuth redirect URL from the integration adapter.
+**Response**:
+- For `gmail`/`slack`: OAuth redirect URL from the integration adapter.
+- For `telegram`: `{ "deepLink": "https://t.me/<bot_username>?start=<token>" }` where `<token>` is a short-lived one-time token (15 min TTL). Opening the link prompts Telegram to message the bot with `/start <token>`, which completes the connection.
 
 ### POST /api/integrations/:toolkit/link
 
@@ -1572,14 +1576,36 @@ Import contacts from a connected toolkit into an index.
 
 ### DELETE /api/integrations/:id
 
-Disconnect (delete) a connected Composio account. Also removes all index integration links.
+Disconnect (delete) a connected account.
 
 **Auth**: AuthGuard
 
 **Path params**:
-- `id` — Connection ID
+- `id` — Connection ID (or `telegram:<userId>` for Telegram)
 
-**Response**: Disconnect result from adapter.
+**Behavior**:
+- Composio connections (`gmail`/`slack`): disconnects the OAuth account and removes all index integration links.
+- Telegram (`telegram:<userId>`): clears the stored chatId and notification prefs. The deep-link token is unchanged; reconnect via `POST /connect/telegram`.
+
+**Response**: Disconnect result.
+
+---
+
+## Webhooks
+
+**Controller prefix**: `/webhooks`
+
+### POST /api/webhooks/telegram
+
+Inbound endpoint for Telegram Bot API updates. Called by Telegram when the bot receives a message (text or `/start <token>` deep-link callback).
+
+**Auth**: Header `X-Telegram-Bot-Api-Secret-Token` must match `TELEGRAM_WEBHOOK_SECRET`. Otherwise responds `401`.
+
+**Body**: Telegram `Update` object (JSON). The handler only inspects `message.chat.id` and `message.text`.
+
+**Response**: Always `200 OK`. Inbound handling is fire-and-forget so the endpoint never blocks Telegram's delivery pipeline.
+
+> Registered automatically at backend startup via `setWebhook` when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are configured.
 
 ---
 
@@ -1814,7 +1840,7 @@ List opportunities for the authenticated user.
 **Auth**: AuthGuard
 
 **Query params**:
-- `status` — Filter by status: `pending`, `viewed`, `accepted`, `rejected`, `expired` (optional)
+- `status` — Filter by status: `pending`, `stalled`, `accepted`, `rejected`, `expired` (optional)
 - `networkId` — Filter by network (optional)
 - `limit` — Max results (optional)
 - `offset` — Pagination offset (optional)
@@ -1899,7 +1925,7 @@ Update opportunity status.
 **Request body**:
 ```json
 {
-  "status": "latent | draft | pending | accepted | rejected | expired"
+  "status": "latent | draft | negotiating | pending | stalled | accepted | rejected | expired"
 }
 ```
 

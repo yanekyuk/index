@@ -147,6 +147,11 @@ TRUSTED_ORIGINS=http://localhost:3000
 # Web crawling and profile extraction
 # PARALLELS_API_KEY=...
 
+# Telegram bot (optional — enables bot notifications and chat)
+# TELEGRAM_BOT_TOKEN=          # Bot token from @BotFather
+# TELEGRAM_BOT_USERNAME=       # Bot username without @, e.g. IndexBot
+# TELEGRAM_WEBHOOK_SECRET=     # Random secret for webhook validation
+
 # Observability
 # LANGFUSE_PUBLIC_KEY=...
 # LANGFUSE_SECRET_KEY=...

@@ -243,6 +243,20 @@ export class NegotiationTimeoutQueue {
         : aiTurn.action === 'reject' ? 'rejected'
         : 'turn_cap';
 
+      const opportunityId = (meta as { opportunityId?: string }).opportunityId;
+      if (opportunityId) {
+        const nextStatus = aiTurn.action === 'accept' ? 'pending'
+          : aiTurn.action === 'reject' ? 'rejected'
+          : 'stalled';
+        await database.updateOpportunityStatus(opportunityId, nextStatus).catch((err) => {
+          this.logger.error('[NegotiationTimeoutJob] Failed to update opportunity status on timeout finalization', {
+            opportunityId,
+            nextStatus,
+            error: err,
+          });
+        });
+      }
+
       this.logger.info('[NegotiationTimeoutJob] Negotiation finalized after timeout', {
         negotiationId,
         outcome: outcomeStr,

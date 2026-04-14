@@ -5,8 +5,9 @@ import { ChatDatabaseAdapter } from '../adapters/database.adapter';
 import { userService } from '../services/user.service';
 import { emailQueue } from './email.queue';
 import { opportunityNotificationTemplate } from '../lib/email/templates/opportunity-notification.template';
-import { emitOpportunityNotification } from '../lib/notification-events';
+import { emitOpportunityNotification, emitTelegramNotification } from '../lib/notification-events';
 import { getRedisClient } from '../adapters/cache.adapter';
+import { userDatabaseAdapter } from '../adapters/database.adapter';
 
 /** BullMQ queue name for opportunity notification jobs. */
 export const QUEUE_NAME = 'notification-queue';
@@ -21,8 +22,18 @@ export interface NotificationJobData {
   priority: NotificationPriority;
 }
 
+/** Payload for a negotiation turn notification job. */
+export interface NegotiationNotificationJobData {
+  negotiationId: string;
+  recipientId: string;
+  turnNumber: number;
+  counterpartyAction: string;
+}
+
 /** Minimal database interface for notification queue (used when deps provided in tests). */
-export type NotificationQueueDatabase = Pick<ChatDatabaseAdapter, 'getOpportunity'>;
+export type NotificationQueueDatabase = Pick<ChatDatabaseAdapter, 'getOpportunity'> & {
+  getTelegramPrefs(userId: string): Promise<import('../schemas/database.schema').TelegramPrefs | null>;
+};
 
 /**
  * Optional dependencies for testing. Use abstractions (`Pick<Adapter, ...>` or protocol interfaces)
@@ -57,17 +68,22 @@ export class NotificationQueue {
 
   private readonly logger = log.job.from('NotificationJob');
   private readonly queueLogger = log.queue.from('NotificationQueue');
-  private readonly database: NotificationQueueDatabase | ChatDatabaseAdapter;
-  private readonly deps: NotificationQueueDeps | undefined;
+  private readonly database: NotificationQueueDatabase;
   private worker: ReturnType<typeof QueueFactory.createWorker<NotificationJobData>> | null = null;
 
   /**
    * @param deps - Optional overrides for database (for tests).
    */
   constructor(deps?: NotificationQueueDeps) {
-    this.deps = deps;
-    this.database = deps?.database ?? new ChatDatabaseAdapter();
-    // When deps is omitted, default adapter implements the same interface.
+    if (deps?.database) {
+      this.database = deps.database;
+    } else {
+      const chatDb = new ChatDatabaseAdapter();
+      this.database = {
+        getOpportunity: (id: string) => chatDb.getOpportunity(id),
+        getTelegramPrefs: (userId: string) => userDatabaseAdapter.getTelegramPrefs(userId),
+      };
+    }
   }
 
   /**
@@ -97,14 +113,43 @@ export class NotificationQueue {
   }
 
   /**
+   * Enqueue a negotiation turn notification for delivery.
+   * @param negotiationId - The negotiation ID
+   * @param recipientId - The user who should receive the notification
+   * @param turnNumber - Current turn number
+   * @param counterpartyAction - The action taken by the counterparty
+   */
+  async queueNegotiationNotification(
+    negotiationId: string,
+    recipientId: string,
+    turnNumber: number,
+    counterpartyAction: string,
+  ): Promise<void> {
+    const negPayload = { negotiationId, recipientId, turnNumber, counterpartyAction };
+    await this.queue.add(
+      'process_negotiation_notification',
+      negPayload as unknown as NotificationJobData,
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: { age: 24 * 60 * 60 },
+        removeOnFail: { age: 7 * 24 * 60 * 60 },
+      },
+    );
+  }
+
+  /**
    * Run the job handler for a given job name and payload. Used by the worker and by tests with injected deps.
-   * @param name - Job name (`process_opportunity_notification`)
+   * @param name - Job name (`process_opportunity_notification` | `process_negotiation_notification`)
    * @param data - Job payload
    */
-  async processJob(name: string, data: NotificationJobData): Promise<void> {
+  async processJob(name: string, data: NotificationJobData | NegotiationNotificationJobData): Promise<void> {
     switch (name) {
       case 'process_opportunity_notification':
-        await this.processOpportunityNotification(data);
+        await this.processOpportunityNotification(data as NotificationJobData);
+        break;
+      case 'process_negotiation_notification':
+        await this.processNegotiationNotification(data as NegotiationNotificationJobData);
         break;
       default:
         this.queueLogger.warn(`[NotificationProcessor] Unknown job name: ${name}`);
@@ -133,7 +178,7 @@ export class NotificationQueue {
 
   private async processOpportunityNotification(data: NotificationJobData): Promise<void> {
     const { opportunityId, recipientId, priority } = data;
-    const db = this.deps?.database ?? this.database;
+    const db = this.database;
 
     this.logger.verbose('[NotificationJob] Processing opportunity notification', {
       opportunityId,
@@ -173,6 +218,30 @@ export class NotificationQueue {
         await this.addToDigest(recipientId, opportunityId);
       }
     }
+
+    // Telegram delivery (independent of priority tier)
+    const telegramPrefs = await this.database.getTelegramPrefs(recipientId);
+    if (telegramPrefs?.notifications.opportunityAccepted) {
+      const appUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
+      emitTelegramNotification({
+        userId: recipientId,
+        message: `New connection: ${summary}`,
+        inlineButtons: [{ text: 'View opportunity', url: `${appUrl}/opportunities/${opportunityId}` }],
+      });
+      this.logger.info('[NotificationJob] Emitted Telegram opportunity notification', {
+        opportunityId,
+        recipientId,
+      });
+    }
+  }
+
+  private async processNegotiationNotification(data: NegotiationNotificationJobData): Promise<void> {
+    const { negotiationId, recipientId } = data;
+    // Placeholder: delivery channel (e.g. email, push) can be wired here.
+    this.logger.verbose('[NotificationJob] Negotiation turn notification received', {
+      negotiationId,
+      recipientId,
+    });
   }
 
   private async sendHighPriorityEmail(
