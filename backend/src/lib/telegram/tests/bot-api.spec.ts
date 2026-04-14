@@ -16,7 +16,7 @@ beforeEach(() => {
   global.fetch = mock(async (url: string, opts?: RequestInit) => {
     fetchCalls.push({ url, body: opts?.body ? JSON.parse(opts.body as string) : null });
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 });
 
 afterEach(() => {
@@ -39,7 +39,7 @@ describe('sendMessage', () => {
   });
 
   it('throws when the Telegram API returns a non-ok response', async () => {
-    global.fetch = mock(async () => new Response('Bad Request', { status: 400 })) as typeof fetch;
+    global.fetch = mock(async () => new Response('Bad Request', { status: 400 })) as unknown as typeof fetch;
     await expect(sendMessage('123456', 'fail')).rejects.toThrow('Telegram sendMessage failed');
   });
 });
@@ -55,7 +55,7 @@ describe('setWebhook', () => {
   });
 
   it('throws when setWebhook call fails', async () => {
-    global.fetch = mock(async () => new Response('Forbidden', { status: 403 })) as typeof fetch;
+    global.fetch = mock(async () => new Response('Forbidden', { status: 403 })) as unknown as typeof fetch;
     await expect(setWebhook('https://example.com/webhooks/telegram', 'secret')).rejects.toThrow('Telegram setWebhook failed');
   });
 });
