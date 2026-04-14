@@ -12,6 +12,19 @@
 
 ---
 
+## Plan Corrections (applied 2026-04-15)
+
+Initial execution of this plan surfaced systematic inaccuracies. All code/test snippets below have been patched. Any implementer reading this plan should honor these conventions:
+
+1. **Column types:** All ID and reservation-token columns use `text('...').$defaultFn(() => crypto.randomUUID())` — **not** `uuid('...').defaultRandom()`. Existing `agents.id` and `users.id` are `text`, so FK columns must also be `text` or Postgres rejects the constraint.
+2. **Schema field names:** `agents` uses `ownerId` (not `ownerUserId`) and `type` (not `kind`). The `users` table requires `name` (NOT NULL) — include it in every insert fixture.
+3. **Drizzle client:** `db` is a **default export** from `backend/src/lib/drizzle/drizzle.ts`. Use `import db from '../src/lib/drizzle/drizzle'`, never `import { db } from ...`.
+4. **Test env bootstrap:** Use `import '../src/startup.env';` — `'../src/test-env'` does not exist.
+5. **`db.execute(...)`:** Always pass a `sql\`...\`` tagged template, never a raw string. Import `sql` from `drizzle-orm`.
+6. **`.env.test` is stale:** Integration tests that hit the DB use `backend/src/preload.test.ts` (registered in `backend/bunfig.toml`) which overrides `DATABASE_URL` from `.env.development`. This is already in place — new tests just work.
+
+---
+
 ## Execution Order
 
 Six issues, each a separate PR into `dev`. Each runs in its own worktree.
@@ -78,15 +91,15 @@ Open `backend/src/schemas/database.schema.ts`. Locate the section where other ag
 export const agentTestMessages = pgTable(
   'agent_test_messages',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    agentId: uuid('agent_id')
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    agentId: text('agent_id')
       .notNull()
       .references(() => agents.id, { onDelete: 'cascade' }),
-    requestedByUserId: uuid('requested_by_user_id')
+    requestedByUserId: text('requested_by_user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
-    reservationToken: uuid('reservation_token'),
+    reservationToken: text('reservation_token'),
     reservedAt: timestamp('reserved_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -142,11 +155,12 @@ git commit -m "feat(db): add agent_test_messages table for OpenClaw delivery pri
 Create `backend/tests/agent-test-message.service.test.ts`:
 
 ```ts
-import '../src/test-env';
+import '../src/startup.env';
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { db } from '../src/lib/drizzle/drizzle';
+import db from '../src/lib/drizzle/drizzle';
 import { agents, agentTestMessages, users } from '../src/schemas/database.schema';
 import { AgentTestMessageService } from '../src/services/agent-test-message.service';
 
@@ -158,12 +172,12 @@ describe('AgentTestMessageService', () => {
   beforeEach(async () => {
     const [user] = await db
       .insert(users)
-      .values({ email: `test-${randomUUID()}@example.com` })
+      .values({ email: `test-${randomUUID()}@example.com`, name: 'Test User' })
       .returning();
     userId = user.id;
     const [agent] = await db
       .insert(agents)
-      .values({ ownerUserId: userId, name: 'test-agent', kind: 'personal' })
+      .values({ ownerId: userId, name: 'test-agent', type: 'personal' })
       .returning();
     agentId = agent.id;
   });
@@ -202,7 +216,7 @@ describe('AgentTestMessageService', () => {
     await service.pickup(agentId);
     // Manually backdate reservation beyond TTL
     await db.execute(
-      `UPDATE agent_test_messages SET reserved_at = now() - interval '2 minutes'`,
+      sql`UPDATE agent_test_messages SET reserved_at = now() - interval '2 minutes'`,
     );
     const next = await service.pickup(agentId);
     expect(next?.content).toBe('hello');
@@ -234,7 +248,7 @@ Create `backend/src/services/agent-test-message.service.ts`:
 import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { db } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 import { agentTestMessages } from '../schemas/database.schema';
 
 const RESERVATION_TTL_SECONDS = 60;
@@ -908,20 +922,20 @@ Append to the schema file (near opportunity-related tables):
 export const opportunityDeliveries = pgTable(
   'opportunity_deliveries',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
-    opportunityId: uuid('opportunity_id')
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    opportunityId: text('opportunity_id')
       .notNull()
       .references(() => opportunities.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id')
+    userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    agentId: uuid('agent_id').references(() => agents.id, {
+    agentId: text('agent_id').references(() => agents.id, {
       onDelete: 'set null',
     }),
     channel: text('channel').notNull(),
     trigger: text('trigger').notNull(),
     deliveredAtStatus: text('delivered_at_status').notNull(),
-    reservationToken: uuid('reservation_token'),
+    reservationToken: text('reservation_token'),
     reservedAt: timestamp('reserved_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -970,11 +984,12 @@ git commit -m "feat(db): add opportunity_deliveries ledger table"
 Create `backend/tests/opportunity-delivery.service.test.ts`:
 
 ```ts
-import '../src/test-env';
+import '../src/startup.env';
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
+import { sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { db } from '../src/lib/drizzle/drizzle';
+import db from '../src/lib/drizzle/drizzle';
 import {
   agents,
   opportunities,
@@ -995,11 +1010,11 @@ describe('OpportunityDeliveryService', () => {
   let agentId: string;
 
   beforeEach(async () => {
-    const [u] = await db.insert(users).values({ email: `t-${randomUUID()}@e.com` }).returning();
+    const [u] = await db.insert(users).values({ email: `t-${randomUUID()}@e.com`, name: 'T' }).returning();
     userId = u.id;
     const [a] = await db
       .insert(agents)
-      .values({ ownerUserId: userId, name: 'a', kind: 'personal' })
+      .values({ ownerId: userId, name: 'a', type: 'personal' })
       .returning();
     agentId = a.id;
   });
@@ -1047,7 +1062,7 @@ describe('OpportunityDeliveryService', () => {
     await seedPendingOpportunity(userId);
     await service.pickupPending(agentId);
     await db.execute(
-      `UPDATE opportunity_deliveries SET reserved_at = now() - interval '2 minutes' WHERE delivered_at IS NULL`,
+      sql`UPDATE opportunity_deliveries SET reserved_at = now() - interval '2 minutes' WHERE delivered_at IS NULL`,
     );
     const next = await service.pickupPending(agentId);
     expect(next).not.toBeNull();
@@ -1081,7 +1096,7 @@ Create `backend/src/services/opportunity-delivery.service.ts`:
 import { and, eq, isNull, not, or, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { db } from '../lib/drizzle/drizzle';
+import db from '../lib/drizzle/drizzle';
 import {
   agents,
   opportunities,
@@ -1110,7 +1125,7 @@ export class OpportunityDeliveryService {
 
   async pickupPending(agentId: string): Promise<PickupPendingResult | null> {
     const agent = await this.resolveAgentOwner(agentId);
-    const userId = agent.ownerUserId;
+    const userId = agent.ownerId;
     const reservationToken = randomUUID();
     const reservedAt = new Date();
     const ttlCutoff = new Date(Date.now() - RESERVATION_TTL_SECONDS * 1000);
@@ -2427,7 +2442,7 @@ test('confirmDigest commits listed tokens; others expire', async () => {
   );
   // The unconfirmed one should still be in reserved state; backdate + re-pickup
   await db.execute(
-    `UPDATE opportunity_deliveries SET reserved_at = now() - interval '2 minutes' WHERE delivered_at IS NULL`,
+    sql`UPDATE opportunity_deliveries SET reserved_at = now() - interval '2 minutes' WHERE delivered_at IS NULL`,
   );
   const nextDigest = await service.buildDigest(agentId);
   expect(nextDigest.items.length).toBe(1); // the unconfirmed one re-appears
@@ -2466,7 +2481,7 @@ export interface DigestResult {
 
 async buildDigest(agentId: string): Promise<DigestResult> {
   const agent = await this.resolveAgentOwner(agentId);
-  const userId = agent.ownerUserId;
+  const userId = agent.ownerId;
   const digestId = randomUUID();
   const reservedAt = new Date();
   const reservationExpiresAt = new Date(
@@ -2554,7 +2569,7 @@ async confirmDigest(
 
 **Schema addendum:** add a `digest_id uuid` column on `opportunity_deliveries` via a follow-up migration in this issue:
 
-Update `backend/src/schemas/database.schema.ts` — add `digestId: uuid('digest_id')` to the table definition. Run `bun run db:generate`, rename the new migration `NNNN_add_digest_id_to_opportunity_deliveries.sql`, update the journal tag, apply.
+Update `backend/src/schemas/database.schema.ts` — add `digestId: text('digest_id')` to the table definition. Run `bun run db:generate`, rename the new migration `NNNN_add_digest_id_to_opportunity_deliveries.sql`, update the journal tag, apply.
 
 - [ ] **Step 4: Run tests**
 
