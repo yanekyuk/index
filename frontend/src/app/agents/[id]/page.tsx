@@ -862,9 +862,7 @@ export default function AgentDetailPage() {
   }
 
   const isNegotiator = agent.id === SYSTEM_AGENT_IDS.negotiator;
-  const hasMcpTransport = agent.transports.some(
-    (t) => t.channel === "mcp" && t.active,
-  );
+  const canSendTestMessage = agent.type === "personal";
 
   return (
     <ClientLayout>
@@ -892,7 +890,7 @@ export default function AgentDetailPage() {
             }`}>
               {agent.status}
             </span>
-            {hasMcpTransport && (
+            {canSendTestMessage && (
               <Button
                 size="sm"
                 variant="outline"
@@ -905,7 +903,7 @@ export default function AgentDetailPage() {
             )}
           </div>
 
-          {hasMcpTransport && (
+          {canSendTestMessage && (
             <SendTestMessageDialog
               agentId={agent.id}
               open={testMessageOpen}
