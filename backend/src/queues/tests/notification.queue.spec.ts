@@ -37,15 +37,17 @@ mock.module('../../services/user.service', () => ({
     getUserForNewsletter: (id: string) => mockGetUserForNewsletter(id),
   },
 }));
-mock.module('../../lib/redis', () => ({
+mock.module('../../adapters/cache.adapter', () => ({
   getRedisClient: () => ({
     set: mockRedisSet,
     rpush: mockRedisRpush,
     expire: mockRedisExpire,
   }),
 }));
-mock.module('../../lib/email/queue/email.queue', () => ({
-  addEmailJob: (payload: unknown, opts?: unknown) => (mockAddEmailJob as (a: unknown, b?: unknown) => Promise<unknown>)(payload, opts),
+mock.module('../email.queue', () => ({
+  emailQueue: {
+    addJob: (payload: unknown, opts?: unknown) => (mockAddEmailJob as (a: unknown, b?: unknown) => Promise<unknown>)(payload, opts),
+  },
 }));
 const _telegramEmitter = new EventEmitter();
 _telegramEmitter.setMaxListeners(100);
@@ -64,7 +66,6 @@ import {
   NotificationQueue,
   QUEUE_NAME,
   type NotificationJobData,
-  type NegotiationNotificationJobData,
   type NotificationPriority,
   type NotificationQueueDatabase,
   queueOpportunityNotification,
@@ -473,13 +474,13 @@ describe('processJob — process_negotiation_notification', () => {
       opportunity: makeOpportunity('opp-x', 'user-x', 'ignored'),
       telegramPrefs: { opportunityAccepted: false, negotiationTurn: true },
     });
-    const queue = new NotificationQueue({ database: db });
+    const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
     await queue.processJob('process_negotiation_notification', {
       negotiationId: 'neg-1',
       recipientId: 'user-x',
       turnNumber: 2,
       counterpartyAction: 'propose',
-    } as NegotiationNotificationJobData);
+    });
 
     unsub();
     expect(received).toHaveLength(1);
@@ -494,13 +495,13 @@ describe('processJob — process_negotiation_notification', () => {
       opportunity: makeOpportunity('opp-y', 'user-y', 'ignored'),
       telegramPrefs: { opportunityAccepted: false, negotiationTurn: false },
     });
-    const queue = new NotificationQueue({ database: db });
+    const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
     await queue.processJob('process_negotiation_notification', {
       negotiationId: 'neg-2',
       recipientId: 'user-y',
       turnNumber: 1,
       counterpartyAction: 'question',
-    } as NegotiationNotificationJobData);
+    });
 
     unsub();
     expect(received).toHaveLength(0);

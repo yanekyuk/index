@@ -125,9 +125,10 @@ export class NotificationQueue {
     turnNumber: number,
     counterpartyAction: string,
   ): Promise<void> {
+    const negPayload = { negotiationId, recipientId, turnNumber, counterpartyAction };
     await this.queue.add(
       'process_negotiation_notification',
-      { negotiationId, recipientId, turnNumber, counterpartyAction },
+      negPayload as unknown as NotificationJobData,
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
@@ -142,13 +143,13 @@ export class NotificationQueue {
    * @param name - Job name (`process_opportunity_notification` | `process_negotiation_notification`)
    * @param data - Job payload
    */
-  async processJob(name: string, data: NotificationJobData): Promise<void> {
+  async processJob(name: string, data: NotificationJobData | NegotiationNotificationJobData): Promise<void> {
     switch (name) {
       case 'process_opportunity_notification':
-        await this.processOpportunityNotification(data);
+        await this.processOpportunityNotification(data as NotificationJobData);
         break;
       case 'process_negotiation_notification':
-        await this.processNegotiationNotification(data as unknown as NegotiationNotificationJobData);
+        await this.processNegotiationNotification(data as NegotiationNotificationJobData);
         break;
       default:
         this.queueLogger.warn(`[NotificationProcessor] Unknown job name: ${name}`);
@@ -162,7 +163,7 @@ export class NotificationQueue {
     if (this.worker) return;
     const processor = async (job: Job<NotificationJobData>) => {
       this.queueLogger.info(`[NotificationProcessor] Processing job ${job.id} (${job.name})`);
-      await this.processJob(job.name, job.data);
+      await this.processJob(job.name, job.data as NotificationJobData | NegotiationNotificationJobData);
     };
     this.worker = QueueFactory.createWorker<NotificationJobData>(QUEUE_NAME, processor);
   }
