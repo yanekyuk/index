@@ -8,6 +8,7 @@ import {
   negotiationPollingService,
   NotFoundError,
   ConflictError,
+  UnauthorizedError,
 } from '../services/negotiation-polling.service';
 
 const logger = log.controller.from('agent');
@@ -74,6 +75,7 @@ function parseErrorMessage(err: unknown): string {
 }
 
 function errorStatus(err: unknown, fallback = 400): number {
+  if (err instanceof UnauthorizedError) return 403;
   if (err instanceof NotFoundError) return 404;
   if (err instanceof ConflictError) return 409;
   const message = parseErrorMessage(err);
@@ -387,6 +389,9 @@ export class AgentController {
       const result = await negotiationPollingService.respond(agentId, user.id, negotiationId, body);
       return Response.json(result);
     } catch (err) {
+      if (err instanceof UnauthorizedError) {
+        return jsonError(err.message, 403);
+      }
       if (err instanceof NotFoundError) {
         return jsonError(err.message, 404);
       }

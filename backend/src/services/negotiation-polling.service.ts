@@ -1,4 +1,4 @@
-import { eq, and, sql, asc } from 'drizzle-orm';
+import { eq, and, sql, asc, isNull } from 'drizzle-orm';
 
 import db from '../lib/drizzle/drizzle';
 import * as convSchema from '../schemas/conversation.schema';
@@ -28,6 +28,14 @@ export class ConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ConflictError';
+  }
+}
+
+/** Thrown when the caller is not authorized for the requested agent. Maps to HTTP 403. */
+export class UnauthorizedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnauthorizedError';
   }
 }
 
@@ -137,6 +145,8 @@ export class NegotiationPollingService {
    * @returns The pickup result with opportunity context and turn history, or null if nothing pending
    */
   async pickup(agentId: string, userId: string): Promise<PickupResult | null> {
+    await this.assertAgentOwnership(agentId, userId);
+
     // 1. Check if agent already has a claimed turn (idempotency)
     const [existingClaim] = await db
       .select()
@@ -242,25 +252,42 @@ export class NegotiationPollingService {
    */
   async respond(
     agentId: string,
-    _userId: string,
+    userId: string,
     negotiationId: string,
     input: RespondInput,
   ): Promise<{ success: true }> {
-    // 1. Load task and verify state
-    const task = await conversationDatabaseAdapter.getTask(negotiationId);
+    await this.assertAgentOwnership(agentId, userId);
+
+    // 1. Atomically transition out of 'claimed' to 'working' with CAS on
+    //    claimedByAgentId. This prevents the claim-timeout worker and respond
+    //    from both observing 'claimed' and both appending a turn.
+    const now = new Date();
+    const [task] = await db
+      .update(convSchema.tasks)
+      .set({ state: 'working', updatedAt: now })
+      .where(
+        and(
+          eq(convSchema.tasks.id, negotiationId),
+          eq(convSchema.tasks.state, 'claimed'),
+          eq(convSchema.tasks.claimedByAgentId, agentId),
+        ),
+      )
+      .returning();
+
     if (!task) {
-      throw new NotFoundError(`Negotiation ${negotiationId} not found`);
-    }
-
-    if (task.state !== 'claimed') {
+      // Either the task does not exist, is no longer claimed, or is claimed by
+      // a different agent. Disambiguate so callers get a precise error.
+      const current = await conversationDatabaseAdapter.getTask(negotiationId);
+      if (!current) {
+        throw new NotFoundError(`Negotiation ${negotiationId} not found`);
+      }
+      if (current.claimedByAgentId && current.claimedByAgentId !== agentId) {
+        throw new ConflictError(
+          `Negotiation ${negotiationId} is claimed by a different agent`,
+        );
+      }
       throw new ConflictError(
-        `Negotiation ${negotiationId} is in state '${task.state}', expected 'claimed'`,
-      );
-    }
-
-    if (task.claimedByAgentId !== agentId) {
-      throw new ConflictError(
-        `Negotiation ${negotiationId} is claimed by a different agent`,
+        `Negotiation ${negotiationId} is in state '${current.state}', expected 'claimed'`,
       );
     }
 
@@ -269,7 +296,8 @@ export class NegotiationPollingService {
       throw new NotFoundError(`Task ${negotiationId} is not a negotiation`);
     }
 
-    // 2. Cancel 6h claim timeout
+    // 2. Cancel 6h claim timeout (the CAS already fenced it off, but remove the
+    //    delayed job so it doesn't wake up and short-circuit on state mismatch).
     await negotiationClaimTimeoutQueue.cancelTimeout(negotiationId);
 
     // 3. Determine current speaker
@@ -350,6 +378,29 @@ export class NegotiationPollingService {
   // ─────────────────────────────────────────────────────────────────────────
   // Private helpers
   // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Verifies that the given agent is owned by the authenticated user. The
+   * auth guard only resolves the user from the API key; without this check
+   * anyone with a valid key on the system could drive pickup/respond for any
+   * agentId they can guess. Throws {@link UnauthorizedError} on mismatch.
+   */
+  private async assertAgentOwnership(agentId: string, userId: string): Promise<void> {
+    const [agent] = await db
+      .select({ id: dbSchema.agents.id })
+      .from(dbSchema.agents)
+      .where(
+        and(
+          eq(dbSchema.agents.id, agentId),
+          eq(dbSchema.agents.ownerId, userId),
+          isNull(dbSchema.agents.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!agent) {
+      throw new UnauthorizedError(`Agent ${agentId} is not accessible to the current user`);
+    }
+  }
 
   /**
    * Builds a {@link PickupResult} from a task row.
@@ -433,7 +484,7 @@ export class NegotiationPollingService {
     }
 
     return {
-      negotiationId: task.conversationId,
+      negotiationId: task.id,
       taskId: task.id,
       opportunity,
       turn: {

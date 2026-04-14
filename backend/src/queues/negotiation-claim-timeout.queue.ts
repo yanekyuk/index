@@ -1,5 +1,8 @@
 import { Job } from 'bullmq';
+import { and, eq } from 'drizzle-orm';
 
+import db from '../lib/drizzle/drizzle';
+import * as convSchema from '../schemas/conversation.schema';
 import { log } from '../lib/log';
 import { QueueFactory } from '../lib/bullmq/bullmq';
 import { conversationDatabaseAdapter } from '../adapters/database.adapter';
@@ -171,18 +174,24 @@ export class NegotiationClaimTimeoutQueue {
     const { negotiationId, turnNumber, agentId } = data;
     const database = this.deps?.database ?? conversationDatabaseAdapter;
 
-    // Load the negotiation task
-    const task = await database.getTask(negotiationId);
-    if (!task) {
-      this.logger.warn('[NegotiationClaimTimeoutJob] Task not found, skipping', { negotiationId });
-      return;
-    }
+    // Atomically transition out of 'claimed' to 'working' before doing any
+    // work. If another path (agent respond) is racing this worker, only one
+    // side will flip the state — the other no-ops. This prevents both paths
+    // from appending a turn for the same claimed state.
+    const [task] = await db
+      .update(convSchema.tasks)
+      .set({ state: 'working', updatedAt: new Date() })
+      .where(
+        and(
+          eq(convSchema.tasks.id, negotiationId),
+          eq(convSchema.tasks.state, 'claimed'),
+        ),
+      )
+      .returning();
 
-    // Only process if still claimed (agent took it but never responded)
-    if (task.state !== 'claimed') {
+    if (!task) {
       this.logger.info('[NegotiationClaimTimeoutJob] Task no longer claimed, skipping (stale job)', {
         negotiationId,
-        currentState: task.state,
       });
       return;
     }
@@ -200,7 +209,12 @@ export class NegotiationClaimTimeoutQueue {
       return;
     }
 
-    const meta = task.metadata as { sourceUserId?: string; candidateUserId?: string; type?: string } | null;
+    const meta = task.metadata as {
+      sourceUserId?: string;
+      candidateUserId?: string;
+      type?: string;
+      maxTurns?: number;
+    } | null;
     if (meta?.type !== 'negotiation') {
       this.logger.warn('[NegotiationClaimTimeoutJob] Task is not a negotiation, skipping', { negotiationId });
       return;
@@ -250,7 +264,7 @@ export class NegotiationClaimTimeoutQueue {
     });
 
     const newTurnCount = currentTurnCount + 1;
-    const maxTurns = 6;
+    const maxTurns = meta.maxTurns ?? 6;
 
     // Evaluate: accept/reject -> finalize; counter at max -> finalize; counter under max -> continue
     if (aiTurn.action === 'accept' || aiTurn.action === 'reject' || newTurnCount >= maxTurns) {

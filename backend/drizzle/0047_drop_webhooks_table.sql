@@ -1,1 +1,1 @@
-DROP TABLE "webhooks" CASCADE;
+DROP TABLE "webhooks";
