@@ -84,7 +84,7 @@ const makeOpportunity = (idOrReasoning?: string, _recipientId?: string, reasonin
 
 function makeDb(opts: {
   opportunity: ReturnType<typeof makeOpportunity>;
-  telegramPrefs?: { opportunityAccepted: boolean; negotiationTurn: boolean } | null;
+  telegramPrefs?: { opportunityAccepted: boolean } | null;
 }) {
   return {
     getOpportunity: async (id: string) =>
@@ -412,7 +412,7 @@ describe('processOpportunityNotification — Telegram delivery', () => {
 
     const db = makeDb({
       opportunity: makeOpportunity(opportunityId, recipientId, 'A great match'),
-      telegramPrefs: { opportunityAccepted: true, negotiationTurn: false },
+      telegramPrefs: { opportunityAccepted: true },
     });
     const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
     await queue.processJob('process_opportunity_notification', {
@@ -432,7 +432,7 @@ describe('processOpportunityNotification — Telegram delivery', () => {
 
     const db = makeDb({
       opportunity: makeOpportunity('opp-2', 'user-2', 'A match'),
-      telegramPrefs: { opportunityAccepted: false, negotiationTurn: false },
+      telegramPrefs: { opportunityAccepted: false },
     });
     const queue = new NotificationQueue({ database: db as NotificationQueueDatabase });
     await queue.processJob('process_opportunity_notification', {
@@ -466,13 +466,13 @@ describe('processOpportunityNotification — Telegram delivery', () => {
 });
 
 describe('processJob — process_negotiation_notification', () => {
-  it('emits Telegram notification when negotiationTurn=true', async () => {
+  it('handles the job type without emitting Telegram notifications', async () => {
     const received: unknown[] = [];
     const unsub = onTelegramNotification((p) => received.push(p));
 
     const db = makeDb({
       opportunity: makeOpportunity('opp-x', 'user-x', 'ignored'),
-      telegramPrefs: { opportunityAccepted: false, negotiationTurn: true },
+      telegramPrefs: { opportunityAccepted: true },
     });
     const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
     await queue.processJob('process_negotiation_notification', {
@@ -480,28 +480,7 @@ describe('processJob — process_negotiation_notification', () => {
       recipientId: 'user-x',
       turnNumber: 2,
       counterpartyAction: 'propose',
-    });
-
-    unsub();
-    expect(received).toHaveLength(1);
-    expect((received[0] as { userId: string }).userId).toBe('user-x');
-  });
-
-  it('does NOT emit when negotiationTurn=false', async () => {
-    const received: unknown[] = [];
-    const unsub = onTelegramNotification((p) => received.push(p));
-
-    const db = makeDb({
-      opportunity: makeOpportunity('opp-y', 'user-y', 'ignored'),
-      telegramPrefs: { opportunityAccepted: false, negotiationTurn: false },
-    });
-    const queue = new NotificationQueue({ database: db as unknown as NotificationQueueDatabase });
-    await queue.processJob('process_negotiation_notification', {
-      negotiationId: 'neg-2',
-      recipientId: 'user-y',
-      turnNumber: 1,
-      counterpartyAction: 'question',
-    });
+    } as unknown as NotificationJobData);
 
     unsub();
     expect(received).toHaveLength(0);

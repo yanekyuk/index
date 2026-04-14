@@ -51,7 +51,7 @@ describe('handleOutbound', () => {
       chatId: 'chat-1',
       sessionId: 'session-1',
       connectedAt: '2026-04-14T00:00:00Z',
-      notifications: { opportunityAccepted: true, negotiationTurn: false },
+      notifications: { opportunityAccepted: true },
     };
     deps.seedTelegramUser('user-1', prefs);
 
@@ -68,7 +68,7 @@ describe('handleOutbound', () => {
     const prefs: TelegramPrefs = {
       chatId: 'chat-2',
       connectedAt: '2026-04-14T00:00:00Z',
-      notifications: { opportunityAccepted: true, negotiationTurn: false },
+      notifications: { opportunityAccepted: true },
     };
     deps.seedTelegramUser('user-2', prefs);
 
@@ -94,7 +94,7 @@ describe('handleOutbound', () => {
       chatId: 'chat-3',
       sessionId: 'session-3',
       connectedAt: '2026-04-14T00:00:00Z',
-      notifications: { opportunityAccepted: true, negotiationTurn: false },
+      notifications: { opportunityAccepted: true },
     };
     deps.seedTelegramUser('user-3', prefs);
 
@@ -137,7 +137,7 @@ describe('handleInbound', () => {
       chatId: 'chat-known',
       sessionId: 'sess-1',
       connectedAt: '2026-04-14T00:00:00Z',
-      notifications: { opportunityAccepted: true, negotiationTurn: false },
+      notifications: { opportunityAccepted: true },
     };
     deps.seedTelegramUser('user-known', prefs);
 
@@ -160,7 +160,6 @@ describe('handleInbound', () => {
     const stored = deps.telegramPrefs.get('user-new');
     expect(stored?.chatId).toBe('chat-new');
     expect(stored?.notifications.opportunityAccepted).toBe(true);
-    expect(stored?.notifications.negotiationTurn).toBe(false);
     expect(deps.sent[0].text).toContain('connected');
     // Token consumed
     expect(redisFake.has('telegram:connect:valid-token')).toBe(false);

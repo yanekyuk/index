@@ -185,7 +185,7 @@ async function handleConnectToken(
   const newPrefs: TelegramPrefs = {
     chatId,
     connectedAt: new Date().toISOString(),
-    notifications: { opportunityAccepted: true, negotiationTurn: false },
+    notifications: { opportunityAccepted: true },
   };
   await deps.updateTelegramPrefs(userId, newPrefs);
   await deps.sendTelegramMessage(chatId, CONNECTED_MSG);

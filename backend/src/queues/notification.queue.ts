@@ -22,7 +22,7 @@ export interface NotificationJobData {
   priority: NotificationPriority;
 }
 
-/** Payload for a single negotiation notification job. */
+/** Payload for a negotiation turn notification job. */
 export interface NegotiationNotificationJobData {
   negotiationId: string;
   recipientId: string;
@@ -163,7 +163,7 @@ export class NotificationQueue {
     if (this.worker) return;
     const processor = async (job: Job<NotificationJobData>) => {
       this.queueLogger.info(`[NotificationProcessor] Processing job ${job.id} (${job.name})`);
-      await this.processJob(job.name, job.data as NotificationJobData | NegotiationNotificationJobData);
+      await this.processJob(job.name, job.data);
     };
     this.worker = QueueFactory.createWorker<NotificationJobData>(QUEUE_NAME, processor);
   }
@@ -236,19 +236,9 @@ export class NotificationQueue {
   }
 
   private async processNegotiationNotification(data: NegotiationNotificationJobData): Promise<void> {
-    const { negotiationId, recipientId, counterpartyAction } = data;
-
-    const telegramPrefs = await this.database.getTelegramPrefs(recipientId);
-    if (!telegramPrefs?.notifications.negotiationTurn) return;
-
-    const appUrl = process.env.FRONTEND_URL || process.env.APP_URL || 'https://index.network';
-    emitTelegramNotification({
-      userId: recipientId,
-      message: `You have a new negotiation turn. ${counterpartyAction === 'propose' ? 'A proposal is waiting for your response.' : `Your counterpart sent: ${counterpartyAction}.`}`,
-      inlineButtons: [{ text: 'View negotiation', url: `${appUrl}/conversations` }],
-    });
-
-    this.logger.info('[NotificationJob] Emitted Telegram negotiation notification', {
+    const { negotiationId, recipientId } = data;
+    // Placeholder: delivery channel (e.g. email, push) can be wired here.
+    this.logger.verbose('[NotificationJob] Negotiation turn notification received', {
       negotiationId,
       recipientId,
     });
