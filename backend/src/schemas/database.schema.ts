@@ -1,6 +1,6 @@
 import { pgTable, pgEnum, text, timestamp, bigint, boolean, json, jsonb, integer, uniqueIndex, index, doublePrecision, numeric, primaryKey } from 'drizzle-orm/pg-core';
 import { vector } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type { Id } from '../types/common.types';
 
 // Enums
@@ -493,6 +493,42 @@ export const agentTestMessages = pgTable(
 
 export type AgentTestMessage = typeof agentTestMessages.$inferSelect;
 export type NewAgentTestMessage = typeof agentTestMessages.$inferInsert;
+
+export const opportunityDeliveries = pgTable(
+  'opportunity_deliveries',
+  {
+    id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+    opportunityId: text('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').references(() => agents.id, {
+      onDelete: 'set null',
+    }),
+    channel: text('channel').notNull(),
+    trigger: text('trigger').notNull(),
+    deliveredAtStatus: text('delivered_at_status').notNull(),
+    reservationToken: text('reservation_token'),
+    reservedAt: timestamp('reserved_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    uniqueCommitted: uniqueIndex('uniq_opp_deliveries_committed')
+      .on(t.userId, t.opportunityId, t.channel, t.deliveredAtStatus)
+      .where(sql`${t.deliveredAt} IS NOT NULL`),
+    reservationLookup: index('idx_opp_deliveries_open_reservations')
+      .on(t.userId, t.channel, t.reservedAt)
+      .where(sql`${t.deliveredAt} IS NULL`),
+  }),
+);
+
+export type OpportunityDelivery = typeof opportunityDeliveries.$inferSelect;
+export type NewOpportunityDelivery = typeof opportunityDeliveries.$inferInsert;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Relations
