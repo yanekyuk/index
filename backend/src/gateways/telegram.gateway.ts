@@ -92,4 +92,101 @@ export function init(): void {
   });
 }
 
-// handleInbound added in Task 5
+// ── Minimal Redis interface needed by handleInbound ────────────────────────
+
+interface RedisReader {
+  get(key: string): Promise<string | null>;
+  del(key: string): Promise<void>;
+}
+
+function productionRedis(): RedisReader {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getRedisClient } = require('../adapters/cache.adapter') as typeof import('../adapters/cache.adapter');
+  const redis = getRedisClient();
+  return {
+    get: (key) => redis.get(key),
+    del: (key) => redis.del(key).then(() => undefined),
+  };
+}
+
+const UNKNOWN_CHAT_MSG = 'Please connect your Telegram account at index.network first.';
+const EXPIRED_TOKEN_MSG = 'This link has expired. Please reconnect from Index.';
+const CONNECTED_MSG =
+  'Your Telegram account is now connected to Index. You\'ll receive notifications here and can chat with me anytime.';
+
+/**
+ * Handle an update received from Telegram (text message or /start command).
+ * @param chatId - Sender's Telegram chat ID
+ * @param text - Message text
+ * @param deps - Injectable deps (defaults to production singletons)
+ * @param redis - Injectable Redis reader (defaults to production client)
+ */
+export async function handleInbound(
+  chatId: string,
+  text: string,
+  deps: GatewayDeps = productionDeps(),
+  redis: RedisReader = productionRedis(),
+): Promise<void> {
+  if (text.startsWith('/start ')) {
+    const token = text.slice(7).trim();
+    await handleConnectToken(chatId, token, deps, redis);
+    return;
+  }
+
+  const found = await deps.findByTelegramChatId(chatId);
+  if (!found) {
+    await deps.sendTelegramMessage(chatId, UNKNOWN_CHAT_MSG);
+    return;
+  }
+
+  const { userId, sessionId } = found;
+
+  // Write user message to conversation (best-effort)
+  if (sessionId) {
+    await deps.createChatMessage({
+      id: crypto.randomUUID(),
+      sessionId,
+      role: 'user',
+      content: text,
+    }).catch((err) => logger.warn('Failed to write user message to conversation', { error: err }));
+  }
+
+  // Route to chat graph
+  const result = await deps.processMessage(userId, text);
+  const responseText = result.responseText || 'Sorry, I could not process your message.';
+
+  // Write assistant response (best-effort)
+  if (sessionId) {
+    await deps.createChatMessage({
+      id: crypto.randomUUID(),
+      sessionId,
+      role: 'assistant',
+      content: responseText,
+    }).catch((err) => logger.warn('Failed to write assistant message to conversation', { error: err }));
+  }
+
+  await deps.sendTelegramMessage(chatId, responseText);
+}
+
+async function handleConnectToken(
+  chatId: string,
+  token: string,
+  deps: GatewayDeps,
+  redis: RedisReader,
+): Promise<void> {
+  const userId = await redis.get(`${CONNECT_TOKEN_PREFIX}${token}`);
+  if (!userId) {
+    await deps.sendTelegramMessage(chatId, EXPIRED_TOKEN_MSG);
+    return;
+  }
+
+  await redis.del(`${CONNECT_TOKEN_PREFIX}${token}`);
+
+  const newPrefs: TelegramPrefs = {
+    chatId,
+    connectedAt: new Date().toISOString(),
+    notifications: { opportunityAccepted: true, negotiationTurn: false },
+  };
+  await deps.updateTelegramPrefs(userId, newPrefs);
+  await deps.sendTelegramMessage(chatId, CONNECTED_MSG);
+}

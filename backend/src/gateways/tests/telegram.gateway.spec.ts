@@ -107,3 +107,67 @@ describe('handleOutbound', () => {
     expect(deps.sent[0].keyboard).toEqual([[{ text: 'View', url: 'https://index.network/o/1' }]]);
   });
 });
+
+// ── Tests: handleInbound ─────────────────────────────────────────────────────
+
+describe('handleInbound', () => {
+  let deps: ReturnType<typeof makeDeps>;
+  let redisFake: Map<string, string>;
+
+  beforeEach(() => {
+    deps = makeDeps();
+    redisFake = new Map();
+  });
+
+  async function callInbound(chatId: string, text: string) {
+    const { handleInbound } = await import('../telegram.gateway');
+    await handleInbound(chatId, text, deps, {
+      get: async (key: string) => redisFake.get(key) ?? null,
+      del: async (key: string) => { redisFake.delete(key); },
+    });
+  }
+
+  it('replies with connect prompt for unknown chatId', async () => {
+    await callInbound('unknown-chat', 'hello');
+    expect(deps.sent[0].text).toContain('index.network');
+  });
+
+  it('routes a known user message to the chat graph and writes to conversation', async () => {
+    const prefs: TelegramPrefs = {
+      chatId: 'chat-known',
+      sessionId: 'sess-1',
+      connectedAt: '2026-04-14T00:00:00Z',
+      notifications: { opportunityAccepted: true, negotiationTurn: false },
+    };
+    deps.seedTelegramUser('user-known', prefs);
+
+    await callInbound('chat-known', 'What are my intents?');
+
+    // Sends graph response back
+    expect(deps.sent[0]).toMatchObject({ chatId: 'chat-known', text: 'Hello from Index!' });
+    // Writes user + assistant messages to conversation
+    const userMsg = deps.messages.find((m) => m.role === 'user');
+    const assistantMsg = deps.messages.find((m) => m.role === 'assistant');
+    expect(userMsg?.content).toBe('What are my intents?');
+    expect(assistantMsg?.content).toBe('Hello from Index!');
+  });
+
+  it('completes /start <token> flow: stores chatId and confirms', async () => {
+    redisFake.set('telegram:connect:valid-token', 'user-new');
+
+    await callInbound('chat-new', '/start valid-token');
+
+    const stored = deps.telegramPrefs.get('user-new');
+    expect(stored?.chatId).toBe('chat-new');
+    expect(stored?.notifications.opportunityAccepted).toBe(true);
+    expect(stored?.notifications.negotiationTurn).toBe(false);
+    expect(deps.sent[0].text).toContain('connected');
+    // Token consumed
+    expect(redisFake.has('telegram:connect:valid-token')).toBe(false);
+  });
+
+  it('replies with expired-token message for unknown token', async () => {
+    await callInbound('chat-x', '/start bad-token');
+    expect(deps.sent[0].text).toContain('expired');
+  });
+});
